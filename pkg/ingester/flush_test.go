@@ -339,6 +339,10 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
+func (s *testStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return nil
+}
+
 func (s *testStore) IsLocal() bool {
 	return false
 }
@@ -351,7 +355,11 @@ func (s *testStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams)
 	return nil, nil
 }
 
-func (s *testStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *testStore) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
+}
+
+func (s *testStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 

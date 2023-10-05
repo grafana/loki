@@ -207,7 +207,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			return m.wrappedShardedVectorAggr(expr, r)
 
 		case syntax.OpTypeMin, syntax.OpTypeMax:
-			if syntax.ReducesLabels(expr) {
+			if syntax.ReducesLabels(expr.Left) {
 				// skip sharding optimizations at this level. If labels are reduced,
 				// the same series may exist on multiple shards and must be aggregated
 				// together before a max|min is applied
@@ -247,7 +247,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}, bytesPerShard, nil
 
 		case syntax.OpTypeCount:
-			if syntax.ReducesLabels(expr) {
+			if syntax.ReducesLabels(expr.Left) {
 				// skip sharding optimizations at this level. If labels are reduced,
 				// the same series may exist on multiple shards and must be aggregated
 				// together before a count is applied

@@ -394,6 +394,16 @@ func TestMappingStrings(t *testing.T) {
 			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring () count_over_time({a=~".+"}[1s]))`,
 			out: `sum(downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=0_of_2>++downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=1_of_2>)`,
 		},
+		{
+			// shard the count since there is no label reduction in children
+			in:  `count by (foo) (rate({job="bar"}[1m]))`,
+			out: `sumby(foo)(downstream<countby(foo)(rate({job="bar"}[1m])),shard=0_of_2>++downstream<countby(foo)(rate({job="bar"}[1m])),shard=1_of_2>)`,
+		},
+		{
+			// don't shard the count since there is label reduction in children
+			in:  `count by (foo) (sum by (foo, bar) (rate({job="bar"}[1m])))`,
+			out: `countby(foo)(sumby(foo,bar)(downstream<sumby(foo,bar)(rate({job="bar"}[1m])),shard=0_of_2>++downstream<sumby(foo,bar)(rate({job="bar"}[1m])),shard=1_of_2>))`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)

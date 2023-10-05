@@ -139,8 +139,9 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var kinesisEvent events.KinesisEvent
 	var sqsEvent events.SQSEvent
 	var snsEvent events.SNSEvent
+	var eventBridgeEvent events.CloudWatchEvent
 
-	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent, &snsEvent}
+	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent, &snsEvent, &eventBridgeEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
@@ -185,6 +186,8 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 	}
 
 	switch evt := event.(type) {
+	case *events.CloudWatchEvent:
+		err = processEventBridgeEvent(ctx, evt, pClient, pClient.log, processS3Event)
 	case *events.S3Event:
 		err = processS3Event(ctx, evt, pClient, pClient.log)
 	case *events.CloudwatchLogsEvent:

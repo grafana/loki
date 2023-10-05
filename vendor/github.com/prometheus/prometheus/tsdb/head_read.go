@@ -16,7 +16,6 @@ package tsdb
 import (
 	"context"
 	"math"
-	"sort"
 	"sync"
 
 	"github.com/go-kit/log/level"
@@ -137,8 +136,8 @@ func (h *headIndexReader) SortedPostings(p index.Postings) index.Postings {
 		return index.ErrPostings(errors.Wrap(err, "expand postings"))
 	}
 
-	sort.Slice(series, func(i, j int) bool {
-		return labels.Compare(series[i].lset, series[j].lset) < 0
+	slices.SortFunc(series, func(a, b *memSeries) bool {
+		return labels.Compare(a.lset, b.lset) < 0
 	})
 
 	// Convert back to list.
@@ -331,7 +330,7 @@ func (h *headChunkReader) chunk(meta chunks.Meta, copyLastChunk bool) (chunkenc.
 	}
 	s.Unlock()
 
-	return &safeChunk{
+	return &safeHeadChunk{
 		Chunk:    chk,
 		s:        s,
 		cid:      cid,
@@ -450,7 +449,7 @@ func (s *memSeries) oooMergedChunk(meta chunks.Meta, cdm *chunks.ChunkDiskMapper
 
 	// Next we want to sort all the collected chunks by min time so we can find
 	// those that overlap and stop when we know the rest don't.
-	sort.Sort(byMinTimeAndMinRef(tmpChks))
+	slices.SortFunc(tmpChks, refLessByMinTimeAndMinRef)
 
 	mc := &mergedOOOChunks{}
 	absoluteMax := int64(math.MinInt64)
@@ -627,15 +626,15 @@ func (b boundedIterator) Seek(t int64) chunkenc.ValueType {
 	return b.Iterator.Seek(t)
 }
 
-// safeChunk makes sure that the chunk can be accessed without a race condition
-type safeChunk struct {
+// safeHeadChunk makes sure that the chunk can be accessed without a race condition
+type safeHeadChunk struct {
 	chunkenc.Chunk
 	s        *memSeries
 	cid      chunks.HeadChunkID
 	isoState *isolationState
 }
 
-func (c *safeChunk) Iterator(reuseIter chunkenc.Iterator) chunkenc.Iterator {
+func (c *safeHeadChunk) Iterator(reuseIter chunkenc.Iterator) chunkenc.Iterator {
 	c.s.Lock()
 	it := c.s.iterator(c.cid, c.Chunk, c.isoState, reuseIter)
 	c.s.Unlock()

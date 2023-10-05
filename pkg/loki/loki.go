@@ -30,6 +30,9 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/compactor"
+	compactorclient "github.com/grafana/loki/pkg/compactor/client"
+	"github.com/grafana/loki/pkg/compactor/deletion"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -38,7 +41,6 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
@@ -48,11 +50,8 @@ import (
 	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
-	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
@@ -74,27 +73,27 @@ type Config struct {
 	UseBufferedLogger bool `yaml:"use_buffered_logger" doc:"hidden"`
 	UseSyncLogger     bool `yaml:"use_sync_logger" doc:"hidden"`
 
-	Server              server.Config               `yaml:"server,omitempty"`
-	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty" doc:"hidden"`
-	Distributor         distributor.Config          `yaml:"distributor,omitempty"`
-	Querier             querier.Config              `yaml:"querier,omitempty"`
-	QueryScheduler      scheduler.Config            `yaml:"query_scheduler"`
-	Frontend            lokifrontend.Config         `yaml:"frontend,omitempty"`
-	QueryRange          queryrange.Config           `yaml:"query_range,omitempty"`
-	Ruler               ruler.Config                `yaml:"ruler,omitempty"`
-	IngesterClient      ingester_client.Config      `yaml:"ingester_client,omitempty"`
-	Ingester            ingester.Config             `yaml:"ingester,omitempty"`
-	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
-	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
-	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
-	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
-	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
-	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
-	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
+	Server              server.Config              `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
+	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
+	Querier             querier.Config             `yaml:"querier,omitempty"`
+	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
+	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
+	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
+	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
+	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
+	LimitsConfig        validation.Limits          `yaml:"limits_config,omitempty"`
+	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
+	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
+	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
@@ -306,7 +305,7 @@ type Loki struct {
 	runtimeConfig             *runtimeconfig.Manager
 	MemberlistKV              *memberlist.KVInitService
 	compactor                 *compactor.Compactor
-	QueryFrontEndTripperware  basetripper.Tripperware
+	QueryFrontEndTripperware  queryrangebase.Tripperware
 	queryScheduler            *scheduler.Scheduler
 	querySchedulerRingManager *scheduler.RingManager
 	usageReport               *analytics.Reporter
@@ -336,13 +335,10 @@ func New(cfg Config) (*Loki, error) {
 }
 
 func (t *Loki) setupAuthMiddleware() {
-	// Don't check auth header on TransferChunks, as we weren't originally
-	// sending it and this could cause transfers to fail on update.
 	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
 			"/grpc.health.v1.Health/Check",
-			"/logproto.Ingester/TransferChunks",
 			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
@@ -369,6 +365,9 @@ type RunOpts struct {
 	// CustomConfigEndpointHandlerFn is the handlerFunc to be used by the /config endpoint.
 	// If empty, default handlerFunc will be used.
 	CustomConfigEndpointHandlerFn func(http.ResponseWriter, *http.Request)
+	// StartTime is the time at which the main() function started executing.
+	// It is used to determine the startup time as well as the running time of the Loki process.
+	StartTime time.Time
 }
 
 func (t *Loki) bindConfigEndpoint(opts RunOpts) {
@@ -399,6 +398,8 @@ func (t *Loki) ListTargets() {
 
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run(opts RunOpts) error {
+	startTime := time.Now()
+
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
 		return err
@@ -443,8 +444,18 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.Server.HTTP.Path("/loki/api/v1/format_query").Methods("GET", "POST").HandlerFunc(formatQueryHandler())
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
-	stopped := func() { level.Info(util_log.Logger).Log("msg", "Loki stopped") }
+	logHook := func(msg, key string) func() {
+		return func() {
+			started := startTime
+			if opts.StartTime.After(time.Time{}) {
+				started = opts.StartTime
+			}
+			level.Info(util_log.Logger).Log("msg", msg, key, time.Since(started))
+			_ = util_log.Flush()
+		}
+	}
+	healthy := logHook("Loki started", "startup_time")
+	stopped := logHook("Loki stopped", "running_time")
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Loki
 		sm.StopAsync()

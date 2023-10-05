@@ -21,7 +21,7 @@ Every Grafana Loki release includes binaries for Promtail which can be found on 
 
 ```bash
 # modify tag to most recent version
-docker pull grafana/promtail:2.0.0
+docker pull grafana/promtail:2.9.1
 ```
 
 ## Install using Helm

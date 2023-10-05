@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -94,7 +94,7 @@ func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := shipper.Config{}
+	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = "named-store"
@@ -162,7 +162,7 @@ func TestNamedStores(t *testing.T) {
 		schemaConfig.Configs[0].ObjectType = "not-found"
 		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "Unrecognized storage client not-found, choose one of: aws, s3, azure, alibabacloud, bos, gcs, swift, filesystem, cos")
+		require.Contains(t, err.Error(), "unrecognized chunk client type not-found, choose one of:")
 	})
 }
 

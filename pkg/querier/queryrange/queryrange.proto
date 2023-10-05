@@ -146,21 +146,6 @@ message IndexStatsResponse {
   ];
 }
 
-message VolumeRequest {
-  int64 from = 1 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  int64 through = 2 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  string matchers = 3;
-  int32 limit = 4;
-  int64 step = 5;
-  repeated string targetLabels = 6;
-}
-
 message VolumeResponse {
   logproto.VolumeResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.VolumeResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
@@ -177,6 +162,14 @@ message TopKSketchesResponse {
   ];
 }
 
+message QuantileSketchResponse {
+  logproto.QuantileSketchMatrix response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.QuantileSketchMatrix"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
+
 message QueryResponse {
   oneof response {
     LokiSeriesResponse series = 1;
@@ -186,5 +179,6 @@ message QueryResponse {
     LokiResponse streams = 5;
     VolumeResponse volume = 6;
     TopKSketchesResponse topkSketches = 7;
+    QuantileSketchResponse quantileSketches = 8;
   }
 }

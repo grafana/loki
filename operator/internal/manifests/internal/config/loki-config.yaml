@@ -14,6 +14,9 @@ common:
       container_name: {{ .Container }}
       account_name: {{ .AccountName }}
       account_key: {{ .AccountKey }}
+      {{- with .EndpointSuffix }}
+      endpoint_suffix: {{ . }}
+      {{- end }}
     {{- end }}
     {{- with .ObjectStorage.GCS }}
     gcs:
@@ -26,6 +29,19 @@ common:
       region: {{ .Region }}
       access_key_id: {{ .AccessKeyID }}
       secret_access_key: {{ .AccessKeySecret }}
+      {{- with .SSE }}
+      {{- if .Type }}
+      sse:
+        type: {{ .Type }}
+        {{- if eq .Type "SSE-KMS" }}
+        kms_key_id: {{ .KMSKeyID }}
+        {{- with .KMSEncryptionContext }}
+        kms_encryption_context: |
+          {{ . }}
+        {{- end }}
+        {{- end}}
+      {{- end }}
+      {{- end }}
       s3forcepathstyle: true
     {{- end }}
     {{- with .ObjectStorage.Swift }}
@@ -116,6 +132,9 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    {{- if .GossipRing.EnableIPv6 }}
+    enable_inet6: true
+    {{- end}}
     ring:
       replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0

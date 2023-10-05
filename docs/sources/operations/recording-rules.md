@@ -129,7 +129,7 @@ It can be determined by subtracting
 In case 1, the `ruler` will continue to retry sending these samples until the remote storage becomes available again. Be
 aware that if the remote storage is down for longer than `ruler.wal.max-age`, data loss may occur after truncation occurs.
 
-In cases 2 & 3, you should consider [tuning](#tuning) remote-write appropriately.
+In cases 2 and 3, you should consider [tuning](#tuning) remote-write appropriately.
 
 Further reading: see [this blog post](/blog/2021/04/12/how-to-troubleshoot-remote-write-issues-in-prometheus/)
 by Prometheus maintainer Callum Styan.

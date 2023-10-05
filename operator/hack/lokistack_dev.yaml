@@ -3,7 +3,7 @@ kind: LokiStack
 metadata:
   name: lokistack-dev
 spec:
-  size: 1x.extra-small
+  size: 1x.demo
   storage:
     schemas:
     - version: v12

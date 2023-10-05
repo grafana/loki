@@ -231,6 +231,12 @@ func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*Q
 				TopkSketches: &TopKSketchesResponse{Response: sk},
 			},
 		}, nil
+	case sketch.QuantileSketchMatrix:
+		return &QueryResponse{
+			Response: &QueryResponse_QuantileSketches{
+				QuantileSketches: &QuantileSketchResponse{Response: data.ToProto()},
+			},
+		}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)

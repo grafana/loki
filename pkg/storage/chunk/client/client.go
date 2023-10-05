@@ -26,6 +26,7 @@ type Client interface {
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
+// Only used by DynamoDB (dynamodbIndexReader and dynamoDBStorageClient)
 type ObjectAndIndexClient interface {
 	PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error
 }

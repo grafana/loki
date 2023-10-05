@@ -135,13 +135,13 @@ import (
 
 We're glad you're here to help make our technical documentation even better for Loki users.
 
-The Grafana docs team has created a [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/), and templates to help you contribute to the Loki documentation. 
+The Grafana docs team has created a [Writers' Toolkit](https://grafana.com/docs/writers-toolkit/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/), and templates to help you contribute to the Loki documentation.
 
 The Loki documentation is written using the CommonMark flavor of markdown, including some extended features. For more information about markdown, you can see the [CommonMark specification](https://spec.commonmark.org/), and a [quick reference guide](https://commonmark.org/help/) for CommonMark.
 
 Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the documentation. Loki uses a continuous integration (CI) action to sync documentation to the [Grafana website](https://grafana.com/docs/loki/latest). The CI is triggered on every merge to main in the `docs` subfolder.
 
-You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).  
+You can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).
 
 To get a local preview of the documentation:
 1. Run Docker (or Podman).
@@ -149,4 +149,4 @@ To get a local preview of the documentation:
 3. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
 4. Open http://localhost:3002/docs/loki/latest/ to review your changes.
 
-> Note that `make docs` uses a lot of memory.  If it crashes, increase the memory allocated to Docker and try again.
+> Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.

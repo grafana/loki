@@ -167,10 +167,20 @@ func Test_EndpointSuffixWithContainer(t *testing.T) {
 		ContainerName:      "foo",
 		StorageAccountName: "bar",
 		Environment:        azureGlobal,
-		Endpoint:           "test.com",
+		EndpointSuffix:     "test.com",
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.test.com/foo")
+	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_ConnectionStringWithContainer(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:    "foo",
+		ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo")
 	require.Equal(t, *expect, c.containerURL.URL())
 }
 
@@ -196,10 +206,22 @@ func Test_EndpointSuffixWithBlob(t *testing.T) {
 		ContainerName:      "foo",
 		StorageAccountName: "bar",
 		Environment:        azureGlobal,
-		Endpoint:           "test.com",
+		EndpointSuffix:     "test.com",
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.test.com/foo/blob")
+	bloburl, err := c.getBlobURL("blob", false)
+	require.NoError(t, err)
+	require.Equal(t, *expect, bloburl.URL())
+}
+
+func Test_ConnectionStringWithBlob(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:    "foo",
+		ConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=shorter=;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo/blob")
 	bloburl, err := c.getBlobURL("blob", false)
 	require.NoError(t, err)
 	require.Equal(t, *expect, bloburl.URL())

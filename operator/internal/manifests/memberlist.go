@@ -53,11 +53,9 @@ func configureHashRingEnv(p *corev1.PodSpec, opts Options) error {
 		return nil
 	}
 
-	switch hashRing.MemberList.InstanceAddrType {
-	case "", lokiv1.InstanceAddrDefault:
+	memberList := hashRing.MemberList
+	if !memberList.EnableIPv6 && memberList.InstanceAddrType != lokiv1.InstanceAddrPodIP {
 		return nil
-	default:
-		// Proceed with appending env var
 	}
 
 	src := corev1.Container{

@@ -12,3 +12,5 @@ This section describes the decisions Loki operators and users make and the actio
 This section includes the following topics for managing and tuning Loki:
 
 {{< section >}}
+
+- [Upgrade Loki]({{< relref "../setup/upgrade" >}})

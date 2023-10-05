@@ -20,14 +20,14 @@ as a remote.
 $ git clone https://github.com/grafana/loki.git $GOPATH/src/github.com/grafana/loki
 $ cd $GOPATH/src/github.com/grafana/loki
 $ git remote add fork <FORK_URL>
+```
 
-# Make some changes!
+Make your changes, add your changes to a commit, and open a pull request (PR).
 
+```bash
 $ git add .
 $ git commit -m "docs: fix spelling error"
 $ git push -u fork HEAD
-
-# Open a PR!
 ```
 
 Note that if you downloaded Loki using `go get`, the message `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki`
@@ -54,10 +54,9 @@ While `go install ./cmd/loki` works, the preferred way to build is by using
 - `make images`: builds all Docker images (optionally suffix the previous binary
   commands with `-image`, e.g., `make loki-image`).
 
-These commands can be chained together to build multiple binaries in one go:
+These commands can be chained together to build multiple binaries in one go.  The following example builds binaries for Loki, Promtail, and LogCLI.
 
 ```bash
-# Builds binaries for Loki, Promtail, and LogCLI.
 $ make loki promtail logcli
 ```
 

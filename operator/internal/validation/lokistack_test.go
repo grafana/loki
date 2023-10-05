@@ -350,6 +350,47 @@ var ltt = []struct {
 			},
 		),
 	},
+	{
+		desc: "using default InstanceAddrType and enableIPv6",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6:       true,
+						InstanceAddrType: lokiv1.InstanceAddrDefault,
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "zone",
+						},
+					},
+					Factor: 1,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "hashRing", "memberlist", "instanceAddrType"),
+					lokiv1.InstanceAddrDefault,
+					lokiv1.ErrIPv6InstanceAddrTypeNotAllowed.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {

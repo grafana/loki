@@ -839,10 +839,6 @@ ingester:
 	})
 
 	t.Run("embedded-cache setting is applied to result caches", func(t *testing.T) {
-		// ensure they are all false by default
-		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-
 		configFileString := `---
 query_range:
   results_cache:
@@ -850,8 +846,7 @@ query_range:
       embedded_cache:
         enabled: true`
 
-		config, _ = testContext(configFileString, nil)
-
+		config, _ := testContext(configFileString, nil)
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 	})
 }
@@ -863,9 +858,9 @@ query_range:
       memcached_client:
         host: memcached.host.org`
 
-func TestDefaultFIFOCacheBehavior(t *testing.T) {
+func TestDefaultEmbeddedCacheBehavior(t *testing.T) {
 	t.Run("for the chunk cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   chunk_cache_config:
@@ -874,10 +869,10 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.ChunkCacheConfig.Redis.Endpoint)
-			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   chunk_cache_config:
@@ -886,17 +881,17 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+			assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the write dedupe cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   write_dedupe_cache_config:
@@ -905,10 +900,10 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.Redis.Endpoint)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   write_dedupe_cache_config:
@@ -917,17 +912,17 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache is enabled by default even if no other cache is set", func(t *testing.T) {
+		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the index queries cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 storage_config:
   index_queries_cache_config:
@@ -936,10 +931,10 @@ storage_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "endpoint.redis.org", config.StorageConfig.IndexQueriesCacheConfig.Redis.Endpoint)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 storage_config:
   index_queries_cache_config:
@@ -949,17 +944,17 @@ storage_config:
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 
 			assert.EqualValues(t, "host.memcached.org", config.StorageConfig.IndexQueriesCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache is enabled by default even if no other cache is set", func(t *testing.T) {
+		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the query range results cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   results_cache:
@@ -969,23 +964,23 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
-			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.ResultsCacheConfig.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the index stats results cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   index_stats_results_cache:
@@ -995,10 +990,10 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.StatsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
-			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   index_stats_results_cache:
@@ -1008,23 +1003,23 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the volume results cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   volume_results_cache:
@@ -1034,10 +1029,10 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.VolumeCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
-			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   volume_results_cache:
@@ -1047,18 +1042,18 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
+			assert.True(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 }

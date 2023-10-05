@@ -9,11 +9,11 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false clients/cmd/docker-driver/docker-driver
 
-FROM alpine:3.16.7 as temp
+FROM alpine:3.18.3 as temp
 
 RUN apk add --update --no-cache --arch=${GOARCH} ca-certificates tzdata
 
-FROM --platform=linux/${GOARCH} alpine:3.16.7
+FROM --platform=linux/${GOARCH} alpine:3.18.3
 
 COPY --from=temp /etc/ca-certificates.conf /etc/ca-certificates.conf
 COPY --from=temp /usr/share/ca-certificates /usr/share/ca-certificates

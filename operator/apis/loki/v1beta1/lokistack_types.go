@@ -651,7 +651,7 @@ const (
 	// ConditionReady defines the condition that all components in the Loki deployment are ready.
 	ConditionReady LokiStackConditionType = "Ready"
 
-	// ConditionPending defines the conditioin that some or all components are in pending state.
+	// ConditionPending defines the condition that some or all components are in pending state.
 	ConditionPending LokiStackConditionType = "Pending"
 
 	// ConditionFailed defines the condition that components in the Loki deployment failed to roll out.

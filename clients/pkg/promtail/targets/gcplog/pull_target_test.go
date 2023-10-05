@@ -22,7 +22,7 @@ import (
 )
 
 func TestPullTarget_RunStop(t *testing.T) {
-	t.Run("it sends messages to the promclient and stopps when Stop() is called", func(t *testing.T) {
+	t.Run("it sends messages to the promclient and stops when Stop() is called", func(t *testing.T) {
 		tc := testPullTarget(t)
 
 		runErr := make(chan error)

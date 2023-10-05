@@ -1,6 +1,6 @@
-# This is a complete configuration to deploy Loki backed by a s3-Comaptible API
-# like MinIO for storage. Loki components will use memberlist ring to shard and
-# the index will be shipped to storage via boltdb-shipper.
+# This is a complete configuration to deploy Loki backed by a s3-compatible API
+# like MinIO for storage.
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false
 
@@ -11,35 +11,25 @@ common:
   ring:
     instance_addr: 127.0.0.1
     kvstore:
-      store: memberlist
+      store: inmemory
   replication_factor: 1
-  path_prefix: /loki # Update this accordingly, data will be stored here.
-
-memberlist:
-  join_members:
-  # You can use a headless k8s service for all distributor, ingester and querier components.
-  - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
+  path_prefix: /loki
 
 schema_config:
   configs:
   - from: 2020-05-15
-    store: boltdb-shipper
+    store: tsdb
     object_store: s3
-    schema: v11
+    schema: v12
     index:
       prefix: index_
       period: 24h
 
 storage_config:
- boltdb_shipper:
+ tsdb_shipper:
    active_index_directory: /loki/index
    cache_location: /loki/index_cache
    shared_store: s3
  aws:
    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
    s3forcepathstyle: true
-
-compactor:
-  working_directory: /loki/compactor
-  shared_store: s3
-  compaction_interval: 5m

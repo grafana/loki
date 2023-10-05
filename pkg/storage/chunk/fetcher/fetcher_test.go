@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 )
@@ -156,16 +157,10 @@ func Test(t *testing.T) {
 			c1 := cache.NewMockCache()
 			c2 := cache.NewMockCache()
 			s := testutils.NewMockStorage()
-			// Note this is copied from the schema config used in the MockStorage
 			sc := config.SchemaConfig{
-				Configs: []config.PeriodConfig{
-					{
-						From:      config.DayTime{Time: 0},
-						Schema:    "v11",
-						RowShards: 16,
-					},
-				},
+				Configs: s.GetSchemaConfigs(),
 			}
+			chunkClient := client.NewClientWithMaxParallel(s, nil, 1, sc)
 
 			// Prepare l1 cache
 			keys := make([]string, 0, len(test.l1Start))
@@ -195,10 +190,10 @@ func Test(t *testing.T) {
 			assert.NoError(t, c2.Store(context.Background(), keys, chunks))
 
 			// Prepare store
-			assert.NoError(t, s.PutChunks(context.Background(), test.storeStart))
+			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, s, 1, 1, test.handoff)
+			f, err := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -261,16 +256,10 @@ func BenchmarkFetch(b *testing.B) {
 	c1 := cache.NewMockCache()
 	c2 := cache.NewMockCache()
 	s := testutils.NewMockStorage()
-	// Note this is copied from the schema config used in the MockStorage
 	sc := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
-		},
+		Configs: s.GetSchemaConfigs(),
 	}
+	chunkClient := client.NewClientWithMaxParallel(s, nil, 1, sc)
 
 	// Prepare l1 cache
 	keys := make([]string, 0, len(test.l1Start))
@@ -298,10 +287,10 @@ func BenchmarkFetch(b *testing.B) {
 	_ = c2.Store(context.Background(), keys, chunks)
 
 	// Prepare store
-	_ = s.PutChunks(context.Background(), test.storeStart)
+	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, s, 1, 1, test.handoff)
+	f, _ := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)
