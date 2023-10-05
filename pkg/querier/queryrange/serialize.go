@@ -5,6 +5,8 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
@@ -74,10 +76,17 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	// TODO: we must only wrap a few responses. Ideally the serializers would support these instead of the logmodel.Result
 	// Yet another thing to simplify.
-	v, err := ResponseToResult(response)
-	if err == nil {
-		err = WriteResponse(r, params, v, w)
-	} else {
+	switch resp := response.(type) {
+	case *LokiResponse, *LokiPromResponse, *TopKSketchesResponse, *QuantileSketchResponse:
+		var v logqlmodel.Result
+		v, err = ResponseToResult(response)
+		if err == nil {
+			err = WriteResponse(r, params, v, w)
+		}
+	case *LokiSeriesResponse:
+		series := &logproto.SeriesResponse{Series: resp.Data}
+		err = WriteResponse(r, params, series, w)
+	default:
 		err = WriteResponse(r, params, response, w)
 	}
 

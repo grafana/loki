@@ -403,11 +403,11 @@ type RangeQuery struct {
 func NewRangeQueryWithDefaults() *RangeQuery {
 	start, end, _ := determineBounds(time.Now(), "", "", "")
 	result := &RangeQuery{
-		Start: start,
-		End: end,
-		Limit: defaultQueryLimit,
+		Start:     start,
+		End:       end,
+		Limit:     defaultQueryLimit,
 		Direction: defaultDirection,
-		Interval: 0,
+		Interval:  0,
 	}
 	result.UpdateStep()
 	return result

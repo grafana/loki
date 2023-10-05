@@ -80,8 +80,9 @@ func WriteLabelResponseProtobuf(version loghttp.Version, l logproto.LabelRespons
 	p := QueryResponse{
 		Response: &QueryResponse_Labels{
 			Labels: &LokiLabelNamesResponse{
-				Status: "success",
-				Data:   l.Values,
+				Status:  "success",
+				Data:    l.Values,
+				Version: uint32(version),
 			},
 		},
 	}
@@ -164,6 +165,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					Result:     sampleStream,
 				},
 			},
+			Statistics: result.Statistics,
 		}, nil
 	case promql.Matrix:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -178,6 +180,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					Result:     sampleStream,
 				},
 			},
+			Statistics: result.Statistics,
 		}, nil
 	case promql.Scalar:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -193,6 +196,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 					Result:     sampleStream,
 				},
 			},
+			Statistics: result.Statistics,
 		}, nil
 	case logqlmodel.Streams:
 		return &LokiResponse{

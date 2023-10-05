@@ -11,17 +11,17 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
-type QuerierHandler struct {
+type Handler struct {
 	api *QuerierAPI
 }
 
-func NewQuerierHandler(api *QuerierAPI) *QuerierHandler {
-	return &QuerierHandler{
+func NewQuerierHandler(api *QuerierAPI) *Handler {
+	return &Handler{
 		api: api,
 	}
 }
 
-func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	switch concrete := req.(type) {
 	case *queryrange.LokiRequest:
 		res, err := h.api.RangeQueryHandler(ctx, concrete)
@@ -31,6 +31,7 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 		params, err := queryrange.ParamsFromRequest(req)
 		if err != nil {
+			return nil, err
 		}
 
 		return queryrange.ResultToResponse(res, params)
@@ -42,6 +43,7 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 		params, err := queryrange.ParamsFromRequest(req)
 		if err != nil {
+			return nil, err
 		}
 
 		return queryrange.ResultToResponse(res, params)
@@ -53,11 +55,11 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 		}
 
 		return &queryrange.LokiSeriesResponse{
-				Status:     "success",
-				Version:    uint32(loghttp.VersionV1),
-				Data:       result.Series,
-				Statistics: statResult,
-			}, nil
+			Status:     "success",
+			Version:    uint32(loghttp.VersionV1),
+			Data:       result.Series,
+			Statistics: statResult,
+		}, nil
 	case *queryrange.LokiLabelNamesRequest:
 		// TODO: LokiLabelNamesRequest should probably be logproto.LabelRequest
 		request := &logproto.LabelRequest{
@@ -79,10 +81,10 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 	case *logproto.IndexStatsRequest:
 		request := loghttp.NewRangeQueryWithDefaults()
 		request.Start = concrete.From.Time()
-		request.End =  concrete.Through.Time()
+		request.End = concrete.Through.Time()
 		request.Query = concrete.GetQuery()
 		request.UpdateStep()
-		
+
 		result, err := h.api.IndexStatsHandler(ctx, request)
 		if err != nil {
 			return nil, err

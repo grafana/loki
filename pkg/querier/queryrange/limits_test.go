@@ -195,19 +195,22 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
-	_, _ = NewLimitedRoundTripper(h, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, err := NewLimitedRoundTripper(h, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
 			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
-						_, _ = next.Do(c, &LokiRequest{})
+						_, err := next.Do(c, &LokiRequest{})
+						require.NoError(t, err)
 					}()
 				}
 				return nil, nil
 			})
 		}),
 	).Do(ctx, &LokiRequest{})
+
+	require.NoError(t, err)
 }
 
 func Test_MaxQueryParallelismDisable(t *testing.T) {

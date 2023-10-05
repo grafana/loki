@@ -43,7 +43,7 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 	switch {
 	case cfg.DownstreamURL != "":
 		// If the user has specified a downstream Prometheus, then we should use that.
-		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL, http.DefaultTransport, codec)
+		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL, http.DefaultTransport)
 		return rt, nil, nil, err
 	case cfg.FrontendV2.SchedulerAddress != "" || ring != nil:
 		// If query-scheduler address is configured, use Frontend.

@@ -810,12 +810,12 @@ func NewVolumeTripperware(
 	}
 
 	return volumeFeatureFlagRoundTripper(
-		volumeRangeTripperware(codec, indexTw),
+		volumeRangeTripperware(indexTw),
 		limits,
 	), nil
 }
 
-func volumeRangeTripperware(codec base.Codec, nextTW base.Middleware) base.Middleware {
+func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 			seriesVolumeMiddlewares := []base.Middleware{

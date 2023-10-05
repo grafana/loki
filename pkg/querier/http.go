@@ -73,7 +73,7 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
-		// TODO
+		return logqlmodel.Result{}, err
 	}
 
 	query := q.engine.Query(params)
@@ -83,12 +83,12 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
 	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
-		// TODO
+		return logqlmodel.Result{}, err
 	}
 
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
-		// TODO
+		return logqlmodel.Result{}, err
 	}
 	query := q.engine.Query(params)
 	return query.Exec(ctx)
