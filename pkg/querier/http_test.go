@@ -172,16 +172,17 @@ func TestSeriesHandler(t *testing.T) {
 		}
 		expected := `{"status":"success","data":[{"a":"1","b":"2"},{"c":"3","d":"4"}]}`
 
-		querier := newQuerierMock()
-		querier.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
-		api := setupAPI(querier)
+		q := newQuerierMock()
+		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(q)
+		handler := NewQuerierHTTPHandler(api)
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
 			"?start=0"+
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		res := makeRequest(t, api.SeriesHandler, req)
+		res := makeRequest(t, handler, req)
 
 		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
 		require.JSONEq(t, expected, res.Body.String())
@@ -273,7 +274,7 @@ func TestVolumeHandler(t *testing.T) {
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.VolumeInstantHandler, req)
+		makeRequest(t, http.HandlerFunc(api.VolumeInstantHandler), req)
 
 		calls := querier.GetMockedCallsByMethod("Volume")
 		require.Len(t, calls, 1)
@@ -292,7 +293,7 @@ func TestVolumeHandler(t *testing.T) {
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.VolumeRangeHandler, req)
+		makeRequest(t, http.HandlerFunc(api.VolumeRangeHandler), req)
 
 		calls := querier.GetMockedCallsByMethod("Volume")
 		require.Len(t, calls, 1)
@@ -310,7 +311,7 @@ func TestVolumeHandler(t *testing.T) {
 			"?start=0"+
 			"&end=1"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.VolumeRangeHandler, req)
+		makeRequest(t, http.HandlerFunc(api.VolumeRangeHandler), req)
 
 		calls := querier.GetMockedCallsByMethod("Volume")
 		require.Len(t, calls, 1)
@@ -320,12 +321,12 @@ func TestVolumeHandler(t *testing.T) {
 	})
 }
 
-func makeRequest(t *testing.T, handler http.HandlerFunc, req *http.Request) *httptest.ResponseRecorder {
+func makeRequest(t *testing.T, handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	err := req.ParseForm()
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
-	handler(w, req)
+	handler.ServeHTTP(w, req)
 	return w
 }
 

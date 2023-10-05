@@ -429,8 +429,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/labels":              labelsHTTPMiddleware.Wrap(handler),
 		"/loki/api/v1/label/{name}/values": labelsHTTPMiddleware.Wrap(handler),
 
-		"/loki/api/v1/series":             querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
-		"/loki/api/v1/index/stats":        indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
+		"/loki/api/v1/series":             querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(handler),
+		"/loki/api/v1/index/stats":        indexStatsHTTPMiddleware.Wrap(handler),
 		"/loki/api/v1/index/volume":       volumeHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.VolumeInstantHandler)),
 		"/loki/api/v1/index/volume_range": volumeRangeHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.VolumeRangeHandler)),
 

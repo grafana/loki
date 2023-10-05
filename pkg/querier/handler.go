@@ -45,6 +45,19 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 		}
 
 		return queryrange.ResultToResponse(res, params)
+	case *queryrange.LokiSeriesRequest:
+		request := &logproto.SeriesRequest{}
+		result, statResult, err := h.api.SeriesHandler(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+
+		return &queryrange.LokiSeriesResponse{
+				Status:     "success",
+				Version:    uint32(loghttp.VersionV1),
+				Data:       result.Series,
+				Statistics: statResult,
+			}, nil
 	case *queryrange.LokiLabelNamesRequest:
 		// TODO: LokiLabelNamesRequest should probably be logproto.LabelRequest
 		request := &logproto.LabelRequest{

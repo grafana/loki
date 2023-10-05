@@ -304,20 +304,14 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
-func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseAndValidateSeriesQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
+func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, stats.Result, error) {
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("series"))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
-	statsCtx, ctx := stats.NewContext(r.Context())
+	statsCtx, ctx := stats.NewContext(ctx)
 
-	resp, err := q.querier.Series(r.Context(), req)
+	resp, err := q.querier.Series(ctx, req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
@@ -336,14 +330,8 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
 
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return resp, statResult, err
 }
 
 // IndexStatsHandler queries the index for the data statistics related to a query
