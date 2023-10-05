@@ -36,7 +36,7 @@ The following are steps to live migrate (no downtime) an existing Loki deploymen
 These instructions assume you are using the zone aware ingester jsonnet deployment code from this repo, see [here](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/multi-zone.libsonnet). **If you are not using jsonnet see the relevant annotations in some steps that describe how to perform that step manually.**
 
 1. Configure the zone for the existing ingester StatefulSet as `zone-default` by setting `multi_zone_default_ingester_zone: true`, this allows us to later filter out that zone from the write path.
-1. Configure ingester-pdb with maxUnavailable=0 and deploy 3x zone-aware StatefulSets with 0 replicas by setting
+1. Configure ingester-pdb with `maxUnavailable` as 0 and deploy 3x zone-aware StatefulSets with 0 replicas by setting
 
     ```jsonnet
     _config+:: {
@@ -105,10 +105,10 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 
 1. Shutdown flush the default ingesters, unregistering them from the ring, you can do this by port-forwarding each ingester pod and using the endpoint: `"http://url:PORT/ingester/shutdown?flush=true&delete_ring_tokens=true&terminate=false"`
 
-1. manually scale down the default ingester StatefulSet to 0 replicas, we do this via `tk apply` but you could do it via modifying the yaml
+1. manually scale down the default ingester StatefulSet to 0 replicas, we do this via `tk apply` but you could do it via modifying the yaml.
 
-1. merge a PR to your central config repo to keep the StatefulSet 0'd, and then remove the flux ignore
+1. merge a PR to your central config repo to keep the StatefulSet 0'd, and then remove the flux ignore.
 
-1. clean up any remaining temporary config from the migration, for example `multi_zone_ingester_migration_enabled: true` is no longer needed
+1. clean up any remaining temporary config from the migration, for example `multi_zone_ingester_migration_enabled: true` is no longer needed.
 
-1. ensure that all the old default ingester PVC/PV are removed
+1. ensure that all the old default ingester PVC/PV are removed.
