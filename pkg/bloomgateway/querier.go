@@ -32,7 +32,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// Sort the chunkRefs by their stream fingerprint
 	// so we can easily append them to the target slice by iterating over them.
 	sort.Slice(chunkRefs, func(i, j int) bool {
-		return chunkRefs[i].Fingerprint > chunkRefs[j].Fingerprint
+		return chunkRefs[i].Fingerprint < chunkRefs[j].Fingerprint
 	})
 
 	for _, chunkRef := range chunkRefs {
