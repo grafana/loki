@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/push"
+	loki_util "github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -46,42 +47,63 @@ var blessedAttributes = []string{
 	"k8s.job.name",
 }
 
-type pushStats struct {
+type Stats struct {
 	errs                     []error
 	numLines                 int64
 	logLinesBytes            map[time.Duration]int64
 	structuredMetadataBytes  map[time.Duration]int64
 	streamLabelsSize         int64
 	mostRecentEntryTimestamp time.Time
+	contentType              string
+	contentEncoding          string
+	bodySize                 int64
 }
 
-func newPushStats() *pushStats {
-	return &pushStats{
+func newPushStats() *Stats {
+	return &Stats{
 		logLinesBytes:           map[time.Duration]int64{},
 		structuredMetadataBytes: map[time.Duration]int64{},
 	}
 }
 
-func extractLogs(r *http.Request) (plog.Logs, error) {
-	reader := r.Body
-	if r.Header.Get("Content-Encoding") == gzipContentEncoding {
-		r, err := gzip.NewReader(reader)
+func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention) (*logproto.PushRequest, *Stats, error) {
+	stats := newPushStats()
+	otlpLogs, err := extractLogs(r, stats)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, stats)
+	return req, stats, nil
+}
+
+func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
+
+	pushStats.contentEncoding = r.Header.Get(contentEnc)
+	// bodySize should always reflect the compressed size of the request body
+	bodySize := loki_util.NewSizeReader(r.Body)
+	var body io.Reader = bodySize
+	if pushStats.contentEncoding == gzipContentEncoding {
+		r, err := gzip.NewReader(bodySize)
 		if err != nil {
 			return plog.NewLogs(), err
 		}
-		reader = r
+		body = r
 		defer func(reader *gzip.Reader) {
 			_ = reader.Close()
 		}(r)
 	}
-	buf, err := io.ReadAll(reader)
+	buf, err := io.ReadAll(body)
 	if err != nil {
 		return plog.NewLogs(), err
 	}
 
+	pushStats.bodySize = bodySize.Size()
+
 	req := plogotlp.NewExportRequest()
 
-	switch r.Header.Get("Content-Type") {
+	pushStats.contentType = r.Header.Get(contentType)
+	switch pushStats.contentType {
 	case pbContentType:
 		err := req.UnmarshalProto(buf)
 		if err != nil {
@@ -103,11 +125,9 @@ func extractLogs(r *http.Request) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention) (*logproto.PushRequest, *pushStats) {
-	stats := newPushStats()
-
+func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, stats *Stats) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
-		return &logproto.PushRequest{}, stats
+		return &logproto.PushRequest{}
 	}
 
 	pushRequestsByStream := map[string]logproto.Stream{}
@@ -222,7 +242,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		pr.Streams = append(pr.Streams, stream)
 	}
 
-	return pr, stats
+	return pr
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.

@@ -19,6 +19,14 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
+	d.pushHandler(w, r, push.ParseHTTPRequest)
+}
+
+func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
+	d.pushHandler(w, r, push.ParseOTLPRequest)
+}
+
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -26,7 +34,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention)
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, pushRequestParser)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

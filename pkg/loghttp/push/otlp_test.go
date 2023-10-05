@@ -22,7 +22,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		name                string
 		generateLogs        func() plog.Logs
 		expectedPushRequest logproto.PushRequest
-		expectedStats       pushStats
+		expectedStats       Stats
 	}{
 		{
 			name: "no logs",
@@ -57,14 +57,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						Labels: `{service_name="service-1"}`,
 						Entries: []logproto.Entry{
 							{
-								Timestamp: now,
-								Line:      "test body",
+								Timestamp:          now,
+								Line:               "test body",
+								StructuredMetadata: push.LabelsAdapter{},
 							},
 						},
 					},
 				},
 			},
-			expectedStats: pushStats{
+			expectedStats: Stats{
 				numLines: 1,
 				logLinesBytes: map[time.Duration]int64{
 					time.Hour: 9,
@@ -138,7 +139,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 					},
 				},
 			},
-			expectedStats: pushStats{
+			expectedStats: Stats{
 				numLines: 2,
 				logLinesBytes: map[time.Duration]int64{
 					time.Hour: 26,
@@ -221,7 +222,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 					},
 				},
 			},
-			expectedStats: pushStats{
+			expectedStats: Stats{
 				numLines: 2,
 				logLinesBytes: map[time.Duration]int64{
 					time.Hour: 26,
@@ -235,7 +236,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pushReq, stats := otlpToLokiPushRequest(tc.generateLogs(), "foo", fakeRetention{})
+			stats := newPushStats()
+			pushReq := otlpToLokiPushRequest(tc.generateLogs(), "foo", fakeRetention{}, stats)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 		})
