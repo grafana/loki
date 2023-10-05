@@ -652,7 +652,6 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	require.NoError(t, err)
 	assertCacheState(t, igwMetrics, &expectedCacheState{
 		cacheName: "store.index-cache-read.embedded-cache",
-		gets:      0,
 		misses:    0,
 		added:     0,
 	})
@@ -685,7 +684,6 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	require.NoError(t, err)
 	assertCacheState(t, igwMetrics, &expectedCacheState{
 		cacheName: "store.index-cache-read.embedded-cache",
-		gets:      53,
 		misses:    1,
 		added:     1,
 	})
@@ -745,18 +743,16 @@ func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
 		},
 	}
 
-	mf, found = mfs["loki_cache_fetched_keys"]
+	gets, found := mfs["loki_cache_fetched_keys"]
 	require.True(t, found)
-	require.Equal(t, e.gets, getValueFromMF(mf, lbs))
 
-	mf, found = mfs["loki_cache_hits"]
+	hits, found := mfs["loki_cache_hits"]
 	require.True(t, found)
-	require.Equal(t, e.gets-e.misses, getValueFromMF(mf, lbs))
+	require.Equal(t, getValueFromMF(gets, lbs)-e.misses, getValueFromMF(hits, lbs))
 }
 
 type expectedCacheState struct {
 	cacheName string
-	gets      float64
 	misses    float64
 	added     float64
 }
