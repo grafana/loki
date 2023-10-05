@@ -41,6 +41,20 @@ type S3StorageConfig struct {
 	Buckets         string
 	AccessKeyID     string
 	AccessKeySecret string
+	SSE             S3SSEConfig
+}
+
+type S3SSEType string
+
+const (
+	SSEKMSType S3SSEType = "SSE-KMS"
+	SSES3Type  S3SSEType = "SSE-S3"
+)
+
+type S3SSEConfig struct {
+	Type                 S3SSEType
+	KMSKeyID             string
+	KMSEncryptionContext string
 }
 
 // SwiftStorageConfig for Swift storage config
