@@ -184,12 +184,13 @@ func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
 
+// GetBlocks downloads all the blocks from objectStorage in parallel and sends the downloaded blocks
+// via the channel Block that is closed only if all the blocks are downloaded without errors.
+// If an error happens, the error will be sent via error channel.
 func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error) {
 	blocksChannel := make(chan Block, len(references))
 	errChannel := make(chan error)
 	go func() {
-		defer close(blocksChannel)
-		defer close(errChannel)
 		//todo move concurrency to the config
 		err := concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
 			reference := references[idx]
@@ -210,7 +211,10 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 		})
 		if err != nil {
 			errChannel <- fmt.Errorf("error downloading block file: %w", err)
+			return
 		}
+		//close blocks channel only if there is no error
+		close(blocksChannel)
 	}()
 	return blocksChannel, errChannel
 }
