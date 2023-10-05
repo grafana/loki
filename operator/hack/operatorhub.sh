@@ -17,7 +17,7 @@ if [[ ! -d "${LOCAL_REPOSITORIES_PATH}/${UPSTREAM_REPOSITORY}" ]]; then
 fi
 
 SOURCE_DIR=$(pwd)
-VERSION=$(grep "VERSION ?= " Makefile | awk -F= '{print $3}' | xargs)
+VERSION=$(grep "VERSION ?= " Makefile | awk -F= '{print $2}' | xargs)
 
 for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
     (
@@ -34,7 +34,11 @@ for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
         git rebase -q upstream/main
 
         mkdir -p "operators/loki-operator/${VERSION}"
-        cp -r "${SOURCE_DIR}/bundle/community"/* "operators/loki-operator/${VERSION}/"
+        if [[ "${dest}" = "${UPSTREAM_REPOSITORY}" ]]; then
+            cp -r "${SOURCE_DIR}/bundle/community-openshift"/* "operators/loki-operator/${VERSION}/"
+        else
+            cp -r "${SOURCE_DIR}/bundle/community"/* "operators/loki-operator/${VERSION}/"
+        fi
         rm "operators/loki-operator/${VERSION}/bundle.Dockerfile"
 
         if [[ "${dest}" = "${UPSTREAM_REPOSITORY}" ]]; then
@@ -55,7 +59,7 @@ END
         fi
 
         git add .
-        git commit -sqm "Update loki-operator to v${VERSION}"
+        git commit -sqm "Update loki-operator to ${VERSION}"
 
         if ! command -v gh > /dev/null;
         then
@@ -64,7 +68,7 @@ END
         fi
 
         echo "Submitting PR on your behalf via 'gh'"
-        gh pr create --title  "Update loki-operator to v${VERSION}" --body-file "${SOURCE_DIR}/hack/.checked-pr-template.md"
+        gh pr create --title  "Update loki-operator to ${VERSION}" --body-file "${SOURCE_DIR}/hack/.checked-pr-template.md"
     )
 done
 

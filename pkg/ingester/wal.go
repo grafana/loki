@@ -81,7 +81,7 @@ func newWAL(cfg WALConfig, registerer prometheus.Registerer, metrics *ingesterMe
 		return noopWAL{}, nil
 	}
 
-	tsdbWAL, err := wlog.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, false)
+	tsdbWAL, err := wlog.NewSize(util_log.Logger, registerer, cfg.Dir, walSegmentSize, wlog.CompressionNone)
 	if err != nil {
 		return nil, err
 	}
@@ -110,28 +110,28 @@ func (w *walWrapper) Log(record *wal.Record) error {
 	case <-w.quit:
 		return nil
 	default:
-		buf := recordPool.GetBytes()[:0]
+		buf := recordPool.GetBytes()
 		defer func() {
 			recordPool.PutBytes(buf)
 		}()
 
 		// Always write series then entries.
 		if len(record.Series) > 0 {
-			buf = record.EncodeSeries(buf)
-			if err := w.wal.Log(buf); err != nil {
+			*buf = record.EncodeSeries(*buf)
+			if err := w.wal.Log(*buf); err != nil {
 				return err
 			}
 			w.metrics.walRecordsLogged.Inc()
-			w.metrics.walLoggedBytesTotal.Add(float64(len(buf)))
-			buf = buf[:0]
+			w.metrics.walLoggedBytesTotal.Add(float64(len(*buf)))
+			*buf = (*buf)[:0]
 		}
 		if len(record.RefEntries) > 0 {
-			buf = record.EncodeEntries(wal.CurrentEntriesRec, buf)
-			if err := w.wal.Log(buf); err != nil {
+			*buf = record.EncodeEntries(wal.CurrentEntriesRec, *buf)
+			if err := w.wal.Log(*buf); err != nil {
 				return err
 			}
 			w.metrics.walRecordsLogged.Inc()
-			w.metrics.walLoggedBytesTotal.Add(float64(len(buf)))
+			w.metrics.walLoggedBytesTotal.Add(float64(len(*buf)))
 		}
 		return nil
 	}

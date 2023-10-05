@@ -104,8 +104,8 @@ func CompareFunc[E1, E2 any](s1 []E1, s2 []E2, cmp func(E1, E2) int) int {
 // Index returns the index of the first occurrence of v in s,
 // or -1 if not present.
 func Index[E comparable](s []E, v E) int {
-	for i, vs := range s {
-		if v == vs {
+	for i := range s {
+		if v == s[i] {
 			return i
 		}
 	}
@@ -115,8 +115,8 @@ func Index[E comparable](s []E, v E) int {
 // IndexFunc returns the first index i satisfying f(s[i]),
 // or -1 if none do.
 func IndexFunc[E any](s []E, f func(E) bool) int {
-	for i, v := range s {
-		if f(v) {
+	for i := range s {
+		if f(s[i]) {
 			return i
 		}
 	}
@@ -168,6 +168,30 @@ func Delete[S ~[]E, E any](s S, i, j int) S {
 	return append(s[:i], s[j:]...)
 }
 
+// DeleteFunc removes any elements from s for which del returns true,
+// returning the modified slice.
+// When DeleteFunc removes m elements, it might not modify the elements
+// s[len(s)-m:len(s)]. If those elements contain pointers you might consider
+// zeroing those elements so that objects they reference can be garbage
+// collected.
+func DeleteFunc[S ~[]E, E any](s S, del func(E) bool) S {
+	// Don't start copying elements until we find one to delete.
+	for i, v := range s {
+		if del(v) {
+			j := i
+			for i++; i < len(s); i++ {
+				v = s[i]
+				if !del(v) {
+					s[j] = v
+					j++
+				}
+			}
+			return s[:j]
+		}
+	}
+	return s
+}
+
 // Replace replaces the elements s[i:j] by the given v, and returns the
 // modified slice. Replace panics if s[i:j] is not a valid slice of s.
 func Replace[S ~[]E, E any](s S, i, j int, v ...E) S {
@@ -199,17 +223,20 @@ func Clone[S ~[]E, E any](s S) S {
 // Compact replaces consecutive runs of equal elements with a single copy.
 // This is like the uniq command found on Unix.
 // Compact modifies the contents of the slice s; it does not create a new slice.
+// When Compact discards m elements in total, it might not modify the elements
+// s[len(s)-m:len(s)]. If those elements contain pointers you might consider
+// zeroing those elements so that objects they reference can be garbage collected.
 func Compact[S ~[]E, E comparable](s S) S {
 	if len(s) < 2 {
 		return s
 	}
 	i := 1
-	last := s[0]
-	for _, v := range s[1:] {
-		if v != last {
-			s[i] = v
+	for k := 1; k < len(s); k++ {
+		if s[k] != s[k-1] {
+			if i != k {
+				s[i] = s[k]
+			}
 			i++
-			last = v
 		}
 	}
 	return s[:i]
@@ -221,12 +248,12 @@ func CompactFunc[S ~[]E, E any](s S, eq func(E, E) bool) S {
 		return s
 	}
 	i := 1
-	last := s[0]
-	for _, v := range s[1:] {
-		if !eq(v, last) {
-			s[i] = v
+	for k := 1; k < len(s); k++ {
+		if !eq(s[k], s[k-1]) {
+			if i != k {
+				s[i] = s[k]
+			}
 			i++
-			last = v
 		}
 	}
 	return s[:i]

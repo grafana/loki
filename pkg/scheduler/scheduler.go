@@ -3,26 +3,27 @@ package scheduler
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/grpcclient"
-	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
@@ -32,37 +33,12 @@ import (
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
-	lokiutil "github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var errSchedulerIsNotRunning = errors.New("scheduler is not running")
-
-const (
-	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
-	// in the ring will be automatically removed.
-	ringAutoForgetUnhealthyPeriods = 10
-
-	// ringKey is the key under which we store the store gateways ring in the KVStore.
-	ringKey = "scheduler"
-
-	// ringNameForServer is the name of the ring used by the compactor server.
-	ringNameForServer = "scheduler"
-
-	// ringReplicationFactor should be 2 because we want 2 schedulers.
-	ringReplicationFactor = 2
-
-	// ringNumTokens sets our single token in the ring,
-	// we only need to insert 1 token to be used for leader election purposes.
-	ringNumTokens = 1
-
-	// ringCheckPeriod is how often we check the ring to see if this instance is still in
-	// the replicaset of instances to act as schedulers.
-	ringCheckPeriod = 3 * time.Second
-)
 
 // Scheduler is responsible for queueing and dispatching queries to Queriers.
 type Scheduler struct {
@@ -86,9 +62,10 @@ type Scheduler struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	// Metrics.
-	queueLength              *prometheus.GaugeVec
-	discardedRequests        *prometheus.CounterVec
+	// queue metrics
+	queueMetrics *queue.Metrics
+
+	// scheduler metrics.
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
@@ -96,8 +73,7 @@ type Scheduler struct {
 	inflightRequests         prometheus.Summary
 
 	// Ring used for finding schedulers
-	ringLifecycler *ring.BasicLifecycler
-	ring           *ring.Ring
+	ringManager *RingManager
 
 	// Controls for this being a chosen scheduler
 	shouldRun atomic.Bool
@@ -120,15 +96,17 @@ type connectedFrontend struct {
 
 type Config struct {
 	MaxOutstandingPerTenant int               `yaml:"max_outstanding_requests_per_tenant"`
+	MaxQueueHierarchyLevels int               `yaml:"max_queue_hierarchy_levels"`
 	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
-	UseSchedulerRing bool                `yaml:"use_scheduler_ring"`
-	SchedulerRing    lokiutil.RingConfig `yaml:"scheduler_ring,omitempty" doc:"description=The hash ring configuration. This option is required only if use_scheduler_ring is true."`
+	UseSchedulerRing bool            `yaml:"use_scheduler_ring"`
+	SchedulerRing    util.RingConfig `yaml:"scheduler_ring,omitempty" doc:"description=The hash ring configuration. This option is required only if use_scheduler_ring is true."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
+	f.IntVar(&cfg.MaxQueueHierarchyLevels, "query-scheduler.max-queue-hierarchy-levels", 3, "Maximum number of levels of nesting of hierarchical queues. 0 means that hierarchical queues are disabled.")
 	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query schedulers create and place themselves in a ring. If no frontend_address or scheduler_address are present anywhere else in the configuration, Loki will toggle this value to true.")
@@ -136,7 +114,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+	if cfg.UseSchedulerRing {
+		if ringManager == nil {
+			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
+		} else if ringManager.managerMode != RingManagerModeMember {
+			return nil, errors.New("ring manager must be initialized in RingManagerModeMember for query schedulers")
+		}
+	}
+
+	queueMetrics := queue.NewMetrics("query_scheduler", registerer)
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
@@ -144,18 +131,10 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
+		queueMetrics:       queueMetrics,
+		ringManager:        ringManager,
+		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics),
 	}
-
-	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_queue_length",
-		Help: "Number of queries in the queue.",
-	}, []string{"user"})
-
-	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_query_scheduler_discarded_requests_total",
-		Help: "Total number of query requests discarded.",
-	}, []string{"user"})
-	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_query_scheduler_queue_duration_seconds",
@@ -188,39 +167,6 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 
 	if cfg.UseSchedulerRing {
 		s.shouldRun.Store(false)
-		ringStore, err := kv.NewClient(
-			cfg.SchedulerRing.KVStore,
-			ring.GetCodec(),
-			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "scheduler"),
-			log,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "create KV store client")
-		}
-		lifecyclerCfg, err := cfg.SchedulerRing.ToLifecyclerConfig(ringNumTokens, log)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid ring lifecycler config")
-		}
-
-		// Define lifecycler delegates in reverse order (last to be called defined first because they're
-		// chained via "next delegate").
-		delegate := ring.BasicLifecyclerDelegate(s)
-		delegate = ring.NewLeaveOnStoppingDelegate(delegate, log)
-		delegate = ring.NewTokensPersistencyDelegate(cfg.SchedulerRing.TokensFilePath, ring.JOINING, delegate, log)
-		delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.SchedulerRing.HeartbeatTimeout, delegate, log)
-
-		s.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, log, registerer)
-		if err != nil {
-			return nil, errors.Wrap(err, "create ring lifecycler")
-		}
-
-		ringCfg := cfg.SchedulerRing.ToRingConfig(ringReplicationFactor)
-		s.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", registerer), util_log.Logger)
-		if err != nil {
-			return nil, errors.Wrap(err, "create ring client")
-		}
-
-		svcs = append(svcs, s.ringLifecycler, s.ring)
 	} else {
 		// Always run if no scheduler ring is being used.
 		s.shouldRun.Store(true)
@@ -246,7 +192,7 @@ type Limits interface {
 
 type schedulerRequest struct {
 	frontendAddress string
-	userID          string
+	tenantID        string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
@@ -386,11 +332,9 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		return err
 	}
 
-	userID := msg.GetUserID()
-
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
-		userID:          msg.UserID,
+		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
 		statsEnabled:    msg.StatsEnabled,
@@ -404,14 +348,31 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
+	tenantIDs, err := tenant.TenantIDsFromOrgID(req.tenantID)
 	if err != nil {
 		return err
 	}
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
-	s.activeUsers.UpdateUserTimestamp(userID, now)
-	return s.requestQueue.EnqueueRequest(userID, req, maxQueriers, func() {
+	var queuePath []string
+	if s.cfg.MaxQueueHierarchyLevels > 0 {
+		queuePath = msg.QueuePath
+		if len(queuePath) > s.cfg.MaxQueueHierarchyLevels {
+			msg := fmt.Sprintf(
+				"The header %s with value '%s' would result in a sub-queue which is "+
+					"nested %d levels deep, however only %d levels are allowed based on the "+
+					"configuration setting -query-scheduler.max-queue-hierarchy-levels",
+				lokihttpreq.LokiActorPathHeader,
+				strings.Join(queuePath, lokihttpreq.LokiActorPathDelimiter),
+				len(queuePath),
+				s.cfg.MaxQueueHierarchyLevels,
+			)
+			return fmt.Errorf("desired queue level exceeds maxium depth of queue hierarchy: %s", msg)
+		}
+	}
+
+	s.activeUsers.UpdateUserTimestamp(req.tenantID, now)
+	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()
@@ -446,16 +407,20 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	s.requestQueue.RegisterQuerierConnection(querierID)
 	defer s.requestQueue.UnregisterQuerierConnection(querierID)
 
-	lastUserIndex := queue.FirstUser()
+	lastIndex := queue.StartIndex
 
 	// In stopping state scheduler is not accepting new queries, but still dispatching queries in the queues.
 	for s.isRunningOrStopping() {
-		req, idx, err := s.requestQueue.GetNextRequestForQuerier(querier.Context(), lastUserIndex, querierID)
+		req, idx, err := s.requestQueue.Dequeue(querier.Context(), lastIndex, querierID)
 		if err != nil {
 			return err
 		}
-		lastUserIndex = idx
+		lastIndex = idx
 
+		// This really should not happen, but log additional information before the scheduler panics.
+		if req == nil {
+			level.Error(s.log).Log("msg", "dequeue() call resulted in nil response", "querier", querierID)
+		}
 		r := req.(*schedulerRequest)
 
 		reqQueueTime := time.Since(r.queueTime)
@@ -484,7 +449,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 			// Remove from pending requests.
 			s.cancelRequestAndRemoveFromPending(r.frontendAddress, r.queryID)
 
-			lastUserIndex = lastUserIndex.ReuseLastUser()
+			lastIndex = lastIndex.ReuseLastIndex()
 			continue
 		}
 
@@ -512,7 +477,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	errCh := make(chan error, 1)
 	go func() {
 		err := querier.Send(&schedulerpb.SchedulerToQuerier{
-			UserID:          req.userID,
+			UserID:          req.tenantID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
 			HttpRequest:     req.request,
@@ -568,7 +533,7 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 
 	client := frontendv2pb.NewFrontendForQuerierClient(conn)
 
-	userCtx := user.InjectOrgID(ctx, req.userID)
+	userCtx := user.InjectOrgID(ctx, req.tenantID)
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
 		HttpResponse: &httpgrpc.HTTPResponse{
@@ -589,9 +554,6 @@ func (s *Scheduler) isRunningOrStopping() bool {
 }
 
 func (s *Scheduler) starting(ctx context.Context) (err error) {
-	// In case this function will return error we want to unregister the instance
-	// from the ring. We do it ensuring dependencies are gracefully stopped if they
-	// were already started.
 	defer func() {
 		if err == nil || s.subservices == nil {
 			return
@@ -604,35 +566,6 @@ func (s *Scheduler) starting(ctx context.Context) (err error) {
 
 	if err := services.StartManagerAndAwaitHealthy(ctx, s.subservices); err != nil {
 		return errors.Wrap(err, "unable to start scheduler subservices")
-	}
-
-	if s.cfg.UseSchedulerRing {
-		// The BasicLifecycler does not automatically move state to ACTIVE such that any additional work that
-		// someone wants to do can be done before becoming ACTIVE. For the query scheduler we don't currently
-		// have any additional work so we can become ACTIVE right away.
-
-		// Wait until the ring client detected this instance in the JOINING state to
-		// make sure that when we'll run the initial sync we already know  the tokens
-		// assigned to this instance.
-		level.Info(s.log).Log("msg", "waiting until scheduler is JOINING in the ring")
-		if err := ring.WaitInstanceState(ctx, s.ring, s.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
-			return err
-		}
-		level.Info(s.log).Log("msg", "scheduler is JOINING in the ring")
-
-		// Change ring state to ACTIVE
-		if err = s.ringLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
-			return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)
-		}
-
-		// Wait until the ring client detected this instance in the ACTIVE state to
-		// make sure that when we'll run the loop it won't be detected as a ring
-		// topology change.
-		level.Info(s.log).Log("msg", "waiting until scheduler is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, s.ring, s.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
-			return err
-		}
-		level.Info(s.log).Log("msg", "scheduler is ACTIVE in the ring")
 	}
 
 	return nil
@@ -659,7 +592,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 			if !s.cfg.UseSchedulerRing {
 				continue
 			}
-			isInSet, err := lokiutil.IsInReplicationSet(s.ring, lokiutil.RingKeyOfLeader, s.ringLifecycler.GetInstanceAddr())
+			isInSet, err := util.IsInReplicationSet(s.ringManager.Ring, util.RingKeyOfLeader, s.ringManager.RingLifecycler.GetInstanceAddr())
 			if err != nil {
 				level.Error(s.log).Log("msg", "failed to query the ring to see if scheduler instance is in ReplicatonSet, will try again", "err", err)
 				continue
@@ -711,8 +644,7 @@ func (s *Scheduler) stopping(_ error) error {
 }
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
-	s.queueLength.DeleteLabelValues(user)
-	s.discardedRequests.DeleteLabelValues(user)
+	s.queueMetrics.Cleanup(user)
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
@@ -730,41 +662,10 @@ func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
 // SafeReadRing does a nil check on the Scheduler before attempting to return it's ring
 // this is necessary as many callers of this function will only have a valid Scheduler
 // reference if the QueryScheduler target has been specified, which is not guaranteed
-func SafeReadRing(s *Scheduler) ring.ReadRing {
-	if s == nil || s.ring == nil || !s.cfg.UseSchedulerRing {
+func SafeReadRing(s *RingManager) ring.ReadRing {
+	if s == nil || s.Ring == nil || !s.cfg.UseSchedulerRing {
 		return nil
 	}
 
-	return s.ring
-}
-
-func (s *Scheduler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
-	// When we initialize the scheduler instance in the ring we want to start from
-	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
-	// tokens (if any) or the ones loaded from file.
-	var tokens []uint32
-	if instanceExists {
-		tokens = instanceDesc.GetTokens()
-	}
-
-	takenTokens := ringDesc.GetTokens()
-	newTokens := ring.GenerateTokens(ringNumTokens-len(tokens), takenTokens)
-
-	// Tokens sorting will be enforced by the parent caller.
-	tokens = append(tokens, newTokens...)
-
-	return ring.JOINING, tokens
-}
-
-func (s *Scheduler) OnRingInstanceTokens(_ *ring.BasicLifecycler, _ ring.Tokens) {}
-func (s *Scheduler) OnRingInstanceStopping(_ *ring.BasicLifecycler)              {}
-func (s *Scheduler) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
-}
-
-func (s *Scheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if s.cfg.UseSchedulerRing {
-		s.ring.ServeHTTP(w, req)
-	} else {
-		_, _ = w.Write([]byte("QueryScheduler running with '-query-scheduler.use-scheduler-ring' set to false."))
-	}
+	return s.Ring
 }

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
-
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/prometheus/common/model"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,20 +12,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 var _ admission.CustomValidator = &RecordingRuleValidator{}
 
 // RecordingRuleValidator implements a custom validator for RecordingRule resources.
 type RecordingRuleValidator struct {
-	ExtendedValidator func(context.Context, *lokiv1beta1.RecordingRule) field.ErrorList
+	ExtendedValidator func(context.Context, *lokiv1.RecordingRule) field.ErrorList
 }
 
 // SetupWebhookWithManager registers the RecordingRuleValidator as a validating webhook
 // with the controller-runtime manager or returns an error.
 func (v *RecordingRuleValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(&lokiv1beta1.RecordingRule{}).
+		For(&lokiv1.RecordingRule{}).
 		WithValidator(v).
 		Complete()
 }
@@ -49,7 +49,7 @@ func (v *RecordingRuleValidator) ValidateDelete(_ context.Context, _ runtime.Obj
 }
 
 func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Object) error {
-	recordingRule, ok := obj.(*lokiv1beta1.RecordingRule)
+	recordingRule, ok := obj.(*lokiv1.RecordingRule)
 	if !ok {
 		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type RecordingRule: %t", obj))
 	}
@@ -62,9 +62,9 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 		// Check for group name uniqueness
 		if found[g.Name] {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("Groups").Index(i).Child("Name"),
+				field.NewPath("spec").Child("groups").Index(i).Child("name"),
 				g.Name,
-				lokiv1beta1.ErrGroupNamesNotUnique.Error(),
+				lokiv1.ErrGroupNamesNotUnique.Error(),
 			))
 		}
 
@@ -74,9 +74,9 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 		_, err := model.ParseDuration(string(g.Interval))
 		if err != nil {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("Spec").Child("Groups").Index(i).Child("Interval"),
+				field.NewPath("spec").Child("groups").Index(i).Child("interval"),
 				g.Interval,
-				lokiv1beta1.ErrParseEvaluationInterval.Error(),
+				lokiv1.ErrParseEvaluationInterval.Error(),
 			))
 		}
 
@@ -85,9 +85,9 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 			if r.Record != "" {
 				if !model.IsValidMetricName(model.LabelValue(r.Record)) {
 					allErrs = append(allErrs, field.Invalid(
-						field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Record"),
+						field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("record"),
 						r.Record,
-						lokiv1beta1.ErrInvalidRecordMetricName.Error(),
+						lokiv1.ErrInvalidRecordMetricName.Error(),
 					))
 				}
 			}
@@ -96,9 +96,9 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 			expr, err := syntax.ParseExpr(r.Expr)
 			if err != nil {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),
 					r.Expr,
-					lokiv1beta1.ErrParseLogQLExpression.Error(),
+					lokiv1.ErrParseLogQLExpression.Error(),
 				))
 
 				continue
@@ -107,9 +107,9 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 			// Validate that the expression is a sample-expression (metrics as result) and not for logs
 			if _, ok := expr.(syntax.SampleExpr); !ok {
 				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("Spec").Child("Groups").Index(i).Child("Rules").Index(j).Child("Expr"),
+					field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("expr"),
 					r.Expr,
-					lokiv1beta1.ErrParseLogQLNotSample.Error(),
+					lokiv1.ErrParseLogQLNotSample.Error(),
 				))
 			}
 		}

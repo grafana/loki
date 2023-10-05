@@ -70,7 +70,7 @@ const (
 var (
 	onGCE = googlecloud.OnGCE
 
-	newClientWithConfig = func(config *bootstrap.Config) (xdsclient.XDSClient, error) {
+	newClientWithConfig = func(config *bootstrap.Config) (xdsclient.XDSClient, func(), error) {
 		return xdsclient.NewWithConfig(config)
 	}
 
@@ -135,7 +135,7 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 
 	// Create singleton xds client with this config. The xds client will be
 	// used by the xds resolver later.
-	xdsC, err := newClientWithConfig(config)
+	_, close, err := newClientWithConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start xDS client: %v", err)
 	}
@@ -154,12 +154,12 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	}
 	xdsR, err := resolver.Get(xdsName).Build(t, cc, opts)
 	if err != nil {
-		xdsC.Close()
+		close()
 		return nil, err
 	}
 	return &c2pResolver{
-		Resolver: xdsR,
-		client:   xdsC,
+		Resolver:        xdsR,
+		clientCloseFunc: close,
 	}, nil
 }
 
@@ -169,12 +169,12 @@ func (b c2pResolverBuilder) Scheme() string {
 
 type c2pResolver struct {
 	resolver.Resolver
-	client xdsclient.XDSClient
+	clientCloseFunc func()
 }
 
 func (r *c2pResolver) Close() {
 	r.Resolver.Close()
-	r.client.Close()
+	r.clientCloseFunc()
 }
 
 var ipv6EnabledMetadata = &structpb.Struct{

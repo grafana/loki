@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -117,6 +117,22 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: "[.*",
 					Regex:   true,
 					Types:   []string{QueryTypeFilter, QueryTypeMetric},
+				},
+			}, nil,
+		},
+		{
+			"correct FNV32 hash matches",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: HashedQuery(defaultQuery),
+				},
+			}, logqlmodel.ErrBlocked,
+		},
+		{
+			"incorrect FNV32 hash does not match",
+			defaultQuery, []*validation.BlockedQuery{
+				{
+					Hash: HashedQuery(defaultQuery) + 1,
 				},
 			}, nil,
 		},

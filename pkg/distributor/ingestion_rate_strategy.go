@@ -2,8 +2,6 @@ package distributor
 
 import (
 	"github.com/grafana/dskit/limiter"
-
-	"github.com/grafana/loki/pkg/validation"
 )
 
 // ReadLifecycler represents the read interface to the lifecycler.
@@ -12,10 +10,10 @@ type ReadLifecycler interface {
 }
 
 type localStrategy struct {
-	limits *validation.Overrides
+	limits Limits
 }
 
-func newLocalIngestionRateStrategy(limits *validation.Overrides) limiter.RateLimiterStrategy {
+func newLocalIngestionRateStrategy(limits Limits) limiter.RateLimiterStrategy {
 	return &localStrategy{
 		limits: limits,
 	}
@@ -30,11 +28,11 @@ func (s *localStrategy) Burst(userID string) int {
 }
 
 type globalStrategy struct {
-	limits *validation.Overrides
+	limits Limits
 	ring   ReadLifecycler
 }
 
-func newGlobalIngestionRateStrategy(limits *validation.Overrides, ring ReadLifecycler) limiter.RateLimiterStrategy {
+func newGlobalIngestionRateStrategy(limits Limits, ring ReadLifecycler) limiter.RateLimiterStrategy {
 	return &globalStrategy{
 		limits: limits,
 		ring:   ring,

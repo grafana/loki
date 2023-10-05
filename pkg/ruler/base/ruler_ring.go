@@ -42,6 +42,7 @@ type RingConfig struct {
 	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"default=[<private network interfaces>]"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
+	EnableIPv6             bool     `yaml:"instance_enable_ipv6" doc:"hidden"`
 	NumTokens              int      `yaml:"num_tokens"`
 
 	// Injected internally
@@ -69,15 +70,18 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceAddr, "ruler.ring.instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, "ruler.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "ruler.ring.instance-id", hostname, "Instance ID to register in the ring.")
+	f.BoolVar(&cfg.EnableIPv6, "ruler.ring.instance-enable-ipv6", false, "Enable using a IPv6 instance address.")
 	f.IntVar(&cfg.NumTokens, "ruler.ring.num-tokens", 128, "The number of tokens the lifecycler will generate and put into the ring if it joined without transferring tokens from another lifecycler.")
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the ruler
 // ring config.
 func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecyclerConfig, error) {
-	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger)
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger, cfg.EnableIPv6)
 	if err != nil {
-		return ring.BasicLifecyclerConfig{}, err
+		return ring.BasicLifecyclerConfig{
+			RingTokenGenerator: ring.NewRandomTokenGenerator(),
+		}, err
 	}
 
 	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
@@ -88,6 +92,7 @@ func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecycl
 		HeartbeatPeriod:     cfg.HeartbeatPeriod,
 		TokensObservePeriod: 0,
 		NumTokens:           cfg.NumTokens,
+		RingTokenGenerator:  ring.NewRandomTokenGenerator(),
 	}, nil
 }
 

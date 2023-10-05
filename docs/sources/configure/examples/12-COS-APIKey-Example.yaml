@@ -1,0 +1,24 @@
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. APIKey will be used for authenticating with COS.
+
+schema_config:
+  configs:
+    - from: 2020-10-01
+      store: tsdb
+      object_store: cos
+      schema: v12
+      index:
+        period: 24h
+        prefix: index_
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: cos
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    region: <region>
+    api_key: <api_key_to_authenticate_with_cos>
+    service_instance_id: <cos_service_instance_id>
+    auth_endpoint: <iam_endpoint_for_authentication>

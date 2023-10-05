@@ -3,14 +3,15 @@ package v1beta1_test
 import (
 	"testing"
 
-	v1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	v1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/apis/loki/v1beta1"
 )
 
-func TestConvertToV1(t *testing.T) {
+func TestConvertToV1_LokiStack(t *testing.T) {
 	tt := []struct {
 		desc string
 		src  v1beta1.LokiStack
@@ -379,6 +380,8 @@ func TestConvertToV1(t *testing.T) {
 								MaxLabelNamesPerSeries:    1000,
 								MaxGlobalStreamsPerTenant: 10000,
 								MaxLineSize:               512,
+								PerStreamRateLimit:        10,
+								PerStreamRateLimitBurst:   20,
 							},
 							QueryLimits: &v1.QueryLimitSpec{
 								MaxEntriesLimitPerQuery: 1000,
@@ -396,6 +399,8 @@ func TestConvertToV1(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
+									PerStreamRateLimit:        10,
+									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -412,6 +417,8 @@ func TestConvertToV1(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
+									PerStreamRateLimit:        10,
+									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -632,7 +639,7 @@ func TestConvertToV1(t *testing.T) {
 	}
 }
 
-func TestConvertFromV1(t *testing.T) {
+func TestConvertFromV1_LokiStack(t *testing.T) {
 	tt := []struct {
 		desc string
 		src  v1.LokiStack
@@ -704,6 +711,8 @@ func TestConvertFromV1(t *testing.T) {
 								MaxLabelNamesPerSeries:    1000,
 								MaxGlobalStreamsPerTenant: 10000,
 								MaxLineSize:               512,
+								PerStreamRateLimit:        10,
+								PerStreamRateLimitBurst:   20,
 							},
 							QueryLimits: &v1.QueryLimitSpec{
 								MaxEntriesLimitPerQuery: 1000,
@@ -721,6 +730,8 @@ func TestConvertFromV1(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
+									PerStreamRateLimit:        10,
+									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -737,6 +748,8 @@ func TestConvertFromV1(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
+									PerStreamRateLimit:        10,
+									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -1001,6 +1014,8 @@ func TestConvertFromV1(t *testing.T) {
 								MaxLabelNamesPerSeries:    1000,
 								MaxGlobalStreamsPerTenant: 10000,
 								MaxLineSize:               512,
+								PerStreamRateLimit:        10,
+								PerStreamRateLimitBurst:   20,
 							},
 							QueryLimits: &v1beta1.QueryLimitSpec{
 								MaxEntriesLimitPerQuery: 1000,
@@ -1018,6 +1033,8 @@ func TestConvertFromV1(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
+									PerStreamRateLimit:        10,
+									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1beta1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -1034,6 +1051,8 @@ func TestConvertFromV1(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
+									PerStreamRateLimit:        10,
+									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1beta1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,

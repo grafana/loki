@@ -175,18 +175,15 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 		return nil, errors.Wrap(encoding.ErrInvalidChecksum, "read TOC")
 	}
 
-	if err := d.Err(); err != nil {
-		return nil, err
-	}
-
-	return &TOC{
+	toc := &TOC{
 		Symbols:           d.Be64(),
 		Series:            d.Be64(),
 		LabelIndices:      d.Be64(),
 		LabelIndicesTable: d.Be64(),
 		Postings:          d.Be64(),
 		PostingsTable:     d.Be64(),
-	}, nil
+	}
+	return toc, d.Err()
 }
 
 // NewWriter returns a new Writer to the given filename. It serializes data in format version 2.
@@ -423,7 +420,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && len(w.lastSeries) != 0 {
+	if ref < w.lastRef && !w.lastSeries.IsEmpty() {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -437,9 +434,9 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 	}
 
 	w.buf2.Reset()
-	w.buf2.PutUvarint(len(lset))
+	w.buf2.PutUvarint(lset.Len())
 
-	for _, l := range lset {
+	if err := lset.Validate(func(l labels.Label) error {
 		var err error
 		cacheEntry, ok := w.symbolCache[l.Name]
 		nameIndex := cacheEntry.index
@@ -465,6 +462,9 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	w.buf2.PutUvarint(len(chunks))
@@ -496,7 +496,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, chunks ...
 		return errors.Wrap(err, "write series data")
 	}
 
-	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeries.CopyFrom(lset)
 	w.lastRef = ref
 
 	return nil
@@ -533,7 +533,7 @@ func (w *Writer) finishSymbols() error {
 	// Write out the length and symbol count.
 	w.buf1.Reset()
 	w.buf1.PutBE32int(int(symbolTableSize))
-	w.buf1.PutBE32int(int(w.numSymbols))
+	w.buf1.PutBE32int(w.numSymbols)
 	if err := w.writeAt(w.buf1.Get(), w.toc.Symbols); err != nil {
 		return err
 	}
@@ -861,7 +861,10 @@ func (w *Writer) writePostingsToTmpFiles() error {
 		// using more memory than a single label name can.
 		for len(names) > 0 {
 			if w.labelNames[names[0]]+c > maxPostings {
-				break
+				if c > 0 {
+					break
+				}
+				return fmt.Errorf("corruption detected when writing postings to index: label %q has %d uses, but maxPostings is %d", names[0], w.labelNames[names[0]], maxPostings)
 			}
 			batchNames = append(batchNames, names[0])
 			c += w.labelNames[names[0]]
@@ -918,7 +921,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 				values = append(values, v)
 			}
 			// Symbol numbers are in order, so the strings will also be in order.
-			sort.Sort(uint32slice(values))
+			slices.Sort(values)
 			for _, v := range values {
 				value, err := w.symbols.Lookup(v)
 				if err != nil {
@@ -1010,12 +1013,6 @@ func (w *Writer) writePostings() error {
 	w.fP = nil
 	return nil
 }
-
-type uint32slice []uint32
-
-func (s uint32slice) Len() int           { return len(s) }
-func (s uint32slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s uint32slice) Less(i, j int) bool { return s[i] < s[j] }
 
 type labelIndexHashEntry struct {
 	keys   []string
@@ -1593,8 +1590,8 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 	return value, nil
 }
 
-// Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]chunks.Meta) error {
+// Series reads the series with the given ID and writes its labels and chunks into builder and chks.
+func (r *Reader) Series(id storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error {
 	offset := id
 	// In version 2 series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1605,7 +1602,7 @@ func (r *Reader) Series(id storage.SeriesRef, lbls *labels.Labels, chks *[]chunk
 	if d.Err() != nil {
 		return d.Err()
 	}
-	return errors.Wrap(r.dec.Series(d.Get(), lbls, chks), "read series")
+	return errors.Wrap(r.dec.Series(d.Get(), builder, chks), "read series")
 }
 
 func (r *Reader) Postings(name string, values ...string) (Postings, error) {
@@ -1640,6 +1637,7 @@ func (r *Reader) Postings(name string, values ...string) (Postings, error) {
 		return EmptyPostings(), nil
 	}
 
+	slices.Sort(values) // Values must be in order so we can step through the table on disk.
 	res := make([]Postings, 0, len(values))
 	skip := 0
 	valueIndex := 0
@@ -1832,9 +1830,10 @@ func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
 	return "", d.Err()
 }
 
-// Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]chunks.Meta) error {
-	*lbls = (*lbls)[:0]
+// Series decodes a series entry from the given byte slice into builder and chks.
+// Previous contents of builder can be overwritten - make sure you copy before retaining.
+func (dec *Decoder) Series(b []byte, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error {
+	builder.Reset()
 	*chks = (*chks)[:0]
 
 	d := encoding.Decbuf{B: b}
@@ -1858,7 +1857,7 @@ func (dec *Decoder) Series(b []byte, lbls *labels.Labels, chks *[]chunks.Meta) e
 			return errors.Wrap(err, "lookup label value")
 		}
 
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		builder.Add(ln, lv)
 	}
 
 	// Read the chunks meta data.

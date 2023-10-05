@@ -85,6 +85,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 		"TestAlert",
 		parsed,
 		5*time.Minute,
+		0,
 		labels.Labels{
 			labels.Label{Name: "severity", Value: "critical"},
 		},

@@ -52,13 +52,25 @@ func TestAzureExtract(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "all set",
+			name: "all mandatory set",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"environment":  []byte("here"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
 					"account_key":  []byte("secret"),
+				},
+			},
+		},
+		{
+			name: "all set including optional",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment":     []byte("here"),
+					"container":       []byte("this,that"),
+					"account_name":    []byte("id"),
+					"account_key":     []byte("secret"),
+					"endpoint_suffix": []byte("suffix"),
 				},
 			},
 		},
@@ -331,6 +343,76 @@ func TestSwiftExtract(t *testing.T) {
 			t.Parallel()
 
 			_, err := storage.ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift)
+			if !tst.wantErr {
+				require.NoError(t, err)
+			}
+			if tst.wantErr {
+				require.NotNil(t, err)
+			}
+		})
+	}
+}
+
+func TestAlibabaCloudExtract(t *testing.T) {
+	type test struct {
+		name    string
+		secret  *corev1.Secret
+		wantErr bool
+	}
+	table := []test{
+		{
+			name:    "missing endpoint",
+			secret:  &corev1.Secret{},
+			wantErr: true,
+		},
+		{
+			name: "missing bucketnames",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint": []byte("here"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing access_key_id",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint": []byte("here"),
+					"bucket":   []byte("this,that"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing access_key_secret",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint":      []byte("here"),
+					"bucket":        []byte("this,that"),
+					"access_key_id": []byte("id"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "all set",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint":          []byte("here"),
+					"bucket":            []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"secret_access_key": []byte("secret"),
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := storage.ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}

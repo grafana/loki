@@ -21,6 +21,8 @@ import (
 	"encoding/xml"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -43,23 +45,76 @@ type StringMap map[string]string
 // if m is nil it can be initialized, which is often the case if m is
 // nested in another xml structural. This is also why the first thing done
 // on the first line is initialize it.
-func (m *StringMap) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+func (m *StringMap) UnmarshalXML(d *xml.Decoder, _ xml.StartElement) error {
 	*m = StringMap{}
-	type xmlMapEntry struct {
-		XMLName xml.Name
-		Value   string `xml:",chardata"`
-	}
 	for {
-		var e xmlMapEntry
+		// Format is <key>value</key>
+		var e struct {
+			XMLName xml.Name
+			Value   string `xml:",chardata"`
+		}
 		err := d.Decode(&e)
 		if err == io.EOF {
 			break
-		} else if err != nil {
+		}
+		if err != nil {
 			return err
 		}
 		(*m)[e.XMLName.Local] = e.Value
 	}
 	return nil
+}
+
+// URLMap represents map with custom UnmarshalXML
+type URLMap map[string]string
+
+// UnmarshalXML unmarshals the XML into a map of string to strings,
+// creating a key in the map for each tag and setting it's value to the
+// tags contents.
+//
+// The fact this function is on the pointer of Map is important, so that
+// if m is nil it can be initialized, which is often the case if m is
+// nested in another xml structural. This is also why the first thing done
+// on the first line is initialize it.
+func (m *URLMap) UnmarshalXML(d *xml.Decoder, se xml.StartElement) error {
+	*m = URLMap{}
+	var tgs string
+	if err := d.DecodeElement(&tgs, &se); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+	for tgs != "" {
+		var key string
+		key, tgs, _ = stringsCut(tgs, "&")
+		if key == "" {
+			continue
+		}
+		key, value, _ := stringsCut(key, "=")
+		key, err := url.QueryUnescape(key)
+		if err != nil {
+			return err
+		}
+
+		value, err = url.QueryUnescape(value)
+		if err != nil {
+			return err
+		}
+		(*m)[key] = value
+	}
+	return nil
+}
+
+// stringsCut slices s around the first instance of sep,
+// returning the text before and after sep.
+// The found result reports whether sep appears in s.
+// If sep does not appear in s, cut returns s, "", false.
+func stringsCut(s, sep string) (before, after string, found bool) {
+	if i := strings.Index(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
 }
 
 // Owner name.
@@ -84,6 +139,14 @@ type UploadInfo struct {
 	// not to be confused with `Expires` HTTP header.
 	Expiration       time.Time
 	ExpirationRuleID string
+
+	// Verified checksum values, if any.
+	// Values are base64 (standard) encoded.
+	// For multipart objects this is a checksum of the checksum of each part.
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 }
 
 // RestoreInfo contains information of the restore operation of an archived object
@@ -112,10 +175,12 @@ type ObjectInfo struct {
 	Metadata http.Header `json:"metadata" xml:"-"`
 
 	// x-amz-meta-* headers stripped "x-amz-meta-" prefix containing the first value.
-	UserMetadata StringMap `json:"userMetadata"`
+	// Only returned by MinIO servers.
+	UserMetadata StringMap `json:"userMetadata,omitempty"`
 
 	// x-amz-tagging values in their k/v values.
-	UserTags map[string]string `json:"userTags"`
+	// Only returned by MinIO servers.
+	UserTags URLMap `json:"userTags,omitempty" xml:"UserTags"`
 
 	// x-amz-tagging-count value
 	UserTagCount int
@@ -140,13 +205,25 @@ type ObjectInfo struct {
 	// - FAILED
 	// - REPLICA (on the destination)
 	ReplicationStatus string `xml:"ReplicationStatus"`
-
+	// set to true if delete marker has backing object version on target, and eligible to replicate
+	ReplicationReady bool
 	// Lifecycle expiry-date and ruleID associated with the expiry
 	// not to be confused with `Expires` HTTP header.
 	Expiration       time.Time
 	ExpirationRuleID string
 
 	Restore *RestoreInfo
+
+	// Checksum values
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
+
+	Internal *struct {
+		K int // Data blocks
+		M int // Parity blocks
+	} `xml:"Internal"`
 
 	// Error
 	Err error `json:"-"`

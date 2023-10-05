@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	instr "github.com/grafana/dskit/instrument"
 	"github.com/grafana/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/math"
@@ -65,8 +65,13 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				Namespace: "loki",
 				Name:      "memcache_request_duration_seconds",
 				Help:      "Total time spent in seconds doing memcache requests.",
-				// Memcached requests are very quick: smallest bucket is 16us, biggest is 1s
-				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
+				// 16us, 64us, 256us, 1.024ms, 4.096ms, 16.384ms, 65.536ms, 150ms, 250ms, 500ms, 1s
+				Buckets: append(prometheus.ExponentialBuckets(0.000016, 4, 7), []float64{
+					(150 * time.Millisecond).Seconds(),
+					(250 * time.Millisecond).Seconds(),
+					(500 * time.Millisecond).Seconds(),
+					(time.Second).Seconds(),
+				}...),
 				ConstLabels: prometheus.Labels{"name": name},
 			}, []string{"method", "status_code"}),
 		),

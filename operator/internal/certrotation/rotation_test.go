@@ -12,6 +12,7 @@ import (
 
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 func TestSignerRotation_ReturnErrorOnMissingIssuer(t *testing.T) {
@@ -126,7 +127,7 @@ func TestCertificateRotation_CertHasRequiredExtensions(t *testing.T) {
 
 	c := certificateRotation{
 		UserInfo:  defaultUserInfo,
-		Hostnames: []string{"example.org"},
+		Hostnames: sets.New[string]("example.org"),
 	}
 	cert, err := c.NewCertificate(nowCA, 1*time.Hour)
 	require.NoError(t, err)
@@ -146,7 +147,7 @@ func TestCertificateRotation_SetAnnotations(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	c := certificateRotation{Hostnames: []string{"example.org"}}
+	c := certificateRotation{Hostnames: sets.New[string]("example.org")}
 
 	annotations := map[string]string{}
 	c.SetAnnotations(nowCA.Config, annotations)
@@ -277,7 +278,7 @@ func TestCertificateRotation_NeedNewCertificate(t *testing.T) {
 
 			c := certificateRotation{
 				Clock:     nowFn,
-				Hostnames: []string{"a.b.c.d", "e.d.f.g"},
+				Hostnames: sets.New[string]("a.b.c.d", "e.d.f.g"),
 			}
 			reason := c.NeedNewCertificate(tc.annotations, rawCA, rawCA.Config.Certs, tc.refresh)
 			require.Contains(t, reason, tc.wantReason)

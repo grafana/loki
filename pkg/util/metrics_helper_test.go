@@ -461,7 +461,7 @@ func TestFloat64PrecisionStability(t *testing.T) {
 
 	// Randomise the seed but log it in case we need to reproduce the test on failure.
 	seed := time.Now().UnixNano()
-	rand.Seed(seed)
+	randomGenerator := rand.New(rand.NewSource(seed))
 	t.Log("random generator seed:", seed)
 
 	// Generate a large number of registries with different metrics each.
@@ -472,22 +472,22 @@ func TestFloat64PrecisionStability(t *testing.T) {
 
 		g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			g.WithLabelValues("a", strconv.Itoa(i)).Set(rand.Float64())
+			g.WithLabelValues("a", strconv.Itoa(i)).Set(randomGenerator.Float64())
 		}
 
 		c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			c.WithLabelValues("a", strconv.Itoa(i)).Add(rand.Float64())
+			c.WithLabelValues("a", strconv.Itoa(i)).Add(randomGenerator.Float64())
 		}
 
 		h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{0.1, 0.5, 1}}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			h.WithLabelValues("a", strconv.Itoa(i)).Observe(rand.Float64())
+			h.WithLabelValues("a", strconv.Itoa(i)).Observe(randomGenerator.Float64())
 		}
 
 		s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			s.WithLabelValues("a", strconv.Itoa(i)).Observe(rand.Float64())
+			s.WithLabelValues("a", strconv.Itoa(i)).Observe(randomGenerator.Float64())
 		}
 
 		registries.AddUserRegistry(strconv.Itoa(userID), reg)

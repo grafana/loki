@@ -10,10 +10,11 @@ type Options struct {
 	Schemas     []lokiv1.ObjectStorageSchema
 	SharedStore lokiv1.ObjectStorageSecretType
 
-	Azure *AzureStorageConfig
-	GCS   *GCSStorageConfig
-	S3    *S3StorageConfig
-	Swift *SwiftStorageConfig
+	Azure        *AzureStorageConfig
+	GCS          *GCSStorageConfig
+	S3           *S3StorageConfig
+	Swift        *SwiftStorageConfig
+	AlibabaCloud *AlibabaCloudStorageConfig
 
 	SecretName string
 	TLS        *TLSConfig
@@ -21,10 +22,11 @@ type Options struct {
 
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
-	Env         string
-	Container   string
-	AccountName string
-	AccountKey  string
+	Env            string
+	Container      string
+	AccountName    string
+	AccountKey     string
+	EndpointSuffix string
 }
 
 // GCSStorageConfig for GCS storage config
@@ -57,6 +59,14 @@ type SwiftStorageConfig struct {
 	ProjectDomainName string
 	Region            string
 	Container         string
+}
+
+// AlibabaCloudStorageConfig for AlibabaCloud storage config
+type AlibabaCloudStorageConfig struct {
+	Endpoint        string
+	Bucket          string
+	AccessKeyID     string
+	SecretAccessKey string
 }
 
 // TLSConfig for object storage endpoints. Currently supported only by:

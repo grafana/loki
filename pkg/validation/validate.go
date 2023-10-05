@@ -27,7 +27,7 @@ const (
 	// StreamLimit is a reason for discarding lines when we can't create a new stream
 	// because the limit of active streams has been reached.
 	StreamLimit         = "stream_limit"
-	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased"
+	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
@@ -58,8 +58,14 @@ const (
 	LabelValueTooLong         = "label_value_too_long"
 	LabelValueTooLongErrorMsg = "stream '%s' has label value too long: '%s'"
 	// DuplicateLabelNames is a reason for discarding a log line which has duplicate label names
-	DuplicateLabelNames         = "duplicate_label_names"
-	DuplicateLabelNamesErrorMsg = "stream '%s' has duplicate label name: '%s'"
+	DuplicateLabelNames                  = "duplicate_label_names"
+	DuplicateLabelNamesErrorMsg          = "stream '%s' has duplicate label name: '%s'"
+	DisallowedStructuredMetadata         = "disallowed_structured_metadata"
+	DisallowedStructuredMetadataErrorMsg = "stream '%s' includes structured metadata, but this feature is disallowed. Please see `limits_config.structured_metadata` or contact your Loki administrator to enable it."
+	StructuredMetadataTooLarge           = "structured_metadata_too_large"
+	StructuredMetadataTooLargeErrorMsg   = "stream '%s' has structured metadata too large: '%d' bytes, limit: '%d' bytes. Please see `limits_config.structured_metadata_max_size` or contact your Loki administrator to increase it."
+	StructuredMetadataTooMany            = "structured_metadata_too_many"
+	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it."
 )
 
 type ErrStreamRateLimit struct {

@@ -44,8 +44,6 @@ type Config struct {
 	// 429 'Too Many Requests' response from the distributor. Helps
 	// prevent HOL blocking in multitenant deployments.
 	DropRateLimitedBatches bool `yaml:"drop_rate_limited_batches"`
-
-	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels" doc:"deprecated"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -91,7 +89,15 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	cfg.Client = config.DefaultHTTPClientConfig
+
 	if err := unmarshal(&cfg); err != nil {
+		return err
+	}
+
+	// explicitly call Validate on HTTPClientConfig as it's UnmarshalYAML
+	// method doesn't get invoked given that it's not a pointer.
+	if err := cfg.Client.Validate(); err != nil {
 		return err
 	}
 

@@ -129,6 +129,11 @@ func (b *SSEBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpected
 	return b.WithExpectedErrs(fn)
 }
 
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
+	return b.bucket.IsAccessDeniedErr(err)
+}
+
 // WithExpectedErrs implements objstore.Bucket.
 func (b *SSEBucketClient) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {
 	if ib, ok := b.bucket.(objstore.InstrumentedBucket); ok {

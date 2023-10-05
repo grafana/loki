@@ -1,7 +1,9 @@
 package v1beta1
 
 import (
+	v1 "github.com/grafana/loki/operator/apis/loki/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/conversion"
 )
 
 // AlertingRuleSpec defines the desired state of AlertingRule
@@ -105,9 +107,9 @@ type AlertingRuleStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:webhook:path=/validate-loki-grafana-com-v1beta1-alertingrule,mutating=false,failurePolicy=fail,sideEffects=None,groups=loki.grafana.com,resources=alertingrules,verbs=create;update,versions=v1beta1,name=valertingrule.loki.grafana.com,admissionReviewVersions=v1
+// +kubebuilder:object:root=true
+// +kubebuilder:unservedversion
+// +kubebuilder:subresource:status
 
 // AlertingRule is the Schema for the alertingrules API
 //
@@ -131,4 +133,80 @@ type AlertingRuleList struct {
 
 func init() {
 	SchemeBuilder.Register(&AlertingRule{}, &AlertingRuleList{})
+}
+
+// ConvertTo converts this AlertingRule (v1beta1) to the Hub version (v1).
+func (src *AlertingRule) ConvertTo(dstRaw conversion.Hub) error {
+	dst := dstRaw.(*v1.AlertingRule)
+
+	dst.ObjectMeta = src.ObjectMeta
+	dst.Status.Conditions = src.Status.Conditions
+	dst.Spec.TenantID = src.Spec.TenantID
+
+	if src.Spec.Groups == nil {
+		return nil
+	}
+
+	dst.Spec.Groups = make([]*v1.AlertingRuleGroup, len(src.Spec.Groups))
+	for i, g := range src.Spec.Groups {
+
+		sRules := g.Rules
+		rules := make([]*v1.AlertingRuleGroupSpec, len(sRules))
+		for j, r := range sRules {
+			rules[j] = &v1.AlertingRuleGroupSpec{
+				Alert:       r.Alert,
+				Expr:        r.Expr,
+				For:         v1.PrometheusDuration(r.For),
+				Annotations: r.Annotations,
+				Labels:      r.Labels,
+			}
+		}
+
+		dst.Spec.Groups[i] = &v1.AlertingRuleGroup{
+			Name:     g.Name,
+			Interval: v1.PrometheusDuration(g.Interval),
+			Limit:    g.Limit,
+			Rules:    rules,
+		}
+	}
+
+	return nil
+}
+
+// ConvertFrom converts from the Hub version (v1) to this version (v1beta1).
+func (dst *AlertingRule) ConvertFrom(srcRaw conversion.Hub) error {
+	src := srcRaw.(*v1.AlertingRule)
+
+	dst.ObjectMeta = src.ObjectMeta
+	dst.Status.Conditions = src.Status.Conditions
+	dst.Spec.TenantID = src.Spec.TenantID
+
+	if src.Spec.Groups == nil {
+		return nil
+	}
+
+	dst.Spec.Groups = make([]*AlertingRuleGroup, len(src.Spec.Groups))
+	for i, g := range src.Spec.Groups {
+
+		sRules := g.Rules
+		rules := make([]*AlertingRuleGroupSpec, len(sRules))
+		for j, r := range sRules {
+			rules[j] = &AlertingRuleGroupSpec{
+				Alert:       r.Alert,
+				Expr:        r.Expr,
+				For:         PrometheusDuration(r.For),
+				Annotations: r.Annotations,
+				Labels:      r.Labels,
+			}
+		}
+
+		dst.Spec.Groups[i] = &AlertingRuleGroup{
+			Name:     g.Name,
+			Interval: PrometheusDuration(g.Interval),
+			Limit:    g.Limit,
+			Rules:    rules,
+		}
+	}
+
+	return nil
 }

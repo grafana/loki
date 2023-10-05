@@ -39,6 +39,10 @@ Parameters:
     Description: Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail.
     Type: String
     Default: ""
+  OmitExtraLabelsPrefix:
+    Description: Whether or not to omit the prefix `__extra_` from extra labels defined in `ExtraLabels`.
+    Type: String
+    Default: "false"
   TenantID:
     Description: Tenant ID to be added when writing logs from lambda-promtail.
     Type: String
@@ -72,6 +76,7 @@ Resources:
             - logs:CreateLogGroup
             - logs:CreateLogStream
             - logs:PutLogEvents
+            - logs:PutSubscriptionFilter
             Resource: arn:aws:logs:*:*:*
       RoleName: iam_for_lambda
   LambdaPromtailFunction:
@@ -94,6 +99,7 @@ Resources:
           BEARER_TOKEN: !Ref BearerToken
           KEEP_STREAM: !Ref KeepStream
           EXTRA_LABELS: !Ref ExtraLabels
+          OMIT_EXTRA_LABELS_PREFIX: !Ref OmitExtraLabelsPrefix
           TENANT_ID: !Ref TenantID
           SKIP_TLS_VERIFY: !Ref SkipTlsVerify
   LambdaPromtailVersion:
@@ -118,6 +124,7 @@ Resources:
   # additional CloudWatch Log Groups.
   MainLambdaPromtailSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
+    DependsOn: LambdaPromtailPermissions
     Properties:
       DestinationArn: !GetAtt LambdaPromtailFunction.Arn
       FilterPattern: ""

@@ -5,10 +5,13 @@ metadata:
   name: {{ include "loki.tableManagerFullname" . }}
   labels:
     {{- include "loki.tableManagerLabels" . | nindent 4 }}
-  {{- with .Values.loki.annotations }}
   annotations:
+    {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
+    {{- with .Values.tableManager.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   replicas: 1
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
@@ -18,7 +21,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -89,6 +92,10 @@ spec:
       affinity:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
+      {{- with .Values.tableManager.dnsConfig }}
+      dnsConfig:
+        {{- tpl . $ | nindent 8 }}
+      {{- end }}
       {{- with .Values.tableManager.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -103,8 +110,7 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.fullname" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         {{- with .Values.tableManager.extraVolumes }}
         {{- toYaml . | nindent 8 }}

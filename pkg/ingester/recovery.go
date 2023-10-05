@@ -210,7 +210,7 @@ func (r *ingesterRecoverer) Close() {
 			s.unorderedWrites = isAllowed
 
 			if !isAllowed && old {
-				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
+				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(s.chunkFormat, isAllowed))
 				if err != nil {
 					level.Warn(util_log.Logger).Log(
 						"msg", "error converting headblock",
@@ -295,7 +295,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 }
 
 func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
-	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
+	dispatch := func(_ Recoverer, b []byte, inputs []chan recoveryInput) error {
 		s := &Series{}
 		if err := decodeCheckpointRecord(b, s); err != nil {
 			return err

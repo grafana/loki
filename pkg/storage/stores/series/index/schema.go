@@ -291,7 +291,7 @@ type seriesStoreEntries interface {
 // v9Entries adds a layer of indirection between labels -> series -> chunks.
 type v9Entries struct{}
 
-func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]Entry, error) {
+func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, _ string) ([]Entry, error) {
 	seriesID := labelsSeriesID(labels)
 
 	entries := []Entry{
@@ -322,7 +322,7 @@ func (v9Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels l
 	return entries, nil
 }
 
-func (v9Entries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]Entry, error) {
+func (v9Entries) GetChunkWriteEntries(bucket Bucket, _ string, labels labels.Labels, chunkID string) ([]Entry, error) {
 	seriesID := labelsSeriesID(labels)
 	encodedThroughBytes := encodeTime(bucket.through)
 
@@ -383,7 +383,7 @@ func (v9Entries) GetLabelNamesForSeries(_ Bucket, _ []byte) ([]Query, error) {
 	return nil, ErrNotSupported
 }
 
-func (v9Entries) FilterReadQueries(queries []Query, shard *astmapper.ShardAnnotation) []Query {
+func (v9Entries) FilterReadQueries(queries []Query, _ *astmapper.ShardAnnotation) []Query {
 	return queries
 }
 
@@ -392,7 +392,7 @@ type v10Entries struct {
 	rowShards uint32
 }
 
-func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]Entry, error) {
+func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, _ string) ([]Entry, error) {
 	seriesID := labelsSeriesID(labels)
 
 	// read first 32 bits of the hash and use this to calculate the shard
@@ -426,7 +426,7 @@ func (s v10Entries) GetLabelWriteEntries(bucket Bucket, metricName string, label
 	return entries, nil
 }
 
-func (v10Entries) GetChunkWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]Entry, error) {
+func (v10Entries) GetChunkWriteEntries(bucket Bucket, _ string, labels labels.Labels, chunkID string) ([]Entry, error) {
 	seriesID := labelsSeriesID(labels)
 	encodedThroughBytes := encodeTime(bucket.through)
 
@@ -526,7 +526,7 @@ type v11Entries struct {
 	v10Entries
 }
 
-func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, chunkID string) ([]Entry, error) {
+func (s v11Entries) GetLabelWriteEntries(bucket Bucket, metricName string, labels labels.Labels, _ string) ([]Entry, error) {
 	seriesID := labelsSeriesID(labels)
 
 	// read first 32 bits of the hash and use this to calculate the shard
@@ -589,4 +589,8 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Quer
 
 type v12Entries struct {
 	v11Entries
+}
+
+type v13Entries struct {
+	v12Entries
 }

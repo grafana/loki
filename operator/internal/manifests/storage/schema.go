@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/validation"
 )
 
 // BuildSchemaConfig creates a list of schemas to be used to configure
@@ -23,7 +25,7 @@ func BuildSchemaConfig(
 		return nil, kverrors.New("spec does not contain any schemas")
 	}
 
-	errors := spec.ValidateSchemas(utcTime, status)
+	errors := validation.ValidateSchemas(&spec, utcTime, status)
 	if len(errors) != 0 {
 		return nil, kverrors.Wrap(errors[0], "spec contains invalid schema entry")
 	}

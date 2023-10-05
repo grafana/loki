@@ -412,7 +412,7 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels(nil))
+			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
 			iterator, err := it.buildHeapIterator(chunks, from, through, streamPipeline, nextChunk)
 			if err != nil {
 				return nil, err
@@ -556,7 +556,7 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 	result := make([]iter.SampleIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			streamExtractor := it.extractor.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels(nil))
+			streamExtractor := it.extractor.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
 			iterator, err := it.buildHeapIterator(chunks, from, through, streamExtractor, nextChunk)
 			if err != nil {
 				return nil, err
@@ -701,21 +701,15 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 	errChan := make(chan error)
 	for f, chunks := range chksByFetcher {
 		go func(fetcher *fetcher.Fetcher, chunks []*LazyChunk) {
-			keys := make([]string, 0, len(chunks))
 			chks := make([]chunk.Chunk, 0, len(chunks))
 			index := make(map[string]*LazyChunk, len(chunks))
 
-			// FetchChunks requires chunks to be ordered by external key.
-			sort.Slice(chunks, func(i, j int) bool {
-				return s.ExternalKey(chunks[i].Chunk.ChunkRef) < s.ExternalKey(chunks[j].Chunk.ChunkRef)
-			})
 			for _, chk := range chunks {
 				key := s.ExternalKey(chk.Chunk.ChunkRef)
-				keys = append(keys, key)
 				chks = append(chks, chk.Chunk)
 				index[key] = chk
 			}
-			chks, err := fetcher.FetchChunks(ctx, chks, keys)
+			chks, err := fetcher.FetchChunks(ctx, chks)
 			if ctx.Err() != nil {
 				errChan <- nil
 				return

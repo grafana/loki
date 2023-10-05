@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -25,7 +25,6 @@ var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.Histogra
 }, []string{"operation", "status_code"})
 
 type HealthAndIngesterClient interface {
-	logproto.IngesterClient
 	grpc_health_v1.HealthClient
 	Close() error
 }
@@ -33,7 +32,6 @@ type HealthAndIngesterClient interface {
 type ClosableHealthAndIngesterClient struct {
 	logproto.PusherClient
 	logproto.QuerierClient
-	logproto.IngesterClient
 	logproto.StreamDataClient
 	grpc_health_v1.HealthClient
 	io.Closer
@@ -81,7 +79,6 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	return ClosableHealthAndIngesterClient{
 		PusherClient:     logproto.NewPusherClient(conn),
 		QuerierClient:    logproto.NewQuerierClient(conn),
-		IngesterClient:   logproto.NewIngesterClient(conn),
 		StreamDataClient: logproto.NewStreamDataClient(conn),
 		HealthClient:     grpc_health_v1.NewHealthClient(conn),
 		Closer:           conn,

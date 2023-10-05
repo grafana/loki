@@ -2,6 +2,7 @@ package log
 
 import (
 	"reflect"
+	"sync"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -13,6 +14,7 @@ var NoopStage Stage = &noopStage{}
 // Pipeline can create pipelines for each log stream.
 type Pipeline interface {
 	ForStream(labels labels.Labels) StreamPipeline
+	Reset()
 }
 
 // StreamPipeline transform and filter log lines and labels.
@@ -21,8 +23,8 @@ type StreamPipeline interface {
 	BaseLabels() LabelsResult
 	// Process processes a log line and returns the transformed line and the labels.
 	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
-	Process(ts int64, line []byte) (resultLine []byte, resultLabels LabelsResult, matches bool)
-	ProcessString(ts int64, line string) (resultLine string, resultLabels LabelsResult, matches bool)
+	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (resultLine []byte, resultLabels LabelsResult, matches bool)
+	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (resultLine string, resultLabels LabelsResult, matches bool)
 }
 
 // Stage is a single step of a Pipeline.
@@ -36,12 +38,43 @@ type Stage interface {
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
 func NewNoopPipeline() Pipeline {
 	return &noopPipeline{
-		cache: map[uint64]*noopStreamPipeline{},
+		cache:       map[uint64]*noopStreamPipeline{},
+		baseBuilder: NewBaseLabelsBuilder(),
 	}
 }
 
 type noopPipeline struct {
-	cache map[uint64]*noopStreamPipeline
+	cache       map[uint64]*noopStreamPipeline
+	baseBuilder *BaseLabelsBuilder
+	mu          sync.RWMutex
+}
+
+func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	h := n.baseBuilder.Hash(labels)
+
+	n.mu.RLock()
+	if cached, ok := n.cache[h]; ok {
+		n.mu.RUnlock()
+		return cached
+	}
+	n.mu.RUnlock()
+
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.cache[h] = sp
+	return sp
+}
+
+func (n *noopPipeline) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	for k := range n.cache {
+		delete(n.cache, k)
+	}
 }
 
 // IsNoopPipeline tells if a pipeline is a Noop.
@@ -51,28 +84,21 @@ func IsNoopPipeline(p Pipeline) bool {
 }
 
 type noopStreamPipeline struct {
-	LabelsResult
+	builder *LabelsBuilder
 }
 
-func (n noopStreamPipeline) Process(_ int64, line []byte) ([]byte, LabelsResult, bool) {
-	return line, n.LabelsResult, true
+func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
+	n.builder.Reset()
+	n.builder.Add(structuredMetadata...)
+	return line, n.builder.LabelsResult(), true
 }
 
-func (n noopStreamPipeline) ProcessString(_ int64, line string) (string, LabelsResult, bool) {
-	return line, n.LabelsResult, true
+func (n noopStreamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, LabelsResult, bool) {
+	_, lr, ok := n.Process(ts, unsafeGetBytes(line), structuredMetadata...)
+	return line, lr, ok
 }
 
-func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.LabelsResult }
-
-func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
-	h := labels.Hash()
-	if cached, ok := n.cache[h]; ok {
-		return cached
-	}
-	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
-	n.cache[h] = sp
-	return sp
-}
+func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.builder.currentResult }
 
 type noopStage struct{}
 
@@ -103,6 +129,7 @@ type pipeline struct {
 	AnalyzablePipeline
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
+	mu          sync.RWMutex
 
 	streamPipelines map[uint64]StreamPipeline
 }
@@ -126,9 +153,12 @@ func NewPipeline(stages []Stage) Pipeline {
 	if len(stages) == 0 {
 		return NewNoopPipeline()
 	}
+
+	hints := NewParserHint(nil, nil, false, false, "", stages)
+	builder := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false)
 	return &pipeline{
 		stages:          stages,
-		baseBuilder:     NewBaseLabelsBuilder(),
+		baseBuilder:     builder,
 		streamPipelines: make(map[uint64]StreamPipeline),
 	}
 }
@@ -144,18 +174,38 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	hash := p.baseBuilder.Hash(labels)
+
+	p.mu.RLock()
 	if res, ok := p.streamPipelines[hash]; ok {
+		p.mu.RUnlock()
 		return res
 	}
+	p.mu.RUnlock()
 
 	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.streamPipelines[hash] = res
 	return res
 }
 
-func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+func (p *pipeline) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.baseBuilder.Reset()
+	for k := range p.streamPipelines {
+		delete(p.streamPipelines, k)
+	}
+}
+
+func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
+	p.builder.Add(structuredMetadata...)
+
 	for _, s := range p.stages {
 		line, ok = s.Process(ts, line, p.builder)
 		if !ok {
@@ -165,9 +215,9 @@ func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, b
 	return line, p.builder.LabelsResult(), true
 }
 
-func (p *streamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+func (p *streamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, LabelsResult, bool) {
 	// Stages only read from the line.
-	lb, lr, ok := p.Process(ts, unsafeGetBytes(line))
+	lb, lr, ok := p.Process(ts, unsafeGetBytes(line), structuredMetadata...)
 	// but the returned line needs to be copied.
 	return string(lb), lr, ok
 }
@@ -218,6 +268,10 @@ func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	}
 }
 
+func (p *filteringPipeline) Reset() {
+	p.pipeline.Reset()
+}
+
 func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 	for _, m := range matchers {
 		if !m.Matches(labels.Get(m.Name)) {
@@ -242,34 +296,34 @@ func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
 	return sp.pipeline.BaseLabels()
 }
 
-func (sp *filteringStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+func (sp *filteringStreamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.Process(ts, line)
+		_, _, matches := filter.pipeline.Process(ts, line, structuredMetadata...)
 		if matches { // When the filter matches, don't run the next step
 			return nil, nil, false
 		}
 	}
 
-	return sp.pipeline.Process(ts, line)
+	return sp.pipeline.Process(ts, line, structuredMetadata...)
 }
 
-func (sp *filteringStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.ProcessString(ts, line)
+		_, _, matches := filter.pipeline.ProcessString(ts, line, structuredMetadata...)
 		if matches { // When the filter matches, don't run the next step
 			return "", nil, false
 		}
 	}
 
-	return sp.pipeline.ProcessString(ts, line)
+	return sp.pipeline.ProcessString(ts, line, structuredMetadata...)
 }
 
 // ReduceStages reduces multiple stages into one.

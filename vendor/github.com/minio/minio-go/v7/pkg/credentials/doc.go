@@ -28,35 +28,33 @@
 //
 // Example of using the environment variable credentials.
 //
-//     creds := NewFromEnv()
-//     // Retrieve the credentials value
-//     credValue, err := creds.Get()
-//     if err != nil {
-//         // handle error
-//     }
+//	creds := NewFromEnv()
+//	// Retrieve the credentials value
+//	credValue, err := creds.Get()
+//	if err != nil {
+//	    // handle error
+//	}
 //
 // Example of forcing credentials to expire and be refreshed on the next Get().
 // This may be helpful to proactively expire credentials and refresh them sooner
 // than they would naturally expire on their own.
 //
-//     creds := NewFromIAM("")
-//     creds.Expire()
-//     credsValue, err := creds.Get()
-//     // New credentials will be retrieved instead of from cache.
+//	creds := NewFromIAM("")
+//	creds.Expire()
+//	credsValue, err := creds.Get()
+//	// New credentials will be retrieved instead of from cache.
 //
-//
-// Custom Provider
+// # Custom Provider
 //
 // Each Provider built into this package also provides a helper method to generate
 // a Credentials pointer setup with the provider. To use a custom Provider just
 // create a type which satisfies the Provider interface and pass it to the
 // NewCredentials method.
 //
-//     type MyProvider struct{}
-//     func (m *MyProvider) Retrieve() (Value, error) {...}
-//     func (m *MyProvider) IsExpired() bool {...}
+//	type MyProvider struct{}
+//	func (m *MyProvider) Retrieve() (Value, error) {...}
+//	func (m *MyProvider) IsExpired() bool {...}
 //
-//     creds := NewCredentials(&MyProvider{})
-//     credValue, err := creds.Get()
-//
+//	creds := NewCredentials(&MyProvider{})
+//	credValue, err := creds.Get()
 package credentials

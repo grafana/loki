@@ -2,6 +2,7 @@ package loki
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,10 +17,9 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 )
 
 func Test_calculateMaxLookBack(t *testing.T) {
@@ -145,19 +145,19 @@ func TestMultiKVSetup(t *testing.T) {
 			require.NotNil(t, c.Ruler.Ring.KVStore.Multi.ConfigProvider)
 		},
 	} {
-		t.Run(target, func(t *testing.T) {
-			prepareGlobalMetricsRegistry(t)
+		t.Run(target, func(test *testing.T) {
+			prepareGlobalMetricsRegistry(test)
 
-			cfg := minimalWorkingConfig(t, dir, target)
+			cfg := minimalWorkingConfig(test, dir, target)
 			cfg.RuntimeConfig.LoadPath = []string{filepath.Join(dir, "config.yaml")}
 			c, err := New(cfg)
-			require.NoError(t, err)
+			require.NoError(test, err)
 
 			_, err = c.ModuleManager.InitModuleServices(cfg.Target...)
-			require.NoError(t, err)
+			require.NoError(test, err)
 			defer c.Server.Stop()
 
-			checkFn(t, c.Cfg)
+			checkFn(test, c.Cfg)
 		})
 	}
 }
@@ -366,11 +366,11 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	// This would be overwritten by the default values setting.
 	cfg.StorageConfig = storage.Config{
 		FSConfig: local.FSConfig{Directory: dir},
-		BoltDBShipperConfig: shipper.Config{
+		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
 				SharedStoreType:      config.StorageTypeFileSystem,
-				ActiveIndexDirectory: dir,
-				CacheLocation:        dir,
+				ActiveIndexDirectory: path.Join(dir, "index"),
+				CacheLocation:        path.Join(dir, "cache"),
 				Mode:                 indexshipper.ModeWriteOnly,
 				ResyncInterval:       24 * time.Hour,
 			},
@@ -380,10 +380,13 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				IndexType:  config.StorageTypeInMemory,
+				IndexType:  config.BoltDBShipperType,
 				ObjectType: config.StorageTypeFileSystem,
-				RowShards:  16,
-				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Period: time.Hour * 24,
+				},
+				RowShards: 16,
+				Schema:    "v11",
 				From: config.DayTime{
 					Time: model.Now(),
 				},
@@ -397,12 +400,15 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
+	cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
+	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost
 	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"
+	cfg.Common.PathPrefix = dir
 
 	for _, transformer := range cfgTransformers {
 		if transformer != nil {

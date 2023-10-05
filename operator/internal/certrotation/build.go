@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 )
 
 var defaultUserInfo = &user.DefaultInfo{Name: "system:lokistacks", Groups: []string{"system:logging"}}
@@ -58,10 +60,10 @@ func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) err
 		r := certificateRotation{
 			Clock:    clock,
 			UserInfo: defaultUserInfo,
-			Hostnames: []string{
+			Hostnames: sets.New[string](
 				fmt.Sprintf("%s.%s.svc", name, opts.StackNamespace),
 				fmt.Sprintf("%s.%s.svc.cluster.local", name, opts.StackNamespace),
-			},
+			),
 		}
 
 		cert, ok := opts.Certificates[name]

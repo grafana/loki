@@ -42,4 +42,10 @@ The `helm-cluster` environment is designed for spinning up a cluster with just G
 1. `make helm-cluster`
 1. `make helm-install-enterprise-logs`
 
-   This step will take a while. The `provisioner` is dependent on the `tokengen` job and for the Admin API to be in a healthy state. Be patient and it will evenutally complete. Once the `provisioner` job has completed, the Loki Canaries will come online, and Grafana will start, as both are waiting on secrets provisioned by the `provisioner`.
+The installation step executes a set of jobs required for the enterprise-logs deployment:
+1) The `tokengen` job generates an admin-api token, stores it in the object storage and creates a Kubernetes secret.
+1) The `provisioner` job depends on the `tokengen` job to create the Kubernetes secret and on the Admin API to be in a healthy state.
+The tokengen Kubernetes secret will be used to create the input admin resources via the Admin API.
+Afterwards, a new Kubernetes secret for each newly generated token is created.
+1) Both the Loki Canaries and Grafana depend on the secrets provisioned by the `provisioner`. 
+Therefore, once the `provisioner` job is completed, these components will become online.

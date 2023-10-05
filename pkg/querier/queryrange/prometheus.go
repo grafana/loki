@@ -25,8 +25,8 @@ var (
 type PrometheusExtractor struct{}
 
 // Extract wraps the original prometheus cache extractor
-func (PrometheusExtractor) Extract(start, end int64, from queryrangebase.Response) queryrangebase.Response {
-	response := extractor.Extract(start, end, from.(*LokiPromResponse).Response)
+func (PrometheusExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+	response := extractor.Extract(start, end, res.(*LokiPromResponse).Response, resStart, resEnd)
 	return &LokiPromResponse{
 		Response: response.(*queryrangebase.PrometheusResponse),
 	}
@@ -47,10 +47,14 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 		b   []byte
 		err error
 	)
-	if p.Response.Data.ResultType == loghttp.ResultTypeVector {
+
+	switch p.Response.Data.ResultType {
+	case loghttp.ResultTypeVector:
 		b, err = p.marshalVector()
-	} else {
+	case loghttp.ResultTypeMatrix:
 		b, err = p.marshalMatrix()
+	case loghttp.ResultTypeScalar:
+		b, err = p.marshalScalar()
 	}
 	if err != nil {
 		return nil, err
@@ -126,6 +130,46 @@ func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
 		}{
 			PrometheusData: p.Response.Data,
 			Statistics:     p.Statistics,
+		},
+		ErrorType: p.Response.ErrorType,
+		Status:    p.Response.Status,
+	})
+}
+
+func (p *LokiPromResponse) marshalScalar() ([]byte, error) {
+	var scalar loghttp.Scalar
+
+	for _, r := range p.Response.Data.Result {
+		if len(r.Samples) <= 0 {
+			continue
+		}
+
+		scalar = loghttp.Scalar{
+			Value:     model.SampleValue(r.Samples[0].Value),
+			Timestamp: model.TimeFromUnix(r.Samples[0].TimestampMs),
+		}
+		break
+	}
+
+	return jsonStd.Marshal(struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string         `json:"resultType"`
+			Result     loghttp.Scalar `json:"result"`
+			Statistics stats.Result   `json:"stats,omitempty"`
+		} `json:"data,omitempty"`
+		ErrorType string `json:"errorType,omitempty"`
+		Error     string `json:"error,omitempty"`
+	}{
+		Error: p.Response.Error,
+		Data: struct {
+			ResultType string         `json:"resultType"`
+			Result     loghttp.Scalar `json:"result"`
+			Statistics stats.Result   `json:"stats,omitempty"`
+		}{
+			ResultType: loghttp.ResultTypeScalar,
+			Result:     scalar,
+			Statistics: p.Statistics,
 		},
 		ErrorType: p.Response.ErrorType,
 		Status:    p.Response.Status,

@@ -12,13 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -96,7 +94,7 @@ func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := shipper.Config{}
+	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = "named-store"
@@ -105,7 +103,7 @@ func TestNamedStores(t *testing.T) {
 
 	cfg := Config{
 		NamedStores: NamedStores{
-			Filesystem: map[string]local.FSConfig{
+			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
 			},
 		},
@@ -114,8 +112,7 @@ func TestNamedStores(t *testing.T) {
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
-	err := cfg.NamedStores.validate()
-	require.NoError(t, err)
+	require.NoError(t, cfg.NamedStores.validate())
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -165,18 +162,18 @@ func TestNamedStores(t *testing.T) {
 		schemaConfig.Configs[0].ObjectType = "not-found"
 		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "Unrecognized storage client not-found, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store")
+		require.Contains(t, err.Error(), "unrecognized chunk client type not-found, choose one of:")
 	})
 }
 
 func TestNamedStores_populateStoreType(t *testing.T) {
 	t.Run("found duplicates", func(t *testing.T) {
 		ns := NamedStores{
-			AWS: map[string]aws.StorageConfig{
+			AWS: map[string]NamedAWSStorageConfig{
 				"store-1": {},
 				"store-2": {},
 			},
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"store-1": {},
 			},
 		}
@@ -188,7 +185,7 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 	t.Run("illegal store name", func(t *testing.T) {
 		ns := NamedStores{
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"aws": {},
 			},
 		}
@@ -200,11 +197,11 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 	t.Run("lookup populated entries", func(t *testing.T) {
 		ns := NamedStores{
-			AWS: map[string]aws.StorageConfig{
+			AWS: map[string]NamedAWSStorageConfig{
 				"store-1": {},
 				"store-2": {},
 			},
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"store-3": {},
 			},
 		}

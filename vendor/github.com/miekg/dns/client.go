@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -56,14 +55,20 @@ type Client struct {
 	// Timeout is a cumulative timeout for dial, write and read, defaults to 0 (disabled) - overrides DialTimeout, ReadTimeout,
 	// WriteTimeout when non-zero. Can be overridden with net.Dialer.Timeout (see Client.ExchangeWithDialer and
 	// Client.Dialer) or context.Context.Deadline (see ExchangeContext)
-	Timeout        time.Duration
-	DialTimeout    time.Duration     // net.DialTimeout, defaults to 2 seconds, or net.Dialer.Timeout if expiring earlier - overridden by Timeout when that value is non-zero
-	ReadTimeout    time.Duration     // net.Conn.SetReadTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
-	WriteTimeout   time.Duration     // net.Conn.SetWriteTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
-	TsigSecret     map[string]string // secret(s) for Tsig map[<zonename>]<base64 secret>, zonename must be in canonical form (lowercase, fqdn, see RFC 4034 Section 6.2)
-	TsigProvider   TsigProvider      // An implementation of the TsigProvider interface. If defined it replaces TsigSecret and is used for all TSIG operations.
-	SingleInflight bool              // if true suppress multiple outstanding queries for the same Qname, Qtype and Qclass
-	group          singleflight
+	Timeout      time.Duration
+	DialTimeout  time.Duration     // net.DialTimeout, defaults to 2 seconds, or net.Dialer.Timeout if expiring earlier - overridden by Timeout when that value is non-zero
+	ReadTimeout  time.Duration     // net.Conn.SetReadTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
+	WriteTimeout time.Duration     // net.Conn.SetWriteTimeout value for connections, defaults to 2 seconds - overridden by Timeout when that value is non-zero
+	TsigSecret   map[string]string // secret(s) for Tsig map[<zonename>]<base64 secret>, zonename must be in canonical form (lowercase, fqdn, see RFC 4034 Section 6.2)
+	TsigProvider TsigProvider      // An implementation of the TsigProvider interface. If defined it replaces TsigSecret and is used for all TSIG operations.
+
+	// SingleInflight previously serialised multiple concurrent queries for the
+	// same Qname, Qtype and Qclass to ensure only one would be in flight at a
+	// time.
+	//
+	// Deprecated: This is a no-op. Callers should implement their own in flight
+	// query caching if needed. See github.com/miekg/dns/issues/1449.
+	SingleInflight bool
 }
 
 // Exchange performs a synchronous UDP query. It sends the message m to the address
@@ -106,7 +111,6 @@ func (c *Client) Dial(address string) (conn *Conn, err error) {
 }
 
 // DialContext connects to the address on the named network, with a context.Context.
-// For TLS over TCP (DoT) the context isn't used yet. This will be enabled when Go 1.18 is released.
 func (c *Client) DialContext(ctx context.Context, address string) (conn *Conn, err error) {
 	// create a new dialer with the appropriate timeout
 	var d net.Dialer
@@ -127,15 +131,11 @@ func (c *Client) DialContext(ctx context.Context, address string) (conn *Conn, e
 	if useTLS {
 		network = strings.TrimSuffix(network, "-tls")
 
-		// TODO(miekg): Enable after Go 1.18 is released, to be able to support two prev. releases.
-		/*
-			tlsDialer := tls.Dialer{
-				NetDialer: &d,
-				Config:    c.TLSConfig,
-			}
-			conn.Conn, err = tlsDialer.DialContext(ctx, network, address)
-		*/
-		conn.Conn, err = tls.DialWithDialer(&d, network, address, c.TLSConfig)
+		tlsDialer := tls.Dialer{
+			NetDialer: &d,
+			Config:    c.TLSConfig,
+		}
+		conn.Conn, err = tlsDialer.DialContext(ctx, network, address)
 	} else {
 		conn.Conn, err = d.DialContext(ctx, network, address)
 	}
@@ -183,33 +183,13 @@ func (c *Client) Exchange(m *Msg, address string) (r *Msg, rtt time.Duration, er
 // This allows users of the library to implement their own connection management,
 // as opposed to Exchange, which will always use new connections and incur the added overhead
 // that entails when using "tcp" and especially "tcp-tls" clients.
-//
-// When the singleflight is set for this client the context is _not_ forwarded to the (shared) exchange, to
-// prevent one cancelation from canceling all outstanding requests.
 func (c *Client) ExchangeWithConn(m *Msg, conn *Conn) (r *Msg, rtt time.Duration, err error) {
-	return c.exchangeWithConnContext(context.Background(), m, conn)
+	return c.ExchangeWithConnContext(context.Background(), m, conn)
 }
 
-func (c *Client) exchangeWithConnContext(ctx context.Context, m *Msg, conn *Conn) (r *Msg, rtt time.Duration, err error) {
-	if !c.SingleInflight {
-		return c.exchangeContext(ctx, m, conn)
-	}
-
-	q := m.Question[0]
-	key := fmt.Sprintf("%s:%d:%d", q.Name, q.Qtype, q.Qclass)
-	r, rtt, err, shared := c.group.Do(key, func() (*Msg, time.Duration, error) {
-		// When we're doing singleflight we don't want one context cancelation, cancel _all_ outstanding queries.
-		// Hence we ignore the context and use Background().
-		return c.exchangeContext(context.Background(), m, conn)
-	})
-	if r != nil && shared {
-		r = r.Copy()
-	}
-
-	return r, rtt, err
-}
-
-func (c *Client) exchangeContext(ctx context.Context, m *Msg, co *Conn) (r *Msg, rtt time.Duration, err error) {
+// ExchangeWithConnContext has the same behaviour as ExchangeWithConn and
+// additionally obeys deadlines from the passed Context.
+func (c *Client) ExchangeWithConnContext(ctx context.Context, m *Msg, co *Conn) (r *Msg, rtt time.Duration, err error) {
 	opt := m.IsEdns0()
 	// If EDNS0 is used use that for size.
 	if opt != nil && opt.UDPSize() >= MinMsgSize {
@@ -431,7 +411,6 @@ func ExchangeContext(ctx context.Context, m *Msg, a string) (r *Msg, err error) 
 //	co.WriteMsg(m)
 //	in, _  := co.ReadMsg()
 //	co.Close()
-//
 func ExchangeConn(c net.Conn, m *Msg) (r *Msg, err error) {
 	println("dns: ExchangeConn: this function is deprecated")
 	co := new(Conn)
@@ -480,5 +459,5 @@ func (c *Client) ExchangeContext(ctx context.Context, m *Msg, a string) (r *Msg,
 	}
 	defer conn.Close()
 
-	return c.exchangeWithConnContext(ctx, m, conn)
+	return c.ExchangeWithConnContext(ctx, m, conn)
 }

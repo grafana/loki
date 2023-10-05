@@ -17,6 +17,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	serverww "github.com/grafana/dskit/server"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -28,7 +29,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -169,23 +169,23 @@ func TestPromtail(t *testing.T) {
 		expectedEntries[entry] = i
 	}
 	lbls := []labels.Labels{}
-	lbls = append(lbls, labels.Labels{
-		labels.Label{Name: "action", Value: "GET"},
-		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
-		labels.Label{Name: "job", Value: "varlogs"},
-		labels.Label{Name: "localhost", Value: ""},
-		labels.Label{Name: "match", Value: "true"},
-		labels.Label{Name: "stream", Value: "stderr"},
-	})
+	lbls = append(lbls, labels.FromStrings(
+		"action", "GET",
+		"filename", dirName+"/logs/testPipeline.log",
+		"job", "varlogs",
+		"address", "localhost",
+		"match", "true",
+		"stream", "stderr",
+	))
 
-	lbls = append(lbls, labels.Labels{
-		labels.Label{Name: "action", Value: "POST"},
-		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
-		labels.Label{Name: "job", Value: "varlogs"},
-		labels.Label{Name: "localhost", Value: ""},
-		labels.Label{Name: "match", Value: "true"},
-		labels.Label{Name: "stream", Value: "stdout"},
-	})
+	lbls = append(lbls, labels.FromStrings(
+		"action", "POST",
+		"filename", dirName+"/logs/testPipeline.log",
+		"job", "varlogs",
+		"address", "localhost",
+		"match", "true",
+		"stream", "stdout",
+	))
 	expectedLabels := make(map[string]int)
 	for i, label := range lbls {
 		expectedLabels[label.String()] = i
@@ -215,6 +215,7 @@ func TestPromtail(t *testing.T) {
 	verifyFile(t, expectedCounts[logFile2], prefix2, handler.receivedMap[logFile2])
 	verifyFile(t, expectedCounts[logFile3], prefix3, handler.receivedMap[logFile3])
 	verifyFile(t, expectedCounts[logFile4], prefix4, handler.receivedMap[logFile4])
+	fmt.Println("Verifying pipeline", logFile5)
 	verifyPipeline(t, expectedCounts[logFile5], expectedEntries, handler.receivedMap[logFile5], handler.receivedLabels[logFile5], expectedLabels)
 
 	if len(handler.receivedMap) != len(expectedCounts) {
@@ -521,7 +522,7 @@ func getPromMetrics(t *testing.T, httpListenAddr net.Addr) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr, err := textparse.New(bytes, contentType)
+	pr, err := textparse.New(bytes, contentType, false)
 	require.NoError(t, err)
 	for {
 		et, err := pr.Next()
@@ -612,7 +613,7 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 
 	targetGroup := targetgroup.Group{
 		Targets: []model.LabelSet{{
-			"localhost": "",
+			"address": "localhost",
 		}},
 		Labels: model.LabelSet{
 			"job":      "varlogs",
@@ -657,6 +658,8 @@ func Test_DryRun(t *testing.T) {
 		Config: serverww.Config{
 			HTTPListenNetwork: serverww.DefaultNetwork,
 			GRPCListenNetwork: serverww.DefaultNetwork,
+			HTTPListenAddress: localhostConfig.HTTPListenAddress,
+			GRPCListenAddress: localhostConfig.GRPCListenAddress,
 		},
 	}
 
@@ -683,7 +686,12 @@ func Test_DryRun(t *testing.T) {
 		},
 	}, nil, clientMetrics, false, nil)
 	require.NoError(t, err)
-	require.IsType(t, &client.MultiClient{}, p.client)
+	require.IsType(t, &client.Manager{}, p.client)
+}
+
+var localhostConfig = serverww.Config{
+	HTTPListenAddress: "localhost",
+	GRPCListenAddress: "localhost",
 }
 
 func Test_Reload(t *testing.T) {
@@ -694,6 +702,7 @@ func Test_Reload(t *testing.T) {
 	cfg := config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
@@ -707,6 +716,7 @@ func Test_Reload(t *testing.T) {
 	expectedConfig := &config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
 		PositionsConfig: positions.Config{
@@ -763,6 +773,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	cfg := config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
@@ -774,6 +785,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	expectedConfig := &config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
 		PositionsConfig: positions.Config{

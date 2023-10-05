@@ -3,13 +3,13 @@ package distributor
 import (
 	"time"
 
-	"github.com/grafana/loki/pkg/validation"
-
+	"github.com/grafana/loki/pkg/compactor/retention"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 )
 
 // Limits is an interface for distributor limits/related configs
 type Limits interface {
+	retention.Limits
 	MaxLineSize(userID string) int
 	MaxLineSizeTruncate(userID string) bool
 	EnforceMetricName(userID string) bool
@@ -24,5 +24,10 @@ type Limits interface {
 	IncrementDuplicateTimestamps(userID string) bool
 
 	ShardStreams(userID string) *shardstreams.Config
-	AllByUserID() map[string]*validation.Limits
+	IngestionRateStrategy() string
+	IngestionRateBytes(userID string) float64
+	IngestionBurstSizeBytes(userID string) int
+	AllowStructuredMetadata(userID string) bool
+	MaxStructuredMetadataSize(userID string) int
+	MaxStructuredMetadataCount(userID string) int
 }

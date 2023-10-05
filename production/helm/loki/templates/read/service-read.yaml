@@ -5,10 +5,21 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.readFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.readLabels" . | nindent 4 }}
-    {{- with .Values.read.serviceLabels }}
-    {{- toYaml . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.read.service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.read.service.annotations }}
+    {{- toYaml . | nindent 4}}
     {{- end }}
 spec:
   type: ClusterIP

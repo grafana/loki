@@ -3,20 +3,18 @@ version: "3.8"
 networks:
   loki:
 
-
 volumes:
   prometheus:
   grafana:
   alertmanager-data:
-
+  loki:
 
 services:
-
   # Since the Loki containers are running as user 10001 and the mounted data volume is owned by root,
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: grafana/loki:2.7.3
+    image: &lokiImage grafana/loki:2.9.1
     user: root
     entrypoint:
       - "chown"
@@ -44,7 +42,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.27.0
     ports:
-      - 9090:9090
+      - 9090
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
       - prometheus:/prometheus
@@ -52,6 +50,7 @@ services:
       [
         '--log.level=debug',
         '--config.file=/etc/prometheus/prometheus.yml',
+        '--enable-feature=remote-write-receiver',
         '--query.lookback-delta=30s'
       ]
     networks:
@@ -72,12 +71,12 @@ services:
       - ./loki/:/var/log/
 
   promtail:
-    image: grafana/promtail:2.7.3
+    image: grafana/promtail:2.9.1
     volumes:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
     ports:
-      - "9080:9080"
+      - 9080
     command: -config.file=/etc/promtail/promtail.yaml
     networks:
       - loki
@@ -92,8 +91,8 @@ services:
         mkdir -p /data/loki-ruler &&
         minio server /data
     environment:
-      - MINIO_ACCESS_KEY=loki
-      - MINIO_SECRET_KEY=supersecret
+      - MINIO_ROOT_USER=loki
+      - MINIO_ROOT_PASSWORD=supersecret
       - MINIO_PROMETHEUS_AUTH_TYPE=public
       - MINIO_UPDATE=off
     ports:
@@ -114,18 +113,20 @@ services:
       - loki
 
   loki-read:
-    image: grafana/loki:2.7.3
+    image: *lokiImage
     volumes:
       - ./config:/etc/loki/
+      - ./rules:/loki/rules:ro
+    # only needed for interactive debugging with dlv
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
     ports:
       - "3100"
       - "7946"
       # uncomment to use interactive debugging
-      # - "40000-40002:40000" # # makes the replicas available on ports 40000, 40001, 40002
-      #cap_add:
-      #  - SYS_PTRACE
-      #security_opt:
-      #  - apparmor=unconfined
+      # - "40000-40002:40000" # makes the replicas available on ports 40000, 40001, 40002
     command: "-config.file=/etc/loki/loki.yaml -target=read"
     networks:
       - loki
@@ -133,22 +134,44 @@ services:
     deploy:
       mode: replicated
       replicas: 3
-    # only needed for interactive debugging with dlv
 
   loki-write:
-    image: grafana/loki:2.7.3
+    image: *lokiImage
     volumes:
       - ./config:/etc/loki/
+    # only needed for interactive debugging with dlv
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
     ports:
       - "3100"
       - "7946"
       # uncomment to use interactive debugging
-      # - "50000-50002:40000" # makes the replicas available on ports 50000, 50001, 50002
-      # cap_add:
-      #   - SYS_PTRACE
-      # security_opt:
-      #   - apparmor=unconfined
+      # - "50000-50002:40000" #  makes the replicas available on ports 50000, 50001, 50002
     command: "-config.file=/etc/loki/loki.yaml -target=write"
+    networks:
+      - loki
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+
+  loki-backend:
+    image: *lokiImage
+    volumes:
+      - ./config:/etc/loki/
+    # only needed for interactive debugging with dlv
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
+    ports:
+      - "3100"
+      - "7946"
+      # uncomment to use interactive debugging
+      # - "60000-60002:40000" #  makes the replicas available on ports 60000, 60001, 60002
+    command: "-config.file=/etc/loki/loki.yaml -target=backend -legacy-read-mode=false"
     networks:
       - loki
     restart: always

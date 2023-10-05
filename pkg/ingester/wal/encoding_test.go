@@ -2,6 +2,7 @@ package wal
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,10 +71,18 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(1000, 0),
 								Line:      "first",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "123",
+									"userID", "a",
+								)),
 							},
 							{
 								Timestamp: time.Unix(2000, 0),
 								Line:      "second",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "456",
+									"userID", "b",
+								)),
 							},
 						},
 					},
@@ -83,10 +92,18 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(3000, 0),
 								Line:      "third",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "789",
+									"userID", "c",
+								)),
 							},
 							{
 								Timestamp: time.Unix(4000, 0),
 								Line:      "fourth",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "123",
+									"userID", "d",
+								)),
 							},
 						},
 					},
@@ -107,10 +124,18 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(1000, 0),
 								Line:      "first",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "123",
+									"userID", "a",
+								)),
 							},
 							{
 								Timestamp: time.Unix(2000, 0),
 								Line:      "second",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "456",
+									"userID", "b",
+								)),
 							},
 						},
 					},
@@ -121,10 +146,18 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(3000, 0),
 								Line:      "third",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "789",
+									"userID", "c",
+								)),
 							},
 							{
 								Timestamp: time.Unix(4000, 0),
 								Line:      "fourth",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "123",
+									"userID", "d",
+								)),
 							},
 						},
 					},
@@ -132,77 +165,169 @@ func Test_Encoding_Entries(t *testing.T) {
 			},
 			version: WALRecordEntriesV2,
 		},
+		{
+			desc: "v3",
+			rec: &Record{
+				entryIndexMap: make(map[uint64]int),
+				UserID:        "123",
+				RefEntries: []RefEntries{
+					{
+						Ref:     456,
+						Counter: 1, // v2 uses counter for WAL replay
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(1000, 0),
+								Line:      "first",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "123",
+									"userID", "a",
+								)),
+							},
+							{
+								Timestamp: time.Unix(2000, 0),
+								Line:      "second",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "456",
+									"userID", "b",
+								)),
+							},
+						},
+					},
+					{
+						Ref:     789,
+						Counter: 2, // v2 uses counter for WAL replay
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(3000, 0),
+								Line:      "third",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "789",
+									"userID", "c",
+								)),
+							},
+							{
+								Timestamp: time.Unix(4000, 0),
+								Line:      "fourth",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+									"traceID", "123",
+									"userID", "d",
+								)),
+							},
+						},
+					},
+				},
+			},
+			version: WALRecordEntriesV3,
+		},
 	} {
-		decoded := recordPool.GetRecord()
-		buf := tc.rec.EncodeEntries(tc.version, nil)
-		err := DecodeRecord(buf, decoded)
-		require.Nil(t, err)
-		require.Equal(t, tc.rec, decoded)
+		t.Run(tc.desc, func(t *testing.T) {
+			decoded := recordPool.GetRecord()
+			buf := tc.rec.EncodeEntries(tc.version, nil)
+			err := DecodeRecord(buf, decoded)
+			require.Nil(t, err)
 
+			// If the version is less than v3, we need to remove the structured metadata.
+			expectedRecords := tc.rec
+			if tc.version < WALRecordEntriesV3 {
+				for i := range expectedRecords.RefEntries {
+					for j := range expectedRecords.RefEntries[i].Entries {
+						expectedRecords.RefEntries[i].Entries[j].StructuredMetadata = nil
+					}
+				}
+			}
+
+			require.Equal(t, expectedRecords, decoded)
+		})
 	}
 }
 
 func Benchmark_EncodeEntries(b *testing.B) {
-	var entries []logproto.Entry
-	for i := int64(0); i < 10000; i++ {
-		entries = append(entries, logproto.Entry{
-			Timestamp: time.Unix(0, i),
-			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
-		})
-	}
-	record := &Record{
-		entryIndexMap: make(map[uint64]int),
-		UserID:        "123",
-		RefEntries: []RefEntries{
-			{
-				Ref:     456,
-				Entries: entries,
-			},
-			{
-				Ref:     789,
-				Entries: entries,
-			},
-		},
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	buf := recordPool.GetBytes()[:0]
-	defer recordPool.PutBytes(buf)
+	for _, withStructuredMetadata := range []bool{true, false} {
+		b.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(b *testing.B) {
+			var entries []logproto.Entry
+			for i := int64(0); i < 10000; i++ {
+				entry := logproto.Entry{
+					Timestamp: time.Unix(0, i),
+					Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+				}
 
-	for n := 0; n < b.N; n++ {
-		record.EncodeEntries(CurrentEntriesRec, buf)
+				if withStructuredMetadata {
+					entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+						"traceID", strings.Repeat(fmt.Sprintf("%d", i), 10),
+						"userID", strings.Repeat(fmt.Sprintf("%d", i), 10),
+					))
+				}
+
+				entries = append(entries, entry)
+			}
+			record := &Record{
+				entryIndexMap: make(map[uint64]int),
+				UserID:        "123",
+				RefEntries: []RefEntries{
+					{
+						Ref:     456,
+						Entries: entries,
+					},
+					{
+						Ref:     789,
+						Entries: entries,
+					},
+				},
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			buf := recordPool.GetBytes()
+			defer recordPool.PutBytes(buf)
+
+			for n := 0; n < b.N; n++ {
+				*buf = record.EncodeEntries(CurrentEntriesRec, *buf)
+			}
+		})
 	}
 }
 
 func Benchmark_DecodeWAL(b *testing.B) {
-	var entries []logproto.Entry
-	for i := int64(0); i < 10000; i++ {
-		entries = append(entries, logproto.Entry{
-			Timestamp: time.Unix(0, i),
-			Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+	for _, withStructuredMetadata := range []bool{true, false} {
+		b.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(b *testing.B) {
+			var entries []logproto.Entry
+			for i := int64(0); i < 10000; i++ {
+				entry := logproto.Entry{
+					Timestamp: time.Unix(0, i),
+					Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
+				}
+
+				if withStructuredMetadata {
+					entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+						"traceID", strings.Repeat(fmt.Sprintf("%d", i), 10),
+						"userID", strings.Repeat(fmt.Sprintf("%d", i), 10),
+					))
+				}
+
+				entries = append(entries, entry)
+			}
+			record := &Record{
+				entryIndexMap: make(map[uint64]int),
+				UserID:        "123",
+				RefEntries: []RefEntries{
+					{
+						Ref:     456,
+						Entries: entries,
+					},
+					{
+						Ref:     789,
+						Entries: entries,
+					},
+				},
+			}
+
+			buf := record.EncodeEntries(CurrentEntriesRec, nil)
+			rec := recordPool.GetRecord()
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				require.NoError(b, DecodeRecord(buf, rec))
+			}
 		})
-	}
-	record := &Record{
-		entryIndexMap: make(map[uint64]int),
-		UserID:        "123",
-		RefEntries: []RefEntries{
-			{
-				Ref:     456,
-				Entries: entries,
-			},
-			{
-				Ref:     789,
-				Entries: entries,
-			},
-		},
-	}
-
-	buf := record.EncodeEntries(CurrentEntriesRec, nil)
-	rec := recordPool.GetRecord()
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		require.NoError(b, DecodeRecord(buf, rec))
 	}
 }

@@ -22,6 +22,8 @@ type Config struct {
 
 	WALCleaner  cleaner.Config    `yaml:"wal_cleaner,omitempty"`
 	RemoteWrite RemoteWriteConfig `yaml:"remote_write,omitempty" doc:"description=Remote-write configuration to send rule samples to a Prometheus remote-write endpoint."`
+
+	Evaluation EvaluationConfig `yaml:"evaluation,omitempty" doc:"description=Configuration for rule evaluation."`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -29,9 +31,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RemoteWrite.RegisterFlags(f)
 	c.WAL.RegisterFlags(f)
 	c.WALCleaner.RegisterFlags(f)
-
-	// TODO(owen-d, 3.0.0): remove deprecated experimental prefix in Cortex if they'll accept it.
-	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", true, "Enable the ruler API.")
+	c.Evaluation.RegisterFlags(f)
 }
 
 // Validate overrides the embedded cortex variant which expects a cortex limits struct. Instead, copy the relevant bits over.

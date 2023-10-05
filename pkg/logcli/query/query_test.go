@@ -3,20 +3,21 @@ package query
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logcli/output"
+	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -24,141 +25,10 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
-
-func Test_commonLabels(t *testing.T) {
-	type args struct {
-		lss []loghttp.LabelSet
-	}
-	tests := []struct {
-		name string
-		args args
-		want loghttp.LabelSet
-	}{
-		{
-			"Extract common labels source > target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`)},
-			},
-			mustParseLabels(t, `{bar="foo"}`),
-		},
-		{
-			"Extract common labels source > target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="bar", baz="baz"}`)},
-			},
-			mustParseLabels(t, `{foo="bar", bar="foo"}`),
-		},
-		{
-			"Extract common labels source < target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo"}`)},
-			},
-			mustParseLabels(t, `{bar="foo"}`),
-		},
-		{
-			"Extract common labels source < target no common",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{fo="bar"}`)},
-			},
-			loghttp.LabelSet{},
-		},
-		{
-			"Extract common labels source = target no common",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar"}`), mustParseLabels(t, `{fooo="bar"}`)},
-			},
-			loghttp.LabelSet{},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var streams []loghttp.Stream
-
-			for _, lss := range tt.args.lss {
-				streams = append(streams, loghttp.Stream{
-					Entries: nil,
-					Labels:  lss,
-				})
-			}
-
-			if got := commonLabels(streams); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("commonLabels() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_subtract(t *testing.T) {
-	type args struct {
-		a loghttp.LabelSet
-		b loghttp.LabelSet
-	}
-	tests := []struct {
-		name string
-		args args
-		want loghttp.LabelSet
-	}{
-		{
-			"Subtract labels source > target",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{bar="foo"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{fo="bar"}`),
-			},
-			mustParseLabels(t, `{bar="foo", foo="bar"}`),
-		},
-		{
-			"Subtract labels source = target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar"}`),
-				mustParseLabels(t, `{fiz="buz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar"}`),
-				mustParseLabels(t, `{fiz="buz", foo="baz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(t, `{a="b", foo="bar", baz="baz", fizz="fizz"}`),
-				mustParseLabels(t, `{foo="bar", baz="baz", buzz="buzz", fizz="fizz"}`),
-			},
-			mustParseLabels(t, `{a="b"}`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := subtract(tt.args.a, tt.args.b); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("subtract() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
 
 func Test_batch(t *testing.T) {
 	tests := []struct {
@@ -535,14 +405,6 @@ func Test_batch(t *testing.T) {
 	}
 }
 
-func mustParseLabels(t *testing.T, s string) loghttp.LabelSet {
-	t.Helper()
-	l, err := marshal.NewLabelSet(s)
-	require.NoErrorf(t, err, "Failed to parse %q", s)
-
-	return l
-}
-
 type testQueryClient struct {
 	engine          *logql.Engine
 	queryRangeCalls int
@@ -558,11 +420,11 @@ func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 	}
 }
 
-func (t *testQueryClient) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
@@ -589,24 +451,36 @@ func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through t
 	return q, nil
 }
 
-func (t *testQueryClient) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelValues(_ string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (t *testQueryClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+func (t *testQueryClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	panic("implement me")
 }
 
 func (t *testQueryClient) GetOrgID() string {
 	panic("implement me")
+}
+
+func (t *testQueryClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
 }
 
 var schemaConfigContents = `schema_config:
@@ -644,7 +518,7 @@ func TestLoadFromURL(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, client)
 
-	conf.StorageConfig.BoltDBShipperConfig = shipper.Config{
+	conf.StorageConfig.BoltDBShipperConfig = boltdb.IndexCfg{
 		Config: indexshipper.Config{
 			SharedStoreType: config.StorageTypeFileSystem,
 		},
@@ -679,4 +553,230 @@ func TestLoadFromURL(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)
+}
+
+func TestDurationCeilDiv(t *testing.T) {
+	tests := []struct {
+		name   string
+		d      time.Duration
+		m      time.Duration
+		expect int64
+	}{
+		{
+			"10m / 5m = 2",
+			10 * time.Minute,
+			5 * time.Minute,
+			2,
+		},
+		{
+			"11m / 5m = 3",
+			11 * time.Minute,
+			5 * time.Minute,
+			3,
+		},
+		{
+			"1h / 15m = 4",
+			1 * time.Hour,
+			15 * time.Minute,
+			4,
+		},
+		{
+			"1h / 14m = 5",
+			1 * time.Hour,
+			14 * time.Minute,
+			5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				require.Equal(t, tt.expect, ceilingDivision(tt.d, tt.m))
+			},
+		)
+	}
+}
+
+func mustParseTime(value string) time.Time {
+	t, err := time.Parse("2006-01-02 15:04:05", value)
+	if err != nil {
+		panic(fmt.Errorf("invalid timestamp: %w", err))
+	}
+
+	return t
+}
+
+func cmpParallelJobSlice(t *testing.T, expected, actual []*parallelJob) {
+	require.Equal(t, len(expected), len(actual), "job slice lengths don't match")
+
+	for i, jobE := range expected {
+		jobA := actual[i]
+
+		require.Equal(t, jobE.q.Start, jobA.q.Start, "i=%d: job start not equal", i)
+		require.Equal(t, jobE.q.End, jobA.q.End, "i=%d: job end not equal", i)
+		require.Equal(t, jobE.q.Forward, jobA.q.Forward, "i=%d: job direction not equal", i)
+	}
+}
+
+func TestParallelJobs(t *testing.T) {
+	mkQuery := func(start, end string, d time.Duration, forward bool) *Query {
+		return &Query{
+			Start:            mustParseTime(start),
+			End:              mustParseTime(end),
+			ParallelDuration: d,
+			Forward:          forward,
+		}
+	}
+
+	mkParallelJob := func(start, end string, forward bool) *parallelJob {
+		return &parallelJob{
+			q: mkQuery(start, end, time.Minute, forward),
+		}
+	}
+
+	tests := []struct {
+		name string
+		q    *Query
+		jobs []*parallelJob
+	}{
+		{
+			"1h range, 30m period, forward",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:00:00",
+				30*time.Minute,
+				true,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:30:00",
+					true,
+				),
+				mkParallelJob(
+					"2023-02-10 15:30:00",
+					"2023-02-10 16:00:00",
+					true,
+				),
+			},
+		},
+		{
+			"1h range, 30m period, reverse",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:00:00",
+				30*time.Minute,
+				false,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:30:00",
+					"2023-02-10 16:00:00",
+					false,
+				),
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:30:00",
+					false,
+				),
+			},
+		},
+		{
+			"1h1m range, 30m period, forward",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:01:00",
+				30*time.Minute,
+				true,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:30:00",
+					true,
+				),
+				mkParallelJob(
+					"2023-02-10 15:30:00",
+					"2023-02-10 16:00:00",
+					true,
+				),
+				mkParallelJob(
+					"2023-02-10 16:00:00",
+					"2023-02-10 16:01:00",
+					true,
+				),
+			},
+		},
+		{
+			"1h1m range, 30m period, reverse",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 16:01:00",
+				30*time.Minute,
+				false,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:31:00",
+					"2023-02-10 16:01:00",
+					false,
+				),
+				mkParallelJob(
+					"2023-02-10 15:01:00",
+					"2023-02-10 15:31:00",
+					false,
+				),
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:01:00",
+					false,
+				),
+			},
+		},
+		{
+			"15m range, 30m period, forward",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 15:15:00",
+				30*time.Minute,
+				true,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:15:00",
+					true,
+				),
+			},
+		},
+		{
+			"15m range, 30m period, reverse",
+			mkQuery(
+				"2023-02-10 15:00:00",
+				"2023-02-10 15:15:00",
+				30*time.Minute,
+				false,
+			),
+			[]*parallelJob{
+				mkParallelJob(
+					"2023-02-10 15:00:00",
+					"2023-02-10 15:15:00",
+					false,
+				),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				jobs := tt.q.parallelJobs()
+				cmpParallelJobSlice(t, tt.jobs, jobs)
+			},
+		)
+	}
 }

@@ -29,6 +29,7 @@ var colorList = []*color.Color{
 // LogOutput is the interface any output mode must implement
 type LogOutput interface {
 	FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string)
+	WithWriter(w io.Writer) LogOutput
 }
 
 // LogOutputOptions defines options supported by LogOutput

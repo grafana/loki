@@ -11,12 +11,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -79,7 +79,8 @@ func (t *PushTarget) run() error {
 
 	// The logger registers a metric which will cause a duplicate registry panic unless we provide an empty registry
 	// The metric created is for counting log lines and isn't likely to be missed.
-	util_log.InitLogger(&t.config.Server, prometheus.NewRegistry(), true, false)
+	serverCfg := &t.config.Server
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.NewRegistry(), true, false)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {
@@ -89,6 +90,7 @@ func (t *PushTarget) run() error {
 	t.server = srv
 	t.server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(http.HandlerFunc(t.handleLoki))
 	t.server.HTTP.Path("/promtail/api/v1/raw").Methods("POST").Handler(http.HandlerFunc(t.handlePlaintext))
+	t.server.HTTP.Path("/ready").Methods("GET").Handler(http.HandlerFunc(t.ready))
 
 	go func() {
 		err := srv.Run()
@@ -126,8 +128,8 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Apply relabeling
-		processed := relabel.Process(lb.Labels(nil), t.relabelConfig...)
-		if len(processed) == 0 {
+		processed, keep := relabel.Process(lb.Labels(), t.relabelConfig...)
+		if !keep || len(processed) == 0 {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -233,4 +235,12 @@ func (t *PushTarget) Stop() error {
 	t.server.Shutdown()
 	t.handler.Stop()
 	return nil
+}
+
+// ready function serves the ready endpoint
+func (t *PushTarget) ready(w http.ResponseWriter, _ *http.Request) {
+	resp := "ready"
+	if _, err := w.Write([]byte(resp)); err != nil {
+		level.Error(t.logger).Log("msg", "failed to respond to ready endoint", "err", err)
+	}
 }

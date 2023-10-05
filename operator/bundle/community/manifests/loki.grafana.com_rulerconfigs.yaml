@@ -2,16 +2,28 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.10.0
+    controller-gen.kubebuilder.io/version: v0.11.3
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.1.0
+    app.kubernetes.io/instance: loki-operator-v0.4.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.1.0
+    app.kubernetes.io/version: 0.4.0
   name: rulerconfigs.loki.grafana.com
 spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: loki-operator-webhook-service
+          namespace: loki-operator
+          path: /convert
+          port: 443
+      conversionReviewVersions:
+      - v1
+      - v1beta1
   group: loki.grafana.com
   names:
     kind: RulerConfig
@@ -20,7 +32,7 @@ spec:
     singular: rulerconfig
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - name: v1
     schema:
       openAPIV3Schema:
         description: RulerConfig is the Schema for the rulerconfigs API
@@ -683,6 +695,671 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: RulerConfig is the Schema for the rulerconfigs API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RulerConfigSpec defines the desired state of Ruler
+            properties:
+              alertmanager:
+                description: Defines alert manager configuration to notify on firing
+                  alerts.
+                properties:
+                  client:
+                    description: Client configuration for reaching the alertmanager
+                      endpoint.
+                    properties:
+                      basicAuth:
+                        description: Basic authentication configuration for reaching
+                          the alertmanager endpoints.
+                        properties:
+                          password:
+                            description: The subject's password for the basic authentication
+                              configuration.
+                            type: string
+                          username:
+                            description: The subject's username for the basic authentication
+                              configuration.
+                            type: string
+                        type: object
+                      headerAuth:
+                        description: Header authentication configuration for reaching
+                          the alertmanager endpoints.
+                        properties:
+                          credentials:
+                            description: The credentials for the header authentication
+                              configuration.
+                            type: string
+                          credentialsFile:
+                            description: The credentials file for the Header authentication
+                              configuration. It is mutually exclusive with `credentials`.
+                            type: string
+                          type:
+                            description: The authentication type for the header authentication
+                              configuration.
+                            type: string
+                        type: object
+                      tls:
+                        description: TLS configuration for reaching the alertmanager
+                          endpoints.
+                        properties:
+                          caPath:
+                            description: The CA certificate file path for the TLS
+                              configuration.
+                            type: string
+                          certPath:
+                            description: The client-side certificate file path for
+                              the TLS configuration.
+                            type: string
+                          keyPath:
+                            description: The client-side key file path for the TLS
+                              configuration.
+                            type: string
+                          serverName:
+                            description: The server name to validate in the alertmanager
+                              server certificates.
+                            type: string
+                        type: object
+                    type: object
+                  discovery:
+                    description: Defines the configuration for DNS-based discovery
+                      of AlertManager hosts.
+                    properties:
+                      enableSRV:
+                        description: Use DNS SRV records to discover Alertmanager
+                          hosts.
+                        type: boolean
+                      refreshInterval:
+                        default: 1m
+                        description: How long to wait between refreshing DNS resolutions
+                          of Alertmanager hosts.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                    type: object
+                  enableV2:
+                    description: If enabled, then requests to Alertmanager use the
+                      v2 API.
+                    type: boolean
+                  endpoints:
+                    description: List of AlertManager URLs to send notifications to.
+                      Each Alertmanager URL is treated as a separate group in the
+                      configuration. Multiple Alertmanagers in HA per group can be
+                      supported by using DNS resolution (See EnableDNSDiscovery).
+                    items:
+                      type: string
+                    type: array
+                  externalLabels:
+                    additionalProperties:
+                      type: string
+                    description: Additional labels to add to all alerts.
+                    type: object
+                  externalUrl:
+                    description: URL for alerts return path.
+                    type: string
+                  notificationQueue:
+                    description: Defines the configuration for the notification queue
+                      to AlertManager hosts.
+                    properties:
+                      capacity:
+                        default: 10000
+                        description: Capacity of the queue for notifications to be
+                          sent to the Alertmanager.
+                        format: int32
+                        type: integer
+                      forGracePeriod:
+                        default: 10m
+                        description: Minimum duration between alert and restored "for"
+                          state. This is maintained only for alerts with configured
+                          "for" time greater than the grace period.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                      forOutageTolerance:
+                        default: 1h
+                        description: Max time to tolerate outage for restoring "for"
+                          state of alert.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                      resendDelay:
+                        default: 1m
+                        description: Minimum amount of time to wait before resending
+                          an alert to Alertmanager.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                      timeout:
+                        default: 10s
+                        description: HTTP timeout duration when sending notifications
+                          to the Alertmanager.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                    type: object
+                  relabelConfigs:
+                    description: List of alert relabel configurations.
+                    items:
+                      description: 'RelabelConfig allows dynamic rewriting of the
+                        label set, being applied to samples before ingestion. It defines
+                        `<metric_relabel_configs>` and `<alert_relabel_configs>` sections
+                        of Prometheus configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
+                      properties:
+                        action:
+                          default: replace
+                          description: Action to perform based on regex matching.
+                            Default is 'replace'
+                          enum:
+                          - drop
+                          - hashmod
+                          - keep
+                          - labeldrop
+                          - labelkeep
+                          - labelmap
+                          - replace
+                          type: string
+                        modulus:
+                          description: Modulus to take of the hash of the source label
+                            values.
+                          format: int64
+                          type: integer
+                        regex:
+                          default: (.*)
+                          description: Regular expression against which the extracted
+                            value is matched. Default is '(.*)'
+                          type: string
+                        replacement:
+                          default: $1
+                          description: Replacement value against which a regex replace
+                            is performed if the regular expression matches. Regex
+                            capture groups are available. Default is '$1'
+                          type: string
+                        separator:
+                          default: ;
+                          description: Separator placed between concatenated source
+                            label values. default is ';'.
+                          type: string
+                        sourceLabels:
+                          description: The source labels select values from existing
+                            labels. Their content is concatenated using the configured
+                            separator and matched against the configured regular expression
+                            for the replace, keep, and drop actions.
+                          items:
+                            type: string
+                          type: array
+                        targetLabel:
+                          description: Label to which the resulting value is written
+                            in a replace action. It is mandatory for replace actions.
+                            Regex capture groups are available.
+                          type: string
+                      required:
+                      - sourceLabels
+                      type: object
+                    type: array
+                required:
+                - endpoints
+                type: object
+              evaluationInterval:
+                default: 1m
+                description: Interval on how frequently to evaluate rules.
+                pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                type: string
+              overrides:
+                additionalProperties:
+                  description: RulerOverrides defines the overrides applied per-tenant.
+                  properties:
+                    alertmanager:
+                      description: AlertManagerOverrides defines the overrides to
+                        apply to the alertmanager config.
+                      properties:
+                        client:
+                          description: Client configuration for reaching the alertmanager
+                            endpoint.
+                          properties:
+                            basicAuth:
+                              description: Basic authentication configuration for
+                                reaching the alertmanager endpoints.
+                              properties:
+                                password:
+                                  description: The subject's password for the basic
+                                    authentication configuration.
+                                  type: string
+                                username:
+                                  description: The subject's username for the basic
+                                    authentication configuration.
+                                  type: string
+                              type: object
+                            headerAuth:
+                              description: Header authentication configuration for
+                                reaching the alertmanager endpoints.
+                              properties:
+                                credentials:
+                                  description: The credentials for the header authentication
+                                    configuration.
+                                  type: string
+                                credentialsFile:
+                                  description: The credentials file for the Header
+                                    authentication configuration. It is mutually exclusive
+                                    with `credentials`.
+                                  type: string
+                                type:
+                                  description: The authentication type for the header
+                                    authentication configuration.
+                                  type: string
+                              type: object
+                            tls:
+                              description: TLS configuration for reaching the alertmanager
+                                endpoints.
+                              properties:
+                                caPath:
+                                  description: The CA certificate file path for the
+                                    TLS configuration.
+                                  type: string
+                                certPath:
+                                  description: The client-side certificate file path
+                                    for the TLS configuration.
+                                  type: string
+                                keyPath:
+                                  description: The client-side key file path for the
+                                    TLS configuration.
+                                  type: string
+                                serverName:
+                                  description: The server name to validate in the
+                                    alertmanager server certificates.
+                                  type: string
+                              type: object
+                          type: object
+                        discovery:
+                          description: Defines the configuration for DNS-based discovery
+                            of AlertManager hosts.
+                          properties:
+                            enableSRV:
+                              description: Use DNS SRV records to discover Alertmanager
+                                hosts.
+                              type: boolean
+                            refreshInterval:
+                              default: 1m
+                              description: How long to wait between refreshing DNS
+                                resolutions of Alertmanager hosts.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                          type: object
+                        enableV2:
+                          description: If enabled, then requests to Alertmanager use
+                            the v2 API.
+                          type: boolean
+                        endpoints:
+                          description: List of AlertManager URLs to send notifications
+                            to. Each Alertmanager URL is treated as a separate group
+                            in the configuration. Multiple Alertmanagers in HA per
+                            group can be supported by using DNS resolution (See EnableDNSDiscovery).
+                          items:
+                            type: string
+                          type: array
+                        externalLabels:
+                          additionalProperties:
+                            type: string
+                          description: Additional labels to add to all alerts.
+                          type: object
+                        externalUrl:
+                          description: URL for alerts return path.
+                          type: string
+                        notificationQueue:
+                          description: Defines the configuration for the notification
+                            queue to AlertManager hosts.
+                          properties:
+                            capacity:
+                              default: 10000
+                              description: Capacity of the queue for notifications
+                                to be sent to the Alertmanager.
+                              format: int32
+                              type: integer
+                            forGracePeriod:
+                              default: 10m
+                              description: Minimum duration between alert and restored
+                                "for" state. This is maintained only for alerts with
+                                configured "for" time greater than the grace period.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                            forOutageTolerance:
+                              default: 1h
+                              description: Max time to tolerate outage for restoring
+                                "for" state of alert.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                            resendDelay:
+                              default: 1m
+                              description: Minimum amount of time to wait before resending
+                                an alert to Alertmanager.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                            timeout:
+                              default: 10s
+                              description: HTTP timeout duration when sending notifications
+                                to the Alertmanager.
+                              pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                              type: string
+                          type: object
+                        relabelConfigs:
+                          description: List of alert relabel configurations.
+                          items:
+                            description: 'RelabelConfig allows dynamic rewriting of
+                              the label set, being applied to samples before ingestion.
+                              It defines `<metric_relabel_configs>` and `<alert_relabel_configs>`
+                              sections of Prometheus configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
+                            properties:
+                              action:
+                                default: replace
+                                description: Action to perform based on regex matching.
+                                  Default is 'replace'
+                                enum:
+                                - drop
+                                - hashmod
+                                - keep
+                                - labeldrop
+                                - labelkeep
+                                - labelmap
+                                - replace
+                                type: string
+                              modulus:
+                                description: Modulus to take of the hash of the source
+                                  label values.
+                                format: int64
+                                type: integer
+                              regex:
+                                default: (.*)
+                                description: Regular expression against which the
+                                  extracted value is matched. Default is '(.*)'
+                                type: string
+                              replacement:
+                                default: $1
+                                description: Replacement value against which a regex
+                                  replace is performed if the regular expression matches.
+                                  Regex capture groups are available. Default is '$1'
+                                type: string
+                              separator:
+                                default: ;
+                                description: Separator placed between concatenated
+                                  source label values. default is ';'.
+                                type: string
+                              sourceLabels:
+                                description: The source labels select values from
+                                  existing labels. Their content is concatenated using
+                                  the configured separator and matched against the
+                                  configured regular expression for the replace, keep,
+                                  and drop actions.
+                                items:
+                                  type: string
+                                type: array
+                              targetLabel:
+                                description: Label to which the resulting value is
+                                  written in a replace action. It is mandatory for
+                                  replace actions. Regex capture groups are available.
+                                type: string
+                            required:
+                            - sourceLabels
+                            type: object
+                          type: array
+                      required:
+                      - endpoints
+                      type: object
+                  type: object
+                description: Overrides defines the config overrides to be applied
+                  per-tenant.
+                type: object
+              pollInterval:
+                default: 1m
+                description: Interval on how frequently to poll for new rule definitions.
+                pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                type: string
+              remoteWrite:
+                description: Defines a remote write endpoint to write recording rule
+                  metrics.
+                properties:
+                  client:
+                    description: Defines the configuration for remote write client.
+                    properties:
+                      additionalHeaders:
+                        additionalProperties:
+                          type: string
+                        description: Additional HTTP headers to be sent along with
+                          each remote write request.
+                        type: object
+                      authorization:
+                        description: Type of authorzation to use to access the remote
+                          write endpoint
+                        enum:
+                        - basic
+                        - header
+                        type: string
+                      authorizationSecretName:
+                        description: Name of a secret in the namespace configured
+                          for authorization secrets.
+                        type: string
+                      followRedirects:
+                        default: true
+                        description: Configure whether HTTP requests follow HTTP 3xx
+                          redirects.
+                        type: boolean
+                      name:
+                        description: Name of the remote write config, which if specified
+                          must be unique among remote write configs.
+                        type: string
+                      proxyUrl:
+                        description: Optional proxy URL.
+                        type: string
+                      relabelConfigs:
+                        description: List of remote write relabel configurations.
+                        items:
+                          description: 'RelabelConfig allows dynamic rewriting of
+                            the label set, being applied to samples before ingestion.
+                            It defines `<metric_relabel_configs>` and `<alert_relabel_configs>`
+                            sections of Prometheus configuration. More info: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs'
+                          properties:
+                            action:
+                              default: replace
+                              description: Action to perform based on regex matching.
+                                Default is 'replace'
+                              enum:
+                              - drop
+                              - hashmod
+                              - keep
+                              - labeldrop
+                              - labelkeep
+                              - labelmap
+                              - replace
+                              type: string
+                            modulus:
+                              description: Modulus to take of the hash of the source
+                                label values.
+                              format: int64
+                              type: integer
+                            regex:
+                              default: (.*)
+                              description: Regular expression against which the extracted
+                                value is matched. Default is '(.*)'
+                              type: string
+                            replacement:
+                              default: $1
+                              description: Replacement value against which a regex
+                                replace is performed if the regular expression matches.
+                                Regex capture groups are available. Default is '$1'
+                              type: string
+                            separator:
+                              default: ;
+                              description: Separator placed between concatenated source
+                                label values. default is ';'.
+                              type: string
+                            sourceLabels:
+                              description: The source labels select values from existing
+                                labels. Their content is concatenated using the configured
+                                separator and matched against the configured regular
+                                expression for the replace, keep, and drop actions.
+                              items:
+                                type: string
+                              type: array
+                            targetLabel:
+                              description: Label to which the resulting value is written
+                                in a replace action. It is mandatory for replace actions.
+                                Regex capture groups are available.
+                              type: string
+                          required:
+                          - sourceLabels
+                          type: object
+                        type: array
+                      timeout:
+                        default: 30s
+                        description: Timeout for requests to the remote write endpoint.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                      url:
+                        description: The URL of the endpoint to send samples to.
+                        type: string
+                    required:
+                    - authorization
+                    - authorizationSecretName
+                    - name
+                    - url
+                    type: object
+                  enabled:
+                    description: Enable remote-write functionality.
+                    type: boolean
+                  queue:
+                    description: Defines the configuration for remote write client
+                      queue.
+                    properties:
+                      batchSendDeadline:
+                        default: 5s
+                        description: Maximum time a sample will wait in buffer.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                      capacity:
+                        default: 2500
+                        description: Number of samples to buffer per shard before
+                          we block reading of more
+                        format: int32
+                        type: integer
+                      maxBackOffPeriod:
+                        default: 100ms
+                        description: Maximum retry delay.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                      maxSamplesPerSend:
+                        default: 500
+                        description: Maximum number of samples per send.
+                        format: int32
+                        type: integer
+                      maxShards:
+                        default: 200
+                        description: Maximum number of shards, i.e. amount of concurrency.
+                        format: int32
+                        type: integer
+                      minBackOffPeriod:
+                        default: 30ms
+                        description: Initial retry delay. Gets doubled for every retry.
+                        pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                        type: string
+                      minShards:
+                        default: 200
+                        description: Minimum number of shards, i.e. amount of concurrency.
+                        format: int32
+                        type: integer
+                    type: object
+                  refreshPeriod:
+                    default: 10s
+                    description: Minimum period to wait between refreshing remote-write
+                      reconfigurations.
+                    pattern: ((([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?|0)
+                    type: string
+                type: object
+            type: object
+          status:
+            description: RulerConfigStatus defines the observed state of RulerConfig
+            properties:
+              conditions:
+                description: Conditions of the RulerConfig health.
+                items:
+                  description: "Condition contains details for one aspect of the current
+                    state of this API Resource. --- This struct is intended for direct
+                    use as an array at the field path .status.conditions.  For example,
+                    \n type FooStatus struct{ // Represents the observations of a
+                    foo's current state. // Known .status.conditions.type are: \"Available\",
+                    \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
+                    // +listType=map // +listMapKey=type Conditions []metav1.Condition
+                    `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
+                    protobuf:\"bytes,1,rep,name=conditions\"` \n // other fields }"
+                  properties:
+                    lastTransitionTime:
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another. This should be when
+                        the underlying condition changed.  If that is not known, then
+                        using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: message is a human readable message indicating
+                        details about the transition. This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: observedGeneration represents the .metadata.generation
+                        that the condition was set based upon. For instance, if .metadata.generation
+                        is currently 12, but the .status.conditions[x].observedGeneration
+                        is 9, the condition is out of date with respect to the current
+                        state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition. Producers
+                        of specific condition types may define expected values and
+                        meanings for this field, and whether the values are considered
+                        a guaranteed API. The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                        --- Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: false
+    storage: false
     subresources:
       status: {}
 status:

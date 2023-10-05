@@ -5,6 +5,7 @@ apiVersion: monitoring.grafana.com/v1alpha1
 kind: PodLogs
 metadata:
   name: {{ include "loki.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
   {{- with .annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -41,7 +42,7 @@ spec:
       sourceLabels:
         - __meta_kubernetes_pod_container_name
       targetLabel: container
-    - replacement: "{{ include "loki.fullname" $ }}"
+    - replacement: "{{ include "loki.clusterLabel" $ }}"
       targetLabel: cluster
     {{- with .relabelings }}
     {{- toYaml . | nindent 4 }}

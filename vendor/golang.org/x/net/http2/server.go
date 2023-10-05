@@ -441,7 +441,7 @@ func (s *Server) ServeConn(c net.Conn, opts *ServeConnOpts) {
 	if s.NewWriteScheduler != nil {
 		sc.writeSched = s.NewWriteScheduler()
 	} else {
-		sc.writeSched = NewPriorityWriteScheduler(nil)
+		sc.writeSched = newRoundRobinWriteScheduler()
 	}
 
 	// These start at the RFC-specified defaults. If there is a higher
@@ -843,8 +843,13 @@ type frameWriteResult struct {
 // and then reports when it's done.
 // At most one goroutine can be running writeFrameAsync at a time per
 // serverConn.
-func (sc *serverConn) writeFrameAsync(wr FrameWriteRequest) {
-	err := wr.write.writeFrame(sc)
+func (sc *serverConn) writeFrameAsync(wr FrameWriteRequest, wd *writeData) {
+	var err error
+	if wd == nil {
+		err = wr.write.writeFrame(sc)
+	} else {
+		err = sc.framer.endWrite()
+	}
 	sc.wroteFrameCh <- frameWriteResult{wr: wr, err: err}
 }
 
@@ -1251,9 +1256,16 @@ func (sc *serverConn) startFrameWrite(wr FrameWriteRequest) {
 		sc.writingFrameAsync = false
 		err := wr.write.writeFrame(sc)
 		sc.wroteFrame(frameWriteResult{wr: wr, err: err})
+	} else if wd, ok := wr.write.(*writeData); ok {
+		// Encode the frame in the serve goroutine, to ensure we don't have
+		// any lingering asynchronous references to data passed to Write.
+		// See https://go.dev/issue/58446.
+		sc.framer.startWriteDataPadded(wd.streamID, wd.endStream, wd.p, nil)
+		sc.writingFrameAsync = true
+		go sc.writeFrameAsync(wr, wd)
 	} else {
 		sc.writingFrameAsync = true
-		go sc.writeFrameAsync(wr)
+		go sc.writeFrameAsync(wr, nil)
 	}
 }
 
@@ -1810,15 +1822,18 @@ func (sc *serverConn) processData(f *DataFrame) error {
 		}
 
 		if len(data) > 0 {
+			st.bodyBytes += int64(len(data))
 			wrote, err := st.body.Write(data)
 			if err != nil {
+				// The handler has closed the request body.
+				// Return the connection-level flow control for the discarded data,
+				// but not the stream-level flow control.
 				sc.sendWindowUpdate(nil, int(f.Length)-wrote)
-				return sc.countError("body_write_err", streamError(id, ErrCodeStreamClosed))
+				return nil
 			}
 			if wrote != len(data) {
 				panic("internal error: bad Writer")
 			}
-			st.bodyBytes += int64(len(data))
 		}
 
 		// Return any padded flow control now, since we won't
@@ -2192,7 +2207,7 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 		tlsState = sc.tlsState
 	}
 
-	needsContinue := rp.header.Get("Expect") == "100-continue"
+	needsContinue := httpguts.HeaderValuesContainsToken(rp.header["Expect"], "100-continue")
 	if needsContinue {
 		rp.header.Del("Expect")
 	}
@@ -2414,7 +2429,7 @@ type requestBody struct {
 	conn          *serverConn
 	closeOnce     sync.Once // for use by Close only
 	sawEOF        bool      // for use by Read only
-	pipe          *pipe     // non-nil if we have a HTTP entity message body
+	pipe          *pipe     // non-nil if we have an HTTP entity message body
 	needsContinue bool      // need to send a 100-continue
 }
 
@@ -2554,7 +2569,8 @@ func (rws *responseWriterState) writeChunk(p []byte) (n int, err error) {
 				clen = ""
 			}
 		}
-		if clen == "" && rws.handlerDone && bodyAllowedForStatus(rws.status) && (len(p) > 0 || !isHeadResp) {
+		_, hasContentLength := rws.snapHeader["Content-Length"]
+		if !hasContentLength && clen == "" && rws.handlerDone && bodyAllowedForStatus(rws.status) && (len(p) > 0 || !isHeadResp) {
 			clen = strconv.Itoa(len(p))
 		}
 		_, hasContentType := rws.snapHeader["Content-Type"]
@@ -2759,7 +2775,7 @@ func (w *responseWriter) FlushError() error {
 		err = rws.bw.Flush()
 	} else {
 		// The bufio.Writer won't call chunkWriter.Write
-		// (writeChunk with zero bytes, so we have to do it
+		// (writeChunk with zero bytes), so we have to do it
 		// ourselves to force the HTTP response header and/or
 		// final DATA frame (with END_STREAM) to be sent.
 		_, err = chunkWriter{rws}.Write(nil)

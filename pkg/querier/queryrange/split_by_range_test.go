@@ -9,15 +9,15 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 func Test_RangeVectorSplit(t *testing.T) {
-	srm := NewSplitByRangeMiddleware(log.NewNopLogger(), fakeLimits{
+	srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
 		maxSeries:    10000,
 		queryTimeout: time.Second,
 		splits: map[string]time.Duration{

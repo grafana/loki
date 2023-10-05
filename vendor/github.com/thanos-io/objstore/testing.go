@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"sort"
 	"strings"
@@ -16,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/testutil"
+	"github.com/efficientgo/core/testutil"
 )
 
 func CreateTemporaryTestBucketName(t testing.TB) string {
@@ -107,7 +106,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rc1, err := bkt.Get(ctx, "id1/obj_1.some")
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rc1.Close()) }()
-	content, err := ioutil.ReadAll(rc1)
+	content, err := io.ReadAll(rc1)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "@test-data@", string(content))
 
@@ -119,7 +118,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rc2, err := bkt.GetRange(ctx, "id1/obj_1.some", 1, 3)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rc2.Close()) }()
-	content, err = ioutil.ReadAll(rc2)
+	content, err = io.ReadAll(rc2)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "tes", string(content))
 
@@ -127,7 +126,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rcUnspecifiedLen, err := bkt.GetRange(ctx, "id1/obj_1.some", 1, -1)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rcUnspecifiedLen.Close()) }()
-	content, err = ioutil.ReadAll(rcUnspecifiedLen)
+	content, err = io.ReadAll(rcUnspecifiedLen)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "test-data@", string(content))
 
@@ -142,7 +141,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rcLength, err := bkt.GetRange(ctx, "id1/obj_1.some", 3, 9999)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rcLength.Close()) }()
-	content, err = ioutil.ReadAll(rcLength)
+	content, err = io.ReadAll(rcLength)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "st-data@", string(content))
 
@@ -308,4 +307,8 @@ func (d *delayingBucket) Close() error {
 func (d *delayingBucket) IsObjNotFoundErr(err error) bool {
 	// No delay for a local operation.
 	return d.bkt.IsObjNotFoundErr(err)
+}
+
+func (d *delayingBucket) IsAccessDeniedErr(err error) bool {
+	return d.bkt.IsAccessDeniedErr(err)
 }

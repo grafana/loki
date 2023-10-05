@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -20,7 +21,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/tenant"
@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -81,7 +82,8 @@ type Frontend struct {
 type frontendRequest struct {
 	queryID      uint64
 	request      *httpgrpc.HTTPRequest
-	userID       string
+	tenantID     string
+	actor        []string
 	statsEnabled bool
 
 	cancel context.CancelFunc
@@ -145,7 +147,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	return f, nil
 }
 
-func (f *Frontend) starting(ctx context.Context) error {
+func (f *Frontend) starting(_ context.Context) error {
 	// Instead of re-using `ctx` from the frontend service, `schedulerWorkers`
 	// needs to use their own service context, because we want to control the
 	// stopping process in the `stopping` function of the frontend. If we would
@@ -188,7 +190,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	if err != nil {
 		return nil, err
 	}
-	userID := tenant.JoinTenantIDs(tenantIDs)
+	tenantID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
@@ -205,7 +207,8 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	freq := &frontendRequest{
 		queryID:      f.lastQueryID.Inc(),
 		request:      req,
-		userID:       userID,
+		tenantID:     tenantID,
+		actor:        httpreq.ExtractActorPath(ctx),
 		statsEnabled: stats.IsEnabled(ctx),
 
 		cancel: cancel,
@@ -278,7 +281,7 @@ func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryRes
 	// It is possible that some old response belonging to different user was received, if frontend has restarted.
 	// To avoid leaking query results between users, we verify the user here.
 	// To avoid mixing results from different queries, we randomize queryID counter on start.
-	if req != nil && req.userID == userID {
+	if req != nil && req.tenantID == userID {
 		select {
 		case req.response <- qrReq:
 			// Should always be possible, unless QueryResult is called multiple times with the same queryID.

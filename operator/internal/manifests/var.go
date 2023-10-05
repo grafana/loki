@@ -3,13 +3,16 @@ package manifests
 import (
 	"fmt"
 	"path"
+	"time"
 
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 const (
@@ -18,6 +21,9 @@ const (
 	internalHTTPPort = 3101
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
+
+	gossipInstanceAddrEnvVarName     = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarTemplate = "${" + gossipInstanceAddrEnvVarName + "}"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
@@ -39,6 +45,7 @@ const (
 	configVolumeName       = "config"
 	rulesStorageVolumeName = "rules"
 	storageVolumeName      = "storage"
+	rulePartsSeparator     = "___"
 
 	walDirectory          = "/tmp/wal"
 	dataDirectory         = "/tmp/loki"
@@ -52,7 +59,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.7.3"
+	DefaultContainerImage = "docker.io/grafana/loki:2.9.1"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -91,16 +98,34 @@ const (
 	httpTLSDir = "/var/run/tls/http"
 	// grpcTLSDir is the path that is mounted from the secret for TLS
 	grpcTLSDir = "/var/run/tls/grpc"
+	// tenantCAsDir is the path that is mounted from the configmaps for mTLS
+	tenantCAsDir = "/var/run/tenants-ca"
 	// LokiStackCABundleDir is the path that is mounted from the configmap for TLS
 	caBundleDir = "/var/run/ca"
 	// caFile is the file name of the certificate authority file
 	caFile = "service-ca.crt"
 
-	kubernetesNodeOSLabel = "kubernetes.io/os"
-	kubernetesNodeOSLinux = "linux"
+	kubernetesNodeOSLabel       = "kubernetes.io/os"
+	kubernetesNodeOSLinux       = "linux"
+	kubernetesNodeHostnameLabel = "kubernetes.io/hostname"
+	kubernetesComponentLabel    = "app.kubernetes.io/component"
+	kubernetesInstanceLabel     = "app.kubernetes.io/instance"
+)
+
+const (
+	// lokiDefaultQueryTimeout contains the default query timeout. It should match the value mentioned in the CRD
+	// definition and also the default in the `sizes.go`.
+	lokiDefaultQueryTimeout    = 3 * time.Minute
+	lokiDefaultHTTPIdleTimeout = 30 * time.Second
+	lokiQueryWriteDuration     = 1 * time.Minute
+
+	gatewayReadDuration  = 30 * time.Second
+	gatewayWriteDuration = 2 * time.Minute
 )
 
 var (
+	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
+
 	defaultConfigMapMode = int32(420)
 	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
 )
@@ -115,9 +140,16 @@ func commonAnnotations(configHash, rotationRequiredAt string) map[string]string 
 func commonLabels(stackName string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "lokistack",
-		"app.kubernetes.io/instance":   stackName,
+		kubernetesInstanceLabel:        stackName,
 		"app.kubernetes.io/managed-by": "lokistack-controller",
 		"app.kubernetes.io/created-by": "lokistack-controller",
+	}
+}
+
+func componentInstanceLabels(component string, stackName string) map[string]string {
+	return map[string]string{
+		kubernetesInstanceLabel:  stackName,
+		kubernetesComponentLabel: component,
 	}
 }
 
@@ -132,7 +164,7 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {
 	return labels.Merge(commonLabels(stackName), map[string]string{
-		"app.kubernetes.io/component": component,
+		kubernetesComponentLabel: component,
 	})
 }
 
@@ -178,9 +210,14 @@ func RulerName(stackName string) string {
 	return fmt.Sprintf("%s-ruler", stackName)
 }
 
-// RulesConfigMapName is the name of the alerting rules configmap
+// RulesConfigMapName is the name of the alerting/recording rules configmap
 func RulesConfigMapName(stackName string) string {
 	return fmt.Sprintf("%s-rules", stackName)
+}
+
+// RulesStorageVolumeName is the name of the rules volume
+func RulesStorageVolumeName() string {
+	return rulesStorageVolumeName
 }
 
 // GatewayName is the name of the lokiStack-gateway statefulset
@@ -243,6 +280,18 @@ func gatewayUpstreamHTTPTLSCert() string {
 
 func gatewayUpstreamHTTPTLSKey() string {
 	return path.Join(gatewayUpstreamHTTPTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func tenantCAVolumeName(tenantName string) string {
+	return fmt.Sprintf("%s-ca-bundle", tenantName)
+}
+
+func tenantCADir(tennantName string) string {
+	return path.Join(tenantCAsDir, tennantName)
+}
+
+func TenantCAPath(tennantName, key string) string {
+	return path.Join(tenantCAsDir, tennantName, key)
 }
 
 func gatewayClientSecretName(stackName string) string {
@@ -447,26 +496,57 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 	}
 }
 
-func defaultAffinity(enableNodeAffinity bool) *corev1.Affinity {
+// configureAffinity returns an Affinity struture that can be used directly
+// in a Deployment/StatefulSet. Parameters will affected configuration of the
+// different fields in Affinity (NodeAffinity, PodAffinity, PodAntiAffinity).
+func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool, cSpec *lokiv1.LokiComponentSpec) *corev1.Affinity {
+	affinity := &corev1.Affinity{
+		NodeAffinity:    defaultNodeAffinity(enableNodeAffinity),
+		PodAntiAffinity: defaultPodAntiAffinity(componentLabel, stackName),
+	}
+	if cSpec.PodAntiAffinity != nil {
+		affinity.PodAntiAffinity = cSpec.PodAntiAffinity
+	}
+	return affinity
+}
+
+// defaultNodeAffinity if enabled will require pods to run on Linux nodes
+func defaultNodeAffinity(enableNodeAffinity bool) *corev1.NodeAffinity {
 	if !enableNodeAffinity {
 		return nil
 	}
 
-	return &corev1.Affinity{
-		NodeAffinity: &corev1.NodeAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-				NodeSelectorTerms: []corev1.NodeSelectorTerm{
-					{
-						MatchExpressions: []corev1.NodeSelectorRequirement{
-							{
-								Key:      kubernetesNodeOSLabel,
-								Operator: corev1.NodeSelectorOpIn,
-								Values: []string{
-									kubernetesNodeOSLinux,
-								},
+	return &corev1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+			NodeSelectorTerms: []corev1.NodeSelectorTerm{
+				{
+					MatchExpressions: []corev1.NodeSelectorRequirement{
+						{
+							Key:      kubernetesNodeOSLabel,
+							Operator: corev1.NodeSelectorOpIn,
+							Values: []string{
+								kubernetesNodeOSLinux,
 							},
 						},
 					},
+				},
+			},
+		},
+	}
+}
+
+// defaultPodAntiAffinity for components in podAntiAffinityComponents will
+// configure pods, of a LokiStack, to preferably not run on the same node
+func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAffinity {
+	return &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+			{
+				Weight: 100,
+				PodAffinityTerm: corev1.PodAffinityTerm{
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: componentInstanceLabels(componentLabel, stackName),
+					},
+					TopologyKey: kubernetesNodeHostnameLabel,
 				},
 			},
 		},
@@ -504,27 +584,4 @@ func lokiReadinessProbe() *corev1.Probe {
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
 	}
-}
-
-func containerSecurityContext() *corev1.SecurityContext {
-	return &corev1.SecurityContext{
-		AllowPrivilegeEscalation: pointer.Bool(false),
-		Capabilities: &corev1.Capabilities{
-			Drop: []corev1.Capability{"ALL"},
-		},
-	}
-}
-
-func podSecurityContext(withSeccompProfile bool) *corev1.PodSecurityContext {
-	context := corev1.PodSecurityContext{
-		RunAsNonRoot: pointer.Bool(true),
-	}
-
-	if withSeccompProfile {
-		context.SeccompProfile = &corev1.SeccompProfile{
-			Type: corev1.SeccompProfileTypeRuntimeDefault,
-		}
-	}
-
-	return &context
 }

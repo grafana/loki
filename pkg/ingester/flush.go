@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/dskit/tenant"
@@ -19,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
-	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -48,10 +48,18 @@ func (i *Ingester) InitFlushQueues() {
 	}
 }
 
+// Flush implements ring.FlushTransferer
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
 	i.flush(true)
+}
+
+// TransferOut implements ring.FlushTransferer
+// Noop implemenetation because ingesters have a WAL now that does not require transferring chunks any more.
+// We return ErrTransferDisabled to indicate that we don't support transfers, and therefore we may flush on shutdown if configured to do so.
+func (i *Ingester) TransferOut(_ context.Context) error {
+	return ring.ErrTransferDisabled
 }
 
 func (i *Ingester) flush(mayRemoveStreams bool) {
@@ -282,7 +290,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 	// It's required by historical index stores so we keep it for now.
 	labelsBuilder := labels.NewBuilder(labelPairs)
 	labelsBuilder.Set(nameLabel, logsValue)
-	metric := labelsBuilder.Labels(nil)
+	metric := labelsBuilder.Labels()
 
 	sizePerTenant := i.metrics.chunkSizePerTenant.WithLabelValues(userID)
 	countPerTenant := i.metrics.chunksPerTenant.WithLabelValues(userID)
@@ -292,7 +300,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			return fmt.Errorf("chunk close for flushing: %w", err)
 		}
 
-		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
+		firstTime, lastTime := util.RoundToMilliseconds(c.chunk.Bounds())
 		ch := chunk.NewChunk(
 			userID, fp, metric,
 			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),

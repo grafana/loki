@@ -9,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -26,8 +25,6 @@ type Cache interface {
 
 // Config for building Caches.
 type Config struct {
-	EnableFifoCache bool `yaml:"enable_fifocache"`
-
 	DefaultValidity time.Duration `yaml:"default_validity"`
 
 	Background     BackgroundConfig      `yaml:"background"`
@@ -35,7 +32,6 @@ type Config struct {
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
 	EmbeddedCache  EmbeddedCacheConfig   `yaml:"embedded_cache"`
-	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // deprecated
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
@@ -55,18 +51,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.Memcache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
-	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.EmbeddedCache.RegisterFlagsWithPrefix(prefix, description, f)
 	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
 	f.DurationVar(&cfg.DefaultValidity, prefix+"default-validity", time.Hour, description+"The default validity of entries for caches unless overridden.")
-	f.BoolVar(&cfg.EnableFifoCache, prefix+"cache.enable-fifocache", false, description+"(deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled for the chunks & query results cache if no other cache is configured).")
 
 	cfg.Prefix = prefix
-}
-
-func (cfg *Config) Validate() error {
-	return cfg.Fifocache.Validate()
 }
 
 // IsMemcacheSet returns whether a non empty Memcache config is set or not, based on the configured
@@ -88,9 +78,17 @@ func IsEmbeddedCacheSet(cfg Config) bool {
 	return cfg.EmbeddedCache.Enabled
 }
 
-// IsCacheConfigured determines if memcached, redis, or embedded-cache have been configured
+func IsSpecificImplementationSet(cfg Config) bool {
+	return cfg.Cache != nil
+}
+
+// IsCacheConfigured determines if either of the following caches is configured:
+// - memcached
+// - redis
+// - embedded-cache
+// - specific cache implementation
 func IsCacheConfigured(cfg Config) bool {
-	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsEmbeddedCacheSet(cfg)
+	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsEmbeddedCacheSet(cfg) || IsSpecificImplementationSet(cfg)
 }
 
 // New creates a new Cache using Config.
@@ -103,31 +101,12 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	}
 
 	var caches []Cache
-
-	// Currently fifocache can be enabled in two ways.
-	// 1. cfg.EnableFifocache (old deprecated way)
-	// 2. cfg.EmbeddedCache.Enabled=true and cfg.EmbeddedCache.Distributed=false (new way)
-	if cfg.EnableFifoCache || cfg.EmbeddedCache.IsEnabled() {
-		var fifocfg FifoCacheConfig
-
-		if cfg.EnableFifoCache {
-			level.Warn(logger).Log("msg", "fifocache config is deprecated. use embedded-cache instead")
-			fifocfg = cfg.Fifocache
+	if cfg.EmbeddedCache.IsEnabled() {
+		if cfg.EmbeddedCache.TTL == 0 && cfg.DefaultValidity != 0 {
+			cfg.EmbeddedCache.TTL = cfg.DefaultValidity
 		}
 
-		if cfg.EmbeddedCache.IsEnabled() {
-			fifocfg = FifoCacheConfig{
-				MaxSizeBytes:  fmt.Sprint(cfg.EmbeddedCache.MaxSizeMB * 1e6),
-				TTL:           cfg.EmbeddedCache.TTL,
-				PurgeInterval: cfg.EmbeddedCache.PurgeInterval,
-			}
-		}
-
-		if fifocfg.TTL == 0 && cfg.DefaultValidity != 0 {
-			fifocfg.TTL = cfg.DefaultValidity
-		}
-
-		if cache := NewFifoCache(cfg.Prefix+"embedded-cache", fifocfg, reg, logger, cacheType); cache != nil {
+		if cache := NewEmbeddedCache(cfg.Prefix+"embedded-cache", cfg.EmbeddedCache, reg, logger, cacheType); cache != nil {
 			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, reg)))
 		}
 	}

@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/dskit/middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/middleware"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
 )

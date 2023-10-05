@@ -1,10 +1,10 @@
-FROM golang:1.19.5 as build
+FROM golang:1.20.7 as build
 
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki
 
-FROM alpine:3.16.2
+FROM alpine:3.18.3
 
 RUN apk add --no-cache ca-certificates libcap
 
@@ -16,9 +16,6 @@ RUN addgroup -g 10001 -S loki && \
 RUN mkdir -p /loki/rules && \
     mkdir -p /loki/rules-temp && \
     chown -R loki:loki /etc/loki /loki
-
-# See https://github.com/grafana/loki/issues/1928
-RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
 
 USER 10001
 EXPOSE 3100

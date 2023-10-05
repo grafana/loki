@@ -142,7 +142,7 @@ spec:
     secret:
       name: test
       type: s3
-  storageClassName: gp2
+  storageClassName: gp3-csi
   retention: 
     deleteDelay: 
   limits:
@@ -202,7 +202,7 @@ retention_stream which is only applied to chunks matching the selector
 
 This can be confiured at a global level(applied to all tenants) or on a per-tenant basis.
 
-The API confugures RetentionLimit in the same way as configuring IngestionLimit/QueryLimit. During The Lokistack resource reconciliation, the configuration from the `global` section is added into the `limits_config` sextion of the loki-config.yaml and the configuration from the multiple `tenants` is provided in the running_config file in the overrides section. 
+The API configures RetentionLimit in the same way as configuring IngestionLimit/QueryLimit. During The Lokistack resource reconciliation, the configuration from the `global` section is added into the `limits_config` sextion of the loki-config.yaml and the configuration from the multiple `tenants` is provided in the running_config file in the overrides section. 
 
 
 Once the configuration is read, the following rules are applied to decide the retention period

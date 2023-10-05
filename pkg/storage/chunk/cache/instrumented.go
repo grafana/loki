@@ -3,12 +3,12 @@ package cache
 import (
 	"context"
 
+	instr "github.com/grafana/dskit/instrument"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	instr "github.com/weaveworks/common/instrument"
 )
 
 // Instrument returns an instrumented cache.

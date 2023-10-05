@@ -1,3 +1,9 @@
+variable "name" {
+  type        = string
+  description = "Name used for created AWS resources."
+  default     = "lambda_promtail"
+}
+
 variable "write_address" {
   type        = string
   description = "This is the Loki Write API compatible endpoint that you want to write logs to, either promtail or Loki."
@@ -5,13 +11,13 @@ variable "write_address" {
 }
 
 variable "bucket_names" {
-  type        = list(string)
+  type        = set(string)
   description = "List of S3 bucket names to create Event Notifications for."
   default     = []
 }
 
 variable "log_group_names" {
-  type        = list(string)
+  type        = set(string)
   description = "List of CloudWatch Log Group names to create Subscription Filters for."
   default     = []
 }
@@ -66,6 +72,12 @@ variable "extra_labels" {
   default     = ""
 }
 
+variable "omit_extra_labels_prefix" {
+  type        = bool
+  description = "Whether or not to omit the prefix `__extra_` from extra labels defined in the variable `extra_labels`."
+  default     = false
+}
+
 variable "batch_size" {
   type        = string
   description = "Determines when to flush the batch of logs (bytes)."
@@ -86,7 +98,7 @@ variable "lambda_vpc_security_groups" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "kms key arn for encryp env vars."
+  description = "kms key arn for encrypting env vars."
   default     = ""
 }
 
@@ -97,7 +109,19 @@ variable "skip_tls_verify" {
 }
 
 variable "kinesis_stream_name" {
-  type        = list(string)
+  type        = set(string)
   description = "Enter kinesis name if kinesis stream is configured as event source in lambda."
   default     = []
+}
+
+variable "sqs_enabled" {
+  type        = bool
+  description = "Enables sending S3 logs to an SQS queue which will trigger lambda-promtail, unsuccessfully processed message are sent to a dead-letter-queue"
+  default     = false
+}
+
+variable "sqs_queue_name_prefix" {
+  type        = string
+  description = "Name prefix for SQS queues"
+  default     = "s3-to-lambda-promtail"
 }

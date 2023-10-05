@@ -2,13 +2,18 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 func TestChunkTableFor(t *testing.T) {
@@ -421,6 +426,15 @@ func TestPeriodConfig_Validate(t *testing.T) {
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
+		{
+			desc: "v13",
+			in: PeriodConfig{
+				Schema:      "v13",
+				RowShards:   16,
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			if tc.err == "" {
@@ -548,6 +562,19 @@ func TestVersionAsInt(t *testing.T) {
 				},
 			},
 			expected: int(12),
+		},
+		{
+			name: "v13",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v13",
+						RowShards: 16,
+					},
+				},
+			},
+			expected: int(13),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -761,6 +788,7 @@ func TestTableRanges_TableInRange(t *testing.T) {
 			End:   10,
 			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
 				Prefix: "index_",
+				Period: 24 * time.Hour,
 			}},
 		},
 		TableRange{
@@ -768,36 +796,289 @@ func TestTableRanges_TableInRange(t *testing.T) {
 			End:   20,
 			PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
 				Prefix: "index_foo_",
+				Period: 24 * time.Hour,
 			}},
 		},
 	}
 
-	for i, tc := range []struct {
+	for _, tc := range []struct {
 		tableNumber int64
 		tableName   string
 		expResp     bool
+		expError    error
 	}{
 		{
-			tableNumber: 1,
-			tableName:   "index_1",
-			expResp:     true,
+			tableName: "index_1",
+			expResp:   true,
 		},
 		{
-			tableNumber: 15,
-			tableName:   "index_foo_15",
-			expResp:     true,
+			tableName: "index_foo_15",
+			expResp:   true,
 		},
+		// wrong prefix
 		{
-			tableNumber: 25,
-			tableName:   "index_15",
+			tableName: "index_foo_5",
 		},
+		// wrong prefix
 		{
-			tableNumber: 15,
-			tableName:   "index_15",
+			tableName: "index_15",
+		},
+		// invalid table name
+		{
+			tableName: "index_foo",
+			expError:  errInvalidTableName,
 		},
 	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			require.Equal(t, tc.expResp, tableRanges.TableInRange(tc.tableNumber, tc.tableName))
+		t.Run(fmt.Sprintf("table %s", tc.tableName), func(t *testing.T) {
+			ok, err := tableRanges.TableInRange(tc.tableName)
+			require.Equal(t, tc.expResp, ok)
+
+			if tc.expError != nil {
+				require.ErrorIs(t, err, tc.expError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestTableRange_TableInRange(t *testing.T) {
+	tableRange := TableRange{
+		Start: 1,
+		End:   10,
+		PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+			Prefix: "index_",
+			Period: 24 * time.Hour,
+		}},
+	}
+
+	for _, tc := range []struct {
+		tableName string
+		expResp   bool
+		expError  error
+	}{
+		{
+			tableName: "index_1",
+			expResp:   true,
+		},
+		// out of range
+		{
+			tableName: "index_12",
+		},
+		// wrong prefix
+		{
+			tableName: "index_foo_5",
+		},
+		// invalid table name
+		{
+			tableName: "index_foo",
+			expError:  errInvalidTableName,
+		},
+	} {
+		t.Run(fmt.Sprintf("periodic table %s", tc.tableName), func(t *testing.T) {
+			ok, err := tableRange.TableInRange(tc.tableName)
+			require.Equal(t, tc.expResp, ok)
+
+			if tc.expError != nil {
+				require.ErrorIs(t, err, tc.expError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
+	nonPeriodicTableRange := TableRange{
+		PeriodConfig: &PeriodConfig{IndexTables: PeriodicTableConfig{
+			Prefix: "index",
+		}},
+	}
+	for _, tc := range []struct {
+		tableName string
+		expResp   bool
+	}{
+		{
+			tableName: "index",
+			expResp:   true,
+		},
+		{
+			tableName: "index_foo",
+		},
+		{
+			tableName: "index_0",
+		},
+	} {
+		t.Run(fmt.Sprintf("non-periodic table %s", tc.tableName), func(t *testing.T) {
+			ok, err := nonPeriodicTableRange.TableInRange(tc.tableName)
+			require.Equal(t, tc.expResp, ok)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestGetIndexStoreTableRanges(t *testing.T) {
+	now := model.Now()
+	schemaConfig := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:       DayTime{Time: now.Add(30 * 24 * time.Hour)},
+				IndexType:  BoltDBShipperType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v9",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+			{
+				From:       DayTime{Time: now.Add(20 * 24 * time.Hour)},
+				IndexType:  BoltDBShipperType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       DayTime{Time: now.Add(15 * 24 * time.Hour)},
+				IndexType:  TSDBType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       DayTime{Time: now.Add(10 * 24 * time.Hour)},
+				IndexType:  StorageTypeBigTable,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+			{
+				From:       DayTime{Time: now.Add(5 * 24 * time.Hour)},
+				IndexType:  TSDBType,
+				ObjectType: StorageTypeFileSystem,
+				Schema:     "v11",
+				IndexTables: PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 2,
+			},
+		},
+	}
+
+	require.Equal(t, TableRanges{
+		{
+			Start:        schemaConfig.Configs[0].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[1].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[0],
+		},
+		{
+			Start:        schemaConfig.Configs[1].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[2].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[1],
+		},
+	}, GetIndexStoreTableRanges(BoltDBShipperType, schemaConfig.Configs))
+
+	require.Equal(t, TableRanges{
+		{
+			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[3],
+		},
+	}, GetIndexStoreTableRanges(StorageTypeBigTable, schemaConfig.Configs))
+
+	require.Equal(t, TableRanges{
+		{
+			Start:        schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[2],
+		},
+		{
+			Start:        schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			PeriodConfig: &schemaConfig.Configs[4],
+		},
+	}, GetIndexStoreTableRanges(TSDBType, schemaConfig.Configs))
+}
+
+const (
+	fixedTimestamp = model.Time(1557654321000)
+	userID         = "userID"
+)
+
+var (
+	labelsForDummyChunks = labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
+	}
+)
+
+func TestChunkKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		chunk     chunk.Chunk
+		schemaCfg SchemaConfig
+	}{
+		{
+			name: "Legacy key (pre-checksum)",
+			chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
+				},
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+		{
+			name: "Newer key (post-v12)",
+			chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
+				},
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v12",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := tc.schemaCfg.ExternalKey(tc.chunk.ChunkRef)
+			newChunk, err := chunk.ParseExternalKey("fake", key)
+			require.NoError(t, err)
+			require.Equal(t, tc.chunk, newChunk)
+			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk.ChunkRef))
 		})
 	}
 }

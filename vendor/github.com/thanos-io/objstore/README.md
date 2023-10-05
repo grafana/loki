@@ -60,7 +60,7 @@ type Bucket interface {
 	Upload(ctx context.Context, name string, r io.Reader) error
 
 	// Delete removes the object with the given name.
-	// If object does not exists in the moment of deletion, Delete should throw error.
+	// If object does not exist in the moment of deletion, Delete should throw error.
 	Delete(ctx context.Context, name string) error
 
 ```
@@ -88,7 +88,8 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
-	// Attributes returns information about the specified object.
+	// IsAccessDeniedErr returns true if access to object is denied.
+	IsAccessDeniedErr(err error) bool
 ```
 
 Those interfaces represent the object storage operations your code can use from `objstore` clients.
@@ -117,16 +118,18 @@ Check out the [Thanos documentation](https://thanos.io/tip/thanos/storage.md/) t
 
 Current object storage client implementations:
 
-| Provider                                                                               | Maturity           | Aimed For             | Auto-tested on CI | Maintainers             |
-|----------------------------------------------------------------------------------------|--------------------|-----------------------|-------------------|-------------------------|
-| [Google Cloud Storage](#gcs)                                                           | Stable             | Production Usage      | yes               | @bwplotka               |
-| [AWS/S3](#s3) (and all S3-compatible storages e.g disk-based [Minio](https://min.io/)) | Stable             | Production Usage      | yes               | @bwplotka               |
-| [Azure Storage Account](#azure)                                                        | Stable             | Production Usage      | no                | @vglafirov              |
-| [OpenStack Swift](#openstack-swift)                                                    | Beta (working PoC) | Production Usage      | yes               | @FUSAKLA                |
-| [Tencent COS](#tencent-cos)                                                            | Beta               | Production Usage      | no                | @jojohappy,@hanjm       |
-| [AliYun OSS](#aliyun-oss)                                                              | Beta               | Production Usage      | no                | @shaulboozhiao,@wujinhu |
-| [Baidu BOS](#baidu-bos)                                                                | Beta               | Production Usage      | no                | ??                      |
-| [Local Filesystem](#filesystem)                                                        | Stable             | Testing and Demo only | yes               | @bwplotka               |
+| Provider                                                                                  | Maturity           | Aimed For             | Auto-tested on CI | Maintainers                      |
+|-------------------------------------------------------------------------------------------|--------------------|-----------------------|-------------------|----------------------------------|
+| [Google Cloud Storage](#gcs)                                                              | Stable             | Production Usage      | yes               | @bwplotka                        |
+| [AWS/S3](#s3) (and all S3-compatible storages e.g disk-based [Minio](https://min.io/))    | Stable             | Production Usage      | yes               | @bwplotka                        |
+| [Azure Storage Account](#azure)                                                           | Stable             | Production Usage      | no                | @vglafirov,@phillebaba           |
+| [OpenStack Swift](#openstack-swift)                                                       | Beta (working PoC) | Production Usage      | yes               | @FUSAKLA                         |
+| [Tencent COS](#tencent-cos)                                                               | Beta               | Production Usage      | no                | @jojohappy,@hanjm                |
+| [AliYun OSS](#aliyun-oss)                                                                 | Beta               | Production Usage      | no                | @shaulboozhiao,@wujinhu          |
+| [Baidu BOS](#baidu-bos)                                                                   | Beta               | Production Usage      | no                | @yahaa                           |
+| [Local Filesystem](#filesystem)                                                           | Stable             | Testing and Demo only | yes               | @bwplotka                        |
+| [Oracle Cloud Infrastructure Object Storage](#oracle-cloud-infrastructure-object-storage) | Beta               | Production Usage      | yes               | @aarontams,@gaurav-05,@ericrrath |
+| [HuaweiCloud OBS](#huaweicloud-obs)                                                       | Beta               | Production Usage      | no                | @setoru                          |
 
 **Missing support to some object storage?** Check out [how to add your client section](#how-to-add-a-new-client-to-thanos)
 
@@ -151,6 +154,7 @@ config:
   insecure: false
   signature_version2: false
   secret_key: ""
+  session_token: ""
   put_user_metadata: {}
   http_config:
     idle_conn_timeout: 1m30s
@@ -288,7 +292,7 @@ Example working AWS IAM policy for user:
 To test the policy, set env vars for S3 access for *empty, not used* bucket as well as:
 
 ```
-THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS
+THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI,OBS
 THANOS_ALLOW_EXISTING_BUCKET_USE=true
 ```
 
@@ -322,7 +326,7 @@ We need access to CreateBucket and DeleteBucket and access to all buckets:
 }
 ```
 
-With this policy you should be able to run set `THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS` and unset `S3_BUCKET` and run all tests using `make test`.
+With this policy you should be able to run set `THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI,OBS` and unset `S3_BUCKET` and run all tests using `make test`.
 
 Details about AWS policies: https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html
 
@@ -415,18 +419,18 @@ type: AZURE
 config:
   storage_account: ""
   storage_account_key: ""
+  storage_connection_string: ""
   container: ""
   endpoint: ""
-  max_retries: 0
-  msi_resource: ""
   user_assigned_id: ""
+  max_retries: 0
+  reader_config:
+    max_retry_requests: 0
   pipeline_config:
     max_tries: 0
     try_timeout: 0s
     retry_delay: 0s
     max_retry_delay: 0s
-  reader_config:
-    max_retry_requests: 0
   http_config:
     idle_conn_timeout: 0s
     response_header_timeout: 0s
@@ -443,12 +447,15 @@ config:
       server_name: ""
       insecure_skip_verify: false
     disable_compression: false
+  msi_resource: ""
 prefix: ""
 ```
 
 If `msi_resource` is used, authentication is done via system-assigned managed identity. The value for Azure should be `https://<storage-account-name>.blob.core.windows.net`.
 
 If `user_assigned_id` is used, authentication is done via user-assigned managed identity. When using `user_assigned_id` the `msi_resource` defaults to `https://<storage_account>.<endpoint>`
+
+If `storage_connection_string` is set, the values of `storage_account` and `endpoint` values will not be used. Use this method over `storage_account_key` if you need to authenticate via a SAS token.
 
 The generic `max_retries` will be used as value for the `pipeline_config`'s `max_tries` and `reader_config`'s `max_retry_requests`. For more control, `max_retries` could be ignored (0) and one could set specific retry values.
 
@@ -472,6 +479,9 @@ config:
   password: ""
   domain_id: ""
   domain_name: ""
+  application_credential_id: ""
+  application_credential_name: ""
+  application_credential_secret: ""
   project_id: ""
   project_name: ""
   project_domain_id: ""
@@ -569,6 +579,120 @@ config:
   directory: ""
 prefix: ""
 ```
+
+### Oracle Cloud Infrastructure Object Storage
+
+To configure Oracle Cloud Infrastructure (OCI) Object Storage as a Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports default keypair, instance principal, and OKE workload identity authentication.
+
+#### API Signing Key
+
+The default API signing key authentication provider leverages same [configuration as the OCI CLI](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/cliconcepts.htm) which is usually stored in at `$HOME/.oci/config` or via variable names starting with the string `OCI_CLI`. You can also use environment variables that start with `TF_VAR`. If the same configuration is found in multiple places the provider will prefer the first one.
+
+The following example configures the provider to look for an existing API signing key for authentication:
+
+```yaml
+type: OCI
+config:
+  provider: "default"
+  bucket: ""
+  compartment_ocid: ""
+  part_size: ""                   // Optional part size to override the OCI default of 128 MiB, value is in bytes.
+  max_request_retries: ""         // Optional maximum number of retries for a request.
+  request_retry_interval: ""      // Optional sleep duration in seconds between retry requests.
+  http_config:
+    idle_conn_timeout: 1m30s      // Optional maximum amount of time an idle (keep-alive) connection will remain idle before closing itself. Zero means no limit.
+    response_header_timeout: 2m   // Optional amount of time to wait for a server's response headers after fully writing the request.
+    tls_handshake_timeout: 10s    // Optional maximum amount of time waiting to wait for a TLS handshake. Zero means no timeout.
+    expect_continue_timeout: 1s   // Optional amount of time to wait for a server's first response headers. Zero means no timeout and causes the body to be sent immediately.
+    insecure_skip_verify: false   // Optional. If true, crypto/tls accepts any certificate presented by the server and any host name in that certificate.
+    max_idle_conns: 100           // Optional maximum number of idle (keep-alive) connections across all hosts. Zero means no limit.
+    max_idle_conns_per_host: 100  // Optional maximum idle (keep-alive) connections to keep per-host. If zero, DefaultMaxIdleConnsPerHost=2 is used.
+    max_conns_per_host: 0         // Optional maximum total number of connections per host.
+    disable_compression: false    // Optional. If true, prevents the Transport from requesting compression.
+    client_timeout: 90s           // Optional time limit for requests made by the HTTP Client.
+```
+
+#### Instance Principal Provider
+
+For Example:
+
+```yaml
+type: OCI
+config:
+  provider: "instance-principal"
+  bucket: ""
+  compartment_ocid: ""
+```
+
+You can also include any of the optional configuration just like the example in `Default Provider`.
+
+#### Raw Provider
+
+For Example:
+
+```yaml
+type: OCI
+config:
+  provider: "raw"
+  bucket: ""
+  compartment_ocid: ""
+  tenancy_ocid: ""
+  user_ocid: ""
+  region: ""
+  fingerprint: ""
+  privatekey: ""
+  passphrase: ""         // Optional passphrase to encrypt the private API Signing key
+```
+
+You can also include any of the optional configuration just like the example in `Default Provider`.
+
+#### OKE Workload Identity Provider
+
+For Example:
+
+```yaml
+type: OCI
+config:
+  provider: "oke-workload-identity"
+  bucket: ""
+  region: ""
+```
+
+The `bucket` and `region` fields are required. The `region` field identifies the bucket region.
+
+##### HuaweiCloud OBS
+
+To use HuaweiCloud OBS as an object store, you should apply for a HuaweiCloud Account to create an object storage bucket at first. More details: [HuaweiCloud OBS](https://support.huaweicloud.com/obs/index.html)
+
+To configure HuaweiCloud Account to use OBS as storage store you need to set these parameters in YAML format stored in a file:
+
+```yaml mdox-exec="go run scripts/cfggen/main.go --name=obs.Config"
+type: OBS
+config:
+  bucket: ""
+  endpoint: ""
+  access_key: ""
+  secret_key: ""
+  http_config:
+    idle_conn_timeout: 1m30s
+    response_header_timeout: 2m
+    insecure_skip_verify: false
+    tls_handshake_timeout: 10s
+    expect_continue_timeout: 1s
+    max_idle_conns: 100
+    max_idle_conns_per_host: 100
+    max_conns_per_host: 0
+    tls_config:
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
+    disable_compression: false
+prefix: ""
+```
+
+The `access_key` and `secret_key` field is required. The `http_config` field is optional for optimize HTTP transport settings.
 
 #### How to add a new client to Thanos?
 

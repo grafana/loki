@@ -4,9 +4,12 @@ import (
 	"context"
 	"sort"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/stores/index"
@@ -14,37 +17,46 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// Store for chunks.
-type Store interface {
+type ChunkWriter interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
-	// GetChunkRefs returns the un-loaded chunks and the fetchers to be used to load them. You can load each slice of chunks ([]Chunk),
-	// using the corresponding Fetcher (fetchers[i].FetchChunks(ctx, chunks[i], ...)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
-	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+}
+
+type ChunkFetcherProvider interface {
 	GetChunkFetcher(tm model.Time) *fetcher.Fetcher
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+}
+
+type ChunkFetcher interface {
+	GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+}
+
+type Store interface {
+	index.BaseReader
+	index.StatsReader
+	index.Filterable
+	ChunkWriter
+	ChunkFetcher
+	ChunkFetcherProvider
 	Stop()
 }
 
 // CompositeStore is a Store which delegates to various stores depending
 // on when they were activated.
 type CompositeStore struct {
-	compositeStore
 	limits StoreLimits
-}
-
-type compositeStore struct {
 	stores []compositeStoreEntry
 }
+
+// Ensure interface implementation of CompositeStore
+var _ Store = &CompositeStore{}
 
 // NewCompositeStore creates a new Store which delegates to different stores depending
 // on time.
 func NewCompositeStore(limits StoreLimits) *CompositeStore {
-	return &CompositeStore{compositeStore{}, limits}
+	return &CompositeStore{
+		stores: make([]compositeStoreEntry, 0),
+		limits: limits,
+	}
 }
 
 func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index index.Reader, writer ChunkWriter, stop func()) {
@@ -68,7 +80,7 @@ func (c *CompositeStore) Stores() []Store {
 	return stores
 }
 
-func (c compositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
+func (c CompositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	for _, chunk := range chunks {
 		err := c.forStores(ctx, chunk.From, chunk.Through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 			return store.PutOne(innerCtx, from, through, chunk)
@@ -80,19 +92,19 @@ func (c compositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
+func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
 	return c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(innerCtx, from, through, chunk)
 	})
 }
 
-func (c compositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (c CompositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	for _, store := range c.stores {
 		store.Store.SetChunkFilterer(chunkFilter)
 	}
 }
 
-func (c compositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+func (c CompositeStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	var results []labels.Labels
 	found := map[uint64]struct{}{}
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
@@ -115,7 +127,7 @@ func (c compositeStore) GetSeries(ctx context.Context, userID string, from, thro
 }
 
 // LabelValuesForMetricName retrieves all label values for a single label name and metric name.
-func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c CompositeStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	var result util.UniqueStrings
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		labelValues, err := store.LabelValuesForMetricName(innerCtx, userID, from, through, metricName, labelName, matchers...)
@@ -129,7 +141,7 @@ func (c compositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
 	var result util.UniqueStrings
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName)
@@ -142,11 +154,11 @@ func (c compositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 	return result.Strings(), err
 }
 
-func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		ids, fetcher, err := store.GetChunkRefs(innerCtx, userID, from, through, matchers...)
+		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, matchers...)
 		if err != nil {
 			return err
 		}
@@ -163,7 +175,7 @@ func (c compositeStore) GetChunkRefs(ctx context.Context, userID string, from, t
 	return chunkIDs, fetchers, err
 }
 
-func (c compositeStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c CompositeStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	xs := make([]*stats.Stats, 0, len(c.stores))
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		x, err := store.Stats(innerCtx, userID, from, through, matchers...)
@@ -179,7 +191,23 @@ func (c compositeStore) Stats(ctx context.Context, userID string, from, through 
 	return &res, err
 }
 
-func (c compositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (c CompositeStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	volumes := make([]*logproto.VolumeResponse, 0, len(c.stores))
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		volume, err := store.Volume(innerCtx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		volumes = append(volumes, volume)
+		return err
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	res := seriesvolume.Merge(volumes, limit)
+	return res, err
+}
+
+func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	// find the schema with the lowest start _after_ tm
 	j := sort.Search(len(c.stores), func(j int) bool {
 		return c.stores[j].start > tm
@@ -195,13 +223,13 @@ func (c compositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (c compositeStore) Stop() {
+func (c CompositeStore) Stop() {
 	for _, store := range c.stores {
 		store.Stop()
 	}
 }
 
-func (c compositeStore) forStores(ctx context.Context, from, through model.Time, callback func(innerCtx context.Context, from, through model.Time, store Store) error) error {
+func (c CompositeStore) forStores(ctx context.Context, from, through model.Time, callback func(innerCtx context.Context, from, through model.Time, store Store) error) error {
 	if len(c.stores) == 0 {
 		return nil
 	}

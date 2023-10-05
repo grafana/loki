@@ -1,5 +1,69 @@
 # Changes
 
+
+## [1.1.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.0...iam/v1.1.1) (2023-06-20)
+
+
+### Bug Fixes
+
+* **iam:** REST query UpdateMask bug ([df52820](https://github.com/googleapis/google-cloud-go/commit/df52820b0e7721954809a8aa8700b93c5662dc9b))
+
+## [1.1.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.0.1...iam/v1.1.0) (2023-05-30)
+
+
+### Features
+
+* **iam:** Update all direct dependencies ([b340d03](https://github.com/googleapis/google-cloud-go/commit/b340d030f2b52a4ce48846ce63984b28583abde6))
+
+## [1.0.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.0.0...iam/v1.0.1) (2023-05-08)
+
+
+### Bug Fixes
+
+* **iam:** Update grpc to v1.55.0 ([1147ce0](https://github.com/googleapis/google-cloud-go/commit/1147ce02a990276ca4f8ab7a1ab65c14da4450ef))
+
+## [1.0.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.13.0...iam/v1.0.0) (2023-04-04)
+
+
+### Features
+
+* **iam:** Promote to GA ([#7627](https://github.com/googleapis/google-cloud-go/issues/7627)) ([b351906](https://github.com/googleapis/google-cloud-go/commit/b351906a10e17a02d7f7e2551bc1585fd9dc3742))
+
+## [0.13.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.12.0...iam/v0.13.0) (2023-03-15)
+
+
+### Features
+
+* **iam:** Update iam and longrunning deps ([91a1f78](https://github.com/googleapis/google-cloud-go/commit/91a1f784a109da70f63b96414bba8a9b4254cddd))
+
+## [0.12.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.11.0...iam/v0.12.0) (2023-02-17)
+
+
+### Features
+
+* **iam:** Migrate to new stubs ([a61ddcd](https://github.com/googleapis/google-cloud-go/commit/a61ddcd3041c7af4a15109dc4431f9b327c497fb))
+
+## [0.11.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.10.0...iam/v0.11.0) (2023-02-16)
+
+
+### Features
+
+* **iam:** Start generating proto stubs ([970d763](https://github.com/googleapis/google-cloud-go/commit/970d763531b54b2bc75d7ff26a20b6e05150cab8))
+
+## [0.10.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.9.0...iam/v0.10.0) (2023-01-04)
+
+
+### Features
+
+* **iam:** Add REST client ([06a54a1](https://github.com/googleapis/google-cloud-go/commit/06a54a16a5866cce966547c51e203b9e09a25bc0))
+
+## [0.9.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.8.0...iam/v0.9.0) (2022-12-15)
+
+
+### Features
+
+* **iam:** Rewrite iam sigs and update proto import ([#7137](https://github.com/googleapis/google-cloud-go/issues/7137)) ([ad67fa3](https://github.com/googleapis/google-cloud-go/commit/ad67fa36c263c161226f7fecbab5221592374dca))
+
 ## [0.8.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.7.0...iam/v0.8.0) (2022-12-05)
 
 

@@ -89,12 +89,12 @@ func (c *CustomTokenIdentity) Retrieve() (value Value, err error) {
 
 	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
 	if err != nil {
-		return value, stripPassword(err)
+		return value, err
 	}
 
 	resp, err := c.Client.Do(req)
 	if err != nil {
-		return value, stripPassword(err)
+		return value, err
 	}
 
 	defer resp.Body.Close()

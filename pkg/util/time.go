@@ -7,8 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
+
+	utilsMath "github.com/grafana/loki/pkg/util/math"
 )
 
 const (
@@ -90,6 +92,11 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 // except for the start time of first split and end time of last split which would be kept same as original start/end
 // When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
 func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
+	if interval <= 0 {
+		callback(start, end)
+		return
+	}
+
 	ogStart := start
 	startNs := start.UnixNano()
 	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
@@ -109,4 +116,39 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		}
 		callback(start, newEnd)
 	}
+}
+
+// GetFactorOfTime returns the percentage of time that the span `from` to `through`
+// accounts for inside the range `minTime` to `maxTime`.
+// It also returns the leading and trailing time that is not accounted for.
+// Note that `from`, `through`, `minTime` and `maxTime` should have the same scale (e.g. milliseconds).
+//
+//	MinTime  From              Through  MaxTime
+//	┌────────┬─────────────────┬────────┐
+//	│        *                 *        │
+//	└────────┴─────────────────┴────────┘
+//	▲   A    |        C        |   B    ▲
+//	└───────────────────────────────────┘
+//	        T = MinTime - MaxTime
+//
+// We get the percentage of time that fits into C
+// factor = C = (T - (A + B)) / T = (chunkTime - (leadingTime + trailingTime)) / chunkTime
+func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float64) {
+	if from > maxTime || through < minTime {
+		return 0
+	}
+
+	if minTime == maxTime {
+		// This function is most often used for chunk overlaps
+		// a chunk maxTime == minTime when it has only 1 entry
+		// return factor 1 to count that chunk's entry
+		return 1
+	}
+
+	totalTime := maxTime - minTime
+	leadingTime := utilsMath.Max64(0, from-minTime)
+	trailingTime := utilsMath.Max64(0, maxTime-through)
+	factor = float64(totalTime-(leadingTime+trailingTime)) / float64(totalTime)
+
+	return factor
 }

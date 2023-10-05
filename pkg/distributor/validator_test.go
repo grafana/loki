@@ -1,7 +1,8 @@
 package distributor
 
 import (
-	"net/http"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,10 +10,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -25,7 +26,7 @@ type fakeLimits struct {
 	limits *validation.Limits
 }
 
-func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
+func (f fakeLimits) TenantLimits(_ string) *validation.Limits {
 	return f.limits
 }
 
@@ -59,9 +60,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(
-				http.StatusBadRequest,
-				validation.GreaterThanMaxSampleAgeErrorMsg,
+			fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg,
 				testStreamLabels,
 				testTime.Add(-time.Hour*5).Format(timeFormat),
 				testTime.Add(-1*time.Hour).Format(timeFormat), // same as RejectOldSamplesMaxAge
@@ -72,7 +71,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5).Format(timeFormat)),
+			fmt.Errorf(validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5).Format(timeFormat)),
 		},
 		{
 			"line too long",
@@ -83,7 +82,42 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
-			httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 10, testStreamLabels, 11),
+			fmt.Errorf(validation.LineTooLongErrorMsg, 10, testStreamLabels, 11),
+		},
+		{
+			"disallowed structured metadata",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata: false,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabels),
+		},
+		{
+			"structured metadata too big",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:   true,
+					MaxStructuredMetadataSize: 4,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabels, 6, 4),
+		},
+		{
+			"structured metadata too many",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:           true,
+					MaxStructuredMetadataEntriesCount: 1,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}, {Name: "too", Value: "many"}}},
+			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabels, 2, 1),
 		},
 	}
 	for _, tt := range tests {
@@ -121,7 +155,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"test",
 			nil,
 			"{}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.MissingLabelsErrorMsg),
+			fmt.Errorf(validation.MissingLabelsErrorMsg),
 		},
 		{
 			"test too many labels",
@@ -130,7 +164,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				&validation.Limits{MaxLabelNamesPerSeries: 2},
 			},
 			"{foo=\"bar\",food=\"bars\",fed=\"bears\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg, "{foo=\"bar\",food=\"bars\",fed=\"bears\"}", 3, 2),
+			fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, "{foo=\"bar\",food=\"bars\",fed=\"bears\"}", 3, 2),
 		},
 		{
 			"label name too long",
@@ -142,7 +176,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				},
 			},
 			"{fooooo=\"bar\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.LabelNameTooLongErrorMsg, "{fooooo=\"bar\"}", "fooooo"),
+			fmt.Errorf(validation.LabelNameTooLongErrorMsg, "{fooooo=\"bar\"}", "fooooo"),
 		},
 		{
 			"label value too long",
@@ -155,7 +189,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				},
 			},
 			"{foo=\"barrrrrr\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.LabelValueTooLongErrorMsg, "{foo=\"barrrrrr\"}", "barrrrrr"),
+			fmt.Errorf(validation.LabelValueTooLongErrorMsg, "{foo=\"barrrrrr\"}", "barrrrrr"),
 		},
 		{
 			"duplicate label",
@@ -168,7 +202,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				},
 			},
 			"{foo=\"bar\", foo=\"barf\"}",
-			httpgrpc.Errorf(http.StatusBadRequest, validation.DuplicateLabelNamesErrorMsg, "{foo=\"bar\", foo=\"barf\"}", "foo"),
+			fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, "{foo=\"bar\", foo=\"barf\"}", "foo"),
 		},
 		{
 			"label value contains %",
@@ -181,10 +215,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 				},
 			},
 			"{foo=\"bar\", foo=\"barf%s\"}",
-			httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
-				Code: int32(http.StatusBadRequest),
-				Body: []byte("stream '{foo=\"bar\", foo=\"barf%s\"}' has label value too long: 'barf%s'"), // Intentionally construct the string to make sure %s isn't substituted as (MISSING)
-			}),
+			errors.New("stream '{foo=\"bar\", foo=\"barf%s\"}' has label value too long: 'barf%s'"), // Intentionally construct the string to make sure %s isn't substituted as (MISSING)
 		},
 	}
 	for _, tt := range tests {
