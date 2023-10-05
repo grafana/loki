@@ -2,16 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
+	"math"
 	"os"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
-	"github.com/pkg/errors"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -19,8 +16,6 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 )
 
 const (
@@ -34,7 +29,8 @@ var logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 func main() {
 	ctx := context.Background()
 
-	idx, _, err := tsdb.NewTSDBIndexFromFile(indexLocation)
+	idx, _, err := tsdb.NewTSDBIndexFromFile(indexLocation, tsdb.IndexOpts{})
+	fmt.Println("index has been opened")
 
 	if err != nil {
 		level.Error(logger).Log("msg", "can not read index file", "err", err)
@@ -50,83 +46,51 @@ func main() {
 		level.Error(logger).Log("msg", "error while fetching all the streams", "err", err)
 		return
 	}
-
-	streamsStats := make([]StreamStats, len(streams))
-	indexStats := IndexStats{Streams: streamsStats}
+	fmt.Println("analyzing streams")
+	ranges := createRanges(100)
 	err = concurrency.ForEachJob(ctx, len(streams), 100, func(ctx context.Context, jobIdx int) error {
 		s := streams[jobIdx]
-		currentStreamMatchers := make([]*labels.Matcher, 0, len(s.Labels))
-		for _, label := range s.Labels {
-			currentStreamMatchers = append(currentStreamMatchers, labels.MustNewMatcher(labels.MatchEqual, label.Name, label.Value))
+		for _, r := range ranges {
+			if uint64(s.Fingerprint) <= r.end {
+				r.fingerprintsCount += 1
+				break
+			}
 		}
-		acc := StreamStats{Stream: s.Labels.String()}
-		err = idx.Stats(ctx, "", fromUnix, toUnix, &acc, nil, func(meta index.ChunkMeta) bool {
-			return true
-		}, currentStreamMatchers...)
-		if err != nil {
-			level.Error(logger).Log("msg", "error while collecting stats for the stream", "stream", s.Labels.String(), "err", err)
-			return errors.New("error while collecting stats for the stream: " + s.Labels.String())
-		}
-
-		streamsStats[jobIdx] = acc
 		return nil
 	})
-	indexStats.StreamsCount = uint32(len(streamsStats))
-	for _, stat := range streamsStats {
-		indexStats.SizeKB += stat.SizeKB
-		indexStats.ChunksCount += stat.ChunksCount
-	}
-	if err != nil {
-		level.Error(logger).Log("msg", "error while processing streams concurrently", "err", err)
-		return
-	}
 
-	content, err := json.MarshalIndent(indexStats, "  ", "  ")
-	if err != nil {
-		panic(err)
-		return
-	}
-	err = os.WriteFile(resultFilePath, content, 0644)
-	if err != nil {
-		panic(err)
-		return
+	for i, r := range ranges {
+		fmt.Printf("Range %d: fingerprintsCount: %d \n", i, r.fingerprintsCount)
 	}
 }
 
-type ChunkStats struct {
-	Start  time.Time
-	End    time.Time
-	SizeKB uint32
+func createRanges(instancesCount uint64) []*fingerprintRange {
+	maxUint64 := uint64(math.MaxUint64)
+
+	rangeSize := maxUint64 / instancesCount
+	remainder := maxUint64 % instancesCount
+
+	ranges := make([]*fingerprintRange, instancesCount)
+	start := uint64(0)
+
+	for i := uint64(0); i < instancesCount; i++ {
+		end := start + rangeSize
+		if i < remainder {
+			end++
+		}
+		ranges[i] = &fingerprintRange{
+			start:       start,
+			end:         end,
+			rangeLength: end - start,
+		}
+		start = end
+	}
+
+	return ranges
 }
 
-type StreamStats struct {
-	Stream      string
-	Chunks      []ChunkStats
-	ChunksCount uint32
-	SizeKB      uint32
-}
-
-type IndexStats struct {
-	Streams      []StreamStats
-	StreamsCount uint32
-	ChunksCount  uint32
-	SizeKB       uint32
-}
-
-func (i *StreamStats) AddStream(_ model.Fingerprint) {
-
-}
-
-func (i *StreamStats) AddChunk(_ model.Fingerprint, chk index.ChunkMeta) {
-	i.Chunks = append(i.Chunks, ChunkStats{
-		Start:  time.UnixMilli(chk.MinTime).UTC(),
-		End:    time.UnixMilli(chk.MaxTime).UTC(),
-		SizeKB: chk.KB,
-	})
-	i.ChunksCount++
-	i.SizeKB += chk.KB
-}
-
-func (i StreamStats) Stats() stats.Stats {
-	return logproto.IndexStatsResponse{}
+type fingerprintRange struct {
+	start, end        uint64
+	rangeLength       uint64
+	fingerprintsCount uint64
 }
