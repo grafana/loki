@@ -1,5 +1,5 @@
 ---
-title: Examples
+title: Configuration Examples
 description: Loki Configuration Examples
 ---
  # Examples
