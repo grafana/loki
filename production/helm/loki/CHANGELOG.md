@@ -17,6 +17,14 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Add complete object schema to single-binary volumeClaimTemplate to avoid synchronization issues
 
+## 5.24.0
+
+- [ENHANCEMENT] #10613 Allow tolerations for GrafanaAgent pods
+
+## 5.23.1
+
+- [BUGFIX] Add missing namespaces to some components
+
 ## 5.23.0
 
 - [ENHANCEMENT] Add loki.storage.azure.connectionString to support Azure connection string

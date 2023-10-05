@@ -19,11 +19,11 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -189,9 +189,9 @@ type Limits struct {
 }
 
 type StreamRetention struct {
-	Period   model.Duration    `yaml:"period" json:"period"`
-	Priority int               `yaml:"priority" json:"priority"`
-	Selector string            `yaml:"selector" json:"selector"`
+	Period   model.Duration    `yaml:"period" json:"period" doc:"description:Retention period applied to the log lines matching the selector."`
+	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
+	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 

@@ -252,3 +252,46 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 		})
 	}
 }
+
+func TestEmptyNestedEvaluator(t *testing.T) {
+
+	for _, tc := range []struct {
+		desc string
+		ev   StepEvaluator
+	}{
+		{
+			desc: "LiteralStepEvaluator",
+			ev:   &LiteralStepEvaluator{nextEv: &emptyEvaluator{}},
+		},
+		{
+			desc: "LabelReplaceEvaluator",
+			ev:   &LabelReplaceEvaluator{nextEvaluator: &emptyEvaluator{}},
+		},
+		{
+			desc: "BinOpStepEvaluator",
+			ev:   &BinOpStepEvaluator{rse: &emptyEvaluator{}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			ok, _, _ := tc.ev.Next()
+			require.False(t, ok)
+		})
+	}
+
+}
+
+type emptyEvaluator struct{}
+
+func (*emptyEvaluator) Next() (ok bool, ts int64, r StepResult) {
+	return false, 0, nil
+}
+
+func (*emptyEvaluator) Close() error {
+	return nil
+}
+
+func (*emptyEvaluator) Error() error {
+	return nil
+}
+
+func (*emptyEvaluator) Explain(Node) {}
