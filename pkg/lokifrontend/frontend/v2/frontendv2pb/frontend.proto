@@ -22,8 +22,8 @@ message QueryResultRequest {
   stats.Stats stats = 3;
   queryrange.QueryResponse queryResponse = 4;
 
-  // There is no userID field here, because Querier puts userID into the context when
-  // calling QueryResult, and that is where Frontend expects to find it.
+// There is no userID field here, because Querier puts userID into the context when
+// calling QueryResult, and that is where Frontend expects to find it.
 }
 
 message QueryResultResponse {}

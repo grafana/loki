@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package queryrange;
 
+import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
-import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/logproto/sketch.proto";
 import "pkg/logqlmodel/stats/stats.proto";
