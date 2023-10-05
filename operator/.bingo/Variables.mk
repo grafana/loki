@@ -89,9 +89,9 @@ $(OPERATOR_SDK): $(BINGO_DIR)/operator-sdk.mod
 	@echo "(re)installing $(GOBIN)/operator-sdk-v1.31.0"
 	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.31.0 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
 
-PROMTOOL := $(GOBIN)/promtool-v0.42.0
+PROMTOOL := $(GOBIN)/promtool-v0.47.1
 $(PROMTOOL): $(BINGO_DIR)/promtool.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/promtool-v0.42.0"
-	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=promtool.mod -o=$(GOBIN)/promtool-v0.42.0 "github.com/prometheus/prometheus/cmd/promtool"
+	@echo "(re)installing $(GOBIN)/promtool-v0.47.1"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=promtool.mod -o=$(GOBIN)/promtool-v0.47.1 "github.com/prometheus/prometheus/cmd/promtool"
 
