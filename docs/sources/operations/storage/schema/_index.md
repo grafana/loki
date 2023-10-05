@@ -40,12 +40,12 @@ schema_config:
             prefix: loki_ops_index_
           object_store: gcs
           schema: v11
-          store: boltdb-shipper
+          store: tsdb
         - from: "2022-01-20"
           index:
             period: 24h
             prefix: loki_ops_index_
           object_store: gcs
           schema: v12
-          store: boltdb-shipper
+          store: tsdb
 ```
