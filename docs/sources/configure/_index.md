@@ -1456,11 +1456,6 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.ID
   [id: <string> | default = "<hostname>"]
 
-# Number of times to try and transfer chunks before falling back to flushing. If
-# set to 0 or negative value, transfers are disabled.
-# CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 0]
-
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
 [concurrent_flushes: <int> | default = 32]
@@ -2119,7 +2114,10 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
-# The cache block configures the cache backend.
+# Write dedupe cache is deprecated along with legacy index types (aws,
+# aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
+# grpc-store).
+# Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
