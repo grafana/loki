@@ -72,8 +72,6 @@ type Gateway struct {
 	bloomStore bloomshipper.Store
 
 	sharding ShardingStrategy
-
-	ConvertChunkRefToChunkID func(chunkRef logproto.ChunkRef) string
 }
 
 // New returns a new instance of the Bloom Gateway.
@@ -83,8 +81,6 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		logger:   logger,
 		metrics:  newMetrics(reg),
 		sharding: shardingStrategy,
-		// Only keep convert function instead of full schemaCfg
-		ConvertChunkRefToChunkID: schemaCfg.ExternalKey,
 	}
 
 	bloomShipper, err := bloomshipper.NewBloomShipper(bloomshipper.Config{}, schemaCfg, storageCfg, cm, logger)
@@ -141,19 +137,21 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	// TODO(chaudum): Re-use buffers for response.
-	resp := make([]*logproto.ChunkIDsForStream, 0)
+	resp := make([]*logproto.GroupedChunkRefs, 0)
 	for idx, chunkRef := range chunkRefs {
 		fp := chunkRef.Fingerprint
+		shortRef := &logproto.ShortRef{From: chunkRef.From, Through: chunkRef.Through, Checksum: chunkRef.Checksum}
 		if idx == 0 || fp > resp[len(resp)-1].Fingerprint {
-			r := &logproto.ChunkIDsForStream{
+			r := &logproto.GroupedChunkRefs{
 				Fingerprint: fp,
-				ChunkIDs:    []string{g.ConvertChunkRefToChunkID(*chunkRef)},
+				Tenant:      tenantID,
+				Refs:        []*logproto.ShortRef{shortRef},
 			}
 			resp = append(resp, r)
 			continue
 		}
-		resp[len(resp)-1].ChunkIDs = append(resp[len(resp)-1].ChunkIDs, g.ConvertChunkRefToChunkID(*chunkRef))
+		resp[len(resp)-1].Refs = append(resp[len(resp)-1].Refs, shortRef)
 	}
 
-	return &logproto.FilterChunkRefResponse{Chunks: resp}, nil
+	return &logproto.FilterChunkRefResponse{ChunkRefs: resp}, nil
 }

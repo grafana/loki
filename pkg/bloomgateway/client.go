@@ -22,7 +22,6 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -160,17 +159,20 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			if err != nil {
 				return err
 			}
-			for _, res := range resp.Chunks {
-				chunkRefs := make([]*logproto.ChunkRef, 0, len(res.ChunkIDs))
-				for _, chunkID := range res.ChunkIDs {
-					chk, err := chunk.ParseExternalKey(tenant, chunkID)
-					if err != nil {
-						// What to do in this case???
-						continue
-					}
-					chunkRefs = append(chunkRefs, &chk.ChunkRef)
+			for _, refGroup := range resp.ChunkRefs {
+				chunkRefs := make([]*logproto.ChunkRef, 0, len(refGroup.Refs))
+				for _, shortRef := range refGroup.Refs {
+					chunkRefs = append(chunkRefs,
+						&logproto.ChunkRef{
+							Fingerprint: refGroup.Fingerprint,
+							UserID:      refGroup.Tenant,
+							From:        shortRef.From,
+							Through:     shortRef.Through,
+							Checksum:    shortRef.Checksum,
+						},
+					)
 				}
-				filteredFingerprints = append(filteredFingerprints, res.Fingerprint)
+				filteredFingerprints = append(filteredFingerprints, refGroup.Fingerprint)
 				filteredChunkRefs = append(filteredChunkRefs, chunkRefs)
 			}
 			return nil

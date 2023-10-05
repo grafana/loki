@@ -20,13 +20,26 @@ message FilterChunkRefRequest {
   repeated logproto.LineFilterExpression filters = 4;
 }
 
-message ChunkIDsForStream {
-  uint64 fingerprint = 1;
-  repeated string chunkIDs = 2;
+message FilterChunkRefResponse {
+  repeated GroupedChunkRefs chunkRefs = 1;
 }
 
-message FilterChunkRefResponse {
-  repeated ChunkIDsForStream chunks = 1;
+message ShortRef {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  uint32 checksum = 3;
+}
+
+message GroupedChunkRefs {
+  uint64 fingerprint = 1;
+  string tenant = 2;
+  repeated ShortRef refs = 3;
 }
 
 service BloomGateway {

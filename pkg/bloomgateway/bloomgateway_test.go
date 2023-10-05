@@ -154,10 +154,17 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		res, err := gw.FilterChunkRefs(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, &logproto.FilterChunkRefResponse{
-			Chunks: []*logproto.ChunkIDsForStream{
-				{Fingerprint: 1000, ChunkIDs: []string{"test/3e8/18af0426e00:18af0795c80:2", "test/3e8/18af00b7f80:18af0426e00:4"}},
-				{Fingerprint: 2000, ChunkIDs: []string{"test/7d0/18af0b04b00:18af0e73980:3"}},
-				{Fingerprint: 3000, ChunkIDs: []string{"test/bb8/18aefd49100:18af00b7f80:1"}},
+			ChunkRefs: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 1000, Tenant: tenantID, Refs: []*logproto.ShortRef{
+					{From: 1696248000000, Through: 1696251600000, Checksum: 2},
+					{From: 1696244400000, Through: 1696248000000, Checksum: 4},
+				}},
+				{Fingerprint: 2000, Tenant: tenantID, Refs: []*logproto.ShortRef{
+					{From: 1696255200000, Through: 1696258800000, Checksum: 3},
+				}},
+				{Fingerprint: 3000, Tenant: tenantID, Refs: []*logproto.ShortRef{
+					{From: 1696240800000, Through: 1696244400000, Checksum: 1},
+				}},
 			},
 		}, res)
 	})
