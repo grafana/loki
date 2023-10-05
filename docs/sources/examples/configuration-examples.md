@@ -2,7 +2,7 @@
 title: Configuration Examples
 description: Loki Configuration Examples
 ---
- # Examples
+# Configuration Examples
 
 ## 1-Local-Configuration-Example.yaml
 
