@@ -8,12 +8,4 @@ replace github.com/docker/distribution => github.com/docker/distribution v0.0.0-
 
 replace github.com/mattn/go-sqlite3 => github.com/mattn/go-sqlite3 v1.10.0
 
-replace go.opentelemetry.io/otel => go.opentelemetry.io/otel v0.20.0
-
-replace go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v0.20.0
-
-replace go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v0.20.0
-
-replace go.opentelemetry.io/proto/otlp => go.opentelemetry.io/proto/otlp v0.7.0
-
-require github.com/operator-framework/operator-sdk v1.27.0 // cmd/operator-sdk
+require github.com/operator-framework/operator-sdk v1.31.0 // cmd/operator-sdk
