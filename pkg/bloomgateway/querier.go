@@ -25,6 +25,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	if len(chunkRefs) == 0 || len(filters) == 0 {
 		return chunkRefs, nil
 	}
+	// TODO(chaudum): Make buffer pool to reduce allocations.
 	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
 	fingerprints := make([]uint64, 0, len(chunkRefs))
 	chunks := make([][]*logproto.ChunkRef, 0, len(chunkRefs))
