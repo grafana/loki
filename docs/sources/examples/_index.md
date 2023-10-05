@@ -1,7 +1,7 @@
 ---
 title: Grafana Loki Examples
 menuTitle: Examples
-description: Configuration reference for the parameters used to configure Grafana Loki.
+description: Examples to help you run Grafana Loki.
 weight: 800
 ---
 
