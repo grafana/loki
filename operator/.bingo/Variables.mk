@@ -71,11 +71,11 @@ $(JSONNETFMT): $(BINGO_DIR)/jsonnetfmt.mod
 	@echo "(re)installing $(GOBIN)/jsonnetfmt-v0.20.0"
 	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=jsonnetfmt.mod -o=$(GOBIN)/jsonnetfmt-v0.20.0 "github.com/google/go-jsonnet/cmd/jsonnetfmt"
 
-KIND := $(GOBIN)/kind-v0.17.0
+KIND := $(GOBIN)/kind-v0.20.0
 $(KIND): $(BINGO_DIR)/kind.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/kind-v0.17.0"
-	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kind.mod -o=$(GOBIN)/kind-v0.17.0 "sigs.k8s.io/kind"
+	@echo "(re)installing $(GOBIN)/kind-v0.20.0"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kind.mod -o=$(GOBIN)/kind-v0.20.0 "sigs.k8s.io/kind"
 
 KUSTOMIZE := $(GOBIN)/kustomize-v4.5.7
 $(KUSTOMIZE): $(BINGO_DIR)/kustomize.mod
