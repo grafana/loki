@@ -5,8 +5,9 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // BloomQuerier is a store-level abstraction on top of Client
