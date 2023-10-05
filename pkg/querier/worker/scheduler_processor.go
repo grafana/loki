@@ -172,7 +172,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	if err != nil {
 		resp = &queryrange.QueryResponse{
 			Status: &rpc.Status{
-				Code: int32(rpc.INTERNAL),
+				Code:    int32(rpc.INTERNAL),
 				Message: err.Error(),
 			},
 		}
@@ -181,7 +181,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		if err != nil {
 			resp = &queryrange.QueryResponse{
 				Status: &rpc.Status{
-					Code: int32(rpc.INTERNAL),
+					Code:    int32(rpc.INTERNAL),
 					Message: err.Error(),
 				},
 			}
@@ -190,27 +190,13 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 			if err != nil {
 				resp = &queryrange.QueryResponse{
 					Status: &rpc.Status{
-						Code: int32(rpc.INTERNAL),
+						Code:    int32(rpc.INTERNAL),
 						Message: err.Error(),
 					},
 				}
 			}
 		}
 	}
-
-	// TODO(karsten): add error type to QueryResponse
-	/*
-		if err != nil {
-			var ok bool
-			response, ok = httpgrpc.HTTPResponseFromError(err)
-			if !ok {
-				response = &httpgrpc.HTTPResponse{
-					Code: http.StatusInternalServerError,
-					Body: []byte(err.Error()),
-				}
-			}
-		}
-	*/
 
 	logger = log.With(logger, "frontend", frontendAddress)
 

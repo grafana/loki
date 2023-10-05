@@ -327,9 +327,12 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_TopkSketches{response}
 	case *QuantileSketchResponse:
 		p.Response = &QueryResponse_QuantileSketches{response}
+	default:
+		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
 
-	return nil, fmt.Errorf("invalid response format, got (%T)", res)
+	return p, nil
+
 }
 
 func QueryRequestUnwrap(req *QueryRequest) (queryrangebase.Request, error) {
