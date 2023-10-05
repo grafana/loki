@@ -5,10 +5,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/validation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestBloomGatewayClient(t *testing.T) {
