@@ -4,6 +4,7 @@ package queryrange;
 
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
+import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/logproto/sketch.proto";
 import "pkg/logqlmodel/stats/stats.proto";
@@ -173,15 +174,16 @@ message QuantileSketchResponse {
 }
 
 message QueryResponse {
+  google.rpc.Status status = 1;
   oneof response {
-    LokiSeriesResponse series = 1;
-    LokiLabelNamesResponse labels = 2;
-    IndexStatsResponse stats = 3;
-    LokiPromResponse prom = 4;
-    LokiResponse streams = 5;
-    VolumeResponse volume = 6;
-    TopKSketchesResponse topkSketches = 7;
-    QuantileSketchResponse quantileSketches = 8;
+    LokiSeriesResponse series = 2;
+    LokiLabelNamesResponse labels = 3;
+    IndexStatsResponse stats = 4;
+    LokiPromResponse prom = 5;
+    LokiResponse streams = 6;
+    VolumeResponse volume = 7;
+    TopKSketchesResponse topkSketches = 8;
+    QuantileSketchResponse quantileSketches = 9;
   }
 }
 

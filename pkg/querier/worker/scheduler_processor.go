@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
@@ -165,20 +166,38 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	// TODO: handle error
+	var resp *queryrange.QueryResponse
+
 	req, err := queryrange.QueryRequestUnwrap(request)
 	if err != nil {
-		panic(err)
+		resp = &queryrange.QueryResponse{
+			Status: &rpc.Status{
+				Code: int32(rpc.INTERNAL),
+				Message: err.Error(),
+			},
+		}
+	} else {
+		response, err := sp.handler.Do(ctx, req)
+		if err != nil {
+			resp = &queryrange.QueryResponse{
+				Status: &rpc.Status{
+					Code: int32(rpc.INTERNAL),
+					Message: err.Error(),
+				},
+			}
+		} else {
+			resp, err = queryrange.QueryResponseWrap(response)
+			if err != nil {
+				resp = &queryrange.QueryResponse{
+					Status: &rpc.Status{
+						Code: int32(rpc.INTERNAL),
+						Message: err.Error(),
+					},
+				}
+			}
+		}
 	}
 
-	response, err := sp.handler.Do(ctx, req)
-	if err != nil {
-		panic(err)
-	}
-	resp, err := queryrange.QueryResponseWrap(response)
-	if err != nil {
-		panic(err)
-	}
 	// TODO(karsten): add error type to QueryResponse
 	/*
 		if err != nil {

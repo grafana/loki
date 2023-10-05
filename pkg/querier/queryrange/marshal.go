@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -275,6 +276,10 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 }
 
 func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
+	if res.Status != nil {
+		return nil, status.ErrorProto(res.Status)
+	}
+
 	switch concrete := res.Response.(type) {
 	case *QueryResponse_Series:
 		return concrete.Series, nil
@@ -323,7 +328,7 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	case *QuantileSketchResponse:
 		p.Response = &QueryResponse_QuantileSketches{response}
 	}
-	
+
 	return nil, fmt.Errorf("invalid response format, got (%T)", res)
 }
 

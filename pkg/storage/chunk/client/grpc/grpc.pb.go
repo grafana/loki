@@ -9,10 +9,10 @@ import (
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
 	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
+	empty "github.com/golang/protobuf/ptypes/empty"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -1998,30 +1998,30 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type GrpcStoreClient interface {
 	// / WriteIndex writes batch of indexes to the index tables.
-	WriteIndex(ctx context.Context, in *WriteIndexRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	WriteIndex(ctx context.Context, in *WriteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	// / QueryIndex reads the indexes required for given query & sends back the batch of rows
 	// / in rpc streams
 	QueryIndex(ctx context.Context, in *QueryIndexRequest, opts ...grpc.CallOption) (GrpcStore_QueryIndexClient, error)
 	// / DeleteIndex deletes the batch of index entries from the index tables
-	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	// / PutChunks saves the batch of chunks into the chunk tables.
-	PutChunks(ctx context.Context, in *PutChunksRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	PutChunks(ctx context.Context, in *PutChunksRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	// / GetChunks requests for batch of chunks and the batch of chunks are sent back in rpc streams
 	// / batching needs to be performed at server level as per requirement instead of sending single chunk per stream.
 	// / In GetChunks rpc request send buf as nil
 	GetChunks(ctx context.Context, in *GetChunksRequest, opts ...grpc.CallOption) (GrpcStore_GetChunksClient, error)
 	// / DeleteChunks deletes the chunks based on chunkID.
-	DeleteChunks(ctx context.Context, in *ChunkID, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeleteChunks(ctx context.Context, in *ChunkID, opts ...grpc.CallOption) (*empty.Empty, error)
 	// / Lists all the tables that exists in the database.
-	ListTables(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListTablesResponse, error)
+	ListTables(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ListTablesResponse, error)
 	// / Creates a table with provided name & attributes.
-	CreateTable(ctx context.Context, in *CreateTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CreateTable(ctx context.Context, in *CreateTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	// Deletes a table using table name provided.
-	DeleteTable(ctx context.Context, in *DeleteTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeleteTable(ctx context.Context, in *DeleteTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	// Describes a table information for the provided table.
 	DescribeTable(ctx context.Context, in *DescribeTableRequest, opts ...grpc.CallOption) (*DescribeTableResponse, error)
 	// Update a table with newly provided table information.
-	UpdateTable(ctx context.Context, in *UpdateTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UpdateTable(ctx context.Context, in *UpdateTableRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 }
 
 type grpcStoreClient struct {
@@ -2032,8 +2032,8 @@ func NewGrpcStoreClient(cc *grpc.ClientConn) GrpcStoreClient {
 	return &grpcStoreClient{cc}
 }
 
-func (c *grpcStoreClient) WriteIndex(ctx context.Context, in *WriteIndexRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *grpcStoreClient) WriteIndex(ctx context.Context, in *WriteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/WriteIndex", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -2073,8 +2073,8 @@ func (x *grpcStoreQueryIndexClient) Recv() (*QueryIndexResponse, error) {
 	return m, nil
 }
 
-func (c *grpcStoreClient) DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *grpcStoreClient) DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/DeleteIndex", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -2082,8 +2082,8 @@ func (c *grpcStoreClient) DeleteIndex(ctx context.Context, in *DeleteIndexReques
 	return out, nil
 }
 
-func (c *grpcStoreClient) PutChunks(ctx context.Context, in *PutChunksRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *grpcStoreClient) PutChunks(ctx context.Context, in *PutChunksRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/PutChunks", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -2123,8 +2123,8 @@ func (x *grpcStoreGetChunksClient) Recv() (*GetChunksResponse, error) {
 	return m, nil
 }
 
-func (c *grpcStoreClient) DeleteChunks(ctx context.Context, in *ChunkID, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *grpcStoreClient) DeleteChunks(ctx context.Context, in *ChunkID, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/DeleteChunks", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -2132,7 +2132,7 @@ func (c *grpcStoreClient) DeleteChunks(ctx context.Context, in *ChunkID, opts ..
 	return out, nil
 }
 
-func (c *grpcStoreClient) ListTables(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListTablesResponse, error) {
+func (c *grpcStoreClient) ListTables(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*ListTablesResponse, error) {
 	out := new(ListTablesResponse)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/ListTables", in, out, opts...)
 	if err != nil {
@@ -2141,8 +2141,8 @@ func (c *grpcStoreClient) ListTables(ctx context.Context, in *emptypb.Empty, opt
 	return out, nil
 }
 
-func (c *grpcStoreClient) CreateTable(ctx context.Context, in *CreateTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *grpcStoreClient) CreateTable(ctx context.Context, in *CreateTableRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/CreateTable", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -2150,8 +2150,8 @@ func (c *grpcStoreClient) CreateTable(ctx context.Context, in *CreateTableReques
 	return out, nil
 }
 
-func (c *grpcStoreClient) DeleteTable(ctx context.Context, in *DeleteTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *grpcStoreClient) DeleteTable(ctx context.Context, in *DeleteTableRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/DeleteTable", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -2168,8 +2168,8 @@ func (c *grpcStoreClient) DescribeTable(ctx context.Context, in *DescribeTableRe
 	return out, nil
 }
 
-func (c *grpcStoreClient) UpdateTable(ctx context.Context, in *UpdateTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *grpcStoreClient) UpdateTable(ctx context.Context, in *UpdateTableRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/grpc.grpc_store/UpdateTable", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -2180,67 +2180,67 @@ func (c *grpcStoreClient) UpdateTable(ctx context.Context, in *UpdateTableReques
 // GrpcStoreServer is the server API for GrpcStore service.
 type GrpcStoreServer interface {
 	// / WriteIndex writes batch of indexes to the index tables.
-	WriteIndex(context.Context, *WriteIndexRequest) (*emptypb.Empty, error)
+	WriteIndex(context.Context, *WriteIndexRequest) (*empty.Empty, error)
 	// / QueryIndex reads the indexes required for given query & sends back the batch of rows
 	// / in rpc streams
 	QueryIndex(*QueryIndexRequest, GrpcStore_QueryIndexServer) error
 	// / DeleteIndex deletes the batch of index entries from the index tables
-	DeleteIndex(context.Context, *DeleteIndexRequest) (*emptypb.Empty, error)
+	DeleteIndex(context.Context, *DeleteIndexRequest) (*empty.Empty, error)
 	// / PutChunks saves the batch of chunks into the chunk tables.
-	PutChunks(context.Context, *PutChunksRequest) (*emptypb.Empty, error)
+	PutChunks(context.Context, *PutChunksRequest) (*empty.Empty, error)
 	// / GetChunks requests for batch of chunks and the batch of chunks are sent back in rpc streams
 	// / batching needs to be performed at server level as per requirement instead of sending single chunk per stream.
 	// / In GetChunks rpc request send buf as nil
 	GetChunks(*GetChunksRequest, GrpcStore_GetChunksServer) error
 	// / DeleteChunks deletes the chunks based on chunkID.
-	DeleteChunks(context.Context, *ChunkID) (*emptypb.Empty, error)
+	DeleteChunks(context.Context, *ChunkID) (*empty.Empty, error)
 	// / Lists all the tables that exists in the database.
-	ListTables(context.Context, *emptypb.Empty) (*ListTablesResponse, error)
+	ListTables(context.Context, *empty.Empty) (*ListTablesResponse, error)
 	// / Creates a table with provided name & attributes.
-	CreateTable(context.Context, *CreateTableRequest) (*emptypb.Empty, error)
+	CreateTable(context.Context, *CreateTableRequest) (*empty.Empty, error)
 	// Deletes a table using table name provided.
-	DeleteTable(context.Context, *DeleteTableRequest) (*emptypb.Empty, error)
+	DeleteTable(context.Context, *DeleteTableRequest) (*empty.Empty, error)
 	// Describes a table information for the provided table.
 	DescribeTable(context.Context, *DescribeTableRequest) (*DescribeTableResponse, error)
 	// Update a table with newly provided table information.
-	UpdateTable(context.Context, *UpdateTableRequest) (*emptypb.Empty, error)
+	UpdateTable(context.Context, *UpdateTableRequest) (*empty.Empty, error)
 }
 
 // UnimplementedGrpcStoreServer can be embedded to have forward compatible implementations.
 type UnimplementedGrpcStoreServer struct {
 }
 
-func (*UnimplementedGrpcStoreServer) WriteIndex(ctx context.Context, req *WriteIndexRequest) (*emptypb.Empty, error) {
+func (*UnimplementedGrpcStoreServer) WriteIndex(ctx context.Context, req *WriteIndexRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WriteIndex not implemented")
 }
 func (*UnimplementedGrpcStoreServer) QueryIndex(req *QueryIndexRequest, srv GrpcStore_QueryIndexServer) error {
 	return status.Errorf(codes.Unimplemented, "method QueryIndex not implemented")
 }
-func (*UnimplementedGrpcStoreServer) DeleteIndex(ctx context.Context, req *DeleteIndexRequest) (*emptypb.Empty, error) {
+func (*UnimplementedGrpcStoreServer) DeleteIndex(ctx context.Context, req *DeleteIndexRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteIndex not implemented")
 }
-func (*UnimplementedGrpcStoreServer) PutChunks(ctx context.Context, req *PutChunksRequest) (*emptypb.Empty, error) {
+func (*UnimplementedGrpcStoreServer) PutChunks(ctx context.Context, req *PutChunksRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PutChunks not implemented")
 }
 func (*UnimplementedGrpcStoreServer) GetChunks(req *GetChunksRequest, srv GrpcStore_GetChunksServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetChunks not implemented")
 }
-func (*UnimplementedGrpcStoreServer) DeleteChunks(ctx context.Context, req *ChunkID) (*emptypb.Empty, error) {
+func (*UnimplementedGrpcStoreServer) DeleteChunks(ctx context.Context, req *ChunkID) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteChunks not implemented")
 }
-func (*UnimplementedGrpcStoreServer) ListTables(ctx context.Context, req *emptypb.Empty) (*ListTablesResponse, error) {
+func (*UnimplementedGrpcStoreServer) ListTables(ctx context.Context, req *empty.Empty) (*ListTablesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListTables not implemented")
 }
-func (*UnimplementedGrpcStoreServer) CreateTable(ctx context.Context, req *CreateTableRequest) (*emptypb.Empty, error) {
+func (*UnimplementedGrpcStoreServer) CreateTable(ctx context.Context, req *CreateTableRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTable not implemented")
 }
-func (*UnimplementedGrpcStoreServer) DeleteTable(ctx context.Context, req *DeleteTableRequest) (*emptypb.Empty, error) {
+func (*UnimplementedGrpcStoreServer) DeleteTable(ctx context.Context, req *DeleteTableRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteTable not implemented")
 }
 func (*UnimplementedGrpcStoreServer) DescribeTable(ctx context.Context, req *DescribeTableRequest) (*DescribeTableResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DescribeTable not implemented")
 }
-func (*UnimplementedGrpcStoreServer) UpdateTable(ctx context.Context, req *UpdateTableRequest) (*emptypb.Empty, error) {
+func (*UnimplementedGrpcStoreServer) UpdateTable(ctx context.Context, req *UpdateTableRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateTable not implemented")
 }
 
@@ -2363,7 +2363,7 @@ func _GrpcStore_DeleteChunks_Handler(srv interface{}, ctx context.Context, dec f
 }
 
 func _GrpcStore_ListTables_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(empty.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -2375,7 +2375,7 @@ func _GrpcStore_ListTables_Handler(srv interface{}, ctx context.Context, dec fun
 		FullMethod: "/grpc.grpc_store/ListTables",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GrpcStoreServer).ListTables(ctx, req.(*emptypb.Empty))
+		return srv.(GrpcStoreServer).ListTables(ctx, req.(*empty.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
