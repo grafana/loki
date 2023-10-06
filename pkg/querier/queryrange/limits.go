@@ -43,6 +43,8 @@ const (
 	limErrQuerierTooManyBytesTmpl            = "query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings"
 	limErrQuerierTooManyBytesUnshardableTmpl = "un-shardable query too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
 	limErrQuerierTooManyBytesShardableTmpl   = "shard query is too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
+	limErrSubqueryTooManyStreams             = "one or more subqueries calculated would read too many streams (streams: %d, limit: %d); consider adding more specific stream selectors, reduce the [range] in the query, or reduce the time range of the query"
+	limErrSubqueryTooManyChunks              = "one or more subqueries calculated would read too many chunks (chunks: %d, limit: %d); consider adding more specific stream selectors, reduce the [range] in the query, or reduce the time range of the query"
 )
 
 var (
@@ -69,6 +71,8 @@ type Limits interface {
 	MaxQuerierBytesRead(context.Context, string) int
 	MaxStatsCacheFreshness(context.Context, string) time.Duration
 	VolumeEnabled(string) bool
+	MaxSubqueryStreams(string) int
+	MaxSubqueryChunks(string) int
 }
 
 type limits struct {

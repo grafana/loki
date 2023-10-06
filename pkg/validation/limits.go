@@ -109,7 +109,9 @@ type Limits struct {
 	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
 	VolumeEnabled       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	VolumeMaxSeries     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response."`
+	MaxSubqueryStreams  int              `yaml:"max_subquery_streams" json:"max_subquery_streams" doc:"description=A query will fail if any subquery has to execute over more than this number of streams. 0 to disable."`
+	MaxSubqueryChunks   int              `yaml:"max_subquery_chunks" json:"max_subquery_chunks" doc:"description=A query will fail if any subquery has to fetch more than this number of chunks. 0 to disable."`
 
 	// Ruler defaults and limits.
 
@@ -295,6 +297,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
+	f.IntVar(&l.MaxSubqueryStreams, "limits.max-subquery-streams", 0, "A query will fail if any subquery has to execute over more than this number of streams. 0 to disable.")
+	f.IntVar(&l.MaxSubqueryChunks, "limits.max-subquery-chunks", 0, "A query will fail if any subquery has to fetch more than this number of chunks. 0 to disable.")
 
 	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", false, "Allow user to send structured metadata (non-indexed labels) in push payload.")
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
@@ -770,6 +774,14 @@ func (o *Overrides) VolumeEnabled(userID string) bool {
 
 func (o *Overrides) VolumeMaxSeries(userID string) int {
 	return o.getOverridesForUser(userID).VolumeMaxSeries
+}
+
+func (o *Overrides) MaxSubqueryStreams(userID string) int {
+	return o.getOverridesForUser(userID).MaxSubqueryStreams
+}
+
+func (o *Overrides) MaxSubqueryChunks(userID string) int {
+	return o.getOverridesForUser(userID).MaxSubqueryChunks
 }
 
 func (o *Overrides) IndexGatewayShardSize(userID string) int {
