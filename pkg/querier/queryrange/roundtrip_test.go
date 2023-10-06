@@ -468,10 +468,11 @@ func TestLabelsTripperware(t *testing.T) {
 	require.NoError(t, err)
 	defer rt.Close()
 
-	lreq := &LokiLabelNamesRequest{
-		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
-		EndTs:   testTime,
-		Path:    "/loki/api/v1/labels",
+	tmp := testTime.Add(-25 * time.Hour)
+	lreq := &LabelRequest{
+		Start:  &tmp, // bigger than the limit
+		End:    &testTime,
+		Values: false,
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")

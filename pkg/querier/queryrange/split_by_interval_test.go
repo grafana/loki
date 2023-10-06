@@ -90,10 +90,10 @@ func Test_splitQuery(t *testing.T) {
 	}
 
 	buildLokiLabelNamesRequest := func(start, end time.Time) queryrangebase.Request {
-		return &LokiLabelNamesRequest{
-			StartTs: start,
-			EndTs:   end,
-			Path:    "/labels",
+		return &LabelRequest{
+			Start:  &start,
+			End:    &end,
+			Values: false,
 		}
 	}
 

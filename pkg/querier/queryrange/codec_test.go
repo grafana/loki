@@ -82,19 +82,19 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		{"labels", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label?start=%d&end=%d`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LokiLabelNamesRequest{
-			Path:    "/label",
-			StartTs: start,
-			EndTs:   end,
+		}, &LabelRequest{
+			Start: &start,
+			End:   &end,
 		}, false},
 		{"label_values", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LokiLabelNamesRequest{
-			Path:    "/label/test/values",
-			StartTs: start,
-			EndTs:   end,
-			Query:   `{foo="bar"}`,
+		}, &LabelRequest{
+			Start:  &start,
+			End:    &end,
+			Query:  `{foo="bar"}`,
+			Values: true,
+			Name:   "test",
 		}, false},
 		{"index_stats", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
@@ -283,15 +283,6 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    seriesData,
-			}, false,
-		},
-		{
-			"labels legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelsString))},
-			&LokiLabelNamesRequest{Path: "/api/prom/label"},
-			&LokiLabelNamesResponse{
-				Status:  "success",
-				Version: uint32(loghttp.VersionLegacy),
-				Data:    labelsData,
 			}, false,
 		},
 		{
@@ -626,10 +617,9 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 
 func Test_codec_labels_EncodeRequest(t *testing.T) {
 	ctx := context.Background()
-	toEncode := &LokiLabelNamesRequest{
-		Path:    "/loki/api/v1/labels",
-		StartTs: start,
-		EndTs:   end,
+	toEncode := &LabelRequest{
+		Start: &start,
+		End:   &end,
 	}
 	got, err := DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
@@ -641,16 +631,17 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	// testing a full roundtrip
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
-	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, "/loki/api/v1/labels", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
+	require.Equal(t, toEncode.End, req.(*LabelRequest).End)
+	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
 	// Test labels values endpoint
-	toEncode = &LokiLabelNamesRequest{
-		Path:    "/loki/api/v1/labels/__name__/values",
-		StartTs: start,
-		EndTs:   end,
-		Query:   `{foo="bar"}`,
+	toEncode = &LabelRequest{
+		Start:  &start,
+		End:    &end,
+		Query:  `{foo="bar"}`,
+		Values: true,
+		Name:   "__name__",
 	}
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
@@ -663,10 +654,10 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	// testing a full roundtrip
 	req, err = DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
-	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, toEncode.Query, req.(*LokiLabelNamesRequest).Query)
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
+	require.Equal(t, toEncode.End, req.(*LabelRequest).End)
+	require.Equal(t, toEncode.Query, req.(*LabelRequest).Query)
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LabelRequest).Path())
 }
 
 func Test_codec_labels_DecodeRequest(t *testing.T) {
@@ -677,10 +668,10 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	r := &http.Request{URL: u}
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
-	require.Equal(t, start, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, end, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, `{foo="bar"}`, req.(*LokiLabelNamesRequest).Query)
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, start, req.(*LabelRequest).Start)
+	require.Equal(t, end, req.(*LabelRequest).End)
+	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
+	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LabelRequest).Path())
 
 	got, err := DefaultCodec.EncodeRequest(ctx, req)
 	require.NoError(t, err)
