@@ -62,7 +62,7 @@ func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Reque
 
 	resp, err := d.codec.DecodeResponse(ctx, httpResp, req)
 	if err != nil {
-		return nil, fmt.Errorf("connot convert HTTP response to response: %w", err)
+		return nil, fmt.Errorf("cannot convert HTTP response to response: %w", err)
 	}
 
 	return resp, nil

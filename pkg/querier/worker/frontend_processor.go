@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
+	"github.com/grafana/dskit/user"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
@@ -125,6 +126,9 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 
 	// TODO: handler error
 	httpReq, _ := httpgrpc_server.ToHTTP(ctx, request)
+
+	_, ctx, _ = user.ExtractOrgIDFromHTTPRequest(httpReq)
+
 	req, _ := queryrange.DefaultCodec.DecodeRequest(ctx, httpReq, nil)
 
 	// TODO return error code

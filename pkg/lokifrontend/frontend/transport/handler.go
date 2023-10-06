@@ -268,7 +268,7 @@ type grpcRoundTripperToHandlerAdapter struct {
 func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	httpReq, err := a.codec.EncodeRequest(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
+		return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
 	}
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
 		return nil, err
@@ -276,7 +276,7 @@ func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrang
 
 	grpcReq, err := server.HTTPRequest(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("connot convert HTTP request to gRPC request: %w", err)
+		return nil, fmt.Errorf("cannot convert HTTP request to gRPC request: %w", err)
 	}
 
 	grpcResp, err := a.roundTripper.RoundTripGRPC(ctx, grpcReq)
@@ -288,7 +288,7 @@ func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrang
 
 	resp, err := a.codec.DecodeResponse(ctx, httpResp, req)
 	if err != nil {
-		return nil, fmt.Errorf("connot convert HTTP response to response: %w", err)
+		return nil, fmt.Errorf("fff cannot convert HTTP response to response: %w", err)
 	}
 
 	return resp, nil
