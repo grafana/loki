@@ -23,12 +23,8 @@ type ReadShipper interface {
 	ForEachBlock(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error
 }
 
-type WriteShipper interface {
-}
-
 type Shipper interface {
 	ReadShipper
-	WriteShipper
 	Stop()
 }
 
