@@ -70,7 +70,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 #### Changes to default configuration values
 
 1. `querier.max-concurrent` now defaults to 4. Consider increasing this if queriers have access to more CPU resources.
-    Note that you risk running into OOMs if you set this to a very high value.
+    Note that you risk running into out of memory errors if you set this to a very high value.
 1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
 
 #### Write dedupe cache is deprecated
