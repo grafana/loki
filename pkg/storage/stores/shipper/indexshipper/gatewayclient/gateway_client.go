@@ -111,7 +111,7 @@ type GatewayClient struct {
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
-// Otherwise, it creates a GRPC connection pool to as many addresses which can be resolved from the given address.
+// Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
 func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
