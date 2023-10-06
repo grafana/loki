@@ -4,13 +4,14 @@ import (
 	"archive/zip"
 	"context"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
