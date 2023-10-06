@@ -97,6 +97,6 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 	}
 }
 
-func NewQuerierHTTPHandler(h * Handler) http.Handler {
+func NewQuerierHTTPHandler(h *Handler) http.Handler {
 	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec)
 }
