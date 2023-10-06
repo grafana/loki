@@ -55,8 +55,7 @@ The previous default value `false` is applied.
 1. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 1. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
 1. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
-1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed.
-    It's removed as it does not offer additional value to already existing `querier.max-concurrent`.
+1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed as it does not offer additional value to already existing `querier.max-concurrent`.
     We recommend configuring `querier.max-concurrent` to limit the max concurrent requests processed by the queriers.
 
 #### Legacy ingester shutdown handler is removed
@@ -70,8 +69,8 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Changes to default configuration values
 
-1. `querier.max-concurrent` now defaults to 4. Consider increasing this if queriers have access to more cpu resources.
-    Do note that you risk running into OOMs if you set this to a very high value.
+1. `querier.max-concurrent` now defaults to 4. Consider increasing this if queriers have access to more CPU resources.
+    Note that you risk running into OOMs if you set this to a very high value.
 1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
 
 #### Write dedupe cache is deprecated
