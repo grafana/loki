@@ -82,20 +82,13 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		{"labels", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label?start=%d&end=%d`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LabelRequest{
-			Start: &start,
-			End:   &end,
-		}, false},
+		}, NewLabelRequest(start, end, "", ""),
+		false},
 		{"label_values", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LabelRequest{
-			Start:  &start,
-			End:    &end,
-			Query:  `{foo="bar"}`,
-			Values: true,
-			Name:   "test",
-		}, false},
+		}, NewLabelRequest(start, end, `{foo="bar"}`, "test"),
+		false},
 		{"index_stats", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
@@ -180,6 +173,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// TODO: context must save mux vars
 			got, err := DefaultCodec.DecodeRequest(context.TODO(), req, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
@@ -617,10 +611,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 
 func Test_codec_labels_EncodeRequest(t *testing.T) {
 	ctx := context.Background()
-	toEncode := &LabelRequest{
-		Start: &start,
-		End:   &end,
-	}
+	toEncode := NewLabelRequest(start, end, "", "") 
 	got, err := DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
@@ -636,13 +627,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
 	// Test labels values endpoint
-	toEncode = &LabelRequest{
-		Start:  &start,
-		End:    &end,
-		Query:  `{foo="bar"}`,
-		Values: true,
-		Name:   "__name__",
-	}
+	toEncode = NewLabelRequest(start, end, `{foo="bar"}`, "__name__")
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
@@ -668,8 +653,8 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	r := &http.Request{URL: u}
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
-	require.Equal(t, start, req.(*LabelRequest).Start)
-	require.Equal(t, end, req.(*LabelRequest).End)
+	require.Equal(t, start, *req.(*LabelRequest).Start)
+	require.Equal(t, end, *req.(*LabelRequest).End)
 	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LabelRequest).Path())
 

@@ -468,12 +468,12 @@ func TestLabelsTripperware(t *testing.T) {
 	require.NoError(t, err)
 	defer rt.Close()
 
-	tmp := testTime.Add(-25 * time.Hour)
-	lreq := &LabelRequest{
-		Start:  &tmp, // bigger than the limit
-		End:    &testTime,
-		Values: false,
-	}
+	lreq := NewLabelRequest(
+		testTime.Add(-25 * time.Hour), // bigger than the limit
+		testTime,
+		"",
+		"",
+	)
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 	req, err := DefaultCodec.EncodeRequest(ctx, lreq)

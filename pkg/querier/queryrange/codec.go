@@ -174,7 +174,25 @@ func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 func (*LokiSeriesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 // In some other world LabelRequest could implement queryrangebase.Request.
-type LabelRequest logproto.LabelRequest
+type LabelRequest struct{
+	logproto.LabelRequest
+}
+
+func NewLabelRequest(start, end time.Time, query, name string) *LabelRequest {
+	return &LabelRequest{
+		logproto.LabelRequest{
+			Start: &start,
+			End: &end,
+			Query: query,
+			Name: name,
+			Values: name != "",
+		},
+	}
+}
+
+func (r *LabelRequest) AsProto() *logproto.LabelRequest {
+	return &r.LabelRequest
+}
 
 func (r *LabelRequest) GetEnd() int64 {
 	return r.End.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
@@ -192,22 +210,8 @@ func (r *LabelRequest) GetStartTs() time.Time {
 	return *r.Start
 }
 
-func (r *LabelRequest) GetQuery() string {
-	return r.GetQuery()
-}
-
 func (r *LabelRequest) GetStep() int64 {
 	return 0
-}
-
-func (*LabelRequest) ProtoMessage() {}
-
-func (r *LabelRequest) Reset() {
-	r.Reset()
-}
-
-func (r *LabelRequest) String() string {
-	return r.String()
 }
 
 func (r *LabelRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
@@ -294,8 +298,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		result := LabelRequest(*req)
-		return &result, nil
+		return &LabelRequest{*req}, nil
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(r)
 		if err != nil {

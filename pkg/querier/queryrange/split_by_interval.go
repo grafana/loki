@@ -273,12 +273,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 		// Set endTimeInclusive to true so that ForInterval keeps a gap of 1ms between splits to
 		// avoid querying duplicate data in adjacent queries.
 		util.ForInterval(interval, *r.Start, *r.End, true, func(start, end time.Time) {
-			reqs = append(reqs, &LabelRequest{
-				Start: &start,
-				End:   &end,
-				Query: r.Query,
-				Name:  r.Name,
-			})
+			reqs = append(reqs, NewLabelRequest(start, end, r.Query, r.Name))
 		})
 	case *logproto.IndexStatsRequest:
 		startTS := model.Time(r.GetStart()).Time()
