@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	prometheustranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus"
@@ -17,7 +18,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/push"
 	loki_util "github.com/grafana/loki/pkg/util"
 )
@@ -78,7 +78,6 @@ func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 }
 
 func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
-
 	pushStats.contentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
@@ -130,14 +129,13 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		return &logproto.PushRequest{}
 	}
 
-	pushRequestsByStream := map[string]logproto.Stream{}
-
 	rls := ld.ResourceLogs()
+	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
+
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
 		res := rls.At(i).Resource()
 
-		streamLabels := model.LabelSet{}
 		flattenedResourceAttributes := labels.NewBuilder(logproto.FromLabelAdaptersToLabels(attributesToLabels(res.Attributes(), "")))
 		// service.name is a required Resource Attribute. If it is not present, we will set it to "unknown_service".
 		if flattenedResourceAttributes.Get("service_name") == "" {
@@ -149,6 +147,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		}
 
 		// copy blessed attributes to stream labels
+		streamLabels := make(model.LabelSet, len(blessedAttributes))
 		for _, ba := range blessedAttributes {
 			normalizedBlessedAttribute := prometheustranslator.NormalizeLabel(ba)
 			v := flattenedResourceAttributes.Get(normalizedBlessedAttribute)
@@ -170,12 +169,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		// convert the remaining resource attributes to structured metadata
 		resourceAttributesAsStructuredMetadata := logproto.FromLabelsToLabelAdapters(flattenedResourceAttributes.Labels())
 
-		lbs, err := syntax.ParseLabels(labelsStr)
-		if err != nil {
-			stats.errs = append(stats.errs, fmt.Errorf("couldn't parse labels: %w", err))
-			continue
-		}
-
+		lbs := modelLabelsSetToLabelsList(streamLabels)
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
 				Labels: labelsStr,
@@ -189,6 +183,13 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		for j := 0; j < sls.Len(); j++ {
 			scope := sls.At(j).Scope()
 			logs := sls.At(j).LogRecords()
+
+			// it would be rare to have multiple scopes so if the entries slice is empty, pre-allocate it for the number of log entries
+			if cap(pushRequestsByStream[labelsStr].Entries) == 0 {
+				stream := pushRequestsByStream[labelsStr]
+				stream.Entries = make([]push.Entry, 0, logs.Len())
+				pushRequestsByStream[labelsStr] = stream
+			}
 
 			// use fields and attributes from scope as structured metadata
 			scopeAttributesAsStructuredMetadata := attributesToLabels(scope.Attributes(), "")
@@ -305,7 +306,7 @@ func otlpLogToPushEntry(log plog.LogRecord) push.Entry {
 }
 
 func attributesToLabels(attrs pcommon.Map, prefix string) push.LabelsAdapter {
-	labelsAdapter := push.LabelsAdapter{}
+	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
 	if attrs.Len() == 0 {
 		return labelsAdapter
 	}
@@ -349,4 +350,17 @@ func labelsSize(lbls push.LabelsAdapter) int {
 	}
 
 	return size
+}
+
+func modelLabelsSetToLabelsList(m model.LabelSet) labels.Labels {
+	l := make(labels.Labels, 0, len(m))
+	for lName, lValue := range m {
+		l = append(l, labels.Label{
+			Name:  string(lName),
+			Value: string(lValue),
+		})
+	}
+
+	sort.Sort(l)
+	return l
 }
