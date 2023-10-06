@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/dns"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
@@ -26,16 +25,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/util/discovery"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
 const (
 	maxQueriesPerGrpc      = 100
 	maxConcurrentGrpcCalls = 10
-)
-
-var (
-	ErrIndexGatewayDNSLookupTimeout = errors.New("index gateway DNS lookup timeout")
 )
 
 // IndexGatewayClientConfig configures the Index Gateway client used to
@@ -97,7 +93,7 @@ type GatewayClient struct {
 
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 
-	dnsProvider *dns.Provider
+	dnsProvider *discovery.DNS
 
 	pool *ring_client.Pool
 
@@ -183,15 +179,14 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 			}
 		}
 		//TODO(ewelch) we can't use metrics in the provider because of duplicate registration errors
-		dnsProvider := dns.NewProvider(logger, nil, dns.GolangResolverType)
+		dnsProvider := discovery.NewDNS(logger, sgClient.cfg.PoolConfig.ClientCleanupPeriod, sgClient.cfg.Address, nil)
 		sgClient.dnsProvider = dnsProvider
 
 		// Make an attempt to do one DNS lookup so we can start with addresses
-		sgClient.runDiscovery()
-		go sgClient.discoveryLoop()
+		dnsProvider.RunOnce()
 
 		discovery := func() ([]string, error) {
-			return dnsProvider.Addresses(), err
+			return dnsProvider.Addresses(), nil
 		}
 		sgClient.pool = ring_client.NewPool("index gateway", poolCfg, discovery, factory, clients, logger)
 
@@ -206,29 +201,6 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 	return sgClient, nil
 }
 
-func (s *GatewayClient) discoveryLoop() {
-	ticker := time.NewTicker(s.cfg.PoolConfig.ClientCleanupPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			s.runDiscovery()
-		case <-s.done:
-			return
-		}
-	}
-}
-
-func (s *GatewayClient) runDiscovery() {
-	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, ErrIndexGatewayDNSLookupTimeout)
-	defer cancel()
-	err := s.dnsProvider.Resolve(ctx, []string{s.cfg.Address})
-	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to resolve index gateway address", "err", err)
-	}
-}
-
 // Stop stops the execution of this gateway client.
 func (s *GatewayClient) Stop() {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 10*time.Second, errors.New("service shutdown timeout expired"))
@@ -237,7 +209,7 @@ func (s *GatewayClient) Stop() {
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to stop index gateway connection pool", "err", err)
 	}
-	close(s.done)
+	s.dnsProvider.Stop()
 }
 
 func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
