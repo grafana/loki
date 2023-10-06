@@ -54,7 +54,7 @@ type ClientConfig struct {
 	// PoolConfig defines the behavior of the gRPC connection pool used to communicate
 	// with the Bloom Gateway.
 	// It is defined at the distributors YAML section and reused here.
-	PoolConfig clientpool.PoolConfig `yaml:"-"`
+	PoolConfig clientpool.PoolConfig `yaml:"pool_config,omitempty" doc:"description=Configures the behavior of the connection pool."`
 
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
@@ -117,7 +117,7 @@ func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Reg
 		cfg:    cfg,
 		logger: logger,
 		limits: limits,
-		pool:   clientpool.NewPool(cfg.PoolConfig, cfg.Ring, poolFactory, logger),
+		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, poolFactory, logger),
 	}
 
 	return c, nil

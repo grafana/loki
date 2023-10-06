@@ -1790,6 +1790,14 @@ ring:
 [enabled: <boolean> | default = false]
 
 client:
+  # Configures the behavior of the connection pool.
+  pool_config:
+    [client_cleanup_period: <duration>]
+
+    [health_check_ingesters: <boolean>]
+
+    [remote_timeout: <duration>]
+
   # The grpc_client block configures the gRPC client used to communicate between
   # two Loki components.
   # The CLI flags prefix for this block configuration is:
