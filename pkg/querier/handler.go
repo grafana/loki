@@ -75,8 +75,9 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 
 		return &queryrange.LokiLabelNamesResponse{
-			Status: "success",
-			Data:   res.Values,
+			Status:  "success",
+			Version: uint32(loghttp.VersionV1),
+			Data:    res.Values,
 		}, nil
 	case *logproto.IndexStatsRequest:
 		request := loghttp.NewRangeQueryWithDefaults()
@@ -96,6 +97,6 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 	}
 }
 
-func NewQuerierHTTPHandler(api *QuerierAPI) http.Handler {
-	return queryrange.NewSerializeHTTPHandler(NewQuerierHandler(api), queryrange.DefaultCodec)
+func NewQuerierHTTPHandler(h * Handler) http.Handler {
+	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec)
 }
