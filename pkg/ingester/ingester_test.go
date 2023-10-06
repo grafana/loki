@@ -130,6 +130,25 @@ func TestPrepareShutdown(t *testing.T) {
 		require.Equal(t, 405, resp.Code)
 		require.Empty(t, resp.Body.String())
 	})
+
+	t.Run("POST with unset", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("POST", "/ingester/prepare-shutdown?unset=true", nil))
+		require.Equal(t, 204, resp.Code)
+		require.True(t, i.lifecycler.FlushOnShutdown())
+		require.True(t, i.lifecycler.ShouldUnregisterOnShutdown())
+	})
+
+	t.Run("GET after unset", func(t *testing.T) {
+		resp := httptest.NewRecorder()
+		i.PrepareShutdown(resp, httptest.NewRequest("GET", "/ingester/prepare-shutdown", nil))
+		require.Equal(t, 200, resp.Code)
+		splits := strings.SplitN(resp.Body.String(), " ", 2)
+		require.Len(t, splits, 2)
+		require.Equal(t, "unset", splits[0])
+		_, err := time.Parse(time.RFC3339, splits[1])
+		require.NoError(t, err)
+	})
 }
 
 func TestIngester_GetStreamRates_Correctness(t *testing.T) {

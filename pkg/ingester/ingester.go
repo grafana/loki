@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -640,13 +641,28 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		var status string
+		var timestamp string
 		if exists {
-			util.WriteTextResponse(w, "set "+contents)
+			splits := strings.SplitN(contents, " ", 2)
+			if len(splits) != 2 {
+				level.Error(util_log.Logger).Log("msg", "invalid contents of prepare-shutdown marker file", "path", shutdownMarkerPath, "splits", splits)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			timestamp = splits[0]
+			status = splits[1]
+		}
+
+		if exists && status == "set" {
+			util.WriteTextResponse(w, "set "+timestamp)
+		} else if exists && status == "unset" {
+			util.WriteTextResponse(w, "unset "+timestamp)
 		} else {
 			util.WriteTextResponse(w, "unset")
 		}
 	case http.MethodPost:
-		if err := createShutdownMarker(shutdownMarkerPath); err != nil {
+		if err := createShutdownMarker(shutdownMarkerPath, r.URL.Query().Get("unset")); err != nil {
 			level.Error(util_log.Logger).Log("msg", "unable to create prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -692,7 +708,7 @@ func (i *Ingester) unsetPrepareShutdown() {
 // createShutdownMarker writes a marker file to disk to indicate that an ingester is
 // going to be scaled down in the future. The presence of this file means that an ingester
 // should flush and upload all data when stopping.
-func createShutdownMarker(p string) error {
+func createShutdownMarker(filePath, status string) error {
 	// Write the file, fsync it, then fsync the containing directory in order to guarantee
 	// it is persisted to disk. From https://man7.org/linux/man-pages/man2/fsync.2.html
 	//
@@ -700,13 +716,21 @@ func createShutdownMarker(p string) error {
 	// > directory containing the file has also reached disk.  For that an
 	// > explicit fsync() on a file descriptor for the directory is also
 	// > needed.
-	file, err := os.Create(p)
+	if status == "" {
+		status = "set"
+	} else {
+		status = "unset"
+	}
+
+	file, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
 
+	statusString := time.Now().UTC().Format(time.RFC3339) + " " + status
+
 	merr := multierror.New()
-	_, err = file.WriteString(time.Now().UTC().Format(time.RFC3339))
+	_, err = file.WriteString(statusString)
 	merr.Add(err)
 	merr.Add(file.Sync())
 	merr.Add(file.Close())
@@ -715,7 +739,7 @@ func createShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(filePath), os.O_RDONLY, 0777)
 	if err != nil {
 		return err
 	}
