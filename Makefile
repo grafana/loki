@@ -786,7 +786,7 @@ check-doc: doc
 ###################
 # Example Configs #
 ###################
-EXAMPLES_DOC_PATH := $(DOC_SOURCES_PATH)/examples
+EXAMPLES_DOC_PATH := $(DOC_SOURCES_PATH)/configure/examples
 EXAMPLES_DOC_OUTPUT_PATH := $(EXAMPLES_DOC_PATH)/configuration-examples.md
 EXAMPLES_YAML_PATH := $(EXAMPLES_DOC_PATH)/yaml
 EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
@@ -802,7 +802,7 @@ validate-example-configs: loki
 generate-example-config-doc:
 	echo "Removing existing doc at $(EXAMPLES_DOC_OUTPUT_PATH) and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Configuration Examples\ndescription: Loki Configuration Examples\n---\n# Configuration Examples" > $(EXAMPLES_DOC_OUTPUT_PATH)
+	echo -e "---\ntitle: Configuration\ndescription: Loki Configuration Examples and Snippets\nweight:  100\n---\n# Configuration" > $(EXAMPLES_DOC_OUTPUT_PATH)
 	# Append each configuration and its file name to examples.md
 	for f in $$(find $(EXAMPLES_YAML_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
 		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
