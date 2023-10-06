@@ -32,9 +32,6 @@ func parseDayTime(s string) config.DayTime {
 	}
 }
 
-func newBloomGatewayConfig() {
-}
-
 func TestBloomGateway_StartStopService(t *testing.T) {
 
 	ss := NewNoopStrategy()

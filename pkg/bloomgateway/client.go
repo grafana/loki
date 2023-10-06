@@ -26,7 +26,8 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// GRPCPool represents a pool of gRPC connections to different index gateway instances.
+// GRPCPool represents a pool of gRPC connections to different bloom gateway instances.
+// Interfaces are inlined for simplicity to automatically satisfy interface functions.
 type GRPCPool struct {
 	grpc_health_v1.HealthClient
 	logproto.BloomGatewayClient
