@@ -1,8 +1,9 @@
 ---
-title: Configuration Examples
-description: Loki Configuration Examples
+title: Configuration
+description: Loki Configuration Examples and Snippets
+weight:  100
 ---
-# Configuration Examples
+# Configuration
 
 ## 1-Local-Configuration-Example.yaml
 
