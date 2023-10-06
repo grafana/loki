@@ -1044,6 +1044,44 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
+		// binops: vector and scalar combinations
+		// LHS: vector, RHS: scalar
+		{
+			`
+		        sum(count_over_time({app="foo"}[1m])) > 20`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, identity, `{app="foo"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `sum(count_over_time({app="foo"}[1m]))`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.EmptyLabels(),
+					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
+				},
+			},
+		},
+		// LHS: scalar, RHS: vector
+		{
+			`20 < sum(count_over_time({app="foo"}[1m]))`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, identity, `{app="foo"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `sum(count_over_time({app="foo"}[1m]))`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.EmptyLabels(),
+					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
+				},
+			},
+		},
 		{
 			`rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Series{

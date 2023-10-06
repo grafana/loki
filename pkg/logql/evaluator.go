@@ -775,6 +775,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 
 	for i, sample := range lhs {
 		ls := &sample
+		swapped := false
 		sig := lsigs[i]
 		rs, found := rightSigs[sig] // Look for a match in the rhs Vector.
 		if !found {
@@ -806,10 +807,11 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 			}
 			// swap back before apply binary operator
 			if opts.VectorMatching.Card == syntax.CardOneToMany {
+				swapped = true
 				ls, rs = rs, ls
 			}
 		}
-		merged, err := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op))
+		merged, err := syntax.MergeBinOp(op, ls, rs, swapped, filter, syntax.IsComparisonOperator(op))
 		if err != nil {
 			return nil, err
 		}
@@ -919,7 +921,7 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 }
 
 // newLiteralStepEvaluator merges a literal with a StepEvaluator. Since order matters in
-// non-commutative operations, inverted should be true when the literalExpr is not the left argument.
+// non-commutative operations, inverted should be true when the literalExpr is on the right
 func newLiteralStepEvaluator(
 	op string,
 	lit *syntax.LiteralExpr,
@@ -973,6 +975,7 @@ func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 			e.op,
 			left,
 			right,
+			e.inverted,
 			!e.returnBool,
 			syntax.IsComparisonOperator(e.op),
 		)
