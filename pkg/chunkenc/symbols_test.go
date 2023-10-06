@@ -161,10 +161,10 @@ func TestSymbolizer(t *testing.T) {
 				}
 
 				buf.Reset()
-				_, _, err = s.SerializeTo(buf, getWriterPool(encoding))
+				_, _, err = s.SerializeTo(buf, GetWriterPool(encoding))
 				require.NoError(t, err)
 
-				loaded, err = symbolizerFromEnc(buf.Bytes(), getReaderPool(encoding))
+				loaded, err = symbolizerFromEnc(buf.Bytes(), GetReaderPool(encoding))
 				require.NoError(t, err)
 				for i, symbols := range tc.expectedSymbols {
 					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols))

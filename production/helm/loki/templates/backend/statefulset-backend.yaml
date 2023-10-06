@@ -28,7 +28,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.backendFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.backend.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.backend.persistence.enableStatefulSetAutoDeletePVC) (.Values.backend.persistence.volumeClaimsEnabled) }}
   {{/*
     Data on the backend nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -222,6 +222,10 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if not .Values.backend.persistence.volumeClaimsEnabled }}
+        - name: data
+        {{- toYaml .Values.backend.persistence.dataVolumeParameters | nindent 10 }}
+        {{- end}}
         - name: config
           {{- if .Values.loki.existingSecretForConfig }}
           secret:
@@ -253,6 +257,7 @@ spec:
         {{- with .Values.backend.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+  {{- if .Values.backend.persistence.volumeClaimsEnabled }}
   volumeClaimTemplates:
     - apiVersion: v1	
       kind: PersistentVolumeClaim
@@ -271,4 +276,5 @@ spec:
         selector:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+  {{- end }}
 {{- end }}
