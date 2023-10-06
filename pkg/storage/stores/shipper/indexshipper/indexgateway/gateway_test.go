@@ -143,7 +143,8 @@ func TestGateway_QueryIndex(t *testing.T) {
 				Start: 0,
 				End:   math.MaxInt64,
 				PeriodConfig: &config.PeriodConfig{
-					IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 				},
 			},
 		}}
@@ -203,7 +204,8 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			Start: 0,
 			End:   4,
 			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 			},
 		},
 	}, {
@@ -212,7 +214,8 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			Start: 5,
 			End:   10,
 			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 			},
 		},
 	}, {
@@ -221,7 +224,8 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			Start: 15,
 			End:   math.MaxInt64,
 			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 			},
 		},
 	}}

@@ -48,10 +48,11 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -59,10 +60,11 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v10",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -70,10 +72,11 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -81,10 +84,11 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 		},

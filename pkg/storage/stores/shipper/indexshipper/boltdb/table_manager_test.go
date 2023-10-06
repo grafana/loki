@@ -37,10 +37,11 @@ func buildTestTableManager(t *testing.T, testDir string) (*TableManager, stopFun
 
 	tableRange := config.TableRange{
 		End: math.MaxInt64,
-		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
-			Prefix: "index_",
-			Period: indexTablePeriod,
-		}},
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: indexTablePeriod,
+			}}},
 	}
 	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil, log.NewNopLogger())
 	require.NoError(t, err)
@@ -123,10 +124,11 @@ func TestLoadTables(t *testing.T) {
 	tableRange := config.TableRange{
 		Start: 1,
 		End:   3,
-		PeriodConfig: &config.PeriodConfig{IndexTables: config.PeriodicTableConfig{
-			Prefix: "table",
-			Period: indexTablePeriod,
-		}},
+		PeriodConfig: &config.PeriodConfig{IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "table",
+				Period: indexTablePeriod,
+			}}},
 	}
 	tm, err := NewTableManager(cfg, mockIndexShipper, tableRange, nil, log.NewNopLogger())
 	require.NoError(t, err)

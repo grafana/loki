@@ -73,10 +73,11 @@ func TestCompactor_RunCompaction(t *testing.T) {
 			From:       config.DayTime{Time: model.Time(0)},
 			IndexType:  "dummy",
 			ObjectType: "fs_01",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: indexTablePrefix,
-				Period: config.ObjectStorageIndexRequiredPeriod,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				}},
 		},
 	}
 
@@ -123,19 +124,21 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 			From:       config.DayTime{Time: model.Time(0)},
 			IndexType:  "dummy",
 			ObjectType: "fs_01",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: indexTablePrefix,
-				Period: config.ObjectStorageIndexRequiredPeriod,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				}},
 		},
 		{
 			From:       config.DayTime{Time: model.Time(periodTwoStart * daySeconds * 1000)},
 			IndexType:  "dummy",
 			ObjectType: "fs_02",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: indexTablePrefix,
-				Period: config.ObjectStorageIndexRequiredPeriod,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				}},
 		},
 	}
 
@@ -200,10 +203,11 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			IndexType:  "boltdb",
 			ObjectType: "filesystem",
 			Schema:     "v9",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: indexTablePrefix,
-				Period: time.Hour * 24,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: time.Hour * 24,
+				}},
 			RowShards: 16,
 		},
 		{
@@ -211,10 +215,11 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			IndexType:  "boltdb",
 			ObjectType: "filesystem",
 			Schema:     "v12",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: indexTablePrefix,
-				Period: time.Hour * 24,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: time.Hour * 24,
+				}},
 			RowShards: 16,
 		},
 		{
@@ -222,10 +227,11 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			IndexType:  "tsdb",
 			ObjectType: "filesystem",
 			Schema:     "v12",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: tsdbIndexTablePrefix,
-				Period: time.Hour * 24,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: tsdbIndexTablePrefix,
+					Period: time.Hour * 24,
+				}},
 			RowShards: 16,
 		},
 		{
@@ -233,10 +239,11 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			IndexType:  "tsdb",
 			ObjectType: "filesystem",
 			Schema:     "v12",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: indexTablePrefix,
-				Period: time.Hour * 24,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: time.Hour * 24,
+				}},
 			RowShards: 16,
 		},
 	}}

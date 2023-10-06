@@ -389,20 +389,22 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Schema:     "v11",
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 				{
 					Schema:     "v11",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 			},
 		}, {
@@ -411,20 +413,22 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Schema:     "v12",
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 				{
 					Schema:     "v12",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 			},
 		}, {
@@ -433,20 +437,22 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Schema:     "v13",
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 				{
 					Schema:     "v13",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 			},
 		},

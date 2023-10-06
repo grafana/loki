@@ -27,11 +27,12 @@ func TestGrpcStore(t *testing.T) {
 			IndexType:  "grpc-store",
 			ObjectType: "grpc-store",
 			Schema:     "v10",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: "index_",
-				Period: 604800000000000,
-				Tags:   nil,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: 604800000000000,
+					Tags:   nil,
+				}},
 			RowShards: 16,
 		},
 	}}

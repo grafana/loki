@@ -156,9 +156,10 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				IndexType: "aws-dynamo",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "a",
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "a",
+					}},
 			},
 			{
 				IndexType:   "aws-dynamo",
@@ -315,9 +316,10 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				IndexType: "aws-dynamo",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "a",
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "a",
+					}},
 			},
 			{
 				IndexType:   "aws-dynamo",

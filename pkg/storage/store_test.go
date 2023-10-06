@@ -206,10 +206,11 @@ func getLocalStore(cm ClientMetrics) Store {
 				IndexType:  "boltdb",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					}},
 			},
 		},
 	}
@@ -1031,10 +1032,11 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v9",
-		IndexTables: config.PeriodicTableConfig{
-			Prefix: "index_",
-			Period: time.Hour * 24,
-		},
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: time.Hour * 24,
+			}},
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -1102,10 +1104,11 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		IndexType:  config.TSDBType,
 		ObjectType: "named-store",
 		Schema:     "v11",
-		IndexTables: config.PeriodicTableConfig{
-			Prefix: "index_tsdb_",
-			Period: time.Hour * 24,
-		},
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_tsdb_",
+				Period: time.Hour * 24,
+			}},
 		RowShards: 2,
 	}
 	schemaConfig.Configs = append(schemaConfig.Configs, periodConfig2)
@@ -1205,10 +1208,11 @@ func TestStore_MultiPeriod(t *testing.T) {
 				IndexType:  indexes[0],
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 			}
 
 			periodConfigV11 := config.PeriodConfig{
@@ -1216,10 +1220,11 @@ func TestStore_MultiPeriod(t *testing.T) {
 				IndexType:  indexes[1],
 				ObjectType: "named-store",
 				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 2,
 			}
 
@@ -1539,10 +1544,11 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				IndexType:  "boltdb-shipper",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 2,
 			},
 			{
@@ -1550,10 +1556,11 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				IndexType:  "tsdb",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 			},
 		},
 	}

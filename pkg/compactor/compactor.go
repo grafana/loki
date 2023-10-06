@@ -144,8 +144,8 @@ func (cfg *Config) Validate() error {
 		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
 	}
 
-	if err := storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix); err != nil {
-		return err
+	if err := config.ValidatePathPrefix(cfg.SharedStoreKeyPrefix); err != nil {
+		return fmt.Errorf("invalid compactor.shared-store.key-prefix: %w", err)
 	}
 
 	if cfg.DeletionMode != "" {

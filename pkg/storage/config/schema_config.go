@@ -51,6 +51,8 @@ const (
 
 	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
 	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
+
+	pathPrefixDelimiter = "/"
 )
 
 var (
@@ -158,11 +160,11 @@ type PeriodConfig struct {
 	// type of index client to use.
 	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
 	// type of object client to use.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
-	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
-	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
-	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
-	RowShards   uint32              `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
+	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
+	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
+	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
+	RowShards   uint32                   `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
@@ -368,6 +370,10 @@ func validateChunks(cfg PeriodConfig) error {
 }
 
 func (cfg *PeriodConfig) applyDefaults() {
+	if cfg.IndexTables.PathPrefix == "" {
+		cfg.IndexTables.PathPrefix = "/index"
+	}
+
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
 	}
@@ -416,9 +422,8 @@ func (cfg PeriodConfig) validate() error {
 		return errTSDBNon24HoursIndexPeriod
 	}
 
-	// Ensure the tables period is a multiple of the bucket period
-	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%(24*time.Hour) != 0 {
-		return errInvalidTablePeriod
+	if err := cfg.IndexTables.Validate(); err != nil {
+		return err
 	}
 
 	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%(24*time.Hour) != 0 {
@@ -470,6 +475,36 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 	}
 	cfg.schemaInt = &n
 	return n, err
+}
+
+type IndexPeriodicTableConfig struct {
+	PathPrefix          string `yaml:"path_prefix" doc:"default=/index|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
+	PeriodicTableConfig `yaml:",inline"`
+}
+
+func (cfg *IndexPeriodicTableConfig) Validate() error {
+	// Ensure the tables period is a multiple of the bucket period
+	if cfg.Period > 0 && cfg.Period%(24*time.Hour) != 0 {
+		return errInvalidTablePeriod
+	}
+
+	return ValidatePathPrefix(cfg.PathPrefix)
+}
+
+func ValidatePathPrefix(prefix string) error {
+	if prefix == "" {
+		return errors.New("prefix must be set")
+	} else if strings.Contains(prefix, "\\") {
+		// When using windows filesystem as object store the implementation of ObjectClient in Cortex takes care of conversion of separator.
+		// We just need to always use `/` as a path separator.
+		return fmt.Errorf("prefix should only have '%s' as a path separator", pathPrefixDelimiter)
+	} else if strings.HasPrefix(prefix, pathPrefixDelimiter) {
+		return errors.New("prefix should never start with a path separator i.e '/'")
+	} else if !strings.HasSuffix(prefix, pathPrefixDelimiter) {
+		return errors.New("prefix should end with a path separator i.e '/'")
+	}
+
+	return nil
 }
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.

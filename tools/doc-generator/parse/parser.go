@@ -301,6 +301,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 				Required:     isFieldRequired(field),
 				FieldDesc:    getFieldDescription(cfg, field, ""),
 				FieldType:    fieldType,
+				FieldDefault: getFieldDefault(field, ""),
 				FieldExample: getFieldExample(fieldName, field.Type),
 				Element:      element,
 			})

@@ -94,7 +94,8 @@ func (cfg *Config) Validate() error {
 	if cfg.Mode == "" {
 		cfg.Mode = ModeReadWrite
 	}
-	return storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix)
+
+	return nil
 }
 
 // GetUniqueUploaderName builds a unique uploader name using IngesterName + `-` + <nanosecond-timestamp>.

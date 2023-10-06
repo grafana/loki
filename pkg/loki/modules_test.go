@@ -382,9 +382,10 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 			{
 				IndexType:  config.BoltDBShipperType,
 				ObjectType: config.StorageTypeFileSystem,
-				IndexTables: config.PeriodicTableConfig{
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 				Schema:    "v11",
 				From: config.DayTime{

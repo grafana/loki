@@ -3340,7 +3340,7 @@ ring:
   # CLI flag: -common.storage.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-[instance_interface_names: <list of strings>]
+[instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
 [instance_addr: <string> | default = ""]
 
@@ -4121,6 +4121,10 @@ The `period_config` block configures what index schemas should be used for from 
 
 # Configures how the index is updated and stored.
 index:
+  # path prefix for index tables. Defaults to "index/". The path prefix always
+  # needs to end with a path delimiter '/', except when the prefix is empty.
+  [path_prefix: <string> | default = "/index"]
+
   # Table prefix for all period tables.
   [prefix: <string> | default = ""]
 
