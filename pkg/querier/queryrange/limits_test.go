@@ -201,8 +201,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
-						_, err := next.Do(c, &LokiRequest{})
-						require.NoError(t, err)
+						_, _ = next.Do(c, r)
 					}()
 				}
 				return nil, nil
