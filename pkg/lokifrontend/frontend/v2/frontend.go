@@ -341,14 +341,15 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-
-		// TODO(karsten): handle HTTP 500 errors from querier.
-		// TODO(karsten): track stats if no error
-
 		if resp.QueryResponse != nil {
+			if stats.ShouldTrackQueryResponse(resp.QueryResponse) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 			return queryrange.QueryResponseUnwrap(resp.QueryResponse)
 		}
 
+		// Backwards compatiblity gpr HTTPGRPC responses.
 		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
 			stats := stats.FromContext(ctx)
 			stats.Merge(resp.Stats) // Safe if stats is nil.

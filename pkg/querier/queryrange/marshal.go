@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/promql"
 
@@ -280,7 +281,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 }
 
 func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
-	if res.Status != nil {
+	if res.Status != nil && res.Status.Code != int32(rpc.OK) {
 		return nil, status.ErrorProto(res.Status)
 	}
 
