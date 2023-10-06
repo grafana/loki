@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -85,8 +86,10 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		}, NewLabelRequest(start, end, "", ""),
 		false},
 		{"label_values", func() (*http.Request, error) {
-			return http.NewRequest(http.MethodGet,
+			req, err := http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
+			req = mux.SetURLVars(req, map[string]string{"name": "test"})
+			return req, err
 		}, NewLabelRequest(start, end, `{foo="bar"}`, "test"),
 		false},
 		{"index_stats", func() (*http.Request, error) {
@@ -637,6 +640,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 
 	// testing a full roundtrip
+	got = mux.SetURLVars(got, map[string]string{"name": "__name__"})
 	req, err = DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
@@ -651,6 +655,7 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	r := &http.Request{URL: u}
+	r = mux.SetURLVars(r, map[string]string{"name": "__name__"})
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
 	require.Equal(t, start, *req.(*LabelRequest).Start)

@@ -238,10 +238,10 @@ func (r *LabelRequest) LogToSpan(sp opentracing.Span) {
 
 func (r *LabelRequest) Path() string {
 	if !r.Values {
-		return "/loki/api/v1/label"
+		return "/loki/api/v1/labels"
 	}
 
-	return fmt.Sprintf("/loki/api/v1/label/%s/values", r.Name)
+	return fmt.Sprintf("/loki/api/v1/labels/%s/values", r.Name)
 }
 
 func (*LabelRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
