@@ -175,7 +175,7 @@ func TestSeriesHandler(t *testing.T) {
 		q := newQuerierMock()
 		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
 		api := setupAPI(q)
-		handler := NewQuerierHTTPHandler(api)
+		handler := NewQuerierHTTPHandler(NewQuerierHandler(api))
 
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
 			"?start=0"+
