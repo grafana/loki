@@ -12,22 +12,19 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
 )
 
-type BlockQuerierCreator func(dir string) BlockQuerier
-
 type Shipper struct {
-	client             Client
-	config             bloomshipperconfig.Config
-	createBlockQuerier BlockQuerierCreator
+	client Client
+	config bloomshipperconfig.Config
 }
 
-func NewShipper(client Client, config bloomshipperconfig.Config, blockQuerierCreator BlockQuerierCreator) (*Shipper, error) {
+func NewShipper(client Client, config bloomshipperconfig.Config) (*Shipper, error) {
 	return &Shipper{
-		client:             client,
-		config:             config,
-		createBlockQuerier: blockQuerierCreator,
+		client: client,
+		config: config,
 	}, nil
 }
 
@@ -36,7 +33,7 @@ func (s *Shipper) ForEachBlock(
 	tenantID string,
 	startTimestamp, endTimestamp int64,
 	minFingerprint, maxFingerprint uint64,
-	callback func(bq BlockQuerier) error) error {
+	callback func(bq *v1.BlockQuerier) error) error {
 
 	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, startTimestamp, endTimestamp, minFingerprint, maxFingerprint)
 	if err != nil {
@@ -155,6 +152,12 @@ func (s *Shipper) extractBlock(block *Block, ts time.Time) (string, error) {
 	return workingDirectoryPath, nil
 }
 
+func (s *Shipper) createBlockQuerier(directory string) *v1.BlockQuerier {
+	reader := v1.NewDirectoryBlockReader(directory)
+	block := v1.NewBlock(reader)
+	return v1.NewBlockQuerier(block)
+}
+
 func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
 	defer block.Data.Close()
 	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
@@ -172,7 +175,6 @@ func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, err
 }
 
 func extractArchive(archivePath string, workingDirectoryPath string) error {
-
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return fmt.Errorf("error opening archive: %w", err)
