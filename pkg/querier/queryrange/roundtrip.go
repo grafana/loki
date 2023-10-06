@@ -291,8 +291,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 
 		return r.series.Do(ctx, req)
 	case *LokiLabelNamesRequest:
-		// TODO: What's op.Name
-		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", "TODO", "length", op.EndTs.Sub(op.StartTs), "query", op.Query)
+		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", op.Name, "length", op.EndTs.Sub(op.StartTs), "query", op.Query)
 
 		return r.labels.Do(ctx, req)
 	case *LokiInstantRequest:

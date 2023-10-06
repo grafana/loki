@@ -278,6 +278,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				StartTs: start,
 				EndTs:   end,
 				Query:   r.Query,
+				Name:    r.Name,
 			})
 		})
 	case *logproto.IndexStatsRequest:
