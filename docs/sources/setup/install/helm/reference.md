@@ -205,6 +205,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.dataVolumeParameters</td>
+			<td>object</td>
+			<td>Parameters used for the `data` volume when volumeClaimEnabled if false</td>
+			<td><pre lang="json">
+{
+  "emptyDir": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -237,6 +248,15 @@ null
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.volumeClaimsEnabled</td>
+			<td>bool</td>
+			<td>Enable volume claims in pod spec</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -2165,6 +2185,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,
@@ -2680,6 +2701,15 @@ true
 			<td>The name of the PriorityClass for GrafanaAgent pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for GrafanaAgent pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -4539,6 +4569,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.dataVolumeParameters</td>
+			<td>object</td>
+			<td>Parameters used for the `data` volume when volumeClaimEnabled if false</td>
+			<td><pre lang="json">
+{
+  "emptyDir": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -4571,6 +4612,15 @@ null
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.volumeClaimsEnabled</td>
+			<td>bool</td>
+			<td>Enable volume claims in pod spec</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>

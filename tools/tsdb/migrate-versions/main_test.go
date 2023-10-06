@@ -17,9 +17,9 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	shipperstorage "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -52,7 +52,7 @@ func TestMigrateTables(t *testing.T) {
 
 	objClient, err := storage.NewObjectClient(pcfg.ObjectType, storageCfg, clientMetrics)
 	require.NoError(t, err)
-	indexStorageClient := shipper_storage.NewIndexStorageClient(objClient, storageCfg.TSDBShipperConfig.SharedStoreKeyPrefix)
+	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, storageCfg.TSDBShipperConfig.SharedStoreKeyPrefix)
 
 	currTableName := pcfg.IndexTables.TableFor(now)
 	currTableNum, err := config.ExtractTableNumberFromName(currTableName)
@@ -122,11 +122,11 @@ func TestMigrateTables(t *testing.T) {
 				require.Len(t, indexFiles, 1)
 
 				dst := filepath.Join(t.TempDir(), strings.Trim(indexFiles[0].Name, gzipExtension))
-				err = shipper_storage.DownloadFileFromStorage(
+				err = shipperstorage.DownloadFileFromStorage(
 					dst,
 					true,
 					true,
-					shipper_storage.LoggerWithFilename(util_log.Logger, indexFiles[0].Name),
+					shipperstorage.LoggerWithFilename(util_log.Logger, indexFiles[0].Name),
 					func() (io.ReadCloser, error) {
 						return indexStorageClient.GetUserFile(context.Background(), table, userID, indexFiles[0].Name)
 					},

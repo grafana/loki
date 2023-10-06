@@ -1456,11 +1456,6 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.ID
   [id: <string> | default = "<hostname>"]
 
-# Number of times to try and transfer chunks before falling back to flushing. If
-# set to 0 or negative value, transfers are disabled.
-# CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 0]
-
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
 [concurrent_flushes: <int> | default = 32]
@@ -2119,7 +2114,10 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
-# The cache block configures the cache backend.
+# Write dedupe cache is deprecated along with legacy index types (aws,
+# aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
+# grpc-store).
+# Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
@@ -3929,11 +3927,6 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 &nbsp;
 
 ```yaml
-# (deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled
-# for the chunks & query results cache if no other cache is configured).
-# CLI flag: -<prefix>.cache.enable-fifocache
-[enable_fifocache: <boolean> | default = false]
-
 # The default validity of entries for caches unless overridden.
 # CLI flag: -<prefix>.default-validity
 [default_validity: <duration> | default = 1h]
@@ -4084,34 +4077,13 @@ embedded_cache:
   # CLI flag: -<prefix>.embedded-cache.max-size-mb
   [max_size_mb: <int> | default = 100]
 
-  # The time to live for items in the cache before they get purged.
-  # CLI flag: -<prefix>.embedded-cache.ttl
-  [ttl: <duration> | default = 1h]
-
-fifocache:
-  # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
-  # applied.
-  # CLI flag: -<prefix>.fifocache.max-size-bytes
-  [max_size_bytes: <string> | default = "1GB"]
-
-  # deprecated: Maximum number of entries in the cache.
-  # CLI flag: -<prefix>.fifocache.max-size-items
+  # Maximum number of entries in the cache.
+  # CLI flag: -<prefix>.embedded-cache.max-size-items
   [max_size_items: <int> | default = 0]
 
   # The time to live for items in the cache before they get purged.
-  # CLI flag: -<prefix>.fifocache.ttl
+  # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
-
-  # Deprecated (use ttl instead): The expiry duration for the cache.
-  # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 0s]
-
-  # Deprecated (use max-size-items or max-size-bytes instead): The number of
-  # entries to cache.
-  # CLI flag: -<prefix>.fifocache.size
-  [size: <int> | default = 0]
-
-  [purgeinterval: <duration>]
 
 # The maximum number of concurrent asynchronous writeback cache can occur.
 # CLI flag: -<prefix>.max-async-cache-write-back-concurrency
@@ -4381,6 +4353,13 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # Azure storage account key.
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
+
+# If `connection-string` is set, the values of `account-name` and
+# `endpoint-suffix` values will not be used. Use this method over `account-key`
+# if you need to authenticate via a SAS token. Or if you use the Azurite
+# emulator.
+# CLI flag: -<prefix>.azure.connection-string
+[connection_string: <string> | default = ""]
 
 # Name of the storage account blob container used to store chunks. This
 # container must be created before running cortex.

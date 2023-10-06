@@ -34,6 +34,11 @@ import (
 	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/compactor"
+	compactorclient "github.com/grafana/loki/pkg/compactor/client"
+	"github.com/grafana/loki/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/pkg/compactor/deletion"
+	"github.com/grafana/loki/pkg/compactor/generationnumber"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
@@ -55,17 +60,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
-	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client/grpc"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/generationnumber"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/shipper/index"
-	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
+	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -497,7 +497,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 
 	logproto.RegisterPusherServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
-	logproto.RegisterIngesterServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
 	httpMiddleware := middleware.Merge(
@@ -505,9 +504,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	)
 	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)),
-	)
-	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.LegacyShutdownHandler)),
 	)
 	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
@@ -605,7 +601,7 @@ func (t *Loki) updateConfigForShipperStore() {
 
 	switch true {
 	case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
-		// Use fifo cache for caching index in memory, this also significantly helps performance.
+		// Use embedded cache for caching index in memory, this also significantly helps performance.
 		t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
 			EmbeddedCache: cache.EmbeddedCacheConfig{
 				Enabled:   true,
@@ -613,7 +609,7 @@ func (t *Loki) updateConfigForShipperStore() {
 				// This is a small hack to save some CPU cycles.
 				// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
 				// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
-				// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
+				// IndexCacheValidity guarantees the Embedded cache will expire the object first which can be done without
 				// having to deserialize the object.
 				TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
 			},
@@ -768,12 +764,12 @@ func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 
 		reg := prometheus.WrapRegistererWith(prometheus.Labels{"for": "cache_gen", "client_type": t.Cfg.Target.String()}, prometheus.DefaultRegisterer)
 		if isGRPCAddress {
-			client, err = compactor_client.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
+			client, err = compactorclient.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			client, err = compactor_client.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
+			client, err = compactorclient.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
 			if err != nil {
 				return nil, err
 			}
@@ -1171,7 +1167,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
@@ -1389,12 +1385,12 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"for": "delete_requests", "client_type": clientType}, prometheus.DefaultRegisterer)
 	var compactorClient deletion.CompactorClient
 	if isGRPCAddress {
-		compactorClient, err = compactor_client.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
+		compactorClient, err = compactorclient.NewGRPCClient(compactorAddress, t.Cfg.CompactorGRPCClient, reg)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		compactorClient, err = compactor_client.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
+		compactorClient, err = compactorclient.NewHTTPClient(compactorAddress, t.Cfg.CompactorHTTPClient)
 		if err != nil {
 			return nil, err
 		}
@@ -1462,7 +1458,7 @@ func shipperQuerierIndexUpdateDelay(cacheValidity, resyncInterval time.Duration)
 
 // shipperIngesterIndexUploadDelay returns duration it could take for an index file containing id of a chunk to be uploaded to the shared store since it got flushed.
 func shipperIngesterIndexUploadDelay() time.Duration {
-	return shipper_index.ShardDBsByDuration + indexshipper.UploadInterval
+	return boltdb.ShardDBsByDuration + indexshipper.UploadInterval
 }
 
 // shipperMinIngesterQueryStoreDuration returns minimum duration(with some buffer) ingesters should query their stores to

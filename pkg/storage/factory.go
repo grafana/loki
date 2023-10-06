@@ -31,13 +31,13 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/gatewayclient"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -45,7 +45,7 @@ import (
 var (
 	indexGatewayClient index.Client
 	// singleton for each period
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]*boltdb.IndexClient)
 
 	supportedIndexTypes = []string{
 		config.BoltDBShipperType,
@@ -100,7 +100,7 @@ func ResetBoltDBIndexClientsWithShipper() {
 		client.Stop()
 	}
 
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]*boltdb.IndexClient)
 
 	if indexGatewayClient != nil {
 		indexGatewayClient.Stop()
@@ -332,9 +332,9 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
-	TSDBShipperConfig   tsdb.IndexCfg  `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
+	MaxChunkBatchSize   int             `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig boltdb.IndexCfg `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
+	TSDBShipperConfig   tsdb.IndexCfg   `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
@@ -377,9 +377,6 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
-	}
-	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Index Queries Cache config")
 	}
 	if err := cfg.AzureStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
@@ -443,13 +440,13 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			if shardingStrategy != nil {
 				filterFn = shardingStrategy.FilterTenants
 			}
-			shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
+			indexClient, err := boltdb.NewIndexClient(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
 			if err != nil {
 				return nil, err
 			}
 
-			boltdbIndexClientsWithShipper[periodCfg.From] = shipper
-			return shipper, nil
+			boltdbIndexClientsWithShipper[periodCfg.From] = indexClient
+			return indexClient, nil
 
 		case config.TSDBType:
 			// TODO(chaudum): Move TSDB index client creation into this code path

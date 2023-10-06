@@ -54,12 +54,48 @@ The previous default value `false` is applied.
 5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
 6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+8. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
+
+#### Legacy ingester shutdown handler is removed
+
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
+#### Ingester configuration `max_transfer_retries` is removed.
+
+The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
+It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
+Alternatives to this setting are:
+- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
+     - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
 
 #### Distributor metric changes
 
 The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
 This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
 
+#### Changes to default configuration values
+
+1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
+
+#### Write dedupe cache is deprecated
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
+
+#### Embedded cache metric changes
+
+- The following embedded cache metrics are removed. Instead use `loki_cache_fetched_keys`, `loki_cache_hits`, `loki_cache_request_duration_seconds` which instruments requests made to the configured cache (`embeddedcache`, `memcached` or `redis`).
+  - `querier_cache_added_total`
+  - `querier_cache_gets_total`
+  - `querier_cache_misses_total`
+
+- The following embedded cache metrics are renamed:
+  - `querier_cache_added_new_total` is renamed to `loki_embeddedcache_added_new_total`
+  - `querier_cache_evicted_total` is renamed to `loki_embeddedcache_evicted_total`
+  - `querier_cache_entries` is renamed to `loki_embeddedcache_entries`
+  - `querier_cache_memory_bytes` is renamed to `loki_embeddedcache_memory_bytes`
+
+- Already deprecated metric `querier_cache_stale_gets_total` is now removed.
 
 ## 2.9.0
 

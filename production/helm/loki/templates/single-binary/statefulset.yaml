@@ -176,7 +176,9 @@ spec:
         {{- end }}
   {{- if .Values.singleBinary.persistence.enabled }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1	
+      kind: PersistentVolumeClaim
+      metadata:
         name: storage
       spec:
         accessModes:

@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [10613](https://github.com/grafana/loki/pull/10613) **ngc4579**: Helm: allow GrafanaAgent tolerations
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
 * [10302](https://github.com/grafana/loki/pull/10302) **ashwanthgoli**: Removes already deprecated `-querier.engine.timeout` CLI flag and corresponding YAML setting as well as the `querier.query_timeout` YAML setting.
@@ -17,6 +18,11 @@
 * [10395](https://github.com/grafana/loki/pull/10395/) **shantanualshi** Remove deprecated `split_queries_by_interval` and `forward_headers_list` configuration options in the `query_range` section
 * [10456](https://github.com/grafana/loki/pull/10456) **dannykopping** Add `loki_distributor_ingester_append_timeouts_total` metric, remove `loki_distributor_ingester_append_failures_total` metric
 * [10534](https://github.com/grafana/loki/pull/10534) **chaudum** Remove configuration `use_boltdb_shipper_as_backup`
+* [10620](https://github.com/grafana/loki/pull/10620) **ashwanthgoli** Enable embedded cache if no other cache is explicitly enabled.
+* [10655](https://github.com/grafana/loki/pull/10655) **chaudum** Remove legacy ingester shutdown handler `/ingester/flush_shutdown`.
+* [10709](https://github.com/grafana/loki/pull/10709) **chaudum**/**salvacorts** Remove `ingester.max-transfer-retries` configuration option in favor of using the WAL.
+* [10736](https://github.com/grafana/loki/pull/10736) **ashwanthgoli** Deprecate write dedupe cache as this is not required by the newer single store indexes (tsdb and boltdb-shipper).
+* [10693](https://github.com/grafana/loki/pull/10693) **ashwanthgoli** Embedded cache: Updates the metric prefix from `querier_cache_` to `loki_embeddedcache_` and removes duplicate metrics.
 
 ##### Fixes
 
@@ -31,6 +37,11 @@
 
 * [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
+
+##### Changes
+
+* [10677](https://github.com/grafana/loki/pull/10677) **chaudum** Remove deprecated `stream_lag_labels` setting from both the `options` and `client` configuration sections.
+* [10689](https://github.com/grafana/loki/pull/10689) **dylanguedes**: Ingester: Make jitter to be 20% of flush check period instead of 1%.
 
 ##### Fixes
 
@@ -88,6 +99,7 @@
 * [10322](https://github.com/grafana/loki/pull/10322) **chaudum**: Deprecate misleading setting `-ruler.evaluation-delay-duration`.
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
 * [10109](https://github.com/grafana/loki/pull/10109) **vardhaman-surana**: Ruler: add limit parameter in rulegroup
+* [10187](https://github.com/grafana/loki/pull/10187) **roelarents**: Add connection-string option for Azure Blob Storage.
 * [9621](https://github.com/grafana/loki/pull/9621) **DylanGuedes**: Introduce TSDB postings cache.
 * [10010](https://github.com/grafana/loki/pull/10010) **rasta-rocket**: feat(promtail): retrieve BotTags field from cloudflare
 * [9995](https://github.com/grafana/loki/pull/9995) **chaudum**: Add jitter to the flush interval to prevent multiple ingesters to flush at the same time.

@@ -116,7 +116,8 @@ BoltDB is an embedded database on disk. It is not replicated and thus cannot be 
 
 ## Schema Config
 
-Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze. For instance, this is what it looks like when migrating from the v10 -> v11 schemas starting 2020-07-01:
+Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze.
+For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v12 schema starting 2023-07-01:
 
 ```yaml
 schema_config:
@@ -124,20 +125,20 @@ schema_config:
     - from: 2019-07-01
       store: boltdb
       object_store: filesystem
-      schema: v10
-      index:
-        prefix: index_
-        period: 168h
-    - from: 2020-07-01
-      store: boltdb
-      object_store: filesystem
       schema: v11
       index:
         prefix: index_
-        period: 168h
+        period: 24h
+    - from: 2023-07-01
+      store: tsdb
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 ```
 
-For all data ingested before 2020-07-01, Loki used the v10 schema and then switched after that point to the more effective v11. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
+For all data ingested before 2023-07-01, Loki used BoltDB with the v11 schema, and then switched after that point to the more effective TSDB with the v12 schema. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
 
 ## Table Manager (deprecated)
 
@@ -179,24 +180,24 @@ When a new schema is released and you want to gain the advantages it provides, y
 
 First, you'll want to create a new [period_config]({{< relref "../configure#period_config" >}}) entry in your [schema_config]({{< relref "../configure#schema_config" >}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
-As an example, let's say it's 2020-07-14 and we want to start using the `v11` schema on the 20th:
+As an example, let's say it's 2023-07-14 and we want to start using the `v12` schema on the 20th:
 ```yaml
 schema_config:
   configs:
     - from: 2019-07-14
-      store: boltdb
-      object_store: filesystem
-      schema: v10
-      index:
-        prefix: index_
-        period: 168h
-    - from: 2020-07-20
-      store: boltdb
+      store: tsdb
       object_store: filesystem
       schema: v11
       index:
         prefix: index_
-        period: 168h
+        period: 24h
+    - from: 2023-07-20
+      store: tsdb
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 ```
 
 It's that easy; we just created a new entry starting on the 20th.
@@ -220,9 +221,9 @@ For more information, see the [retention configuration]({{< relref "../operation
 
 ```yaml
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
     shared_store: gcs
   gcs:
@@ -231,9 +232,9 @@ storage_config:
 schema_config:
   configs:
     - from: 2020-07-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: gcs
-      schema: v11
+      schema: v12
       index:
         prefix: index_
         period: 24h
@@ -243,9 +244,9 @@ schema_config:
 
 ```yaml
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
+   tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
     shared_store: s3
   aws:
@@ -255,9 +256,9 @@ storage_config:
 schema_config:
   configs:
     - from: 2020-07-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: aws
-      schema: v11
+      schema: v12
       index:
         prefix: index_
         period: 24h
@@ -271,8 +272,6 @@ storage_config:
   aws:
     s3: s3://region
     bucketnames: <bucket1,bucket2>
-    dynamodb:
-      dynamodb_url: dynamodb://region
 ```
 
 The role should have a policy with the following permissions attached.
@@ -345,8 +344,8 @@ schema_config:
       period: 24h
       prefix: index_
     object_store: azure
-    schema: v11
-    store: boltdb-shipper
+    schema: v12
+    store: tsdb
 storage_config:
   azure:
     # Your Azure storage account name
@@ -361,13 +360,15 @@ storage_config:
     request_timeout: 0
     # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container and blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
     endpoint_suffix: <endpoint-suffix>
-  boltdb_shipper:
-    active_index_directory: /data/loki/boltdb-shipper-active
-    cache_location: /data/loki/boltdb-shipper-cache
+    # If `connection_string` is set, the values of `account_name` and `endpoint_suffix` values will not be used. Use this method over `account_key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.
+    connection_string: <connection-string>
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
     cache_ttl: 24h
     shared_store: azure
   filesystem:
-    directory: /data/loki/chunks
+    directory: /loki/chunks
 ```
 
 #### Using a service principal
@@ -380,8 +381,8 @@ schema_config:
       period: 24h
       prefix: index_
     object_store: azure
-    schema: v11
-    store: boltdb-shipper
+    schema: v12
+    store: tsdb
 storage_config:
   azure:
     use_service_principal: true
@@ -394,13 +395,13 @@ storage_config:
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
     container_name: <container-name>
     request_timeout: 0
-  boltdb_shipper:
-    active_index_directory: /data/loki/boltdb-shipper-active
-    cache_location: /data/loki/boltdb-shipper-cache
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
     cache_ttl: 24h
     shared_store: azure
   filesystem:
-    directory: /data/loki/chunks
+    directory: /loki/chunks
 ```
 
 ### IBM Deployment (COS Single Store)
@@ -412,11 +413,15 @@ schema_config:
       index:
         period: 24h
         prefix: loki_index_
-      object_store: "cos"
-      schema: v11
-      store: "boltdb-shipper"
+      object_store: cos
+      schema: v12
+      store: tsdb
 
 storage_config:
+  tsdb_shipper:
+   active_index_directory: /loki/index
+   cache_location: /loki/index_cache
+   shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -463,22 +468,22 @@ We configure MinIO by using the AWS config because MinIO implements the S3 API:
 ```yaml
 storage_config:
   aws:
-    # Note: use a fully qualified domain name, like localhost.
+    # Note: use a fully qualified domain name (fqdn), like localhost.
     # full example: http://loki:supersecret@localhost.:9000
     s3: http<s>://<username>:<secret>@<fqdn>:<port>
     s3forcepathstyle: true
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
     shared_store: s3
 
 schema_config:
   configs:
     - from: 2020-07-01
-      store: boltdb-shipper
-      object_store: aws
-      schema: v11
+      store: tsdb
+      object_store: s3
+      schema: v12
       index:
         prefix: index_
         period: 24h

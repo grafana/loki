@@ -28,7 +28,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.backendFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.backend.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.backend.persistence.enableStatefulSetAutoDeletePVC) (.Values.backend.persistence.volumeClaimsEnabled) }}
   {{/*
     Data on the backend nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -131,17 +131,19 @@ spec:
             {{- end }}
           {{- if .Values.sidecar.livenessProbe }}
           livenessProbe:
-          {{ toYaml .Values.livenessProbe | indent 6 }}
+          {{- toYaml .Values.sidecar.livenessProbe | nindent 12 }}
           {{- end }}
           {{- if .Values.sidecar.readinessProbe }}
           readinessProbe:
-          {{ toYaml .Values.readinessProbe | indent 6 }}
+          {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
           {{- end }}
+          {{- if .Values.sidecar.resources }}
           resources:
-          {{ toYaml .Values.sidecar.resources | indent 6 }}
+          {{- toYaml .Values.sidecar.resources | nindent 12 }}
+          {{- end }}
           {{- if .Values.sidecar.securityContext }}
           securityContext:
-          {{- toYaml .Values.sidecar.securityContext | nindent 6 }}
+          {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: sc-rules-volume
@@ -220,6 +222,10 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if not .Values.backend.persistence.volumeClaimsEnabled }}
+        - name: data
+        {{- toYaml .Values.backend.persistence.dataVolumeParameters | nindent 10 }}
+        {{- end}}
         - name: config
           {{- if .Values.loki.existingSecretForConfig }}
           secret:
@@ -251,8 +257,11 @@ spec:
         {{- with .Values.backend.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+  {{- if .Values.backend.persistence.volumeClaimsEnabled }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1	
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes:
@@ -267,4 +276,5 @@ spec:
         selector:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+  {{- end }}
 {{- end }}
