@@ -22,7 +22,7 @@ Loki’s scalable monolithic deployment mode separates execution paths into read
 
 The scalable monolithic deployment mode can scale up to a few TBs of logs per day, however if you go much beyond this, the microservices mode will be a better choice for most users.
 
-![Scalable monolithic mode diagram](../monolithic-mode.png "Scalable monolithic mode")
+![Scalable monolithic mode diagram](../scalable-monolithic-mode.png "Scalable monolithic mode")
 
 The three execution paths in scalable monolithic mode are each activated by appending the following arguments to Loki on startup:
 
