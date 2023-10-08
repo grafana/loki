@@ -31,6 +31,9 @@ import (
 
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/bloomcompactor"
+	"github.com/grafana/loki/pkg/compactor"
+	compactorclient "github.com/grafana/loki/pkg/compactor/client"
+	"github.com/grafana/loki/pkg/compactor/deletion"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -49,9 +52,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor"
-	compactor_client "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/client"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
@@ -74,28 +74,28 @@ type Config struct {
 	UseBufferedLogger bool `yaml:"use_buffered_logger" doc:"hidden"`
 	UseSyncLogger     bool `yaml:"use_sync_logger" doc:"hidden"`
 
-	Server              server.Config               `yaml:"server,omitempty"`
-	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty" doc:"hidden"`
-	Distributor         distributor.Config          `yaml:"distributor,omitempty"`
-	Querier             querier.Config              `yaml:"querier,omitempty"`
-	QueryScheduler      scheduler.Config            `yaml:"query_scheduler"`
-	Frontend            lokifrontend.Config         `yaml:"frontend,omitempty"`
-	QueryRange          queryrange.Config           `yaml:"query_range,omitempty"`
-	Ruler               ruler.Config                `yaml:"ruler,omitempty"`
-	IngesterClient      ingester_client.Config      `yaml:"ingester_client,omitempty"`
-	Ingester            ingester.Config             `yaml:"ingester,omitempty"`
-	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
-	BloomCompactor      bloomcompactor.Config       `yaml:"bloom_compactor"`
-	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
-	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
-	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
-	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
-	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
-	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
+	Server              server.Config              `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
+	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
+	Querier             querier.Config             `yaml:"querier,omitempty"`
+	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
+	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
+	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor"`
+	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
+	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
+	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
+	LimitsConfig        validation.Limits          `yaml:"limits_config,omitempty"`
+	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
+	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
+	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
@@ -339,13 +339,10 @@ func New(cfg Config) (*Loki, error) {
 }
 
 func (t *Loki) setupAuthMiddleware() {
-	// Don't check auth header on TransferChunks, as we weren't originally
-	// sending it and this could cause transfers to fail on update.
 	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
 			"/grpc.health.v1.Health/Check",
-			"/logproto.Ingester/TransferChunks",
 			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",

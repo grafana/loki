@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +52,7 @@ type indexSet struct {
 	tableName, userID string
 	cacheLocation     string
 	logger            log.Logger
+	maxConcurrent     int
 
 	lastUsedAt time.Time
 	index      map[string]index.Index
@@ -73,6 +75,11 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		return nil, err
 	}
 
+	maxConcurrent := runtime.GOMAXPROCS(0) / 2
+	if maxConcurrent == 0 {
+		maxConcurrent = 1
+	}
+
 	is := indexSet{
 		openIndexFileFunc: openIndexFileFunc,
 		baseIndexSet:      baseIndexSet,
@@ -80,6 +87,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		userID:            userID,
 		cacheLocation:     cacheLocation,
 		logger:            logger,
+		maxConcurrent:     maxConcurrent,
 		lastUsedAt:        time.Now(),
 		index:             map[string]index.Index{},
 		indexMtx:          newMtxWithReadiness(),
@@ -202,7 +210,10 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 	defer t.indexMtx.rUnlock()
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(200)
+	if t.maxConcurrent == 0 {
+		panic("maxConcurrent cannot be 0, indexSet is being initialized without setting maxConcurrent")
+	}
+	g.SetLimit(t.maxConcurrent)
 
 	logger := util_log.WithContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
