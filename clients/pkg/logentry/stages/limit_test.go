@@ -38,7 +38,7 @@ pipeline_stages:
     drop: true
 `
 
-var testLimitByLabelYaml = `
+var testLimitByLabelFullYaml = `
 pipeline_stages:
 - json:
     expressions:
@@ -47,6 +47,17 @@ pipeline_stages:
 - limit:
     rate: 1
     burst: 1
+    drop: true
+    by_label_name: app
+`
+
+var testLimitByLabelDefaultYaml = `
+pipeline_stages:
+- json:
+    expressions:
+      app:
+      msg:
+- limit:
     drop: true
     by_label_name: app
 `
@@ -98,53 +109,55 @@ func TestLimitDropPipeline(t *testing.T) {
 
 // TestLimitByLabelPipeline is used to verify we properly parse the yaml config and create a working pipeline
 func TestLimitByLabelPipeline(t *testing.T) {
-	registry := prometheus.NewRegistry()
-	pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitByLabelYaml), &plName, registry)
-	logs := make([]Entry, 0)
-	logCount := 5
-	for i := 0; i < logCount; i++ {
-		logs = append(logs, newEntry(nil, model.LabelSet{"app": "loki"}, testMatchLogLineApp1, time.Now()))
-	}
-	for i := 0; i < logCount; i++ {
-		logs = append(logs, newEntry(nil, model.LabelSet{"app": "poki"}, testMatchLogLineApp2, time.Now()))
-	}
-	for i := 0; i < logCount; i++ {
-		logs = append(logs, newEntry(nil, model.LabelSet{}, testNonAppLogLine, time.Now()))
-	}
-	require.NoError(t, err)
-	out := processEntries(pl,
-		logs...,
-	)
-	// Only one entry of each app will go through + all log lines without expected label
-	assert.Len(t, out, 2+logCount)
-	assert.Equal(t, out[0].Line, testMatchLogLineApp1)
-	assert.Equal(t, out[1].Line, testMatchLogLineApp2)
-	assert.Equal(t, out[3].Line, testNonAppLogLine)
-
-	var hasTotal, hasByLabel bool
-	mfs, _ := registry.Gather()
-	for _, mf := range mfs {
-		if *mf.Name == "logentry_dropped_lines_total" {
-			hasTotal = true
-			assert.Len(t, mf.Metric, 1)
-			assert.Equal(t, 8, int(mf.Metric[0].Counter.GetValue()))
-		} else if *mf.Name == "logentry_dropped_lines_by_label_total" {
-			hasByLabel = true
-			assert.Len(t, mf.Metric, 2)
-			assert.Equal(t, 4, int(mf.Metric[0].Counter.GetValue()))
-			assert.Equal(t, 4, int(mf.Metric[1].Counter.GetValue()))
-
-			assert.Equal(t, mf.Metric[0].Label[0].GetName(), "label_name")
-			assert.Equal(t, mf.Metric[0].Label[0].GetValue(), "app")
-			assert.Equal(t, mf.Metric[0].Label[1].GetName(), "label_value")
-			assert.Equal(t, mf.Metric[0].Label[1].GetValue(), "loki")
-
-			assert.Equal(t, mf.Metric[1].Label[0].GetName(), "label_name")
-			assert.Equal(t, mf.Metric[1].Label[0].GetValue(), "app")
-			assert.Equal(t, mf.Metric[1].Label[1].GetName(), "label_value")
-			assert.Equal(t, mf.Metric[1].Label[1].GetValue(), "poki")
+	for _, testLimitYaml := range []string{testLimitByLabelDefaultYaml, testLimitByLabelFullYaml} {
+		registry := prometheus.NewRegistry()
+		pl, err := NewPipeline(util_log.Logger, loadConfig(testLimitYaml), &plName, registry)
+		logs := make([]Entry, 0)
+		logCount := 5
+		for i := 0; i < logCount; i++ {
+			logs = append(logs, newEntry(nil, model.LabelSet{"app": "loki"}, testMatchLogLineApp1, time.Now()))
 		}
+		for i := 0; i < logCount; i++ {
+			logs = append(logs, newEntry(nil, model.LabelSet{"app": "poki"}, testMatchLogLineApp2, time.Now()))
+		}
+		for i := 0; i < logCount; i++ {
+			logs = append(logs, newEntry(nil, model.LabelSet{}, testNonAppLogLine, time.Now()))
+		}
+		require.NoError(t, err)
+		out := processEntries(pl,
+			logs...,
+		)
+		// Only one entry of each app will go through + all log lines without expected label
+		assert.Len(t, out, 2+logCount)
+		assert.Equal(t, out[0].Line, testMatchLogLineApp1)
+		assert.Equal(t, out[1].Line, testMatchLogLineApp2)
+		assert.Equal(t, out[3].Line, testNonAppLogLine)
+
+		var hasTotal, hasByLabel bool
+		mfs, _ := registry.Gather()
+		for _, mf := range mfs {
+			if *mf.Name == "logentry_dropped_lines_total" {
+				hasTotal = true
+				assert.Len(t, mf.Metric, 1)
+				assert.Equal(t, 8, int(mf.Metric[0].Counter.GetValue()))
+			} else if *mf.Name == "logentry_dropped_lines_by_label_total" {
+				hasByLabel = true
+				assert.Len(t, mf.Metric, 2)
+				assert.Equal(t, 4, int(mf.Metric[0].Counter.GetValue()))
+				assert.Equal(t, 4, int(mf.Metric[1].Counter.GetValue()))
+
+				assert.Equal(t, mf.Metric[0].Label[0].GetName(), "label_name")
+				assert.Equal(t, mf.Metric[0].Label[0].GetValue(), "app")
+				assert.Equal(t, mf.Metric[0].Label[1].GetName(), "label_value")
+				assert.Equal(t, mf.Metric[0].Label[1].GetValue(), "loki")
+
+				assert.Equal(t, mf.Metric[1].Label[0].GetName(), "label_name")
+				assert.Equal(t, mf.Metric[1].Label[0].GetValue(), "app")
+				assert.Equal(t, mf.Metric[1].Label[1].GetName(), "label_value")
+				assert.Equal(t, mf.Metric[1].Label[1].GetValue(), "poki")
+			}
+		}
+		assert.True(t, hasTotal)
+		assert.True(t, hasByLabel)
 	}
-	assert.True(t, hasTotal)
-	assert.True(t, hasByLabel)
 }

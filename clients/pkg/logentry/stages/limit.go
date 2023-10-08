@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	ErrLimitStageInvalidRateOrBurst = "limit stage failed to parse rate or burst"
-	ErrLimitStageByLabelMustDrop    = "When ratelimiting by label, drop must be true"
-	MinReasonableMaxDistinctLabels  = 10000 // 80bytes per rate.Limiter ~ 1MiB memory
+	ErrLimitStageByLabelMustDrop   = "When ratelimiting by label, drop must be true"
+	MinReasonableRateLimit         = 1
+	MinReasonableBurstLimit        = 1
+	MinReasonableMaxDistinctLabels = 10000 // 80bytes per rate.Limiter ~ 1MiB memory
 )
 
 var ratelimitDropReason = "ratelimit_drop_stage"
@@ -34,17 +35,33 @@ type LimitConfig struct {
 
 func newLimitStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &LimitConfig{}
+	logger = log.With(logger, "component", "stage", "type", "limit")
 
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {
 		return nil, err
 	}
-	err = validateLimitConfig(cfg)
-	if err != nil {
-		return nil, err
+
+	// Assigning reasonable defaults if given inputs aren't as expected.
+	if cfg.Rate < MinReasonableRateLimit {
+		level.Warn(logger).Log(
+			"msg",
+			fmt.Sprintf("rate was adjusted to minimal reasonable of %d", MinReasonableRateLimit),
+		)
+		cfg.Rate = MinReasonableRateLimit
+	}
+	if cfg.Burst < MinReasonableBurstLimit {
+		level.Warn(logger).Log(
+			"msg",
+			fmt.Sprintf("burst was adjusted to minimal reasonable of %d", MinReasonableBurstLimit),
+		)
+		cfg.Burst = MinReasonableBurstLimit
 	}
 
-	logger = log.With(logger, "component", "stage", "type", "limit")
+	if cfg.ByLabelName != "" && !cfg.Drop {
+		return nil, errors.Errorf(ErrLimitStageByLabelMustDrop)
+	}
+
 	if cfg.ByLabelName != "" && cfg.MaxDistinctLabels < MinReasonableMaxDistinctLabels {
 		level.Warn(logger).Log(
 			"msg",
@@ -69,17 +86,6 @@ func newLimitStage(logger log.Logger, config interface{}, registerer prometheus.
 	}
 
 	return r, nil
-}
-
-func validateLimitConfig(cfg *LimitConfig) error {
-	if cfg.Rate <= 0 || cfg.Burst <= 0 {
-		return errors.Errorf(ErrLimitStageInvalidRateOrBurst)
-	}
-
-	if cfg.ByLabelName != "" && !cfg.Drop {
-		return errors.Errorf(ErrLimitStageByLabelMustDrop)
-	}
-	return nil
 }
 
 // limitStage applies Label matchers to determine if the include stages should be run

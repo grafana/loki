@@ -19,10 +19,10 @@ The concept of having distinct burst and rate limits mirrors the approach to lim
 ```yaml
 limit:
   # The rate limit in lines per second that Promtail will push to Loki
-  [rate: <int>]
+  [rate: <int> | default = 1]
 
   # The cap in the quantity of burst lines that Promtail will push to Loki
-  [burst: <int>]
+  [burst: <int> | default = 1]
    
   # Ratelimit each label value independently. If label is not found, log line is not
   # considered for ratelimiting. Drop must be true if this is set.
