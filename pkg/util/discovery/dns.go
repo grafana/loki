@@ -18,6 +18,7 @@ type DNS struct {
 	address       string
 	stop          chan struct{}
 	done          sync.WaitGroup
+	once          sync.Once
 	dnsProvider   *dns.Provider
 }
 
@@ -45,7 +46,9 @@ func (d *DNS) Addresses() []string {
 }
 
 func (d *DNS) Stop() {
-	close(d.stop)
+	// Integration tests were calling Stop() multiple times, so we need to make sure
+	// that we only close the stop channel once.
+	d.once.Do(func() { close(d.stop) })
 	d.done.Wait()
 }
 
