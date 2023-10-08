@@ -14,12 +14,6 @@ type Compactor struct {
 	logger log.Logger
 }
 
-//TODO do we want to configure retention in the bloom compactors?
-//var (
-//	retentionEnabledStats = analytics.NewString("compactor_retention_enabled")
-//	defaultRetentionStats = analytics.NewString("compactor_default_retention")
-//)
-
 func New(cfg Config, logger log.Logger, _ prometheus.Registerer) (*Compactor, error) {
 	c := &Compactor{
 		cfg:    cfg,
