@@ -20,6 +20,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.27.0
 
 - [CHANGE] Bump `nginxinc/nginx-unpriviledged` image version to remediate [CVE-2023-4863](https://github.com/advisories/GHSA-j7hp-h8jx-5ppr)
+- [ENHANCEMENT] Allow specifying `apiVersion` for Loki's PodLog CRD.
 
 ## 5.26.0
 
