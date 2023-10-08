@@ -46,6 +46,7 @@
 ##### Fixes
 
 * [10631](https://github.com/grafana/loki/pull/10631) **thampiotr**: Fix race condition in cleaning up metrics when stopping to tail files.
+* [10811](https://github.com/grafana/loki/pull/10811) **hainenber**: Fix parsing error by Promtail if limit stage's `burst` and/or `rate` isn't defined.
 
 #### LogCLI
 
