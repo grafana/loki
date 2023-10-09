@@ -90,7 +90,7 @@ func Test_splitQuery(t *testing.T) {
 	}
 
 	buildLokiLabelNamesRequest := func(start, end time.Time) queryrangebase.Request {
-		return NewLabelRequest(start, end, "", "")
+		return NewLabelRequest(start, end, "", "", "/lables")
 	}
 
 	type interval struct {

@@ -174,19 +174,21 @@ func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 func (*LokiSeriesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 // In some other world LabelRequest could implement queryrangebase.Request.
-type LabelRequest struct{
+type LabelRequest struct {
+	path string
 	logproto.LabelRequest
 }
 
-func NewLabelRequest(start, end time.Time, query, name string) *LabelRequest {
+func NewLabelRequest(start, end time.Time, query, name, path string) *LabelRequest {
 	return &LabelRequest{
-		logproto.LabelRequest{
-			Start: &start,
-			End: &end,
-			Query: query,
-			Name: name,
+		LabelRequest: logproto.LabelRequest{
+			Start:  &start,
+			End:    &end,
+			Query:  query,
+			Name:   name,
 			Values: name != "",
 		},
+		path: path,
 	}
 }
 
@@ -237,11 +239,7 @@ func (r *LabelRequest) LogToSpan(sp opentracing.Span) {
 }
 
 func (r *LabelRequest) Path() string {
-	if !r.Values {
-		return "/loki/api/v1/labels"
-	}
-
-	return fmt.Sprintf("/loki/api/v1/labels/%s/values", r.Name)
+	return r.path
 }
 
 func (*LabelRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
@@ -298,7 +296,10 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		return &LabelRequest{*req}, nil
+		return &LabelRequest{
+			LabelRequest: *req,
+			path:         r.URL.Path,
+		}, nil
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(r)
 		if err != nil {
