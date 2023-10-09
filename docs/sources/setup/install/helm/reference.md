@@ -1116,7 +1116,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.23-alpine"
+"1.24-alpine"
 </pre>
 </td>
 		</tr>
