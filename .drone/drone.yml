@@ -13,6 +13,11 @@ steps:
   volumes:
   - name: docker
     path: /var/run/docker.sock
+  when:
+    event:
+    - pull_request
+    paths:
+    - loki-build-image/**
 - image: plugins/docker
   name: push-image
   settings:
@@ -2018,6 +2023,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: efd50a1f78924d67eb1c26496c260689da4279789af385432476a9c7e811f5a8
+hmac: f7cc055a51996b497ab8a3d5b4064c573f928744d3276baa60e693aeefab5611
 
 ...
