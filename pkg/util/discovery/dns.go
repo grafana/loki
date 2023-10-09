@@ -70,8 +70,12 @@ func (d *DNS) discoveryLoop() {
 }
 
 func WithTimeoutCause(parent context.Context, timeout time.Duration, cause error) (context.Context, context.CancelFunc) {
+
+	type contextKey string
+	const causeKey contextKey = "cause"
+
 	ctx, cancel := context.WithTimeout(parent, timeout)
-	return context.WithValue(ctx, "cause", cause), cancel
+	return context.WithValue(ctx, causeKey, cause), cancel
 }
 
 func (d *DNS) runDiscovery() {
