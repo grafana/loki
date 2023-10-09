@@ -524,19 +524,18 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         ],
         privileged: true,
       },
-      {
-        name: 'push-image',
-        image: 'plugins/docker',
+      make('build-image-push', container=false) {
+        image: 'jeschkies/loki-build-image:buildx',
         when: onTagOrMain + onPath('loki-build-image/**'),
-        settings: {
-          repo: 'grafana/loki-build-image',
-          context: 'loki-build-image',
-          dockerfile: 'loki-build-image/Dockerfile',
-          username: { from_secret: docker_username_secret.name },
-          password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
-          dry_run: false,
-        },
+        depends_on: ['clone'],
+	environment: { IMAGE_TAG: build_image_tag },
+        volumes: [
+          {
+            name: 'docker',
+            path: '/var/run/docker.sock',
+          },
+        ],
+        privileged: true,
       },
     ],
   },

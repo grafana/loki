@@ -18,19 +18,18 @@ steps:
     - pull_request
     paths:
     - loki-build-image/**
-- image: plugins/docker
-  name: push-image
-  settings:
-    context: loki-build-image
-    dockerfile: loki-build-image/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    repo: grafana/loki-build-image
-    tags:
-    - 0.30.0
-    username:
-      from_secret: docker_username
+- commands:
+  - make BUILD_IN_CONTAINER=false build-image-push
+  depends_on:
+  - clone
+  environment:
+    IMAGE_TAG: 0.30.0
+  image: jeschkies/loki-build-image:buildx
+  name: build-image-push
+  privileged: true
+  volumes:
+  - name: docker
+    path: /var/run/docker.sock
   when:
     event:
     - push
@@ -2023,6 +2022,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: f7cc055a51996b497ab8a3d5b4064c573f928744d3276baa60e693aeefab5611
+hmac: f1b413cfb31cc0a3519bcba18f23315acdc888f6d6e1a1bdea0462005378919f
 
 ...
