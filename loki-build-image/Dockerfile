@@ -7,20 +7,23 @@
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
 FROM golang:1.21.2-bullseye as helm
+ARG TARGETARCH
 ARG HELM_VER="v3.2.3"
-RUN curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \
+RUN curl -L -o /tmp/helm-$HELM_VER.tgz "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" && \
     tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
-    mv /tmp/linux-amd64/helm /usr/bin/helm && \
-    rm -rf /tmp/linux-amd64 /tmp/helm-$HELM_VER.tgz
-RUN GO111MODULE=on go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.11.0
+    mv "/tmp/linux-$TARGETARCH/helm" /usr/bin/helm && \
+    rm -rf "/tmp/linux-$TARGETARCH" /tmp/helm-$HELM_VER.tgz
+RUN curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/helm-docs_Linux_x86_64.deb" -o helm-doc.deb && \
+    dpkg -i helm-doc.deb
 
 FROM alpine:3.18.4 as lychee
+ARG TARGETARCH
 ARG LYCHEE_VER="0.7.0"
 RUN apk add --no-cache curl && \
     curl -L -o /tmp/lychee-$LYCHEE_VER.tgz https://github.com/lycheeverse/lychee/releases/download/${LYCHEE_VER}/lychee-${LYCHEE_VER}-x86_64-unknown-linux-gnu.tar.gz && \
     tar -xz -C /tmp -f /tmp/lychee-$LYCHEE_VER.tgz && \
     mv /tmp/lychee /usr/bin/lychee && \
-    rm -rf /tmp/linux-amd64 /tmp/lychee-$LYCHEE_VER.tgz
+    rm -rf "/tmp/linux-$TARGETARCH" /tmp/lychee-$LYCHEE_VER.tgz
 
 FROM alpine:3.18.4 as golangci
 RUN apk add --no-cache curl && \
@@ -36,9 +39,9 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.18.4 as docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
-# Read the comment below regarding GO111MODULE=on and why it is necessary
 FROM golang:1.21.2-bullseye as drone
-RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_amd64.tar.gz | tar zx && \
+ARG TARGETARCH
+RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_$TARGETARCH".tar.gz | tar zx && \
     install -t /usr/local/bin drone
 
 # Install faillint used to lint go imports in CI.
