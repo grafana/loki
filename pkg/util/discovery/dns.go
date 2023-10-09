@@ -69,8 +69,13 @@ func (d *DNS) discoveryLoop() {
 	}
 }
 
+func WithTimeoutCause(parent context.Context, timeout time.Duration, cause error) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	return context.WithValue(ctx, "cause", cause), cancel
+}
+
 func (d *DNS) runDiscovery() {
-	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, fmt.Errorf("DNS lookup timeout: %s", d.address))
+	ctx, cancel := WithTimeoutCause(context.Background(), 5*time.Second, fmt.Errorf("DNS lookup timeout: %s", d.address))
 	defer cancel()
 	err := d.dnsProvider.Resolve(ctx, []string{d.address})
 	if err != nil {
