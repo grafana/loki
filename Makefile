@@ -102,16 +102,15 @@ RM := --rm
 TTY := --tty
 
 DOCKER_BUILDKIT=1
-OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
+OCI_PLATFORMS=
 BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+PUSH_OCI=docker push
+TAG_OCI=docker tag
 ifeq ($(CI), true)
-	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=img push
-	TAG_OCI=img tag
+	OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
+	BUILD_OCI=docker build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 else
 	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=docker push
-	TAG_OCI=docker tag
 endif
 
 binfmt:
@@ -565,7 +564,6 @@ promtail-image: ## build the promtail docker image
 promtail-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
-promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image: ## build the promtail debug docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
 
@@ -578,7 +576,6 @@ loki-image: ## build the loki docker image
 loki-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
-loki-debug-image: OCI_PLATFORMS=
 loki-debug-image: ## build the debug loki docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
@@ -620,8 +617,7 @@ logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 
 
-# build-image (only amd64)
-build-image: OCI_PLATFORMS=
+# build-image
 build-image: ## build the docker build image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 build-image-push: build-image ## push the docker build image

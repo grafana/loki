@@ -504,17 +504,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       path: 'loki',
     },
     steps: [
-      {
-        name: 'test-image',
-        image: 'plugins/docker',
-        when: onPRs + onPath('loki-build-image/**'),
-        settings: {
-          repo: 'grafana/loki-build-image',
-          context: 'loki-build-image',
-          dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_tag],
-          dry_run: true,
-        },
+      make('build-image', container=false) {
+        image: 'jeschkies/loki-build-image:buildx',
+      	depends_on: ['clone'],
       },
       {
         name: 'push-image',

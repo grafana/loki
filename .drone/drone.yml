@@ -2,20 +2,13 @@
 kind: pipeline
 name: loki-build-image
 steps:
-- image: plugins/docker
-  name: test-image
-  settings:
-    context: loki-build-image
-    dockerfile: loki-build-image/Dockerfile
-    dry_run: true
-    repo: grafana/loki-build-image
-    tags:
-    - 0.30.0
-  when:
-    event:
-    - pull_request
-    paths:
-    - loki-build-image/**
+- commands:
+  - make BUILD_IN_CONTAINER=false build-image
+  depends_on:
+  - clone
+  environment: {}
+  image: jeschkies/loki-build-image:buildx
+  name: build-image
 - image: plugins/docker
   name: push-image
   settings:
@@ -2017,6 +2010,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 054d25b1020b2552c1fd6ad12c32051a86abcfd81faa40678b5a337f8ee61cf7
+hmac: b2d7f8a4bbb98d98fde47a5d5bf460f2aacc8f480f635d39f7ded2d25459b0ea
 
 ...

@@ -34,13 +34,11 @@ RUN apk add --no-cache curl && \
     chmod +x "/usr/bin/buf"
 
 FROM alpine:3.18.4 as docker
-RUN apk add --no-cache docker-cli
+RUN apk add --no-cache docker-cli docker-cli-buildx
 
-# TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
-# however we need a commit which hasn't been released yet: https://github.com/drone/drone-cli/commit/1fad337d74ca0ecf420993d9d2d7229a1c99f054
 # Read the comment below regarding GO111MODULE=on and why it is necessary
 FROM golang:1.21.2-bullseye as drone
-RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_linux_amd64.tar.gz | tar zx && \
+RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_amd64.tar.gz | tar zx && \
     install -t /usr/local/bin drone
 
 # Install faillint used to lint go imports in CI.
@@ -96,6 +94,7 @@ RUN dpkg --add-architecture armhf && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
+COPY --from=docker /usr/libexec/docker/cli-plugins/docker-buildx /usr/libexec/docker/cli-plugins/docker-buildx
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=helm /go/bin/helm-docs /usr/bin/helm-docs
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
