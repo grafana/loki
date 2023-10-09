@@ -100,7 +100,6 @@ func (s *Shipper) findBlocks(
 			outdatedBlocks[tombstone.BlockPath] = nil
 		}
 	}
-	//todo filter blocks
 	blocksSet := make(map[string]BlockRef)
 	for _, meta := range metas {
 		for _, block := range meta.Blocks {
