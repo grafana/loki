@@ -617,7 +617,14 @@ logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 
 
 # build-image
-build-image: ## build the docker build image
+ensure-buildx-builder:
+ifeq ($(CI),true)
+	./tools/ensure-buildx-builder.sh
+else
+	@echo "skipping buildx setup"
+endif
+
+build-image: ensure-buildx-builder
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
