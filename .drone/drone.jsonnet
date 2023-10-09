@@ -528,7 +528,11 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         image: 'jeschkies/loki-build-image:buildx',
         when: onTagOrMain + onPath('loki-build-image/**'),
         depends_on: ['clone'],
-	environment: { IMAGE_TAG: build_image_tag },
+	environment: {
+	  IMAGE_TAG: build_image_tag,
+          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
+          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
+	},
         volumes: [
           {
             name: 'docker',
