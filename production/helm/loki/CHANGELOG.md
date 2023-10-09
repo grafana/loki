@@ -13,9 +13,12 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 5.26.1
+## 5.27.1
 
 -[FEATURE] Added support for embedded cache in helm chart
+## 5.27.0
+- [CHANGE] Bump `nginxinc/nginx-unpriviledged` image version to remediate [CVE-2023-4863](https://github.com/advisories/GHSA-j7hp-h8jx-5ppr)
+
 ## 5.26.0
 
 - [ENHANCEMENT] Allow emptyDir data volumes for backend and write (via `X.persistence.volumeClaimsEnabled: false`)
