@@ -503,6 +503,14 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       base: '/src',
       path: 'loki',
     },
+    volumes+: [
+      {
+        name: 'docker',
+        host: {
+          path: '/var/run/docker.sock',
+        },
+      },
+    ],
     steps: [
       make('build-image', container=false) {
         image: 'jeschkies/loki-build-image:buildx',

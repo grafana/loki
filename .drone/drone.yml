@@ -38,6 +38,10 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+volumes:
+- host:
+    path: /var/run/docker.sock
+  name: docker
 workspace:
   base: /src
   path: loki
@@ -2014,6 +2018,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 6634a6c3baaad93a1f019a1e01a15bf852359872dfb4536546f1c6540d5e84f9
+hmac: efd50a1f78924d67eb1c26496c260689da4279789af385432476a9c7e811f5a8
 
 ...
