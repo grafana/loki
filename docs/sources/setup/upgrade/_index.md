@@ -60,6 +60,15 @@ The previous default value `false` is applied.
 
 The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
 
+#### Ingester configuration `max_transfer_retries` is removed.
+
+The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
+It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
+Alternatives to this setting are:
+- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
+     - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
+
 #### Distributor metric changes
 
 The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
@@ -68,6 +77,10 @@ This new metric will provide a more clear signal that there is an issue with ing
 #### Changes to default configuration values
 
 1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
+
+#### Write dedupe cache is deprecated
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
 
 #### Embedded cache metric changes
 
