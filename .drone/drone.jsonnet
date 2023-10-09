@@ -918,6 +918,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         commands: [
           'git fetch origin --tags',
           'make docker-driver-push',
+          'make docker-driver-push PLUGIN_ARCH=-arm64',
         ],
         volumes: [
           {
