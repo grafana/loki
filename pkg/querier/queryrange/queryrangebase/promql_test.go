@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -569,7 +570,7 @@ func Test_FunctionParallelism(t *testing.T) {
 
 }
 
-var shardAwareQueryable = storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+var shardAwareQueryable = storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 	return &testMatrix{
 		series: []*promql.StorageSeries{
 			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "barr"}}, factor(5)),
@@ -601,9 +602,9 @@ func (m *testMatrix) At() storage.Series {
 
 func (m *testMatrix) Err() error { return nil }
 
-func (m *testMatrix) Warnings() storage.Warnings { return nil }
+func (m *testMatrix) Warnings() annotations.Annotations { return nil }
 
-func (m *testMatrix) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (m *testMatrix) Select(_ context.Context, _ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	s, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
@@ -616,10 +617,10 @@ func (m *testMatrix) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.
 	return m.Copy()
 }
 
-func (m *testMatrix) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (m *testMatrix) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
-func (m *testMatrix) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (m *testMatrix) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 func (m *testMatrix) Close() error { return nil }
