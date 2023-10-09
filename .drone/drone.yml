@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.30.0
+    - 0.31.0
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.30.0
+    - 0.31.0
     username:
       from_secret: docker_username
   when:
@@ -2017,6 +2017,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 054d25b1020b2552c1fd6ad12c32051a86abcfd81faa40678b5a337f8ee61cf7
+hmac: 0c76ac315cb53140a5c37cc336f6bbbd87f41a8b74335d613c13a7c7228e01bf
 
 ...
