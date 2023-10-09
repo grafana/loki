@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	rootFolder            = "bloom"
 	metasFolder           = "metas"
 	bloomsFolder          = "blooms"
 	delimiter             = "/"
@@ -121,7 +122,7 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 	for periodFrom, tables := range tablesByPeriod {
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
-			prefix := filepath.Join(table, params.TenantID, metasFolder)
+			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
 			list, _, err := periodClient.List(ctx, prefix, delimiter)
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
@@ -155,14 +156,19 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	if err != nil {
 		return fmt.Errorf("can not marshal the meta to json: %w", err)
 	}
-	key := createObjectKey(meta.MetaRef.Ref, metasFolder)
-	fmt.Println("uploading to ", key, "periodfrom", periodFrom)
+	key := createMetaObjectKey(meta.MetaRef.Ref)
 	return b.periodicObjectClients[periodFrom].PutObject(ctx, key, bytes.NewReader(data))
 }
 
-func createObjectKey(meta Ref, folderName string) string {
+func createBlockObjectKey(meta Ref) string {
+	blockParentFolder := fmt.Sprintf("%x-%x", meta.MinFingerprint, meta.MaxFingerprint)
+	filename := fmt.Sprintf("%v-%v-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
+	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, bloomsFolder, blockParentFolder, filename}, delimiter)
+}
+
+func createMetaObjectKey(meta Ref) string {
 	filename := fmt.Sprintf("%x-%x-%v-%v-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
-	return strings.Join([]string{meta.TableName, meta.TenantID, folderName, filename}, delimiter)
+	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, metasFolder, filename}, delimiter)
 }
 
 func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime, error) {
@@ -180,8 +186,7 @@ func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	if err != nil {
 		return fmt.Errorf("error updloading meta file: %w", err)
 	}
-	key := createObjectKey(meta.MetaRef.Ref, metasFolder)
-	fmt.Println("uploading to ", key, "periodfrom", periodFrom)
+	key := createMetaObjectKey(meta.MetaRef.Ref)
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
 
@@ -200,7 +205,7 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 				return fmt.Errorf("error while period lookup: %w", err)
 			}
 			objectClient := b.periodicObjectClients[period]
-			readCloser, _, err := objectClient.GetObject(ctx, createObjectKey(reference.Ref, bloomsFolder))
+			readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
 			if err != nil {
 				return fmt.Errorf("error while fetching object from storage: %w", err)
 			}
@@ -233,7 +238,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		if err != nil {
 			return fmt.Errorf("error updloading block file: %w", err)
 		}
-		key := createObjectKey(block.Ref, bloomsFolder)
+		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
 		data, err := io.ReadAll(block.Data)
 		if err != nil {
@@ -258,7 +263,7 @@ func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) e
 		if err != nil {
 			return fmt.Errorf("error deleting block file: %w", err)
 		}
-		key := createObjectKey(ref.Ref, bloomsFolder)
+		key := createBlockObjectKey(ref.Ref)
 		objectClient := b.periodicObjectClients[period]
 		err = objectClient.DeleteObject(ctx, key)
 		if err != nil {
@@ -300,7 +305,7 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 	fileName := objectKey[strings.LastIndex(objectKey, delimiter)+1:]
 	parts := strings.Split(fileName, fileNamePartDelimiter)
 	if len(parts) != 5 {
-		return MetaRef{}, fmt.Errorf("%s filename parts count must be 5 but was %d", objectKey, len(parts))
+		return MetaRef{}, fmt.Errorf("%s filename parts count must be 5 but was %d: [%s]", objectKey, len(parts), strings.Join(parts, ", "))
 	}
 
 	minFingerprint, err := strconv.ParseUint(parts[0], 16, 64)
@@ -368,7 +373,6 @@ func tablesForRange(periodConfig config.PeriodConfig, from, to int64) []string {
 	for i := lower; i <= upper; i++ {
 		tables = append(tables, joinTableName(prefix, i))
 	}
-	fmt.Println(tables)
 	return tables
 }
 
