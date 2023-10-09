@@ -603,7 +603,7 @@ func (m *testMatrix) At() storage.Series {
 
 func (m *testMatrix) Err() error { return nil }
 
-func (m *testMatrix) Warnings() annotations.Annotations { return nil }
+func (m *testMatrix) Warnings() annotations.Annotations { return annotations.Annotations{} }
 
 func (m *testMatrix) Select(_ context.Context, _ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	s, _, err := astmapper.ShardFromMatchers(matchers)
