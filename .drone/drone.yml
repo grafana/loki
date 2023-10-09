@@ -23,6 +23,10 @@ steps:
   depends_on:
   - clone
   environment:
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
     IMAGE_TAG: 0.30.0
   image: jeschkies/loki-build-image:buildx
   name: build-image-push
@@ -2022,6 +2026,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: f1b413cfb31cc0a3519bcba18f23315acdc888f6d6e1a1bdea0462005378919f
+hmac: 4d88c2d171ce8d7317b52e5dc6669e6a4a49bed595ee51d7b37a96e44a71559d
 
 ...
