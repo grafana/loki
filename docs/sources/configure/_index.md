@@ -2024,6 +2024,10 @@ boltdb_shipper:
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
+    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
+    # record with multiple IP's, a DNS SRV record with a followup A record
+    # lookup, or a DNS SRV record without a followup A record lookup,
+    # respectively.
     # CLI flag: -boltdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
@@ -2086,6 +2090,10 @@ tsdb_shipper:
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
+    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
+    # record with multiple IP's, a DNS SRV record with a followup A record
+    # lookup, or a DNS SRV record without a followup A record lookup,
+    # respectively.
     # CLI flag: -tsdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
