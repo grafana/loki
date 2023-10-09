@@ -49,17 +49,16 @@ func Test_PromQL(t *testing.T) {
 		// and therefore should be returned by the storage.
 		// Range vectors `bar1{baz="blip"}[1m]` are not tested here because it is not supported
 		// by range queries.
-		// TODO(shantanu) enable this test after fix
-		//{
-		//	`bar1{baz="blip"}`,
-		//	`label_replace(
-		//		bar1{__cortex_shard__="0_of_3",baz="blip"} or
-		//		bar1{__cortex_shard__="1_of_3",baz="blip"} or
-		//		bar1{__cortex_shard__="2_of_3",baz="blip"},
-		//		"__cortex_shard__","","",""
-		//	)`,
-		//	true,
-		//},
+		{
+			`bar1{baz="blip"}`,
+			`label_replace(
+				bar1{__cortex_shard__="0_of_3",baz="blip"} or
+				bar1{__cortex_shard__="1_of_3",baz="blip"} or
+				bar1{__cortex_shard__="2_of_3",baz="blip"},
+				"__cortex_shard__","","",""
+			)`,
+			true,
+		},
 		// __cortex_shard__ label is required otherwise the or will keep only the first series.
 		{
 			`sum(bar1{baz="blip"})`,
