@@ -602,7 +602,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
         name: 'build-docs-website',
-        image: 'grafana/docs-base:latest',
+        image: 'grafana/docs-base:e6ef023f8b8',
         commands: [
           'mkdir -p /hugo/content/docs/loki/latest',
           'cp -r docs/sources/* /hugo/content/docs/loki/latest/',

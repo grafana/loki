@@ -218,7 +218,7 @@ steps:
   - mkdir -p /hugo/content/docs/loki/latest
   - cp -r docs/sources/* /hugo/content/docs/loki/latest/
   - cd /hugo && make prod
-  image: grafana/docs-base:latest
+  image: grafana/docs-base:e6ef023f8b8
   name: build-docs-website
 trigger:
   ref:
@@ -2010,6 +2010,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: b2d7f8a4bbb98d98fde47a5d5bf460f2aacc8f480f635d39f7ded2d25459b0ea
+hmac: ba6385b4f3a6062f17936ee42916abe5967460f5a6c3842c9a179e5f6d0611dd
 
 ...
