@@ -75,7 +75,7 @@ type IndexClient struct {
 }
 
 // New creates a shipper for syncing local objects with a store
-func NewIndexClient(cfg IndexCfg, storageClient client.ObjectClient, limits downloads.Limits,
+func NewIndexClient(prefix string, cfg IndexCfg, storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (*IndexClient, error) {
 	i := IndexClient{
 		cfg:     cfg,
@@ -83,7 +83,7 @@ func NewIndexClient(cfg IndexCfg, storageClient client.ObjectClient, limits down
 		logger:  logger,
 	}
 
-	err := i.init(storageClient, limits, tenantFilter, tableRange, registerer)
+	err := i.init(prefix, storageClient, limits, tenantFilter, tableRange, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -93,10 +93,10 @@ func NewIndexClient(cfg IndexCfg, storageClient client.ObjectClient, limits down
 	return &i, nil
 }
 
-func (i *IndexClient) init(storageClient client.ObjectClient, limits downloads.Limits,
+func (i *IndexClient) init(prefix string, storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
-	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, tenantFilter,
+	i.indexShipper, err = indexshipper.NewIndexShipper(prefix, i.cfg.Config, storageClient, limits, tenantFilter,
 		OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
 	if err != nil {
 		return err

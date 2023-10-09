@@ -2,7 +2,6 @@ package helpers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -48,11 +47,14 @@ func getTableNumberForTime(t model.Time) int64 {
 	return t.Unix() / daySeconds
 }
 
-// copied from storage/store.go
-func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
-	var ranges config.TableRanges
-	for i := range periodicConfigs {
-		if periodicConfigs[i].IndexType != indexType {
+func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.PeriodConfig) (config.PeriodConfig, config.TableRange, string, error) {
+	tableNo, err := extractTableNumberFromName(table)
+	if err != nil {
+		return config.PeriodConfig{}, config.TableRange{}, "", err
+	}
+
+	for i, periodCfg := range periodicConfigs {
+		if periodCfg.IndexType != config.TSDBType {
 			continue
 		}
 
@@ -61,31 +63,22 @@ func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodC
 			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
 		}
 
-		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
+		tableName := fmt.Sprintf("%s%s", periodCfg.IndexTables.Prefix, strconv.Itoa(int(tableNo)))
+		tableRange := periodCfg.GetIndexTableNumberRange(periodEndTime)
+
+		if ok, _ := tableRange.TableInRange(tableName); ok {
+			return periodCfg, tableRange, tableName, nil
+		}
 	}
 
-	return ranges
+	return config.PeriodConfig{}, config.TableRange{}, "", fmt.Errorf("table does not belong to any period.")
 }
 
-func ResolveTenants(objectClient client.ObjectClient, bucket string, tableRanges config.TableRanges) ([]string, string, error) {
-	if bucket == "" {
-		return nil, "", errors.New("empty bucket")
-	}
-
-	tableNo, err := extractTableNumberFromName(bucket)
-	if err != nil {
-		return nil, "", err
-	}
-
-	tableName, ok := tableRanges.TableNameFor(tableNo)
-	if !ok {
-		return nil, "", fmt.Errorf("no table name found for table number %d", tableNo)
-	}
-
-	prefix := filepath.Join("index", tableName)
+func ResolveTenants(objectClient client.ObjectClient, pathPrefix, tableName string) ([]string, error) {
+	prefix := filepath.Join(pathPrefix, tableName)
 	indices, _, err := objectClient.List(context.Background(), prefix, "")
 	if err != nil {
-		return nil, "", fmt.Errorf("error listing tenants: %w", err)
+		return nil, fmt.Errorf("error listing tenants: %w", err)
 	}
 
 	tenants := make(map[string]struct{})
@@ -100,5 +93,5 @@ func ResolveTenants(objectClient client.ObjectClient, bucket string, tableRanges
 		result = append(result, tenant)
 	}
 
-	return result, tableName, nil
+	return result, nil
 }

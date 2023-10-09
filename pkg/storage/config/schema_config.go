@@ -371,7 +371,7 @@ func validateChunks(cfg PeriodConfig) error {
 
 func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.IndexTables.PathPrefix == "" {
-		cfg.IndexTables.PathPrefix = "/index"
+		cfg.IndexTables.PathPrefix = "index/"
 	}
 
 	if cfg.RowShards == 0 {

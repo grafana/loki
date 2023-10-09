@@ -39,7 +39,7 @@ type store struct {
 
 // NewStore creates a new tsdb index ReaderWriter.
 func NewStore(
-	name string,
+	name, prefix string,
 	indexShipperCfg IndexCfg,
 	schemaCfg config.SchemaConfig,
 	_ *fetcher.Fetcher,
@@ -59,14 +59,14 @@ func NewStore(
 		logger: logger,
 	}
 
-	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
+	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
 		return nil, nil, err
 	}
 
 	return storeInstance, storeInstance.Stop, nil
 }
 
-func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
+func (s *store) init(name, prefix string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
 
 	var sharedCache cache.Cache
@@ -80,6 +80,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
+		prefix,
 		indexCfg.Config,
 		objectClient,
 		limits,

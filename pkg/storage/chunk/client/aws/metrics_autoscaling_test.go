@@ -162,8 +162,10 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 					}},
 			},
 			{
-				IndexType:   "aws-dynamo",
-				IndexTables: fixturePeriodicTableConfig(tablePrefix),
+				IndexType: "aws-dynamo",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: fixturePeriodicTableConfig(tablePrefix),
+				},
 				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			},
 		},
@@ -322,8 +324,10 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 					}},
 			},
 			{
-				IndexType:   "aws-dynamo",
-				IndexTables: fixturePeriodicTableConfig(tablePrefix),
+				IndexType: "aws-dynamo",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: fixturePeriodicTableConfig(tablePrefix),
+				},
 				ChunkTables: fixturePeriodicTableConfig(chunkTablePrefix),
 			},
 		},

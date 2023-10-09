@@ -1009,7 +1009,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	shipperConfig := indexshipper.Config{}
 	flagext.DefaultValues(&shipperConfig)
-	shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "active_index")
 	shipperConfig.CacheLocation = path.Join(tempDir, "cache")
 	shipperConfig.Mode = indexshipper.ModeReadWrite
 
@@ -1033,6 +1033,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v9",
 		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "index/",
 			PeriodicTableConfig: config.PeriodicTableConfig{
 				Prefix: "index_",
 				Period: time.Hour * 24,
@@ -1105,6 +1106,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		ObjectType: "named-store",
 		Schema:     "v11",
 		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "index/",
 			PeriodicTableConfig: config.PeriodicTableConfig{
 				Prefix: "index_tsdb_",
 				Period: time.Hour * 24,
@@ -1512,7 +1514,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	// config for BoltDB Shipper
 	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
 	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
@@ -1545,6 +1547,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,
@@ -1557,6 +1560,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,

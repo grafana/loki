@@ -37,10 +37,12 @@ func TestMigrateTables(t *testing.T) {
 		IndexType:  "tsdb",
 		ObjectType: "filesystem",
 		Schema:     "v12",
-		IndexTables: config.PeriodicTableConfig{
-			Prefix: indexPrefix,
-			Period: 24 * time.Hour,
-		},
+		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "/index",
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: indexPrefix,
+				Period: 24 * time.Hour,
+			}},
 	}
 
 	storageCfg := storage.Config{
@@ -52,7 +54,7 @@ func TestMigrateTables(t *testing.T) {
 
 	objClient, err := storage.NewObjectClient(pcfg.ObjectType, storageCfg, clientMetrics)
 	require.NoError(t, err)
-	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, storageCfg.TSDBShipperConfig.SharedStoreKeyPrefix)
+	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, pcfg.IndexTables.PathPrefix)
 
 	currTableName := pcfg.IndexTables.TableFor(now)
 	currTableNum, err := config.ExtractTableNumberFromName(currTableName)
