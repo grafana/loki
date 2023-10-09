@@ -560,7 +560,8 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
 	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
-	cmd.Flag("remote-schema", "Execute the current query using a remote schema retrieved using the configured storage in the given Loki configuration file.").Default("false").BoolVar(&q.FetchSchemaFromStorage)
+	cmd.Flag("remote-schema", "Execute the current query using a remote schema retrieved from the configured -schema-store.").Default("false").BoolVar(&q.FetchSchemaFromStorage)
+	cmd.Flag("schema-store", "Store used for retrieving remote schema.").Default("").StringVar(&q.SchemaStore)
 	cmd.Flag("colored-output", "Show output with colored labels").Default("false").BoolVar(&q.ColoredOutput)
 
 	return q

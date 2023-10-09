@@ -42,7 +42,6 @@ storage_config:
       # only applicable if using microservices where index-gateways are independently deployed.
       # This example is using kubernetes-style naming.
       server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
-    shared_store: gcs
   # New tsdb-shipper configuration
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
@@ -51,7 +50,6 @@ storage_config:
       # only applicable if using microservices where index-gateways are independently deployed.
       # This example is using kubernetes-style naming.
       server_address: dns:///index-gateway.<namespace>.svc.cluster.local:9095
-    shared_store: gcs
 
 query_scheduler:
   # the TSDB index dispatches many more, but each individually smaller, requests. 

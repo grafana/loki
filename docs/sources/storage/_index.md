@@ -225,7 +225,6 @@ storage_config:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
-    shared_store: gcs
   gcs:
       bucket_name: <bucket>
 
@@ -248,7 +247,6 @@ storage_config:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
-    shared_store: s3
   aws:
     s3: s3://<access_key>:<uri-encoded-secret-access-key>@<region>
     bucketnames: <bucket1,bucket2>
@@ -366,7 +364,6 @@ storage_config:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h
-    shared_store: azure
   filesystem:
     directory: /loki/chunks
 ```
@@ -399,7 +396,6 @@ storage_config:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h
-    shared_store: azure
   filesystem:
     directory: /loki/chunks
 ```
@@ -421,7 +417,6 @@ storage_config:
   tsdb_shipper:
    active_index_directory: /loki/index
    cache_location: /loki/index_cache
-   shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -476,7 +471,6 @@ storage_config:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
-    shared_store: s3
 
 schema_config:
   configs:

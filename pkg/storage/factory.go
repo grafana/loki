@@ -426,12 +426,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 				return client, nil
 			}
 
-			objectType := periodCfg.ObjectType
-			if cfg.BoltDBShipperConfig.SharedStoreType != "" {
-				objectType = cfg.BoltDBShipperConfig.SharedStoreType
-			}
-
-			objectClient, err := NewObjectClient(objectType, cfg, cm)
+			objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
 			if err != nil {
 				return nil, err
 			}
@@ -579,14 +574,7 @@ func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm C
 		}
 
 	case util.StringsContain(supportedIndexTypes, name):
-		var objectType string
-		switch name {
-		case config.BoltDBShipperType:
-			objectType = cfg.BoltDBShipperConfig.SharedStoreType
-		case config.TSDBType:
-			objectType = cfg.TSDBShipperConfig.SharedStoreType
-		}
-		objectClient, err := NewObjectClient(objectType, cfg, cm)
+		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}

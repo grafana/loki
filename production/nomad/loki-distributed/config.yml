@@ -85,7 +85,6 @@ storage_config:
     # it will try to preserve /alloc/data between job updates
     active_index_directory: {{ env "NOMAD_ALLOC_DIR" }}/data/index
     cache_location: {{ env "NOMAD_ALLOC_DIR" }}/data/index-cache
-    shared_store: s3
     index_gateway_client:
       server_address: loki-index-gateway.service.consul:9097
       # grpc_client_config:

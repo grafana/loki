@@ -38,7 +38,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
-    shared_store: filesystem
   filesystem:
     directory: /tmp/loki/chunks
 
@@ -80,7 +79,6 @@ storage_config:
  tsdb_shipper:
    active_index_directory: /loki/index
    cache_location: /loki/index_cache
-   shared_store: s3
  aws:
    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
    s3forcepathstyle: true
@@ -137,10 +135,8 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: gcs
   gcs:
     bucket_name: replace_by_your_bucked_name
-    
 
 ```
 
@@ -166,7 +162,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: bos
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com
@@ -217,7 +212,6 @@ schema_config:
     index:
         period: 24h
         prefix: index_
-        
 
 ```
 
@@ -242,7 +236,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: alibabacloud
   alibabacloud:
     bucket: <bucket>
     endpoint: <endpoint>
@@ -313,7 +306,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -344,7 +336,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -382,7 +373,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>

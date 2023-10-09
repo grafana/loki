@@ -737,7 +737,7 @@ compactor:
 		})
 	})
 
-	t.Run("when using boltdb storage type", func(t *testing.T) {
+	t.Run("when using compactor storage type", func(t *testing.T) {
 		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
 			const boltdbSchemaConfig = `---
 schema_config:
@@ -750,15 +750,10 @@ schema_config:
         prefix: index_
         period: 24h
 
-storage_config:
-  boltdb_shipper:
-    shared_store: s3
-
 compactor:
   shared_store: s3`
 			cfg, _ := testContext(boltdbSchemaConfig, nil)
 
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
 			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
 		})
 
@@ -773,9 +768,8 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+			cfg, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3"})
 
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
 			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
 		})
 
@@ -792,7 +786,7 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3"})
 
 		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
 		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)

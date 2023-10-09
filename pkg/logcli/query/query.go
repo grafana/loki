@@ -53,6 +53,7 @@ type Query struct {
 	ColoredOutput          bool
 	LocalConfig            string
 	FetchSchemaFromStorage bool
+	SchemaStore            string
 
 	// Parallelization parameters.
 
@@ -406,7 +407,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	cm := storage.NewClientMetrics()
 	if useRemoteSchema {
-		client, err := GetObjectClient(conf, cm)
+		client, err := GetObjectClient(q.SchemaStore, conf, cm)
 		if err != nil {
 			return err
 		}
@@ -489,9 +490,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	return nil
 }
 
-func GetObjectClient(conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
+func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
 	oc, err := storage.NewObjectClient(
-		conf.StorageConfig.BoltDBShipperConfig.SharedStoreType,
+		store,
 		conf.StorageConfig,
 		cm,
 	)

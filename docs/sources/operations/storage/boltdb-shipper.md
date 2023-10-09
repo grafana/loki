@@ -41,7 +41,6 @@ storage_config:
 
   boltdb_shipper:
     active_index_directory: /loki/index
-    shared_store: gcs
     cache_location: /loki/boltdb-cache
 ```
 

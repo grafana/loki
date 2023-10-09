@@ -78,7 +78,6 @@ storage_config:
     tsdb_shipper:
         active_index_directory: /data/index
         cache_location: /data/index_cache
-        shared_store: gcs
     gcs:
         bucket_name: loki
 ```
@@ -246,7 +245,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: gcs
   gcs:
     bucket_name: GCS_BUCKET_NAME
 

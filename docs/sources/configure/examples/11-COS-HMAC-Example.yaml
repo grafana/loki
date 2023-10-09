@@ -14,7 +14,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>

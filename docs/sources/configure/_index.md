@@ -1988,17 +1988,6 @@ boltdb_shipper:
   # CLI flag: -boltdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
-  # filesystem
-  # CLI flag: -boltdb.shipper.shared-store
-  [shared_store: <string> | default = ""]
-
-  # Prefix to add to Object Keys in Shared store. Path separator(if any) should
-  # always be a '/'. Prefix should never start with a separator but should
-  # always end with it
-  # CLI flag: -boltdb.shipper.shared-store.key-prefix
-  [shared_store_key_prefix: <string> | default = "index/"]
-
   # Cache location for restoring index files from storage for queries
   # CLI flag: -boltdb.shipper.cache-location
   [cache_location: <string> | default = ""]
@@ -2049,17 +2038,6 @@ tsdb_shipper:
   # uploaded by shipper to configured storage
   # CLI flag: -tsdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
-
-  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
-  # filesystem
-  # CLI flag: -tsdb.shipper.shared-store
-  [shared_store: <string> | default = ""]
-
-  # Prefix to add to Object Keys in Shared store. Path separator(if any) should
-  # always be a '/'. Prefix should never start with a separator but should
-  # always end with it
-  # CLI flag: -tsdb.shipper.shared-store.key-prefix
-  [shared_store_key_prefix: <string> | default = "index/"]
 
   # Cache location for restoring index files from storage for queries
   # CLI flag: -tsdb.shipper.cache-location
@@ -4121,8 +4099,8 @@ The `period_config` block configures what index schemas should be used for from 
 
 # Configures how the index is updated and stored.
 index:
-  # path prefix for index tables. Defaults to "index/". The path prefix always
-  # needs to end with a path delimiter '/', except when the prefix is empty.
+  # Path prefix for index tables. Prefix always needs to end with a path
+  # delimiter '/', except when the prefix is empty.
   [path_prefix: <string> | default = "/index"]
 
   # Table prefix for all period tables.

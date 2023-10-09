@@ -273,12 +273,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 		}
 
-		objectType := p.ObjectType
-		if s.cfg.TSDBShipperConfig.SharedStoreType != "" {
-			objectType = s.cfg.TSDBShipperConfig.SharedStoreType
-		}
-
-		objectClient, err := NewObjectClient(objectType, s.cfg, s.clientMetrics)
+		objectClient, err := NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}

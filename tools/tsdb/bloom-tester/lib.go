@@ -40,7 +40,7 @@ func execute() {
 	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
 	helpers.ExitErr("find period config for bucket", err)
 
-	objectClient, err := storage.NewObjectClient(conf.StorageConfig.TSDBShipperConfig.SharedStoreType, conf.StorageConfig, clientMetrics)
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)

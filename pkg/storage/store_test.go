@@ -1515,7 +1515,6 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
-	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 	boltdbShipperConfig.IngesterName = ingesterName
@@ -1524,7 +1523,6 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tsdbShipperConfig := tsdb.IndexCfg{}
 	flagext.DefaultValues(&tsdbShipperConfig)
 	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
-	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
 	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
 	tsdbShipperConfig.IngesterName = ingesterName
