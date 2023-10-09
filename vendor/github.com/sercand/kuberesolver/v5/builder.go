@@ -81,9 +81,13 @@ func splitServicePortNamespace(hpn string) (service, port, namespace string) {
 		service, port = service[:colon], service[colon+1:]
 	}
 
-	dot := strings.LastIndexByte(service, '.')
-	if dot != -1 {
-		service, namespace = service[:dot], service[dot+1:]
+	// we want to split into the service name, namespace, and whatever else is left
+	// this will support fully qualified service names, e.g. {service-name}.<namespace>.svc.<cluster-domain-name>.
+	// Note that since we lookup the endpoints by service name and namespace, we don't care about the
+	// cluster-domain-name, only that we can parse out the service name and namespace properly.
+	parts := strings.SplitN(service, ".", 3)
+	if len(parts) >= 2 {
+		service, namespace = parts[0], parts[1]
 	}
 
 	return
@@ -163,7 +167,7 @@ func (b *kubeBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts
 		if err != nil && err != io.EOF {
 			grpclog.Errorf("kuberesolver: watching ended with error='%v', will reconnect again", err)
 		}
-	}, time.Second, ctx.Done())
+	}, time.Second, time.Second*30, ctx.Done())
 	return r, nil
 }
 
@@ -228,7 +232,6 @@ func (k *kResolver) makeAddresses(e Endpoints) ([]resolver.Address, string) {
 
 		for _, address := range subset.Addresses {
 			newAddrs = append(newAddrs, resolver.Address{
-				Type:       resolver.Backend,
 				Addr:       net.JoinHostPort(address.IP, port),
 				ServerName: fmt.Sprintf("%s.%s", k.target.serviceName, k.target.serviceNamespace),
 				Metadata:   nil,
@@ -274,7 +277,7 @@ func (k *kResolver) watch() error {
 		case <-k.t.C:
 			k.resolve()
 		case <-k.rn:
-			k.resolve()
+			//k.resolve()
 		case up, hasMore := <-sw.ResultChan():
 			if hasMore {
 				k.handle(up.Object)

@@ -58,9 +58,9 @@ func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registere
 		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
 	}, []string{"operation", "status_code"})
 
-	return func(addr string) (client.PoolClient, error) {
+	return client.PoolAddrFunc(func(addr string) (client.PoolClient, error) {
 		return dialRulerClient(clientCfg, addr, requestDuration)
-	}
+	})
 }
 
 func dialRulerClient(clientCfg grpcclient.Config, addr string, requestDuration *prometheus.HistogramVec) (*rulerExtendedClient, error) {
