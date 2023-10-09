@@ -9,12 +9,11 @@
 FROM golang:1.21.2-bullseye as helm
 ARG TARGETARCH
 ARG HELM_VER="v3.2.3"
-RUN curl -L -o /tmp/helm-$HELM_VER.tgz "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" && \
-    tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
-    mv "/tmp/linux-$TARGETARCH/helm" /usr/bin/helm && \
-    rm -rf "/tmp/linux-$TARGETARCH" /tmp/helm-$HELM_VER.tgz
-RUN curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/helm-docs_Linux_x86_64.deb" -o helm-doc.deb && \
-    dpkg -i helm-doc.deb
+RUN curl -L "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" | tar zx && \
+    install -t /usr/local/bin "linux-$TARGETARCH/helm"
+RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "helm-docs_Linux_x86_64") &&  \
+    curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/$BIN.tar.gz" | tar zx && \
+    install -t /usr/local/bin helm-docs
 
 FROM alpine:3.18.4 as lychee
 ARG TARGETARCH
@@ -31,9 +30,9 @@ RUN apk add --no-cache curl && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.51.2
 
 FROM alpine:3.18.4 as buf
-
+ARG TARGETOS
 RUN apk add --no-cache curl && \
-    curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$(uname -s)-$(uname -m)" -o "/usr/bin/buf" && \
+    curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
     chmod +x "/usr/bin/buf"
 
 FROM alpine:3.18.4 as docker
@@ -98,8 +97,8 @@ RUN dpkg --add-architecture armhf && \
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
 COPY --from=docker /usr/libexec/docker/cli-plugins/docker-buildx /usr/libexec/docker/cli-plugins/docker-buildx
-COPY --from=helm /usr/bin/helm /usr/bin/helm
-COPY --from=helm /go/bin/helm-docs /usr/bin/helm-docs
+COPY --from=helm /usr/local/bin/helm /usr/bin/helm
+COPY --from=helm /usr/local/bin/helm-docs /usr/bin/helm-docs
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
 COPY --from=golangci /bin/golangci-lint /usr/local/bin
 COPY --from=buf /usr/bin/buf /usr/bin/buf
