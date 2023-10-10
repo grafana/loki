@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	storage_errors "github.com/grafana/loki/pkg/storage/errors"
 	"github.com/grafana/loki/pkg/validation"
@@ -83,8 +84,8 @@ type errorTranslateQueryable struct {
 	fn ErrTranslateFn
 }
 
-func (e errorTranslateQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	q, err := e.q.Querier(ctx, mint, maxt)
+func (e errorTranslateQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
+	q, err := e.q.Querier(mint, maxt)
 	return errorTranslateQuerier{q: q, fn: e.fn}, e.fn(err)
 }
 
@@ -93,13 +94,13 @@ type errorTranslateQuerier struct {
 	fn ErrTranslateFn
 }
 
-func (e errorTranslateQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
-	values, warnings, err := e.q.LabelValues(name, matchers...)
+func (e errorTranslateQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	values, warnings, err := e.q.LabelValues(ctx, name, matchers...)
 	return values, warnings, e.fn(err)
 }
 
-func (e errorTranslateQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
-	values, warnings, err := e.q.LabelNames(matchers...)
+func (e errorTranslateQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	values, warnings, err := e.q.LabelNames(ctx, matchers...)
 	return values, warnings, e.fn(err)
 }
 
@@ -107,8 +108,8 @@ func (e errorTranslateQuerier) Close() error {
 	return e.fn(e.q.Close())
 }
 
-func (e errorTranslateQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	s := e.q.Select(sortSeries, hints, matchers...)
+func (e errorTranslateQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	s := e.q.Select(ctx, sortSeries, hints, matchers...)
 	return errorTranslateSeriesSet{s: s, fn: e.fn}
 }
 
@@ -129,6 +130,6 @@ func (e errorTranslateSeriesSet) Err() error {
 	return e.fn(e.s.Err())
 }
 
-func (e errorTranslateSeriesSet) Warnings() storage.Warnings {
+func (e errorTranslateSeriesSet) Warnings() annotations.Annotations {
 	return e.s.Warnings()
 }

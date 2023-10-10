@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.
@@ -59,7 +60,7 @@ func (c *ConcreteSeriesSet) Err() error {
 }
 
 // Warnings implements storage.SeriesSet.
-func (c *ConcreteSeriesSet) Warnings() storage.Warnings {
+func (c *ConcreteSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }
 
@@ -345,32 +346,4 @@ func (emptySeriesIterator) Next() chunkenc.ValueType {
 
 func (emptySeriesIterator) Err() error {
 	return nil
-}
-
-type seriesSetWithWarnings struct {
-	wrapped  storage.SeriesSet
-	warnings storage.Warnings
-}
-
-func NewSeriesSetWithWarnings(wrapped storage.SeriesSet, warnings storage.Warnings) storage.SeriesSet {
-	return seriesSetWithWarnings{
-		wrapped:  wrapped,
-		warnings: warnings,
-	}
-}
-
-func (s seriesSetWithWarnings) Next() bool {
-	return s.wrapped.Next()
-}
-
-func (s seriesSetWithWarnings) At() storage.Series {
-	return s.wrapped.At()
-}
-
-func (s seriesSetWithWarnings) Err() error {
-	return s.wrapped.Err()
-}
-
-func (s seriesSetWithWarnings) Warnings() storage.Warnings {
-	return append(s.wrapped.Warnings(), s.warnings...)
 }
