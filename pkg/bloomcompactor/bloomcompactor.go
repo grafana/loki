@@ -1,3 +1,28 @@
+/*
+Bloom-compactor
+
+This is a standalone service that is responsible for compacting TSDB indexes into bloomfilters.
+It creates and merges bloomfilters into an aggregated form, called bloom-blocks.
+It maintains a list of references between bloom-blocks and TSDB indexes in files called meta.jsons.
+
+Bloom-compactor regularly runs to check for changes in meta.jsons and runs compaction only upon changes in TSDBs.
+
+					bloomCompactor.Compactor
+						|
+			----------------------------------
+	// Read path	| 	 				| write path TODO
+		bloomshipper.Store**
+			|
+		bloomshipper.Shipper
+			|
+		bloomshipper.BloomClient
+			|
+		ObjectClient
+			|
+	.....................service boundary
+			|
+		object storage
+*/
 package bloomcompactor
 
 import (
