@@ -13,7 +13,8 @@ type Config struct {
 	// section and the ingester configuration by default).
 	Ring RingCfg `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the bloom-compactor servers. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
 	// Enabled configures whether bloom-compactors should be used to compact index values into bloomfilters
-	Enabled bool `yaml:"enabled"`
+	Enabled          bool   `yaml:"enabled"`
+	WorkingDirectory string `yaml:"working_directory"`
 }
 
 // RegisterFlags registers flags for the Bloom-Compactor configuration.

@@ -29,6 +29,9 @@ import (
 	"context"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -37,13 +40,34 @@ type Compactor struct {
 
 	cfg    Config
 	logger log.Logger
+
+	bloomStore bloomshipper.Store
 }
 
-func New(cfg Config, logger log.Logger, _ prometheus.Registerer) (*Compactor, error) {
+func New(cfg Config, storageCfg storage.Config, logger log.Logger, _ prometheus.Registerer) (*Compactor, error) {
 	c := &Compactor{
 		cfg:    cfg,
 		logger: logger,
 	}
+
+	client, err := bloomshipper.NewBloomClient(nil, storageCfg, storage.NewClientMetrics())
+	if err != nil {
+		return nil, err
+	}
+
+	shipper, err := bloomshipper.NewShipper(
+		client,
+		bloomshipperconfig.Config{WorkingDirectory: cfg.WorkingDirectory},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := bloomshipper.NewBloomStore(*shipper)
+	if err != nil {
+		return nil, err
+	}
+	c.bloomStore = store
 	c.Service = services.NewIdleService(c.starting, c.stopping)
 
 	return c, nil
