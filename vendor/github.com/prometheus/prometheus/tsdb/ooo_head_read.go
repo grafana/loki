@@ -11,13 +11,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// nolint:revive // Many unsued function arguments in this file by design.
+// nolint:revive // Many unused function arguments in this file by design.
 package tsdb
 
 import (
+	"context"
 	"errors"
 	"math"
-	"sort"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -130,13 +132,13 @@ func (oh *OOOHeadIndexReader) series(ref storage.SeriesRef, builder *labels.Scra
 
 	// Next we want to sort all the collected chunks by min time so we can find
 	// those that overlap.
-	sort.Sort(metaByMinTimeAndMinRef(tmpChks))
+	slices.SortFunc(tmpChks, lessByMinTimeAndMinRef)
 
 	// Next we want to iterate the sorted collected chunks and only return the
 	// chunks Meta the first chunk that overlaps with others.
 	// Example chunks of a series: 5:(100, 200) 6:(500, 600) 7:(150, 250) 8:(550, 650)
 	// In the example 5 overlaps with 7 and 6 overlaps with 8 so we only want to
-	// to return chunk Metas for chunk 5 and chunk 6e
+	// return chunk Metas for chunk 5 and chunk 6e
 	*chks = append(*chks, tmpChks[0])
 	maxTime := tmpChks[0].MaxTime // Tracks the maxTime of the previous "to be merged chunk".
 	for _, c := range tmpChks[1:] {
@@ -156,16 +158,16 @@ func (oh *OOOHeadIndexReader) series(ref storage.SeriesRef, builder *labels.Scra
 // LabelValues needs to be overridden from the headIndexReader implementation due
 // to the check that happens at the beginning where we make sure that the query
 // interval overlaps with the head minooot and maxooot.
-func (oh *OOOHeadIndexReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+func (oh *OOOHeadIndexReader) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
 	if oh.maxt < oh.head.MinOOOTime() || oh.mint > oh.head.MaxOOOTime() {
 		return []string{}, nil
 	}
 
 	if len(matchers) == 0 {
-		return oh.head.postings.LabelValues(name), nil
+		return oh.head.postings.LabelValues(ctx, name), nil
 	}
 
-	return labelValuesWithMatchers(oh, name, matchers...)
+	return labelValuesWithMatchers(ctx, oh, name, matchers...)
 }
 
 type chunkMetaAndChunkDiskMapperRef struct {
@@ -175,31 +177,21 @@ type chunkMetaAndChunkDiskMapperRef struct {
 	origMaxT int64
 }
 
-type byMinTimeAndMinRef []chunkMetaAndChunkDiskMapperRef
-
-func (b byMinTimeAndMinRef) Len() int { return len(b) }
-func (b byMinTimeAndMinRef) Less(i, j int) bool {
-	if b[i].meta.MinTime == b[j].meta.MinTime {
-		return b[i].meta.Ref < b[j].meta.Ref
+func refLessByMinTimeAndMinRef(a, b chunkMetaAndChunkDiskMapperRef) bool {
+	if a.meta.MinTime == b.meta.MinTime {
+		return a.meta.Ref < b.meta.Ref
 	}
-	return b[i].meta.MinTime < b[j].meta.MinTime
+	return a.meta.MinTime < b.meta.MinTime
 }
 
-func (b byMinTimeAndMinRef) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
-
-type metaByMinTimeAndMinRef []chunks.Meta
-
-func (b metaByMinTimeAndMinRef) Len() int { return len(b) }
-func (b metaByMinTimeAndMinRef) Less(i, j int) bool {
-	if b[i].MinTime == b[j].MinTime {
-		return b[i].Ref < b[j].Ref
+func lessByMinTimeAndMinRef(a, b chunks.Meta) bool {
+	if a.MinTime == b.MinTime {
+		return a.Ref < b.Ref
 	}
-	return b[i].MinTime < b[j].MinTime
+	return a.MinTime < b.MinTime
 }
 
-func (b metaByMinTimeAndMinRef) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
-
-func (oh *OOOHeadIndexReader) Postings(name string, values ...string) (index.Postings, error) {
+func (oh *OOOHeadIndexReader) Postings(ctx context.Context, name string, values ...string) (index.Postings, error) {
 	switch len(values) {
 	case 0:
 		return index.EmptyPostings(), nil
@@ -211,7 +203,7 @@ func (oh *OOOHeadIndexReader) Postings(name string, values ...string) (index.Pos
 		for _, value := range values {
 			res = append(res, oh.head.postings.Get(name, value)) // TODO(ganesh) Also call GetOOOPostings
 		}
-		return index.Merge(res...), nil
+		return index.Merge(ctx, res...), nil
 	}
 }
 
@@ -277,7 +269,7 @@ type OOOCompactionHead struct {
 // 4. Cuts a new WBL file for the OOO WBL.
 // All the above together have a bit of CPU and memory overhead, and can have a bit of impact
 // on the sample append latency. So call NewOOOCompactionHead only right before compaction.
-func NewOOOCompactionHead(head *Head) (*OOOCompactionHead, error) {
+func NewOOOCompactionHead(ctx context.Context, head *Head) (*OOOCompactionHead, error) {
 	ch := &OOOCompactionHead{
 		chunkRange: head.chunkRange.Load(),
 		mint:       math.MaxInt64,
@@ -296,7 +288,7 @@ func NewOOOCompactionHead(head *Head) (*OOOCompactionHead, error) {
 	n, v := index.AllPostingsKey()
 
 	// TODO: verify this gets only ooo samples.
-	p, err := ch.oooIR.Postings(n, v)
+	p, err := ch.oooIR.Postings(ctx, n, v)
 	if err != nil {
 		return nil, err
 	}
@@ -405,7 +397,7 @@ func (ir *OOOCompactionHeadIndexReader) Symbols() index.StringIter {
 	return ir.ch.oooIR.Symbols()
 }
 
-func (ir *OOOCompactionHeadIndexReader) Postings(name string, values ...string) (index.Postings, error) {
+func (ir *OOOCompactionHeadIndexReader) Postings(_ context.Context, name string, values ...string) (index.Postings, error) {
 	n, v := index.AllPostingsKey()
 	if name != n || len(values) != 1 || values[0] != v {
 		return nil, errors.New("only AllPostingsKey is supported")
@@ -422,27 +414,27 @@ func (ir *OOOCompactionHeadIndexReader) Series(ref storage.SeriesRef, builder *l
 	return ir.ch.oooIR.series(ref, builder, chks, ir.ch.lastMmapRef)
 }
 
-func (ir *OOOCompactionHeadIndexReader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+func (ir *OOOCompactionHeadIndexReader) SortedLabelValues(_ context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (ir *OOOCompactionHeadIndexReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+func (ir *OOOCompactionHeadIndexReader) LabelValues(_ context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (ir *OOOCompactionHeadIndexReader) PostingsForMatchers(concurrent bool, ms ...*labels.Matcher) (index.Postings, error) {
+func (ir *OOOCompactionHeadIndexReader) PostingsForMatchers(_ context.Context, concurrent bool, ms ...*labels.Matcher) (index.Postings, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (ir *OOOCompactionHeadIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+func (ir *OOOCompactionHeadIndexReader) LabelNames(context.Context, ...*labels.Matcher) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (ir *OOOCompactionHeadIndexReader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
+func (ir *OOOCompactionHeadIndexReader) LabelValueFor(context.Context, storage.SeriesRef, string) (string, error) {
 	return "", errors.New("not implemented")
 }
 
-func (ir *OOOCompactionHeadIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
+func (ir *OOOCompactionHeadIndexReader) LabelNamesFor(ctx context.Context, ids ...storage.SeriesRef) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
 

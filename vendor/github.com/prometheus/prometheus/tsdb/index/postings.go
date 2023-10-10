@@ -15,6 +15,7 @@ package index
 
 import (
 	"container/heap"
+	"context"
 	"encoding/binary"
 	"runtime"
 	"sort"
@@ -107,11 +108,11 @@ func (p *MemPostings) SortedKeys() []labels.Label {
 	}
 	p.mtx.RUnlock()
 
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].Name != keys[j].Name {
-			return keys[i].Name < keys[j].Name
+	slices.SortFunc(keys, func(a, b labels.Label) bool {
+		if a.Name != b.Name {
+			return a.Name < b.Name
 		}
-		return keys[i].Value < keys[j].Value
+		return a.Value < b.Value
 	})
 	return keys
 }
@@ -135,7 +136,7 @@ func (p *MemPostings) LabelNames() []string {
 }
 
 // LabelValues returns label values for the given name.
-func (p *MemPostings) LabelValues(name string) []string {
+func (p *MemPostings) LabelValues(_ context.Context, name string) []string {
 	p.mtx.RLock()
 	defer p.mtx.RUnlock()
 
@@ -156,10 +157,8 @@ type PostingsStats struct {
 }
 
 // Stats calculates the cardinality statistics from postings.
-func (p *MemPostings) Stats(label string) *PostingsStats {
-	const maxNumOfRecords = 10
+func (p *MemPostings) Stats(label string, limit int) *PostingsStats {
 	var size uint64
-
 	p.mtx.RLock()
 
 	metrics := &maxHeap{}
@@ -168,10 +167,10 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 	labelValuePairs := &maxHeap{}
 	numLabelPairs := 0
 
-	metrics.init(maxNumOfRecords)
-	labels.init(maxNumOfRecords)
-	labelValueLength.init(maxNumOfRecords)
-	labelValuePairs.init(maxNumOfRecords)
+	metrics.init(limit)
+	labels.init(limit)
+	labelValueLength.init(limit)
+	labelValuePairs.init(limit)
 
 	for n, e := range p.m {
 		if n == "" {
@@ -184,8 +183,9 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 			if n == label {
 				metrics.push(Stat{Name: name, Count: uint64(len(values))})
 			}
-			labelValuePairs.push(Stat{Name: n + "=" + name, Count: uint64(len(values))})
-			size += uint64(len(name))
+			seriesCnt := uint64(len(values))
+			labelValuePairs.push(Stat{Name: n + "=" + name, Count: seriesCnt})
+			size += uint64(len(name)) * seriesCnt
 		}
 		labelValueLength.push(Stat{Name: n, Count: size})
 	}
@@ -520,7 +520,7 @@ func (it *intersectPostings) Err() error {
 }
 
 // Merge returns a new iterator over the union of the input iterators.
-func Merge(its ...Postings) Postings {
+func Merge(ctx context.Context, its ...Postings) Postings {
 	if len(its) == 0 {
 		return EmptyPostings()
 	}
@@ -528,7 +528,7 @@ func Merge(its ...Postings) Postings {
 		return its[0]
 	}
 
-	p, ok := newMergedPostings(its)
+	p, ok := newMergedPostings(ctx, its)
 	if !ok {
 		return EmptyPostings()
 	}
@@ -560,12 +560,14 @@ type mergedPostings struct {
 	err         error
 }
 
-func newMergedPostings(p []Postings) (m *mergedPostings, nonEmpty bool) {
+func newMergedPostings(ctx context.Context, p []Postings) (m *mergedPostings, nonEmpty bool) {
 	ph := make(postingsHeap, 0, len(p))
 
 	for _, it := range p {
 		// NOTE: mergedPostings struct requires the user to issue an initial Next.
 		switch {
+		case ctx.Err() != nil:
+			return &mergedPostings{err: ctx.Err()}, true
 		case it.Next():
 			ph = append(ph, it)
 		case it.Err() != nil:
@@ -702,7 +704,6 @@ func (rp *removedPostings) Next() bool {
 			rp.fok = rp.full.Next()
 			return true
 		}
-
 		switch fcur, rcur := rp.full.At(), rp.remove.At(); {
 		case fcur < rcur:
 			rp.cur = fcur
