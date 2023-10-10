@@ -96,6 +96,7 @@ RUN dpkg --add-architecture armhf && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=docker /usr/bin/docker /usr/bin/docker
+COPY --from=docker /usr/libexec/docker/cli-plugins/docker-buildx /usr/libexec/docker/cli-plugins/docker-buildx
 COPY --from=helm /usr/bin/helm /usr/bin/helm
 COPY --from=helm /go/bin/helm-docs /usr/bin/helm-docs
 COPY --from=lychee /usr/bin/lychee /usr/bin/lychee
