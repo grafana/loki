@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -486,9 +487,12 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		return nil, err
 	}
 
-	if span := opentracing.SpanFromContext(ctx); span != nil {
+	span := opentracing.SpanFromContext(ctx)
+
+	if span != nil {
 		request.LogToSpan(span)
 	}
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -509,6 +513,8 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 
 	sem := semaphore.NewWeighted(int64(parallelism))
 
+	start := time.Now()
+
 	response, err := rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			// This inner handler is called multiple times by
@@ -521,6 +527,14 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 			if err := sem.Acquire(ctx, int64(1)); err != nil {
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
+
+			if span != nil {
+				span.LogFields(
+					otlog.Int64("wait_goroutine_capacity_time_ms", time.Since(start).Milliseconds()),
+					otlog.Int64("min_weighted_parallism", int64(parallelism)),
+				)
+			}
+
 			defer sem.Release(int64(1))
 
 			return rt.do(ctx, r)
