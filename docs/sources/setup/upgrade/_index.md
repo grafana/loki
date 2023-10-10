@@ -48,13 +48,15 @@ The previous default value `false` is applied.
 #### Deprecated configuration options are removed
 
 1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
-2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
-4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
-5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
-6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
-8. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
+1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
+1. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
+1. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+1. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+1. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
+1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed as it does not offer additional value to already existing `querier.max-concurrent`.
+    We recommend configuring `querier.max-concurrent` to limit the max concurrent requests processed by the queriers.
 
 #### Legacy ingester shutdown handler is removed
 
@@ -76,6 +78,8 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Changes to default configuration values
 
+1. `querier.max-concurrent` now defaults to 4. Consider increasing this if queriers have access to more CPU resources.
+    Note that you risk running into out of memory errors if you set this to a very high value.
 1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
 
 #### Write dedupe cache is deprecated

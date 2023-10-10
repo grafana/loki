@@ -279,8 +279,12 @@ func PostingsForMatchers(ctx context.Context, ix IndexReader, ms ...*labels.Matc
 	// there is no chance that the set we subtract from
 	// contains postings of series that didn't exist when
 	// we constructed the set we subtract by.
-	slices.SortStableFunc(ms, func(i, j *labels.Matcher) bool {
-		return !isSubtractingMatcher(i) && isSubtractingMatcher(j)
+	slices.SortStableFunc(ms, func(i, j *labels.Matcher) int {
+		if !isSubtractingMatcher(i) && isSubtractingMatcher(j) {
+			return -1
+		}
+
+		return +1
 	})
 
 	for _, m := range ms {
@@ -653,7 +657,7 @@ func (p *populateWithDelGenericSeriesIterator) reset(blockID ulid.ULID, cr Chunk
 	p.chks = chks
 	p.i = -1
 	p.err = nil
-	p.bufIter.Iter = nil
+	// Note we don't touch p.bufIter.Iter; it is holding on to an iterator we might reuse in next().
 	p.bufIter.Intervals = p.bufIter.Intervals[:0]
 	p.intervals = intervals
 	p.currDelIter = nil
