@@ -65,7 +65,7 @@ func Test_Shipper_findBlocks(t *testing.T) {
 		endTimestamp   int64
 		filtered       bool
 	}{
-		"expected block not to be filtered out if minFingerprint and startTimestamp are withing range": {
+		"expected block not to be filtered out if minFingerprint and startTimestamp are within range": {
 			filtered: false,
 
 			minFingerprint: 100,
@@ -73,7 +73,7 @@ func Test_Shipper_findBlocks(t *testing.T) {
 			startTimestamp: 300,
 			endTimestamp:   401, // outside range
 		},
-		"expected block not to be filtered out if maxFingerprint and endTimestamp are withing range": {
+		"expected block not to be filtered out if maxFingerprint and endTimestamp are within range": {
 			filtered: false,
 
 			minFingerprint: 50, // outside range
