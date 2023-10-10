@@ -34,7 +34,7 @@ RUN apk add --no-cache curl && \
     chmod +x "/usr/bin/buf"
 
 FROM alpine:3.18.4 as docker
-RUN apk add --no-cache docker-cli
+RUN apk add --no-cache docker-cli docker-cli-buildx
 
 # TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
 # however we need a commit which hasn't been released yet: https://github.com/drone/drone-cli/commit/1fad337d74ca0ecf420993d9d2d7229a1c99f054
