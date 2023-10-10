@@ -71,7 +71,7 @@ func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.Period
 		}
 	}
 
-	return config.PeriodConfig{}, config.TableRange{}, "", fmt.Errorf("table does not belong to any period.")
+	return config.PeriodConfig{}, config.TableRange{}, "", fmt.Errorf("table does not belong to any period")
 }
 
 func ResolveTenants(objectClient client.ObjectClient, pathPrefix, tableName string) ([]string, error) {

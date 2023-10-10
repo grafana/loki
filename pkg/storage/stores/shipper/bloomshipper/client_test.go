@@ -524,19 +524,21 @@ func createPeriodConfigs() []config.PeriodConfig {
 			ObjectType: "folder-1",
 			// from 2023-09-20: table range [19620:19623]
 			From: config.DayTime{Time: model.TimeFromUnix(time.Date(2023, time.September, 20, 0, 0, 0, 0, time.UTC).Unix())},
-			IndexTables: config.PeriodicTableConfig{
-				Period: day,
-				Prefix: "first-period-",
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Period: day,
+					Prefix: "first-period-",
+				}},
 		},
 		{
 			ObjectType: "folder-2",
 			// from 2023-09-24: table range [19624:19627]
 			From: config.DayTime{Time: model.TimeFromUnix(time.Date(2023, time.September, 24, 0, 0, 0, 0, time.UTC).Unix())},
-			IndexTables: config.PeriodicTableConfig{
-				Period: day,
-				Prefix: "second-period-",
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Period: day,
+					Prefix: "second-period-",
+				}},
 		},
 	}
 	return periodicConfigs

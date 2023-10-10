@@ -38,7 +38,7 @@ func TestMigrateTables(t *testing.T) {
 		ObjectType: "filesystem",
 		Schema:     "v12",
 		IndexTables: config.IndexPeriodicTableConfig{
-			PathPrefix: "/index",
+			PathPrefix: "index/",
 			PeriodicTableConfig: config.PeriodicTableConfig{
 				Prefix: indexPrefix,
 				Period: 24 * time.Hour,
