@@ -330,7 +330,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(httpPushHandler)
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(httpPushHandler)
-	t.Server.HTTP.Path("/otlp/v1/metrics").Methods("POST").Handler(otlpPushHandler)
+	t.Server.HTTP.Path("/otlp/v1/logs").Methods("POST").Handler(otlpPushHandler)
 	return t.distributor, nil
 }
 
