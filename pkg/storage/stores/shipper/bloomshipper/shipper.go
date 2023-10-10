@@ -81,8 +81,15 @@ func (s *Shipper) getActiveBlockRefs(
 		return []BlockRef{}, fmt.Errorf("error fetching meta.json files: %w", err)
 	}
 	activeBlocks := s.findBlocks(metas, minFingerprint, maxFingerprint, startTimestamp, endTimestamp)
-	slices.SortStableFunc(activeBlocks, func(a, b BlockRef) bool {
-		return a.MinFingerprint < b.MinFingerprint
+	slices.SortStableFunc(activeBlocks, func(a, b BlockRef) int {
+		if a.MinFingerprint < b.MinFingerprint {
+			return -1
+		}
+		if a.MinFingerprint > b.MinFingerprint {
+			return 1
+		}
+
+		return 0
 	})
 	return activeBlocks, nil
 }
