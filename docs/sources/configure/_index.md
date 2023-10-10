@@ -2111,6 +2111,12 @@ tsdb_shipper:
   # index-read-cache will be used as the backend.
   # CLI flag: -tsdb.enable-postings-cache
   [enable_postings_cache: <boolean> | default = false]
+
+# Configures Bloom Shipper.
+bloom_shipper:
+  # Working directory to store downloaded Bloom Blocks.
+  # CLI flag: -bloom.shipper.working-directory
+  [working_directory: <string> | default = "bloom-shipper"]
 ```
 
 ### chunk_store_config
