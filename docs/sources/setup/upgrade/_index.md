@@ -38,6 +38,56 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Removed `shared_store` and `shared_store_key_prefix` from shipper configuration
+
+The following CLI flags and the corresponding YAML settings to configure shared store for TSDB and BoltDB shippers are now removed:
+- `-boltdb.shipper.shared-store`
+- `-tsdb.shipper.shared-store`
+
+Going forward `object_store` setting in the [period_config](/docs/loki/latest/configure/#period_config) will be used to configure store for the index.
+This enforces chunks and index files to reside together in the same storage bucket for a given period.
+
+We are removing the shared store setting in an effort to simplify storage configuration and reduce the scope for misconfiguration.
+
+{{% admonition type="warning" %}}
+With this change Loki does not allow storing chunks and indexes for a given period in different storage buckets anymore.
+This is a breaking change for setups that store chunks and indexes in different storage buckets by setting `-boltdb.shipper.shared-store` or `-tsdb.shipper.shared-store` to a value
+different from `object_store` in `period_config`.
+{{% /admonition %}}
+
+- If you have not configured `-boltdb.shipper.shared-store`,`-tsdb.shipper.shared-store` or their corresponding YAML setting before, no changes are required as part of the upgrade.
+- If you have configured `-boltdb.shipper.shared-store` or its YAML setting:
+  - If it matches the value of `object_store` for all the periods that use `boltdb-shipper` as index type, no changes are required.
+  - If there is a mismatch, you lose access to the index for periods where `-boltdb.shipper.shared-store` does not match `object_store`.
+    - To make these indexes queryable, index tables need to moved or copied to the store configured in `object_store`.
+- If you have configured `-tsdb.shipper.shared-store` or its YAML setting:
+  - If it matches the value of `object_store` for all the periods that use `tsdb` as index type, no changes are required.
+  - If there is a mismatch, you lose access to the index for periods where `-tsdb.shipper.shared-store` does not match `object_store`.
+    - To make these indexes queryable, index tables need to moved or copied to the store configured in `object_store`.
+
+The following CLI flags and the corresponding YAML settings to configure path prefix for TSDB and BoltDB shippers are now removed:
+- `-boltdb.shipper.shared-store.key-prefix`
+- `-tsdb.shipper.shared-store.key-prefix`
+
+Path prefix for storing the index can now be configured by setting `path_prefix` under `index` key in [period_config](/docs/loki/latest/configure/#period_config).
+This enables users to change the path prefix by adding a new period config.
+```
+period_config:
+  index:
+    path_prefix: "index/"
+    period: 24h
+```
+
+{{% admonition type="note" %}}
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes]({{< relref "../../storage#index-storage" >}}).
+{{% /admonition %}}
+
+`path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
+
+- No changes are required if you have not configured `-boltdb.shipper.shared-store.key-prefix`, `-tsdb.shipper.shared-store.key-prefix` or the corresponding YAML setting previously.
+- If you have configured `-boltdb.shipper.shared-store.key-prefix` or its YAML setting to a value other than `index/`, ensure that all the existing period configs that use `boltdb-shipper` as the index have `path_prefix` set to the value previously configured.
+- If you have configured `-tsdb.shipper.shared-store.key-prefix` or its YAML setting to a value other than `index/`, ensure that all the existing period configs that use `tsdb` as the index have the `path_prefix` set to the value previously configured.
+
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
 The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.
@@ -96,6 +146,13 @@ If you using a [legacy index type]({{< relref "../../storage#index-storage" >}})
   - `querier_cache_memory_bytes` is renamed to `loki_embeddedcache_memory_bytes`
 
 - Already deprecated metric `querier_cache_stale_gets_total` is now removed.
+
+### LogCLI
+
+#### Store for retrieving remote schema
+
+Previously LogCLI used to fetch remote schema from the store configured in `-boltdb.shipper.shared-store` when `-remote-schema` is set to true.
+A new CLI flag `-schema-store` is introduced as a replacement to configure the store for retrieving remote schema.
 
 ## 2.9.0
 
