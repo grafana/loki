@@ -61,7 +61,16 @@ func (ls *LabelsAdapter) UnmarshalJSON(b []byte) error {
 	for k, v := range m {
 		*ls = append(*ls, LabelAdapter{Name: k, Value: v})
 	}
-	slices.SortFunc(*ls, func(a, b LabelAdapter) bool { return a.Name < b.Name })
+	slices.SortFunc(*ls, func(a, b LabelAdapter) int {
+		switch {
+		case a.Name < b.Name:
+			return -1
+		case a.Name > b.Name:
+			return 1
+		default:
+			return 0
+		}
+	})
 
 	return nil
 }
