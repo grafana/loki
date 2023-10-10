@@ -1022,7 +1022,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 			},
 		},
 	}
-	require.NoError(t, cfg.NamedStores.validate())
+	require.NoError(t, cfg.NamedStores.Validate())
 
 	firstPeriodDate := parseDate("2019-01-01")
 	secondPeriodDate := parseDate("2019-01-02")
@@ -1203,7 +1203,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 					},
 				},
 			}
-			require.NoError(t, cfg.NamedStores.validate())
+			require.NoError(t, cfg.NamedStores.Validate())
 
 			periodConfigV9 := config.PeriodConfig{
 				From:       config.DayTime{Time: timeToModelTime(firstStoreDate)},

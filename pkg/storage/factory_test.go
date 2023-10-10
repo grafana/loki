@@ -111,7 +111,7 @@ func TestNamedStores(t *testing.T) {
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
-	require.NoError(t, cfg.NamedStores.validate())
+	require.NoError(t, cfg.NamedStores.Validate())
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{

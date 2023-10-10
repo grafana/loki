@@ -2013,6 +2013,10 @@ boltdb_shipper:
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
+    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
+    # record with multiple IP's, a DNS SRV record with a followup A record
+    # lookup, or a DNS SRV record without a followup A record lookup,
+    # respectively.
     # CLI flag: -boltdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
@@ -2064,6 +2068,10 @@ tsdb_shipper:
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
+    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
+    # record with multiple IP's, a DNS SRV record with a followup A record
+    # lookup, or a DNS SRV record without a followup A record lookup,
+    # respectively.
     # CLI flag: -tsdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
@@ -2081,6 +2089,12 @@ tsdb_shipper:
   # index-read-cache will be used as the backend.
   # CLI flag: -tsdb.enable-postings-cache
   [enable_postings_cache: <boolean> | default = false]
+
+# Configures Bloom Shipper.
+bloom_shipper:
+  # Working directory to store downloaded Bloom Blocks.
+  # CLI flag: -bloom.shipper.working-directory
+  [working_directory: <string> | default = "bloom-shipper"]
 ```
 
 ### chunk_store_config
