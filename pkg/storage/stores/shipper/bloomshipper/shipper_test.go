@@ -111,20 +111,6 @@ func Test_Shipper_findBlocks(t *testing.T) {
 			require.Equal(t, ref, blocks[0])
 		})
 	}
-
-	t.Run("expected blocks to be filtered out if they are out of the requested range", func(t *testing.T) {
-		expectedBlockRefs := []BlockRef{
-			createBlockRef("block1", 100, 220, 350, 360),
-			createBlockRef("block2", 50, 200, 350, 360),
-			createBlockRef("block2", 150, 160, 350, 360),
-		}
-		unexpectedBlockRefs := []BlockRef{}
-
-		var allBlocks []BlockRef
-		allBlocks = append(allBlocks, expectedBlockRefs...)
-		allBlocks = append(allBlocks, unexpectedBlockRefs...)
-
-	})
 }
 
 func createMatchingBlockRef(blockPath string) BlockRef {
