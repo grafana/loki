@@ -498,7 +498,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.30.0',
+    local build_image_tag = '0.32.0',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -513,7 +513,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
     steps: [
       make('build-image', container=false) {
-        image: 'jeschkies/loki-build-image:buildx',
         when: onPRs + onPath('loki-build-image/**'),
         depends_on: ['clone'],
         volumes: [
@@ -525,7 +524,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         privileged: true,
       },
       make('build-image-push', container=false) {
-        image: 'jeschkies/loki-build-image:buildx',
         when: onTagOrMain + onPath('loki-build-image/**'),
         depends_on: ['clone'],
         environment: {

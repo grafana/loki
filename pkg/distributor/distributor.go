@@ -135,9 +135,9 @@ func New(
 ) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
-		factory = func(addr string) (ring_client.PoolClient, error) {
+		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 			return client.New(clientCfg, addr)
-		}
+		})
 	}
 
 	internalFactory := func(addr string) (ring_client.PoolClient, error) {
@@ -227,7 +227,7 @@ func New(
 		clientpool.NewPool(
 			clientCfg.PoolConfig,
 			ingestersRing,
-			internalFactory,
+			ring_client.PoolAddrFunc(internalFactory),
 			util_log.Logger,
 		),
 		overrides,
