@@ -12,7 +12,6 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
-	"github.com/uber/jaeger-client-go"
 )
 
 // Dummy dependency to enforce that we have a nethttp version newer
@@ -46,8 +45,6 @@ func (t Tracer) Wrap(next http.Handler) http.Handler {
 
 	return nethttp.Middleware(opentracing.GlobalTracer(), next, options...)
 }
-
-const httpGRPCHandleMethod = "/httpgrpc.HTTP/Handle"
 
 // HTTPGRPCTracer is a middleware which traces incoming httpgrpc requests.
 type HTTPGRPCTracer struct {
@@ -85,25 +82,13 @@ func InitHTTPGRPCMiddleware(router *mux.Router) *mux.Router {
 //
 // opentracing-contrib/go-stdlib/nethttp.Middleware could not be used here
 // as it does not expose options to access and tag the incoming parent span.
-//
-// Parent span tagging depends on using a Jaeger tracer for now to check the parent span's
-// OperationName(), which is not available on the generic opentracing Tracer interface.
 func (hgt HTTPGRPCTracer) Wrap(next http.Handler) http.Handler {
 	httpOperationNameFunc := makeHTTPOperationNameFunc(hgt.RouteMatcher)
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		tracer := opentracing.GlobalTracer()
 
-		// skip spans which were not forwarded from httpgrpc.HTTP/Handle spans;
-		// standard http spans started directly from the HTTP server are presumed to
-		// already be instrumented by Tracer.Wrap
 		parentSpan := opentracing.SpanFromContext(ctx)
-		if parentSpan, ok := parentSpan.(*jaeger.Span); ok {
-			if parentSpan.OperationName() != httpGRPCHandleMethod {
-				next.ServeHTTP(w, r)
-				return
-			}
-		}
 
 		// extract relevant span & tag data from request
 		method := r.Method

@@ -1148,11 +1148,12 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		distributorConfig.DistributorRing.KVStore.Mock = kvStore
 		distributorConfig.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
-		distributorConfig.factory = factory
-		if factory == nil {
-			distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
+		factoryWrap := ring_client.PoolAddrFunc(factory)
+		distributorConfig.factory = factoryWrap
+		if factoryWrap == nil {
+			distributorConfig.factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 				return ingesterByAddr[addr], nil
-			}
+			})
 		}
 
 		overrides, err := validation.NewOverrides(*limits, nil)

@@ -36,7 +36,7 @@ func Test_newRulerClientFactory(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 
 	reg := prometheus.NewPedanticRegistry()
-	factory := newRulerClientFactory(cfg, reg)
+	factory := newRulerPoolClient(cfg, reg)
 
 	for i := 0; i < 2; i++ {
 		client, err := factory(listener.Addr().String())
