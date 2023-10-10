@@ -95,7 +95,7 @@ type GatewayClient struct {
 
 	dnsProvider *discovery.DNS
 
-	pool *ring_client.Pool
+	pool *client.Pool
 
 	ring ring.ReadRing
 
