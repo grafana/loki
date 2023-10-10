@@ -544,9 +544,10 @@ engine:
   # CLI flag: -querier.engine.max-lookback-period
   [max_look_back_period: <duration> | default = 30s]
 
-# The maximum number of concurrent queries allowed.
+# The maximum number of queries that can be simultaneously processed by the
+# querier.
 # CLI flag: -querier.max-concurrent
-[max_concurrent: <int> | default = 10]
+[max_concurrent: <int> | default = 4]
 
 # Only query the store, and not attempt any ingesters. This is useful for
 # running a standalone querier pool operating only against stored data.
@@ -2758,16 +2759,6 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # scheduler-ring is configured.
 # CLI flag: -querier.dns-lookup-period
 [dns_lookup_duration: <duration> | default = 3s]
-
-# Number of simultaneous queries to process per query-frontend or
-# query-scheduler.
-# CLI flag: -querier.worker-parallelism
-[parallelism: <int> | default = 10]
-
-# Force worker concurrency to match the -querier.max-concurrent option.
-# Overrides querier.worker-parallelism.
-# CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrent: <boolean> | default = true]
 
 # Querier ID, sent to frontend service to identify requests from the same
 # querier. Defaults to hostname.
