@@ -14,6 +14,7 @@
 package remote
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -36,10 +38,16 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
-// decodeReadLimit is the maximum size of a read request body in bytes.
-const decodeReadLimit = 32 * 1024 * 1024
+const (
+	// decodeReadLimit is the maximum size of a read request body in bytes.
+	decodeReadLimit = 32 * 1024 * 1024
+
+	pbContentType   = "application/x-protobuf"
+	jsonContentType = "application/json"
+)
 
 type HTTPError struct {
 	msg    string
@@ -115,7 +123,7 @@ func ToQuery(from, to int64, matchers []*labels.Matcher, hints *storage.SelectHi
 }
 
 // ToQueryResult builds a QueryResult proto.
-func ToQueryResult(ss storage.SeriesSet, sampleLimit int) (*prompb.QueryResult, storage.Warnings, error) {
+func ToQueryResult(ss storage.SeriesSet, sampleLimit int) (*prompb.QueryResult, annotations.Annotations, error) {
 	numSamples := 0
 	resp := &prompb.QueryResult{}
 	var iter chunkenc.Iterator
@@ -217,7 +225,7 @@ func StreamChunkedReadResponses(
 	sortedExternalLabels []prompb.Label,
 	maxBytesInFrame int,
 	marshalPool *sync.Pool,
-) (storage.Warnings, error) {
+) (annotations.Annotations, error) {
 	var (
 		chks []prompb.Chunk
 		lbls []prompb.Label
@@ -333,7 +341,7 @@ func (e errSeriesSet) Err() error {
 	return e.err
 }
 
-func (e errSeriesSet) Warnings() storage.Warnings { return nil }
+func (e errSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // concreteSeriesSet implements storage.SeriesSet.
 type concreteSeriesSet struct {
@@ -354,7 +362,7 @@ func (c *concreteSeriesSet) Err() error {
 	return nil
 }
 
-func (c *concreteSeriesSet) Warnings() storage.Warnings { return nil }
+func (c *concreteSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // concreteSeries implements storage.Series.
 type concreteSeries struct {
@@ -805,4 +813,57 @@ func DecodeWriteRequest(r io.Reader) (*prompb.WriteRequest, error) {
 	}
 
 	return &req, nil
+}
+
+func DecodeOTLPWriteRequest(r *http.Request) (pmetricotlp.ExportRequest, error) {
+	contentType := r.Header.Get("Content-Type")
+	var decoderFunc func(buf []byte) (pmetricotlp.ExportRequest, error)
+	switch contentType {
+	case pbContentType:
+		decoderFunc = func(buf []byte) (pmetricotlp.ExportRequest, error) {
+			req := pmetricotlp.NewExportRequest()
+			return req, req.UnmarshalProto(buf)
+		}
+
+	case jsonContentType:
+		decoderFunc = func(buf []byte) (pmetricotlp.ExportRequest, error) {
+			req := pmetricotlp.NewExportRequest()
+			return req, req.UnmarshalJSON(buf)
+		}
+
+	default:
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported content type: %s, supported: [%s, %s]", contentType, jsonContentType, pbContentType)
+	}
+
+	reader := r.Body
+	// Handle compression.
+	switch r.Header.Get("Content-Encoding") {
+	case "gzip":
+		gr, err := gzip.NewReader(reader)
+		if err != nil {
+			return pmetricotlp.NewExportRequest(), err
+		}
+		reader = gr
+
+	case "":
+		// No compression.
+
+	default:
+		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported compression: %s. Only \"gzip\" or no compression supported", r.Header.Get("Content-Encoding"))
+	}
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		r.Body.Close()
+		return pmetricotlp.NewExportRequest(), err
+	}
+	if err = r.Body.Close(); err != nil {
+		return pmetricotlp.NewExportRequest(), err
+	}
+	otlpReq, err := decoderFunc(body)
+	if err != nil {
+		return pmetricotlp.NewExportRequest(), err
+	}
+
+	return otlpReq, nil
 }
