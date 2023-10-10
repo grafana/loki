@@ -498,7 +498,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.32.0',
+    local build_image_tag = '0.32.0-test',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -524,7 +524,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         privileged: true,
       },
       make('build-image-push', container=false) {
-        when: onTagOrMain + onPath('loki-build-image/**'),
+        //when: onTagOrMain + onPath('loki-build-image/**'),
+        when: onPRs,
         depends_on: ['clone'],
         environment: {
           IMAGE_TAG: build_image_tag,

@@ -27,7 +27,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-    IMAGE_TAG: 0.32.0
+    IMAGE_TAG: 0.32.0-test
   image: grafana/loki-build-image:0.31.1
   name: build-image-push
   privileged: true
@@ -36,10 +36,7 @@ steps:
     path: /var/run/docker.sock
   when:
     event:
-    - push
-    - tag
-    paths:
-    - loki-build-image/**
+    - pull_request
 trigger:
   ref:
   - refs/heads/main
@@ -2026,6 +2023,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: dfb9b8fc8365a4111a49458470509ef5a44f69653530dafbfb1858dbb1ed742e
+hmac: 90a29568ad2adb414df332a5c5eeb61bf978bb24e0ba2e56fea653a5387538e5
 
 ...
