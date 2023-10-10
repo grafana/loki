@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
-	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
@@ -95,7 +95,7 @@ type GatewayClient struct {
 
 	dnsProvider *discovery.DNS
 
-	pool *ring_client.Pool
+	pool *client.Pool
 
 	ring ring.ReadRing
 
@@ -139,7 +139,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 	if err != nil {
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
-	factory := func(addr string) (ring_client.PoolClient, error) {
+	factory := func(addr string) (client.PoolClient, error) {
 		igPool, err := NewIndexGatewayGRPCPool(addr, dialOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "new index gateway grpc pool")
@@ -155,10 +155,10 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 	sgClient.cfg.PoolConfig.HealthCheckIngesters = true
 
 	if sgClient.cfg.Mode == indexgateway.RingMode {
-		sgClient.pool = clientpool.NewPool(sgClient.cfg.PoolConfig, sgClient.ring, factory, logger)
+		sgClient.pool = clientpool.NewPool(sgClient.cfg.PoolConfig, sgClient.ring, client.PoolAddrFunc(factory), logger)
 	} else {
 		// Note we don't use clientpool.NewPool because we want to provide our own discovery function
-		poolCfg := ring_client.PoolConfig{
+		poolCfg := client.PoolConfig{
 			CheckInterval:      sgClient.cfg.PoolConfig.ClientCleanupPeriod,
 			HealthCheckEnabled: sgClient.cfg.PoolConfig.HealthCheckIngesters,
 			HealthCheckTimeout: sgClient.cfg.PoolConfig.RemoteTimeout,
@@ -188,7 +188,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 		discovery := func() ([]string, error) {
 			return dnsProvider.Addresses(), nil
 		}
-		sgClient.pool = ring_client.NewPool("index gateway", poolCfg, discovery, factory, clients, logger)
+		sgClient.pool = client.NewPool("index gateway", poolCfg, discovery, client.PoolAddrFunc(factory), clients, logger)
 
 	}
 

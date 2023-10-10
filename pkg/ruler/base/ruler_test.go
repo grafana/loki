@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -111,12 +112,12 @@ func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManage
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 	if q != nil {
-		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return func(mint, maxt int64) (storage.Querier, error) {
 			return q, nil
 		}
 	}
 
-	return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return func(mint, maxt int64) (storage.Querier, error) {
 		return storage.NoopQuerier(), nil
 	}
 }
@@ -1715,15 +1716,15 @@ type fakeQuerier struct {
 	fn func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet
 }
 
-func (f *fakeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (f *fakeQuerier) Select(_ context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	return f.fn(sortSeries, hints, matchers...)
 }
 
-func (f *fakeQuerier) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (f *fakeQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 func (f *fakeQuerier) Close() error { return nil }
