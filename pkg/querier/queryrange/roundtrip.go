@@ -446,6 +446,7 @@ func NewLogFilterTripperware(
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			queryrangebase.NewTimeSnapMiddleware(log, limits),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
 		}
@@ -522,6 +523,7 @@ func NewLimitedTripperware(
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			queryrangebase.NewTimeSnapMiddleware(log, limits),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			// Limited queries only need to fetch up to the requested line limit worth of logs,
 			// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
@@ -687,6 +689,7 @@ func NewMetricTripperware(
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			queryrangebase.NewTimeSnapMiddleware(log, limits),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitMetricByTime, metrics.SplitByMetrics),
 		)
@@ -761,6 +764,7 @@ func NewInstantMetricTripperware(
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			queryrangebase.NewTimeSnapMiddleware(log, limits),
 		}
 
 		if cfg.ShardedQueries {
@@ -978,6 +982,7 @@ func sharedIndexTripperware(
 	return func(next http.RoundTripper) http.RoundTripper {
 		middlewares := []queryrangebase.Middleware{
 			NewLimitsMiddleware(limits),
+			queryrangebase.NewTimeSnapMiddleware(log, limits),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
 		}

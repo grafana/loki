@@ -110,6 +110,7 @@ type Limits struct {
 	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
 	VolumeEnabled       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
 	VolumeMaxSeries     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	SnapQueryTimestamps bool             `yaml:"snap_query_timestamps" json:"snap_query_timestamps" doc:"description=Snap query start and end to nearest whole second/minute based on query time range. Improves cacheability of queries."`
 
 	// Ruler defaults and limits.
 
@@ -255,16 +256,14 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MinShardingLookback.Set("0s")
 	f.Var(&l.MinShardingLookback, "frontend.min-sharding-lookback", "Limit queries that can be sharded. Queries within the time range of now and now minus this sharding lookback are not sharded. The default value of 0s disables the lookback, causing sharding of all queries at all times.")
-
 	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "Max number of bytes a query can fetch. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
 	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "Max number of bytes a query can fetch after splitting and sharding. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
-
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
-
 	f.Var(&l.MaxStatsCacheFreshness, "frontend.max-stats-cache-freshness", "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature (default).")
-
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.BoolVar(&l.SnapQueryTimestamps, "frontend.snap-query-timestamps", false, "Snap query start and end to nearest whole second/minute based on query time range. Improves cacheability of queries.")
+
 	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
 
 	_ = l.RulerEvaluationDelay.Set("0s")
@@ -483,6 +482,11 @@ func (o *Overrides) MaxQueryRange(_ context.Context, userID string) time.Duratio
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
+// SnapQueryTimestamps returns whether we should adjust query start/end times to nearest whole values to improve caching.
+func (o *Overrides) SnapQueryTimestamps(_ context.Context, userID string) bool {
+	return o.getOverridesForUser(userID).SnapQueryTimestamps
 }
 
 // QueryReadyIndexNumDays returns the number of days for which we have to be query ready for a user.
