@@ -530,8 +530,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     local build_image_tag = '0.32.0-test',
     steps: [
       {
-        when: onPRs + onPath('loki-build-image/**'),
         name: 'manifest',
+        // TODO: only onTagOrMain
+        when: onPRs + onPath('loki-build-image/**'),
         image: 'plugins/manifest:1.4.0',
         settings: {
           // the target parameter is abused for the app's name,
