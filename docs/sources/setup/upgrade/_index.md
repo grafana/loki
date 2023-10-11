@@ -78,9 +78,26 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Changes to default configuration values
 
-1. `querier.max-concurrent` now defaults to 4. Consider increasing this if queriers have access to more CPU resources.
-    Note that you risk running into out of memory errors if you set this to a very high value.
-1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
+{{% responsive-table %}}
+| configuration                                          | new default | old default | notes |
+| ------------------------------------------------------ | ----------- | ----------- | --------
+| `compactor.delete-max-interval`                        | 24h         | 0           | splits the delete requests into intervals no longer than `delete_max_interval` |
+| `distributor.max-line-size`                            | 256KB       | 0           | - |
+| `ingester.sync-period`                                 | 1h          | 0           | ensures that the chunk cuts for a given stream are synchronized across the ingesters in the replication set. Helps with deduplicating chunks. |
+| `ingester.sync-min-utilization`                        | 0.1         | 0           | - |
+| `frontend.max-querier-bytes-read`                      | 150GB       | 0           | - |
+| `frontend.max-cache-freshness`                         | 10m         | 1m          | - |
+| `frontend.max-stats-cache-freshness`                   | 10m         | 0           | - |
+| `frontend.embedded-cache.max-size-mb`                  | 100MB       | 1GB         | embedded results cache size now defaults to 100MB |
+| `memcached.batchsize`                                  | 256         | 1024        | - |
+| `memcached.parallelism`                                | 10          | 100         | - |
+| `querier.compress-http-responses`                      | true        | false       | compress response if the request accepts gzip encoding |
+| `querier.max-concurrent`                               | 4           | 10          | Consider increasing this if queriers have access to more CPU resources. Note that you risk running into out of memory errors if you set this to a very high value. |
+| `querier.split-queries-by-interval`                    | 1h          | 30m         | - |
+| `querier.tsdb-max-query-parallelism`                   | 128         | 512         | - |
+| `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
+| `validation.max-label-names-per-series`                | 15          | 30          | - |
+{{% /responsive-table %}}
 
 #### Write dedupe cache is deprecated
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
