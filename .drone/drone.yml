@@ -5,10 +5,7 @@ platform:
   arch: amd64
   os: linux
 steps:
-- commands:
-  - make BUILD_IN_CONTAINER=false build-image
-  environment: {}
-  image: plugins/docker
+- image: plugins/docker
   name: push-image
   settings:
     context: loki-build-image
@@ -23,8 +20,7 @@ steps:
       from_secret: docker_username
   when:
     event:
-    - push
-    - tag
+    - pull_request
     paths:
     - loki-build-image/**
 trigger:
@@ -43,10 +39,7 @@ platform:
   arch: arm64
   os: linux
 steps:
-- commands:
-  - make BUILD_IN_CONTAINER=false build-image
-  environment: {}
-  image: plugins/docker
+- image: plugins/docker
   name: push-image
   settings:
     context: loki-build-image
@@ -61,8 +54,7 @@ steps:
       from_secret: docker_username
   when:
     event:
-    - push
-    - tag
+    - pull_request
     paths:
     - loki-build-image/**
 trigger:
@@ -2075,6 +2067,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 843b5102456c83f21e5abca4f74d9f3aa82fb28b0412205404a1b474e347f73d
+hmac: 0d08d58ee3e347e41534861af2d8175b4244f6940f6a98486f20ac8ac2341dd3
 
 ...
