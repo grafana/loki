@@ -5,8 +5,9 @@ import (
 	"io"
 	"testing"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 func TestArchive(t *testing.T) {

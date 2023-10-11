@@ -6,8 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 func TarGz(dst io.Writer, src *DirectoryBlockReader) error {
