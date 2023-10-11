@@ -400,6 +400,24 @@ type RangeQuery struct {
 	Shards    []string
 }
 
+func NewRangeQueryWithDefaults() *RangeQuery {
+	start, end, _ := determineBounds(time.Now(), "", "", "")
+	result := &RangeQuery{
+		Start:     start,
+		End:       end,
+		Limit:     defaultQueryLimit,
+		Direction: defaultDirection,
+		Interval:  0,
+	}
+	result.UpdateStep()
+	return result
+}
+
+// UpdateStep will adjust the step given new start and end.
+func (q *RangeQuery) UpdateStep() {
+	q.Step = time.Duration(defaultQueryRangeStep(q.Start, q.End)) * time.Second
+}
+
 // ParseRangeQuery parses a RangeQuery request from an http request.
 func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	var result RangeQuery

@@ -24,7 +24,7 @@ const (
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
-func WriteResponse(req *http.Request, params *logql.LiteralParams, v any, w http.ResponseWriter) error {
+func WriteResponse(req *http.Request, params logql.Params, v any, w http.ResponseWriter) error {
 	if req.Header.Get("Accept") == ProtobufType {
 		w.Header().Add("Content-Type", ProtobufType)
 		return WriteResponseProtobuf(req, params, v, w)
@@ -34,7 +34,7 @@ func WriteResponse(req *http.Request, params *logql.LiteralParams, v any, w http
 	return marshal.WriteResponseJSON(req, v, w)
 }
 
-func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any, w http.ResponseWriter) error {
+func WriteResponseProtobuf(req *http.Request, params logql.Params, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		return WriteQueryResponseProtobuf(params, result, w)
@@ -54,7 +54,7 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any
 
 // WriteQueryResponseProtobuf marshals the promql.Value to queryrange QueryResonse and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseProtobuf(params *logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {
+func WriteQueryResponseProtobuf(params logql.Params, v logqlmodel.Result, w io.Writer) error {
 	p, err := ResultToResponse(v, params)
 	if err != nil {
 		return err
@@ -144,7 +144,7 @@ func WriteVolumeResponseProtobuf(r *logproto.VolumeResponse, w io.Writer) error 
 }
 
 // ResultToResponse is the reverse of ResponseToResult in downstreamer.
-func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*QueryResponse, error) {
+func ResultToResponse(result logqlmodel.Result, params logql.Params) (*QueryResponse, error) {
 	switch data := result.Data.(type) {
 	case promql.Vector:
 		sampleStream, err := queryrangebase.FromValue(data)

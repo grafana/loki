@@ -6,14 +6,12 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
-	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -25,6 +23,7 @@ type WorkerServiceConfig struct {
 	ReadEnabled           bool
 	GrpcListenAddress     string
 	GrpcListenPort        int
+	QuerierMaxConcurrent  int
 	QuerierWorkerConfig   *querier_worker.Config
 	QueryFrontendEnabled  bool
 	QuerySchedulerEnabled bool
@@ -49,6 +48,7 @@ func InitWorkerService(
 	queryRouterPathPrefix string,
 	queryRoutesToHandlers map[string]http.Handler,
 	alwaysExternalRoutesToHandlers map[string]http.Handler,
+	handler queryrangebase.Handler,
 	externalRouter *mux.Router,
 	externalHandler http.Handler,
 	authMiddleware middleware.Interface,
@@ -63,14 +63,6 @@ func InitWorkerService(
 		serverutil.ResponseJSONMiddleware(),
 	)
 
-	internalRouter := mux.NewRouter()
-	if queryRouterPathPrefix != "" {
-		internalRouter = internalRouter.PathPrefix(queryRouterPathPrefix).Subrouter()
-	}
-	for route, handler := range queryRoutesToHandlers {
-		internalRouter.Path(route).Methods("GET", "POST").Handler(handler)
-	}
-
 	// There are some routes which are always registered on the external router, add them now and
 	// wrap them with the externalMiddleware
 	for route, handler := range alwaysExternalRoutesToHandlers {
@@ -84,16 +76,12 @@ func InitWorkerService(
 	if querierRunningStandalone(cfg) {
 
 		// First, register the internal querier handler with the external HTTP server
-		routes := make([]string, len(queryRoutesToHandlers))
-		var idx = 0
-		for route := range queryRoutesToHandlers {
-			routes[idx] = route
-			idx++
+		router := externalRouter
+		if queryRouterPathPrefix != "" {
+			router = router.PathPrefix(queryRouterPathPrefix).Subrouter()
 		}
-
-		// Register routes externally
-		for _, route := range routes {
-			externalRouter.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(internalRouter))
+		for route, h := range queryRoutesToHandlers {
+			router.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(h))
 		}
 
 		//If no scheduler ring or frontend or scheduler address has been configured, then there is no place for the
@@ -107,7 +95,7 @@ func InitWorkerService(
 		return querier_worker.NewQuerierWorker(
 			*(cfg.QuerierWorkerConfig),
 			cfg.SchedulerRing,
-			httpgrpc_server.NewServer(externalHandler),
+			handler,
 			util_log.Logger,
 			reg,
 		)
@@ -127,23 +115,14 @@ func InitWorkerService(
 		cfg.QuerierWorkerConfig.FrontendAddress = address
 	}
 
-	// Add a middleware to extract the trace context and add a header.
-	var internalHandler http.Handler
-	internalHandler = nethttp.MiddlewareFunc(
-		opentracing.GlobalTracer(),
-		internalRouter.ServeHTTP,
-		nethttp.OperationNameFunc(func(r *http.Request) string {
-			return "internalQuerier"
-		}))
-
-	internalHandler = handlerMiddleware.Wrap(internalHandler)
+	// TODO: enable tracing for the handler.
 
 	//Return a querier worker pointed to the internal querier HTTP handler so there is not a conflict in routes between the querier
 	//and the query frontend
 	return querier_worker.NewQuerierWorker(
 		*(cfg.QuerierWorkerConfig),
 		cfg.SchedulerRing,
-		httpgrpc_server.NewServer(internalHandler),
+		handler,
 		util_log.Logger,
 		reg,
 	)

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package queryrange;
 
+import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
@@ -11,6 +12,7 @@ import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
+option go_package = "github.com/grafana/loki/pkg/querier/queryrange";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -107,6 +109,7 @@ message LokiLabelNamesRequest {
   ];
   string path = 3;
   string query = 4;
+  string name = 5;
 }
 
 message LokiLabelNamesResponse {
@@ -180,5 +183,17 @@ message QueryResponse {
     VolumeResponse volume = 6;
     TopKSketchesResponse topkSketches = 7;
     QuantileSketchResponse quantileSketches = 8;
+  }
+}
+
+message QueryRequest {
+  oneof request {
+    LokiSeriesRequest series = 1;
+    // TODO: should be logproto.LabelRequest once https://github.com/grafana/loki/pull/10801 lands
+    LokiLabelNamesRequest labels = 2;
+    logproto.IndexStatsRequest stats = 3;
+    LokiInstantRequest instant = 4;
+    LokiRequest streams = 5;
+    logproto.VolumeRequest volume = 6;
   }
 }

@@ -17,6 +17,7 @@ import (
 const (
 	defaultQueryLimit = 100
 	defaultSince      = 1 * time.Hour
+	defaultDirection  = logproto.BACKWARD
 )
 
 func limit(r *http.Request) (uint32, error) {
@@ -39,7 +40,7 @@ func ts(r *http.Request) (time.Time, error) {
 }
 
 func direction(r *http.Request) (logproto.Direction, error) {
-	return parseDirection(r.Form.Get("direction"), logproto.BACKWARD)
+	return parseDirection(r.Form.Get("direction"), defaultDirection)
 }
 
 func shards(r *http.Request) []string {

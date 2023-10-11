@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -50,7 +51,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 		HealthCheckEnabled: true,
 		HealthCheckTimeout: 1 * time.Second,
 	}
-	p.frontendPool = client.NewPool("frontend", poolConfig, nil, client.PoolAddrFunc(p.createFrontendClient), p.metrics.frontendClientsGauge, log)
+	p.frontendPool = client.NewPool("frontend", poolConfig, nil, p.createFrontendClient, p.metrics.frontendClientsGauge, log)
 	return p, []services.Service{p.frontendPool}
 }
 
@@ -167,17 +168,12 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response, err := sp.handler.Handle(ctx, request)
-	if err != nil {
-		var ok bool
-		response, ok = httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
-			}
-		}
-	}
+	// Convert HTTP request to queryrange.Request.
+	req, err := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
+	
+	resp, err := sp.handler.Do(ctx, req)
+
+	response, err := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, nil, resp)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
@@ -200,9 +196,9 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
 			_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-				QueryID:      queryID,
-				HttpResponse: response,
-				Stats:        stats,
+				QueryID:       queryID,
+				HttpResponse:  response,
+				Stats:         stats,
 			})
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)
