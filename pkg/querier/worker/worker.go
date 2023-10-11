@@ -25,10 +25,7 @@ type Config struct {
 	FrontendAddress  string        `yaml:"frontend_address"`
 	SchedulerAddress string        `yaml:"scheduler_address"`
 	DNSLookupPeriod  time.Duration `yaml:"dns_lookup_duration"`
-
-	Parallelism           int  `yaml:"parallelism"`
-	MatchMaxConcurrency   bool `yaml:"match_max_concurrent"`
-	MaxConcurrentRequests int  `yaml:"-"` // Must be same as passed to LogQL Engine.
+	MaxConcurrent    int           `yaml:"-"` // same as querier.max-concurrent.
 
 	QuerierID string `yaml:"id"`
 
@@ -38,11 +35,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SchedulerAddress, "querier.scheduler-address", "", "Hostname (and port) of scheduler that querier will periodically resolve, connect to and receive queries from. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
 	f.StringVar(&cfg.FrontendAddress, "querier.frontend-address", "", "Address of query frontend service, in host:port format. If -querier.scheduler-address is set as well, querier will use scheduler instead. Only one of -querier.frontend-address or -querier.scheduler-address can be set. If neither is set, queries are only received via HTTP endpoint.")
-
 	f.DurationVar(&cfg.DNSLookupPeriod, "querier.dns-lookup-period", 3*time.Second, "How often to query DNS for query-frontend or query-scheduler address. Also used to determine how often to poll the scheduler-ring for addresses if the scheduler-ring is configured.")
-
-	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query-frontend or query-scheduler.")
-	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", true, "Force worker concurrency to match the -querier.max-concurrent option. Overrides querier.worker-parallelism.")
 	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
@@ -235,27 +228,23 @@ func (w *querierWorker) AddressRemoved(address string) {
 
 // Must be called with lock.
 func (w *querierWorker) resetConcurrency() {
-	totalConcurrency := 0
+	var (
+		index, totalConcurrency int
+	)
+
 	defer func() {
 		w.metrics.concurrentWorkers.Set(float64(totalConcurrency))
 	}()
-	index := 0
 
 	for _, m := range w.managers {
-		concurrency := 0
+		concurrency := w.cfg.MaxConcurrent / len(w.managers)
 
-		if w.cfg.MatchMaxConcurrency {
-			concurrency = w.cfg.MaxConcurrentRequests / len(w.managers)
-
-			// If max concurrency does not evenly divide into our frontends a subset will be chosen
-			// to receive an extra connection.  Frontend addresses were shuffled above so this will be a
-			// random selection of frontends.
-			if index < w.cfg.MaxConcurrentRequests%len(w.managers) {
-				level.Warn(w.logger).Log("msg", "max concurrency is not evenly divisible across targets, adding an extra connection", "addr", m.address)
-				concurrency++
-			}
-		} else {
-			concurrency = w.cfg.Parallelism
+		// If max concurrency does not evenly divide into our frontends a subset will be chosen
+		// to receive an extra connection.  Frontend addresses were shuffled above so this will be a
+		// random selection of frontends.
+		if index < w.cfg.MaxConcurrent%len(w.managers) {
+			level.Warn(w.logger).Log("msg", "max concurrency is not evenly divisible across targets, adding an extra connection", "addr", m.address)
+			concurrency++
 		}
 
 		// If concurrency is 0 then MaxConcurrentRequests is less than the total number of
@@ -269,10 +258,6 @@ func (w *querierWorker) resetConcurrency() {
 		totalConcurrency += concurrency
 		m.concurrency(concurrency)
 		index++
-	}
-
-	if totalConcurrency > w.cfg.MaxConcurrentRequests {
-		level.Warn(w.logger).Log("msg", "total worker concurrency is greater than logql max concurrency. Queries may be queued in the querier which reduces QOS")
 	}
 }
 
