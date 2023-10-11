@@ -7,10 +7,9 @@ It maintains a list of references between bloom-blocks and TSDB indexes in files
 
 Bloom-compactor regularly runs to check for changes in meta.jsons and runs compaction only upon changes in TSDBs.
 
-					bloomCompactor.Compactor
-						|
-			----------------------------------
-	// Read path	| 	 				| write path TODO
+bloomCompactor.Compactor
+
+			| // Read/Write path
 		bloomshipper.Store**
 			|
 		bloomshipper.Shipper
@@ -23,6 +22,12 @@ Bloom-compactor regularly runs to check for changes in meta.jsons and runs compa
 			|
 		object storage
 */
+
+/*
+TODO
+- Ring manager starts up, instances own a subring dedicated to them
+- layout compactor functions with no implementation
+*/
 package bloomcompactor
 
 import (
@@ -30,6 +35,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
 	"github.com/prometheus/client_golang/prometheus"
@@ -38,8 +44,9 @@ import (
 type Compactor struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
+	cfg           Config
+	logger        log.Logger
+	periodConfigs []config.PeriodConfig
 
 	bloomStore bloomshipper.Store
 }
@@ -50,7 +57,7 @@ func New(cfg Config, storageCfg storage.Config, logger log.Logger, clientMetrics
 		logger: logger,
 	}
 
-	client, err := bloomshipper.NewBloomClient(nil, storageCfg, clientMetrics)
+	client, err := bloomshipper.NewBloomClient(c.periodConfigs, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
