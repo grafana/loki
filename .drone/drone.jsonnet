@@ -497,49 +497,52 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 };
 
 [
-  pipeline('loki-build-image') {
-    local build_image_tag = '0.32.0-test',
+  pipeline('loki-build-image-' + arch) + arch_image(arch) {
+    local build_image_tag = '0.32.0-test-' + arch,
     workspace: {
       base: '/src',
       path: 'loki',
     },
-    volumes+: [
-      {
-        name: 'docker',
-        host: {
-          path: '/var/run/docker.sock',
+    steps: [
+      make('build-image', container=false) {
+        name: 'push-image',
+        image: 'plugins/docker',
+        when: onTagOrMain + onPath('loki-build-image/**'),
+        settings: {
+          repo: 'grafana/loki-build-image',
+          context: 'loki-build-image',
+          dockerfile: 'loki-build-image/Dockerfile',
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+          tags: [build_image_tag],
+          dry_run: false,
         },
       },
     ],
+  }
+  for arch in ['amd64', 'arm64']
+] + [ 
+   pipeline('loki-build-image-publish') {
+    local build_image_tag = '0.32.0-test',
     steps: [
-      make('build-image', container=false) {
+      {
         when: onPRs + onPath('loki-build-image/**'),
-        depends_on: ['clone'],
-        volumes: [
-          {
-            name: 'docker',
-            path: '/var/run/docker.sock',
-          },
-        ],
-        privileged: true,
-      },
-      make('build-image-push', container=false) {
-        //when: onTagOrMain + onPath('loki-build-image/**'),
-        when: onPRs,
-        depends_on: ['clone'],
-        environment: {
-          IMAGE_TAG: build_image_tag,
-          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
-          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
+        name: 'manifest',
+        image: 'plugins/manifest:1.4.0',
+        settings: {
+          // the target parameter is abused for the app's name,
+          // as it is unused in spec mode. See docker-manifest-operator.tmpl
+          target: 'loki-build-image',
+          spec: '.drone/docker-manifest-build-image.tmpl',
+          ignore_missing: false,
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
         },
-        volumes: [
-          {
-            name: 'docker',
-            path: '/var/run/docker.sock',
-          },
-        ],
-        privileged: true,
-      },
+      }
+    ],
+    depends_on: [
+      'loki-build-image-%s' % arch
+      for arch in ['amd64', 'arm64']
     ],
   },
   pipeline('helm-test-image') {
