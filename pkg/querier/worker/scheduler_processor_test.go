@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			case 1:
 				return &schedulerpb.SchedulerToQuerier{
 					QueryID:         1,
-					HttpRequest:     nil,
+					HttpRequest:     &httpgrpc.HTTPRequest{},
 					FrontendAddress: "127.0.0.2",
 					UserID:          "user-1",
 				}, nil

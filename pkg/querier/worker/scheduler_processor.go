@@ -51,7 +51,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 		HealthCheckEnabled: true,
 		HealthCheckTimeout: 1 * time.Second,
 	}
-	p.frontendPool = client.NewPool("frontend", poolConfig, nil, p.createFrontendClient, p.metrics.frontendClientsGauge, log)
+	p.frontendPool = client.NewPool("frontend", poolConfig, nil, client.PoolAddrFunc(p.createFrontendClient), p.metrics.frontendClientsGauge, log)
 	return p, []services.Service{p.frontendPool}
 }
 
@@ -169,11 +169,12 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	}
 
 	// Convert HTTP request to queryrange.Request.
-	req, err := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
-	
-	resp, err := sp.handler.Do(ctx, req)
+	// TODO: handle error
+	req, ctx, _ := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
 
-	response, err := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, nil, resp)
+	resp, _ := sp.handler.Do(ctx, req)
+
+	response, _ := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
@@ -195,10 +196,10 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		frontendAddress,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
-			_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-				QueryID:       queryID,
-				HttpResponse:  response,
-				Stats:         stats,
+			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
+				QueryID:      queryID,
+				HttpResponse: response,
+				Stats:        stats,
 			})
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)
