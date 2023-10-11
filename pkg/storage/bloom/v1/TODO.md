@@ -5,3 +5,6 @@
 * Build & load from directories
 * Less copying! I've taken some shortcuts we'll need to refactor to avoid copying []byte around in a few places
 * more sophisticated querying methods
+* queue access to blooms
+* io.reader based decoder
+* tar support
