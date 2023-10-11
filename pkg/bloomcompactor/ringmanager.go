@@ -60,7 +60,7 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 
 	lifecyclerCfg, err := rm.cfg.Ring.ToLifecyclerConfig(ringNumTokens, rm.logger)
 	if err != nil {
-		errors.Wrap(err, "invalid ring lifecycler config")
+		return nil, errors.Wrap(err, "invalid ring lifecycler config")
 	}
 
 	// Define lifecycler delegates in reverse order (last to be called defined first because they're

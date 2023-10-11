@@ -44,13 +44,13 @@ type Compactor struct {
 	bloomStore bloomshipper.Store
 }
 
-func New(cfg Config, storageCfg storage.Config, logger log.Logger, _ prometheus.Registerer) (*Compactor, error) {
+func New(cfg Config, storageCfg storage.Config, logger log.Logger, clientMetrics storage.ClientMetrics, _ prometheus.Registerer) (*Compactor, error) {
 	c := &Compactor{
 		cfg:    cfg,
 		logger: logger,
 	}
 
-	client, err := bloomshipper.NewBloomClient(nil, storageCfg, storage.NewClientMetrics())
+	client, err := bloomshipper.NewBloomClient(nil, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
