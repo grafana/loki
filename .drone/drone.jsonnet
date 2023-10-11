@@ -516,6 +516,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           password: { from_secret: docker_password_secret.name },
           tags: [build_image_tag],
           dry_run: false,
+          platform: 'linux/' + arch,
         },
       },
     ],

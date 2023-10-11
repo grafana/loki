@@ -13,6 +13,7 @@ steps:
     dry_run: false
     password:
       from_secret: docker_password
+    platform: linux/amd64
     repo: grafana/loki-build-image
     tags:
     - 0.32.0-test-amd64
@@ -47,6 +48,7 @@ steps:
     dry_run: false
     password:
       from_secret: docker_password
+    platform: linux/arm64
     repo: grafana/loki-build-image
     tags:
     - 0.32.0-test-arm64
@@ -2067,6 +2069,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 0d08d58ee3e347e41534861af2d8175b4244f6940f6a98486f20ac8ac2341dd3
+hmac: f3ff2e8b213b81cabe8671d7ca504dd5a2094fc2294ce9d9882c29401009c78a
 
 ...
