@@ -13,6 +13,8 @@ import (
 	strings "strings"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -379,11 +381,20 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		// TODO: regex might suffice.
+		match := &mux.RouteMatch{}
+		router := mux.NewRouter()
+		if req.Name == "" && router.Path("/loki/api/v1/label/{name}/values").Match(httpReq, match) {
+			req.Name = match.Vars["name"]
+		}
+
 		return &LokiLabelNamesRequest{
 			StartTs: *req.Start,
 			EndTs:   *req.End,
 			Path:    r.Url,
 			Query:   req.Query,
+			Name:    req.Name,
 		}, ctx, nil
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(httpReq)
