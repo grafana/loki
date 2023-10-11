@@ -15,9 +15,9 @@ import (
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/compactor"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"
 )

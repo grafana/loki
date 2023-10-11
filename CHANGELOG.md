@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [10613](https://github.com/grafana/loki/pull/10613) **ngc4579**: Helm: allow GrafanaAgent tolerations
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
 * [10302](https://github.com/grafana/loki/pull/10302) **ashwanthgoli**: Removes already deprecated `-querier.engine.timeout` CLI flag and corresponding YAML setting as well as the `querier.query_timeout` YAML setting.
@@ -19,7 +20,11 @@
 * [10534](https://github.com/grafana/loki/pull/10534) **chaudum** Remove configuration `use_boltdb_shipper_as_backup`
 * [10620](https://github.com/grafana/loki/pull/10620) **ashwanthgoli** Enable embedded cache if no other cache is explicitly enabled.
 * [10655](https://github.com/grafana/loki/pull/10655) **chaudum** Remove legacy ingester shutdown handler `/ingester/flush_shutdown`.
+* [10709](https://github.com/grafana/loki/pull/10709) **chaudum**/**salvacorts** Remove `ingester.max-transfer-retries` configuration option in favor of using the WAL.
+* [10736](https://github.com/grafana/loki/pull/10736) **ashwanthgoli** Deprecate write dedupe cache as this is not required by the newer single store indexes (tsdb and boltdb-shipper).
 * [10693](https://github.com/grafana/loki/pull/10693) **ashwanthgoli** Embedded cache: Updates the metric prefix from `querier_cache_` to `loki_embeddedcache_` and removes duplicate metrics.
+* [10793](https://github.com/grafana/loki/pull/10793) **ashwanthgoli** Config: Better configuration defaults to provide a better experience for users out of the box.
+* [10785](https://github.com/grafana/loki/pull/10785) **ashwanthgoli** Config: Removes `querier.worker-parallelism` and updates default value of `querier.max-concurrent` to 4.
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
 
 ##### Fixes
@@ -28,6 +33,7 @@
 
 * [10366](https://github.com/grafana/loki/pull/10366) **shantanualsi** Upgrade thanos objstore, dskit and other modules
 * [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
+* [10814](https://github.com/grafana/loki/pull/10814) **shantanualsi,kaviraj** Upgrade prometheus to v0.47.1 and dskit
 
 #### Promtail
 
