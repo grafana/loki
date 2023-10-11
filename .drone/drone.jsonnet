@@ -505,12 +505,12 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     },
     steps: [
       {
-	name: 'push-image',
+        name: 'push-image',
         image: 'plugins/docker',
         when: onPRs + onPath('loki-build-image/**'),
         environment: {
-		DOCKER_BUILDKIT: 1,
-	},
+          DOCKER_BUILDKIT: 1,
+        },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
@@ -525,8 +525,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
   }
   for arch in ['amd64', 'arm64']
-] + [ 
-   pipeline('loki-build-image-publish') {
+] + [
+  pipeline('loki-build-image-publish') {
     local build_image_tag = '0.32.0-test',
     steps: [
       {
@@ -542,7 +542,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
         },
-      }
+      },
     ],
     depends_on: [
       'loki-build-image-%s' % arch
