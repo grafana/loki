@@ -281,7 +281,7 @@ func (cfg *SchemaConfig) Validate() error {
 		periodCfg := &cfg.Configs[i]
 		periodCfg.applyDefaults()
 		if err := periodCfg.validate(); err != nil {
-			return err
+			return fmt.Errorf("validating period_config: %w", err)
 		}
 
 		if i+1 < len(cfg.Configs) {
@@ -423,7 +423,7 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	if err := cfg.IndexTables.Validate(); err != nil {
-		return err
+		return fmt.Errorf("validating index: %w", err)
 	}
 
 	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%(24*time.Hour) != 0 {
@@ -478,7 +478,7 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 }
 
 type IndexPeriodicTableConfig struct {
-	PathPrefix          string `yaml:"path_prefix" doc:"default=/index|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
+	PathPrefix          string `yaml:"path_prefix" doc:"default=index/|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
 	PeriodicTableConfig `yaml:",inline"`
 }
 

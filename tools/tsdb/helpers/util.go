@@ -50,7 +50,7 @@ func getTableNumberForTime(t model.Time) int64 {
 func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.PeriodConfig) (config.PeriodConfig, config.TableRange, string, error) {
 	tableNo, err := extractTableNumberFromName(table)
 	if err != nil {
-		return config.PeriodConfig{}, config.TableRange{}, "", err
+		return config.PeriodConfig{}, config.TableRange{}, "", fmt.Errorf("extracting table number: %w", err)
 	}
 
 	for i, periodCfg := range periodicConfigs {

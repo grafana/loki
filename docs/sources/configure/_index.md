@@ -4115,7 +4115,7 @@ The `period_config` block configures what index schemas should be used for from 
 index:
   # Path prefix for index tables. Prefix always needs to end with a path
   # delimiter '/', except when the prefix is empty.
-  [path_prefix: <string> | default = "/index"]
+  [path_prefix: <string> | default = "index/"]
 
   # Table prefix for all period tables.
   [prefix: <string> | default = ""]

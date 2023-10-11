@@ -387,7 +387,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			actual := testData.config.Validate()
-			assert.Equal(t, testData.err, actual)
+			assert.ErrorIs(t, actual, testData.err)
 			if testData.expected != nil {
 				require.Equal(t, testData.expected, testData.config)
 			}
@@ -489,7 +489,7 @@ func TestPeriodConfig_Validate(t *testing.T) {
 			if tc.err == "" {
 				require.Nil(t, tc.in.validate())
 			} else {
-				require.Error(t, tc.in.validate(), tc.err)
+				require.ErrorContains(t, tc.in.validate(), tc.err)
 			}
 		})
 	}

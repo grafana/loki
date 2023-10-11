@@ -510,7 +510,6 @@ func TestLoadFromURL(t *testing.T) {
 		},
 	}
 
-	// Missing SharedStoreType should error
 	cm := storage.NewClientMetrics()
 	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)

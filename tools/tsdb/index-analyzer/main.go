@@ -48,6 +48,6 @@ func main() {
 	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
 	helpers.ExitErr("resolving tenants", err)
 
-	err = analyze(shipper, bucket, tenants)
+	err = analyze(shipper, tableName, tenants)
 	helpers.ExitErr("analyzing", err)
 }

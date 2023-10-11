@@ -737,13 +737,13 @@ compactor:
 		})
 	})
 
-	t.Run("when using compactor storage type", func(t *testing.T) {
-		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
+	t.Run("compactor shared storage type", func(t *testing.T) {
+		t.Run("shared store types provided via config file", func(t *testing.T) {
+			const schemaConfig = `---
 schema_config:
   configs:
     - from: 2021-08-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: gcs
       schema: v11
       index:
@@ -752,29 +752,35 @@ schema_config:
 
 compactor:
   shared_store: s3`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
+			cfg, _ := testContext(schemaConfig, nil)
 
 			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
 		})
 
 		t.Run("shared store types provided via command line take precedence", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
+			const schemaConfig = `---
 schema_config:
   configs:
     - from: 2021-08-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: gcs
       schema: v11
       index:
         prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3"})
+        period: 24h
+
+compactor:
+  shared_store: gcs`
+			cfg, _ := testContext(schemaConfig, []string{"-compactor.shared-store", "s3"})
 
 			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
 		})
+	})
 
-		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {})
-		const boltdbSchemaConfig = `---
+	t.Run("boltdb shipper apply common path prefix", func(t *testing.T) {
+		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {
+
+			const boltdbSchemaConfig = `---
 common:
   path_prefix: /opt/loki
 schema_config:
@@ -786,14 +792,14 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3"})
+			config, _ := testContext(boltdbSchemaConfig, nil)
 
-		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
-	})
+			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+		})
 
-	t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
-		const boltdbSchemaConfig = `---
+		t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
 common:
   path_prefix: /opt/loki/
 schema_config:
@@ -805,10 +811,12 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3"})
+			config, _ := testContext(boltdbSchemaConfig, nil)
 
-		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+
+		})
 	})
 
 	t.Run("ingester final sleep config", func(t *testing.T) {
