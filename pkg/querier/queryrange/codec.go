@@ -332,7 +332,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	switch op := getOperation(r.Url); op {
+	switch op := getOperation(httpReq.URL.Path); op {
 	case QueryRangeOp:
 		req, err := loghttp.ParseRangeQuery(httpReq)
 		if err != nil {
@@ -903,7 +903,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 			return nil, err
 		}
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response formatt, got (%T)", res))
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}
 
 	sp.LogFields(otlog.Int("bytes", buf.Len()))

@@ -168,13 +168,25 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	// Convert HTTP request to queryrange.Request.
-	// TODO: handle error
-	req, ctx, _ := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
+	var response *httpgrpc.HTTPResponse
 
-	resp, _ := sp.handler.Do(ctx, req)
-
-	response, _ := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
+	req, ctx, err := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
+	if err != nil {
+		response, _ = httpgrpc.HTTPResponseFromError(err)
+	} else {
+		resp, err := sp.handler.Do(ctx, req)
+		if err != nil {
+			response = &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			}
+		} else {
+			response, err = queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
+			if err != nil {
+				response, _ = httpgrpc.HTTPResponseFromError(err)
+			}
+		}
+	}
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
