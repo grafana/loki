@@ -87,3 +87,22 @@ func (c *Compactor) starting(_ context.Context) error {
 func (c *Compactor) stopping(_ error) error {
 	return nil
 }
+
+func (c *Compactor) splitMetas(ctx context.Context, params bloomshipper.MetaSearchParams) (bloomshipper.Meta, error) {
+	return bloomshipper.Meta{}, nil
+}
+
+// Given a meta.json has corresponding TSDB references changed.
+func (c *Compactor) hasTSDBsChanged(ctx context.Context, meta bloomshipper.Meta) (bool, error) {
+	return false, nil
+}
+
+// Run compaction to create bloom-blocks and meta.jsons
+func (c *Compactor) runIndexCompaction(ctx context.Context) {}
+
+// Run bloom-compactor periodically
+func (c *Compactor) runBloomCompactor() {
+	go func() {
+		// use ticker to run every 15 mins
+	}()
+}
