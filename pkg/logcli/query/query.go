@@ -407,6 +407,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	cm := storage.NewClientMetrics()
 	if useRemoteSchema {
+		if q.SchemaStore == "" {
+			return fmt.Errorf("failed to fetch remote schema. -schema-store is not set")
+		}
+
 		client, err := GetObjectClient(q.SchemaStore, conf, cm)
 		if err != nil {
 			return err
