@@ -7,9 +7,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     stateful_ingesters: if $._config.wal_enabled then true else super.stateful_ingesters,
     loki+: with({
       ingester+: {
-        // disables transfers when running as statefulsets.
-        // pod rolling stragety will always fail transfers
-        // and the WAL supersedes this.
         wal+: {
           enabled: true,
           dir: '/loki/wal',
