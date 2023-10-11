@@ -1282,7 +1282,7 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
-	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor, logger, prometheus.DefaultRegisterer)
+	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor, t.Cfg.StorageConfig, logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, err
