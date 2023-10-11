@@ -45,23 +45,21 @@ func testRuleEval(t *testing.T, mode string) {
 		"-target=write",
 	)
 
-	now := time.Now()
-	tenantID := randStringRunes()
-
 	require.NoError(t, clu.Run())
 
+	tenantID := randStringRunes()
 	job := "accesslog"
+	now := time.Now()
 
 	cliWrite := client.New(tenantID, "", tWrite.HTTPURL())
-	cliWrite.Now = now
 	t.Run("ingest logs", func(t *testing.T) {
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("HEAD /", now, map[string]string{"method": "HEAD", "job": job}))
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now, map[string]string{"method": "GET", "job": job}))
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now.Add(time.Second), map[string]string{"method": "GET", "job": job}))
+		require.NoError(t, cliWrite.PushLogLineWithTimestamp("HEAD /", now.Add(-300*time.Millisecond), map[string]string{"method": "HEAD", "job": job}))
+		require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now.Add(-200*time.Millisecond), map[string]string{"method": "GET", "job": job}))
+		require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now.Add(-100*time.Millisecond), map[string]string{"method": "GET", "job": job}))
+		require.NoError(t, cliWrite.Flush())
 	})
 
-	// advance time to after the last ingested log line so queries don't return empty results
-	now = now.Add(time.Second * 2)
+	time.Sleep(10 * time.Second)
 
 	// start up read component for remote rule evaluation
 	tRead := clu.AddComponent(
@@ -99,7 +97,7 @@ func testRuleEval(t *testing.T, mode string) {
 
 	// this is the function that will be called when the remote-write receiver receives a request.
 	// it tests that the expected payload is received.
-	expectedResults := func(w http.ResponseWriter, r *http.Request) {
+	expectedResults := func(_ http.ResponseWriter, r *http.Request) {
 		wr, err := remote.DecodeWriteRequest(r.Body)
 		require.NoError(t, err)
 
@@ -152,7 +150,7 @@ groups:
 	require.NoError(t, clu.Run())
 
 	cliBackend := client.New(tenantID, "", tBackend.HTTPURL())
-	cliBackend.Now = now
+	// cliBackend.Now = now
 	t.Run(fmt.Sprintf("%s rule evaluation", mode), func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
