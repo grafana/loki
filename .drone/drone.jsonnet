@@ -508,6 +508,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 	name: 'push-image',
         image: 'plugins/docker',
         when: onPRs + onPath('loki-build-image/**'),
+        environment: {
+		DOCKER_BUILDKIT: 1,
+	},
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',

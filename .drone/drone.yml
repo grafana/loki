@@ -5,7 +5,9 @@ platform:
   arch: amd64
   os: linux
 steps:
-- image: plugins/docker
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
   name: push-image
   settings:
     context: loki-build-image
@@ -40,7 +42,9 @@ platform:
   arch: arm64
   os: linux
 steps:
-- image: plugins/docker
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
   name: push-image
   settings:
     context: loki-build-image
@@ -2069,6 +2073,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: f3ff2e8b213b81cabe8671d7ca504dd5a2094fc2294ce9d9882c29401009c78a
+hmac: 03d0f5d57ca5c8270c5f95801c8c131bbdffd9edb05e807f11a25a141237e012
 
 ...
