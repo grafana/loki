@@ -104,7 +104,7 @@ require (
 	golang.org/x/sys v0.10.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.132.0
-	google.golang.org/grpc v1.56.2
+	google.golang.org/grpc v1.56.3
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -350,6 +350,3 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 
 replace github.com/grafana/loki/pkg/push => ./pkg/push
-
-// Pin grpc to previous version: using newer version breaks kuberesolver, but updating kuberesolver needs to be done in weaveworks/common.
-replace google.golang.org/grpc => google.golang.org/grpc v1.53.0

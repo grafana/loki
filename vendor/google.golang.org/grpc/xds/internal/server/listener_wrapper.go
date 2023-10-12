@@ -66,10 +66,6 @@ type ServingModeCallback func(addr net.Addr, mode connectivity.ServingMode, err 
 // connections.
 type DrainCallback func(addr net.Addr)
 
-func prefixLogger(p *listenerWrapper) *internalgrpclog.PrefixLogger {
-	return internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[xds-server-listener %p] ", p))
-}
-
 // XDSClient wraps the methods on the XDSClient which are required by
 // the listenerWrapper.
 type XDSClient interface {
@@ -117,7 +113,7 @@ func NewListenerWrapper(params ListenerWrapperParams) (net.Listener, <-chan stru
 		ldsUpdateCh: make(chan ldsUpdateWithError, 1),
 		rdsUpdateCh: make(chan rdsHandlerUpdate, 1),
 	}
-	lw.logger = prefixLogger(lw)
+	lw.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[xds-server-listener %p] ", lw))
 
 	// Serve() verifies that Addr() returns a valid TCPAddr. So, it is safe to
 	// ignore the error from SplitHostPort().
@@ -125,13 +121,7 @@ func NewListenerWrapper(params ListenerWrapperParams) (net.Listener, <-chan stru
 	lw.addr, lw.port, _ = net.SplitHostPort(lisAddr)
 
 	lw.rdsHandler = newRDSHandler(lw.xdsC, lw.rdsUpdateCh)
-
-	cancelWatch := lw.xdsC.WatchListener(lw.name, lw.handleListenerUpdate)
-	lw.logger.Infof("Watch started on resource name %v", lw.name)
-	lw.cancelWatch = func() {
-		cancelWatch()
-		lw.logger.Infof("Watch cancelled on resource name %v", lw.name)
-	}
+	lw.cancelWatch = lw.xdsC.WatchListener(lw.name, lw.handleListenerUpdate)
 	go lw.run()
 	return lw, lw.goodUpdate.Done()
 }
@@ -270,7 +260,7 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			// error, `grpc.Serve()` method sleeps for a small duration and
 			// therefore ends up blocking all connection attempts during that
 			// time frame, which is also not ideal for an error like this.
-			l.logger.Warningf("connection from %s to %s failed to find any matching filter chain", conn.RemoteAddr().String(), conn.LocalAddr().String())
+			l.logger.Warningf("Connection from %s to %s failed to find any matching filter chain", conn.RemoteAddr().String(), conn.LocalAddr().String())
 			conn.Close()
 			continue
 		}
@@ -302,7 +292,7 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 		// tradeoff for simplicity.
 		vhswi, err := fc.ConstructUsableRouteConfiguration(rc)
 		if err != nil {
-			l.logger.Warningf("route configuration construction: %v", err)
+			l.logger.Warningf("Failed to construct usable route configuration: %v", err)
 			conn.Close()
 			continue
 		}
@@ -388,7 +378,6 @@ func (l *listenerWrapper) handleLDSUpdate(update ldsUpdateWithError) {
 		// continue to use the old configuration.
 		return
 	}
-	l.logger.Infof("Received update for resource %q: %+v", l.name, update.update)
 
 	// Make sure that the socket address on the received Listener resource
 	// matches the address of the net.Listener passed to us by the user. This
