@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
+	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 	google.golang.org/grpc v1.53.0
 )
 

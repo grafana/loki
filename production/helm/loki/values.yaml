@@ -632,8 +632,12 @@ monitoring:
       enableConfigReadAPI: false
       # -- The name of the PriorityClass for GrafanaAgent pods
       priorityClassName: null
+      # -- Tolerations for GrafanaAgent pods
+      tolerations: []
     # PodLogs configuration
     podLogs:
+      # -- PodLogs version
+      apiVersion: monitoring.grafana.com/v1alpha1
       # -- PodLogs annotations
       annotations: {}
       # -- Additional PodLogs labels
@@ -795,6 +799,11 @@ write:
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
   persistence:
+    # -- Enable volume claims in pod spec
+    volumeClaimsEnabled: true
+    # -- Parameters used for the `data` volume when volumeClaimEnabled if false
+    dataVolumeParameters:
+      emptyDir: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     # -- Size of persistent disk
@@ -1067,6 +1076,11 @@ backend:
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
   persistence:
+    # -- Enable volume claims in pod spec
+    volumeClaimsEnabled: true
+    # -- Parameters used for the `data` volume when volumeClaimEnabled if false
+    dataVolumeParameters:
+      emptyDir: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
     # -- Size of persistent disk
@@ -1258,7 +1272,7 @@ gateway:
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.23-alpine
+    tag: 1.24-alpine
     # -- Overrides the gateway image tag with an image digest
     digest: null
     # -- The gateway image pull policy

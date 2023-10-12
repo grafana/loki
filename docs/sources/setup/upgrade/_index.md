@@ -48,17 +48,28 @@ The previous default value `false` is applied.
 #### Deprecated configuration options are removed
 
 1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
-2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
-4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
-5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
-6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
-8. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
+1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
+1. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
+1. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+1. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+1. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
+1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed as it does not offer additional value to already existing `querier.max-concurrent`.
+    We recommend configuring `querier.max-concurrent` to limit the max concurrent requests processed by the queriers.
 
 #### Legacy ingester shutdown handler is removed
 
 The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
+#### Ingester configuration `max_transfer_retries` is removed.
+
+The setting `max_transfer_retries` (`-ingester.max-transfer-retries`) is removed in favor of the Write Ahead log (WAL).
+It was used to allow transferring chunks to new ingesters when the old ingester was shutting down during a rolling restart.
+Alternatives to this setting are:
+- **A. (Preferred)** Enable the WAL and rely on the new ingester to replay the WAL.
+     - Optionally, you can enable `flush_on_shutdown` (`-ingester.flush-on-shutdown`) to flush to long-term storage on shutdowns.
+- **B.** Manually flush during shutdowns via [the ingester `/shutdown?flush=true` endpoint]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}).
 
 #### Distributor metric changes
 
@@ -67,7 +78,45 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Changes to default configuration values
 
-1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
+{{% responsive-table %}}
+| configuration                                          | new default | old default | notes |
+| ------------------------------------------------------ | ----------- | ----------- | --------
+| `compactor.delete-max-interval`                        | 24h         | 0           | splits the delete requests into intervals no longer than `delete_max_interval` |
+| `distributor.max-line-size`                            | 256KB       | 0           | - |
+| `ingester.sync-period`                                 | 1h          | 0           | ensures that the chunk cuts for a given stream are synchronized across the ingesters in the replication set. Helps with deduplicating chunks. |
+| `ingester.sync-min-utilization`                        | 0.1         | 0           | - |
+| `frontend.max-querier-bytes-read`                      | 150GB       | 0           | - |
+| `frontend.max-cache-freshness`                         | 10m         | 1m          | - |
+| `frontend.max-stats-cache-freshness`                   | 10m         | 0           | - |
+| `frontend.embedded-cache.max-size-mb`                  | 100MB       | 1GB         | embedded results cache size now defaults to 100MB |
+| `memcached.batchsize`                                  | 256         | 1024        | - |
+| `memcached.parallelism`                                | 10          | 100         | - |
+| `querier.compress-http-responses`                      | true        | false       | compress response if the request accepts gzip encoding |
+| `querier.max-concurrent`                               | 4           | 10          | Consider increasing this if queriers have access to more CPU resources. Note that you risk running into out of memory errors if you set this to a very high value. |
+| `querier.split-queries-by-interval`                    | 1h          | 30m         | - |
+| `querier.tsdb-max-query-parallelism`                   | 128         | 512         | - |
+| `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
+| `validation.max-label-names-per-series`                | 15          | 30          | - |
+{{% /responsive-table %}}
+
+#### Write dedupe cache is deprecated
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
+
+#### Embedded cache metric changes
+
+- The following embedded cache metrics are removed. Instead use `loki_cache_fetched_keys`, `loki_cache_hits`, `loki_cache_request_duration_seconds` which instruments requests made to the configured cache (`embeddedcache`, `memcached` or `redis`).
+  - `querier_cache_added_total`
+  - `querier_cache_gets_total`
+  - `querier_cache_misses_total`
+
+- The following embedded cache metrics are renamed:
+  - `querier_cache_added_new_total` is renamed to `loki_embeddedcache_added_new_total`
+  - `querier_cache_evicted_total` is renamed to `loki_embeddedcache_evicted_total`
+  - `querier_cache_entries` is renamed to `loki_embeddedcache_entries`
+  - `querier_cache_memory_bytes` is renamed to `loki_embeddedcache_memory_bytes`
+
+- Already deprecated metric `querier_cache_stale_gets_total` is now removed.
 
 ## 2.9.0
 

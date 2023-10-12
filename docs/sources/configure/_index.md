@@ -544,9 +544,10 @@ engine:
   # CLI flag: -querier.engine.max-lookback-period
   [max_look_back_period: <duration> | default = 30s]
 
-# The maximum number of concurrent queries allowed.
+# The maximum number of queries that can be simultaneously processed by the
+# querier.
 # CLI flag: -querier.max-concurrent
-[max_concurrent: <int> | default = 10]
+[max_concurrent: <int> | default = 4]
 
 # Only query the store, and not attempt any ingesters. This is useful for
 # running a standalone querier pool operating only against stored data.
@@ -576,7 +577,7 @@ The `query_scheduler` block configures the Loki query scheduler. When configured
 # In-flight requests above this limit will fail with HTTP response status code
 # 429.
 # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
-[max_outstanding_requests_per_tenant: <int> | default = 100]
+[max_outstanding_requests_per_tenant: <int> | default = 32000]
 
 # Maximum number of levels of nesting of hierarchical queues. 0 means that
 # hierarchical queues are disabled.
@@ -756,7 +757,7 @@ The `frontend` block configures the Loki query-frontend.
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
-[compress_responses: <boolean> | default = false]
+[compress_responses: <boolean> | default = true]
 
 # URL of downstream Loki.
 # CLI flag: -frontend.downstream-url
@@ -1456,11 +1457,6 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.ID
   [id: <string> | default = "<hostname>"]
 
-# Number of times to try and transfer chunks before falling back to flushing. If
-# set to 0 or negative value, transfers are disabled.
-# CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 0]
-
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
 [concurrent_flushes: <int> | default = 32]
@@ -1525,11 +1521,11 @@ lifecycler:
 # utilization isn't high enough (eg. less than 50% when sync_min_utilization is
 # set to 0.5), then this chunk rollover doesn't happen.
 # CLI flag: -ingester.sync-period
-[sync_period: <duration> | default = 0s]
+[sync_period: <duration> | default = 1h]
 
 # Minimum utilization of chunk when doing synchronization.
 # CLI flag: -ingester.sync-min-utilization
-[sync_min_utilization: <float> | default = 0]
+[sync_min_utilization: <float> | default = 0.1]
 
 # The maximum number of errors a stream will report to the user when a push
 # fails. 0 to make unlimited.
@@ -2029,6 +2025,10 @@ boltdb_shipper:
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
+    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
+    # record with multiple IP's, a DNS SRV record with a followup A record
+    # lookup, or a DNS SRV record without a followup A record lookup,
+    # respectively.
     # CLI flag: -boltdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
@@ -2091,6 +2091,10 @@ tsdb_shipper:
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
+    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
+    # record with multiple IP's, a DNS SRV record with a followup A record
+    # lookup, or a DNS SRV record without a followup A record lookup,
+    # respectively.
     # CLI flag: -tsdb.shipper.index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
@@ -2108,6 +2112,12 @@ tsdb_shipper:
   # index-read-cache will be used as the backend.
   # CLI flag: -tsdb.enable-postings-cache
   [enable_postings_cache: <boolean> | default = false]
+
+# Configures Bloom Shipper.
+bloom_shipper:
+  # Working directory to store downloaded Bloom Blocks.
+  # CLI flag: -bloom.shipper.working-directory
+  [working_directory: <string> | default = "bloom-shipper"]
 ```
 
 ### chunk_store_config
@@ -2119,7 +2129,10 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache
 [chunk_cache_config: <cache_config>]
 
-# The cache block configures the cache backend.
+# Write dedupe cache is deprecated along with legacy index types (aws,
+# aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
+# grpc-store).
+# Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
@@ -2207,7 +2220,7 @@ The `compactor` block configures the compactor component, which compacts index s
 # delete_max_interval is input, the request is sharded into smaller requests of
 # no more than delete_max_interval
 # CLI flag: -compactor.delete-max-interval
-[delete_max_interval: <duration> | default = 0s]
+[delete_max_interval: <duration> | default = 24h]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
@@ -2362,7 +2375,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Maximum number of label names per series.
 # CLI flag: -validation.max-label-names-per-series
-[max_label_names_per_series: <int> | default = 30]
+[max_label_names_per_series: <int> | default = 15]
 
 # Whether or not old samples will be rejected.
 # CLI flag: -validation.reject-old-samples
@@ -2386,7 +2399,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # set which in case it is truncated instead of discarding it completely. There
 # is no limit when unset or set to 0.
 # CLI flag: -distributor.max-line-size
-[max_line_size: <int> | default = 0B]
+[max_line_size: <int> | default = 256KB]
 
 # Whether to truncate lines that exceed max_line_size.
 # CLI flag: -distributor.max-line-size-truncate
@@ -2463,7 +2476,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Maximum number of queries will be scheduled in parallel by the frontend for
 # TSDB schemas.
 # CLI flag: -querier.tsdb-max-query-parallelism
-[tsdb_max_query_parallelism: <int> | default = 512]
+[tsdb_max_query_parallelism: <int> | default = 128]
 
 # Maximum number of bytes assigned to a single sharded query. Also expressible
 # in human readable forms (1GB, etc).
@@ -2489,12 +2502,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Most recent allowed cacheable result per-tenant, to prevent caching very
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
-[max_cache_freshness_per_query: <duration> | default = 1m]
+[max_cache_freshness_per_query: <duration> | default = 10m]
 
 # Do not cache requests with an end time that falls within Now minus this
 # duration. 0 disables this feature (default).
 # CLI flag: -frontend.max-stats-cache-freshness
-[max_stats_cache_freshness: <duration> | default = 0s]
+[max_stats_cache_freshness: <duration> | default = 10m]
 
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
@@ -2521,7 +2534,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # splitting by time. This also determines how cache keys are chosen when result
 # caching is enabled.
 # CLI flag: -querier.split-queries-by-interval
-[split_queries_by_interval: <duration> | default = 30m]
+[split_queries_by_interval: <duration> | default = 1h]
 
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
@@ -2538,7 +2551,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # in log and metric queries only when TSDB is used. The default value of 0
 # disables this limit.
 # CLI flag: -frontend.max-querier-bytes-read
-[max_querier_bytes_read: <int> | default = 0B]
+[max_querier_bytes_read: <int> | default = 150GB]
 
 # Enable log-volume endpoints.
 [volume_enabled: <boolean>]
@@ -2746,16 +2759,6 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # scheduler-ring is configured.
 # CLI flag: -querier.dns-lookup-period
 [dns_lookup_duration: <duration> | default = 3s]
-
-# Number of simultaneous queries to process per query-frontend or
-# query-scheduler.
-# CLI flag: -querier.worker-parallelism
-[parallelism: <int> | default = 10]
-
-# Force worker concurrency to match the -querier.max-concurrent option.
-# Overrides querier.worker-parallelism.
-# CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrent: <boolean> | default = true]
 
 # Querier ID, sent to frontend service to identify requests from the same
 # querier. Defaults to hostname.
@@ -3953,11 +3956,11 @@ memcached:
 
   # How many keys to fetch in each batch.
   # CLI flag: -<prefix>.memcached.batchsize
-  [batch_size: <int> | default = 1024]
+  [batch_size: <int> | default = 256]
 
   # Maximum active requests to memcache.
   # CLI flag: -<prefix>.memcached.parallelism
-  [parallelism: <int> | default = 100]
+  [parallelism: <int> | default = 10]
 
 memcached_client:
   # Hostname for memcached service to use. If empty and if addresses is unset,
