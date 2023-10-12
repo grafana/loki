@@ -61,14 +61,9 @@ func setupArguments() {
 		panic(err)
 	}
 
-	dropLabelsRaw = os.Getenv("DROP_LABELS")
-	dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
-	for _, dropLabelRaw := range dropLabelsRawSplit {
-		dropLabel := model.LabelName(dropLabelRaw)
-		if !dropLabel.IsValid() {
-			panic(fmt.Errorf("invalid label name %s", dropLabelRaw))
-		}
-		dropLabels = append(dropLabels, model.LabelName(dropLabel))
+	dropLabels, err = getDropLabels()
+	if err != nil {
+		panic(err)
 	}
 
 	username = os.Getenv("USERNAME")
@@ -137,6 +132,22 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 	}
 	fmt.Println("extra labels:", extractedLabels)
 	return extractedLabels, nil
+}
+
+func getDropLabels() ([]model.LabelName, error) {
+	var result []model.LabelName
+
+	dropLabelsRaw = os.Getenv("DROP_LABELS")
+	dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
+	for _, dropLabelRaw := range dropLabelsRawSplit {
+		dropLabel := model.LabelName(dropLabelRaw)
+		if !dropLabel.IsValid() {
+			return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
+		}
+		result = append(result, dropLabel)
+	}
+
+	return result, nil
 }
 
 func applyLabels(labels model.LabelSet) model.LabelSet {
