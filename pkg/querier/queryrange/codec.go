@@ -1174,7 +1174,7 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 			LokiSeriesRequest: r,
 		}, nil
 	case *LabelRequest:
-		return &paramsLabelNamesWrapper{
+		return &paramsLabelWrapper{
 			LabelRequest: r,
 		}, nil
 	default:
@@ -1268,31 +1268,31 @@ func (p paramsSeriesWrapper) Shards() []string {
 	return p.GetShards()
 }
 
-type paramsLabelNamesWrapper struct {
+type paramsLabelWrapper struct {
 	*LabelRequest
 }
 
-func (p paramsLabelNamesWrapper) Query() string {
+func (p paramsLabelWrapper) Query() string {
 	return p.GetQuery()
 }
 
-func (p paramsLabelNamesWrapper) Start() time.Time {
+func (p paramsLabelWrapper) Start() time.Time {
 	return p.LabelRequest.GetStartTs()
 }
 
-func (p paramsLabelNamesWrapper) End() time.Time {
+func (p paramsLabelWrapper) End() time.Time {
 	return p.LabelRequest.GetEndTs()
 }
 
-func (p paramsLabelNamesWrapper) Step() time.Duration {
+func (p paramsLabelWrapper) Step() time.Duration {
 	return time.Duration(p.GetStep() * 1e6)
 }
-func (p paramsLabelNamesWrapper) Interval() time.Duration { return 0 }
-func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
+func (p paramsLabelWrapper) Interval() time.Duration { return 0 }
+func (p paramsLabelWrapper) Direction() logproto.Direction {
 	return logproto.FORWARD
 }
-func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 }
-func (p paramsLabelNamesWrapper) Shards() []string {
+func (p paramsLabelWrapper) Limit() uint32 { return 0 }
+func (p paramsLabelWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
