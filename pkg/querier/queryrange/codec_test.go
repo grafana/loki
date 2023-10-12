@@ -638,6 +638,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
 	// Test labels values endpoint
+	toEncode = NewLabelRequest(start, end, `{foo="bar"}`, "__name__", "/loki/api/v1/label/__name__/values")
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
