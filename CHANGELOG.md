@@ -23,6 +23,8 @@
 * [10709](https://github.com/grafana/loki/pull/10709) **chaudum**/**salvacorts** Remove `ingester.max-transfer-retries` configuration option in favor of using the WAL.
 * [10736](https://github.com/grafana/loki/pull/10736) **ashwanthgoli** Deprecate write dedupe cache as this is not required by the newer single store indexes (tsdb and boltdb-shipper).
 * [10693](https://github.com/grafana/loki/pull/10693) **ashwanthgoli** Embedded cache: Updates the metric prefix from `querier_cache_` to `loki_embeddedcache_` and removes duplicate metrics.
+* [10793](https://github.com/grafana/loki/pull/10793) **ashwanthgoli** Config: Better configuration defaults to provide a better experience for users out of the box.
+* [10785](https://github.com/grafana/loki/pull/10785) **ashwanthgoli** Config: Removes `querier.worker-parallelism` and updates default value of `querier.max-concurrent` to 4.
 
 ##### Fixes
 
