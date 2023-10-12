@@ -23,7 +23,7 @@ pipeline_stages:
       app:
       msg:
 - drop:
-    sources:
+    source:
       - src
     expression: ".*test.*"
     older_than: 24h
@@ -31,7 +31,7 @@ pipeline_stages:
 - drop:
     expression: ".*app1.*"
 - drop:
-    sources:
+    source:
       - app
     expression: loki
 - drop:
