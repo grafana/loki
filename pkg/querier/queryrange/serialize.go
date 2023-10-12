@@ -1,12 +1,12 @@
 package queryrange
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
@@ -70,29 +70,15 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	params, err := ParamsFromRequest(request)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	// TODO: we must only wrap a few responses. Ideally the serializers would support these instead of the logmodel.Result
-	// Yet another thing to simplify.
-	switch resp := response.(type) {
-	case *LokiResponse, *LokiPromResponse, *TopKSketchesResponse, *QuantileSketchResponse:
-		var v logqlmodel.Result
-		v, err = ResponseToResult(response)
-		if err == nil {
-			err = WriteResponse(r, params, v, w)
-		}
-	case *LokiSeriesResponse:
-		series := &logproto.SeriesResponse{Series: resp.Data}
-		err = WriteResponse(r, params, series, w)
-	default:
-		err = WriteResponse(r, params, response, w)
-	}
-
-	if err != nil {
+	//err := response.WriteJSON(w, r)
+	version := loghttp.GetVersion(r.RequestURI)
+	if err := writeResponse(ctx, version, response, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
+}
+
+func writeResponse(ctx context.Context, version loghttp.Version, res queryrangebase.Response, w http.ResponseWriter) error {
+	// TODO: adapt encodeResponseJSON to accept a writer.
+	encodeResponseJSON(ctx, version, res)
+	return nil
 }

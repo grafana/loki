@@ -475,6 +475,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 func (Codec) EncodeHTTPGrpcResponse(ctx context.Context, req *httpgrpc.HTTPRequest, res queryrangebase.Response) (*httpgrpc.HTTPResponse, error) {
 	version := loghttp.GetVersion(req.Url)
+	// TODO: pass a write for the body
 	httpRes, err := encodeResponseJSON(ctx, version, res)
 	if err != nil {
 		return nil, err
@@ -902,16 +903,16 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				Entries: stream.Entries,
 			}
 		}
-		result := logqlmodel.Result{
-			Data:       logqlmodel.Streams(streams),
-			Statistics: response.Statistics,
-		}
 		if version == loghttp.VersionLegacy {
+			result := logqlmodel.Result{
+				Data:       logqlmodel.Streams(streams),
+				Statistics: response.Statistics,
+			}
 			if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
 				return nil, err
 			}
 		} else {
-			if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
+			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Statistics, &buf); err != nil {
 				return nil, err
 			}
 		}
@@ -920,10 +921,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 			return nil, err
 		}
 	case *LokiSeriesResponse:
-		result := logproto.SeriesResponse{
-			Series: response.Data,
-		}
-		if err := marshal.WriteSeriesResponseJSON(result, &buf); err != nil {
+		if err := marshal.WriteSeriesResponseJSON(response.Data, &buf); err != nil {
 			return nil, err
 		}
 	case *LokiLabelNamesResponse:
@@ -932,6 +930,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				return nil, err
 			}
 		} else {
+			// TODO: avoid repackaging
 			if err := marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, &buf); err != nil {
 				return nil, err
 			}

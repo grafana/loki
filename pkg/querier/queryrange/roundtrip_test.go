@@ -1490,7 +1490,7 @@ func promqlResult(v parser.Value) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: v}, w); err != nil {
+		if err := marshal.WriteQueryResponseJSON(v, stats.Result{}, w); err != nil {
 			panic(err)
 		}
 		count++
@@ -1503,7 +1503,7 @@ func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteSeriesResponseJSON(v, w); err != nil {
+		if err := marshal.WriteSeriesResponseJSON(v.GetSeries(), w); err != nil {
 			panic(err)
 		}
 		count++

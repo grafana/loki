@@ -19,6 +19,7 @@ import (
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 // covers responses from /loki/api/v1/query_range and /loki/api/v1/query
@@ -600,7 +601,7 @@ var tailTests = []struct {
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b)
+		err := WriteQueryResponseJSON(queryTest.actual, stats.Result{}, &b)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
@@ -632,7 +633,7 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 		},
 	}
 	var b bytes.Buffer
-	err := WriteQueryResponseJSON(broken, &b)
+	err := WriteQueryResponseJSON(broken.Data, stats.Result{}, &b)
 	require.Error(t, err)
 }
 
@@ -747,7 +748,7 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			var b bytes.Buffer
-			err := WriteSeriesResponseJSON(tc.input, &b)
+			err := WriteSeriesResponseJSON(tc.input.GetSeries(), &b)
 			require.NoError(t, err)
 
 			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
@@ -882,7 +883,7 @@ func Benchmark_Encode(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		for _, queryTest := range queryTests {
-			require.NoError(b, WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, buf))
+			require.NoError(b, WriteQueryResponseJSON(queryTest.actual, stats.Result{}, buf))
 			buf.Reset()
 		}
 	}
