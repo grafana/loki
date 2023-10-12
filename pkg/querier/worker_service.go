@@ -115,8 +115,6 @@ func InitWorkerService(
 		cfg.QuerierWorkerConfig.FrontendAddress = address
 	}
 
-	// TODO: enable tracing for the handler.
-
 	//Return a querier worker pointed to the internal querier HTTP handler so there is not a conflict in routes between the querier
 	//and the query frontend
 	return querier_worker.NewQuerierWorker(

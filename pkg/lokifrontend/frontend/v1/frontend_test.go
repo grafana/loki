@@ -39,6 +39,7 @@ import (
 const (
 	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
 	responseBody = `{"status":"success","data":{"resultType":"Matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	labelQuery   = `/api/v1/label/foo/values`
 )
 
 func TestFrontend(t *testing.T) {
@@ -46,7 +47,7 @@ func TestFrontend(t *testing.T) {
 		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
 	})
 	test := func(addr string, _ *Frontend) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
 		require.NoError(t, err)
@@ -55,6 +56,7 @@ func TestFrontend(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
 
+		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
@@ -72,23 +74,22 @@ func TestFrontendPropagateTrace(t *testing.T) {
 
 	observedTraceID := make(chan string, 2)
 
-	_ = middleware.Tracer{}.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sp := opentracing.SpanFromContext(r.Context())
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		sp := opentracing.SpanFromContext(ctx)
 		defer sp.Finish()
 
 		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
 		observedTraceID <- traceID
 
-		_, err = w.Write([]byte(responseBody))
-		require.NoError(t, err)
-	}))
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
+	})
 
-	_ = func(addr string, _ *Frontend) {
+	test := func(addr string, _ *Frontend) {
 		sp, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
 		defer sp.Finish()
 		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
 
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, query), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
 		req = req.WithContext(ctx)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
@@ -105,15 +106,18 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		defer resp.Body.Close()
-		_, err = io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
+
+		assert.JSONEq(t, `{"values":["Hello", "world"]}`, string(body))
 
 		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
 	// TODO: implement and test tracing
-	//testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
-	//testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
+
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
 
 func TestFrontendCheckReady(t *testing.T) {
