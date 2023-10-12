@@ -2750,6 +2750,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.podLogs.apiVersion</td>
+			<td>string</td>
+			<td>PodLogs version</td>
+			<td><pre lang="json">
+"monitoring.grafana.com/v1alpha1"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.podLogs.labels</td>
 			<td>object</td>
 			<td>Additional PodLogs labels</td>

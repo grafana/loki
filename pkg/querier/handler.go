@@ -60,16 +60,8 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 			Data:       result.Series,
 			Statistics: statResult,
 		}, nil
-	case *queryrange.LokiLabelNamesRequest:
-		// TODO: LokiLabelNamesRequest should probably be logproto.LabelRequest
-		request := &logproto.LabelRequest{
-			Start:  &concrete.StartTs,
-			End:    &concrete.EndTs,
-			Query:  concrete.Query,
-			Values: concrete.Name != "",
-			Name:   concrete.Name,
-		}
-		res, err := h.api.LabelHandler(ctx, request)
+	case *queryrange.LabelRequest:
+		res, err := h.api.LabelHandler(ctx, &concrete.LabelRequest)
 		if err != nil {
 			return nil, err
 		}

@@ -98,20 +98,6 @@ message LokiSeriesResponse {
   ];
 }
 
-message LokiLabelNamesRequest {
-  google.protobuf.Timestamp startTs = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  google.protobuf.Timestamp endTs = 2 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  string path = 3;
-  string query = 4;
-  string name = 5;
-}
-
 message LokiLabelNamesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
@@ -189,8 +175,7 @@ message QueryResponse {
 message QueryRequest {
   oneof request {
     LokiSeriesRequest series = 1;
-    // TODO: should be logproto.LabelRequest once https://github.com/grafana/loki/pull/10801 lands
-    LokiLabelNamesRequest labels = 2;
+    logproto.LabelRequest labels = 2;
     logproto.IndexStatsRequest stats = 3;
     LokiInstantRequest instant = 4;
     LokiRequest streams = 5;
