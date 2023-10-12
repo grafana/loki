@@ -2017,6 +2017,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 54814c2f4d4645a6cd18d6dcaccffca97131d2a49b35c6efb7a8ad4c44daecc3
+hmac: 7c5fb8417ab5efd5a15164aa57eef618e3cf79d2578078ce29c888b3eb01e7ff
 
 ...
