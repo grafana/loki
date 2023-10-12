@@ -21,6 +21,7 @@ func TestResponseFormat(t *testing.T) {
 		url             string
 		accept          string
 		result          logqlmodel.Result
+		expectedCode    int 
 		expectedRespone string
 	}{
 		{
@@ -39,6 +40,7 @@ func TestResponseFormat(t *testing.T) {
 				},
 				Statistics: statsResult,
 			},
+			expectedCode: http.StatusOK,
 			expectedRespone: `{
 				` + statsResultString + `
 				"streams": [
@@ -70,6 +72,7 @@ func TestResponseFormat(t *testing.T) {
 				},
 				Statistics: statsResult,
 			},
+			expectedCode: http.StatusOK,
 			expectedRespone: `{
 				"status": "success",
 				"data": {
@@ -83,6 +86,12 @@ func TestResponseFormat(t *testing.T) {
 				  }]
 				}
 			}`,
+		},
+		{
+			url: "/loki/wrong/path",
+			result: logqlmodel.Result{},
+			expectedCode: http.StatusNotFound,
+			expectedRespone: "unknown request path: /loki/wrong/path\n",
 		},
 	} {
 		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {
@@ -104,8 +113,12 @@ func TestResponseFormat(t *testing.T) {
 			req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
 			httpHandler.ServeHTTP(w, req)
 
-			require.Equalf(t, http.StatusOK, w.Code, "unexpected response: %s", w.Body.String())
-			require.JSONEq(t, tc.expectedRespone, w.Body.String())
+			require.Equalf(t, tc.expectedCode, w.Code, "unexpected response: %s", w.Body.String())
+			if tc.expectedCode / 100 == 2 {
+				require.JSONEq(t, tc.expectedRespone, w.Body.String())
+			} else {
+				require.Equal(t, tc.expectedRespone, w.Body.String())
+			}
 		})
 	}
 }

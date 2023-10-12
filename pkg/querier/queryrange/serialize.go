@@ -60,18 +60,20 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	request, err := rt.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {
-		// TODO: should be HTTP 400
 		serverutil.WriteError(err, w)
+		return
 	}
 
 	response, err := rt.next.Do(ctx, request)
 	if err != nil {
 		serverutil.WriteError(err, w)
+		return
 	}
 
 	params, err := ParamsFromRequest(request)
 	if err != nil {
 		serverutil.WriteError(err, w)
+		return
 	}
 
 	// TODO: we must only wrap a few responses. Ideally the serializers would support these instead of the logmodel.Result

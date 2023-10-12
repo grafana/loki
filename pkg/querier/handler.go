@@ -89,7 +89,6 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 		return &queryrange.IndexStatsResponse{Response: result}, nil
 	default:
-		// TODO: This should be a user error
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}
 }

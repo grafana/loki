@@ -176,7 +176,6 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// TODO: context must save mux vars
 			got, err := DefaultCodec.DecodeRequest(context.TODO(), req, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
@@ -639,7 +638,6 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
 	// Test labels values endpoint
-	toEncode = NewLabelRequest(start, end, `{foo="bar"}`, "__name__", "/loki/api/v1/label/__name__/values")
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())

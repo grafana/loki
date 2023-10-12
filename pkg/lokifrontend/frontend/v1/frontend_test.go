@@ -114,7 +114,6 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
-	// TODO: implement and test tracing
 
 	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
 	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
@@ -158,7 +157,6 @@ func TestFrontendCancel(t *testing.T) {
 	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		<-ctx.Done()
 		tries.Inc()
-		// TODO: figure out where the current version checks for the cancelled context.
 		return nil, ctx.Err()
 	})
 	test := func(addr string, _ *Frontend) {
