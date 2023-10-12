@@ -47,10 +47,10 @@ The following CLI flags and the corresponding YAML settings to configure shared 
 Going forward `object_store` setting in the [period_config](/docs/loki/latest/configure/#period_config) will be used to configure store for the index.
 This enforces chunks and index files to reside together in the same storage bucket for a given period.
 
-We are removing the shared store setting in an effort to simplify storage configuration and reduce the scope for misconfiguration.
+We are removing the shared store setting in an effort to simplify storage configuration and reduce the possibility for misconfiguration.
 
 {{% admonition type="warning" %}}
-With this change Loki does not allow storing chunks and indexes for a given period in different storage buckets anymore.
+With this change Loki no longer allows storing chunks and indexes for a given period in different storage buckets.
 This is a breaking change for setups that store chunks and indexes in different storage buckets by setting `-boltdb.shipper.shared-store` or `-tsdb.shipper.shared-store` to a value
 different from `object_store` in `period_config`.
 {{% /admonition %}}
@@ -65,7 +65,7 @@ different from `object_store` in `period_config`.
   - If there is a mismatch, you lose access to the index for periods where `-tsdb.shipper.shared-store` does not match `object_store`.
     - To make these indexes queryable, index tables need to moved or copied to the store configured in `object_store`.
 
-The following CLI flags and the corresponding YAML settings to configure path prefix for TSDB and BoltDB shippers are now removed:
+The following CLI flags and the corresponding YAML settings to configure a path prefix for TSDB and BoltDB shippers are now removed:
 - `-boltdb.shipper.shared-store.key-prefix`
 - `-tsdb.shipper.shared-store.key-prefix`
 
