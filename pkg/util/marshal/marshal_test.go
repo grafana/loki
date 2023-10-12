@@ -611,7 +611,7 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 func Test_WriteLabelResponseJSON(t *testing.T) {
 	for i, labelTest := range labelTests {
 		var b bytes.Buffer
-		err := WriteLabelResponseJSON(labelTest.actual, &b)
+		err := WriteLabelResponseJSON(labelTest.actual.GetValues(), &b)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, labelTest.expected, b.String(), "Label Test %d failed", i)

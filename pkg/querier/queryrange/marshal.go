@@ -24,6 +24,7 @@ const (
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
+// TODO: remove once all requests types are used.
 func WriteResponse(req *http.Request, params logql.Params, v any, w http.ResponseWriter) error {
 	if req.Header.Get("Accept") == ProtobufType {
 		w.Header().Add("Content-Type", ProtobufType)

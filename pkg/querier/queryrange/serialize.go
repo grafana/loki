@@ -1,7 +1,6 @@
 package queryrange
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/opentracing/opentracing-go"
@@ -70,15 +69,8 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	//err := response.WriteJSON(w, r)
 	version := loghttp.GetVersion(r.RequestURI)
-	if err := writeResponse(ctx, version, response, w); err != nil {
+	if err := encodeResponseJSONTo(ctx, version, response, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
-}
-
-func writeResponse(ctx context.Context, version loghttp.Version, res queryrangebase.Response, w http.ResponseWriter) error {
-	// TODO: adapt encodeResponseJSON to accept a writer.
-	encodeResponseJSON(ctx, version, res)
-	return nil
 }

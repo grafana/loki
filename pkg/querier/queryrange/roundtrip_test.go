@@ -487,10 +487,10 @@ func TestLabelsTripperware(t *testing.T) {
 	handler := newFakeHandler(
 		// we expect 2 calls.
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blop"}}, w))
+			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blop"}, w))
 		}),
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blip"}}, w))
+			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blip"}, w))
 		}),
 	)
 	rt.setHandler(handler)

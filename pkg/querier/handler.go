@@ -88,6 +88,7 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 			return nil, err
 		}
 		return &queryrange.IndexStatsResponse{Response: result}, nil
+	// TODO: support volume requests and log requests.
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

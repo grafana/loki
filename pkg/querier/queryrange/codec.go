@@ -475,25 +475,19 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 func (Codec) EncodeHTTPGrpcResponse(ctx context.Context, req *httpgrpc.HTTPRequest, res queryrangebase.Response) (*httpgrpc.HTTPResponse, error) {
 	version := loghttp.GetVersion(req.Url)
-	// TODO: pass a write for the body
-	httpRes, err := encodeResponseJSON(ctx, version, res)
+	var buf bytes.Buffer
+
+	err := encodeResponseJSONTo(ctx, version, res, &buf)
 	if err != nil {
 		return nil, err
 	}
 
-	body, _ := io.ReadAll(httpRes.Body)
-	headers := make([]*httpgrpc.Header, 0, len(httpRes.Header))
-	for k, vs := range httpRes.Header {
-		headers = append(headers, &httpgrpc.Header{
-			Key:    k,
-			Values: vs,
-		})
-	}
-
 	return &httpgrpc.HTTPResponse{
-		Code:    int32(httpRes.StatusCode),
-		Body:    body,
-		Headers: headers,
+		Code:    int32(http.StatusOK),
+		Body:    buf.Bytes(),
+		Headers: []*httpgrpc.Header{
+			{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}},
+		},
 	}, nil
 }
 
@@ -891,9 +885,27 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	defer sp.Finish()
 	var buf bytes.Buffer
 
+	err := encodeResponseJSONTo(ctx, version, res, &buf)
+	if err != nil {
+		return nil, err
+	}
+
+	sp.LogFields(otlog.Int("bytes", buf.Len()))
+
+	resp := http.Response{
+		Header: http.Header{
+			"Content-Type": []string{"application/json; charset=UTF-8"},
+		},
+		Body:       io.NopCloser(&buf),
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
+}
+
+func encodeResponseJSONTo(ctx context.Context, version loghttp.Version, res queryrangebase.Response, w io.Writer) error {
 	switch response := res.(type) {
 	case *LokiPromResponse:
-		return response.encode(ctx)
+		return response.encodeTo(ctx, w)
 	case *LokiResponse:
 		streams := make([]logproto.Stream, len(response.Data.Result))
 
@@ -908,55 +920,45 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				Data:       logqlmodel.Streams(streams),
 				Statistics: response.Statistics,
 			}
-			if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
-				return nil, err
+			if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
+				return err
 			}
 		} else {
-			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Statistics, &buf); err != nil {
-				return nil, err
+			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Statistics, w); err != nil {
+				return err
 			}
 		}
 	case *MergedSeriesResponseView:
-		if err := WriteSeriesResponseViewJSON(response, &buf); err != nil {
-			return nil, err
+		if err := WriteSeriesResponseViewJSON(response, w); err != nil {
+			return err
 		}
 	case *LokiSeriesResponse:
-		if err := marshal.WriteSeriesResponseJSON(response.Data, &buf); err != nil {
-			return nil, err
+		if err := marshal.WriteSeriesResponseJSON(response.Data, w); err != nil {
+			return err
 		}
 	case *LokiLabelNamesResponse:
 		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
-			if err := marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, &buf); err != nil {
-				return nil, err
+			if err := marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, w); err != nil {
+				return err
 			}
 		} else {
-			// TODO: avoid repackaging
-			if err := marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, &buf); err != nil {
-				return nil, err
+			if err := marshal.WriteLabelResponseJSON(response.Data, w); err != nil {
+				return err
 			}
 		}
 	case *IndexStatsResponse:
-		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
-			return nil, err
+		if err := marshal.WriteIndexStatsResponseJSON(response.Response, w); err != nil {
+			return err
 		}
 	case *VolumeResponse:
-		if err := marshal.WriteVolumeResponseJSON(response.Response, &buf); err != nil {
-			return nil, err
+		if err := marshal.WriteVolumeResponseJSON(response.Response, w); err != nil {
+			return err
 		}
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
+		return httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}
 
-	sp.LogFields(otlog.Int("bytes", buf.Len()))
-
-	resp := http.Response{
-		Header: http.Header{
-			"Content-Type": []string{"application/json; charset=UTF-8"},
-		},
-		Body:       io.NopCloser(&buf),
-		StatusCode: http.StatusOK,
-	}
-	return &resp, nil
+	return nil
 }
 
 func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
