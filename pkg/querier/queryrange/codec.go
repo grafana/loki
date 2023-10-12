@@ -9,11 +9,10 @@ import (
 	io "io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	strings "strings"
 	"time"
-
-	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
@@ -349,6 +348,8 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 }
 
 // DecodeHTTPGrpcRequest decodes an httpgrp.HTTPrequest to queryrangebase.Request.
+var labelNamesRouter = regexp.MustCompile(`/loki/api/v1/label/(?P<name>[^/]+)/values`)
+
 func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest) (queryrangebase.Request, context.Context, error) {
 	httpReq, err := http.NewRequest(r.Method, r.Url, io.NopCloser(bytes.NewBuffer(r.Body)))
 	if err != nil {
@@ -415,11 +416,11 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		// TODO: regex might suffice.
-		match := &mux.RouteMatch{}
-		router := mux.NewRouter()
-		if req.Name == "" && router.Path("/loki/api/v1/label/{name}/values").Match(httpReq, match) {
-			req.Name = match.Vars["name"]
+		if req.Name == "" {
+			if match := labelNamesRouter.FindSubmatch([]byte(httpReq.URL.Path)); len(match) > 1 {
+				req.Name = string(match[1])
+				req.Values = true
+			}
 		}
 
 		return &LabelRequest{
