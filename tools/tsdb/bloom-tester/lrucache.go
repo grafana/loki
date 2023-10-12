@@ -168,8 +168,7 @@ func NewLRUCache4(capacity int) *LRUCache4 {
 }
 
 func (c *LRUCache4) Get(value []byte) bool {
-	key := string(value)
-	if elem, ok := c.cache[key]; ok {
+	if elem, ok := c.cache[string(value)]; ok {
 		// Move the accessed element to the front of the list
 		c.list.MoveToFront(elem)
 		return true

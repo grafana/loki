@@ -541,9 +541,9 @@ func writeSBFToFile(sbf *boom.ScalableBloomFilter, filename string) error {
 	bytesWritten, err := sbf.WriteTo(w)
 	if err != nil {
 		return err
-	} else {
-		level.Info(util_log.Logger).Log("msg", "wrote sbf", "bytes", bytesWritten, "file", filename)
 	}
+	level.Info(util_log.Logger).Log("msg", "wrote sbf", "bytes", bytesWritten, "file", filename)
+
 	err = w.Flush()
 	return err
 }
@@ -558,15 +558,15 @@ func writeSBFToObjectStorage(sbf *boom.ScalableBloomFilter, objectStorageFilenam
 	defer file.Close()
 
 	fileInfo, _ := file.Stat()
-	var size int64 = fileInfo.Size()
+	var size = fileInfo.Size()
 
 	buffer := make([]byte, size)
 
 	// read file content to buffer
-	file.Read(buffer)
+	_, _ = file.Read(buffer)
 
 	fileBytes := bytes.NewReader(buffer) // converted to io.ReadSeeker type
 
-	objectClient.PutObject(context.Background(), objectStorageFilename, fileBytes)
+	_ = objectClient.PutObject(context.Background(), objectStorageFilename, fileBytes)
 	level.Info(util_log.Logger).Log("done writing", objectStorageFilename)
 }

@@ -35,10 +35,10 @@ func NewQueryExperiment(name string, searchString string) QueryExperiment {
 const ExperimentLabel = "experiment"
 const QueryExperimentLabel = "query_experiment"
 const LookupResultType = "lookup_result_type"
-const False_Positive = "false_postive"
-const False_Negative = "false_negative"
-const True_Positive = "true_positive"
-const True_Negative = "true_negative"
+const FalsePositive = "false_postive"
+const FalseNegative = "false_negative"
+const TruePositive = "true_positive"
+const TrueNegative = "true_negative"
 
 type Metrics struct {
 	tenants        prometheus.Counter

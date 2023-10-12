@@ -250,17 +250,17 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 													if foundInChunk {
 														if foundInSbf {
 															//fmt.Println("true positive", experiment.name, queryExperiment.name, gotIdx)
-															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, True_Positive).Inc()
+															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TruePositive).Inc()
 														} else {
 															level.Info(util_log.Logger).Log("**** false negative", experiment.name, queryExperiment.name, ls.String(), gotIdx, testerNumber)
-															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, False_Negative).Inc()
+															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
 														}
 													} else {
 														if foundInSbf {
-															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, False_Positive).Inc()
+															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalsePositive).Inc()
 															//fmt.Println("false positive", experiment.name, queryExperiment.name, gotIdx, ls.String())
 														} else {
-															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, True_Negative).Inc()
+															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TrueNegative).Inc()
 															//fmt.Println("true negative", experiment.name, queryExperiment.name, gotIdx)
 														}
 													}
@@ -268,10 +268,11 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 													metrics.experimentCount.Inc()
 
 													helpers.ExitErr("iterating chunks ", itr.Error())
-												} else // if search string is long enough
+												}
+												/*else // if search string is long enough
 												{
 													//	fmt.Println("Skipping", queryExperiment.name, "because it's too short", experiment.name)
-												}
+												}*/
 
 											} // for each search string
 										} // for every chunk
@@ -325,6 +326,6 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 
 	sbf := experiments[0].bloom()
 	closer, _, _ := objectClient.GetObject(context.Background(), fmt.Sprintf("%s/%s", objectStoragePath, FNV32a(series)))
-	sbf.ReadFrom(closer)
+	_, _ = sbf.ReadFrom(closer)
 	return sbf
 }
