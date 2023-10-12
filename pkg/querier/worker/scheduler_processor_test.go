@@ -60,10 +60,10 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			switch recvCount.Inc() {
 			case 1:
 				return &schedulerpb.SchedulerToQuerier{
-					QueryID:         1,
-					HttpRequest:     &httpgrpc.HTTPRequest{
-						Method: "GET",	
-						Url: `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
+					QueryID: 1,
+					HttpRequest: &httpgrpc.HTTPRequest{
+						Method: "GET",
+						Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
 					},
 					FrontendAddress: "127.0.0.2",
 					UserID:          "user-1",

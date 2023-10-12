@@ -10,10 +10,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
+	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
 var (
@@ -115,6 +117,17 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 }
 
 func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error) {
+
+	tracer := opentracing.GlobalTracer()
+	// Ignore errors here. If we cannot get parent span, we just don't create new one.
+	parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request)
+	if parentSpanContext != nil {
+		queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "frontend_processor_runRequest", opentracing.ChildOf(parentSpanContext))
+		defer queueSpan.Finish()
+
+		ctx = spanCtx
+	}
+
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)

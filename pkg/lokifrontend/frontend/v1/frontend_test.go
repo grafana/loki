@@ -162,7 +162,7 @@ func TestFrontendCancel(t *testing.T) {
 		return nil, ctx.Err()
 	})
 	test := func(addr string, _ *Frontend) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
 		require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
 
 		test := func(addr string, fr *Frontend) {
-			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 			require.NoError(t, err)
 			err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
 			require.NoError(t, err)
