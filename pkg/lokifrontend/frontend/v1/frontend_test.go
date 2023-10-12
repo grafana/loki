@@ -229,9 +229,7 @@ func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, t
 
 	var workerConfig querier_worker.Config
 	flagext.DefaultValues(&workerConfig)
-	workerConfig.Parallelism = 1
-	workerConfig.MatchMaxConcurrency = matchMaxConcurrency
-	workerConfig.MaxConcurrentRequests = 1
+	workerConfig.MaxConcurrent = 1
 
 	// localhost:0 prevents firewall warnings on Mac OS X.
 	grpcListen, err := net.Listen("tcp", "localhost:0")

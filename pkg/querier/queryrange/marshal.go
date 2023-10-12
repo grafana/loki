@@ -357,7 +357,9 @@ func QueryRequestUnwrap(req *QueryRequest) (queryrangebase.Request, error) {
 	case *QueryRequest_Streams:
 		return concrete.Streams, nil
 	case *QueryRequest_Labels:
-		return concrete.Labels, nil
+		return &LabelRequest{
+			LabelRequest: *concrete.Labels,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type, got (%t)", req.Request)
 	}
@@ -371,10 +373,10 @@ func QueryRequestWrap(r queryrangebase.Request) (*QueryRequest, error) {
 				Series: req,
 			},
 		}, nil
-	case *LokiLabelNamesRequest:
+	case *LabelRequest:
 		return &QueryRequest{
 			Request: &QueryRequest_Labels{
-				Labels: req,
+				Labels: &req.LabelRequest,
 			},
 		}, nil
 	case *logproto.IndexStatsRequest:

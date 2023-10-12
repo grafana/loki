@@ -23,7 +23,6 @@ type WorkerServiceConfig struct {
 	ReadEnabled           bool
 	GrpcListenAddress     string
 	GrpcListenPort        int
-	QuerierMaxConcurrent  int
 	QuerierWorkerConfig   *querier_worker.Config
 	QueryFrontendEnabled  bool
 	QuerySchedulerEnabled bool

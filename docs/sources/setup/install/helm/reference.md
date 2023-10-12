@@ -1116,7 +1116,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.23-alpine"
+"1.24-alpine"
 </pre>
 </td>
 		</tr>
@@ -2746,6 +2746,15 @@ null
 			<td>PodLogs annotations</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.podLogs.apiVersion</td>
+			<td>string</td>
+			<td>PodLogs version</td>
+			<td><pre lang="json">
+"monitoring.grafana.com/v1alpha1"
 </pre>
 </td>
 		</tr>

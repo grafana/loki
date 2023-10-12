@@ -290,8 +290,8 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		level.Info(logger).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(op.Match), "length", op.EndTs.Sub(op.StartTs))
 
 		return r.series.Do(ctx, req)
-	case *LokiLabelNamesRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", op.Name, "length", op.EndTs.Sub(op.StartTs), "query", op.Query)
+	case *LabelRequest:
+		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", op.Name, "length", op.LabelRequest.End.Sub(*op.LabelRequest.Start), "query", op.Query)
 
 		return r.labels.Do(ctx, req)
 	case *LokiInstantRequest:

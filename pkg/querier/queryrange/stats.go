@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -182,8 +181,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 
 				// Record information for metadata queries.
 				switch r := req.(type) {
-				case *LokiLabelNamesRequest:
-					data.label = getLabelNameFromLabelsQuery(r.Path)
+				case *LabelRequest:
+					data.label = r.Name
 				case *LokiSeriesRequest:
 					data.match = r.Match
 				}
@@ -191,25 +190,6 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			return resp, nil
 		})
 	})
-}
-
-func getLabelNameFromLabelsQuery(path string) string {
-	if strings.HasSuffix(path, "/values") {
-
-		toks := strings.FieldsFunc(path, func(r rune) bool {
-			return r == '/'
-		})
-
-		// now assuming path has suffix `/values` label name should be second last to the suffix
-		// **if** there exists the second last.
-		length := len(toks)
-		if length >= 2 {
-			return toks[length-2]
-		}
-
-	}
-
-	return ""
 }
 
 // interceptor implements WriteHeader to intercept status codes. WriteHeader
