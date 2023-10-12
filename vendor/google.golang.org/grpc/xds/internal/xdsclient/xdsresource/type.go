@@ -51,38 +51,38 @@ type UpdateMetadata struct {
 // IsListenerResource returns true if the provider URL corresponds to an xDS
 // Listener resource.
 func IsListenerResource(url string) bool {
-	return url == version.V2ListenerURL || url == version.V3ListenerURL
+	return url == version.V3ListenerURL
 }
 
 // IsHTTPConnManagerResource returns true if the provider URL corresponds to an xDS
 // HTTPConnManager resource.
 func IsHTTPConnManagerResource(url string) bool {
-	return url == version.V2HTTPConnManagerURL || url == version.V3HTTPConnManagerURL
+	return url == version.V3HTTPConnManagerURL
 }
 
 // IsRouteConfigResource returns true if the provider URL corresponds to an xDS
 // RouteConfig resource.
 func IsRouteConfigResource(url string) bool {
-	return url == version.V2RouteConfigURL || url == version.V3RouteConfigURL
+	return url == version.V3RouteConfigURL
 }
 
 // IsClusterResource returns true if the provider URL corresponds to an xDS
 // Cluster resource.
 func IsClusterResource(url string) bool {
-	return url == version.V2ClusterURL || url == version.V3ClusterURL
+	return url == version.V3ClusterURL
 }
 
 // IsEndpointsResource returns true if the provider URL corresponds to an xDS
 // Endpoints resource.
 func IsEndpointsResource(url string) bool {
-	return url == version.V2EndpointsURL || url == version.V3EndpointsURL
+	return url == version.V3EndpointsURL
 }
 
-// unwrapResource unwraps and returns the inner resource if it's in a resource
+// UnwrapResource unwraps and returns the inner resource if it's in a resource
 // wrapper. The original resource is returned if it's not wrapped.
-func unwrapResource(r *anypb.Any) (*anypb.Any, error) {
+func UnwrapResource(r *anypb.Any) (*anypb.Any, error) {
 	url := r.GetTypeUrl()
-	if url != version.V2ResourceWrapperURL && url != version.V3ResourceWrapperURL {
+	if url != version.V3ResourceWrapperURL {
 		// Not wrapped.
 		return r, nil
 	}
@@ -132,90 +132,4 @@ type UpdateErrorMetadata struct {
 type UpdateWithMD struct {
 	MD  UpdateMetadata
 	Raw *anypb.Any
-}
-
-// ResourceType identifies resources in a transport protocol agnostic way. These
-// will be used in transport version agnostic code, while the versioned API
-// clients will map these to appropriate version URLs.
-type ResourceType int
-
-// Version agnostic resource type constants.
-const (
-	UnknownResource ResourceType = iota
-	ListenerResource
-	HTTPConnManagerResource
-	RouteConfigResource
-	ClusterResource
-	EndpointsResource
-)
-
-func (r ResourceType) String() string {
-	switch r {
-	case ListenerResource:
-		return "ListenerResource"
-	case HTTPConnManagerResource:
-		return "HTTPConnManagerResource"
-	case RouteConfigResource:
-		return "RouteConfigResource"
-	case ClusterResource:
-		return "ClusterResource"
-	case EndpointsResource:
-		return "EndpointsResource"
-	default:
-		return "UnknownResource"
-	}
-}
-
-var v2ResourceTypeToURL = map[ResourceType]string{
-	ListenerResource:        version.V2ListenerURL,
-	HTTPConnManagerResource: version.V2HTTPConnManagerURL,
-	RouteConfigResource:     version.V2RouteConfigURL,
-	ClusterResource:         version.V2ClusterURL,
-	EndpointsResource:       version.V2EndpointsURL,
-}
-var v3ResourceTypeToURL = map[ResourceType]string{
-	ListenerResource:        version.V3ListenerURL,
-	HTTPConnManagerResource: version.V3HTTPConnManagerURL,
-	RouteConfigResource:     version.V3RouteConfigURL,
-	ClusterResource:         version.V3ClusterURL,
-	EndpointsResource:       version.V3EndpointsURL,
-}
-
-// URL returns the transport protocol specific resource type URL.
-func (r ResourceType) URL(v version.TransportAPI) string {
-	var mapping map[ResourceType]string
-	switch v {
-	case version.TransportV2:
-		mapping = v2ResourceTypeToURL
-	case version.TransportV3:
-		mapping = v3ResourceTypeToURL
-	default:
-		return "UnknownResource"
-	}
-	if url, ok := mapping[r]; ok {
-		return url
-	}
-	return "UnknownResource"
-}
-
-var urlToResourceType = map[string]ResourceType{
-	version.V2ListenerURL:        ListenerResource,
-	version.V2RouteConfigURL:     RouteConfigResource,
-	version.V2ClusterURL:         ClusterResource,
-	version.V2EndpointsURL:       EndpointsResource,
-	version.V2HTTPConnManagerURL: HTTPConnManagerResource,
-	version.V3ListenerURL:        ListenerResource,
-	version.V3RouteConfigURL:     RouteConfigResource,
-	version.V3ClusterURL:         ClusterResource,
-	version.V3EndpointsURL:       EndpointsResource,
-	version.V3HTTPConnManagerURL: HTTPConnManagerResource,
-}
-
-// ResourceTypeFromURL returns the xDS resource type associated with the given
-// resource type URL.
-func ResourceTypeFromURL(url string) ResourceType {
-	if typ, ok := urlToResourceType[url]; ok {
-		return typ
-	}
-	return UnknownResource
 }

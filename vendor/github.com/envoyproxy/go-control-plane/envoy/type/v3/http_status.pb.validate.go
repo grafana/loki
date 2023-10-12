@@ -60,7 +60,7 @@ func (m *HttpStatus) validate(all bool) error {
 	if _, ok := _HttpStatus_Code_NotInLookup[m.GetCode()]; ok {
 		err := HttpStatusValidationError{
 			field:  "Code",
-			reason: "value must not be in list [0]",
+			reason: "value must not be in list [Empty]",
 		}
 		if !all {
 			return err
