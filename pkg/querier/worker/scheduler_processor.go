@@ -25,7 +25,6 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -168,25 +167,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	var response *httpgrpc.HTTPResponse
-
-	req, ctx, err := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
-	if err != nil {
-		response, _ = httpgrpc.HTTPResponseFromError(err)
-	} else {
-		resp, err := sp.handler.Do(ctx, req)
-		if err != nil {
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
-			}
-		} else {
-			response, err = queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
-			if err != nil {
-				response, _ = httpgrpc.HTTPResponseFromError(err)
-			}
-		}
-	}
+	response := handle(ctx, request, sp.handler)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 

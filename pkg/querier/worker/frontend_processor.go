@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 )
 
@@ -121,13 +120,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	// TODO: handler error
-	req, ctx, _ := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
-
-	// TODO return error code
-	resp, _ := fp.handler.Do(ctx, req)
-
-	response, _ := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
+	response := handle(ctx, request, fp.handler)
 
 	// Ensure responses that are too big are not retried.
 	if len(response.Body) >= fp.maxMessageSize {
