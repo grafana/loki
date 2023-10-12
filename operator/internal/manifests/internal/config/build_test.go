@@ -4349,6 +4349,7 @@ overrides:
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
 }
+
 func TestBuild_ConfigAndRuntimeConfig_WithS3SSES3(t *testing.T) {
 	expCfg := `
 ---

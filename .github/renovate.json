@@ -1,0 +1,25 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": [
+      "config:base"
+    ],
+    "labels": ["dependencies"],
+    "prHourlyLimit": 4,
+    "baseBranches": ["main", "release-2.9.x", "release-2.8.x"],
+    "packageRules": [
+      {
+        "matchBaseBranches": ["release-2.9.x","release-2.8.x"],
+        "packagePatterns": ["*"],
+        "enabled": false
+      }
+    ],
+    "vulnerabilityAlerts": {
+      "enabled": true,
+      "addLabels": ["area/security"]
+    },
+
+    "osvVulnerabilityAlerts": true,
+    "prConcurrentLimit": 10,
+    "rebaseWhen": "conflicted",
+    "branchPrefix": "deps-update/"
+  }

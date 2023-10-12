@@ -82,6 +82,12 @@ func (t *PushTarget) run() error {
 	serverCfg := &t.config.Server
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.NewRegistry(), true, false)
 
+	// Set new registry for upcoming metric server
+	// If not, it'll likely panic when the tool gets reloaded.
+	if t.config.Server.Registerer == nil {
+		t.config.Server.Registerer = prometheus.NewRegistry()
+	}
+
 	srv, err := server.New(t.config.Server)
 	if err != nil {
 		return err
