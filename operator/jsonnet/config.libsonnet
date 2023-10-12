@@ -56,6 +56,8 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         ],
       },
 
+    // replaceType updates the type of a panel. Used to 
+    // transform "stat" graphs in "singlestat" to ensure OCP Console compatibility
     local replaceType = function(type, replacement)
       function(p) p + (
         if p.type == type then {
