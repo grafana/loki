@@ -289,12 +289,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 						workernumber := AssignToWorker(pos, numTesters)
 
-						fmt.Println("num workers", numTesters)
-						fmt.Println("seriesSTring", seriesString)
-						fmt.Println("seriesSTringHasj", seriesStringHash)
-						fmt.Println("pos", pos)
-						fmt.Println("workernumber", workernumber)
-
 						if (workernumber == testerNumber) && (len(chks) < 10000) { // for each series
 
 							/*(pool.acquire(
