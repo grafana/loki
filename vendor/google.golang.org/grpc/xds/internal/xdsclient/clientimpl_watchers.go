@@ -48,10 +48,6 @@ func (l *listenerWatcher) OnResourceDoesNotExist() {
 
 // WatchListener uses LDS to discover information about the Listener resource
 // identified by resourceName.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
 func (c *clientImpl) WatchListener(resourceName string, cb func(xdsresource.ListenerUpdate, error)) (cancel func()) {
 	watcher := &listenerWatcher{resourceName: resourceName, cb: cb}
 	return xdsresource.WatchListener(c, resourceName, watcher)
@@ -80,10 +76,6 @@ func (r *routeConfigWatcher) OnResourceDoesNotExist() {
 
 // WatchRouteConfig uses RDS to discover information about the
 // RouteConfiguration resource identified by resourceName.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
 func (c *clientImpl) WatchRouteConfig(resourceName string, cb func(xdsresource.RouteConfigUpdate, error)) (cancel func()) {
 	watcher := &routeConfigWatcher{resourceName: resourceName, cb: cb}
 	return xdsresource.WatchRouteConfig(c, resourceName, watcher)
@@ -115,10 +107,6 @@ func (c *clusterWatcher) OnResourceDoesNotExist() {
 //
 // WatchCluster can be called multiple times, with same or different
 // clusterNames. Each call will start an independent watcher for the resource.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
 func (c *clientImpl) WatchCluster(resourceName string, cb func(xdsresource.ClusterUpdate, error)) (cancel func()) {
 	watcher := &clusterWatcher{resourceName: resourceName, cb: cb}
 	return xdsresource.WatchCluster(c, resourceName, watcher)
@@ -150,10 +138,6 @@ func (c *endpointsWatcher) OnResourceDoesNotExist() {
 //
 // WatchEndpoints can be called multiple times, with same or different
 // clusterNames. Each call will start an independent watcher for the resource.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
 func (c *clientImpl) WatchEndpoints(resourceName string, cb func(xdsresource.EndpointsUpdate, error)) (cancel func()) {
 	watcher := &endpointsWatcher{resourceName: resourceName, cb: cb}
 	return xdsresource.WatchEndpoints(c, resourceName, watcher)
@@ -172,12 +156,12 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 	// ref-counted client sets its pointer to `nil`. And if any watch APIs are
 	// made on such a closed client, we will get here with a `nil` receiver.
 	if c == nil || c.done.HasFired() {
-		logger.Warningf("Watch registered for name %q of type %q, but client is closed", rType.TypeEnum().String(), resourceName)
+		logger.Warningf("Watch registered for name %q of type %q, but client is closed", rType.TypeName(), resourceName)
 		return func() {}
 	}
 
 	if err := c.resourceTypes.maybeRegister(rType); err != nil {
-		logger.Warningf("Watch registered for name %q of type %q which is already registered", rType.TypeEnum().String(), resourceName)
+		logger.Warningf("Watch registered for name %q of type %q which is already registered", rType.TypeName(), resourceName)
 		c.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
 		return func() {}
 	}
@@ -196,7 +180,7 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 	n := xdsresource.ParseName(resourceName)
 	a, unref, err := c.findAuthority(n)
 	if err != nil {
-		logger.Warningf("Watch registered for name %q of type %q, authority %q is not found", rType.TypeEnum().String(), resourceName, n.Authority)
+		logger.Warningf("Watch registered for name %q of type %q, authority %q is not found", rType.TypeName(), resourceName, n.Authority)
 		c.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
 		return func() {}
 	}
@@ -232,7 +216,7 @@ func (r *resourceTypeRegistry) maybeRegister(rType xdsresource.Type) error {
 	url := rType.TypeURL()
 	typ, ok := r.types[url]
 	if ok && typ != rType {
-		return fmt.Errorf("attempt to re-register a resource type implementation for %v", rType.TypeEnum())
+		return fmt.Errorf("attempt to re-register a resource type implementation for %v", rType.TypeName())
 	}
 	r.types[url] = rType
 	return nil
