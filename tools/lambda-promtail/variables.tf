@@ -74,7 +74,7 @@ variable "extra_labels" {
 
 variable "drop_labels" {
   type        = string
-  description = "Comma separated list of labels to be drop, in the format 'name1,name2,...,nameN,valueN' to be omitted to entries forwarded by lambda-promtail."
+  description = "Comma separated list of labels to be drop, in the format 'name1,name2,...,nameN' to be omitted to entries forwarded by lambda-promtail."
   default     = ""
 }
 
