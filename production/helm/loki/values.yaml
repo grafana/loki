@@ -635,6 +635,8 @@ monitoring:
       tolerations: []
     # PodLogs configuration
     podLogs:
+      # -- PodLogs version
+      apiVersion: monitoring.grafana.com/v1alpha1
       # -- PodLogs annotations
       annotations: {}
       # -- Additional PodLogs labels
