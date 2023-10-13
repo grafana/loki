@@ -33,6 +33,7 @@ package bloomcompactor
 import (
 	"context"
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -44,20 +45,31 @@ import (
 type Compactor struct {
 	services.Service
 
-	cfg           Config
-	logger        log.Logger
-	periodConfigs []config.PeriodConfig
+	cfg                Config
+	logger             log.Logger
+	bloomCompactorRing ring.ReadRing
+	periodConfigs      []config.PeriodConfig
 
-	bloomStore bloomshipper.Store
+	// temporary workaround until store has implemented read/write shipper interface
+	bloomShipperClient bloomshipper.Client
+	bloomStore         bloomshipper.Store
 }
 
-func New(cfg Config, storageCfg storage.Config, logger log.Logger, clientMetrics storage.ClientMetrics, _ prometheus.Registerer) (*Compactor, error) {
+func New(cfg Config,
+	readRing ring.ReadRing,
+	storageCfg storage.Config,
+	periodConfigs []config.PeriodConfig,
+	logger log.Logger,
+	clientMetrics storage.ClientMetrics,
+	_ prometheus.Registerer) (*Compactor, error) {
 	c := &Compactor{
-		cfg:    cfg,
-		logger: logger,
+		cfg:                cfg,
+		logger:             logger,
+		bloomCompactorRing: readRing,
+		periodConfigs:      periodConfigs,
 	}
 
-	client, err := bloomshipper.NewBloomClient(c.periodConfigs, storageCfg, clientMetrics)
+	client, err := bloomshipper.NewBloomClient(periodConfigs, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +86,9 @@ func New(cfg Config, storageCfg storage.Config, logger log.Logger, clientMetrics
 	if err != nil {
 		return nil, err
 	}
+
+	// temporary workaround until store has implemented read/write shipper interface
+	c.bloomShipperClient = client
 	c.bloomStore = store
 	c.Service = services.NewIdleService(c.starting, c.stopping)
 
@@ -86,23 +101,4 @@ func (c *Compactor) starting(_ context.Context) error {
 
 func (c *Compactor) stopping(_ error) error {
 	return nil
-}
-
-func (c *Compactor) splitMetas(ctx context.Context, params bloomshipper.MetaSearchParams) (bloomshipper.Meta, error) {
-	return bloomshipper.Meta{}, nil
-}
-
-// Given a meta.json has corresponding TSDB references changed.
-func (c *Compactor) hasTSDBsChanged(ctx context.Context, meta bloomshipper.Meta) (bool, error) {
-	return false, nil
-}
-
-// Run compaction to create bloom-blocks and meta.jsons
-func (c *Compactor) runIndexCompaction(ctx context.Context) {}
-
-// Run bloom-compactor periodically
-func (c *Compactor) runBloomCompactor() {
-	go func() {
-		// use ticker to run every 15 mins
-	}()
 }

@@ -251,7 +251,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	// By doing the initialization here instead of per-module init function, we avoid the problem
 	// of projects based on Loki forgetting the wiring if they override module's init method (they also don't have access to private symbols).
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.BloomCompactor.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.BloomCompactor.RingCfg.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -1282,7 +1282,13 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
-	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor, t.Cfg.StorageConfig, logger, t.clientMetrics, prometheus.DefaultRegisterer)
+	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor,
+		t.ring,
+		t.Cfg.StorageConfig,
+		t.Cfg.SchemaConfig.Configs,
+		logger,
+		t.clientMetrics,
+		prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, err
@@ -1292,7 +1298,7 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactorRing() (services.Service, error) {
-	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.BloomCompactor.RingCfg.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// is LegacyMode needed?
 	//legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)

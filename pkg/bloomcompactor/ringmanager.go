@@ -27,6 +27,8 @@ const (
 
 	// ringKey is the key under which we register different instances of bloom-compactor in the KVStore.
 	ringKey = "bloom-compactor"
+
+	replicationFactor = 1
 )
 
 type RingManager struct {
@@ -49,7 +51,7 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 
 	// instantiate kv store.
 	ringStore, err := kv.NewClient(
-		rm.cfg.Ring.KVStore,
+		rm.cfg.RingCfg.KVStore,
 		ring.GetCodec(),
 		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "bloom-compactor-ring-manager"),
 		rm.logger,
@@ -58,7 +60,7 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 		return nil, errors.Wrap(err, "bloom-compactor ring manager failed to create KV store client")
 	}
 
-	lifecyclerCfg, err := rm.cfg.Ring.ToLifecyclerConfig(ringNumTokens, rm.logger)
+	lifecyclerCfg, err := rm.cfg.RingCfg.ToLifecyclerConfig(ringNumTokens, rm.logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid ring lifecycler config")
 	}
@@ -67,8 +69,8 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 	// chained via "next delegate").
 	delegate := ring.BasicLifecyclerDelegate(rm)
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, rm.logger)
-	delegate = ring.NewTokensPersistencyDelegate(rm.cfg.Ring.TokensFilePath, ring.JOINING, delegate, rm.logger)
-	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*rm.cfg.Ring.HeartbeatTimeout, delegate, rm.logger)
+	delegate = ring.NewTokensPersistencyDelegate(rm.cfg.RingCfg.TokensFilePath, ring.JOINING, delegate, rm.logger)
+	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*rm.cfg.RingCfg.HeartbeatTimeout, delegate, rm.logger)
 
 	rm.RingLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, rm.logger, registerer)
 	if err != nil {
@@ -76,7 +78,7 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 	}
 
 	// instantiate ring.
-	ringCfg := rm.cfg.Ring.ToRingConfig(rm.cfg.Ring.ReplicationFactor)
+	ringCfg := rm.cfg.RingCfg.ToRingConfig(replicationFactor)
 	rm.Ring, err = ring.NewWithStoreClientAndStrategy(
 		ringCfg,
 		ringNameForServer,
