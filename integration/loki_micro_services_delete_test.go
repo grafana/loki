@@ -40,11 +40,12 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-only",
+			"-compactor.delete-max-interval=0",
 			"-limits.per-user-override-period=1s",
 		)
 		tDistributor = clu.AddComponent(

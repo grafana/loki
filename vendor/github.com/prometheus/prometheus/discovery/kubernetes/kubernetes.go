@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/util/strutil"
+
 	disv1beta1 "k8s.io/api/discovery/v1beta1"
 
 	"github.com/go-kit/log"
@@ -761,15 +763,21 @@ func (d *Discovery) newEndpointsByNodeInformer(plw *cache.ListWatch) cache.Share
 	indexers[nodeIndex] = func(obj interface{}) ([]string, error) {
 		e, ok := obj.(*apiv1.Endpoints)
 		if !ok {
-			return nil, fmt.Errorf("object is not a pod")
+			return nil, fmt.Errorf("object is not endpoints")
 		}
 		var nodes []string
 		for _, target := range e.Subsets {
 			for _, addr := range target.Addresses {
-				if addr.NodeName == nil {
-					continue
+				if addr.TargetRef != nil {
+					switch addr.TargetRef.Kind {
+					case "Pod":
+						if addr.NodeName != nil {
+							nodes = append(nodes, *addr.NodeName)
+						}
+					case "Node":
+						nodes = append(nodes, addr.TargetRef.Name)
+					}
 				}
-				nodes = append(nodes, *addr.NodeName)
 			}
 		}
 		return nodes, nil
@@ -789,17 +797,29 @@ func (d *Discovery) newEndpointSlicesByNodeInformer(plw *cache.ListWatch, object
 		switch e := obj.(type) {
 		case *disv1.EndpointSlice:
 			for _, target := range e.Endpoints {
-				if target.NodeName == nil {
-					continue
+				if target.TargetRef != nil {
+					switch target.TargetRef.Kind {
+					case "Pod":
+						if target.NodeName != nil {
+							nodes = append(nodes, *target.NodeName)
+						}
+					case "Node":
+						nodes = append(nodes, target.TargetRef.Name)
+					}
 				}
-				nodes = append(nodes, *target.NodeName)
 			}
 		case *disv1beta1.EndpointSlice:
 			for _, target := range e.Endpoints {
-				if target.NodeName == nil {
-					continue
+				if target.TargetRef != nil {
+					switch target.TargetRef.Kind {
+					case "Pod":
+						if target.NodeName != nil {
+							nodes = append(nodes, *target.NodeName)
+						}
+					case "Node":
+						nodes = append(nodes, target.TargetRef.Name)
+					}
 				}
-				nodes = append(nodes, *target.NodeName)
 			}
 		default:
 			return nil, fmt.Errorf("object is not an endpointslice")
@@ -824,4 +844,20 @@ func checkDiscoveryV1Supported(client kubernetes.Interface) (bool, error) {
 	// discovery.k8s.io/v1 is available since Kubernetes v1.21
 	// https://kubernetes.io/docs/reference/using-api/deprecation-guide/#v1-25
 	return semVer.Major() >= 1 && semVer.Minor() >= 21, nil
+}
+
+func addObjectMetaLabels(labelSet model.LabelSet, objectMeta metav1.ObjectMeta, role Role) {
+	labelSet[model.LabelName(metaLabelPrefix+string(role)+"_name")] = lv(objectMeta.Name)
+
+	for k, v := range objectMeta.Labels {
+		ln := strutil.SanitizeLabelName(k)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_label_"+ln)] = lv(v)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_labelpresent_"+ln)] = presentValue
+	}
+
+	for k, v := range objectMeta.Annotations {
+		ln := strutil.SanitizeLabelName(k)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_annotation_"+ln)] = lv(v)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_annotationpresent_"+ln)] = presentValue
+	}
 }

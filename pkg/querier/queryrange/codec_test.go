@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -83,20 +84,15 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		{"labels", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label?start=%d&end=%d`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LokiLabelNamesRequest{
-			Path:    "/label",
-			StartTs: start,
-			EndTs:   end,
-		}, false},
+		}, NewLabelRequest(start, end, "", "", "/label"),
+			false},
 		{"label_values", func() (*http.Request, error) {
-			return http.NewRequest(http.MethodGet,
+			req, err := http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LokiLabelNamesRequest{
-			Path:    "/label/test/values",
-			StartTs: start,
-			EndTs:   end,
-			Query:   `{foo="bar"}`,
-		}, false},
+			req = mux.SetURLVars(req, map[string]string{"name": "test"})
+			return req, err
+		}, NewLabelRequest(start, end, `{foo="bar"}`, "test", "/label/test/values"),
+			false},
 		{"index_stats", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
@@ -181,6 +177,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// TODO: context must save mux vars
 			got, err := DefaultCodec.DecodeRequest(context.TODO(), req, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
@@ -318,7 +315,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"labels legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelsString))},
-			&LokiLabelNamesRequest{Path: "/api/prom/label"},
+			NewLabelRequest(time.Now(), time.Now(), "", "", "/api/prom/label"),
 			&LokiLabelNamesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
@@ -657,11 +654,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 
 func Test_codec_labels_EncodeRequest(t *testing.T) {
 	ctx := context.Background()
-	toEncode := &LokiLabelNamesRequest{
-		Path:    "/loki/api/v1/labels",
-		StartTs: start,
-		EndTs:   end,
-	}
+	toEncode := NewLabelRequest(start, end, "", "", "/loki/api/v1/labels")
 	got, err := DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
@@ -672,51 +665,48 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	// testing a full roundtrip
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
-	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, "/loki/api/v1/labels", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
+	require.Equal(t, toEncode.End, req.(*LabelRequest).End)
+	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
 	// Test labels values endpoint
-	toEncode = &LokiLabelNamesRequest{
-		Path:    "/loki/api/v1/labels/__name__/values",
-		StartTs: start,
-		EndTs:   end,
-		Query:   `{foo="bar"}`,
-	}
+	toEncode = NewLabelRequest(start, end, `{foo="bar"}`, "__name__", "/loki/api/v1/label/__name__/values")
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", got.URL.Path)
 	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 
 	// testing a full roundtrip
+	got = mux.SetURLVars(got, map[string]string{"name": "__name__"})
 	req, err = DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
-	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, toEncode.Query, req.(*LokiLabelNamesRequest).Query)
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
+	require.Equal(t, toEncode.End, req.(*LabelRequest).End)
+	require.Equal(t, toEncode.Query, req.(*LabelRequest).Query)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", req.(*LabelRequest).Path())
 }
 
 func Test_codec_labels_DecodeRequest(t *testing.T) {
 	ctx := context.Background()
-	u, err := url.Parse(`/loki/api/v1/labels/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
+	u, err := url.Parse(`/loki/api/v1/label/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
 	require.NoError(t, err)
 
 	r := &http.Request{URL: u}
+	r = mux.SetURLVars(r, map[string]string{"name": "__name__"})
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
-	require.Equal(t, start, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, end, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, `{foo="bar"}`, req.(*LokiLabelNamesRequest).Query)
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, start, *req.(*LabelRequest).Start)
+	require.Equal(t, end, *req.(*LabelRequest).End)
+	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", req.(*LabelRequest).Path())
 
 	got, err := DefaultCodec.EncodeRequest(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", got.URL.Path)
 	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))

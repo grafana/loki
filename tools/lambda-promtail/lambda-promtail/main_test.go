@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -33,4 +34,28 @@ func TestLambdaPromtail_TestParseLabelsNoneProvided(t *testing.T) {
 	extraLabels, err := parseExtraLabels("", false)
 	require.Len(t, extraLabels, 0)
 	require.Nil(t, err)
+}
+
+func TestLambdaPromtail_TestDropLabels(t *testing.T) {
+	os.Setenv("DROP_LABELS", "A1,A2")
+
+	// Reset the shared global variables
+	defer func() {
+		os.Unsetenv("DROP_LABELS")
+		dropLabels = []model.LabelName{}
+	}()
+
+	var err error
+	dropLabels, err = getDropLabels()
+	require.Nil(t, err)
+	require.Contains(t, dropLabels, model.LabelName("A1"))
+
+	defaultLabelSet := model.LabelSet{
+		model.LabelName("default"): model.LabelValue("default"),
+		model.LabelName("A1"):      model.LabelValue("A1"),
+		model.LabelName("B2"):      model.LabelValue("B2"),
+	}
+	modifiedLabels := applyLabels(defaultLabelSet)
+	require.NotContains(t, modifiedLabels, model.LabelName("A1"))
+	require.Contains(t, modifiedLabels, model.LabelName("B2"))
 }

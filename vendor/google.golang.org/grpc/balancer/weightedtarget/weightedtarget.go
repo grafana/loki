@@ -143,6 +143,18 @@ func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnStat
 
 	b.targets = newConfig.Targets
 
+	// If the targets length is zero, it means we have removed all child
+	// policies from the balancer group and aggregator.
+	// At the start of this UpdateClientConnState() operation, a call to
+	// b.stateAggregator.ResumeStateUpdates() is deferred. Thus, setting the
+	// needUpdateStateOnResume bool to true here will ensure a new picker is
+	// built as part of that deferred function. Since there are now no child
+	// policies, the aggregated connectivity state reported form the Aggregator
+	// will be TRANSIENT_FAILURE.
+	if len(b.targets) == 0 {
+		b.stateAggregator.NeedUpdateStateOnResume()
+	}
+
 	return nil
 }
 
