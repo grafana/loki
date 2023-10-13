@@ -324,8 +324,8 @@ type PartitionedBloomFilterLazyReader struct {
 // NewPartitionedBloomFilterLazyReader calls NewBucketsLazyReader which keeps a reference to the original data buffer.
 func NewPartitionedBloomFilterLazyReader(data []byte) (PartitionedBloomFilterLazyReader, int) {
 	// Skip m (uint64),
-	kOffset := binary.Size(uint64(0))
-	k := binary.BigEndian.Uint64(data[kOffset:])
+	offset := binary.Size(uint64(0))
+	k := binary.BigEndian.Uint64(data[offset:])
 
 	// Skip m (uint64), k (uint64),
 	sOffset := 2 * binary.Size(uint64(0))
