@@ -304,16 +304,16 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 	}
 
 	// BloomCompactor
-	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
-		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
-		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
-		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
-		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
-		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.BloomCompactor.Ring.KVStore = rc.KVStore
+	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.RingCfg, defaults.BloomCompactor.RingCfg) {
+		r.BloomCompactor.RingCfg.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.BloomCompactor.RingCfg.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.BloomCompactor.RingCfg.InstancePort = rc.InstancePort
+		r.BloomCompactor.RingCfg.InstanceAddr = rc.InstanceAddr
+		r.BloomCompactor.RingCfg.InstanceID = rc.InstanceID
+		r.BloomCompactor.RingCfg.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.BloomCompactor.RingCfg.InstanceZone = rc.InstanceZone
+		r.BloomCompactor.RingCfg.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.BloomCompactor.RingCfg.KVStore = rc.KVStore
 	}
 }
 
@@ -351,7 +351,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	if err != nil {
 		return err
 	}
-	cfg.BloomCompactor.Ring.TokensFilePath = f
+	cfg.BloomCompactor.RingCfg.TokensFilePath = f
 
 	return nil
 }
@@ -434,8 +434,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
-		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.BloomCompactor.RingCfg.InstanceInterfaceNames, defaults.BloomCompactor.RingCfg.InstanceInterfaceNames) {
+		cfg.BloomCompactor.RingCfg.InstanceInterfaceNames = append(cfg.BloomCompactor.RingCfg.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
@@ -450,7 +450,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
+	r.BloomCompactor.RingCfg.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
