@@ -50,6 +50,9 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   ## 'An array of fields to map to labels, if defined only fields in this list will be mapped.'
   config :include_fields, :validate => :array, :default => [], :required => false
 
+  ## 'An array of fields to map to structure metadata, if defined only fields in this list will be mapped.'
+  config :metadata_fields, :validate => :array, :default => [], :required => false
+
   ## 'Backoff configuration. Maximum backoff time between retries. Default 300s'
   config :max_delay, :validate => :number, :default => 300, :required => false
 
@@ -71,7 +74,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
     @logger.info("Loki output plugin", :class => self.class.name)
 
     # initialize Queue and Mutex
-    @entries = Queue.new 
+    @entries = Queue.new
     @mutex = Mutex.new
     @stop = false
 
@@ -94,7 +97,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
       @mutex.synchronize do
         return if @stop
       end
-  
+
       e = @entries.deq
       return if e.nil?
 
@@ -201,13 +204,13 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   ## Receives logstash events
   public
   def receive(event)
-    @entries << Entry.new(event, @message_field, @include_fields)
+    @entries << Entry.new(event, @message_field, @include_fields, @metadata_fields)
   end
 
   def close
     @entries.close
-    @mutex.synchronize do 
-      @stop = true 
+    @mutex.synchronize do
+      @stop = true
     end
     @batch_wait_thread.join
     @batch_size_thread.join
