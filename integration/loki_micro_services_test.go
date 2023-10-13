@@ -714,7 +714,9 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 }
 
 func TestCategorizedLabels(t *testing.T) {
-	clu := cluster.New(nil, cluster.SchemaWithTDSBAndStructuredMetadata)
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
@@ -739,6 +741,7 @@ func TestCategorizedLabels(t *testing.T) {
 			"ingester",
 			"-target=ingester",
 			"-ingester.flush-on-shutdown=true",
+			"-ingester.wal-enabled=false",
 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 		tQueryScheduler = clu.AddComponent(

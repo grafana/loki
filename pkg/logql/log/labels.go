@@ -471,7 +471,10 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 		return cached
 	}
 
-	return NewLabelsResult(b.buf.String(), hash, stream, structuredMetadata, parsed)
+	result := NewLabelsResult(b.buf.String(), hash, stream, structuredMetadata, parsed)
+	b.resultCache[hash] = result
+
+	return result
 }
 
 func flattenLabels(buf labels.Labels, many ...labels.Labels) labels.Labels {

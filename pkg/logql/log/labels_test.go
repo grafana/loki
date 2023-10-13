@@ -96,11 +96,11 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	expected = append(expected, expectedParsedLbls...)
 	expected = labels.New(expected...)
 
-	actual := b.LabelsResult()
-	assertLabelResult(t, expected, actual)
+	assertLabelResult(t, expected, b.LabelsResult())
 	// cached.
-	assertLabelResult(t, expected, actual)
+	assertLabelResult(t, expected, b.LabelsResult())
 
+	actual := b.LabelsResult()
 	assert.Equal(t, expectedStreamLbls, actual.Stream())
 	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
 	assert.Equal(t, expectedParsedLbls, actual.Parsed())
