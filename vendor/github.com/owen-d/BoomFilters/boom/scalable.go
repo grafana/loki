@@ -326,8 +326,7 @@ func (s *ScalableBloomFilter) GobDecode(data []byte) error {
 }
 
 type ScalableBloomFilterLazyReader struct {
-	filters     []PartitionedBloomFilterLazyReader
-	initialized bool
+	filters []PartitionedBloomFilterLazyReader
 }
 
 func NewScalableBloomFilterLazyReader(data []byte) (ScalableBloomFilterLazyReader, int) {
