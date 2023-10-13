@@ -31,8 +31,7 @@ var (
 	// Singleton instantiation of the resource type implementation.
 	endpointsType = endpointsResourceType{
 		resourceTypeState: resourceTypeState{
-			v2TypeURL:                  "type.googleapis.com/envoy.api.v2.ClusterLoadAssignment",
-			v3TypeURL:                  "type.googleapis.com/envoy.config.endpoint.v3.ClusterLoadAssignment",
+			typeURL:                    "type.googleapis.com/envoy.config.endpoint.v3.ClusterLoadAssignment",
 			typeEnum:                   EndpointsResource,
 			allResourcesRequiredInSotW: false,
 		},
