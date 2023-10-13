@@ -1,8 +1,8 @@
 ---
 title: Logstash plugin
-menuTitle:   
+menuTitle:
 description: Instructions to install, configure, and use the Logstash plugin to send logs to Loki.
-aliases: 
+aliases:
 - ../send-data/a/logstash/
 weight:  800
 ---
@@ -61,8 +61,10 @@ output {
     [tenant_id => string | default = nil | required=false]
 
     [message_field => string | default = "message" | required=false]
-    
+
     [include_fields => array | default = [] | required=false]
+
+    [metadata_fields => array | default = [] | required=false]
 
     [batch_wait => number | default = 1(s) | required=false]
 
@@ -111,8 +113,6 @@ Contains a `message` and `@timestamp` fields, which are respectively used to for
 
 All other fields (except nested fields) will form the label set (key value pairs) attached to the log line. [This means you're responsible for mutating and dropping high cardinality labels](/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/) such as client IPs.
 You can usually do so by using a [`mutate`](https://www.elastic.co/guide/en/logstash/current/plugins-filters-mutate.html) filter.
-
-**Note:** In version 1.1.0 and greater of this plugin you can also specify a list of labels to allowlist via the `include_fields` configuration.
 
 For example the configuration below :
 
@@ -194,6 +194,13 @@ filter {
 }
 ```
 
+### Version Notes
+
+Important notes regarding versions:
+
+- Version 1.1.0 and greater of this plugin you can also specify a list of labels to allow list via the `include_fields` configuration.
+- Version 1.2.0 and greater of this plugin you can also specify a structured metadata via the `metadata_fields` configuration.
+
 ### Configuration Properties
 
 #### url
@@ -215,6 +222,10 @@ Message field to use for log lines. You can use logstash key accessor language t
 #### include_fields
 
 An array of fields which will be mapped to labels and sent to Loki, when this list is configured **only** these fields will be sent, all other fields will be ignored.
+
+#### metadata_fields
+
+An array of fields which will be mapped to [structured metadata]({{< relref "../../get-started/labels/structured-metadata.md" >}}) and sent to Loki for each log line
 
 #### batch_wait
 
@@ -246,7 +257,7 @@ Loki is a multi-tenant log storage platform and all requests sent must include a
 
 Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
 
-### insecure_skip_verify
+#### insecure_skip_verify
 
 A flag to disable server certificate verification. By default it is set to `false`.
 
@@ -286,6 +297,7 @@ output {
     max_delay => 500
     message_field => "message"
     include_fields => ["container_name","namespace","pod","host"]
+    metadata_fields => ["pod"]
   }
   # stdout { codec => rubydebug }
 }

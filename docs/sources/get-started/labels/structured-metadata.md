@@ -32,6 +32,8 @@ For more information on how to push logs to Loki via the HTTP endpoint, refer to
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach structured metadata to your log lines.
 See the [Promtail: Structured metadata stage]({{< relref "../../send-data/promtail/stages/structured_metadata" >}}) for more information.
 
+Support has been added to the logstash output starting with version 1.2.0.  See [logstash]({{< relref "../../send-data/logstash/_index.md" >}}) for more information.
+
 ## Querying structured metadata
 
 Structured metadata is extracted automatically for each returned log line and added to the labels returned for the query.
@@ -49,7 +51,7 @@ Of course, you can filter by multiple labels of structured metadata at the same 
 {job="example"} | trace_id="0242ac120002" | user_id="superUser123"
 ```
 
-Note that since structured metadata is extracted automatically to the results labels, some metric queries might return 
+Note that since structured metadata is extracted automatically to the results labels, some metric queries might return
 an error like `maximum of series (50000) reached for a single query`. You can use the [Keep]({{< relref "../../query/log_queries#keep-labels-expression" >}}) and [Drop]({{< relref "../../query/log_queries#drop-labels-expression" >}}) stages to filter out labels that you don't need.
 For example:
 

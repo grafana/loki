@@ -52,7 +52,19 @@ module Loki
         def build_stream(stream)
             values = []
             stream['entries'].each { |entry|
-                values.append([entry['ts'].to_s, entry['line']])
+                if entry.key?('metadata')
+                    sorted_metadata = entry['metadata'].sort.to_h
+                    values.append([
+                        entry['ts'].to_s,
+                        entry['line'],
+                        sorted_metadata
+                    ])
+                else
+                    values.append([
+                        entry['ts'].to_s,
+                        entry['line']
+                    ])
+                end
             }
             return {
                 'stream'=>stream['labels'],
