@@ -69,4 +69,10 @@
   index_gateway_service: if $._config.use_index_gateway then
     k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels)
   else {},
+
+  index_gateway_headless_service: if $._config.use_index_gateway then
+    k.util.serviceFor($.index_gateway_statefulset, $._config.service_ignored_labels) +
+    service.mixin.metadata.withName('index-gateway-headless') +
+    service.mixin.spec.withClusterIp('None')
+  else {},
 }
