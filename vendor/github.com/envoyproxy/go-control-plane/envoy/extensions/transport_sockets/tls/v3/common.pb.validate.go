@@ -190,9 +190,18 @@ func (m *PrivateKeyProvider) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.ConfigType.(type) {
-
+	switch v := m.ConfigType.(type) {
 	case *PrivateKeyProvider_TypedConfig:
+		if v == nil {
+			err := PrivateKeyProviderValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -223,6 +232,8 @@ func (m *PrivateKeyProvider) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -923,7 +934,7 @@ func (m *SubjectAltNameMatcher) validate(all bool) error {
 	if _, ok := _SubjectAltNameMatcher_SanType_NotInLookup[m.GetSanType()]; ok {
 		err := SubjectAltNameMatcherValidationError{
 			field:  "SanType",
-			reason: "value must not be in list [0]",
+			reason: "value must not be in list [SAN_TYPE_UNSPECIFIED]",
 		}
 		if !all {
 			return err

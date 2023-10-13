@@ -1101,9 +1101,18 @@ func (m *DynamicParameterConstraints) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Type.(type) {
-
+	switch v := m.Type.(type) {
 	case *DynamicParameterConstraints_Constraint:
+		if v == nil {
+			err := DynamicParameterConstraintsValidationError{
+				field:  "Type",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetConstraint()).(type) {
@@ -1135,6 +1144,16 @@ func (m *DynamicParameterConstraints) validate(all bool) error {
 		}
 
 	case *DynamicParameterConstraints_OrConstraints:
+		if v == nil {
+			err := DynamicParameterConstraintsValidationError{
+				field:  "Type",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetOrConstraints()).(type) {
@@ -1166,6 +1185,16 @@ func (m *DynamicParameterConstraints) validate(all bool) error {
 		}
 
 	case *DynamicParameterConstraints_AndConstraints:
+		if v == nil {
+			err := DynamicParameterConstraintsValidationError{
+				field:  "Type",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetAndConstraints()).(type) {
@@ -1197,6 +1226,16 @@ func (m *DynamicParameterConstraints) validate(all bool) error {
 		}
 
 	case *DynamicParameterConstraints_NotConstraints:
+		if v == nil {
+			err := DynamicParameterConstraintsValidationError{
+				field:  "Type",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetNotConstraints()).(type) {
@@ -1227,6 +1266,8 @@ func (m *DynamicParameterConstraints) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -1452,6 +1493,35 @@ func (m *Resource) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetMetadata()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ResourceValidationError{
+					field:  "Metadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ResourceValidationError{
+					field:  "Metadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMetadata()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ResourceValidationError{
+				field:  "Metadata",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return ResourceMultiError(errors)
 	}
@@ -1555,12 +1625,33 @@ func (m *DynamicParameterConstraints_SingleConstraint) validate(all bool) error 
 
 	// no validation rules for Key
 
-	switch m.ConstraintType.(type) {
-
+	oneofConstraintTypePresent := false
+	switch v := m.ConstraintType.(type) {
 	case *DynamicParameterConstraints_SingleConstraint_Value:
+		if v == nil {
+			err := DynamicParameterConstraints_SingleConstraintValidationError{
+				field:  "ConstraintType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofConstraintTypePresent = true
 		// no validation rules for Value
-
 	case *DynamicParameterConstraints_SingleConstraint_Exists_:
+		if v == nil {
+			err := DynamicParameterConstraints_SingleConstraintValidationError{
+				field:  "ConstraintType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofConstraintTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetExists()).(type) {
@@ -1592,6 +1683,9 @@ func (m *DynamicParameterConstraints_SingleConstraint) validate(all bool) error 
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofConstraintTypePresent {
 		err := DynamicParameterConstraints_SingleConstraintValidationError{
 			field:  "ConstraintType",
 			reason: "value is required",
@@ -1600,7 +1694,6 @@ func (m *DynamicParameterConstraints_SingleConstraint) validate(all bool) error 
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
