@@ -171,6 +171,7 @@ type HeaderMatcher struct {
 	SuffixMatch  *string
 	RangeMatch   *Int64Range
 	PresentMatch *bool
+	StringMatch  *matcher.StringMatcher
 }
 
 // Int64Range is a range for header range match.

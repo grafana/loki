@@ -173,38 +173,76 @@ func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiSeriesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
-func (r *LokiLabelNamesRequest) GetEnd() int64 {
-	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+// In some other world LabelRequest could implement queryrangebase.Request.
+type LabelRequest struct {
+	path string
+	logproto.LabelRequest
 }
 
-func (r *LokiLabelNamesRequest) GetStart() int64 {
-	return r.StartTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func NewLabelRequest(start, end time.Time, query, name, path string) *LabelRequest {
+	return &LabelRequest{
+		LabelRequest: logproto.LabelRequest{
+			Start:  &start,
+			End:    &end,
+			Query:  query,
+			Name:   name,
+			Values: name != "",
+		},
+		path: path,
+	}
 }
 
-func (r *LokiLabelNamesRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	clone := *r
-	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
-	return &clone
+func (r *LabelRequest) AsProto() *logproto.LabelRequest {
+	return &r.LabelRequest
 }
 
-func (r *LokiLabelNamesRequest) WithQuery(_ string) queryrangebase.Request {
-	clone := *r
-	return &clone
+func (r *LabelRequest) GetEnd() int64 {
+	return r.End.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
-func (r *LokiLabelNamesRequest) GetStep() int64 {
+func (r *LabelRequest) GetEndTs() time.Time {
+	return *r.End
+}
+
+func (r *LabelRequest) GetStart() int64 {
+	return r.Start.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LabelRequest) GetStartTs() time.Time {
+	return *r.Start
+}
+
+func (r *LabelRequest) GetStep() int64 {
 	return 0
 }
 
-func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
+func (r *LabelRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
+	clone := *r
+	tmp := time.Unix(0, s*int64(time.Millisecond))
+	clone.Start = &tmp
+	tmp = time.Unix(0, e*int64(time.Millisecond))
+	clone.End = &tmp
+	return &clone
+}
+
+func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {
+	clone := *r
+	clone.Query = query
+	return &clone
+}
+
+func (r *LabelRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("start", timestamp.Time(r.GetStart()).String()),
 		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
 	)
 }
 
-func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
+func (r *LabelRequest) Path() string {
+	return r.path
+}
+
+func (*LabelRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
@@ -258,11 +296,9 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		return &LokiLabelNamesRequest{
-			StartTs: *req.Start,
-			EndTs:   *req.End,
-			Path:    r.URL.Path,
-			Query:   req.Query,
+		return &LabelRequest{
+			LabelRequest: *req,
+			path:         r.URL.Path,
 		}, nil
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(r)
@@ -375,15 +411,15 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			Header:     header,
 		}
 		return req.WithContext(ctx), nil
-	case *LokiLabelNamesRequest:
+	case *LabelRequest:
 		params := url.Values{
-			"start": []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
 			"query": []string{request.GetQuery()},
 		}
 
 		u := &url.URL{
-			Path:     request.Path, // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
+			Path:     request.Path(), // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -537,14 +573,14 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 			Data:    data,
 			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
-	case *LokiLabelNamesRequest:
+	case *LabelRequest:
 		var resp loghttp.LabelResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &LokiLabelNamesResponse{
 			Status:  resp.Status,
-			Version: uint32(loghttp.GetVersion(req.Path)),
+			Version: uint32(loghttp.GetVersion(req.Path())),
 			Data:    resp.Data,
 			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
@@ -669,7 +705,7 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 	switch req.(type) {
 	case *LokiSeriesRequest:
 		return resp.GetSeries().WithHeaders(headers), nil
-	case *LokiLabelNamesRequest:
+	case *LabelRequest:
 		return resp.GetLabels().WithHeaders(headers), nil
 	case *logproto.IndexStatsRequest:
 		return resp.GetStats().WithHeaders(headers), nil
@@ -1137,9 +1173,9 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsSeriesWrapper{
 			LokiSeriesRequest: r,
 		}, nil
-	case *LokiLabelNamesRequest:
-		return &paramsLabelNamesWrapper{
-			LokiLabelNamesRequest: r,
+	case *LabelRequest:
+		return &paramsLabelWrapper{
+			LabelRequest: r,
 		}, nil
 	default:
 		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
@@ -1232,31 +1268,31 @@ func (p paramsSeriesWrapper) Shards() []string {
 	return p.GetShards()
 }
 
-type paramsLabelNamesWrapper struct {
-	*LokiLabelNamesRequest
+type paramsLabelWrapper struct {
+	*LabelRequest
 }
 
-func (p paramsLabelNamesWrapper) Query() string {
+func (p paramsLabelWrapper) Query() string {
 	return p.GetQuery()
 }
 
-func (p paramsLabelNamesWrapper) Start() time.Time {
-	return p.LokiLabelNamesRequest.GetStartTs()
+func (p paramsLabelWrapper) Start() time.Time {
+	return p.LabelRequest.GetStartTs()
 }
 
-func (p paramsLabelNamesWrapper) End() time.Time {
-	return p.LokiLabelNamesRequest.GetEndTs()
+func (p paramsLabelWrapper) End() time.Time {
+	return p.LabelRequest.GetEndTs()
 }
 
-func (p paramsLabelNamesWrapper) Step() time.Duration {
+func (p paramsLabelWrapper) Step() time.Duration {
 	return time.Duration(p.GetStep() * 1e6)
 }
-func (p paramsLabelNamesWrapper) Interval() time.Duration { return 0 }
-func (p paramsLabelNamesWrapper) Direction() logproto.Direction {
+func (p paramsLabelWrapper) Interval() time.Duration { return 0 }
+func (p paramsLabelWrapper) Direction() logproto.Direction {
 	return logproto.FORWARD
 }
-func (p paramsLabelNamesWrapper) Limit() uint32 { return 0 }
-func (p paramsLabelNamesWrapper) Shards() []string {
+func (p paramsLabelWrapper) Limit() uint32 { return 0 }
+func (p paramsLabelWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
@@ -1281,10 +1317,10 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			Status:  loghttp.QueryStatusSuccess,
 			Version: uint32(loghttp.GetVersion(req.Path)),
 		}, nil
-	case *LokiLabelNamesRequest:
+	case *LabelRequest:
 		return &LokiLabelNamesResponse{
 			Status:  loghttp.QueryStatusSuccess,
-			Version: uint32(loghttp.GetVersion(req.Path)),
+			Version: uint32(loghttp.GetVersion(req.Path())),
 		}, nil
 	case *LokiInstantRequest:
 		// instant queries in the frontend are always metrics queries.
