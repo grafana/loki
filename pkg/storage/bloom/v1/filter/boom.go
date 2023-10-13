@@ -1,5 +1,16 @@
+package filter
+
 /*
-Package boom implements probabilistic data structures for processing
+Original work Copyright (c) 2015 Tyler Treat
+Modified work Copyright (c) 2023 Owen Diehl
+SPDX-License-Identifier: AGPL-3.0-only
+Provenance-includes-location: https://github.com/tylertreat/BoomFilters/blob/master/boom.go
+Provenance-includes-location: https://github.com/owen-d/BoomFilters/blob/master/boom/boom.go
+Provenance-includes-license: Apache-2.0
+Provenance-includes-copyright: The Loki Authors.
+
+
+Package filter implements probabilistic data structures for processing
 continuous, unbounded data streams. This includes Stable Bloom Filters,
 Scalable Bloom Filters, Counting Bloom Filters, Inverse Bloom Filters, several
 variants of traditional Bloom filters, HyperLogLog, Count-Min Sketch, and
@@ -34,7 +45,6 @@ MinHash is a probabilistic algorithm to approximate the similarity between two
 sets. This can be used to cluster or compare documents by splitting the corpus
 into a bag of words.
 */
-package boom
 
 import (
 	"hash"
@@ -44,12 +54,16 @@ import (
 // optimal fill ratio
 const fillRatio = 0.5
 
+type FilterTester interface {
+	// Test will test for membership of the data and returns true if it is a
+	// member, false if not.
+	Test(data []byte) bool
+}
+
 // Filter is a probabilistic data structure which is used to test the
 // membership of an element in a set.
 type Filter interface {
-	// Test will test for membership of the data and returns true if it is a
-	// member, false if not.
-	Test([]byte) bool
+	FilterTester
 
 	// Add will add the data to the Bloom filter. It returns the filter to
 	// allow for chaining.

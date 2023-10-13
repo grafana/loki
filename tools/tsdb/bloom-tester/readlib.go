@@ -4,32 +4,36 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/go-kit/log/level"
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+
 	//indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -321,7 +325,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	return nil
 }
 
-func readSBFFromObjectStorage(location, prefix, period, tenant, series string, objectClient client.ObjectClient) *boom.ScalableBloomFilter {
+func readSBFFromObjectStorage(location, prefix, period, tenant, series string, objectClient client.ObjectClient) *filter.ScalableBloomFilter {
 	objectStoragePath := fmt.Sprintf("%s/%s/%s/%s", location, prefix, period, tenant)
 
 	sbf := experiments[0].bloom()
