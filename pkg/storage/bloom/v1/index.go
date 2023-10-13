@@ -446,18 +446,31 @@ func (refs ChunkRefs) Swap(i, j int) {
 
 // Unless returns the chunk refs in this set that are not in the other set.
 // Both must be sorted.
+func (refs ChunkRefs) Unless(others []ChunkRef) ChunkRefs {
+	res, _ := refs.Compare(others, false)
+	return res
+}
+
+// Compare returns two sets of chunk refs, both must be sorted:
+// 1) the chunk refs which are in the original set but not in the other set
+// 2) the chunk refs which are in both sets
+// the `populateInclusive` argument allows avoiding populating the inclusive set
+// if it is not needed
 // TODO(owen-d): can be improved to use binary search when one list
 // is signficantly larger than the other
-func (refs ChunkRefs) Unless(others []ChunkRef) (res ChunkRefs) {
-	// TODO(owen-d): use pool
+func (refs ChunkRefs) Compare(others ChunkRefs, populateInclusve bool) (exclusive ChunkRefs, inclusive ChunkRefs) {
 	var i, j int
 	for i < len(refs) && j < len(others) {
 		switch {
+
 		case refs[i] == others[j]:
+			if populateInclusve {
+				inclusive = append(inclusive, refs[i])
+			}
 			i++
 			j++
 		case refs[i].Less(others[j]):
-			res = append(res, refs[i])
+			exclusive = append(exclusive, refs[i])
 			i++
 		default:
 			j++
@@ -466,7 +479,8 @@ func (refs ChunkRefs) Unless(others []ChunkRef) (res ChunkRefs) {
 
 	// append any remaining refs
 	if i < len(refs) {
-		res = append(res, refs[i:]...)
+		exclusive = append(exclusive, refs[i:]...)
 	}
-	return res
+
+	return
 }
