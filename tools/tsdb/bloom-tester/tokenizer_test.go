@@ -71,6 +71,45 @@ func Test3Gram0SkipTokenizer(t *testing.T) {
 	}
 }
 
+func Test3Gram1SkipTokenizer(t *testing.T) {
+	tokenizer := threeSkip1
+	for _, tc := range []struct {
+		desc  string
+		input string
+		exp   []Token
+	}{
+		{
+			desc:  "empty",
+			input: "",
+			exp:   []Token{},
+		},
+		{
+			desc:  "single char",
+			input: "a",
+			exp:   []Token{},
+		},
+		{
+			desc:  "three char",
+			input: "abc",
+			exp:   []Token{{Key: []byte("abc"), Value: "abc"}},
+		},
+		{
+			desc:  "four chars",
+			input: "abcd",
+			exp:   []Token{{Key: []byte("abc"), Value: "abc"}},
+		},
+		{
+			desc:  "five chars",
+			input: "abcde",
+			exp:   []Token{{Key: []byte("abc"), Value: "abc"}, {Key: []byte("cde"), Value: "cde"}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, tokenizer.Tokens(tc.input))
+		})
+	}
+}
+
 func Test4Gram0SkipTokenizer(t *testing.T) {
 	tokenizer := four
 	for _, tc := range []struct {

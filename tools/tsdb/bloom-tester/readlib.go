@@ -142,7 +142,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 						//fmt.Println("seriesSTring", seriesString)
 						//fmt.Println("seriesSTringHasj", seriesStringHash)
 						//fmt.Println("pos", pos)
-						fmt.Println("workernumber", workernumber)
+						//fmt.Println("workernumber", workernumber)
 
 						if (workernumber == testerNumber) && (len(chks) < 10000) { // For every series
 							/*
@@ -252,7 +252,33 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 															//fmt.Println("true positive", experiment.name, queryExperiment.name, gotIdx)
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TruePositive).Inc()
 														} else {
-															level.Info(util_log.Logger).Log("**** false negative", experiment.name, queryExperiment.name, ls.String(), gotIdx, testerNumber)
+															level.Info(util_log.Logger).Log("**** false negative", experiment.name, queryExperiment.name, ls.String(), FNV32a(ls.String()), gotIdx, testerNumber, queryExperiment.searchString)
+															for i := 0; i <= tokenizer.getSkip(); i++ {
+																numMatches := 0
+																if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
+																	tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
+
+																	for _, token := range tokens {
+																		if sbf.Test(token.Key) {
+																			numMatches++
+																		}
+																	}
+																	level.Info(util_log.Logger).Log("**** false negative skip: ", tokenizer.getSkip(), "numMatches", numMatches, "len(tokens)", len(tokens))
+
+																}
+															}
+															itr, err := lc.Iterator(
+																context.Background(),
+																time.Unix(0, 0),
+																time.Unix(0, math.MaxInt64),
+																logproto.FORWARD,
+																log.NewNoopPipeline().ForStream(ls),
+															)
+															helpers.ExitErr("getting iterator", err)
+
+															for itr.Next() && itr.Error() == nil {
+																level.Info(util_log.Logger).Log("**** false negative line: ", itr.Entry().Line)
+															}
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
 														}
 													} else {
@@ -316,7 +342,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
 	//pool.drain() // wait for workers to finishh
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
-	time.Sleep(30 * time.Second)         // allow final scrape
+	//time.Sleep(30 * time.Second)         // allow final scrape
 	time.Sleep(time.Duration(1<<63 - 1)) // wait forever
 	return nil
 }
@@ -328,4 +354,26 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 	closer, _, _ := objectClient.GetObject(context.Background(), fmt.Sprintf("%s/%s", objectStoragePath, FNV32a(series)))
 	_, _ = sbf.ReadFrom(closer)
 	return sbf
+}
+
+func searchSbf(sbf *boom.ScalableBloomFilter, tokenizer Tokenizer, searchString string) bool {
+	foundInSbf := false
+	for i := 0; i <= tokenizer.getSkip(); i++ {
+		numMatches := 0
+		if (len(searchString) - i) >= tokenizer.getMin() {
+			tokens := tokenizer.Tokens(searchString[i:])
+
+			for _, token := range tokens {
+				if sbf.Test(token.Key) {
+					numMatches++
+				}
+			}
+			if numMatches > 0 {
+				if numMatches == len(tokens) {
+					foundInSbf = true
+				}
+			}
+		}
+	}
+	return foundInSbf
 }

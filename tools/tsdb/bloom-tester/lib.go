@@ -458,7 +458,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
 	//pool.drain() // wait for workers to finish
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
-	time.Sleep(30 * time.Second) // allow final scrape
+	//time.Sleep(30 * time.Second)         // allow final scrape
+	time.Sleep(time.Duration(1<<63 - 1)) // wait forever
 	return nil
 }
 
