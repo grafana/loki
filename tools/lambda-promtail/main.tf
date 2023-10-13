@@ -174,6 +174,7 @@ resource "aws_lambda_function" "this" {
       KEEP_STREAM              = var.keep_stream
       BATCH_SIZE               = var.batch_size
       EXTRA_LABELS             = var.extra_labels
+      DROP_LABELS              = var.drop_labels
       OMIT_EXTRA_LABELS_PREFIX = var.omit_extra_labels_prefix ? "true" : "false"
       TENANT_ID                = var.tenant_id
       SKIP_TLS_VERIFY          = var.skip_tls_verify

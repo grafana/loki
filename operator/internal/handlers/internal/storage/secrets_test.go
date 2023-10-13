@@ -181,7 +181,73 @@ func TestS3Extract(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "all set",
+			name: "unsupported SSE type",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint":          []byte("here"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"sse_type":          []byte("unsupported"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing SSE-KMS kms_key_id",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint":                   []byte("here"),
+					"bucketnames":                []byte("this,that"),
+					"access_key_id":              []byte("id"),
+					"access_key_secret":          []byte("secret"),
+					"sse_type":                   []byte("SSE-KMS"),
+					"sse_kms_encryption_context": []byte("kms-encryption-ctx"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "all set with SSE-KMS",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint":          []byte("here"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"sse_type":          []byte("SSE-KMS"),
+					"sse_kms_key_id":    []byte("kms-key-id"),
+				},
+			},
+		},
+		{
+			name: "all set with SSE-KMS with encryption context",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint":                   []byte("here"),
+					"bucketnames":                []byte("this,that"),
+					"access_key_id":              []byte("id"),
+					"access_key_secret":          []byte("secret"),
+					"sse_type":                   []byte("SSE-KMS"),
+					"sse_kms_key_id":             []byte("kms-key-id"),
+					"sse_kms_encryption_context": []byte("kms-encryption-ctx"),
+				},
+			},
+		},
+		{
+			name: "all set with SSE-S3",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"endpoint":          []byte("here"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"sse_type":          []byte("SSE-S3"),
+				},
+			},
+		},
+		{
+			name: "all set without SSE",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint":          []byte("here"),
