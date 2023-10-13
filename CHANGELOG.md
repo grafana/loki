@@ -56,20 +56,15 @@
 
 #### LogCLI
 
-##### Fixes
-
 #### Mixins
-
-#### Enhancements
 
 #### Fixes
 
 #### FluentD
 
-##### Enhancements
-
 #### Jsonnet
-## Unreleased
+
+* [10784](https://github.com/grafana/loki/pull/10894) **slim-bean** Update index gateway client to use a headless service.
 
 
 
