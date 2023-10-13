@@ -1,7 +1,6 @@
 package bloomshipper
 
 import (
-	"archive/zip"
 	"bytes"
 	"io"
 	"math"
@@ -14,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
 )
 
@@ -146,24 +146,26 @@ const (
 
 func Test_Shipper_extractBlock(t *testing.T) {
 	dir := t.TempDir()
-	blockFilePath := filepath.Join(dir, "test-block.zip")
-	file, err := os.OpenFile(blockFilePath, os.O_CREATE|os.O_RDWR, 0700)
-	require.NoError(t, err)
-	writer := zip.NewWriter(file)
 
-	bloomFileWriter, err := writer.Create(bloomFileName)
+	mockBlockDir := filepath.Join(dir, "mock-block-dir")
+	err := os.MkdirAll(mockBlockDir, 0777)
+	require.NoError(t, err)
+	bloomFile, err := os.Create(filepath.Join(mockBlockDir, bloomFileName))
 	require.NoError(t, err)
 	bloomFileContent := uuid.NewString()
-	_, err = io.Copy(bloomFileWriter, bytes.NewReader([]byte(bloomFileContent)))
+	_, err = io.Copy(bloomFile, bytes.NewReader([]byte(bloomFileContent)))
 	require.NoError(t, err)
-	seriesFileWriter, err := writer.Create(seriesFileName)
+
+	seriesFile, err := os.Create(filepath.Join(mockBlockDir, seriesFileName))
 	require.NoError(t, err)
 	seriesFileContent := uuid.NewString()
-	_, err = io.Copy(seriesFileWriter, bytes.NewReader([]byte(seriesFileContent)))
+	_, err = io.Copy(seriesFile, bytes.NewReader([]byte(seriesFileContent)))
 	require.NoError(t, err)
-	err = writer.Close()
+
+	blockFilePath := filepath.Join(dir, "test-block-archive")
+	file, err := os.OpenFile(blockFilePath, os.O_CREATE|os.O_RDWR, 0700)
 	require.NoError(t, err)
-	err = file.Close()
+	err = v1.TarGz(file, v1.NewDirectoryBlockReader(mockBlockDir))
 	require.NoError(t, err)
 
 	blockFile, err := os.OpenFile(blockFilePath, os.O_RDONLY, 0700)
@@ -176,6 +178,7 @@ func Test_Shipper_extractBlock(t *testing.T) {
 		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
 		Data:     blockFile,
 	}
+
 	actualPath, err := shipper.extractBlock(&block, ts)
 
 	require.NoError(t, err)
