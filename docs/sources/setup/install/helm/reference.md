@@ -1240,7 +1240,7 @@ See values.yaml
 			<td>string</td>
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
+"{{ if .Values.loki.tenants }}\nmap $http_x_scope_orgid $new_x_scope_orgid {\n  default $http_x_scope_orgid;   # use the existing header value by default\n  \"\"      $remote_user;          # if not set, use the $remote_user variable\n}\nproxy_set_header X-Scope-OrgID $new_x_scope_orgid;\n{{- end -}}\n"
 </pre>
 </td>
 		</tr>
