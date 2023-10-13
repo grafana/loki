@@ -27,12 +27,13 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/pkg/bloomcompactor"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
+
+	"github.com/grafana/loki/pkg/bloomcompactor"
 
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/compactor"

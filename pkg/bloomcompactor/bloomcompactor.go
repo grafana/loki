@@ -22,24 +22,20 @@ bloomCompactor.Compactor
 			|
 		object storage
 */
-
-/*
-TODO
-- Ring manager starts up, instances own a subring dedicated to them
-- layout compactor functions with no implementation
-*/
 package bloomcompactor
 
 import (
 	"context"
+
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Compactor struct {
