@@ -725,7 +725,7 @@ func Test_codec_seriesVolume_DecodeRequest(t *testing.T) {
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
 		got, err := DefaultCodec.DecodeRequest(context.Background(), req, nil)
 		require.NoError(t, err)
-		
+
 		require.Equal(t, int64(0), got.(*logproto.VolumeRequest).Step)
 	})
 
