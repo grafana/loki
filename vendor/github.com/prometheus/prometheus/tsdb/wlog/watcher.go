@@ -41,7 +41,7 @@ const (
 
 var (
 	ErrIgnorable = errors.New("ignore me")
-	readTimeout  = 15 * time.Second
+	readTimeout  = 10 * time.Millisecond // TODO: revert back to 15 * time.Second
 )
 
 // WriteTo is an interface used by the Watcher to send the samples it's read
