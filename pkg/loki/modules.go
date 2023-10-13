@@ -431,8 +431,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 		"/loki/api/v1/series":             querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(httpHandler),
 		"/loki/api/v1/index/stats":        indexStatsHTTPMiddleware.Wrap(httpHandler),
-		"/loki/api/v1/index/volume":       volumeHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.VolumeInstantHandler)),
-		"/loki/api/v1/index/volume_range": volumeRangeHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.VolumeRangeHandler)),
+		"/loki/api/v1/index/volume":       volumeHTTPMiddleware.Wrap(httpHandler),
+		"/loki/api/v1/index/volume_range": volumeRangeHTTPMiddleware.Wrap(httpHandler),
 
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,

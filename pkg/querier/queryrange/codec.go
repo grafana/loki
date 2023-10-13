@@ -483,8 +483,8 @@ func (Codec) EncodeHTTPGrpcResponse(ctx context.Context, req *httpgrpc.HTTPReque
 	}
 
 	return &httpgrpc.HTTPResponse{
-		Code:    int32(http.StatusOK),
-		Body:    buf.Bytes(),
+		Code: int32(http.StatusOK),
+		Body: buf.Bytes(),
 		Headers: []*httpgrpc.Header{
 			{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}},
 		},

@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -349,64 +348,11 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 
 //TODO(trevorwhitney): add test for the handler split
 
-// VolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
-// Returns N values where N is the time range / step.
-func (q *QuerierAPI) VolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseVolumeRangeQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	req := &logproto.VolumeRequest{
-		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers:     rawReq.Query,
-		Step:         rawReq.Step.Milliseconds(),
-		Limit:        int32(rawReq.Limit),
-		TargetLabels: rawReq.TargetLabels,
-		AggregateBy:  rawReq.AggregateBy,
-	}
-
-	q.seriesVolumeHandler(r.Context(), r, req, w)
-}
-
-// VolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
-// Returns a single value for the time range.
-func (q *QuerierAPI) VolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseVolumeInstantQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	req := &logproto.VolumeRequest{
-		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers:     rawReq.Query,
-		Step:         0,
-		Limit:        int32(rawReq.Limit),
-		TargetLabels: rawReq.TargetLabels,
-		AggregateBy:  rawReq.AggregateBy,
-	}
-
-	q.seriesVolumeHandler(r.Context(), r, req, w)
-}
-
-func (q *QuerierAPI) seriesVolumeHandler(ctx context.Context, r *http.Request, req *logproto.VolumeRequest, w http.ResponseWriter) {
-	resp, err := q.querier.Volume(ctx, req)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if resp == nil { // Some stores don't implement this
-		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
-	}
-
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+// VolumeHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns either N values where N is the time range / step and a single value for a time range depending on the request.
+func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	// TODO: understand the difference between instant and range requests.
+	return q.querier.Volume(ctx, req)
 }
 
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
