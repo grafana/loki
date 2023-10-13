@@ -85,9 +85,20 @@ func (m *Matcher) validate(all bool) error {
 		}
 	}
 
-	switch m.MatcherType.(type) {
-
+	oneofMatcherTypePresent := false
+	switch v := m.MatcherType.(type) {
 	case *Matcher_MatcherList_:
+		if v == nil {
+			err := MatcherValidationError{
+				field:  "MatcherType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatcherTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetMatcherList()).(type) {
@@ -119,6 +130,17 @@ func (m *Matcher) validate(all bool) error {
 		}
 
 	case *Matcher_MatcherTree_:
+		if v == nil {
+			err := MatcherValidationError{
+				field:  "MatcherType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatcherTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetMatcherTree()).(type) {
@@ -150,6 +172,9 @@ func (m *Matcher) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofMatcherTypePresent {
 		err := MatcherValidationError{
 			field:  "MatcherType",
 			reason: "value is required",
@@ -158,7 +183,6 @@ func (m *Matcher) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -260,9 +284,20 @@ func (m *MatchPredicate) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Rule.(type) {
-
+	oneofRulePresent := false
+	switch v := m.Rule.(type) {
 	case *MatchPredicate_OrMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetOrMatch()).(type) {
@@ -294,6 +329,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_AndMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetAndMatch()).(type) {
@@ -325,6 +371,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_NotMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetNotMatch()).(type) {
@@ -356,6 +413,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_AnyMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if m.GetAnyMatch() != true {
 			err := MatchPredicateValidationError{
@@ -369,6 +437,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_HttpRequestHeadersMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetHttpRequestHeadersMatch()).(type) {
@@ -400,6 +479,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_HttpRequestTrailersMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetHttpRequestTrailersMatch()).(type) {
@@ -431,6 +521,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_HttpResponseHeadersMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetHttpResponseHeadersMatch()).(type) {
@@ -462,6 +563,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_HttpResponseTrailersMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetHttpResponseTrailersMatch()).(type) {
@@ -493,6 +605,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_HttpRequestGenericBodyMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetHttpRequestGenericBodyMatch()).(type) {
@@ -524,6 +647,17 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	case *MatchPredicate_HttpResponseGenericBodyMatch:
+		if v == nil {
+			err := MatchPredicateValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if all {
 			switch v := interface{}(m.GetHttpResponseGenericBodyMatch()).(type) {
@@ -555,6 +689,9 @@ func (m *MatchPredicate) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofRulePresent {
 		err := MatchPredicateValidationError{
 			field:  "Rule",
 			reason: "value is required",
@@ -563,7 +700,6 @@ func (m *MatchPredicate) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -949,9 +1085,20 @@ func (m *Matcher_OnMatch) validate(all bool) error {
 
 	var errors []error
 
-	switch m.OnMatch.(type) {
-
+	oneofOnMatchPresent := false
+	switch v := m.OnMatch.(type) {
 	case *Matcher_OnMatch_Matcher:
+		if v == nil {
+			err := Matcher_OnMatchValidationError{
+				field:  "OnMatch",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofOnMatchPresent = true
 
 		if all {
 			switch v := interface{}(m.GetMatcher()).(type) {
@@ -983,6 +1130,17 @@ func (m *Matcher_OnMatch) validate(all bool) error {
 		}
 
 	case *Matcher_OnMatch_Action:
+		if v == nil {
+			err := Matcher_OnMatchValidationError{
+				field:  "OnMatch",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofOnMatchPresent = true
 
 		if all {
 			switch v := interface{}(m.GetAction()).(type) {
@@ -1014,6 +1172,9 @@ func (m *Matcher_OnMatch) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofOnMatchPresent {
 		err := Matcher_OnMatchValidationError{
 			field:  "OnMatch",
 			reason: "value is required",
@@ -1022,7 +1183,6 @@ func (m *Matcher_OnMatch) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -1312,9 +1472,20 @@ func (m *Matcher_MatcherTree) validate(all bool) error {
 		}
 	}
 
-	switch m.TreeType.(type) {
-
+	oneofTreeTypePresent := false
+	switch v := m.TreeType.(type) {
 	case *Matcher_MatcherTree_ExactMatchMap:
+		if v == nil {
+			err := Matcher_MatcherTreeValidationError{
+				field:  "TreeType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTreeTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetExactMatchMap()).(type) {
@@ -1346,6 +1517,17 @@ func (m *Matcher_MatcherTree) validate(all bool) error {
 		}
 
 	case *Matcher_MatcherTree_PrefixMatchMap:
+		if v == nil {
+			err := Matcher_MatcherTreeValidationError{
+				field:  "TreeType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTreeTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetPrefixMatchMap()).(type) {
@@ -1377,6 +1559,17 @@ func (m *Matcher_MatcherTree) validate(all bool) error {
 		}
 
 	case *Matcher_MatcherTree_CustomMatch:
+		if v == nil {
+			err := Matcher_MatcherTreeValidationError{
+				field:  "TreeType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTreeTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetCustomMatch()).(type) {
@@ -1408,6 +1601,9 @@ func (m *Matcher_MatcherTree) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofTreeTypePresent {
 		err := Matcher_MatcherTreeValidationError{
 			field:  "TreeType",
 			reason: "value is required",
@@ -1416,7 +1612,6 @@ func (m *Matcher_MatcherTree) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -1521,9 +1716,20 @@ func (m *Matcher_MatcherList_Predicate) validate(all bool) error {
 
 	var errors []error
 
-	switch m.MatchType.(type) {
-
+	oneofMatchTypePresent := false
+	switch v := m.MatchType.(type) {
 	case *Matcher_MatcherList_Predicate_SinglePredicate_:
+		if v == nil {
+			err := Matcher_MatcherList_PredicateValidationError{
+				field:  "MatchType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetSinglePredicate()).(type) {
@@ -1555,6 +1761,17 @@ func (m *Matcher_MatcherList_Predicate) validate(all bool) error {
 		}
 
 	case *Matcher_MatcherList_Predicate_OrMatcher:
+		if v == nil {
+			err := Matcher_MatcherList_PredicateValidationError{
+				field:  "MatchType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetOrMatcher()).(type) {
@@ -1586,6 +1803,17 @@ func (m *Matcher_MatcherList_Predicate) validate(all bool) error {
 		}
 
 	case *Matcher_MatcherList_Predicate_AndMatcher:
+		if v == nil {
+			err := Matcher_MatcherList_PredicateValidationError{
+				field:  "MatchType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetAndMatcher()).(type) {
@@ -1617,6 +1845,17 @@ func (m *Matcher_MatcherList_Predicate) validate(all bool) error {
 		}
 
 	case *Matcher_MatcherList_Predicate_NotMatcher:
+		if v == nil {
+			err := Matcher_MatcherList_PredicateValidationError{
+				field:  "MatchType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchTypePresent = true
 
 		if all {
 			switch v := interface{}(m.GetNotMatcher()).(type) {
@@ -1648,6 +1887,9 @@ func (m *Matcher_MatcherList_Predicate) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofMatchTypePresent {
 		err := Matcher_MatcherList_PredicateValidationError{
 			field:  "MatchType",
 			reason: "value is required",
@@ -1656,7 +1898,6 @@ func (m *Matcher_MatcherList_Predicate) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -1989,9 +2230,20 @@ func (m *Matcher_MatcherList_Predicate_SinglePredicate) validate(all bool) error
 		}
 	}
 
-	switch m.Matcher.(type) {
-
+	oneofMatcherPresent := false
+	switch v := m.Matcher.(type) {
 	case *Matcher_MatcherList_Predicate_SinglePredicate_ValueMatch:
+		if v == nil {
+			err := Matcher_MatcherList_Predicate_SinglePredicateValidationError{
+				field:  "Matcher",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatcherPresent = true
 
 		if all {
 			switch v := interface{}(m.GetValueMatch()).(type) {
@@ -2023,6 +2275,17 @@ func (m *Matcher_MatcherList_Predicate_SinglePredicate) validate(all bool) error
 		}
 
 	case *Matcher_MatcherList_Predicate_SinglePredicate_CustomMatch:
+		if v == nil {
+			err := Matcher_MatcherList_Predicate_SinglePredicateValidationError{
+				field:  "Matcher",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatcherPresent = true
 
 		if all {
 			switch v := interface{}(m.GetCustomMatch()).(type) {
@@ -2054,6 +2317,9 @@ func (m *Matcher_MatcherList_Predicate_SinglePredicate) validate(all bool) error
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofMatcherPresent {
 		err := Matcher_MatcherList_Predicate_SinglePredicateValidationError{
 			field:  "Matcher",
 			reason: "value is required",
@@ -2062,7 +2328,6 @@ func (m *Matcher_MatcherList_Predicate_SinglePredicate) validate(all bool) error
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -2631,9 +2896,20 @@ func (m *HttpGenericBodyMatch_GenericTextMatch) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Rule.(type) {
-
+	oneofRulePresent := false
+	switch v := m.Rule.(type) {
 	case *HttpGenericBodyMatch_GenericTextMatch_StringMatch:
+		if v == nil {
+			err := HttpGenericBodyMatch_GenericTextMatchValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if utf8.RuneCountInString(m.GetStringMatch()) < 1 {
 			err := HttpGenericBodyMatch_GenericTextMatchValidationError{
@@ -2647,6 +2923,17 @@ func (m *HttpGenericBodyMatch_GenericTextMatch) validate(all bool) error {
 		}
 
 	case *HttpGenericBodyMatch_GenericTextMatch_BinaryMatch:
+		if v == nil {
+			err := HttpGenericBodyMatch_GenericTextMatchValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if len(m.GetBinaryMatch()) < 1 {
 			err := HttpGenericBodyMatch_GenericTextMatchValidationError{
@@ -2660,6 +2947,9 @@ func (m *HttpGenericBodyMatch_GenericTextMatch) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofRulePresent {
 		err := HttpGenericBodyMatch_GenericTextMatchValidationError{
 			field:  "Rule",
 			reason: "value is required",
@@ -2668,7 +2958,6 @@ func (m *HttpGenericBodyMatch_GenericTextMatch) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
