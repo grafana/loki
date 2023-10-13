@@ -16,7 +16,8 @@ func TestArchive(t *testing.T) {
 	dir2 := t.TempDir()
 
 	numSeries := 100
-	data := mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
+	numKeysPerSeries := 10000
+	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{

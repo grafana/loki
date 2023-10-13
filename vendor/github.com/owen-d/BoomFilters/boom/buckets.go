@@ -7,6 +7,10 @@ import (
 	"math/bits"
 )
 
+type BucketGetter interface {
+	Get(bucket uint) uint32
+}
+
 // Buckets is a fast, space-efficient array of buckets where each bucket can
 // store up to a configured maximum value.
 type Buckets struct {
@@ -187,4 +191,36 @@ func (b *Buckets) GobDecode(data []byte) error {
 	_, err := b.ReadFrom(buf)
 
 	return err
+}
+
+type BucketsLazyReader struct {
+	Buckets
+}
+
+// NewBucketsLazyReader creates a new BucketsLazyReader from the provided data
+// and returns the number of bytes used by the Buckets
+// The data is expected to be in the format written by Buckets.WriteTo().
+// Whereas Buckets.ReadFrom() reads the entire data into memory and
+// makes a copy of the data buffer, BucketsLazyReader keeps a reference
+// to the original data buffer and only reads from it when needed.
+func NewBucketsLazyReader(data []byte) (BucketsLazyReader, int) {
+	bucketSize := data[0]
+
+	// Skip bucketSize (uint8), max (uint8), count (uint64)
+	lenDataOffset := 2*binary.Size(uint8(0)) + binary.Size(uint64(0))
+	// Add len field (uint64(0)) to the above offset
+	dataStart := lenDataOffset + binary.Size(uint64(0))
+	dataEnd := dataStart + int(binary.BigEndian.Uint64(data[lenDataOffset:]))
+
+	return BucketsLazyReader{
+		Buckets: Buckets{
+			data:       data[dataStart:dataEnd],
+			bucketSize: bucketSize,
+		},
+	}, dataEnd
+}
+
+// Get returns the value in the specified bucket.
+func (s BucketsLazyReader) Get(bucket uint) uint32 {
+	return s.Buckets.Get(bucket)
 }

@@ -350,3 +350,5 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-
 replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 
 replace github.com/grafana/loki/pkg/push => ./pkg/push
+
+replace github.com/owen-d/BoomFilters => github.com/salvacorts/BoomFilters v0.0.0-20231013103736-37fed8f015e6

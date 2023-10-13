@@ -16,6 +16,10 @@ type Bloom struct {
 	sbf boom.ScalableBloomFilter
 }
 
+func (b *Bloom) Test(data []byte) bool {
+	return b.sbf.Test(data)
+}
+
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
 	buf := bytes.NewBuffer(BlockPool.Get(int(b.sbf.Capacity() / 8)))
@@ -32,15 +36,19 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	return nil
 }
 
-func (b *Bloom) Decode(dec *encoding.Decbuf) error {
+type BloomQuerier struct {
+	// TODO(salvacorts): use lazy bloom reader
+	sbf boom.ScalableBloomFilterLazyReader
+}
+
+func (b *BloomQuerier) Test(data []byte) bool {
+	return b.sbf.Test(data)
+}
+
+func (b *BloomQuerier) Decode(dec *encoding.Decbuf) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
-
-	_, err := b.sbf.ReadFrom(bytes.NewReader(data))
-	if err != nil {
-		return errors.Wrap(err, "decoding bloom filter")
-	}
-
+	b.sbf, _ = boom.NewScalableBloomFilterLazyReader(data)
 	return nil
 }
 
@@ -91,7 +99,7 @@ type BloomPageDecoder struct {
 	dec  *encoding.Decbuf
 
 	n   int // number of blooms in page
-	cur *Bloom
+	cur *BloomQuerier
 	err error
 }
 
@@ -111,7 +119,7 @@ func (d *BloomPageDecoder) Next() bool {
 		return false
 	}
 
-	var b Bloom
+	var b BloomQuerier
 	d.err = b.Decode(d.dec)
 	// end of iteration, error
 	if d.err != nil {
@@ -121,7 +129,7 @@ func (d *BloomPageDecoder) Next() bool {
 	return true
 }
 
-func (d *BloomPageDecoder) At() *Bloom {
+func (d *BloomPageDecoder) At() *BloomQuerier {
 	return d.cur
 }
 
