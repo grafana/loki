@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -363,6 +364,15 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	// Note that the org ID should be injected by the scheduler processor.
 	for _, h := range r.Headers {
 		httpReq.Header[h.Key] = h.Values
+	}
+
+	// If there is not org ID in the context, we try the HTTP request.
+	_, err = user.ExtractOrgID(ctx)
+	if err != nil {
+		_, ctx, err = user.ExtractOrgIDFromHTTPRequest(httpReq)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if err := httpReq.ParseForm(); err != nil {
