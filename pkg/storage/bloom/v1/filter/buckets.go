@@ -84,7 +84,7 @@ func (b *Buckets) Get(bucket uint) uint32 {
 
 func (b *Buckets) PopCount() (count int) {
 	for _, x := range b.data {
-		count += bits.OnesCount8(uint8(x))
+		count += bits.OnesCount8(x)
 	}
 	return count
 }
