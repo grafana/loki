@@ -8,10 +8,10 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // anonymous import to get the pprof handler registered
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,7 +60,13 @@ type TLSConfig struct {
 
 // Config for a Server
 type Config struct {
-	MetricsNamespace  string `yaml:"-"`
+	MetricsNamespace string `yaml:"-"`
+	// Set to > 1 to add native histograms to requestDuration.
+	// See documentation for NativeHistogramBucketFactor in
+	// https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#HistogramOpts
+	// for details. A generally useful value is 1.1.
+	MetricsNativeHistogramFactor float64 `yaml:"-"`
+
 	HTTPListenNetwork string `yaml:"http_listen_network"`
 	HTTPListenAddress string `yaml:"http_listen_address"`
 	HTTPListenPort    int    `yaml:"http_listen_port"`
@@ -102,13 +108,15 @@ type Config struct {
 	GRPCServerMinTimeBetweenPings      time.Duration `yaml:"grpc_server_min_time_between_pings"`
 	GRPCServerPingWithoutStreamAllowed bool          `yaml:"grpc_server_ping_without_stream_allowed"`
 
-	LogFormat             logging.Format    `yaml:"log_format"`
-	LogLevel              logging.Level     `yaml:"log_level"`
-	Log                   logging.Interface `yaml:"-"`
-	LogSourceIPs          bool              `yaml:"log_source_ips_enabled"`
-	LogSourceIPsHeader    string            `yaml:"log_source_ips_header"`
-	LogSourceIPsRegex     string            `yaml:"log_source_ips_regex"`
-	LogRequestAtInfoLevel bool              `yaml:"log_request_at_info_level_enabled"`
+	LogFormat                    logging.Format    `yaml:"log_format"`
+	LogLevel                     logging.Level     `yaml:"log_level"`
+	Log                          logging.Interface `yaml:"-"`
+	LogSourceIPs                 bool              `yaml:"log_source_ips_enabled"`
+	LogSourceIPsHeader           string            `yaml:"log_source_ips_header"`
+	LogSourceIPsRegex            string            `yaml:"log_source_ips_regex"`
+	LogRequestHeaders            bool              `yaml:"log_request_headers"`
+	LogRequestAtInfoLevel        bool              `yaml:"log_request_at_info_level_enabled"`
+	LogRequestExcludeHeadersList string            `yaml:"log_request_exclude_headers_list"`
 
 	// If not set, default signal handler is used.
 	SignalHandler SignalHandler `yaml:"-"`
@@ -290,10 +298,13 @@ func New(cfg Config) (*Server, error) {
 
 	// Prometheus histograms for requests.
 	requestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: cfg.MetricsNamespace,
-		Name:      "request_duration_seconds",
-		Help:      "Time (in seconds) spent serving HTTP requests.",
-		Buckets:   instrument.DefBuckets,
+		Namespace:                       cfg.MetricsNamespace,
+		Name:                            "request_duration_seconds",
+		Help:                            "Time (in seconds) spent serving HTTP requests.",
+		Buckets:                         instrument.DefBuckets,
+		NativeHistogramBucketFactor:     cfg.MetricsNativeHistogramFactor,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route", "status_code", "ws"})
 	reg.MustRegister(requestDuration)
 
@@ -356,12 +367,8 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	grpcOptions := []grpc.ServerOption{
-		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-			grpcMiddleware...,
-		)),
-		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
-			grpcStreamMiddleware...,
-		)),
+		grpc.ChainUnaryInterceptor(grpcMiddleware...),
+		grpc.ChainStreamInterceptor(grpcStreamMiddleware...),
 		grpc.KeepaliveParams(grpcKeepAliveOptions),
 		grpc.KeepaliveEnforcementPolicy(grpcKeepAliveEnforcementPolicy),
 		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),
@@ -405,11 +412,7 @@ func New(cfg Config) (*Server, error) {
 			RouteMatcher: router,
 			SourceIPs:    sourceIPs,
 		},
-		middleware.Log{
-			Log:                   log,
-			SourceIPs:             sourceIPs,
-			LogRequestAtInfoLevel: cfg.LogRequestAtInfoLevel,
-		},
+		middleware.NewLogMiddleware(log, cfg.LogRequestHeaders, cfg.LogRequestAtInfoLevel, sourceIPs, strings.Split(cfg.LogRequestExcludeHeadersList, ",")),
 		middleware.Instrument{
 			RouteMatcher:     router,
 			Duration:         requestDuration,

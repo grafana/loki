@@ -39,6 +39,7 @@ import (
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcutil"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
@@ -65,7 +66,7 @@ func NewServerHandlerTransport(w http.ResponseWriter, r *http.Request, stats []s
 	contentSubtype, validContentType := grpcutil.ContentSubtype(contentType)
 	if !validContentType {
 		msg := fmt.Sprintf("invalid gRPC request content-type %q", contentType)
-		http.Error(w, msg, http.StatusBadRequest)
+		http.Error(w, msg, http.StatusUnsupportedMediaType)
 		return nil, errors.New(msg)
 	}
 	if _, ok := w.(http.Flusher); !ok {
@@ -83,11 +84,12 @@ func NewServerHandlerTransport(w http.ResponseWriter, r *http.Request, stats []s
 		contentSubtype: contentSubtype,
 		stats:          stats,
 	}
+	st.logger = prefixLoggerForServerHandlerTransport(st)
 
 	if v := r.Header.Get("grpc-timeout"); v != "" {
 		to, err := decodeTimeout(v)
 		if err != nil {
-			msg := fmt.Sprintf("malformed time-out: %v", err)
+			msg := fmt.Sprintf("malformed grpc-timeout: %v", err)
 			http.Error(w, msg, http.StatusBadRequest)
 			return nil, status.Error(codes.Internal, msg)
 		}
@@ -150,13 +152,14 @@ type serverHandlerTransport struct {
 	// TODO make sure this is consistent across handler_server and http2_server
 	contentSubtype string
 
-	stats []stats.Handler
+	stats  []stats.Handler
+	logger *grpclog.PrefixLogger
 }
 
 func (ht *serverHandlerTransport) Close(err error) {
 	ht.closeOnce.Do(func() {
-		if logger.V(logLevel) {
-			logger.Infof("Closing serverHandlerTransport: %v", err)
+		if ht.logger.V(logLevel) {
+			ht.logger.Infof("Closing: %v", err)
 		}
 		close(ht.closedCh)
 	})
@@ -450,7 +453,7 @@ func (ht *serverHandlerTransport) IncrMsgSent() {}
 
 func (ht *serverHandlerTransport) IncrMsgRecv() {}
 
-func (ht *serverHandlerTransport) Drain() {
+func (ht *serverHandlerTransport) Drain(debugData string) {
 	panic("Drain() is not implemented")
 }
 
