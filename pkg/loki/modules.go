@@ -414,34 +414,62 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	handler := querier.NewQuerierHandler(t.querierAPI)
 	httpHandler := querier.NewQuerierHTTPHandler(handler)
 
-	queryHandlers := map[string]http.Handler{
-		"/loki/api/v1/query_range": middleware.Merge(
-			httpMiddleware,
-			querier.WrapQuerySpanAndTimeout("query.RangeQuery", t.Overrides),
-		).Wrap(httpHandler),
+	// If the querier is running standalone without the query-frontend or query-scheduler, we must register the internal
+	// HTTP handler externally (as it's the only handler that needs to register on querier routes) and provide the
+	// external Loki Server HTTP handler to the frontend worker to ensure requests it processes use the default
+	// middleware instrumentation.
+	if querierWorkerServiceConfig.QuerierRunningStandalone() {
 
-		"/loki/api/v1/query": middleware.Merge(
-			httpMiddleware,
-			querier.WrapQuerySpanAndTimeout("query.InstantQuery", t.Overrides),
-		).Wrap(httpHandler),
+		/* TODO: apply middleware
+		// Create a couple Middlewares used to handle panics, perform auth, parse forms in http request, and set content type in response
+		handlerMiddleware := middleware.Merge(
+			httpreq.ExtractQueryTagsMiddleware(),
+			serverutil.RecoveryHTTPMiddleware,
+			t.HTTPAuthMiddleware,
+			serverutil.NewPrepopulateMiddleware(),
+			serverutil.ResponseJSONMiddleware(),
+		)
+		*/
 
-		"/loki/api/v1/label":               labelsHTTPMiddleware.Wrap(httpHandler),
-		"/loki/api/v1/labels":              labelsHTTPMiddleware.Wrap(httpHandler),
-		"/loki/api/v1/label/{name}/values": labelsHTTPMiddleware.Wrap(httpHandler),
+		// First, register the internal querier handler with the external HTTP server
+		router := t.Server.HTTP
+		if t.Cfg.Server.PathPrefix != "" {
+			router = router.PathPrefix(t.Cfg.Server.PathPrefix).Subrouter()
+		}
 
-		"/loki/api/v1/series":             querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(httpHandler),
-		"/loki/api/v1/index/stats":        indexStatsHTTPMiddleware.Wrap(httpHandler),
-		"/loki/api/v1/index/volume":       volumeHTTPMiddleware.Wrap(httpHandler),
-		"/loki/api/v1/index/volume_range": volumeRangeHTTPMiddleware.Wrap(httpHandler),
+		router.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(
+			middleware.Merge(
+				httpMiddleware,
+				querier.WrapQuerySpanAndTimeout("query.RangeQuery", t.Overrides),
+			).Wrap(httpHandler),
+		)
 
-		"/api/prom/query": middleware.Merge(
-			httpMiddleware,
-			querier.WrapQuerySpanAndTimeout("query.LogQuery", t.Overrides),
-		).Wrap(httpHandler),
+		router.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(
+			middleware.Merge(
+				httpMiddleware,
+				querier.WrapQuerySpanAndTimeout("query.InstantQuery", t.Overrides),
+			).Wrap(httpHandler),
+		)
 
-		"/api/prom/label":               labelsHTTPMiddleware.Wrap(httpHandler),
-		"/api/prom/label/{name}/values": labelsHTTPMiddleware.Wrap(httpHandler),
-		"/api/prom/series":              querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(httpHandler),
+		router.Path("/loki/api/v1/label").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/loki/api/v1/labels").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
+
+		router.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(httpHandler))
+		router.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(indexStatsHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
+
+		router.Path("/api/prom/query").Methods("GET", "POST").Handler(
+			middleware.Merge(
+				httpMiddleware,
+				querier.WrapQuerySpanAndTimeout("query.LogQuery", t.Overrides),
+			).Wrap(httpHandler),
+		)
+
+		router.Path("/api/prom/label").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
+		router.Path("/api/prom/series").Methods("GET", "POST").Handler(querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides).Wrap(httpHandler))
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
@@ -453,21 +481,13 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
-	alwaysExternalHandlers := map[string]http.Handler{
-		"/loki/api/v1/tail": http.HandlerFunc(t.querierAPI.TailHandler),
-		"/api/prom/tail":    http.HandlerFunc(t.querierAPI.TailHandler),
-	}
+	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(http.HandlerFunc(t.querierAPI.TailHandler))
+	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(http.HandlerFunc(t.querierAPI.TailHandler))
 
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
 		prometheus.DefaultRegisterer,
-		t.Cfg.Server.PathPrefix,
-		queryHandlers,
-		alwaysExternalHandlers,
 		handler,
-		t.Server.HTTP,
-		t.Server.HTTPServer.Handler,
-		t.HTTPAuthMiddleware,
 	)
 	if err != nil {
 		return nil, err

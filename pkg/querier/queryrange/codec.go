@@ -478,7 +478,7 @@ func (Codec) EncodeHTTPGrpcResponse(ctx context.Context, req *httpgrpc.HTTPReque
 	version := loghttp.GetVersion(req.Url)
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(ctx, version, res, &buf)
+	err := encodeResponseJSONTo(version, res, &buf)
 	if err != nil {
 		return nil, err
 	}
@@ -886,7 +886,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	defer sp.Finish()
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(ctx, version, res, &buf)
+	err := encodeResponseJSONTo(version, res, &buf)
 	if err != nil {
 		return nil, err
 	}
@@ -903,7 +903,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	return &resp, nil
 }
 
-func encodeResponseJSONTo(ctx context.Context, version loghttp.Version, res queryrangebase.Response, w io.Writer) error {
+func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, w io.Writer) error {
 	switch response := res.(type) {
 	case *LokiPromResponse:
 		return response.encodeTo(w)

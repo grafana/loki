@@ -70,7 +70,7 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	}
 
 	version := loghttp.GetVersion(r.RequestURI)
-	if err := encodeResponseJSONTo(ctx, version, response, w); err != nil {
+	if err := encodeResponseJSONTo(version, response, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }
