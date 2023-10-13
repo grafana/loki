@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
 
@@ -199,8 +200,8 @@ func TestVolumeHandler(t *testing.T) {
 			mode string
 			req  *logproto.VolumeRequest
 		}{
-			{mode: "instant", req: &logproto.VolumeRequest{Matchers: `{foo="bar"}`}},
-			{mode: "range", req: &logproto.VolumeRequest{Matchers: `{foo="bar"}`}},
+			{mode: "instant", req: loghttp.NewVolumeInstantQueryWithDefaults(`{foo="bar"}`)},
+			{mode: "range", req: loghttp.NewVolumeRangeQueryWithDefaults(`{foo="bar"}`)},
 		} {
 			t.Run(fmt.Sprintf("%s queries return label volumes from the querier", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()

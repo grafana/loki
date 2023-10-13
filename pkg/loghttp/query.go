@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -476,6 +477,27 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+func NewVolumeRangeQueryWithDefaults(matchers string) *logproto.VolumeRequest {
+	start, end, _ := determineBounds(time.Now(), "", "", "")
+	step := (time.Duration(defaultQueryRangeStep(start, end)) * time.Second).Milliseconds()
+	from, through := util.RoundToMilliseconds(start, end)
+	return &logproto.VolumeRequest{
+		From: from,
+		Through: through,
+		Matchers: matchers,
+		Limit: seriesvolume.DefaultLimit,
+		Step: step,
+		TargetLabels: nil,
+		AggregateBy: seriesvolume.DefaultAggregateBy,
+	}
+}
+
+func NewVolumeInstantQueryWithDefaults(matchers string) *logproto.VolumeRequest {
+	r := NewVolumeRangeQueryWithDefaults(matchers)
+	r.Step = 0
+	return r
 }
 
 type VolumeInstantQuery struct {

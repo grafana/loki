@@ -352,7 +352,15 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 // Returns either N values where N is the time range / step and a single value for a time range depending on the request.
 func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	// TODO: understand the difference between instant and range requests.
-	return q.querier.Volume(ctx, req)
+	resp, err := q.querier.Volume(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.VolumeResponse{Volumes: []logproto.Volume{}}, nil
+	}
+
+	return resp, nil
 }
 
 // parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
