@@ -7,6 +7,7 @@ import (
 	"text/template"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 const (
@@ -25,7 +26,21 @@ var (
 	//go:embed loki-runtime-config.yaml
 	lokiRuntimeConfigYAMLTmplFile embed.FS
 
-	lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
+	lokiConfigYAMLTmpl = template.Must(template.New("loki-config.yaml").Funcs(template.FuncMap{
+		"schemas": func(specSchemas []lokiv1.ObjectStorageSchema) map[string]struct{} {
+			schemas := map[string]struct{}{}
+			for _, schema := range specSchemas {
+				if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
+					schemas["boltdb"] = struct{}{}
+				} else {
+					schemas["tsdb"] = struct{}{}
+				}
+			}
+			return schemas
+		},
+	}).ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
+
+	// lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
 
 	lokiRuntimeConfigYAMLTmpl = template.Must(template.ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
 )

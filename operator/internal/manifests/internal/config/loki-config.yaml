@@ -254,7 +254,11 @@ schema_config:
         prefix: index_
       object_store: {{ $store }}
       schema: {{ .Version }}
+      {{- if or (eq .Version "v11") (eq .Version "v12")}}
       store: boltdb-shipper
+      {{- else }}
+      store: tsdb
+      {{- end}}
     {{- end }}
 {{ if .Ruler.Enabled }}
 ruler:
@@ -468,9 +472,27 @@ server:
 {{- end }}
   log_level: info
 storage_config:
+{{ $schemas := schemas .ObjectStorage.Schemas }}
+{{- range $schema, $_ := $schemas }}
+{{- if eq $schema "boltdb" }}
   boltdb_shipper:
-    active_index_directory: {{ .StorageDirectory }}/index
-    cache_location: {{ .StorageDirectory }}/index_cache
+    active_index_directory: {{ $.StorageDirectory }}/index
+    cache_location: {{ $.StorageDirectory }}/index_cache
+{{- end }}
+{{- if eq $schema "tsdb" }}
+  tsdb_shipper:
+    active_index_directory: {{ $.StorageDirectory }}/tsdb-index
+    cache_location: {{ $.StorageDirectory }}/tsdb-cache
+{{- end }}
+{{template "commonStorageConfig" $ }}
+{{- end }}
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: {{ .EnableRemoteReporting }}
+
+
+{{define "commonStorageConfig" }}
     cache_ttl: 24h
     resync_interval: 5m
     shared_store: {{ .ObjectStorage.SharedStore }}
@@ -486,7 +508,4 @@ storage_config:
         tls_cipher_suites: {{ .TLS.CipherSuitesString }}
         tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
-tracing:
-  enabled: false
-analytics:
-  reporting_enabled: {{ .EnableRemoteReporting }}
+{{- end }}
