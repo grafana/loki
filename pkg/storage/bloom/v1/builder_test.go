@@ -29,12 +29,12 @@ func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 		}
 
 		var bloom Bloom
-		bloom.sbf = *boom.NewScalableBloomFilter(1024, 0.01, 0.8)
+		bloom.ScalableBloomFilter = *boom.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 		keys := make([][]byte, 0, keysPerSeries)
 		for j := 0; j < keysPerSeries; j++ {
 			key := []byte(fmt.Sprint(j))
-			bloom.sbf.Add(key)
+			bloom.Add(key)
 			keys = append(keys, key)
 		}
 
