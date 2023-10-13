@@ -437,7 +437,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
 			querier.WrapQuerySpanAndTimeout("query.LogQuery", t.Overrides),
-		).Wrap(http.HandlerFunc(t.querierAPI.LogQueryHandler)),
+		).Wrap(httpHandler),
 
 		"/api/prom/label":               labelsHTTPMiddleware.Wrap(httpHandler),
 		"/api/prom/label/{name}/values": labelsHTTPMiddleware.Wrap(httpHandler),

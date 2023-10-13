@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/dskit/tenant"
@@ -68,8 +67,12 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 	}
 }
 
-// RangeQueryHandler is a http.HandlerFunc for range queries.
+// RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
 func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
+	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
+		return logqlmodel.Result{}, err
+	}
+
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
 		return logqlmodel.Result{}, err
@@ -91,60 +94,6 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 	}
 	query := q.engine.Query(params)
 	return query.Exec(ctx)
-}
-
-// LogQueryHandler is a http.HandlerFunc for log only queries.
-func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := loghttp.ParseRangeQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-	request.Query, err = parseRegexQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	expr, err := syntax.ParseExpr(request.Query)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	// short circuit metric queries
-	if _, ok := expr.(syntax.SampleExpr); ok {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams), w)
-		return
-	}
-
-	ctx := r.Context()
-	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	params := logql.NewLiteralParams(
-		request.Query,
-		request.Start,
-		request.End,
-		request.Step,
-		request.Interval,
-		request.Direction,
-		request.Limit,
-		request.Shards,
-	)
-	query := q.engine.Query(params)
-
-	result, err := query.Exec(ctx)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
@@ -185,12 +134,6 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	req.Query, err = parseRegexQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -360,25 +303,6 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	}
 
 	return resp, nil
-}
-
-// parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
-// This is used only to keep regexp query string support until it gets fully deprecated.
-func parseRegexQuery(httpRequest *http.Request) (string, error) {
-	query := httpRequest.Form.Get("query")
-	regexp := httpRequest.Form.Get("regexp")
-	if regexp != "" {
-		expr, err := syntax.ParseLogSelector(query, true)
-		if err != nil {
-			return "", err
-		}
-		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
-		if err != nil {
-			return "", err
-		}
-		query = newExpr.String()
-	}
-	return query, nil
 }
 
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {

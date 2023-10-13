@@ -252,20 +252,21 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 
 	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
-		req, err := loghttp.ParseRangeQuery(r)
+		rangeQuery, err := loghttp.ParseRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
 		return &LokiRequest{
-			Query:     req.Query,
-			Limit:     req.Limit,
-			Direction: req.Direction,
-			StartTs:   req.Start.UTC(),
-			EndTs:     req.End.UTC(),
-			Step:      req.Step.Milliseconds(),
-			Interval:  req.Interval.Milliseconds(),
+			Query:     rangeQuery.Query,
+			Limit:     rangeQuery.Limit,
+			Direction: rangeQuery.Direction,
+			StartTs:   rangeQuery.Start.UTC(),
+			EndTs:     rangeQuery.End.UTC(),
+			Step:      rangeQuery.Step.Milliseconds(),
+			Interval:  rangeQuery.Interval.Milliseconds(),
 			Path:      r.URL.Path,
-			Shards:    req.Shards,
+			Shards:    rangeQuery.Shards,
 		}, nil
 	case InstantQueryOp:
 		req, err := loghttp.ParseInstantQuery(r)
@@ -905,7 +906,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 func encodeResponseJSONTo(ctx context.Context, version loghttp.Version, res queryrangebase.Response, w io.Writer) error {
 	switch response := res.(type) {
 	case *LokiPromResponse:
-		return response.encodeTo(ctx, w)
+		return response.encodeTo(w)
 	case *LokiResponse:
 		streams := make([]logproto.Stream, len(response.Data.Result))
 

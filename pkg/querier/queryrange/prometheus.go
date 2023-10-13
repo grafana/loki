@@ -45,7 +45,7 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 	sp := opentracing.SpanFromContext(ctx)
 	var buf bytes.Buffer
 
-	err := p.encodeTo(ctx, &buf)
+	err := p.encodeTo(&buf)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 	return &resp, nil
 }
 
-func (p *LokiPromResponse) encodeTo(ctx context.Context, w io.Writer) error {
+func (p *LokiPromResponse) encodeTo(w io.Writer) error {
 	var (
 		b   []byte
 		err error
@@ -82,8 +82,8 @@ func (p *LokiPromResponse) encodeTo(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
-	w.Write(b)
-	return nil
+	_, err = w.Write(b)
+	return err
 }
 
 func (p *LokiPromResponse) marshalVector() ([]byte, error) {
