@@ -351,7 +351,6 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 // VolumeHandler queries the index label volumes related to the passed matchers and given time range.
 // Returns either N values where N is the time range / step and a single value for a time range depending on the request.
 func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	// TODO: understand the difference between instant and range requests.
 	resp, err := q.querier.Volume(ctx, req)
 	if err != nil {
 		return nil, err

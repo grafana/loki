@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	strings "strings"
@@ -712,6 +713,44 @@ func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	require.Equal(t, "20", got.URL.Query().Get("limit"))
 	require.Equal(t, fmt.Sprintf("%f", float64(toEncode.Step/1e3)), got.URL.Query().Get("step"))
 	require.Equal(t, `foo,bar`, got.URL.Query().Get("targetLabels"))
+}
+
+func Test_codec_seriesVolume_DecodeRequest(t *testing.T) {
+	t.Run("instant queries set a step of 0", func(t *testing.T) {
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume"+
+			"?start=0"+
+			"&end=1"+
+			"&step=42"+
+			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		got, err := DefaultCodec.DecodeRequest(context.Background(), req, nil)
+		require.NoError(t, err)
+		
+		require.Equal(t, int64(0), got.(*logproto.VolumeRequest).Step)
+	})
+
+	t.Run("range queries parse step from request", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume_range"+
+			"?start=0"+
+			"&end=1"+
+			"&step=42"+
+			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		got, err := DefaultCodec.DecodeRequest(context.Background(), req, nil)
+		require.NoError(t, err)
+
+		require.Equal(t, (42 * time.Second).Milliseconds(), got.(*logproto.VolumeRequest).Step)
+	})
+
+	t.Run("range queries provide default step when not provided", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume_range"+
+			"?start=0"+
+			"&end=1"+
+			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		got, err := DefaultCodec.DecodeRequest(context.Background(), req, nil)
+		require.NoError(t, err)
+
+		require.Equal(t, time.Second.Milliseconds(), got.(*logproto.VolumeRequest).Step)
+	})
 }
 
 func Test_codec_EncodeResponse(t *testing.T) {

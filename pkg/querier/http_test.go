@@ -250,65 +250,6 @@ func TestVolumeHandler(t *testing.T) {
 			})
 		}
 	})
-
-	// TODO: move tests into codec_test.go
-	/*
-		t.Run("instant queries set a step of 0", func(t *testing.T) {
-			querier := newQuerierMock()
-			querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-			api := setupAPI(querier)
-
-			req := httptest.NewRequest(http.MethodGet, "/volume"+
-				"?start=0"+
-				"&end=1"+
-				"&step=42"+
-				"&query=%7Bfoo%3D%22bar%22%7D", nil)
-			makeRequest(t, http.HandlerFunc(api.VolumeInstantHandler), req)
-
-			calls := querier.GetMockedCallsByMethod("Volume")
-			require.Len(t, calls, 1)
-
-			request := calls[0].Arguments[1].(*logproto.VolumeRequest)
-			require.Equal(t, int64(0), request.Step)
-		})
-
-		t.Run("range queries parse step from request", func(t *testing.T) {
-			querier := newQuerierMock()
-			querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-			api := setupAPI(querier)
-
-			req := httptest.NewRequest(http.MethodGet, "/volume"+
-				"?start=0"+
-				"&end=1"+
-				"&step=42"+
-				"&query=%7Bfoo%3D%22bar%22%7D", nil)
-			makeRequest(t, http.HandlerFunc(api.VolumeRangeHandler), req)
-
-			calls := querier.GetMockedCallsByMethod("Volume")
-			require.Len(t, calls, 1)
-
-			request := calls[0].Arguments[1].(*logproto.VolumeRequest)
-			require.Equal(t, (42 * time.Second).Milliseconds(), request.Step)
-		})
-
-		t.Run("range queries provide default step when not provided", func(t *testing.T) {
-			querier := newQuerierMock()
-			querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
-			api := setupAPI(querier)
-
-			req := httptest.NewRequest(http.MethodGet, "/volume"+
-				"?start=0"+
-				"&end=1"+
-				"&query=%7Bfoo%3D%22bar%22%7D", nil)
-			makeRequest(t, http.HandlerFunc(api.VolumeRangeHandler), req)
-
-			calls := querier.GetMockedCallsByMethod("Volume")
-			require.Len(t, calls, 1)
-
-			request := calls[0].Arguments[1].(*logproto.VolumeRequest)
-			require.Equal(t, time.Second.Milliseconds(), request.Step)
-		})
-	*/
 }
 
 func makeRequest(t *testing.T, handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
