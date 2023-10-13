@@ -54,7 +54,7 @@ import (
 // optimal fill ratio
 const fillRatio = 0.5
 
-type FilterTester interface {
+type Checker interface {
 	// Test will test for membership of the data and returns true if it is a
 	// member, false if not.
 	Test(data []byte) bool
@@ -63,7 +63,7 @@ type FilterTester interface {
 // Filter is a probabilistic data structure which is used to test the
 // membership of an element in a set.
 type Filter interface {
-	FilterTester
+	Checker
 
 	// Add will add the data to the Bloom filter. It returns the filter to
 	// allow for chaining.
