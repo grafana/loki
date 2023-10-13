@@ -54,11 +54,11 @@ func testRuleEval(t *testing.T, mode string) {
 
 	cliWrite := client.New(tenantID, "", tWrite.HTTPURL())
 	cliWrite.Now = now
-	t.Run("ingest logs", func(t *testing.T) {
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("HEAD /", now, map[string]string{"method": "HEAD", "job": job}))
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now, map[string]string{"method": "GET", "job": job}))
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now.Add(time.Second), map[string]string{"method": "GET", "job": job}))
-	})
+
+	// 1. Ingest some logs
+	require.NoError(t, cliWrite.PushLogLineWithTimestamp("HEAD /", now, map[string]string{"method": "HEAD", "job": job}))
+	require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now, map[string]string{"method": "GET", "job": job}))
+	require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now.Add(time.Second), map[string]string{"method": "GET", "job": job}))
 
 	// advance time to after the last ingested log line so queries don't return empty results
 	now = now.Add(time.Second * 2)
@@ -153,24 +153,24 @@ groups:
 
 	cliBackend := client.New(tenantID, "", tBackend.HTTPURL())
 	cliBackend.Now = now
-	t.Run(fmt.Sprintf("%s rule evaluation", mode), func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
 
-		// check rules exist
-		resp, err := cliBackend.GetRules(ctx)
+	// 2. Assert rules evaluation
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-		require.NoError(t, err)
-		require.NotNil(t, resp)
+	// check rules exist
+	resp, err := cliBackend.GetRules(ctx)
 
-		require.Equal(t, "success", resp.Status)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
 
-		require.Len(t, resp.Data.Groups, 1)
-		require.Len(t, resp.Data.Groups[0].Rules, 1)
+	require.Equal(t, "success", resp.Status)
 
-		// ensure that both remote-write receivers were called
-		require.Eventually(t, func() bool {
-			return assert.ObjectsAreEqualValues(true, called)
-		}, 20*time.Second, 100*time.Millisecond, "remote-write was not called")
-	})
+	require.Len(t, resp.Data.Groups, 1)
+	require.Len(t, resp.Data.Groups[0].Rules, 1)
+
+	// ensure that both remote-write receivers were called
+	require.Eventually(t, func() bool {
+		return assert.ObjectsAreEqualValues(true, called)
+	}, 30*time.Second, 100*time.Millisecond, "remote-write was not called")
 }

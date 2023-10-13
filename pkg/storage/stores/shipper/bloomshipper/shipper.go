@@ -1,7 +1,6 @@
 package bloomshipper
 
 import (
-	"archive/zip"
 	"context"
 	"fmt"
 	"io"
@@ -137,7 +136,7 @@ func isOutsideRange(
 		b.EndTimestamp < startTimestamp || b.StartTimestamp > endTimestamp
 }
 
-// unzip the bytes into directory and returns absolute path to this directory.
+// extract the files into directory and returns absolute path to this directory.
 func (s *Shipper) extractBlock(block *Block, ts time.Time) (string, error) {
 	workingDirectoryPath := filepath.Join(s.config.WorkingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixMilli(), 10))
 	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
@@ -182,34 +181,9 @@ func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, err
 }
 
 func extractArchive(archivePath string, workingDirectoryPath string) error {
-	reader, err := zip.OpenReader(archivePath)
+	file, err := os.Open(archivePath)
 	if err != nil {
-		return fmt.Errorf("error opening archive: %w", err)
+		return fmt.Errorf("error opening archive file %s: %w", file.Name(), err)
 	}
-	defer reader.Close()
-	for _, file := range reader.File {
-		err := extractInnerFile(file, workingDirectoryPath)
-		if err != nil {
-			return fmt.Errorf("error extracting %s file from archive: %w", file.Name, err)
-		}
-	}
-	return nil
-}
-
-func extractInnerFile(file *zip.File, workingDirectoryPath string) error {
-	innerFile, err := file.Open()
-	if err != nil {
-		return fmt.Errorf("error opening file: %w", err)
-	}
-	defer innerFile.Close()
-	extractedInnerFile, err := os.Create(filepath.Join(workingDirectoryPath, file.Name))
-	if err != nil {
-		return fmt.Errorf("error creating empty file: %w", err)
-	}
-	defer extractedInnerFile.Close()
-	_, err = io.Copy(extractedInnerFile, innerFile)
-	if err != nil {
-		return fmt.Errorf("error writing data: %w", err)
-	}
-	return nil
+	return v1.UnTarGz(workingDirectoryPath, file)
 }

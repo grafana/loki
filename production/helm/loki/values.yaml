@@ -342,7 +342,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.8.1
+  version: v1.8.3
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -635,6 +635,8 @@ monitoring:
       tolerations: []
     # PodLogs configuration
     podLogs:
+      # -- PodLogs version
+      apiVersion: monitoring.grafana.com/v1alpha1
       # -- PodLogs annotations
       annotations: {}
       # -- Additional PodLogs labels
@@ -1378,12 +1380,8 @@ gateway:
     # high CPU load.
     htpasswd: >-
       {{ if .Values.loki.tenants }}
-
-
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
-
         {{- end }}
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'

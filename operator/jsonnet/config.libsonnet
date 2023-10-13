@@ -56,6 +56,15 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         ],
       },
 
+    // replaceType updates the type of a panel. Used to
+    // transform "stat" graphs in "singlestat" to ensure OCP Console compatibility
+    local replaceType = function(type, replacement)
+      function(p) p + (
+        if p.type == type then {
+          type: replacement,
+        } else {}
+      ),
+
     // dropPanels removes unnecessary panels from the loki dashboards
     // that are of obsolete usage on our AWS-based deployment environment.
     local dropPanels = function(panels, dropList, fn)
@@ -135,7 +144,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
 
     grafanaDashboards+: {
       'loki-retention.json'+: {
-        local dropList = ['Logs', 'Per Table Marker', 'Sweeper', ''],
+        local dropList = ['Logs'],
         local replacements = [
           { from: 'cluster=~"$cluster",', to: '' },
           { from: 'container="compactor"', to: 'container=~".+-compactor"' },
@@ -146,7 +155,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         tags: defaultLokiTags(super.tags),
         rows: [
           r {
-            panels: mapPanels([replaceMatchers(replacements)], r.panels),
+            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat')], r.panels),
           }
           for r in dropPanels(super.rows, dropList, function(p) true)
         ],

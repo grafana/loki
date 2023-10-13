@@ -25,6 +25,7 @@
 * [10693](https://github.com/grafana/loki/pull/10693) **ashwanthgoli** Embedded cache: Updates the metric prefix from `querier_cache_` to `loki_embeddedcache_` and removes duplicate metrics.
 * [10793](https://github.com/grafana/loki/pull/10793) **ashwanthgoli** Config: Better configuration defaults to provide a better experience for users out of the box.
 * [10785](https://github.com/grafana/loki/pull/10785) **ashwanthgoli** Config: Removes `querier.worker-parallelism` and updates default value of `querier.max-concurrent` to 4.
+* [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
 
 ##### Fixes
 
@@ -40,6 +41,7 @@
 
 * [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
+* [10755](https://github.com/grafana/loki/pull/10755) **hainenber**: Lambda-Promtail: Add support for dropping labels passed via env var
 
 ##### Changes
 
@@ -49,6 +51,8 @@
 ##### Fixes
 
 * [10631](https://github.com/grafana/loki/pull/10631) **thampiotr**: Fix race condition in cleaning up metrics when stopping to tail files.
+* [10798](https://github.com/grafana/loki/pull/10798) **hainenber**: Fix agent panicking after reloaded due to duplicate metric collector registration.
+* [10848](https://github.com/grafana/loki/pull/10848) **rgroothuijsen**: Correctly parse list of drop stage sources from YAML.
 
 #### LogCLI
 
