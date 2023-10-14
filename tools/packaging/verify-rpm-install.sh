@@ -14,12 +14,18 @@ cat <<EOF | docker exec --interactive "${image}" sh
     # Import the Grafana GPG key
     rpm --import https://packages.grafana.com/gpg.key
 
-    # Install loki and check it's running
+    # Install loki and check if it's not running by default
     rpm -i ${dir}/dist/loki-*.x86_64.rpm
-    [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
+    [ "\$(systemctl is-active loki)" = "inactive" ] || (echo "loki is active by default" && exit 1)
 
-    # Install promtail and check it's running
+    # Install promtail and check it's not running by default
     rpm -i ${dir}/dist/promtail-*.x86_64.rpm
+    [ "\$(systemctl is-active promtail)" = "inactive" ] || (echo "promtail is active by default" && exit 1)
+
+    # Turning the services on
+    systemd start loki
+    [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
+    systemd start promtail
     [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
 
     # Write some logs
