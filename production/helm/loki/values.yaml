@@ -1524,7 +1524,12 @@ sidecar:
   #     cpu: 50m
   #     memory: 50Mi
   # -- The SecurityContext for the sidecar.
-  securityContext: {}
+  securityContext:
+      readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    allowPrivilegeEscalation: false
   # -- Set to true to skip tls verification for kube api calls.
   skipTlsVerify: false
   # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.
