@@ -38,6 +38,9 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
+#### Loki and Promtail installation is not enabled and started by default, on RPM-based distributions
+Aligning with general approach in RPM-based distributions, `Loki` and `promtail` **systemd** installation is not enabled and started by default when installed on these OSes.
+
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
 The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.

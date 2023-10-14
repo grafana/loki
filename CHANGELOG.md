@@ -26,6 +26,7 @@
 * [10793](https://github.com/grafana/loki/pull/10793) **ashwanthgoli** Config: Better configuration defaults to provide a better experience for users out of the box.
 * [10785](https://github.com/grafana/loki/pull/10785) **ashwanthgoli** Config: Removes `querier.worker-parallelism` and updates default value of `querier.max-concurrent` to 4.
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
+* [10903](https://github.com/grafana/loki/pull/10903) **hainenber** Not enable and startup when installing `Loki` and `promtail` on RPM-based distros.
 
 ##### Fixes
 
