@@ -1525,7 +1525,7 @@ sidecar:
   #     memory: 50Mi
   # -- The SecurityContext for the sidecar.
   securityContext:
-      readOnlyRootFilesystem: true
+    readOnlyRootFilesystem: true
     capabilities:
       drop:
         - ALL
