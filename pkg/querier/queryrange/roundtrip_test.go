@@ -468,11 +468,13 @@ func TestLabelsTripperware(t *testing.T) {
 	require.NoError(t, err)
 	defer rt.Close()
 
-	lreq := &LokiLabelNamesRequest{
-		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
-		EndTs:   testTime,
-		Path:    "/loki/api/v1/labels",
-	}
+	lreq := NewLabelRequest(
+		testTime.Add(-25*time.Hour), // bigger than the limit
+		testTime,
+		"",
+		"",
+		"/loki/api/v1/labels",
+	)
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 	req, err := DefaultCodec.EncodeRequest(ctx, lreq)

@@ -16,7 +16,21 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.27.1
 
 -[FEATURE] Added support for embedded cache in helm chart
+## 5.30.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.3
+
+
+## 5.29.0
+
+- [ENHANCEMENT] Allow specifying `apiVersion` for Loki's PodLog CRD.
+
+## 5.28.0
+
+- [BUGFIX] Fix GrafanaAgent tolerations scope
+
 ## 5.27.0
+
 - [CHANGE] Bump `nginxinc/nginx-unpriviledged` image version to remediate [CVE-2023-4863](https://github.com/advisories/GHSA-j7hp-h8jx-5ppr)
 
 ## 5.26.0
