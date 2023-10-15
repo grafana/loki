@@ -44,7 +44,7 @@ var queryExperiments = []QueryExperiment{
 	NewQueryExperiment("seven_char_word", "traceID"),
 	NewQueryExperiment("uuid", "2b1a5e46-36a2-4694-a4b1-f34cc7bdfc45"),
 	NewQueryExperiment("longer_string_that_exists", "synthetic-monitoring-agent"),
-	NewQueryExperiment("longer_string_that_doesnt_exist", "abcdefghjiklmnopqrstuvwxyzzy1234567890"),
+	//NewQueryExperiment("longer_string_that_doesnt_exist", "abcdefghjiklmnopqrstuvwxyzzy1234567890"),
 }
 
 func executeRead() {
@@ -197,7 +197,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 											objectClient)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
-												if len(queryExperiment.searchString) >= experiment.tokenizer.getMin() {
+												if len(queryExperiment.searchString) >= experiment.tokenizer.getMin()+experiment.tokenizer.getSkip() {
 
 													foundInChunk := false
 													foundInSbf := false
@@ -216,8 +216,10 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 															tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
 
 															for _, token := range tokens {
-																if sbf.Test(token.Key) {
-																	numMatches++
+																if len(token.Key) == experiment.tokenizer.getMin() {
+																	if sbf.Test(token.Key) {
+																		numMatches++
+																	}
 																}
 															}
 															if numMatches > 0 {
@@ -249,37 +251,48 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 													if foundInChunk {
 														if foundInSbf {
-															//fmt.Println("true positive", experiment.name, queryExperiment.name, gotIdx)
+															fmt.Println("true positive", experiment.name, queryExperiment.name, gotIdx)
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TruePositive).Inc()
 														} else {
-															level.Info(util_log.Logger).Log("**** false negative", experiment.name, queryExperiment.name, ls.String(), FNV32a(ls.String()), gotIdx, testerNumber, queryExperiment.searchString)
-															for i := 0; i <= tokenizer.getSkip(); i++ {
-																numMatches := 0
-																if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
-																	tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
+															/*
+																level.Info(util_log.Logger).Log("**** false negative root", experiment.name, queryExperiment.name, ls.String(), FNV32a(ls.String()), gotIdx, testerNumber, queryExperiment.searchString, tokenizer.getSkip(), tokenizer.getMin(), len(queryExperiment.searchString))
 
-																	for _, token := range tokens {
-																		if sbf.Test(token.Key) {
-																			numMatches++
+																for i := 0; i <= tokenizer.getSkip(); i++ {
+																	level.Info(util_log.Logger).Log("**** false paul", i, tokenizer.getSkip(), tokenizer.getMin(), len(queryExperiment.searchString))
+
+																	numMatches := 0
+																	if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
+																		tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
+
+																		for _, token := range tokens {
+																			if len(token.Key) == experiment.tokenizer.getMin() {
+																				if sbf.Test(token.Key) {
+																					numMatches++
+																				}
+																			}
 																		}
+																		level.Info(util_log.Logger).Log("**** false negative skip: ", tokenizer.getSkip(), "numMatches", numMatches, "len(tokens)", len(tokens))
+
+																	} else {
+																		level.Info(util_log.Logger).Log("**** false hmm", i, len(queryExperiment.searchString), tokenizer.getMin())
+
 																	}
-																	level.Info(util_log.Logger).Log("**** false negative skip: ", tokenizer.getSkip(), "numMatches", numMatches, "len(tokens)", len(tokens))
-
 																}
-															}
-															itr, err := lc.Iterator(
-																context.Background(),
-																time.Unix(0, 0),
-																time.Unix(0, math.MaxInt64),
-																logproto.FORWARD,
-																log.NewNoopPipeline().ForStream(ls),
-															)
-															helpers.ExitErr("getting iterator", err)
+																itr, err := lc.Iterator(
+																	context.Background(),
+																	time.Unix(0, 0),
+																	time.Unix(0, math.MaxInt64),
+																	logproto.FORWARD,
+																	log.NewNoopPipeline().ForStream(ls),
+																)
+																helpers.ExitErr("getting iterator", err)
 
-															for itr.Next() && itr.Error() == nil {
-																level.Info(util_log.Logger).Log("**** false negative line: ", itr.Entry().Line)
-															}
-															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
+																for itr.Next() && itr.Error() == nil {
+																	level.Info(util_log.Logger).Log("**** false negative line: ", itr.Entry().Line)
+																}
+																metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
+
+															*/
 														}
 													} else {
 														if foundInSbf {

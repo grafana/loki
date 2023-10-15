@@ -119,6 +119,7 @@ var experiments = []Experiment{
 		true,
 		onePctError,
 	),
+
 	NewExperiment(
 		"token=4skip1_error=1%_indexchunks=true",
 		fourSkip1,
@@ -390,6 +391,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												for _, tok := range toks {
 													if tok.Key != nil {
 														if !cache.Get(tok.Key) {
+															//fmt.Println(tok.Key)
+															//fmt.Println(tok.Value)
 															cache.Put(tok.Key)
 															if dup := sbf.TestAndAdd(tok.Key); dup {
 																collisions++
@@ -398,6 +401,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 														}
 													}
 												}
+												//fmt.Println(itr.Entry().Line)
+												//time.Sleep(30 * time.Second)
 											}
 											helpers.ExitErr("iterating chunks", itr.Error())
 										} // for each chunk
