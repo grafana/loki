@@ -904,6 +904,10 @@ labels:
 # Default is false
 use_incoming_timestamp: <bool>
 
+# Whether to use RFC5424 syslog message standard.
+# Default is false
+use_rfc5424_message: <bool>
+
 # Sets the maximum limit to the length of syslog messages
 max_message_length: <int>
 ```
