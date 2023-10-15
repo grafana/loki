@@ -1,7 +1,16 @@
 ---
 kind: pipeline
-name: loki-build-image
+name: loki-build-image-amd64
+platform:
+  arch: amd64
+  os: linux
 steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-amd64 > .tags
+  image: alpine
+  name: image-tag
 - image: plugins/docker
   name: test-image
   settings:
@@ -10,7 +19,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.31.1
+    - 0.32.1
   when:
     event:
     - pull_request
@@ -26,7 +35,117 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.31.1
+    - 0.32.1
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
+name: loki-build-image-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm64 > .tags
+  image: alpine
+  name: image-tag
+- image: plugins/docker
+  name: test-image
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.1
+  when:
+    event:
+    - pull_request
+    paths:
+    - loki-build-image/**
+- image: plugins/docker
+  name: push-image
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.1
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+kind: pipeline
+name: loki-build-image-arm
+platform:
+  arch: arm
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm > .tags
+  image: alpine
+  name: image-tag
+- image: plugins/docker
+  name: test-image
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.1
+  when:
+    event:
+    - pull_request
+    paths:
+    - loki-build-image/**
+- image: plugins/docker
+  name: push-image
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.1
     username:
       from_secret: docker_username
   when:
@@ -2015,8 +2134,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
----
-kind: signature
-hmac: 7c5fb8417ab5efd5a15164aa57eef618e3cf79d2578078ce29c888b3eb01e7ff
-
-...

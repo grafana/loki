@@ -496,42 +496,47 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
-[
-  pipeline('loki-build-image') {
-    local build_image_tag = '0.31.1',
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
-      {
-        name: 'test-image',
-        image: 'plugins/docker',
-        when: onPRs + onPath('loki-build-image/**'),
-        settings: {
-          repo: 'grafana/loki-build-image',
-          context: 'loki-build-image',
-          dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_tag],
-          dry_run: true,
-        },
-      },
-      {
-        name: 'push-image',
-        image: 'plugins/docker',
-        when: onTagOrMain + onPath('loki-build-image/**'),
-        settings: {
-          repo: 'grafana/loki-build-image',
-          context: 'loki-build-image',
-          dockerfile: 'loki-build-image/Dockerfile',
-          username: { from_secret: docker_username_secret.name },
-          password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
-          dry_run: false,
-        },
-      },
-    ],
+// Multi-arch build recipe for loki-build-image
+local loki_build_image(arch) = pipeline('loki-build-image-' + arch) + arch_image(arch) {
+  local build_image_tag = '0.32.1',
+  workspace: {
+    base: '/src',
+    path: 'loki',
   },
+  steps+: [
+    {
+      name: 'test-image',
+      image: 'plugins/docker',
+      when: onPRs + onPath('loki-build-image/**'),
+      settings: {
+        repo: 'grafana/loki-build-image',
+        context: 'loki-build-image',
+        dockerfile: 'loki-build-image/Dockerfile',
+        tags: [build_image_tag],
+        dry_run: true,
+      },
+    },
+    {
+      name: 'push-image',
+      image: 'plugins/docker',
+      when: onTagOrMain + onPath('loki-build-image/**'),
+      settings: {
+        repo: 'grafana/loki-build-image',
+        context: 'loki-build-image',
+        dockerfile: 'loki-build-image/Dockerfile',
+        username: { from_secret: docker_username_secret.name },
+        password: { from_secret: docker_password_secret.name },
+        tags: [build_image_tag],
+        dry_run: false,
+      },
+    },
+  ],
+};
+
+[ 
+  loki_build_image(arch) 
+  for arch in archs
+] + [
   pipeline('helm-test-image') {
     workspace: {
       base: '/src',
