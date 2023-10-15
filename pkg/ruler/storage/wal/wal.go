@@ -62,6 +62,8 @@ type Storage struct {
 	deleted    map[chunks.HeadSeriesRef]int // Deleted series, and what WAL segment they must be kept until.
 
 	metrics *Metrics
+
+	writeNotified wlog.WriteNotified
 }
 
 // NewStorage makes a new Storage.
@@ -88,10 +90,11 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 
 	storage.appenderPool.New = func() interface{} {
 		return &appender{
-			w:         storage,
-			series:    make([]record.RefSeries, 0, 100),
-			samples:   make([]record.RefSample, 0, 100),
-			exemplars: make([]record.RefExemplar, 0, 10),
+			w:             storage,
+			writeNotified: storage.getWriteNotified,
+			series:        make([]record.RefSeries, 0, 100),
+			samples:       make([]record.RefSample, 0, 100),
+			exemplars:     make([]record.RefExemplar, 0, 10),
 		}
 	}
 
@@ -114,6 +117,14 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	go storage.recordSize()
 
 	return storage, nil
+}
+
+func (w *Storage) SetWriteNotified(writeNotified wlog.WriteNotified) {
+	w.writeNotified = writeNotified
+}
+
+func (w *Storage) getWriteNotified() wlog.WriteNotified {
+	return w.writeNotified
 }
 
 func (w *Storage) replayWAL() error {
@@ -532,10 +543,11 @@ func dirSize(path string) (int64, error) {
 }
 
 type appender struct {
-	w         *Storage
-	series    []record.RefSeries
-	samples   []record.RefSample
-	exemplars []record.RefExemplar
+	w             *Storage
+	writeNotified func() wlog.WriteNotified
+	series        []record.RefSeries
+	samples       []record.RefSample
+	exemplars     []record.RefExemplar
 }
 
 var _ storage.Appender = (*appender)(nil)
@@ -675,6 +687,11 @@ func (a *appender) Commit() error {
 			return err
 		}
 		buf = buf[:0]
+	}
+
+	// Notify so that reader waiting for it can read without needing to wait for next read ticker.
+	if a.writeNotified != nil {
+		a.writeNotified().Notify()
 	}
 
 	//nolint:staticcheck
