@@ -27,6 +27,10 @@
 * [10785](https://github.com/grafana/loki/pull/10785) **ashwanthgoli** Config: Removes `querier.worker-parallelism` and updates default value of `querier.max-concurrent` to 4.
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
 
+##### Build
+
+* [10905](https://github.com/grafana/loki/pull/10905) **hainenber** Allow Drone CI to build `loki-build-image` images in multiple architectures.
+
 ##### Fixes
 
 ##### Changes
