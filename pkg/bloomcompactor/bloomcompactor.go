@@ -40,7 +40,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
 )
 
 type Compactor struct {
@@ -70,10 +69,6 @@ func New(cfg Config,
 		periodConfigs:      periodConfigs,
 	}
 
-	//objectClient, err := storage.NewObjectClient(storageCfg.TSDBShipperConfig.SharedStoreType, storageCfg, clientMetrics)
-	//if err != nil { return nil, err}
-	//
-
 	client, err := bloomshipper.NewBloomClient(periodConfigs, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
@@ -81,13 +76,14 @@ func New(cfg Config,
 
 	shipper, err := bloomshipper.NewShipper(
 		client,
-		bloomshipperconfig.Config{WorkingDirectory: cfg.WorkingDirectory},
+		storageCfg.BloomShipperConfig,
+		logger,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	store, err := bloomshipper.NewBloomStore(*shipper)
+	store, err := bloomshipper.NewBloomStore(shipper)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +91,7 @@ func New(cfg Config,
 	// temporary workaround until store has implemented read/write shipper interface
 	c.bloomShipperClient = client
 	c.bloomStore = store
+	// TODO use a new service with a loop
 	c.Service = services.NewIdleService(c.starting, c.stopping)
 
 	return c, nil
