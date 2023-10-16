@@ -315,6 +315,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.BloomCompactor.RingCfg.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.BloomCompactor.RingCfg.KVStore = rc.KVStore
 	}
+
+	// BloomGateway
+	if mergeWithExisting || reflect.DeepEqual(r.BloomGateway.Ring, defaults.BloomGateway.Ring) {
+		r.BloomGateway.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.BloomGateway.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.BloomGateway.Ring.InstancePort = rc.InstancePort
+		r.BloomGateway.Ring.InstanceAddr = rc.InstanceAddr
+		r.BloomGateway.Ring.InstanceID = rc.InstanceID
+		r.BloomGateway.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.BloomGateway.Ring.InstanceZone = rc.InstanceZone
+		r.BloomGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.BloomGateway.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -352,6 +365,13 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.BloomCompactor.RingCfg.TokensFilePath = f
+
+	// Bloom-Gateway
+	f, err = tokensFile(cfg, "bloomgateway.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.BloomGateway.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -437,6 +457,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.BloomCompactor.RingCfg.InstanceInterfaceNames, defaults.BloomCompactor.RingCfg.InstanceInterfaceNames) {
 		cfg.BloomCompactor.RingCfg.InstanceInterfaceNames = append(cfg.BloomCompactor.RingCfg.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.BloomGateway.Ring.InstanceInterfaceNames, defaults.BloomGateway.Ring.InstanceInterfaceNames) {
+		cfg.BloomGateway.Ring.InstanceInterfaceNames = append(cfg.BloomGateway.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -451,6 +475,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
 	r.BloomCompactor.RingCfg.KVStore.Store = memberlistStr
+	r.BloomGateway.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
