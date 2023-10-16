@@ -211,24 +211,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 														tokenizer = experiment.tokenizer
 													}
 
-													for i := 0; i <= tokenizer.getSkip(); i++ {
-														numMatches := 0
-														if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
-															tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
-
-															for _, token := range tokens {
-																if sbf.Test(token.Key) {
-																	numMatches++
-																}
-															}
-															if numMatches > 0 {
-																if numMatches == len(tokens) {
-																	foundInSbf = true
-																	metrics.sbfMatchesPerSeries.WithLabelValues(experiment.name, queryExperiment.name).Inc()
-																}
-															}
-														}
-													}
+													foundInSbf = searchSbf(sbf, tokenizer, queryExperiment.searchString)
 
 													lc := got[gotIdx].Data.(*chunkenc.Facade).LokiChunk()
 
@@ -327,7 +310,6 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 }
 
 func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer Tokenizer, searchString string) bool {
-	foundInSbf := false
 	for i := 0; i <= tokenizer.getSkip(); i++ {
 		numMatches := 0
 		if (len(searchString) - i) >= tokenizer.getMin() {
@@ -340,10 +322,10 @@ func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer Tokenizer, searchStrin
 			}
 			if numMatches > 0 {
 				if numMatches == len(tokens) {
-					foundInSbf = true
+					return true
 				}
 			}
 		}
 	}
-	return foundInSbf
+	return false
 }

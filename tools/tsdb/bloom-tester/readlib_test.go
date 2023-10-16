@@ -5,26 +5,6 @@ import (
 	"testing"
 )
 
-/*
-	for i := 0; i <= tokenizer.getSkip(); i++ {
-															numMatches := 0
-															if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
-																tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
-
-																for _, token := range tokens {
-																	if sbf.Test(token.Key) {
-																		numMatches++
-																	}
-																}
-																if numMatches > 0 {
-																	if numMatches == len(tokens) {
-																		foundInSbf = true
-																		metrics.sbfMatchesPerSeries.WithLabelValues(experiment.name, queryExperiment.name).Inc()
-																	}
-																}
-															}
-														}
-*/
 func TestSearchSbf(t *testing.T) {
 	tokenizer := four
 
@@ -91,7 +71,6 @@ func TestSearchSbf(t *testing.T) {
 			tokens := tokenizer.Tokens(tc.inputLine)
 			for _, token := range tokens {
 				sbf.Add(token.Key)
-				//fmt.Println(string(token.Key))
 			}
 			require.Equal(t, tc.exp, searchSbf(sbf, tokenizer, searchString))
 		})
