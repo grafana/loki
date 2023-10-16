@@ -120,49 +120,52 @@ var experiments = []Experiment{
 		true,
 		onePctError,
 	),
+
 	NewExperiment(
 		"token=4skip1_error=1%_indexchunks=true",
 		fourSkip1,
 		true,
 		onePctError,
 	),
-	NewExperiment(
-		"token=4skip2_error=1%_indexchunks=true",
-		fourSkip2,
-		true,
-		onePctError,
-	),
+	/*
+		NewExperiment(
+			"token=4skip2_error=1%_indexchunks=true",
+			fourSkip2,
+			true,
+			onePctError,
+		),*/
 	NewExperiment(
 		"token=4skip0_error=5%_indexchunks=true",
 		four,
 		true,
 		fivePctError,
 	),
-	NewExperiment(
-		"token=4skip1_error=5%_indexchunks=true",
-		fourSkip1,
-		true,
-		fivePctError,
-	),
-	NewExperiment(
-		"token=4skip2_error=5%_indexchunks=true",
-		fourSkip2,
-		true,
-		fivePctError,
-	),
 	/*
 		NewExperiment(
-			"token=5skip0_error=1%_indexchunks=true",
-			five,
+			"token=4skip1_error=5%_indexchunks=true",
+			fourSkip1,
 			true,
-			onePctError,
+			fivePctError,
 		),
 		NewExperiment(
-			"token=6skip0_error=1%_indexchunks=true",
-			six,
+			"token=4skip2_error=5%_indexchunks=true",
+			fourSkip2,
 			true,
-			onePctError,
+			fivePctError,
 		),
+		/*
+			NewExperiment(
+				"token=5skip0_error=1%_indexchunks=true",
+				five,
+				true,
+				onePctError,
+			),
+			NewExperiment(
+				"token=6skip0_error=1%_indexchunks=true",
+				six,
+				true,
+				onePctError,
+			),
 	*/
 	/*
 		NewExperiment(
@@ -274,7 +277,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 			context.Background(),
 			tableName,
 			tenant,
-			shipperindex.ForEachIndexCallback(func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+			func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 				if isMultiTenantIndex {
 					return nil
 				}
@@ -350,7 +353,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
 										cache.Clear()
 
 										// Iterate chunks
@@ -358,7 +360,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											lines, inserts, collisions float64
 										)
 										for cidx := range got {
-											chunkTokenizer.reinit(got[cidx].ChunkRef)
+											chunkTokenizer := ChunkIDTokenizer(got[cidx].ChunkRef, experiment.tokenizer)
+
 											var tokenizer Tokenizer = chunkTokenizer
 											if !experiment.encodeChunkID {
 												tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
@@ -390,8 +393,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												lines++
 												for _, tok := range toks {
 													if tok.Key != nil {
-														if !cache.Get(tok.Key) {
-															cache.Put(tok.Key)
+														if !cache.GetString(tok.Value) {
+															cache.PutStringByte(tok.Value, tok.Key)
 															if dup := sbf.TestAndAdd(tok.Key); dup {
 																collisions++
 															}
@@ -450,7 +453,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 				return nil
 
-			}),
+			},
 		)
 		helpers.ExitErr(fmt.Sprintf("iterating tenant %s", tenant), err)
 
@@ -459,7 +462,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
 	//pool.drain() // wait for workers to finish
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
-	time.Sleep(30 * time.Second) // allow final scrape
+	//time.Sleep(30 * time.Second)         // allow final scrape
+	time.Sleep(time.Duration(1<<63 - 1)) // wait forever
 	return nil
 }
 
