@@ -19,21 +19,21 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
-type BloomShipper struct {
+type Shipper struct {
 	client Client
 	config config.Config
 	logger log.Logger
 }
 
-func NewShipper(client Client, config config.Config, logger log.Logger) (*BloomShipper, error) {
-	return &BloomShipper{
+func NewShipper(client Client, config config.Config, logger log.Logger) (*Shipper, error) {
+	return &Shipper{
 		client: client,
 		config: config,
 		logger: log.With(logger, "component", "bloom-shipper"),
 	}, nil
 }
 
-func (s *BloomShipper) ForEachBlock(
+func (s *Shipper) ForEachBlock(
 	ctx context.Context,
 	tenantID string,
 	from, through time.Time,
@@ -71,7 +71,7 @@ func (s *BloomShipper) ForEachBlock(
 	}
 }
 
-func (s *BloomShipper) Stop() {
+func (s *Shipper) Stop() {
 	s.client.Stop()
 }
 
@@ -84,7 +84,7 @@ func getFromThrough(fingerprints []uint64) (uint64, uint64) {
 	return fingerprints[0], fingerprints[len(fingerprints)-1]
 }
 
-func (s *BloomShipper) getActiveBlockRefs(
+func (s *Shipper) getActiveBlockRefs(
 	ctx context.Context,
 	tenantID string,
 	from, through int64,
@@ -115,7 +115,7 @@ func (s *BloomShipper) getActiveBlockRefs(
 	return activeBlocks, nil
 }
 
-func (s *BloomShipper) findBlocks(metas []Meta, startTimestamp, endTimestamp int64, fingerprints []uint64) []BlockRef {
+func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp int64, fingerprints []uint64) []BlockRef {
 	outdatedBlocks := make(map[string]interface{})
 	for _, meta := range metas {
 		for _, tombstone := range meta.Tombstones {
@@ -174,7 +174,7 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp int64, fingerprint
 }
 
 // extract the files into directory and returns absolute path to this directory.
-func (s *BloomShipper) extractBlock(block *Block, ts time.Time) (string, error) {
+func (s *Shipper) extractBlock(block *Block, ts time.Time) (string, error) {
 	workingDirectoryPath := filepath.Join(s.config.WorkingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixMilli(), 10))
 	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
 	if err != nil {
@@ -195,7 +195,7 @@ func (s *BloomShipper) extractBlock(block *Block, ts time.Time) (string, error) 
 	return workingDirectoryPath, nil
 }
 
-func (s *BloomShipper) createBlockQuerier(directory string) *v1.BlockQuerier {
+func (s *Shipper) createBlockQuerier(directory string) *v1.BlockQuerier {
 	reader := v1.NewDirectoryBlockReader(directory)
 	block := v1.NewBlock(reader)
 	return v1.NewBlockQuerier(block)

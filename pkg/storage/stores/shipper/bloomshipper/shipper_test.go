@@ -47,7 +47,7 @@ func Test_Shipper_findBlocks(t *testing.T) {
 			},
 		}
 
-		shipper := &BloomShipper{}
+		shipper := &Shipper{}
 		blocks := shipper.findBlocks(metas, 300, 400, []uint64{100, 200})
 
 		expectedBlockRefs := []BlockRef{
@@ -100,7 +100,7 @@ func Test_Shipper_findBlocks(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			shipper := &BloomShipper{}
+			shipper := &Shipper{}
 			ref := createBlockRef("fake-block", data.minFingerprint, data.maxFingerprint, data.startTimestamp, data.endTimestamp)
 			blocks := shipper.findBlocks([]Meta{{Blocks: []BlockRef{ref}}}, 300, 400, []uint64{100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200})
 			if data.filtered {
@@ -222,7 +222,7 @@ func Test_Shipper_extractBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	workingDir := t.TempDir()
-	shipper := BloomShipper{config: config.Config{WorkingDirectory: workingDir}}
+	shipper := Shipper{config: config.Config{WorkingDirectory: workingDir}}
 	ts := time.Now().UTC()
 	block := Block{
 		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
