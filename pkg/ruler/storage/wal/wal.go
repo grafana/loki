@@ -89,7 +89,7 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	}
 
 	storage.appenderPool.New = func() interface{} {
-		var notify func() = nil
+		var notify func()
 
 		if storage.writeNotified != nil {
 			notify = storage.writeNotified.Notify
