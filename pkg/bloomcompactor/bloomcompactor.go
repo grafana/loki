@@ -27,17 +27,18 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
-	"os"
-	"path/filepath"
-	"time"
 
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )

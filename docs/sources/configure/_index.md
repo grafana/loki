@@ -161,16 +161,14 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # object store.
 [index_gateway: <index_gateway>]
 
-<<<<<<< HEAD
 # The bloom_compactor block configures the Loki bloom compactor server,
 # responsible for compacting stream indexes into bloom filters and merging them
 # as bloom blocks
 [bloom_compactor: <bloom_compactor>]
-=======
+
 # The bloom_gateway block configures the Loki bloom gateway server, responsible
 # for serving queries for filtering chunks based on filter expressions.
 [bloom_gateway: <bloom_gateway>]
->>>>>>> c370d9e795a37ba657845b94fe73d69ea35a0079
 
 # The storage_config block configures one of many possible stores for both the
 # index and chunks. Which configuration to be picked should be defined in
@@ -3596,11 +3594,8 @@ ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-<<<<<<< HEAD
 - `bloom-compactor.ring`
-=======
 - `bloom-gateway.ring`
->>>>>>> c370d9e795a37ba657845b94fe73d69ea35a0079
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
@@ -3645,11 +3640,8 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-<<<<<<< HEAD
 - `bloom-compactor.ring`
-=======
 - `bloom-gateway.ring`
->>>>>>> c370d9e795a37ba657845b94fe73d69ea35a0079
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
