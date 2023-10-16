@@ -128,10 +128,6 @@ func (w *Storage) SetWriteNotified(writeNotified wlog.WriteNotified) {
 	w.writeNotified = writeNotified
 }
 
-func (w *Storage) getWriteNotified() wlog.WriteNotified {
-	return w.writeNotified
-}
-
 func (w *Storage) replayWAL() error {
 	w.walMtx.RLock()
 	defer w.walMtx.RUnlock()
