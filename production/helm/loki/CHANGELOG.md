@@ -20,6 +20,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.31.0
 
 - [CHANGE] Changed version of Loki to 2.9.2
+- [CHANGE] Grafana dashboards are no longer created solely in scalable mode with external cloud storage enabled.
 
 ## 5.30.0
 
