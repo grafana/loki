@@ -6,7 +6,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/pool"
 )
 
@@ -69,11 +68,6 @@ func (p *ChecksumPool) Get() hash.Hash32 {
 
 func (p *ChecksumPool) Put(h hash.Hash32) {
 	p.Pool.Put(h)
-}
-
-type Querier interface {
-	SeekIter[model.Fingerprint, *SeriesWithBloom]
-	PeekingIter[*SeriesWithBloom]
 }
 
 type Iterator[T any] interface {
