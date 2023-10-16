@@ -51,7 +51,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -89,7 +88,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		return nil, err
 	}
 
-	bloomShipper, err := bloomshipper.NewShipper(client, bloomshipperconfig.Config{}, logger)
+	bloomShipper, err := bloomshipper.NewShipper(client, storageCfg.BloomShipperConfig, logger)
 	if err != nil {
 		return nil, err
 	}
