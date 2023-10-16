@@ -118,7 +118,7 @@ func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Reg
 		cfg:    cfg,
 		logger: logger,
 		limits: limits,
-		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, poolFactory, logger),
+		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger),
 	}
 
 	return c, nil

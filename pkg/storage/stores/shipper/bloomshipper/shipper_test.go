@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 func Test_Shipper_findBlocks(t *testing.T) {
@@ -47,8 +47,8 @@ func Test_Shipper_findBlocks(t *testing.T) {
 			},
 		}
 
-		shipper := &Shipper{}
-		blocks := shipper.findBlocks(metas, 100, 200, 300, 400)
+		shipper := &BloomShipper{}
+		blocks := shipper.findBlocks(metas, 300, 400, []uint64{100, 200})
 
 		expectedBlockRefs := []BlockRef{
 			createMatchingBlockRef("block2"),
@@ -100,9 +100,9 @@ func Test_Shipper_findBlocks(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			shipper := &Shipper{}
+			shipper := &BloomShipper{}
 			ref := createBlockRef("fake-block", data.minFingerprint, data.maxFingerprint, data.startTimestamp, data.endTimestamp)
-			blocks := shipper.findBlocks([]Meta{{Blocks: []BlockRef{ref}}}, 100, 200, 300, 400)
+			blocks := shipper.findBlocks([]Meta{{Blocks: []BlockRef{ref}}}, 300, 400, []uint64{100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200})
 			if data.filtered {
 				require.Empty(t, blocks)
 				return
@@ -111,6 +111,56 @@ func Test_Shipper_findBlocks(t *testing.T) {
 			require.Equal(t, ref, blocks[0])
 		})
 	}
+}
+
+func TestIsOutsideRange(t *testing.T) {
+	t.Run("is outside if startTs > through", func(t *testing.T) {
+		b := createBlockRef("block", 0, math.MaxUint64, 100, 200)
+		isOutside := isOutsideRange(&b, 0, 90, []uint64{})
+		require.True(t, isOutside)
+	})
+
+	t.Run("is outside if endTs < from", func(t *testing.T) {
+		b := createBlockRef("block", 0, math.MaxUint64, 100, 200)
+		isOutside := isOutsideRange(&b, 210, 300, []uint64{})
+		require.True(t, isOutside)
+	})
+
+	t.Run("is outside if endFp < first fingerprint", func(t *testing.T) {
+		b := createBlockRef("block", 0, 90, 100, 200)
+		isOutside := isOutsideRange(&b, 100, 200, []uint64{100, 200})
+		require.True(t, isOutside)
+	})
+
+	t.Run("is outside if startFp > last fingerprint", func(t *testing.T) {
+		b := createBlockRef("block", 210, math.MaxUint64, 100, 200)
+		isOutside := isOutsideRange(&b, 100, 200, []uint64{100, 200})
+		require.True(t, isOutside)
+	})
+
+	t.Run("is outside if within gaps in fingerprints", func(t *testing.T) {
+		b := createBlockRef("block", 100, 200, 100, 200)
+		isOutside := isOutsideRange(&b, 100, 200, []uint64{0, 99, 201, 300})
+		require.True(t, isOutside)
+	})
+
+	t.Run("is not outside if within fingerprints 1", func(t *testing.T) {
+		b := createBlockRef("block", 100, 200, 100, 200)
+		isOutside := isOutsideRange(&b, 100, 200, []uint64{0, 100, 200, 300})
+		require.False(t, isOutside)
+	})
+
+	t.Run("is not outside if within fingerprints 2", func(t *testing.T) {
+		b := createBlockRef("block", 100, 150, 100, 200)
+		isOutside := isOutsideRange(&b, 100, 200, []uint64{0, 100, 200, 300})
+		require.False(t, isOutside)
+	})
+
+	t.Run("is not outside if within fingerprints 3", func(t *testing.T) {
+		b := createBlockRef("block", 150, 200, 100, 200)
+		isOutside := isOutsideRange(&b, 100, 200, []uint64{0, 100, 200, 300})
+		require.False(t, isOutside)
+	})
 }
 
 func createMatchingBlockRef(blockPath string) BlockRef {
@@ -172,7 +222,7 @@ func Test_Shipper_extractBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	workingDir := t.TempDir()
-	shipper := Shipper{config: bloomshipperconfig.Config{WorkingDirectory: workingDir}}
+	shipper := BloomShipper{config: config.Config{WorkingDirectory: workingDir}}
 	ts := time.Now().UTC()
 	block := Block{
 		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},

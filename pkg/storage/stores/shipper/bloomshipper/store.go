@@ -4,50 +4,19 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/config"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-// TODO(chaudum): This is just a placeholder and needs to be replaced by actual
-// bloom block querier interface.
-type BlockQuerier interface {
-}
-
-type ForEachBlockCallback func(bq BlockQuerier) error
+type ForEachBlockCallback func(bq *v1.BlockQuerier) error
 
 type ReadShipper interface {
 	ForEachBlock(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error
 }
 
-type Shipper interface {
+type Interface interface {
 	ReadShipper
 	Stop()
-}
-
-type NoopBloomShipper struct {
-	cfg    Config
-	logger log.Logger
-}
-
-// NewBloomShipper creates a new BloomShipper struct.
-// TODO(chaudum): Replace NoopBloomShipper with actual implementation.
-func NewBloomShipper(cfg Config, _ config.SchemaConfig, _ storage.Config, _ storage.ClientMetrics, logger log.Logger) (*NoopBloomShipper, error) {
-	return &NoopBloomShipper{
-		cfg:    cfg,
-		logger: log.With(logger, "component", "noop-bloom-shipper"),
-	}, nil
-}
-
-func (bs *NoopBloomShipper) Stop() {
-}
-
-func (bs *NoopBloomShipper) ForEachBlock(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
-	level.Debug(bs.logger).Log("msg", "ForEachBlock", "tenant", tenant, "from", from, "through", through, "fingerprints", fingerprints)
-	return nil
 }
 
 type Store interface {
@@ -56,10 +25,10 @@ type Store interface {
 }
 
 type BloomStore struct {
-	shipper Shipper
+	shipper Interface
 }
 
-func NewBloomStore(shipper Shipper) (*BloomStore, error) {
+func NewBloomStore(shipper Interface) (*BloomStore, error) {
 	return &BloomStore{
 		shipper: shipper,
 	}, nil
@@ -83,7 +52,7 @@ func (bs *BloomStore) FilterChunkRefs(ctx context.Context, tenant string, from, 
 
 func (bs *BloomStore) blooms(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) (*bloomFilters, error) {
 	bf := &bloomFilters{}
-	err := bs.shipper.ForEachBlock(ctx, tenant, from, through, fingerprints, func(bq BlockQuerier) error {
+	err := bs.shipper.ForEachBlock(ctx, tenant, from, through, fingerprints, func(bq *v1.BlockQuerier) error {
 		return nil
 	})
 	return bf, err
