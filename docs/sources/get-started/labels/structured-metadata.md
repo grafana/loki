@@ -32,7 +32,7 @@ For more information on how to push logs to Loki via the HTTP endpoint, refer to
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach structured metadata to your log lines.
 See the [Promtail: Structured metadata stage]({{< relref "../../send-data/promtail/stages/structured_metadata" >}}) for more information.
 
-Support has been added to the logstash output starting with version 1.2.0.  See [logstash]({{< relref "../../send-data/logstash/_index.md" >}}) for more information.
+With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash]({{< relref "../../send-data/logstash/_index.md" >}}).
 
 ## Querying structured metadata
 
