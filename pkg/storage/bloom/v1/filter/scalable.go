@@ -1,6 +1,14 @@
 /*
 Original work Copyright (c) 2013 zhenjl
 Modified work Copyright (c) 2015 Tyler Treat
+Modified work Copyright (c) 2023 Owen Diehl
+SPDX-License-Identifier: AGPL-3.0-only
+Provenance-includes-location: https://github.com/tylertreat/BoomFilters/blob/master/scalable.go
+Provenance-includes-location: https://github.com/owen-d/BoomFilters/blob/master/boom/scalable.go
+Provenance-includes-license: Apache-2.0
+Provenance-includes-license: MIT
+Provenance-includes-copyright: The Loki Authors.
+
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -13,7 +21,7 @@ The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 */
 
-package boom
+package filter
 
 import (
 	"bytes"
@@ -323,4 +331,42 @@ func (s *ScalableBloomFilter) GobDecode(data []byte) error {
 	_, err := s.ReadFrom(buf)
 
 	return err
+}
+
+type ScalableBloomFilterLazyReader struct {
+	filters []PartitionedBloomFilterLazyReader
+}
+
+func NewScalableBloomFilterLazyReader(data []byte) (ScalableBloomFilterLazyReader, int) {
+	// Skip r, fp, p float64 and hint, s, additionsSinceFillRatioCheck uint64
+	filtersLenOffset := 3*binary.Size(float64(0)) + 3*binary.Size(uint64(0))
+	filtersLen := binary.BigEndian.Uint64(data[filtersLenOffset:])
+
+	filterStartOffset := filtersLenOffset + binary.Size(uint64(0))
+
+	filters := make([]PartitionedBloomFilterLazyReader, filtersLen)
+	for i := range filters {
+		filter, n := NewPartitionedBloomFilterLazyReader(data[filterStartOffset:])
+		filterStartOffset += n
+		filters[i] = filter
+	}
+
+	return ScalableBloomFilterLazyReader{
+		filters: filters,
+	}, filterStartOffset
+}
+
+// Test will test for membership of the data and returns true if it is a
+// member, false if not. This is a probabilistic test, meaning there is a
+// non-zero probability of false positives but a zero probability of false
+// negatives.
+func (s ScalableBloomFilterLazyReader) Test(data []byte) bool {
+	// Querying is made by testing for the presence in each filter.
+	for _, bf := range s.filters {
+		if bf.Test(data) {
+			return true
+		}
+	}
+
+	return false
 }
