@@ -690,7 +690,7 @@ func (a *appender) Commit() error {
 	}
 
 	// Notify so that reader waiting for it can read without needing to wait for next read ticker.
-	if a.writeNotified != nil {
+	if a.writeNotified() != nil {
 		a.writeNotified().Notify()
 	}
 
