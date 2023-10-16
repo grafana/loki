@@ -1,4 +1,13 @@
-package boom
+// Original work Copyright (c) 2013 zhenjl
+// Modified work Copyright (c) 2015 Tyler Treat
+// Modified work Copyright (c) 2023 Owen Diehl
+// SPDX-License-Identifier: AGPL-3.0-only
+// Provenance-includes-location: https://github.com/tylertreat/BoomFilters/blob/master/buckets.go
+// Provenance-includes-location: https://github.com/owen-d/BoomFilters/blob/master/boom/buckets.go
+// Provenance-includes-license: Apache-2.0
+// Provenance-includes-copyright: The Loki Authors.
+
+package filter
 
 import (
 	"bytes"
@@ -6,6 +15,10 @@ import (
 	"io"
 	"math/bits"
 )
+
+type BucketGetter interface {
+	Get(bucket uint) uint32
+}
 
 // Buckets is a fast, space-efficient array of buckets where each bucket can
 // store up to a configured maximum value.
@@ -71,7 +84,7 @@ func (b *Buckets) Get(bucket uint) uint32 {
 
 func (b *Buckets) PopCount() (count int) {
 	for _, x := range b.data {
-		count += bits.OnesCount8(uint8(x))
+		count += bits.OnesCount8(x)
 	}
 	return count
 }
@@ -187,4 +200,36 @@ func (b *Buckets) GobDecode(data []byte) error {
 	_, err := b.ReadFrom(buf)
 
 	return err
+}
+
+type BucketsLazyReader struct {
+	Buckets
+}
+
+// NewBucketsLazyReader creates a new BucketsLazyReader from the provided data
+// and returns the number of bytes used by the Buckets
+// The data is expected to be in the format written by Buckets.WriteTo().
+// Whereas Buckets.ReadFrom() reads the entire data into memory and
+// makes a copy of the data buffer, BucketsLazyReader keeps a reference
+// to the original data buffer and only reads from it when needed.
+func NewBucketsLazyReader(data []byte) (BucketsLazyReader, int) {
+	bucketSize := data[0]
+
+	// Skip bucketSize (uint8), max (uint8), count (uint64)
+	lenDataOffset := 2*binary.Size(uint8(0)) + binary.Size(uint64(0))
+	// Add len field (uint64(0)) to the above offset
+	dataStart := lenDataOffset + binary.Size(uint64(0))
+	dataEnd := dataStart + int(binary.BigEndian.Uint64(data[lenDataOffset:]))
+
+	return BucketsLazyReader{
+		Buckets: Buckets{
+			data:       data[dataStart:dataEnd],
+			bucketSize: bucketSize,
+		},
+	}, dataEnd
+}
+
+// Get returns the value in the specified bucket.
+func (s BucketsLazyReader) Get(bucket uint) uint32 {
+	return s.Buckets.Get(bucket)
 }
