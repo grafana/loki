@@ -6,6 +6,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
@@ -18,7 +20,6 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -98,8 +99,8 @@ var (
 	five       = newNGramTokenizer(5, 6, 0)
 	six        = newNGramTokenizer(6, 7, 0)
 
-	onePctError  = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.01, 0.8) }
-	fivePctError = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.05, 0.8) }
+	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
+	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
 )
 
 var experiments = []Experiment{
@@ -516,7 +517,7 @@ func sbfFileExists(location, prefix, period, tenant, series string, objectClient
 	return result
 }
 
-func writeSBF(sbf *boom.ScalableBloomFilter, location, prefix, period, tenant, series string, objectClient client.ObjectClient) {
+func writeSBF(sbf *filter.ScalableBloomFilter, location, prefix, period, tenant, series string, objectClient client.ObjectClient) {
 	dirPath := fmt.Sprintf("%s/%s/%s/%s", location, prefix, period, tenant)
 	objectStoragePath := fmt.Sprintf("bloomtests/%s/%s/%s", prefix, period, tenant)
 	if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
@@ -534,7 +535,7 @@ func writeSBF(sbf *boom.ScalableBloomFilter, location, prefix, period, tenant, s
 		objectClient)
 }
 
-func writeSBFToFile(sbf *boom.ScalableBloomFilter, filename string) error {
+func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -552,7 +553,7 @@ func writeSBFToFile(sbf *boom.ScalableBloomFilter, filename string) error {
 	return err
 }
 
-func writeSBFToObjectStorage(sbf *boom.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
 	// Probably a better way to do this than to reopen the file, but it's late
 	file, err := os.Open(localFilename)
 	if err != nil {

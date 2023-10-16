@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type Bloom struct {
-	sbf boom.ScalableBloomFilter
+	sbf filter.ScalableBloomFilter
 }
 
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {

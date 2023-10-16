@@ -15,7 +15,7 @@ Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
-Configuration examples can be found in the [Configuration Examples]({{< relref "./examples" >}}) document.
+Configuration examples can be found in the [Configuration Examples]({{< relref "./examples/configuration-examples" >}}) document.
 
 ## Printing Loki config at runtime
 
@@ -160,6 +160,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # for serving index queries without the need to constantly interact with the
 # object store.
 [index_gateway: <index_gateway>]
+
+# The bloom_gateway block configures the Loki bloom gateway server, responsible
+# for serving queries for filtering chunks based on filter expressions.
+[bloom_gateway: <bloom_gateway>]
 
 # The storage_config block configures one of many possible stores for both the
 # index and chunks. Which configuration to be picked should be defined in
@@ -1687,6 +1691,125 @@ ring:
   [replication_factor: <int> | default = 3]
 ```
 
+### bloom_gateway
+
+The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
+
+```yaml
+# Defines the ring to be used by the bloom gateway servers and clients. In case
+# this isn't configured, this block supports inheriting configuration from the
+# common ring section.
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -bloom-gateway.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -bloom-gateway.ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
+    # The CLI flags prefix for this block configuration is: bloom-gateway.ring
+    [consul: <consul>]
+
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
+    # The CLI flags prefix for this block configuration is: bloom-gateway.ring
+    [etcd: <etcd>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -bloom-gateway.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -bloom-gateway.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -bloom-gateway.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -bloom-gateway.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -bloom-gateway.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which compactors are considered unhealthy within
+  # the ring. 0 = never (timeout disabled).
+  # CLI flag: -bloom-gateway.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -bloom-gateway.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # True to enable zone-awareness and replicate blocks across different
+  # availability zones.
+  # CLI flag: -bloom-gateway.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # Instance ID to register in the ring.
+  # CLI flag: -bloom-gateway.ring.instance-id
+  [instance_id: <string> | default = "<hostname>"]
+
+  # Name of network interface to read address from.
+  # CLI flag: -bloom-gateway.ring.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Port to advertise in the ring (defaults to server.grpc-listen-port).
+  # CLI flag: -bloom-gateway.ring.instance-port
+  [instance_port: <int> | default = 0]
+
+  # IP address to advertise in the ring.
+  # CLI flag: -bloom-gateway.ring.instance-addr
+  [instance_addr: <string> | default = ""]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -bloom-gateway.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -bloom-gateway.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
+  # Factor for data replication on the bloom gateways.
+  # CLI flag: -bloom-gateway.replication-factor
+  [replication_factor: <int> | default = 3]
+
+# Flag to enable or disable the usage of the bloom gatway component.
+# CLI flag: -bloom-gateway.enabled
+[enabled: <boolean> | default = false]
+
+client:
+  # Configures the behavior of the connection pool.
+  pool_config:
+    [client_cleanup_period: <duration>]
+
+    [health_check_ingesters: <boolean>]
+
+    [remote_timeout: <duration>]
+
+  # The grpc_client block configures the gRPC client used to communicate between
+  # two Loki components.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_client_config: <grpc_client>]
+
+  # Flag to control whether requests sent to the gateway should be logged or
+  # not.
+  # CLI flag: -bloom-gateway-client.log-gateway-requests
+  [log_gateway_requests: <boolean> | default = false]
+```
+
 ### storage_config
 
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
@@ -2722,6 +2845,11 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# The shard size defines how many bloom gateways should be used by a tenant for
+# querying.
+# CLI flag: -bloom-gateway.shard-size
+[bloom_gateway_shard_size: <int> | default = 1]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
@@ -3362,6 +3490,7 @@ ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-gateway.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
@@ -3406,6 +3535,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-gateway.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
@@ -3707,6 +3837,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 The `grpc_client` block configures the gRPC client used to communicate between two Loki components. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
