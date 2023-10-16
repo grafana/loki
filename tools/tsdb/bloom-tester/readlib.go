@@ -38,8 +38,11 @@ import (
 
 var queryExperiments = []QueryExperiment{
 	//NewQueryExperiment("three_char_word", "tra"),
-	//NewQueryExperiment("four_char_word", "trac"),
+	NewQueryExperiment("four_char_word", "trac"),
 	NewQueryExperiment("five_char_word", "trace"),
+	//NewQueryExperiment("level", "level"),
+	//NewQueryExperiment("level=", "level="),
+
 	NewQueryExperiment("six_char_word", "traceI"),
 	NewQueryExperiment("seven_char_word", "traceID"),
 	NewQueryExperiment("uuid", "2b1a5e46-36a2-4694-a4b1-f34cc7bdfc45"),
@@ -138,12 +141,6 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 						workernumber := AssignToWorker(pos, numTesters)
 
-						//fmt.Println("num workers", numTesters)
-						//fmt.Println("seriesSTring", seriesString)
-						//fmt.Println("seriesSTringHasj", seriesStringHash)
-						//fmt.Println("pos", pos)
-						//fmt.Println("workernumber", workernumber)
-
 						if (workernumber == testerNumber) && (len(chks) < 10000) { // For every series
 							/*
 								pool.acquire(
@@ -216,10 +213,8 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 															tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
 
 															for _, token := range tokens {
-																if len(token.Key) == experiment.tokenizer.getMin() {
-																	if sbf.Test(token.Key) {
-																		numMatches++
-																	}
+																if sbf.Test(token.Key) {
+																	numMatches++
 																}
 															}
 															if numMatches > 0 {
@@ -244,63 +239,22 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 													for itr.Next() && itr.Error() == nil {
 														if strings.Contains(itr.Entry().Line, queryExperiment.searchString) {
-															//fmt.Println("Line match: ", itr.Entry().Line)
 															foundInChunk = true
 														}
 													}
 
 													if foundInChunk {
 														if foundInSbf {
-															fmt.Println("true positive", experiment.name, queryExperiment.name, gotIdx)
+
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TruePositive).Inc()
 														} else {
-															/*
-																level.Info(util_log.Logger).Log("**** false negative root", experiment.name, queryExperiment.name, ls.String(), FNV32a(ls.String()), gotIdx, testerNumber, queryExperiment.searchString, tokenizer.getSkip(), tokenizer.getMin(), len(queryExperiment.searchString))
-
-																for i := 0; i <= tokenizer.getSkip(); i++ {
-																	level.Info(util_log.Logger).Log("**** false paul", i, tokenizer.getSkip(), tokenizer.getMin(), len(queryExperiment.searchString))
-
-																	numMatches := 0
-																	if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
-																		tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
-
-																		for _, token := range tokens {
-																			if len(token.Key) == experiment.tokenizer.getMin() {
-																				if sbf.Test(token.Key) {
-																					numMatches++
-																				}
-																			}
-																		}
-																		level.Info(util_log.Logger).Log("**** false negative skip: ", tokenizer.getSkip(), "numMatches", numMatches, "len(tokens)", len(tokens))
-
-																	} else {
-																		level.Info(util_log.Logger).Log("**** false hmm", i, len(queryExperiment.searchString), tokenizer.getMin())
-
-																	}
-																}
-																itr, err := lc.Iterator(
-																	context.Background(),
-																	time.Unix(0, 0),
-																	time.Unix(0, math.MaxInt64),
-																	logproto.FORWARD,
-																	log.NewNoopPipeline().ForStream(ls),
-																)
-																helpers.ExitErr("getting iterator", err)
-
-																for itr.Next() && itr.Error() == nil {
-																	level.Info(util_log.Logger).Log("**** false negative line: ", itr.Entry().Line)
-																}
-																metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
-
-															*/
+															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
 														}
 													} else {
 														if foundInSbf {
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalsePositive).Inc()
-															//fmt.Println("false positive", experiment.name, queryExperiment.name, gotIdx, ls.String())
 														} else {
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TrueNegative).Inc()
-															//fmt.Println("true negative", experiment.name, queryExperiment.name, gotIdx)
 														}
 													}
 
@@ -353,7 +307,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	}
 
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
-	//pool.drain() // wait for workers to finishh
+	//pool.drain() // wait for workers to finish
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
 	//time.Sleep(30 * time.Second)         // allow final scrape
 	time.Sleep(time.Duration(1<<63 - 1)) // wait forever

@@ -274,7 +274,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 			context.Background(),
 			tableName,
 			tenant,
-			shipperindex.ForEachIndexCallback(func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+			func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 				if isMultiTenantIndex {
 					return nil
 				}
@@ -350,7 +350,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
 										cache.Clear()
 
 										// Iterate chunks
@@ -358,7 +357,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											lines, inserts, collisions float64
 										)
 										for cidx := range got {
-											chunkTokenizer.reinit(got[cidx].ChunkRef)
+											chunkTokenizer := ChunkIDTokenizer(got[cidx].ChunkRef, experiment.tokenizer)
+
 											var tokenizer Tokenizer = chunkTokenizer
 											if !experiment.encodeChunkID {
 												tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
@@ -391,8 +391,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												for _, tok := range toks {
 													if tok.Key != nil {
 														if !cache.Get(tok.Key) {
-															//fmt.Println(tok.Key)
-															//fmt.Println(tok.Value)
 															cache.Put(tok.Key)
 															if dup := sbf.TestAndAdd(tok.Key); dup {
 																collisions++
@@ -401,8 +399,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 														}
 													}
 												}
-												//fmt.Println(itr.Entry().Line)
-												//time.Sleep(30 * time.Second)
 											}
 											helpers.ExitErr("iterating chunks", itr.Error())
 										} // for each chunk
@@ -454,7 +450,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 				return nil
 
-			}),
+			},
 		)
 		helpers.ExitErr(fmt.Sprintf("iterating tenant %s", tenant), err)
 
