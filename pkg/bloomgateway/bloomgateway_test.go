@@ -32,6 +32,12 @@ func parseDayTime(s string) config.DayTime {
 	}
 }
 
+func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
+	t.Helper()
+	grouped := make([]*logproto.GroupedChunkRefs, 0, len(chunkRefs))
+	return groupChunkRefs(chunkRefs, grouped)
+}
+
 func TestBloomGateway_StartStopService(t *testing.T) {
 
 	ss := NewNoopStrategy()
@@ -145,7 +151,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			From:    now.Add(-24 * time.Hour),
 			Through: now,
-			Refs:    chunkRefs,
+			Refs:    groupRefs(t, chunkRefs),
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -181,7 +187,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			From:    now.Add(-24 * time.Hour),
 			Through: now,
-			Refs:    chunkRefs,
+			Refs:    groupRefs(t, chunkRefs),
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
