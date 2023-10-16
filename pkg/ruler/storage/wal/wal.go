@@ -89,12 +89,17 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	}
 
 	storage.appenderPool.New = func() interface{} {
+		var notify func() = nil
+
+		if storage.writeNotified != nil {
+			notify = storage.writeNotified.Notify
+		}
 		return &appender{
-			w:             storage,
-			writeNotified: storage.getWriteNotified,
-			series:        make([]record.RefSeries, 0, 100),
-			samples:       make([]record.RefSample, 0, 100),
-			exemplars:     make([]record.RefExemplar, 0, 10),
+			w:         storage,
+			notify:    notify,
+			series:    make([]record.RefSeries, 0, 100),
+			samples:   make([]record.RefSample, 0, 100),
+			exemplars: make([]record.RefExemplar, 0, 10),
 		}
 	}
 
@@ -543,11 +548,12 @@ func dirSize(path string) (int64, error) {
 }
 
 type appender struct {
-	w             *Storage
-	writeNotified func() wlog.WriteNotified
-	series        []record.RefSeries
-	samples       []record.RefSample
-	exemplars     []record.RefExemplar
+	w *Storage
+	// Notify the underlying storage that some sample is written
+	notify    func()
+	series    []record.RefSeries
+	samples   []record.RefSample
+	exemplars []record.RefExemplar
 }
 
 var _ storage.Appender = (*appender)(nil)
@@ -690,8 +696,8 @@ func (a *appender) Commit() error {
 	}
 
 	// Notify so that reader waiting for it can read without needing to wait for next read ticker.
-	if a.writeNotified() != nil {
-		a.writeNotified().Notify()
+	if a.notify != nil {
+		a.notify()
 	}
 
 	//nolint:staticcheck
