@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"github.com/grafana/loki/pkg/bloomgateway"
 	"github.com/grafana/loki/pkg/compactor"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
@@ -22,4 +23,5 @@ type CombinedLimits interface {
 	scheduler.Limits
 	storage.StoreLimits
 	indexgateway.Limits
+	bloomgateway.Limits
 }
