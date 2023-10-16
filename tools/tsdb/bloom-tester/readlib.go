@@ -326,7 +326,7 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 	return sbf
 }
 
-func searchSbf(sbf *boom.ScalableBloomFilter, tokenizer Tokenizer, searchString string) bool {
+func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer Tokenizer, searchString string) bool {
 	foundInSbf := false
 	for i := 0; i <= tokenizer.getSkip(); i++ {
 		numMatches := 0
