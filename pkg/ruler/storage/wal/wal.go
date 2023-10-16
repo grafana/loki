@@ -693,8 +693,9 @@ func (a *appender) Commit() error {
 
 	// Notify so that reader waiting for it can read without needing to wait for next read ticker.
 	if a.notify != nil {
-		level.Warn(a.w.logger).Log("msg", "missing to notify WAL writes because notifier is not set")
 		a.notify()
+	} else {
+		level.Warn(a.w.logger).Log("msg", "not notifying about WAL writes because notifier is not set")
 	}
 
 	//nolint:staticcheck
