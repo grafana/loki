@@ -199,7 +199,7 @@ filter {
 Important notes regarding versions:
 
 - Version 1.1.0 and greater of this plugin you can also specify a list of labels to allow list via the `include_fields` configuration.
-- Version 1.2.0 and greater of this plugin you can also specify a structured metadata via the `metadata_fields` configuration.
+- Version 1.2.0 and greater of this plugin you can also specify structured metadata via the `metadata_fields` configuration.
 
 ### Configuration Properties
 
