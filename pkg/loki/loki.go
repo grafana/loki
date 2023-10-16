@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomgateway"
 	"github.com/grafana/loki/pkg/compactor"
 	compactorclient "github.com/grafana/loki/pkg/compactor/client"
 	"github.com/grafana/loki/pkg/compactor/deletion"
@@ -84,6 +85,7 @@ type Config struct {
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
@@ -150,6 +152,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
 	c.IndexGateway.RegisterFlags(f)
+	c.BloomGateway.RegisterFlags(f)
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
@@ -310,6 +313,7 @@ type Loki struct {
 	querySchedulerRingManager *scheduler.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *indexgateway.RingManager
+	bloomGatewayRingManager   *bloomgateway.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -589,6 +593,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
+	mm.RegisterModule(BloomGateway, t.initBloomGateway)
+	mm.RegisterModule(BloomGatewayRing, t.initBloomGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
@@ -617,15 +623,19 @@ func (t *Loki) setupModuleManager() error {
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing, IndexGatewayInterceptors},
+		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
+		BloomGateway:             {Server, BloomGatewayRing, Analytics},
 		IngesterQuerier:          {Ring},
-		QuerySchedulerRing:       {Overrides, Server, MemberlistKV},
-		IndexGatewayRing:         {Overrides, Server, MemberlistKV},
-		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
-		Read:                     {QueryFrontend, Querier},
-		Write:                    {Ingester, Distributor},
-		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
+		QuerySchedulerRing:       {Overrides, MemberlistKV},
+		IndexGatewayRing:         {Overrides, MemberlistKV},
+		BloomGatewayRing:         {Overrides, MemberlistKV},
 		MemberlistKV:             {Server},
+
+		Read:    {QueryFrontend, Querier},
+		Write:   {Ingester, Distributor},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
+
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -679,7 +689,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway)
+		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway)
 	}
 
 	if t.Cfg.InternalServer.Enable {

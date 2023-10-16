@@ -1,4 +1,5 @@
-package bloomshipperconfig
+// package bloomshipperconfig resides in its own package to prevent circular imports with storage package
+package config
 
 import (
 	"errors"
