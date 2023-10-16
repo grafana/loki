@@ -2,6 +2,7 @@ package bloomshipper
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -113,6 +114,27 @@ func Test_Shipper_findBlocks(t *testing.T) {
 	}
 }
 
+func TestGetPosition(t *testing.T) {
+	for i, tc := range []struct {
+		s   []int
+		v   int
+		exp int
+	}{
+		{s: []int{}, v: 1, exp: 0},
+		{s: []int{1, 2, 3}, v: 0, exp: 0},
+		{s: []int{1, 2, 3}, v: 2, exp: 1},
+		{s: []int{1, 2, 3}, v: 4, exp: 3},
+		{s: []int{1, 2, 4, 5}, v: 3, exp: 2},
+	} {
+		tc := tc
+		name := fmt.Sprintf("case-%d", i)
+		t.Run(name, func(t *testing.T) {
+			got := getPosition[[]int](tc.s, tc.v)
+			require.Equal(t, tc.exp, got)
+		})
+	}
+}
+
 func TestIsOutsideRange(t *testing.T) {
 	t.Run("is outside if startTs > through", func(t *testing.T) {
 		b := createBlockRef("block", 0, math.MaxUint64, 100, 200)
@@ -169,10 +191,8 @@ func createMatchingBlockRef(blockPath string) BlockRef {
 
 func createBlockRef(
 	blockPath string,
-	minFingerprint uint64,
-	maxFingerprint uint64,
-	startTimestamp int64,
-	endTimestamp int64,
+	minFingerprint, maxFingerprint uint64,
+	startTimestamp, endTimestamp int64,
 ) BlockRef {
 	return BlockRef{
 		Ref: Ref{

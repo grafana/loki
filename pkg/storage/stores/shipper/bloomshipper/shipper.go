@@ -141,7 +141,7 @@ func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp int64, f
 	return blockRefs
 }
 
-// getPosition returns the index of element v in slice s when v >= elem
+// getPosition returns the smallest index of element v in slice s where v > s[i]
 // TODO(chaudum): Use binary search to find index instead of iteration.
 func getPosition[S ~[]E, E cmp.Ordered](s S, v E) int {
 	for i := range s {
@@ -170,6 +170,11 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp int64, fingerprint
 	// fingerprints = [1, 2,          6, 7, 8]
 	// block =              [3, 4, 5]
 	idx := getPosition[[]uint64](fingerprints, b.MinFingerprint)
+	// in case b.MinFingerprint is outside of the fingerprints range, return true
+	// this is already covered in the range check above, but I keep it as a second gate
+	if idx > len(fingerprints)-1 {
+		return true
+	}
 	return b.MaxFingerprint < fingerprints[idx]
 }
 
