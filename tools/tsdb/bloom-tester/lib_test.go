@@ -303,6 +303,33 @@ func BenchmarkSBFAdd(b *testing.B) {
 	}
 }
 
+func BenchmarkSBFSeparateTestAndAdd(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		experiment := NewExperiment(
+			"token=3skip0_error=1%_indexchunks=true",
+			three,
+			true,
+			onePctError,
+		)
+		sbf := experiment.bloom()
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			tokens := experiment.tokenizer.Tokens(line)
+			for _, token := range tokens {
+				found := sbf.Test(token.Key)
+				if !found {
+					sbf.Add(token.Key)
+				}
+			}
+		}
+	}
+}
+
 func BenchmarkSBFTestAndAddWithLRU(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()

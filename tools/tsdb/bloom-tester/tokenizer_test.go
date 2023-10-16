@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/binary"
 	"github.com/grafana/loki/pkg/logproto"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -440,5 +442,35 @@ func TestWrappedTokenizer(t *testing.T) {
 			}, tokenizer)
 			require.Equal(t, tc.exp, chunkTokenizer.Tokens(tc.input))
 		})
+	}
+}
+
+func BenchmarkTokens(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			_ = three.Tokens(line)
+		}
+	}
+}
+
+func BenchmarkOldTokens(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			_ = three.OldTokens(line)
+		}
 	}
 }

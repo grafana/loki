@@ -245,7 +245,6 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 													if foundInChunk {
 														if foundInSbf {
-
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TruePositive).Inc()
 														} else {
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
