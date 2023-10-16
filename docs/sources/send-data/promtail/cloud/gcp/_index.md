@@ -273,7 +273,7 @@ We also exclude specific HTTP load balancer logs based on payload and status cod
 
 ```
 $ gcloud logging sinks create cloud-logs pubsub.googleapis.com/projects/my-project/topics/cloud-logs \
---log-filter='resource.type=("gcs_bucket OR k8s_cluster OR service_account OR iam_role OR api OR audited_resource OR http_load_balancer")' \
+--log-filter='resource.type=("gcs_bucket OR Kubernetes_cluster OR service_account OR iam_role OR api OR audited_resource OR http_load_balancer")' \
 --description="Cloud logs" \
 --exclusion='name=http_load_balancer,filter=<<EOF
 resource.type="http_load_balancer"
