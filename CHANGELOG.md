@@ -37,6 +37,8 @@
 
 #### Promtail
 
+* [10752](https://github.com/grafana/loki/pull/10752) **gonzalesraul**: structured_metadata: enable structured_metadata convert labels
+
 ##### Enhancements
 
 * [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
@@ -56,20 +58,15 @@
 
 #### LogCLI
 
-##### Fixes
-
 #### Mixins
-
-#### Enhancements
 
 #### Fixes
 
 #### FluentD
 
-##### Enhancements
-
 #### Jsonnet
-## Unreleased
+
+* [10784](https://github.com/grafana/loki/pull/10894) **slim-bean** Update index gateway client to use a headless service.
 
 
 
