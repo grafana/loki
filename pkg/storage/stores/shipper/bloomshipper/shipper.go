@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"golang.org/x/exp/slices"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
