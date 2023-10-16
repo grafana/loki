@@ -1,3 +1,13 @@
+## 2.9.2 (2023-10-16)
+
+### All Changes
+
+##### Security
+
+* [10879](https://github.com/grafana/loki/pull/10879) **DylanGuedes**: Upgrade golang.org/x/net to v0.17.0 to patch CVE-2023-39325 / CVE-2023-44487
+* [10871](https://github.com/grafana/loki/pull/10871) **ashwanthgoli**: Upgrade go to v1.21.3 and grpc-go to v1.56.3 to patch CVE-2023-39325 / CVE-2023-44487
+
+
 ## 2.9.1 (2023-09-14)
 
 ### All Changes
