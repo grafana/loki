@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/pool"
 )
 
@@ -70,10 +71,69 @@ func (p *ChecksumPool) Put(h hash.Hash32) {
 	p.Pool.Put(h)
 }
 
+type Querier interface {
+	SeekIter[model.Fingerprint, *SeriesWithBloom]
+	PeekingIter[*SeriesWithBloom]
+}
+
 type Iterator[T any] interface {
 	Next() bool
 	Err() error
 	At() T
+}
+
+type PeekingIter[T any] interface {
+	Peek() (T, bool)
+	Iterator[T]
+}
+
+type PeekIter[T any] struct {
+	itr    Iterator[T]
+	loaded bool // whether the next value has been loaded
+	cache  T
+	ok     bool
+}
+
+func NewPeekingIter[T any](itr Iterator[T]) *PeekIter[T] {
+	return &PeekIter[T]{itr: itr}
+}
+
+func (it *PeekIter[T]) load() {
+	if it.loaded {
+		return
+	}
+	it.ok = it.itr.Next()
+	if it.ok {
+		it.cache = it.itr.At()
+	}
+	it.loaded = true
+}
+
+func (it *PeekIter[T]) Peek() (T, bool) {
+	it.load()
+	return it.cache, it.ok
+}
+
+func (it *PeekIter[T]) Next() bool {
+	if it.loaded {
+		it.loaded = false
+		return it.ok
+	}
+	it.load()
+	return it.ok
+}
+
+func (it *PeekIter[T]) Err() error {
+	return it.itr.Err()
+}
+
+func (it *PeekIter[T]) At() T {
+	return it.cache
+}
+
+type SeekIter[K, V any] interface {
+	Seek(K) error
+	Iterator[V]
 }
 
 type SliceIter[T any] struct {
