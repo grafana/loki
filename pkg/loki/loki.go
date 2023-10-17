@@ -631,12 +631,12 @@ func (t *Loki) setupModuleManager() error {
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
 		BloomGateway:             {Server, BloomGatewayRing, Analytics},
-		BloomCompactorRing:       {Server},
 		BloomCompactor:           {Server, BloomCompactorRing, Analytics},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		BloomGatewayRing:         {Overrides, MemberlistKV},
+		BloomCompactorRing:       {Overrides, MemberlistKV},
 		MemberlistKV:             {Server},
 
 		Read:    {QueryFrontend, Querier},
