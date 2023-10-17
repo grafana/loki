@@ -905,7 +905,7 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765 => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
-# github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+# github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 ## explicit; go 1.17
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
@@ -2207,5 +2207,5 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
-# github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+# github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 # github.com/grafana/loki/pkg/push => ./pkg/push
