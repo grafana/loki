@@ -73,7 +73,7 @@ type Scheduler struct {
 	inflightRequests         prometheus.Summary
 
 	// Ring used for finding schedulers
-	ringManager *RingManager
+	ringManager *lokiring.RingManager
 
 	// Controls for this being a chosen scheduler
 	shouldRun atomic.Bool
@@ -114,12 +114,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
-		} else if ringManager.managerMode != RingManagerModeMember {
-			return nil, errors.New("ring manager must be initialized in RingManagerModeMember for query schedulers")
+		} else if ringManager.Mode != lokiring.ServerMode {
+			return nil, errors.New("ring manager must be initialized in ServerMode for query schedulers")
 		}
 	}
 
@@ -579,7 +579,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 	inflightRequestsTicker := time.NewTicker(250 * time.Millisecond)
 	defer inflightRequestsTicker.Stop()
 
-	ringCheckTicker := time.NewTicker(ringCheckPeriod)
+	ringCheckTicker := time.NewTicker(lokiring.RingCheckPeriod)
 	defer ringCheckTicker.Stop()
 
 	for {
@@ -662,10 +662,10 @@ func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
 // SafeReadRing does a nil check on the Scheduler before attempting to return it's ring
 // this is necessary as many callers of this function will only have a valid Scheduler
 // reference if the QueryScheduler target has been specified, which is not guaranteed
-func SafeReadRing(s *RingManager) ring.ReadRing {
-	if s == nil || s.Ring == nil || !s.cfg.UseSchedulerRing {
+func SafeReadRing(cfg Config, rm *lokiring.RingManager) ring.ReadRing {
+	if rm == nil || rm.Ring == nil || !cfg.UseSchedulerRing {
 		return nil
 	}
 
-	return s.Ring
+	return rm.Ring
 }

@@ -17,7 +17,7 @@ import (
 
 const (
 	ringAutoForgetUnhealthyPeriods = 10
-	ringCheckPeriod                = 3 * time.Second
+	RingCheckPeriod                = 3 * time.Second
 )
 
 // ManagerMode defines the different modes for the RingManager to execute.
@@ -207,7 +207,7 @@ func (rm *RingManager) starting(ctx context.Context) (err error) {
 
 // running implements the Lifecycler interface and is one of the lifecycle hooks.
 func (rm *RingManager) running(ctx context.Context) error {
-	t := time.NewTicker(ringCheckPeriod)
+	t := time.NewTicker(RingCheckPeriod)
 	defer t.Stop()
 	for {
 		select {

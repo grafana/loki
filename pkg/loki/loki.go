@@ -314,7 +314,7 @@ type Loki struct {
 	compactor                 *compactor.Compactor
 	QueryFrontEndTripperware  queryrangebase.Tripperware
 	queryScheduler            *scheduler.Scheduler
-	querySchedulerRingManager *scheduler.RingManager
+	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
 	bloomCompactorRingManager *bloomcompactor.RingManager

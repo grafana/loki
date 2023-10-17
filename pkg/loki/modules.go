@@ -370,7 +370,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		QuerierWorkerConfig:   &t.Cfg.Worker,
 		QueryFrontendEnabled:  t.Cfg.isModuleEnabled(QueryFrontend),
 		QuerySchedulerEnabled: t.Cfg.isModuleEnabled(QueryScheduler),
-		SchedulerRing:         scheduler.SafeReadRing(t.querySchedulerRingManager),
+		SchedulerRing:         scheduler.SafeReadRing(t.Cfg.QueryScheduler, t.querySchedulerRingManager),
 	}
 
 	toMerge := []middleware.Interface{
@@ -855,7 +855,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}
 	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
 		combinedCfg,
-		scheduler.SafeReadRing(t.querySchedulerRingManager),
+		scheduler.SafeReadRing(t.Cfg.QueryScheduler, t.querySchedulerRingManager),
 		disabledShuffleShardingLimits{},
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
@@ -1427,11 +1427,13 @@ func (t *Loki) initQuerySchedulerRing() (_ services.Service, err error) {
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.QueryScheduler.SchedulerRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	managerMode := scheduler.RingManagerModeReader
+	managerMode := lokiring.ClientMode
 	if t.Cfg.isModuleEnabled(QueryScheduler) || t.Cfg.isModuleEnabled(Backend) || t.Cfg.isModuleEnabled(All) || (t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read)) {
-		managerMode = scheduler.RingManagerModeMember
+		managerMode = lokiring.ServerMode
 	}
-	rm, err := scheduler.NewRingManager(managerMode, t.Cfg.QueryScheduler, util_log.Logger, prometheus.DefaultRegisterer)
+	rf := 2     // ringReplicationFactor should be 2 because we want 2 schedulers.
+	tokens := 1 // we only need to insert 1 token to be used for leader election purposes.
+	rm, err := lokiring.NewRingManager("scheduler", managerMode, t.Cfg.QueryScheduler.SchedulerRing, rf, tokens, util_log.Logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new scheduler ring manager")
