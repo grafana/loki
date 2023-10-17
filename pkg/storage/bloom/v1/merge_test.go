@@ -8,10 +8,11 @@ import (
 
 func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 	var (
-		numSeries   = 100
-		numQueriers = 4
-		queriers    []PeekingIterator[*SeriesWithBloom]
-		data        = mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
+		numSeries        = 100
+		numKeysPerSeries = 10000
+		numQueriers      = 4
+		queriers         []PeekingIterator[*SeriesWithBloom]
+		data, _          = mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 	)
 	for i := 0; i < numQueriers; i++ {
 		var ptrs []*SeriesWithBloom
@@ -34,11 +35,12 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 
 func TestMergeBlockQuerier_Overlapping(t *testing.T) {
 	var (
-		numSeries   = 100
-		numQueriers = 4
-		queriers    []PeekingIterator[*SeriesWithBloom]
-		data        = mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
-		slices      = make([][]*SeriesWithBloom, numQueriers)
+		numSeries        = 100
+		numKeysPerSeries = 10000
+		numQueriers      = 4
+		queriers         []PeekingIterator[*SeriesWithBloom]
+		data, _          = mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+		slices           = make([][]*SeriesWithBloom, numQueriers)
 	)
 	for i := 0; i < numSeries; i++ {
 		slices[i%numQueriers] = append(slices[i%numQueriers], &data[i])
