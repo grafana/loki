@@ -1,6 +1,9 @@
 package main
 
-import "container/list"
+import (
+	"container/list"
+	"fmt"
+)
 
 type LRUCache struct {
 	capacity int
@@ -496,4 +499,108 @@ func (c *FourByteKeyLRUCache) Clear() {
 
 	// Clear the list
 	c.list.Init()
+}
+
+type LRUCache5 struct {
+	capacity int
+	cache    map[string]*LRUNode5
+	head     *LRUNode5
+	tail     *LRUNode5
+}
+
+type LRUNode5 struct {
+	key  string
+	prev *LRUNode5
+	next *LRUNode5
+}
+
+func NewLRUCache5(capacity int) *LRUCache5 {
+	return &LRUCache5{
+		capacity: capacity,
+	}
+}
+func (c *LRUCache5) init() {
+	c.cache = make(map[string]*LRUNode5, c.capacity)
+	c.head = new(LRUNode5)
+	c.tail = new(LRUNode5)
+	c.head.next = c.tail
+	c.tail.prev = c.head
+}
+
+func (c *LRUCache5) pop(item *LRUNode5) {
+	item.prev.next = item.next
+	item.next.prev = item.prev
+}
+
+func (c *LRUCache5) push(item *LRUNode5) {
+	c.head.next.prev = item
+	item.next = c.head.next
+	item.prev = c.head
+	c.head.next = item
+}
+
+func (c *LRUCache5) evict() *LRUNode5 {
+	item := c.tail.prev
+	c.pop(item)
+	delete(c.cache, item.key)
+	return item
+}
+
+func (c *LRUCache5) Get(key string) bool {
+	if c.cache == nil {
+		c.init()
+	}
+	item := c.cache[key]
+	if item == nil {
+		return false
+	}
+	if c.head.next != item {
+		c.pop(item)
+		c.push(item)
+	}
+	return true
+}
+
+func (c *LRUCache5) Put(key string) {
+	if c.cache == nil {
+		c.init()
+	}
+	item := c.cache[key]
+	if item == nil {
+		if len(c.cache) == c.capacity {
+			item = c.evict()
+		} else {
+			item = new(LRUNode5)
+		}
+		item.key = key
+		c.push(item)
+		c.cache[key] = item
+	} else {
+		if c.head.next != item {
+			c.pop(item)
+			c.push(item)
+		}
+	}
+}
+
+func (c *LRUCache5) Clear() {
+	if c.cache != nil {
+
+		for elem := range c.cache {
+			delete(c.cache, elem)
+		}
+
+		c.head = nil
+		c.tail = nil
+	}
+}
+
+func (c *LRUCache5) Dump() {
+	if c.cache != nil {
+
+		for elem := range c.cache {
+			fmt.Println(elem)
+		}
+
+	}
 }

@@ -303,6 +303,103 @@ func BenchmarkSBFTestAndAddWithLRU(b *testing.B) {
 	}
 }
 
+func BenchmarkSBFSeparateTestAndAddWithLRU(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		experiment := NewExperiment(
+			"token=3skip0_error=1%_indexchunks=true",
+			three,
+			true,
+			onePctError,
+		)
+		sbf := experiment.bloom()
+		cache := NewLRUCache4(150000)
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			tokens := experiment.tokenizer.Tokens(line)
+			for _, token := range tokens {
+				if !cache.Get(token.Key) {
+					cache.Put(token.Key)
+
+					found := sbf.Test(token.Key)
+					if !found {
+						sbf.Add(token.Key)
+					}
+					//sbf.TestAndAdd(token.Key)
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkSBFSeparateTestAndAddWithLRU5(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		experiment := NewExperiment(
+			"token=3skip0_error=1%_indexchunks=true",
+			three,
+			true,
+			onePctError,
+		)
+		sbf := experiment.bloom()
+		cache := NewLRUCache5(150000)
+
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			tokens := experiment.tokenizer.Tokens(line)
+			for _, token := range tokens {
+				if !cache.Get(token.Value) {
+					cache.Put(token.Value)
+
+					found := sbf.Test(token.Key)
+					if !found {
+						sbf.Add(token.Key)
+					}
+					//sbf.TestAndAdd(token.Key)
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkSBFTestAndAddWithLRU5(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		experiment := NewExperiment(
+			"token=3skip0_error=1%_indexchunks=true",
+			three,
+			true,
+			onePctError,
+		)
+		sbf := experiment.bloom()
+		cache := NewLRUCache5(150000)
+
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			tokens := experiment.tokenizer.Tokens(line)
+			for _, token := range tokens {
+				if !cache.Get(token.Value) {
+					cache.Put(token.Value)
+
+					sbf.TestAndAdd(token.Key)
+				}
+			}
+		}
+	}
+}
+
 func BenchmarkSBFTestAndAddWithByteKeyLRU(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
@@ -389,6 +486,38 @@ func BenchmarkSBFAddWithLRU(b *testing.B) {
 				if !cache.Get(token.Key) {
 					cache.Put(token.Key)
 					sbf.Add(token.Key)
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkSBFSeparateTestAndAddWithLRU1(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		experiment := NewExperiment(
+			"token=3skip0_error=1%_indexchunks=true",
+			three,
+			true,
+			onePctError,
+		)
+		sbf := experiment.bloom()
+		cache := NewLRUCache(150000)
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			tokens := experiment.tokenizer.Tokens(line)
+			for _, token := range tokens {
+				if !cache.Get(token.Value) {
+					cache.Put(token.Value)
+					found := sbf.Test(token.Key)
+					if !found {
+						sbf.Add(token.Key)
+					}
+					//sbf.Add(token.Key)
 				}
 			}
 		}

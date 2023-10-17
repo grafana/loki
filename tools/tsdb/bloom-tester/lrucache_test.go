@@ -113,6 +113,49 @@ func TestByteKeyLRUCache(t *testing.T) {
 	}
 }
 
+func TestLRUCache5(t *testing.T) {
+	set := NewLRUCache5(30)
+	set.Put("fooa")
+	for _, tc := range []struct {
+		desc  string
+		input string
+		exp   bool
+	}{
+		{
+			desc:  "test valid",
+			input: "fooa",
+			exp:   true,
+		},
+		{
+			desc:  "test not valid",
+			input: "foob",
+			exp:   false,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, set.Get(tc.input))
+		})
+	}
+}
+
+func BenchmarkLRU5Put(b *testing.B) {
+	cache := NewLRUCache5(num)
+	for i := 0; i < b.N; i++ {
+		cache.Put(strconv.Itoa(i))
+	}
+}
+
+func BenchmarkLRU5Get(b *testing.B) {
+	cache := NewLRUCache5(num)
+	for i := 0; i < num; i++ {
+		cache.Put(strconv.Itoa(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.Get(strconv.Itoa(i))
+	}
+}
+
 func BenchmarkByteKeyLRUCacheSet(b *testing.B) {
 	buf := make([]byte, 26)
 	cache := NewByteKeyLRUCache(num)
