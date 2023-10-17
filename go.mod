@@ -122,7 +122,7 @@ require (
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
-	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
+	github.com/grafana/loki/pkg/push v0.0.0-20231017082930-695c5b0f8336
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/prometheus/alertmanager v0.26.0
