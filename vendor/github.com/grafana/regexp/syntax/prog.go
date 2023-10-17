@@ -146,37 +146,20 @@ func (i *Inst) op() InstOp {
 // regexp must start with. Complete is true if the prefix
 // is the entire match.
 func (p *Prog) Prefix() (prefix string, complete bool) {
-	prefix, complete, foldCase := p.PrefixAndCase()
-	if foldCase {
-		return "", false
-	}
-	return prefix, complete
-}
-
-// Prefix returns a literal string that all matches for the
-// regexp must start with. Complete is true if the prefix
-// is the entire match. FoldCase is true if the string should
-// match in upper or lower case.
-func (p *Prog) PrefixAndCase() (prefix string, complete bool, foldCase bool) {
-	i := &p.Inst[p.Start]
-	// Skip any no-op, capturing or begin-text instructions
-	for i.Op == InstNop || i.Op == InstCapture || (i.Op == InstEmptyWidth && EmptyOp(i.Arg)&EmptyBeginText != 0) {
-		i = &p.Inst[i.Out]
-	}
+	i := p.skipNop(uint32(p.Start))
 
 	// Avoid allocation of buffer if prefix is empty.
 	if i.op() != InstRune || len(i.Rune) != 1 {
-		return "", i.Op == InstMatch, false
+		return "", i.Op == InstMatch
 	}
 
 	// Have prefix; gather characters.
 	var buf strings.Builder
-	foldCase = (Flags(i.Arg)&FoldCase != 0)
-	for i.op() == InstRune && len(i.Rune) == 1 && (Flags(i.Arg)&FoldCase != 0) == foldCase && i.Rune[0] != utf8.RuneError {
+	for i.op() == InstRune && len(i.Rune) == 1 && Flags(i.Arg)&FoldCase == 0 && i.Rune[0] != utf8.RuneError {
 		buf.WriteRune(i.Rune[0])
 		i = p.skipNop(i.Out)
 	}
-	return buf.String(), i.Op == InstMatch, foldCase
+	return buf.String(), i.Op == InstMatch
 }
 
 // StartCond returns the leading empty-width conditions that must
