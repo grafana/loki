@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	loki_net "github.com/grafana/loki/pkg/util/net"
@@ -211,7 +211,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 		// neither common ring nor memberlist set, use ingester ring configuration for all rings
 		// that have not been configured. Don't merge any ingester ring configurations for rings
 		// that deviate from the default in any way.
-		ingesterRingCfg := util.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
+		ingesterRingCfg := lokiring.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
 		applyConfigToRings(r, defaults, ingesterRingCfg, false)
 	}
 }
@@ -223,7 +223,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 // ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
 // any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
 // derivations, with the derivations taking precedence.
-func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
+func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, mergeWithExisting bool) {
 	// Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
 	// change ingester ring values when applying the common config, so there's no need for the DeepEqual
 	// check here.

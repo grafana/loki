@@ -3,13 +3,13 @@ package bloomgateway
 import (
 	"flag"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/ring"
 )
 
 // RingCfg is a wrapper for our internally used ring configuration plus the replication factor.
 type RingCfg struct {
 	// RingConfig configures the Bloom Gateway ring.
-	util.RingConfig `yaml:",inline"`
+	ring.RingConfig `yaml:",inline"`
 	// ReplicationFactor defines how many replicas of the Bloom Gateway store a single data shard.
 	ReplicationFactor int `yaml:"replication_factor"`
 }

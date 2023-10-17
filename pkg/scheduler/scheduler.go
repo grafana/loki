@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -27,14 +28,13 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -100,8 +100,8 @@ type Config struct {
 	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
-	UseSchedulerRing bool            `yaml:"use_scheduler_ring"`
-	SchedulerRing    util.RingConfig `yaml:"scheduler_ring,omitempty" doc:"description=The hash ring configuration. This option is required only if use_scheduler_ring is true."`
+	UseSchedulerRing bool                `yaml:"use_scheduler_ring"`
+	SchedulerRing    lokiring.RingConfig `yaml:"scheduler_ring,omitempty" doc:"description=The hash ring configuration. This option is required only if use_scheduler_ring is true."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -592,7 +592,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 			if !s.cfg.UseSchedulerRing {
 				continue
 			}
-			isInSet, err := util.IsInReplicationSet(s.ringManager.Ring, util.RingKeyOfLeader, s.ringManager.RingLifecycler.GetInstanceAddr())
+			isInSet, err := lokiring.IsInReplicationSet(s.ringManager.Ring, util.RingKeyOfLeader, s.ringManager.RingLifecycler.GetInstanceAddr())
 			if err != nil {
 				level.Error(s.log).Log("msg", "failed to query the ring to see if scheduler instance is in ReplicatonSet, will try again", "err", err)
 				continue

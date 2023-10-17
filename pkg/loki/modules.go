@@ -73,6 +73,7 @@ import (
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/querylimits"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -1336,11 +1337,11 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 
-	managerMode := indexgateway.ClientMode
+	managerMode := lokiring.ClientMode
 	if t.Cfg.isModuleEnabled(IndexGateway) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
-		managerMode = indexgateway.ServerMode
+		managerMode = lokiring.ServerMode
 	}
-	rm, err := indexgateway.NewRingManager(managerMode, t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer)
+	rm, err := lokiring.NewRingManager("index-gateway", managerMode, t.Cfg.IndexGateway.Ring.RingConfig, t.Cfg.IndexGateway.Ring.ReplicationFactor, 128, util_log.Logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")

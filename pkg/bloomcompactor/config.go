@@ -4,7 +4,7 @@ import (
 	"flag"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/ring"
 )
 
 // Config configures the bloom-compactor component.
@@ -28,7 +28,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RingCfg is a wrapper for our internally used ring configuration plus the replication factor.
 type RingCfg struct {
 	// RingConfig configures the Bloom-Compactor ring.
-	util.RingConfig `yaml:",inline"`
+	ring.RingConfig `yaml:",inline"`
 }
 
 func (cfg *RingCfg) RegisterFlags(prefix, storePrefix string, f *flag.FlagSet) {
