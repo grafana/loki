@@ -6,6 +6,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
@@ -18,7 +20,6 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -98,8 +99,8 @@ var (
 	five       = newNGramTokenizer(5, 6, 0)
 	six        = newNGramTokenizer(6, 7, 0)
 
-	onePctError  = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.01, 0.8) }
-	fivePctError = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.05, 0.8) }
+	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
+	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
 )
 
 var experiments = []Experiment{
@@ -119,49 +120,52 @@ var experiments = []Experiment{
 		true,
 		onePctError,
 	),
+
 	NewExperiment(
 		"token=4skip1_error=1%_indexchunks=true",
 		fourSkip1,
 		true,
 		onePctError,
 	),
-	NewExperiment(
-		"token=4skip2_error=1%_indexchunks=true",
-		fourSkip2,
-		true,
-		onePctError,
-	),
+	/*
+		NewExperiment(
+			"token=4skip2_error=1%_indexchunks=true",
+			fourSkip2,
+			true,
+			onePctError,
+		),*/
 	NewExperiment(
 		"token=4skip0_error=5%_indexchunks=true",
 		four,
 		true,
 		fivePctError,
 	),
-	NewExperiment(
-		"token=4skip1_error=5%_indexchunks=true",
-		fourSkip1,
-		true,
-		fivePctError,
-	),
-	NewExperiment(
-		"token=4skip2_error=5%_indexchunks=true",
-		fourSkip2,
-		true,
-		fivePctError,
-	),
 	/*
 		NewExperiment(
-			"token=5skip0_error=1%_indexchunks=true",
-			five,
+			"token=4skip1_error=5%_indexchunks=true",
+			fourSkip1,
 			true,
-			onePctError,
+			fivePctError,
 		),
 		NewExperiment(
-			"token=6skip0_error=1%_indexchunks=true",
-			six,
+			"token=4skip2_error=5%_indexchunks=true",
+			fourSkip2,
 			true,
-			onePctError,
+			fivePctError,
 		),
+		/*
+			NewExperiment(
+				"token=5skip0_error=1%_indexchunks=true",
+				five,
+				true,
+				onePctError,
+			),
+			NewExperiment(
+				"token=6skip0_error=1%_indexchunks=true",
+				six,
+				true,
+				onePctError,
+			),
 	*/
 	/*
 		NewExperiment(
@@ -273,7 +277,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 			context.Background(),
 			tableName,
 			tenant,
-			shipperindex.ForEachIndexCallback(func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+			func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 				if isMultiTenantIndex {
 					return nil
 				}
@@ -349,7 +353,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
 										cache.Clear()
 
 										// Iterate chunks
@@ -357,7 +360,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											lines, inserts, collisions float64
 										)
 										for cidx := range got {
-											chunkTokenizer.reinit(got[cidx].ChunkRef)
+											chunkTokenizer := ChunkIDTokenizer(got[cidx].ChunkRef, experiment.tokenizer)
+
 											var tokenizer Tokenizer = chunkTokenizer
 											if !experiment.encodeChunkID {
 												tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
@@ -389,8 +393,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												lines++
 												for _, tok := range toks {
 													if tok.Key != nil {
-														if !cache.Get(tok.Key) {
-															cache.Put(tok.Key)
+														if !cache.GetString(tok.Value) {
+															cache.PutStringByte(tok.Value, tok.Key)
 															if dup := sbf.TestAndAdd(tok.Key); dup {
 																collisions++
 															}
@@ -449,7 +453,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 				return nil
 
-			}),
+			},
 		)
 		helpers.ExitErr(fmt.Sprintf("iterating tenant %s", tenant), err)
 
@@ -458,7 +462,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
 	//pool.drain() // wait for workers to finish
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
-	time.Sleep(30 * time.Second) // allow final scrape
+	//time.Sleep(30 * time.Second)         // allow final scrape
+	time.Sleep(time.Duration(1<<63 - 1)) // wait forever
 	return nil
 }
 
@@ -512,7 +517,7 @@ func sbfFileExists(location, prefix, period, tenant, series string, objectClient
 	return result
 }
 
-func writeSBF(sbf *boom.ScalableBloomFilter, location, prefix, period, tenant, series string, objectClient client.ObjectClient) {
+func writeSBF(sbf *filter.ScalableBloomFilter, location, prefix, period, tenant, series string, objectClient client.ObjectClient) {
 	dirPath := fmt.Sprintf("%s/%s/%s/%s", location, prefix, period, tenant)
 	objectStoragePath := fmt.Sprintf("bloomtests/%s/%s/%s", prefix, period, tenant)
 	if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
@@ -530,7 +535,7 @@ func writeSBF(sbf *boom.ScalableBloomFilter, location, prefix, period, tenant, s
 		objectClient)
 }
 
-func writeSBFToFile(sbf *boom.ScalableBloomFilter, filename string) error {
+func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -548,7 +553,7 @@ func writeSBFToFile(sbf *boom.ScalableBloomFilter, filename string) error {
 	return err
 }
 
-func writeSBFToObjectStorage(sbf *boom.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
 	// Probably a better way to do this than to reopen the file, but it's late
 	file, err := os.Open(localFilename)
 	if err != nil {

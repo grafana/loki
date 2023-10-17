@@ -48,10 +48,11 @@ func newLogfmtTokenizer() *logfmtTokenizer {
 
 type ngramTokenizer struct {
 	// [min,max) exclusivity
-	min, max, skip int
-	buffers        [][]rune // circular buffers used for ngram generation
-	runeBuffer     []byte   // buffer used for token generation
-	tokenBuffer    []Token  // buffer used for holding tokens
+	min, max, skip      int
+	buffers             [][]rune // circular buffers used for ngram generation
+	runeBuffer          []byte   // buffer used for token generation
+	tokenBuffer         []Token  // buffer used for holding tokens that is returned
+	internalTokenBuffer []Token  // circular buffer for tokens
 }
 
 func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
@@ -67,6 +68,12 @@ func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
 	}
 	t.runeBuffer = make([]byte, 0, max*4)
 	t.tokenBuffer = make([]Token, 0, 1024)
+	t.internalTokenBuffer = make([]Token, 0, 1024)
+	for i := 0; i < cap(t.internalTokenBuffer); i++ {
+		tok := Token{}
+		tok.Key = make([]byte, 0, 132)
+		t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
+	}
 
 	return t
 }
@@ -84,6 +91,41 @@ func (t *ngramTokenizer) getMax() int {
 }
 
 func (t *ngramTokenizer) Tokens(line string) []Token {
+	t.tokenBuffer = t.tokenBuffer[:0] // Reset the result slice
+	var i int                         // rune index (not position that is measured in the range loop)
+	numToks := 0
+	for _, r := range line {
+
+		// j is the index of the buffer to use
+		for j := 0; j < (t.max - t.min); j++ {
+			// n is the length of the ngram
+			n := j + t.min
+			// pos is the position in the buffer to overwrite
+			pos := i % n
+			t.buffers[j][pos] = r
+
+			if i >= n-1 && (i+1-n)%(t.skip+1) == 0 {
+				t.runeBuffer = reassemble(t.buffers[j], (i+1)%n, t.runeBuffer)
+				//fmt.Println(numToks, cap(t.internalTokenBuffer), len(t.internalTokenBuffer))
+				if numToks >= cap(t.internalTokenBuffer) || numToks == len(t.internalTokenBuffer) {
+					tok := Token{}
+					tok.Key = make([]byte, 0, 132)
+					t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
+				}
+				//fmt.Println(numToks, cap(t.internalTokenBuffer), len(t.internalTokenBuffer))
+				t.internalTokenBuffer[numToks].Key = t.internalTokenBuffer[numToks].Key[:0]
+				t.internalTokenBuffer[numToks].Key = append(t.internalTokenBuffer[numToks].Key, t.runeBuffer...)
+				t.internalTokenBuffer[numToks].Value = string(t.internalTokenBuffer[numToks].Key)
+				numToks++
+			}
+		}
+		i++
+	}
+	t.tokenBuffer = append(t.tokenBuffer, t.internalTokenBuffer[:numToks]...)
+	return t.tokenBuffer
+}
+
+func (t *ngramTokenizer) OldTokens(line string) []Token {
 	t.tokenBuffer = t.tokenBuffer[:0] // Reset the result slice
 	var i int                         // rune index (not position that is measured in the range loop)
 	for _, r := range line {

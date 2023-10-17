@@ -467,6 +467,9 @@ github.com/coreos/go-systemd/v22/journal
 # github.com/cristalhq/hedgedhttp v0.7.2
 ## explicit; go 1.16
 github.com/cristalhq/hedgedhttp
+# github.com/d4l3k/messagediff v1.2.1
+## explicit
+github.com/d4l3k/messagediff
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
@@ -902,7 +905,7 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765 => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
-# github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+# github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 ## explicit; go 1.17
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
@@ -1188,9 +1191,6 @@ github.com/oschwald/geoip2-golang
 # github.com/oschwald/maxminddb-golang v1.11.0
 ## explicit; go 1.19
 github.com/oschwald/maxminddb-golang
-# github.com/owen-d/BoomFilters v0.0.0-20230914145927-1ad00a0ec6fd
-## explicit; go 1.20
-github.com/owen-d/BoomFilters/boom
 # github.com/pierrec/lz4/v4 v4.1.18
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
@@ -2205,5 +2205,5 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
-# github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+# github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 # github.com/grafana/loki/pkg/push => ./pkg/push

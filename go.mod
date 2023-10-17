@@ -119,13 +119,13 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
 	github.com/aws/smithy-go v1.11.1
 	github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
+	github.com/d4l3k/messagediff v1.2.1
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gogo/googleapis v1.4.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
-	github.com/owen-d/BoomFilters v0.0.0-20230914145927-1ad00a0ec6fd
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
@@ -347,6 +347,6 @@ exclude k8s.io/client-go v8.0.0+incompatible
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 
 // Insist on the optimised version of grafana/regexp
-replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
+replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 
 replace github.com/grafana/loki/pkg/push => ./pkg/push
