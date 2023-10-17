@@ -14,6 +14,8 @@ import (
 	"github.com/grafana/dskit/server"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomgateway"
+	"github.com/grafana/loki/pkg/compactor"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -36,7 +38,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	storage_config "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/validation"
@@ -96,6 +97,11 @@ var (
 			Name:       "index_gateway",
 			StructType: []reflect.Type{reflect.TypeOf(indexgateway.Config{})},
 			Desc:       "The index_gateway block configures the Loki index gateway server, responsible for serving index queries without the need to constantly interact with the object store.",
+		},
+		{
+			Name:       "bloom_gateway",
+			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
+			Desc:       "The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
 		},
 		{
 			Name:       "storage_config",

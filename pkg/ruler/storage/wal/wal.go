@@ -62,11 +62,13 @@ type Storage struct {
 	deleted    map[chunks.HeadSeriesRef]int // Deleted series, and what WAL segment they must be kept until.
 
 	metrics *Metrics
+
+	writeNotified wlog.WriteNotified
 }
 
 // NewStorage makes a new Storage.
 func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string) (*Storage, error) {
-	w, err := wlog.NewSize(logger, registerer, SubDirectory(path), wlog.DefaultSegmentSize, true)
+	w, err := wlog.NewSize(logger, registerer, SubDirectory(path), wlog.DefaultSegmentSize, wlog.CompressionSnappy)
 	if err != nil {
 		return nil, err
 	}
@@ -87,8 +89,14 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	}
 
 	storage.appenderPool.New = func() interface{} {
+		var notify func()
+
+		if storage.writeNotified != nil {
+			notify = storage.writeNotified.Notify
+		}
 		return &appender{
 			w:         storage,
+			notify:    notify,
 			series:    make([]record.RefSeries, 0, 100),
 			samples:   make([]record.RefSample, 0, 100),
 			exemplars: make([]record.RefExemplar, 0, 10),
@@ -114,6 +122,10 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 	go storage.recordSize()
 
 	return storage, nil
+}
+
+func (w *Storage) SetWriteNotified(writeNotified wlog.WriteNotified) {
+	w.writeNotified = writeNotified
 }
 
 func (w *Storage) replayWAL() error {
@@ -532,7 +544,9 @@ func dirSize(path string) (int64, error) {
 }
 
 type appender struct {
-	w         *Storage
+	w *Storage
+	// Notify the underlying storage that some sample is written
+	notify    func()
 	series    []record.RefSeries
 	samples   []record.RefSample
 	exemplars []record.RefExemplar
@@ -675,6 +689,13 @@ func (a *appender) Commit() error {
 			return err
 		}
 		buf = buf[:0]
+	}
+
+	// Notify so that reader waiting for it can read without needing to wait for next read ticker.
+	if a.notify != nil {
+		a.notify()
+	} else {
+		level.Warn(a.w.logger).Log("msg", "not notifying about WAL writes because notifier is not set")
 	}
 
 	//nolint:staticcheck
