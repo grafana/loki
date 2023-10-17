@@ -443,3 +443,57 @@ func (c *ByteSet) Clear() {
 		delete(c.cache, k)
 	}
 }
+
+type FourByteKeyLRUCache struct {
+	capacity int
+	m        map[[4]byte]*list.Element
+	list     *list.List
+}
+
+func NewFourByteKeyLRUCache(capacity int) *FourByteKeyLRUCache {
+	return &FourByteKeyLRUCache{
+		capacity: capacity,
+		m:        make(map[[4]byte]*list.Element, capacity),
+		list:     list.New(),
+	}
+}
+
+func (c *FourByteKeyLRUCache) Get(key [4]byte) bool {
+	if value, ok := c.m[key]; ok {
+		// Move the accessed element to the front of the list
+		c.list.MoveToFront(value)
+		return true
+	}
+	return false
+}
+
+func (c *FourByteKeyLRUCache) Put(key [4]byte) {
+	if value, ok := c.m[key]; ok {
+		// If the key already exists, move it to the front
+		c.list.MoveToFront(value)
+	} else {
+		// If the cache is full, remove the least recently used element
+		if len(c.m) >= c.capacity {
+			// Get the least recently used element from the back of the list
+			tailElem := c.list.Back()
+			if tailElem != nil {
+				deletedEntry := c.list.Remove(tailElem).([4]byte)
+				delete(c.m, deletedEntry)
+			}
+		}
+
+		// Add the new key to the cache and the front of the list
+		elem := c.list.PushFront(key)
+		c.m[key] = elem
+	}
+}
+
+func (c *FourByteKeyLRUCache) Clear() {
+	// Iterate through the list and remove all elements
+	for elem := c.list.Front(); elem != nil; elem = elem.Next() {
+		delete(c.m, elem.Value.([4]byte))
+	}
+
+	// Clear the list
+	c.list.Init()
+}

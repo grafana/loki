@@ -322,11 +322,46 @@ func BenchmarkSBFTestAndAddWithByteKeyLRU(b *testing.B) {
 			line := scanner.Text()
 			tokens := experiment.tokenizer.Tokens(line)
 			for _, token := range tokens {
+
 				array := NewFourByteKeyFromSlice(token.Key)
 				if !cache.Get(array) {
 					cache.Put(array)
 					sbf.TestAndAdd(token.Key)
 				}
+
+			}
+		}
+	}
+}
+
+func BenchmarkSBFTestAndAddWithFourByteKeyLRU(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		experiment := NewExperiment(
+			"token=4skip0_error=1%_indexchunks=false",
+			four,
+			false,
+			onePctError,
+		)
+		sbf := experiment.bloom()
+		cache := NewFourByteKeyLRUCache(150000)
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			tokens := experiment.tokenizer.Tokens(line)
+			for _, token := range tokens {
+				if !cache.Get([4]byte(token.Key)) {
+					cache.Put([4]byte(token.Key))
+					found := sbf.Test(token.Key)
+					if !found {
+						sbf.Add(token.Key)
+					}
+					//sbf.TestAndAdd(token.Key)
+				}
+
 			}
 		}
 	}
