@@ -1247,12 +1247,12 @@ func (t *Loki) initBloomGatewayRing() (services.Service, error) {
 	t.Cfg.BloomGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// TODO(chaudum): Do we want to integration the bloom gateway component into the backend target?
-	mode := bloomgateway.ClientMode
+	mode := lokiring.ClientMode
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 	if t.Cfg.isModuleEnabled(BloomGateway) || t.Cfg.isModuleEnabled(Backend) || legacyReadMode {
-		mode = bloomgateway.ServerMode
+		mode = lokiring.ServerMode
 	}
-	manager, err := bloomgateway.NewRingManager(mode, t.Cfg.BloomGateway, util_log.Logger, prometheus.DefaultRegisterer)
+	manager, err := lokiring.NewRingManager("bloom-gateway", mode, t.Cfg.BloomGateway.Ring.RingConfig, t.Cfg.BloomGateway.Ring.ReplicationFactor, 128, util_log.Logger, prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return nil, gerrors.Wrap(err, "error initializing bloom gateway ring manager")

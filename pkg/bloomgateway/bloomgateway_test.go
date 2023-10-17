@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
 func parseDayTime(s string) config.DayTime {
@@ -71,8 +71,8 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 		cfg := Config{
 			Enabled: true,
-			Ring: RingCfg{
-				RingConfig: util.RingConfig{
+			Ring: lokiring.RingConfigWithRF{
+				RingConfig: lokiring.RingConfig{
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
@@ -125,8 +125,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	cfg := Config{
 		Enabled: true,
-		Ring: RingCfg{
-			RingConfig: util.RingConfig{
+		Ring: lokiring.RingConfigWithRF{
+			RingConfig: lokiring.RingConfig{
 				KVStore: kv.Config{
 					Mock: kvStore,
 				},

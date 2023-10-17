@@ -318,7 +318,7 @@ type Loki struct {
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
 	bloomCompactorRingManager *bloomcompactor.RingManager
-	bloomGatewayRingManager   *bloomgateway.RingManager
+	bloomGatewayRingManager   *lokiring.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
