@@ -757,7 +757,7 @@ func testSyslogTargetWithTLSVerifyClientCertificate(t *testing.T, fmtFunc format
 
 		buf := make([]byte, 1)
 		_, err = c.Read(buf)
-		require.EqualError(t, err, "remote error: tls: certificate required")
+		require.EqualError(t, err, "remote error: tls: bad certificate")
 	})
 
 	t.Run("WithClientCertificate", func(t *testing.T) {
