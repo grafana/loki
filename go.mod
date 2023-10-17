@@ -125,7 +125,6 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
-	github.com/owen-d/BoomFilters v0.0.0-20231013153601-28f62ee0f039
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0

@@ -34,11 +34,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -125,11 +125,9 @@ func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error
 	series := NoopGetSeries()
 	data := NoopGetChunks()
 
-	// TODO discuss with Owen is blooms meant to be created here, when should tokenization happen?
-	bloom := v1.Bloom{} // TODO {sbf: sbf} sbf is not public, is it meant to be?
+	bloom := v1.Bloom{Sbf: *filter.NewDefaultScalableBloomFilter(0.01)}
 	// create bloom filters from that.
-	sbf := *boom.NewDefaultScalableBloomFilter(0.01)
-	sbf.Add([]byte(fmt.Sprint(data)))
+	bloom.Sbf.Add([]byte(fmt.Sprint(data)))
 
 	// block and seriesList
 	seriesList := []v1.SeriesWithBloom{
