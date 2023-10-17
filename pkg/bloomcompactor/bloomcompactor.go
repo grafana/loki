@@ -110,7 +110,7 @@ func (c *Compactor) stopping(_ error) error {
 func NoopGetFingerprintRange() (uint64, uint64) { return 0, 0 }
 
 // TODO List Users from TSDB and add logic to owned user via ring
-func NoopGetUserId() string { return "" }
+func NoopGetUserID() string { return "" }
 
 // TODO get series from objectClient (TSDB) instead of params
 func NoopGetSeries() *v1.Series { return nil }
@@ -177,8 +177,15 @@ func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error
 		Blocks:     []bloomshipper.BlockRef{blockRef},
 	}
 
-	c.bloomShipperClient.PutMeta(ctx, meta)
-	c.bloomShipperClient.PutBlocks(ctx, blocks)
+	err = c.bloomShipperClient.PutMeta(ctx, meta)
+	if err != nil {
+		return err
+	}
+	blocks, err = c.bloomShipperClient.PutBlocks(ctx, blocks)
+	if err != nil {
+		return err
+	}
+	// TODO may need to change return value of this func
 	return nil
 }
 
@@ -186,16 +193,16 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 	//TODO set MaxLookBackPeriod to Max ingester accepts
 	maxLookBackPeriod := c.cfg.MaxLookBackPeriod
 
-	st_fp, end_fp := NoopGetFingerprintRange()
-	tenantId := NoopGetUserId()
+	stFp, endFp := NoopGetFingerprintRange()
+	tenantID := NoopGetUserID()
 
 	end := time.Now().UTC().UnixMilli()
 	start := end - maxLookBackPeriod.Milliseconds()
 
 	metaSearchParams := bloomshipper.MetaSearchParams{
-		TenantID:       tenantId,
-		MinFingerprint: st_fp,
-		MaxFingerprint: end_fp,
+		TenantID:       tenantID,
+		MinFingerprint: stFp,
+		MaxFingerprint: endFp,
 		StartTimestamp: start,
 		EndTimestamp:   end,
 	}
@@ -208,7 +215,10 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 	if len(metas) == 0 {
 		//run compaction from scratch
 		tempDst := os.TempDir()
-		c.compactNewChunks(ctx, tempDst)
+		err = c.compactNewChunks(ctx, tempDst)
+		if err != nil {
+			return err
+		}
 	} else {
 		// part 2
 		// When already compacted metas exists
