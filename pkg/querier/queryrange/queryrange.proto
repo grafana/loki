@@ -171,4 +171,3 @@ message QueryResponse {
     QuantileSketchResponse quantileSketches = 8;
   }
 }
-
