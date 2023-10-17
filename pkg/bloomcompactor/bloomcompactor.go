@@ -221,8 +221,8 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 			}
 		}
 
-		// TODO complete part 2 - discuss with Owen
-		//1. for each period at hand, get TSDB table indexes for given fp range.
+		// TODO complete part 2 - discuss with Owen - add part to compare chunks and blocks.
+		//1. for each period at hand, get TSDB table indexes for given fp range
 		//2. Check blocks for given uniqueIndexPaths and TSDBindexes
 		//	if bloomBlock refs are a superset (covers TSDBIndexes plus more outside of range)
 		//	create a new meta.json file, tombstone unused index/block paths.
@@ -230,7 +230,6 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 		//else if: there are TSDBindexes that are not covered in bloomBlocks (a subset)
 		//then call compactNewChunks on them and create a new meta.json
 
-		//TODO Discuss with Owen, how to verify existing bloomblocks don't need to be changed?
 		//else: all good, no compaction
 	}
 	return nil
