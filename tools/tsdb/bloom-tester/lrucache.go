@@ -176,17 +176,16 @@ func (c *LRUCache4) Get(value []byte) bool {
 	return false
 }
 
-func (c *LRUCache4) GetString(key string) (bool, []byte) {
+func (c *LRUCache4) GetString(key string) bool {
 	if elem, ok := c.cache[key]; ok {
 		// Move the accessed element to the front of the list
 		c.list.MoveToFront(elem)
-		return true, elem.Value.(*Entry4).value
+		return true
 	}
-	return false, nil
+	return false
 }
 
-func (c *LRUCache4) Put(value []byte) {
-	key := string(value)
+func (c *LRUCache4) PutStringByte(key string, value []byte) {
 
 	if elem, ok := c.cache[key]; ok {
 		// If the key already exists, move it to the front
@@ -207,6 +206,14 @@ func (c *LRUCache4) Put(value []byte) {
 		newElem := c.list.PushFront(newEntry)
 		c.cache[key] = newElem
 	}
+}
+
+func (c *LRUCache4) Put(value []byte) {
+	c.PutStringByte(string(value), value)
+}
+
+func (c *LRUCache4) PutString(value string) {
+	c.PutStringByte(value, []byte(value))
 }
 
 func (c *LRUCache4) Clear() {

@@ -21,5 +21,6 @@
     "osvVulnerabilityAlerts": true,
     "prConcurrentLimit": 10,
     "rebaseWhen": "conflicted",
-    "branchPrefix": "deps-update/"
+    "branchPrefix": "deps-update/",
+    "postUpdateOptions": ["gomodTidy"]
   }
