@@ -23,9 +23,9 @@ package outlierdetection
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,10 +35,12 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/buffer"
+	"google.golang.org/grpc/internal/channelz"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/internal/grpcsync"
+	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 )
@@ -62,13 +64,14 @@ type bb struct{}
 
 func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Balancer {
 	b := &outlierDetectionBalancer{
-		cc:             cc,
-		closed:         grpcsync.NewEvent(),
-		done:           grpcsync.NewEvent(),
-		addrs:          make(map[string]*addressInfo),
-		scWrappers:     make(map[balancer.SubConn]*subConnWrapper),
-		scUpdateCh:     buffer.NewUnbounded(),
-		pickerUpdateCh: buffer.NewUnbounded(),
+		cc:               cc,
+		closed:           grpcsync.NewEvent(),
+		done:             grpcsync.NewEvent(),
+		addrs:            make(map[string]*addressInfo),
+		scWrappers:       make(map[balancer.SubConn]*subConnWrapper),
+		scUpdateCh:       buffer.NewUnbounded(),
+		pickerUpdateCh:   buffer.NewUnbounded(),
+		channelzParentID: bOpts.ChannelzParentID,
 	}
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
@@ -78,19 +81,27 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 }
 
 func (bb) ParseConfig(s json.RawMessage) (serviceconfig.LoadBalancingConfig, error) {
-	var lbCfg *LBConfig
-	if err := json.Unmarshal(s, &lbCfg); err != nil { // Validates child config if present as well.
+	lbCfg := &LBConfig{
+		// Default top layer values as documented in A50.
+		Interval:           iserviceconfig.Duration(10 * time.Second),
+		BaseEjectionTime:   iserviceconfig.Duration(30 * time.Second),
+		MaxEjectionTime:    iserviceconfig.Duration(300 * time.Second),
+		MaxEjectionPercent: 10,
+	}
+
+	// This unmarshalling handles underlying layers sre and fpe which have their
+	// own defaults for their fields if either sre or fpe are present.
+	if err := json.Unmarshal(s, lbCfg); err != nil { // Validates child config if present as well.
 		return nil, fmt.Errorf("xds: unable to unmarshal LBconfig: %s, error: %v", string(s), err)
 	}
 
 	// Note: in the xds flow, these validations will never fail. The xdsclient
 	// performs the same validations as here on the xds Outlier Detection
-	// resource before parsing into the internal struct which gets marshaled
-	// into JSON before calling this function. A50 defines two separate places
-	// for these validations to take place, the xdsclient and this ParseConfig
-	// method. "When parsing a config from JSON, if any of these requirements is
-	// violated, that should be treated as a parsing error." - A50
-
+	// resource before parsing resource into JSON which this function gets
+	// called with. A50 defines two separate places for these validations to
+	// take place, the xdsclient and this ParseConfig method. "When parsing a
+	// config from JSON, if any of these requirements is violated, that should
+	// be treated as a parsing error." - A50
 	switch {
 	// "The google.protobuf.Duration fields interval, base_ejection_time, and
 	// max_ejection_time must obey the restrictions in the
@@ -119,10 +130,7 @@ func (bb) ParseConfig(s json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 		return nil, fmt.Errorf("OutlierDetectionLoadBalancingConfig.FailurePercentageEjection.threshold = %v; must be <= 100", lbCfg.FailurePercentageEjection.Threshold)
 	case lbCfg.FailurePercentageEjection != nil && lbCfg.FailurePercentageEjection.EnforcementPercentage > 100:
 		return nil, fmt.Errorf("OutlierDetectionLoadBalancingConfig.FailurePercentageEjection.enforcement_percentage = %v; must be <= 100", lbCfg.FailurePercentageEjection.EnforcementPercentage)
-	case lbCfg.ChildPolicy == nil:
-		return nil, errors.New("OutlierDetectionLoadBalancingConfig.child_policy must be present")
 	}
-
 	return lbCfg, nil
 }
 
@@ -159,10 +167,11 @@ type outlierDetectionBalancer struct {
 	// to suppress redundant picker updates.
 	recentPickerNoop bool
 
-	closed *grpcsync.Event
-	done   *grpcsync.Event
-	cc     balancer.ClientConn
-	logger *grpclog.PrefixLogger
+	closed           *grpcsync.Event
+	done             *grpcsync.Event
+	cc               balancer.ClientConn
+	logger           *grpclog.PrefixLogger
+	channelzParentID *channelz.Identifier
 
 	// childMu guards calls into child (to uphold the balancer.Balancer API
 	// guarantee of synchronous calls).
@@ -221,9 +230,9 @@ func (b *outlierDetectionBalancer) onIntervalConfig() {
 		for _, addrInfo := range b.addrs {
 			addrInfo.callCounter.clear()
 		}
-		interval = b.cfg.Interval
+		interval = time.Duration(b.cfg.Interval)
 	} else {
-		interval = b.cfg.Interval - now().Sub(b.timerStartTime)
+		interval = time.Duration(b.cfg.Interval) - now().Sub(b.timerStartTime)
 		if interval < 0 {
 			interval = 0
 		}
@@ -336,7 +345,7 @@ func (b *outlierDetectionBalancer) ResolverError(err error) {
 	b.child.ResolverError(err)
 }
 
-func (b *outlierDetectionBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+func (b *outlierDetectionBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	scw, ok := b.scWrappers[sc]
@@ -355,12 +364,19 @@ func (b *outlierDetectionBalancer) UpdateSubConnState(sc balancer.SubConn, state
 	})
 }
 
+func (b *outlierDetectionBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
+}
+
 func (b *outlierDetectionBalancer) Close() {
 	b.closed.Fire()
 	<-b.done.Done()
 	b.childMu.Lock()
 	b.child.Close()
 	b.childMu.Unlock()
+
+	b.scUpdateCh.Close()
+	b.pickerUpdateCh.Close()
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -405,13 +421,15 @@ func (wp *wrappedPicker) Pick(info balancer.PickInfo) (balancer.PickResult, erro
 		// programming.
 		logger.Errorf("Picked SubConn from child picker is not a SubConnWrapper")
 		return balancer.PickResult{
-			SubConn: pr.SubConn,
-			Done:    done,
+			SubConn:  pr.SubConn,
+			Done:     done,
+			Metadata: pr.Metadata,
 		}, nil
 	}
 	return balancer.PickResult{
-		SubConn: scw.SubConn,
-		Done:    done,
+		SubConn:  scw.SubConn,
+		Done:     done,
+		Metadata: pr.Metadata,
 	}, nil
 }
 
@@ -452,6 +470,9 @@ func (b *outlierDetectionBalancer) UpdateState(s balancer.State) {
 }
 
 func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
+	var sc balancer.SubConn
+	oldListener := opts.StateListener
+	opts.StateListener = func(state balancer.SubConnState) { b.updateSubConnState(sc, state) }
 	sc, err := b.cc.NewSubConn(addrs, opts)
 	if err != nil {
 		return nil, err
@@ -460,6 +481,7 @@ func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts bal
 		SubConn:    sc,
 		addresses:  addrs,
 		scUpdateCh: b.scUpdateCh,
+		listener:   oldListener,
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -480,14 +502,7 @@ func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts bal
 }
 
 func (b *outlierDetectionBalancer) RemoveSubConn(sc balancer.SubConn) {
-	scw, ok := sc.(*subConnWrapper)
-	if !ok { // Shouldn't happen
-		return
-	}
-	// Remove the wrapped SubConn from the parent Client Conn. We don't remove
-	// from map entry until we get a Shutdown state for the SubConn, as we need
-	// that data to forward that state down.
-	b.cc.RemoveSubConn(scw.SubConn)
+	b.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
 }
 
 // appendIfPresent appends the scw to the address, if the address is present in
@@ -580,14 +595,14 @@ func (b *outlierDetectionBalancer) Target() string {
 	return b.cc.Target()
 }
 
-func max(x, y int64) int64 {
+func max(x, y time.Duration) time.Duration {
 	if x < y {
 		return y
 	}
 	return x
 }
 
-func min(x, y int64) int64 {
+func min(x, y time.Duration) time.Duration {
 	if x < y {
 		return x
 	}
@@ -600,9 +615,11 @@ func (b *outlierDetectionBalancer) handleSubConnUpdate(u *scUpdate) {
 	scw := u.scw
 	scw.latestState = u.state
 	if !scw.ejected {
-		b.childMu.Lock()
-		b.child.UpdateSubConnState(scw, u.state)
-		b.childMu.Unlock()
+		if scw.listener != nil {
+			b.childMu.Lock()
+			scw.listener(u.state)
+			b.childMu.Unlock()
+		}
 	}
 }
 
@@ -619,9 +636,11 @@ func (b *outlierDetectionBalancer) handleEjectedUpdate(u *ejectionUpdate) {
 			ConnectivityState: connectivity.TransientFailure,
 		}
 	}
-	b.childMu.Lock()
-	b.child.UpdateSubConnState(scw, stateToUpdate)
-	b.childMu.Unlock()
+	if scw.listener != nil {
+		b.childMu.Lock()
+		scw.listener(stateToUpdate)
+		b.childMu.Unlock()
+	}
 }
 
 // handleChildStateUpdate forwards the picker update wrapped in a wrapped picker
@@ -681,7 +700,10 @@ func (b *outlierDetectionBalancer) run() {
 	defer b.done.Fire()
 	for {
 		select {
-		case update := <-b.scUpdateCh.Get():
+		case update, ok := <-b.scUpdateCh.Get():
+			if !ok {
+				return
+			}
 			b.scUpdateCh.Load()
 			if b.closed.HasFired() { // don't send SubConn updates to child after the balancer has been closed
 				return
@@ -692,7 +714,10 @@ func (b *outlierDetectionBalancer) run() {
 			case *ejectionUpdate:
 				b.handleEjectedUpdate(u)
 			}
-		case update := <-b.pickerUpdateCh.Get():
+		case update, ok := <-b.pickerUpdateCh.Get():
+			if !ok {
+				return
+			}
 			b.pickerUpdateCh.Load()
 			if b.closed.HasFired() { // don't send picker updates to grpc after the balancer has been closed
 				return
@@ -739,10 +764,10 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 			// to uneject the address below.
 			continue
 		}
-		et := b.cfg.BaseEjectionTime.Nanoseconds() * addrInfo.ejectionTimeMultiplier
-		met := max(b.cfg.BaseEjectionTime.Nanoseconds(), b.cfg.MaxEjectionTime.Nanoseconds())
-		curTimeAfterEt := now().After(addrInfo.latestEjectionTimestamp.Add(time.Duration(min(et, met))))
-		if curTimeAfterEt {
+		et := time.Duration(b.cfg.BaseEjectionTime) * time.Duration(addrInfo.ejectionTimeMultiplier)
+		met := max(time.Duration(b.cfg.BaseEjectionTime), time.Duration(b.cfg.MaxEjectionTime))
+		uet := addrInfo.latestEjectionTimestamp.Add(min(et, met))
+		if now().After(uet) {
 			b.unejectAddress(addrInfo)
 		}
 	}
@@ -752,7 +777,7 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 	if b.intervalTimer != nil {
 		b.intervalTimer.Stop()
 	}
-	b.intervalTimer = afterFunc(b.cfg.Interval, b.intervalTimerAlgorithm)
+	b.intervalTimer = afterFunc(time.Duration(b.cfg.Interval), b.intervalTimerAlgorithm)
 }
 
 // addrsWithAtLeastRequestVolume returns a slice of address information of all
@@ -813,7 +838,9 @@ func (b *outlierDetectionBalancer) successRateAlgorithm() {
 			return
 		}
 		successRate := float64(bucket.numSuccesses) / float64(bucket.numSuccesses+bucket.numFailures)
-		if successRate < (mean - stddev*(float64(ejectionCfg.StdevFactor)/1000)) {
+		requiredSuccessRate := mean - stddev*(float64(ejectionCfg.StdevFactor)/1000)
+		if successRate < requiredSuccessRate {
+			channelz.Infof(logger, b.channelzParentID, "SuccessRate algorithm detected outlier: %s. Parameters: successRate=%f, mean=%f, stddev=%f, requiredSuccessRate=%f", addrInfo, successRate, mean, stddev, requiredSuccessRate)
 			if uint32(grpcrand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
 				b.ejectAddress(addrInfo)
 			}
@@ -840,6 +867,7 @@ func (b *outlierDetectionBalancer) failurePercentageAlgorithm() {
 		}
 		failurePercentage := (float64(bucket.numFailures) / float64(bucket.numSuccesses+bucket.numFailures)) * 100
 		if failurePercentage > float64(b.cfg.FailurePercentageEjection.Threshold) {
+			channelz.Infof(logger, b.channelzParentID, "FailurePercentage algorithm detected outlier: %s, failurePercentage=%f", addrInfo, failurePercentage)
 			if uint32(grpcrand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
 				b.ejectAddress(addrInfo)
 			}
@@ -854,7 +882,9 @@ func (b *outlierDetectionBalancer) ejectAddress(addrInfo *addressInfo) {
 	addrInfo.ejectionTimeMultiplier++
 	for _, sbw := range addrInfo.sws {
 		sbw.eject()
+		channelz.Infof(logger, b.channelzParentID, "Subchannel ejected: %s", sbw)
 	}
+
 }
 
 // Caller must hold b.mu.
@@ -863,6 +893,7 @@ func (b *outlierDetectionBalancer) unejectAddress(addrInfo *addressInfo) {
 	addrInfo.latestEjectionTimestamp = time.Time{}
 	for _, sbw := range addrInfo.sws {
 		sbw.uneject()
+		channelz.Infof(logger, b.channelzParentID, "Subchannel unejected: %s", sbw)
 	}
 }
 
@@ -885,6 +916,16 @@ type addressInfo struct {
 
 	// A list of subchannel wrapper objects that correspond to this address.
 	sws []*subConnWrapper
+}
+
+func (a *addressInfo) String() string {
+	var res strings.Builder
+	res.WriteString("[")
+	for _, sw := range a.sws {
+		res.WriteString(sw.String())
+	}
+	res.WriteString("]")
+	return res.String()
 }
 
 func newAddressInfo() *addressInfo {

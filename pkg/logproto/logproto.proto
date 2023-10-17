@@ -32,10 +32,6 @@ service Querier {
   rpc GetVolume(VolumeRequest) returns (VolumeResponse) {}
 }
 
-service Ingester {
-  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {}
-}
-
 service StreamData {
   rpc GetStreamRates(StreamRatesRequest) returns (StreamRatesResponse) {}
 }
@@ -200,13 +196,6 @@ message DroppedStream {
   string labels = 3;
 }
 
-message TimeSeriesChunk {
-  string from_ingester_id = 1;
-  string user_id = 2;
-  repeated LabelPair labels = 3;
-  repeated Chunk chunks = 4;
-}
-
 message LabelPair {
   string name = 1;
   string value = 2;
@@ -222,8 +211,6 @@ message LegacyLabelPair {
 message Chunk {
   bytes data = 1;
 }
-
-message TransferChunksResponse {}
 
 message TailersCountRequest {}
 
@@ -299,6 +286,11 @@ message LabelNamesForMetricNameRequest {
   ];
 }
 
+message LineFilterExpression {
+  int64 operator = 1;
+  string match = 2;
+}
+
 message GetChunkRefRequest {
   int64 from = 1 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
@@ -309,6 +301,7 @@ message GetChunkRefRequest {
     (gogoproto.nullable) = false
   ];
   string matchers = 3;
+  repeated LineFilterExpression filters = 4;
 }
 
 message GetChunkRefResponse {

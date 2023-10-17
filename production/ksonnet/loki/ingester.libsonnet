@@ -30,12 +30,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   ingester_args::
     $._config.commonArgs {
       target: 'ingester',
-    } + if $._config.stateful_ingesters then
-      {
-        // Disable chunk transfer when using statefulset since ingester which is going down won't find another
-        // ingester which is joining the ring for transferring chunks.
-        'ingester.max-transfer-retries': 0,
-      } else {},
+    },
 
   ingester_ports: $.util.defaultPorts,
 

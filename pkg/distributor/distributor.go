@@ -33,6 +33,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/compactor/retention"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/distributor/writefailures"
@@ -41,7 +42,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -135,9 +135,9 @@ func New(
 ) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
-		factory = func(addr string) (ring_client.PoolClient, error) {
+		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 			return client.New(clientCfg, addr)
-		}
+		})
 	}
 
 	internalFactory := func(addr string) (ring_client.PoolClient, error) {
@@ -171,7 +171,7 @@ func New(
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		pool:                  clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
@@ -225,9 +225,10 @@ func New(
 		d.cfg.RateStore,
 		ingestersRing,
 		clientpool.NewPool(
+			"rate-store",
 			clientCfg.PoolConfig,
 			ingestersRing,
-			internalFactory,
+			ring_client.PoolAddrFunc(internalFactory),
 			util_log.Logger,
 		),
 		overrides,

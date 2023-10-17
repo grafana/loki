@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
@@ -362,7 +363,7 @@ func EmptyLabels() Labels {
 func New(ls ...Label) Labels {
 	set := make(Labels, 0, len(ls))
 	set = append(set, ls...)
-	slices.SortFunc(set, func(a, b Label) bool { return a.Name < b.Name })
+	slices.SortFunc(set, func(a, b Label) int { return strings.Compare(a.Name, b.Name) })
 
 	return set
 }
@@ -386,7 +387,7 @@ func FromStrings(ss ...string) Labels {
 		res = append(res, Label{Name: ss[i], Value: ss[i+1]})
 	}
 
-	slices.SortFunc(res, func(a, b Label) bool { return a.Name < b.Name })
+	slices.SortFunc(res, func(a, b Label) int { return strings.Compare(a.Name, b.Name) })
 	return res
 }
 
@@ -533,15 +534,14 @@ func (b *Builder) Set(n, v string) *Builder {
 }
 
 func (b *Builder) Get(n string) string {
-	for _, d := range b.del {
-		if d == n {
-			return ""
-		}
-	}
+	// Del() removes entries from .add but Set() does not remove from .del, so check .add first.
 	for _, a := range b.add {
 		if a.Name == n {
 			return a.Value
 		}
+	}
+	if slices.Contains(b.del, n) {
+		return ""
 	}
 	return b.base.Get(n)
 }
@@ -592,7 +592,7 @@ func (b *Builder) Labels() Labels {
 	}
 	if len(b.add) > 0 { // Base is already in order, so we only need to sort if we add to it.
 		res = append(res, b.add...)
-		slices.SortFunc(res, func(a, b Label) bool { return a.Name < b.Name })
+		slices.SortFunc(res, func(a, b Label) int { return strings.Compare(a.Name, b.Name) })
 	}
 	return res
 }
@@ -619,10 +619,10 @@ func (b *ScratchBuilder) Add(name, value string) {
 
 // Sort the labels added so far by name.
 func (b *ScratchBuilder) Sort() {
-	slices.SortFunc(b.add, func(a, b Label) bool { return a.Name < b.Name })
+	slices.SortFunc(b.add, func(a, b Label) int { return strings.Compare(a.Name, b.Name) })
 }
 
-// Asssign is for when you already have a Labels which you want this ScratchBuilder to return.
+// Assign is for when you already have a Labels which you want this ScratchBuilder to return.
 func (b *ScratchBuilder) Assign(ls Labels) {
 	b.add = append(b.add[:0], ls...) // Copy on top of our slice, so we don't retain the input slice.
 }

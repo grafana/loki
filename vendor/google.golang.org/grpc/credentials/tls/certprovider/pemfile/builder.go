@@ -39,7 +39,7 @@ func init() {
 
 type pluginBuilder struct{}
 
-func (p *pluginBuilder) ParseConfig(c interface{}) (*certprovider.BuildableConfig, error) {
+func (p *pluginBuilder) ParseConfig(c any) (*certprovider.BuildableConfig, error) {
 	data, ok := c.(json.RawMessage)
 	if !ok {
 		return nil, fmt.Errorf("meshca: unsupported config type: %T", c)
