@@ -13,14 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
-// SerieResolver iterates two sequences, one from blocks which have already been indexed
-// into blooms and another from TSDBs. The series+chunks which exist in the TSDBs but not the
-// blocks need to then be indexed into the blocks.
-// type SeriesResolver struct {
-// 	fromBlocks Iterator[Series]
-// 	fromTSDBs  Iterator[Series]
-// }
-
 type BlockOptions struct {
 	schema Schema
 
