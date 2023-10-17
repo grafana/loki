@@ -60,6 +60,21 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 		return nil, errors.Wrap(err, "bloom-compactor ring manager failed to create KV store client")
 	}
 
+	// instantiate ring.
+	ringCfg := rm.cfg.RingCfg.ToRingConfig(replicationFactor)
+	rm.Ring, err = ring.NewWithStoreClientAndStrategy(
+		ringCfg,
+		ringNameForServer,
+		ringKey,
+		ringStore,
+		ring.NewIgnoreUnhealthyInstancesReplicationStrategy(),
+		prometheus.WrapRegistererWithPrefix("loki_", registerer),
+		rm.logger,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "bloom-compactor ring manager failed to create ring client")
+	}
+
 	lifecyclerCfg, err := rm.cfg.RingCfg.ToLifecyclerConfig(ringNumTokens, rm.logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid ring lifecycler config")
@@ -77,21 +92,6 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 		return nil, errors.Wrap(err, "failed to create bloom-compactor ring manager lifecycler")
 	}
 
-	// instantiate ring.
-	ringCfg := rm.cfg.RingCfg.ToRingConfig(replicationFactor)
-	rm.Ring, err = ring.NewWithStoreClientAndStrategy(
-		ringCfg,
-		ringNameForServer,
-		ringKey,
-		ringStore,
-		ring.NewIgnoreUnhealthyInstancesReplicationStrategy(),
-		prometheus.WrapRegistererWithPrefix("loki_", registerer),
-		rm.logger,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "bloom-compactor ring manager failed to create ring client")
-	}
-
 	svcs := []services.Service{rm.RingLifecycler, rm.Ring}
 	rm.subservices, err = services.NewManager(svcs...)
 	if err != nil {
@@ -103,7 +103,6 @@ func NewRingManager(cfg Config, logger log.Logger, registerer prometheus.Registe
 	rm.Service = services.NewBasicService(rm.starting, rm.running, rm.stopping)
 
 	return rm, nil
-
 }
 
 // starting implements the Lifecycler interface and is one of the lifecycle hooks.
