@@ -47,6 +47,14 @@ var blessedAttributes = []string{
 	"k8s.job.name",
 }
 
+var blessedAttributesNormalized = make([]string, len(blessedAttributes))
+
+func init() {
+	for i := range blessedAttributes {
+		blessedAttributesNormalized[i] = prometheustranslator.NormalizeLabel(blessedAttributes[i])
+	}
+}
+
 type Stats struct {
 	errs                     []error
 	numLines                 int64
@@ -147,17 +155,16 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		}
 
 		// copy blessed attributes to stream labels
-		streamLabels := make(model.LabelSet, len(blessedAttributes))
-		for _, ba := range blessedAttributes {
-			normalizedBlessedAttribute := prometheustranslator.NormalizeLabel(ba)
-			v := flattenedResourceAttributes.Get(normalizedBlessedAttribute)
+		streamLabels := make(model.LabelSet, len(blessedAttributesNormalized))
+		for _, ba := range blessedAttributesNormalized {
+			v := flattenedResourceAttributes.Get(ba)
 			if v == "" {
 				continue
 			}
-			streamLabels[model.LabelName(normalizedBlessedAttribute)] = model.LabelValue(v)
+			streamLabels[model.LabelName(ba)] = model.LabelValue(v)
 
 			// remove the blessed attributes copied to stream labels
-			flattenedResourceAttributes.Del(normalizedBlessedAttribute)
+			flattenedResourceAttributes.Del(ba)
 		}
 
 		if err := streamLabels.Validate(); err != nil {
