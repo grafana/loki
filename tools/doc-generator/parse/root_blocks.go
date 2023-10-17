@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/server"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/bloomgateway"
 	"github.com/grafana/loki/pkg/compactor"
 	"github.com/grafana/loki/pkg/distributor"
@@ -122,6 +123,11 @@ var (
 			Name:       "compactor",
 			StructType: []reflect.Type{reflect.TypeOf(compactor.Config{})},
 			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.",
+		},
+		{
+			Name:       "bloom_compactor",
+			StructType: []reflect.Type{reflect.TypeOf(bloomcompactor.Config{})},
+			Desc:       "The bloom_compactor block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks",
 		},
 		{
 			Name:       "limits_config",
