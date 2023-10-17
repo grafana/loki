@@ -38,6 +38,26 @@ func (s *structuredMetadataStage) Run(in chan Entry) chan Entry {
 		processLabelsConfigs(s.logger, e.Extracted, s.cfgs, func(labelName model.LabelName, labelValue model.LabelValue) {
 			e.StructuredMetadata = append(e.StructuredMetadata, logproto.LabelAdapter{Name: string(labelName), Value: string(labelValue)})
 		})
-		return e
+		return s.extractFromLabels(e)
 	})
+}
+
+func (s *structuredMetadataStage) extractFromLabels(e Entry) Entry {
+	labels := e.Labels
+	foundLabels := []model.LabelName{}
+
+	for lName, lSrc := range s.cfgs {
+		labelKey := model.LabelName(*lSrc)
+		if lValue, ok := labels[labelKey]; ok {
+			e.StructuredMetadata = append(e.StructuredMetadata, logproto.LabelAdapter{Name: lName, Value: string(lValue)})
+			foundLabels = append(foundLabels, labelKey)
+		}
+	}
+
+	// Remove found labels, do this after append to structure metadata
+	for _, fl := range foundLabels {
+		delete(labels, fl)
+	}
+	e.Labels = labels
+	return e
 }

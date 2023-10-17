@@ -180,7 +180,6 @@
         log_queries_longer_than: '5s',
       },
       frontend_worker: {
-        match_max_concurrent: true,
         grpc_client_config: {
           max_send_msg_size: $._config.grpc_server_max_msg_size,
         },

@@ -83,6 +83,24 @@ pipeline_stages:
     app:
 `
 
+var pipelineStagesStructuredMetadataFromStaticLabels = `
+pipeline_stages:
+- static_labels:
+    component: querier
+    pod: loki-querier-664f97db8d-qhnwg
+- structured_metadata:
+    pod:
+`
+
+var pipelineStagesStructuredMetadataFromStaticLabelsDifferentKey = `
+pipeline_stages:
+- static_labels:
+    component: querier
+    pod: loki-querier-664f97db8d-qhnwg
+- structured_metadata:
+    pod_name: pod
+`
+
 func Test_StructuredMetadataStage(t *testing.T) {
 	tests := map[string]struct {
 		pipelineStagesYaml         string
@@ -128,6 +146,18 @@ func Test_StructuredMetadataStage(t *testing.T) {
 			expectedStructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "app", Value: "loki"}},
 			expectedLabels:             model.LabelSet{model.LabelName("source"): model.LabelValue("test")},
 			streamLabels:               model.LabelSet{model.LabelName("source"): model.LabelValue("test")},
+		},
+		"expected structured metadata and regular labels to be extracted with static labels stage and to be added to entry": {
+			pipelineStagesYaml:         pipelineStagesStructuredMetadataFromStaticLabels,
+			logLine:                    `sample log line`,
+			expectedStructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "pod", Value: "loki-querier-664f97db8d-qhnwg"}},
+			expectedLabels:             model.LabelSet{model.LabelName("component"): model.LabelValue("querier")},
+		},
+		"expected structured metadata and regular labels to be extracted with static labels stage using different structured key": {
+			pipelineStagesYaml:         pipelineStagesStructuredMetadataFromStaticLabelsDifferentKey,
+			logLine:                    `sample log line`,
+			expectedStructuredMetadata: push.LabelsAdapter{push.LabelAdapter{Name: "pod_name", Value: "loki-querier-664f97db8d-qhnwg"}},
+			expectedLabels:             model.LabelSet{model.LabelName("component"): model.LabelValue("querier")},
 		},
 	}
 	for name, test := range tests {

@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type Bloom struct {
-	boom.ScalableBloomFilter
+	filter.ScalableBloomFilter
 }
 
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
@@ -33,13 +33,13 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 }
 
 type BloomQuerier struct {
-	boom.ScalableBloomFilterLazyReader
+	filter.ScalableBloomFilterLazyReader
 }
 
 func (b *BloomQuerier) Decode(dec *encoding.Decbuf) {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
-	b.ScalableBloomFilterLazyReader, _ = boom.NewScalableBloomFilterLazyReader(data)
+	b.ScalableBloomFilterLazyReader, _ = filter.NewScalableBloomFilterLazyReader(data)
 }
 
 func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) (*BloomPageDecoder, error) {

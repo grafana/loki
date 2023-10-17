@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
 
 func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
@@ -29,7 +29,7 @@ func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 		}
 
 		var bloom Bloom
-		bloom.ScalableBloomFilter = *boom.NewScalableBloomFilter(1024, 0.01, 0.8)
+		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 		keys := make([][]byte, 0, keysPerSeries)
 		for j := 0; j < keysPerSeries; j++ {

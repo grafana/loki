@@ -4,32 +4,36 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/go-kit/log/level"
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+
 	//indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -38,13 +42,16 @@ import (
 
 var queryExperiments = []QueryExperiment{
 	//NewQueryExperiment("three_char_word", "tra"),
-	//NewQueryExperiment("four_char_word", "trac"),
+	NewQueryExperiment("four_char_word", "trac"),
 	NewQueryExperiment("five_char_word", "trace"),
+	//NewQueryExperiment("level", "level"),
+	//NewQueryExperiment("level=", "level="),
+
 	NewQueryExperiment("six_char_word", "traceI"),
 	NewQueryExperiment("seven_char_word", "traceID"),
 	NewQueryExperiment("uuid", "2b1a5e46-36a2-4694-a4b1-f34cc7bdfc45"),
 	NewQueryExperiment("longer_string_that_exists", "synthetic-monitoring-agent"),
-	NewQueryExperiment("longer_string_that_doesnt_exist", "abcdefghjiklmnopqrstuvwxyzzy1234567890"),
+	//NewQueryExperiment("longer_string_that_doesnt_exist", "abcdefghjiklmnopqrstuvwxyzzy1234567890"),
 }
 
 func executeRead() {
@@ -138,12 +145,6 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 						workernumber := AssignToWorker(pos, numTesters)
 
-						//fmt.Println("num workers", numTesters)
-						//fmt.Println("seriesSTring", seriesString)
-						//fmt.Println("seriesSTringHasj", seriesStringHash)
-						//fmt.Println("pos", pos)
-						fmt.Println("workernumber", workernumber)
-
 						if (workernumber == testerNumber) && (len(chks) < 10000) { // For every series
 							/*
 								pool.acquire(
@@ -197,7 +198,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 											objectClient)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
-												if len(queryExperiment.searchString) >= experiment.tokenizer.getMin() {
+												if len(queryExperiment.searchString) >= experiment.tokenizer.getMin()+experiment.tokenizer.getSkip() {
 
 													foundInChunk := false
 													foundInSbf := false
@@ -210,24 +211,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 														tokenizer = experiment.tokenizer
 													}
 
-													for i := 0; i <= tokenizer.getSkip(); i++ {
-														numMatches := 0
-														if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
-															tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
-
-															for _, token := range tokens {
-																if sbf.Test(token.Key) {
-																	numMatches++
-																}
-															}
-															if numMatches > 0 {
-																if numMatches == len(tokens) {
-																	foundInSbf = true
-																	metrics.sbfMatchesPerSeries.WithLabelValues(experiment.name, queryExperiment.name).Inc()
-																}
-															}
-														}
-													}
+													foundInSbf = searchSbf(sbf, tokenizer, queryExperiment.searchString)
 
 													lc := got[gotIdx].Data.(*chunkenc.Facade).LokiChunk()
 
@@ -242,26 +226,21 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 													for itr.Next() && itr.Error() == nil {
 														if strings.Contains(itr.Entry().Line, queryExperiment.searchString) {
-															//fmt.Println("Line match: ", itr.Entry().Line)
 															foundInChunk = true
 														}
 													}
 
 													if foundInChunk {
 														if foundInSbf {
-															//fmt.Println("true positive", experiment.name, queryExperiment.name, gotIdx)
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TruePositive).Inc()
 														} else {
-															level.Info(util_log.Logger).Log("**** false negative", experiment.name, queryExperiment.name, ls.String(), gotIdx, testerNumber)
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
 														}
 													} else {
 														if foundInSbf {
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalsePositive).Inc()
-															//fmt.Println("false positive", experiment.name, queryExperiment.name, gotIdx, ls.String())
 														} else {
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TrueNegative).Inc()
-															//fmt.Println("true negative", experiment.name, queryExperiment.name, gotIdx)
 														}
 													}
 
@@ -314,18 +293,39 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	}
 
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
-	//pool.drain() // wait for workers to finishh
+	//pool.drain() // wait for workers to finish
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
-	time.Sleep(30 * time.Second)         // allow final scrape
+	//time.Sleep(30 * time.Second)         // allow final scrape
 	time.Sleep(time.Duration(1<<63 - 1)) // wait forever
 	return nil
 }
 
-func readSBFFromObjectStorage(location, prefix, period, tenant, series string, objectClient client.ObjectClient) *boom.ScalableBloomFilter {
+func readSBFFromObjectStorage(location, prefix, period, tenant, series string, objectClient client.ObjectClient) *filter.ScalableBloomFilter {
 	objectStoragePath := fmt.Sprintf("%s/%s/%s/%s", location, prefix, period, tenant)
 
 	sbf := experiments[0].bloom()
 	closer, _, _ := objectClient.GetObject(context.Background(), fmt.Sprintf("%s/%s", objectStoragePath, FNV32a(series)))
 	_, _ = sbf.ReadFrom(closer)
 	return sbf
+}
+
+func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer Tokenizer, searchString string) bool {
+	for i := 0; i <= tokenizer.getSkip(); i++ {
+		numMatches := 0
+		if (len(searchString) - i) >= tokenizer.getMin() {
+			tokens := tokenizer.Tokens(searchString[i:])
+
+			for _, token := range tokens {
+				if sbf.Test(token.Key) {
+					numMatches++
+				}
+			}
+			if numMatches > 0 {
+				if numMatches == len(tokens) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

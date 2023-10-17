@@ -33,7 +33,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 
+	"github.com/grafana/loki/pkg/bloomcompactor"
+
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomgateway"
 	"github.com/grafana/loki/pkg/compactor"
 	compactorclient "github.com/grafana/loki/pkg/compactor/client"
 	"github.com/grafana/loki/pkg/compactor/client/grpc"
@@ -102,11 +105,15 @@ const (
 	TableManager             string = "table-manager"
 	MemberlistKV             string = "memberlist-kv"
 	Compactor                string = "compactor"
+	BloomGateway             string = "bloom-gateway"
+	BloomGatewayRing         string = "bloom-gateway-ring"
 	IndexGateway             string = "index-gateway"
 	IndexGatewayRing         string = "index-gateway-ring"
 	IndexGatewayInterceptors string = "index-gateway-interceptors"
 	QueryScheduler           string = "query-scheduler"
 	QuerySchedulerRing       string = "query-scheduler-ring"
+	BloomCompactor           string = "bloom-compactor"
+	BloomCompactorRing       string = "bloom-compactor-ring"
 	All                      string = "all"
 	Read                     string = "read"
 	Write                    string = "write"
@@ -244,12 +251,14 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 
 	// Update config fields using runtime config. Only if multiKV is used for given ring these returned functions will be
 	// called and register the listener.
-	//
+
 	// By doing the initialization here instead of per-module init function, we avoid the problem
 	// of projects based on Loki forgetting the wiring if they override module's init method (they also don't have access to private symbols).
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.BloomCompactor.RingCfg.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.BloomGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -1189,9 +1198,49 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 	return t.HTTPAuthMiddleware.Wrap(deletion.TenantMiddleware(t.Overrides, h))
 }
 
-func (t *Loki) initIndexGateway() (services.Service, error) {
-	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+func (t *Loki) initBloomGateway() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "bloom-gateway")
 
+	instanceAddr := t.bloomGatewayRingManager.RingLifecycler.GetInstanceAddr()
+	instanceID := t.bloomGatewayRingManager.RingLifecycler.GetInstanceID()
+	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.bloomGatewayRingManager.Ring, t.Overrides, instanceAddr, instanceID, logger)
+
+	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, shuffleSharding, t.clientMetrics, logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+	logproto.RegisterBloomGatewayServer(t.Server.GRPC, gateway)
+	return gateway, nil
+}
+
+func (t *Loki) initBloomGatewayRing() (services.Service, error) {
+	// Inherit ring listen port from gRPC config
+	t.Cfg.BloomGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	// TODO(chaudum): Do we want to integration the bloom gateway component into the backend target?
+	mode := bloomgateway.ClientMode
+	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
+	if t.Cfg.isModuleEnabled(BloomGateway) || t.Cfg.isModuleEnabled(Backend) || legacyReadMode {
+		mode = bloomgateway.ServerMode
+	}
+	manager, err := bloomgateway.NewRingManager(mode, t.Cfg.BloomGateway, util_log.Logger, prometheus.DefaultRegisterer)
+
+	if err != nil {
+		return nil, gerrors.Wrap(err, "error initializing bloom gateway ring manager")
+	}
+
+	t.bloomGatewayRingManager = manager
+
+	t.Server.HTTP.Path("/bloomgateway/ring").Methods("GET", "POST").Handler(t.bloomGatewayRingManager)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/bloomgateway/ring").Methods("GET", "POST").Handler(t.bloomGatewayRingManager)
+	}
+
+	return t.bloomGatewayRingManager, nil
+}
+
+func (t *Loki) initIndexGateway() (services.Service, error) {
 	shardingStrategy := indexgateway.GetShardingStrategy(t.Cfg.IndexGateway, t.indexGatewayRingManager, t.Overrides)
 
 	var indexClients []indexgateway.IndexClientWithRange
@@ -1221,7 +1270,18 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		})
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClients)
+	logger := log.With(util_log.Logger, "component", "index-gateway")
+
+	var bloomQuerier indexgateway.BloomQuerier
+	if t.Cfg.BloomGateway.Enabled {
+		bloomGatewayClient, err := bloomgateway.NewGatewayClient(t.Cfg.BloomGateway.Client, t.Overrides, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, err
+		}
+		bloomQuerier = bloomgateway.NewBloomQuerier(bloomGatewayClient, logger)
+	}
+
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
 	if err != nil {
 		return nil, err
 	}
@@ -1231,6 +1291,9 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	// Inherit ring listen port from gRPC config
+	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+
 	// IndexGateway runs by default on legacy read and backend targets, and should always assume
 	// ring mode when run in this way.
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
@@ -1244,7 +1307,6 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 
 	t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
-	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	managerMode := indexgateway.ClientMode
 	if t.Cfg.isModuleEnabled(IndexGateway) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
@@ -1274,6 +1336,45 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
 	}
 	return nil, nil
+}
+
+func (t *Loki) initBloomCompactor() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "bloom-compactor")
+	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor,
+		t.ring,
+		t.Cfg.StorageConfig,
+		t.Cfg.SchemaConfig.Configs,
+		logger,
+		t.clientMetrics,
+		prometheus.DefaultRegisterer)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return compactor, nil
+}
+
+func (t *Loki) initBloomCompactorRing() (services.Service, error) {
+	t.Cfg.BloomCompactor.RingCfg.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	// is LegacyMode needed?
+	//legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
+
+	rm, err := bloomcompactor.NewRingManager(t.Cfg.BloomCompactor, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")
+	}
+
+	t.bloomCompactorRingManager = rm
+
+	t.Server.HTTP.Path("/bloomcompactor/ring").Methods("GET", "POST").Handler(t.bloomCompactorRingManager)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/bloomcompactor/ring").Methods("GET", "POST").Handler(t.bloomCompactorRingManager)
+	}
+
+	return t.bloomCompactorRingManager, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
