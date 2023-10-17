@@ -172,13 +172,3 @@ message QueryResponse {
   }
 }
 
-message QueryRequest {
-  oneof request {
-    LokiSeriesRequest series = 1;
-    logproto.LabelRequest labels = 2;
-    logproto.IndexStatsRequest stats = 3;
-    LokiInstantRequest instant = 4;
-    LokiRequest streams = 5;
-    logproto.VolumeRequest volume = 6;
-  }
-}
