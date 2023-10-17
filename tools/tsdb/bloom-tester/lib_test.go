@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"os"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -201,60 +200,6 @@ func TestNGramsSkip(t *testing.T) {
 
 var num = 1000000
 
-func BenchmarkLRU1Put(b *testing.B) {
-	cache := NewLRUCache(num)
-	for i := 0; i < b.N; i++ {
-		cache.Put(strconv.Itoa(i))
-	}
-}
-
-func BenchmarkLRU1Get(b *testing.B) {
-	cache := NewLRUCache(num)
-	for i := 0; i < num; i++ {
-		cache.Put(strconv.Itoa(i))
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		cache.Get(strconv.Itoa(i))
-	}
-}
-
-func BenchmarkLRU2Put(b *testing.B) {
-	cache := NewLRUCache2(num)
-	for i := 0; i < b.N; i++ {
-		cache.Put(strconv.Itoa(i))
-	}
-}
-
-func BenchmarkLRU2Get(b *testing.B) {
-	cache := NewLRUCache2(num)
-	for i := 0; i < num; i++ {
-		cache.Put(strconv.Itoa(i))
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		cache.Get(strconv.Itoa(i))
-	}
-}
-
-func BenchmarkLRU4Put(b *testing.B) {
-	cache := NewLRUCache4(num)
-	for i := 0; i < b.N; i++ {
-		cache.Put([]byte(strconv.Itoa(i)))
-	}
-}
-
-func BenchmarkLRU4Get(b *testing.B) {
-	cache := NewLRUCache4(num)
-	for i := 0; i < num; i++ {
-		cache.Put([]byte(strconv.Itoa(i)))
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		cache.Get([]byte(strconv.Itoa(i)))
-	}
-}
-
 func BenchmarkSBFTestAndAdd(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
@@ -351,6 +296,35 @@ func BenchmarkSBFTestAndAddWithLRU(b *testing.B) {
 			for _, token := range tokens {
 				if !cache.Get(token.Key) {
 					cache.Put(token.Key)
+					sbf.TestAndAdd(token.Key)
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkSBFTestAndAddWithByteKeyLRU(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		experiment := NewExperiment(
+			"token=4skip0_error=1%_indexchunks=false",
+			four,
+			false,
+			onePctError,
+		)
+		sbf := experiment.bloom()
+		cache := NewByteKeyLRUCache(150000)
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			tokens := experiment.tokenizer.Tokens(line)
+			for _, token := range tokens {
+				array := NewFourByteKeyFromSlice(token.Key)
+				if !cache.Get(array) {
+					cache.Put(array)
 					sbf.TestAndAdd(token.Key)
 				}
 			}

@@ -267,3 +267,179 @@ func (c *HashSet) Clear() {
 		delete(c.cache, k)
 	}
 }
+
+// ByteKey is an interface for types that represent keys of a certain size.
+type ByteKey interface {
+	Size() int
+	Equal(other ByteKey) bool
+}
+
+// FourByteKey represents a key of 4 bytes.
+type FourByteKey [4]byte
+
+// Size returns the size of the FourByteKey.
+func (k FourByteKey) Size() int {
+	return 4
+}
+
+// Equal checks if two FourByteKeys are equal.
+func (k FourByteKey) Equal(other ByteKey) bool {
+	if otherFourByteKey, ok := other.(FourByteKey); ok {
+		return k == otherFourByteKey
+	}
+	return false
+}
+
+// TwentySixByteKey represents a key of 26 bytes.
+type TwentySixByteKey [26]byte
+
+// Size returns the size of the TwentySixByteKey.
+func (k TwentySixByteKey) Size() int {
+	return 26
+}
+
+// Equal checks if two TwentySixByteKeys are equal.
+func (k TwentySixByteKey) Equal(other ByteKey) bool {
+	if otherTwentySixByteKey, ok := other.(TwentySixByteKey); ok {
+		return k == otherTwentySixByteKey
+	}
+	return false
+}
+
+type ByteKeyLRUCache struct {
+	capacity int
+	//m        map[ByteKey]struct{}
+	m    map[ByteKey]*list.Element
+	list *list.List
+}
+
+func NewByteKeyLRUCache(capacity int) *ByteKeyLRUCache {
+	return &ByteKeyLRUCache{
+		capacity: capacity,
+		m:        make(map[ByteKey]*list.Element, capacity),
+		list:     list.New(),
+	}
+}
+
+func (c *ByteKeyLRUCache) Get(key ByteKey) bool {
+	if value, ok := c.m[key]; ok {
+		// Move the accessed element to the front of the list
+		c.list.MoveToFront(value)
+		return true
+	}
+	return false
+}
+
+func (c *ByteKeyLRUCache) Put(key ByteKey) {
+	if value, ok := c.m[key]; ok {
+		// If the key already exists, move it to the front
+		c.list.MoveToFront(value)
+	} else {
+		// If the cache is full, remove the least recently used element
+		if len(c.m) >= c.capacity {
+			// Get the least recently used element from the back of the list
+			tailElem := c.list.Back()
+			if tailElem != nil {
+				deletedEntry := c.list.Remove(tailElem).(ByteKey)
+				delete(c.m, deletedEntry)
+			}
+		}
+
+		// Add the new key to the cache and the front of the list
+		elem := c.list.PushFront(key)
+		c.m[key] = elem
+	}
+}
+
+func (c *ByteKeyLRUCache) Clear() {
+	// Iterate through the list and remove all elements
+	for elem := c.list.Front(); elem != nil; elem = elem.Next() {
+		delete(c.m, elem.Value.(ByteKey))
+	}
+
+	// Clear the list
+	c.list.Init()
+}
+
+// ByteKeyMap is a map that uses ByteKey as a key.
+type ByteKeyMap struct {
+	capacity int
+	m        map[ByteKey]struct{}
+}
+
+// NewByteKeyMap creates a new ByteKeyMap.
+func NewByteKeyMap(capacity int) ByteKeyMap {
+	return ByteKeyMap{
+		capacity: capacity,
+		m:        make(map[ByteKey]struct{}, capacity),
+	}
+}
+
+// Put adds an entry to the map.
+func (bm *ByteKeyMap) Put(key ByteKey) {
+	bm.m[key] = struct{}{}
+}
+
+// Get retrieves a value from the map based on the key.
+func (bm *ByteKeyMap) Get(key ByteKey) bool {
+	_, exists := bm.m[key]
+	return exists
+}
+
+type ByteSet struct {
+	capacity int
+	cache    map[[4]byte]struct{}
+}
+
+func NewByteSet(capacity int) *ByteSet {
+	return &ByteSet{
+		capacity: capacity,
+		cache:    make(map[[4]byte]struct{}),
+	}
+}
+
+func sliceToByteArray(slice []byte) [4]byte {
+	// Define the desired size of the byte array
+	// If you want to make it dynamically sized, use len(slice)
+	var array [4]byte
+
+	// Copy elements from the slice to the array
+	copy(array[:], slice)
+
+	return array
+}
+
+// NewFourByteKeyFromSlice converts a byte slice to a FourByteKey.
+func NewFourByteKeyFromSlice(slice []byte) FourByteKey {
+	var key FourByteKey
+	copy(key[:], slice)
+	return key
+}
+
+// NewTwentySixByteKeyFromSlice converts a byte slice to a FourByteKey.
+func NewTwentySixByteKeyFromSlice(slice []byte) TwentySixByteKey {
+	var key TwentySixByteKey
+	copy(key[:], slice)
+	return key
+}
+
+func (c ByteSet) Get(key string) bool {
+	if _, ok := c.cache[sliceToByteArray([]byte(key))]; ok {
+		return true
+	}
+	return false
+}
+
+func (c *ByteSet) Put(key string) {
+	c.cache[sliceToByteArray([]byte(key))] = struct{}{}
+}
+
+func (c *ByteSet) PutBytes(value []byte) {
+	c.cache[sliceToByteArray(value)] = struct{}{}
+}
+
+func (c *ByteSet) Clear() {
+	for k := range c.cache {
+		delete(c.cache, k)
+	}
+}
