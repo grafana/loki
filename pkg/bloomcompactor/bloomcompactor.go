@@ -181,7 +181,7 @@ func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error
 	if err != nil {
 		return err
 	}
-	blocks, err = c.bloomShipperClient.PutBlocks(ctx, blocks)
+	_, err = c.bloomShipperClient.PutBlocks(ctx, blocks)
 	if err != nil {
 		return err
 	}
