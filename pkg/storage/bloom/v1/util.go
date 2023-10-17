@@ -76,45 +76,60 @@ type Iterator[T any] interface {
 	At() T
 }
 
-type PeekingIter[T any] interface {
+type PeekingIterator[T any] interface {
 	Peek() (T, bool)
 	Iterator[T]
 }
 
 type PeekIter[T any] struct {
-	itr    Iterator[T]
-	loaded bool // whether the next value has been loaded
-	cache  T
-	ok     bool
+	itr Iterator[T]
+
+	// the first call to Next() will populate cur & next
+	init      bool
+	zero      T // zero value of T for returning empty Peek's
+	cur, next *T
 }
 
 func NewPeekingIter[T any](itr Iterator[T]) *PeekIter[T] {
 	return &PeekIter[T]{itr: itr}
 }
 
-func (it *PeekIter[T]) load() {
-	if it.loaded {
+// populates the first element so Peek can be used and subsequent Next()
+// calls will work as expected
+func (it *PeekIter[T]) ensureInit() {
+	if it.init {
 		return
 	}
-	it.ok = it.itr.Next()
-	if it.ok {
-		it.cache = it.itr.At()
+	if it.itr.Next() {
+		at := it.itr.At()
+		it.next = &at
 	}
-	it.loaded = true
+	it.init = true
 }
 
-func (it *PeekIter[T]) Peek() (T, bool) {
-	it.load()
-	return it.cache, it.ok
+// load the next element and return the cached one
+func (it *PeekIter[T]) cacheNext() {
+	it.cur = it.next
+	if it.cur != nil && it.itr.Next() {
+		at := it.itr.At()
+		it.next = &at
+	} else {
+		it.next = nil
+	}
 }
 
 func (it *PeekIter[T]) Next() bool {
-	if it.loaded {
-		it.loaded = false
-		return it.ok
+	it.ensureInit()
+	it.cacheNext()
+	return it.cur != nil
+}
+
+func (it *PeekIter[T]) Peek() (T, bool) {
+	it.ensureInit()
+	if it.next == nil {
+		return it.zero, false
 	}
-	it.load()
-	return it.ok
+	return *it.next, true
 }
 
 func (it *PeekIter[T]) Err() error {
@@ -122,7 +137,7 @@ func (it *PeekIter[T]) Err() error {
 }
 
 func (it *PeekIter[T]) At() T {
-	return it.cache
+	return *it.cur
 }
 
 type SeekIter[K, V any] interface {
@@ -185,4 +200,12 @@ func (n NoopCloser) Close() error {
 
 func NewNoopCloser(w io.Writer) NoopCloser {
 	return NoopCloser{w}
+}
+
+func PointerSlice[T any](xs []T) []*T {
+	out := make([]*T, len(xs))
+	for i := range xs {
+		out[i] = &xs[i]
+	}
+	return out
 }

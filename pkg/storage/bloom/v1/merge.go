@@ -5,13 +5,13 @@ package v1
 // NB(owen-d): it uses a custom heap implementation because Pop() only returns a single
 // value of the top-most iterator, rather than the iterator itself
 type MergeBlockQuerier struct {
-	qs []PeekingIter[*SeriesWithBloom]
+	qs []PeekingIterator[*SeriesWithBloom]
 
 	cache *SeriesWithBloom
 	ok    bool
 }
 
-func NewMergeBlockQuerier(queriers ...PeekingIter[*SeriesWithBloom]) *MergeBlockQuerier {
+func NewMergeBlockQuerier(queriers ...PeekingIterator[*SeriesWithBloom]) *MergeBlockQuerier {
 	res := &MergeBlockQuerier{
 		qs: queriers,
 	}
@@ -53,7 +53,7 @@ func (mbq *MergeBlockQuerier) At() *SeriesWithBloom {
 	return mbq.cache
 }
 
-func (mbq *MergeBlockQuerier) push(x PeekingIter[*SeriesWithBloom]) {
+func (mbq *MergeBlockQuerier) push(x PeekingIterator[*SeriesWithBloom]) {
 	mbq.qs = append(mbq.qs, x)
 	mbq.up(mbq.Len() - 1)
 }

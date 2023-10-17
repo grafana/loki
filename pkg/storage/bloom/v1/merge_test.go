@@ -10,7 +10,7 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 	var (
 		numSeries   = 100
 		numQueriers = 4
-		queriers    []PeekingIter[*SeriesWithBloom]
+		queriers    []PeekingIterator[*SeriesWithBloom]
 		data        = mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	)
 	for i := 0; i < numQueriers; i++ {
@@ -36,7 +36,7 @@ func TestMergeBlockQuerier_Overlapping(t *testing.T) {
 	var (
 		numSeries   = 100
 		numQueriers = 4
-		queriers    []PeekingIter[*SeriesWithBloom]
+		queriers    []PeekingIterator[*SeriesWithBloom]
 		data        = mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 		slices      = make([][]*SeriesWithBloom, numQueriers)
 	)
