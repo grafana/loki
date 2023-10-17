@@ -1,16 +1,11 @@
 package v1
 
 import (
-	"context"
 	"sort"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
 )
-
-type IndexQuerier interface {
-	Series(context.Context) Iterator[*SeriesWithOffset]
-}
 
 type SeriesIterator interface {
 	Iterator[*SeriesWithOffset]
