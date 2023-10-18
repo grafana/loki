@@ -1,10 +1,9 @@
 package main
 
 import (
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type pool struct {

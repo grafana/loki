@@ -349,9 +349,10 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	}
 }
 
-// DecodeHTTPGrpcRequest decodes an httpgrp.HTTPrequest to queryrangebase.Request.
+// labelNamesRoutes is used to extract the name for querying label values.
 var labelNamesRoutes = regexp.MustCompile(`/loki/api/v1/label/(?P<name>[^/]+)/values`)
 
+// DecodeHTTPGrpcRequest decodes an httpgrp.HTTPrequest to queryrangebase.Request.
 func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest) (queryrangebase.Request, context.Context, error) {
 	httpReq, err := http.NewRequest(r.Method, r.Url, io.NopCloser(bytes.NewBuffer(r.Body)))
 	if err != nil {

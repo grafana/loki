@@ -374,6 +374,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
+		httpreq.ExtractQueryTagsMiddleware(),
+		serverutil.RecoveryHTTPMiddleware,
+		t.HTTPAuthMiddleware,
+		serverutil.NewPrepopulateMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	}
 
 	logger := log.With(util_log.Logger, "component", "querier")
@@ -428,17 +433,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// external Loki Server HTTP handler to the frontend worker to ensure requests it processes use the default
 	// middleware instrumentation.
 	if querierWorkerServiceConfig.QuerierRunningStandalone() {
-
-		/* TODO: apply middleware
-		// Create a couple Middlewares used to handle panics, perform auth, parse forms in http request, and set content type in response
-		handlerMiddleware := middleware.Merge(
-			httpreq.ExtractQueryTagsMiddleware(),
-			serverutil.RecoveryHTTPMiddleware,
-			t.HTTPAuthMiddleware,
-			serverutil.NewPrepopulateMiddleware(),
-			serverutil.ResponseJSONMiddleware(),
-		)
-		*/
+		labelsHTTPMiddleware = middleware.Merge(httpMiddleware, labelsHTTPMiddleware)
+		indexStatsHTTPMiddleware = middleware.Merge(httpMiddleware, indexStatsHTTPMiddleware)
+		volumeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeHTTPMiddleware)
+		volumeRangeHTTPMiddleware = middleware.Merge(httpMiddleware, volumeRangeHTTPMiddleware)
 
 		// First, register the internal querier handler with the external HTTP server
 		router := t.Server.HTTP
@@ -490,8 +488,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
-	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(http.HandlerFunc(t.querierAPI.TailHandler))
-	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(http.HandlerFunc(t.querierAPI.TailHandler))
+	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
+	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
 
 	// Default codec
 	if t.Codec == nil {
