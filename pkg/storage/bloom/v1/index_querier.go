@@ -42,7 +42,9 @@ func (it *LazySeriesIter) ensureInit() {
 // Seek returns an iterator over the pages where the first fingerprint is >= fp
 func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 	it.ensureInit()
-
+	if it.err != nil {
+		return it.err
+	}
 	// first potentially relevant page
 	desiredPage := sort.Search(len(it.b.index.pageHeaders), func(i int) bool {
 		header := it.b.index.pageHeaders[i]
