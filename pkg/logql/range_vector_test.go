@@ -3,8 +3,6 @@ package logql
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logql/sketch"
-	"github.com/grafana/loki/pkg/logql/vector"
 	"math/rand"
 	"sort"
 	"testing"
@@ -17,7 +15,9 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logql/vector"
 )
 
 var samples = []logproto.Sample{
