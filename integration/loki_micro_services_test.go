@@ -334,11 +334,9 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 		"boltdb-and-tsdb": cluster.SchemaWithBoltDBAndTSDB,
 	} {
 		t.Run(name, func(t *testing.T) {
-			storage.ResetBoltDBIndexClientsWithShipper()
 			clu := cluster.New(nil, opt)
 
 			defer func() {
-				storage.ResetBoltDBIndexClientsWithShipper()
 				assert.NoError(t, clu.Cleanup())
 			}()
 

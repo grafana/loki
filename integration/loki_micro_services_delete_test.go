@@ -26,13 +26,11 @@ type pushRequest struct {
 }
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	storage.ResetBoltDBIndexClientsWithShipper()
 	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientsWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
