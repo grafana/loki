@@ -53,7 +53,12 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 
 		return queryrange.ResultToResponse(res, params)
 	case *queryrange.LokiSeriesRequest:
-		request := &logproto.SeriesRequest{}
+		request := &logproto.SeriesRequest{
+			Start:  concrete.StartTs,
+			End:    concrete.EndTs,
+			Groups: concrete.Match,
+			Shards: concrete.Shards,
+		}
 		result, statResult, err := h.api.SeriesHandler(ctx, request)
 		if err != nil {
 			return nil, err
