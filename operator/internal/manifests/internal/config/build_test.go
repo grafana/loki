@@ -4732,6 +4732,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 		schemaConfig     []lokiv1.ObjectStorageSchema
 		expSchemaConfig  string
 		expStorageConfig string
+		expLimitsConfig  string
 	}{
 		{
 			name: "default_config_v11_schema",
@@ -4759,6 +4760,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expLimitsConfig: `
+  max_query_parallelism: 32`,
 		},
 		{
 			name: "v12_schema",
@@ -4786,6 +4789,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expLimitsConfig: `
+  max_query_parallelism: 32`,
 		},
 		{
 			name: "v13_schema",
@@ -4813,6 +4818,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expLimitsConfig: `
+  tsdb_max_query_parallelism: 512`,
 		},
 		{
 			name: "multiple_schema",
@@ -4870,9 +4877,11 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     shared_store: s3
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expLimitsConfig: `
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512`,
 		},
 	} {
-
 		t.Run(tc.name, func(t *testing.T) {
 			expCfg := `
 ---
@@ -4962,7 +4971,7 @@ limits_config:
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
-  max_query_parallelism: 32
+${LIMITS_CONFIG}
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -5020,9 +5029,10 @@ analytics:
 `
 			expCfg = strings.Replace(expCfg, "${SCHEMA_CONFIG}", tc.expSchemaConfig, 1)
 			expCfg = strings.Replace(expCfg, "${STORAGE_CONFIG}", tc.expStorageConfig, 1)
+			expCfg = strings.Replace(expCfg, "${LIMITS_CONFIG}", tc.expLimitsConfig, 1)
 
 			opts := defaultOptions()
-      opts.ObjectStorage.Schemas = tc.schemaConfig
+			opts.ObjectStorage.Schemas = tc.schemaConfig
 
 			cfg, _, err := Build(opts)
 			require.NoError(t, err)

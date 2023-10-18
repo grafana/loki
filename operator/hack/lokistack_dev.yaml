@@ -6,7 +6,7 @@ spec:
   size: 1x.demo
   storage:
     schemas:
-    - version: v12
+    - version: v13
       effectiveDate: 2022-06-01
     secret:
       name: test

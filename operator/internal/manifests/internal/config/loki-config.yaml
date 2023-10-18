@@ -1,4 +1,5 @@
 {{- /*gotype: github.com/grafana/loki/operator/internal/manifests/internal/config.Options*/ -}}
+{{ $schemas := schemas .ObjectStorage.Schemas }}
 ---
 auth_enabled: true
 chunk_store_config:
@@ -183,7 +184,12 @@ limits_config:
   max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
   max_query_length: 721h
+  {{- with $schemas.boltdb }}
   max_query_parallelism: 32
+  {{- end }}
+  {{- with $schemas.tsdb }}
+  tsdb_max_query_parallelism: 512
+  {{- end }}
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
   cardinality_limit: {{ .Stack.Limits.Global.QueryLimits.CardinalityLimit }}
   max_streams_matchers_per_query: 1000
@@ -472,7 +478,6 @@ server:
 {{- end }}
   log_level: info
 storage_config:
-{{ $schemas := schemas .ObjectStorage.Schemas }}
 {{- range $schema, $_ := $schemas }}
 {{- if eq $schema "boltdb" }}
   boltdb_shipper:
