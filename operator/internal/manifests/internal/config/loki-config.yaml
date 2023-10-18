@@ -105,7 +105,7 @@ frontend:
     tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: {{ .FrontendWorker.FQDN }}:{{ .FrontendWorker.Port }}
