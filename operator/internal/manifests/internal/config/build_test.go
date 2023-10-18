@@ -44,7 +44,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -296,7 +296,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -657,7 +657,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -1010,7 +1010,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -1364,7 +1364,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -1751,7 +1751,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -2077,7 +2077,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -2498,7 +2498,7 @@ frontend:
     tls_cipher_suites: cipher1,cipher2
     tls_min_version: VersionTLS12
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -2832,7 +2832,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -3324,7 +3324,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -3579,7 +3579,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -3837,7 +3837,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -4095,7 +4095,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -4384,7 +4384,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
@@ -4913,7 +4913,7 @@ compactor:
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
-  max_outstanding_per_tenant: 256
+  max_outstanding_per_tenant: 4096
   log_queries_longer_than: 5s
 frontend_worker:
   frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
