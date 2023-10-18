@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -25,8 +24,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/integration/util"
-
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
