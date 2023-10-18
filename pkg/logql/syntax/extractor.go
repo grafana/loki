@@ -25,20 +25,15 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	var without bool
 	var noLabels bool
 
-	if r.Grouping != nil {
-		groups = r.Grouping.Groups
-		without = r.Grouping.Without
-		if len(groups) == 0 {
-			noLabels = true
-		}
-	}
-
-	// uses override if it exists
-	if override != nil {
-		groups = override.Groups
-		without = override.Without
-		if len(groups) == 0 {
-			noLabels = true
+	// TODO(owen-d|cyriltovena): override grouping (i.e. from a parent `sum`)
+	// technically can break the query.
+	// For intance, in  `sum by (foo) (max_over_time by (bar) (...))`
+	// the `by (bar)` grouping in the child is ignored in favor of the parent's `by (foo)`
+	for _, grp := range []*Grouping{r.Grouping, override} {
+		if grp != nil {
+			groups = grp.Groups
+			without = grp.Without
+			noLabels = grp.Singleton()
 		}
 	}
 

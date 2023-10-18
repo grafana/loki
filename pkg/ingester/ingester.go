@@ -76,9 +76,6 @@ var (
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 
-	// Config for transferring chunks.
-	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
-
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
@@ -121,7 +118,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
 
-	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
@@ -130,8 +126,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
-	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
-	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
+	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
+	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper/tsdb index and filesystem object store. -1 for infinite.")
@@ -150,10 +146,6 @@ func (cfg *Config) Validate() error {
 
 	if err = cfg.WAL.Validate(); err != nil {
 		return err
-	}
-
-	if cfg.MaxTransferRetries > 0 && cfg.WAL.Enabled {
-		return errors.New("the use of the write ahead log (WAL) is incompatible with chunk transfers. It's suggested to use the WAL. Please try setting ingester.max-transfer-retries to 0 to disable transfers")
 	}
 
 	if cfg.IndexShards <= 0 {
@@ -180,7 +172,6 @@ type Store interface {
 type Interface interface {
 	services.Service
 
-	logproto.IngesterServer
 	logproto.PusherServer
 	logproto.QuerierServer
 	logproto.StreamDataServer
@@ -538,8 +529,6 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
-	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
-	// we better stop them.
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()
 	}
@@ -555,6 +544,17 @@ func (i *Ingester) stopping(_ error) error {
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
+}
+
+// stopIncomingRequests is called when ingester is stopping
+func (i *Ingester) stopIncomingRequests() {
+	i.shutdownMtx.Lock()
+	defer i.shutdownMtx.Unlock()
+
+	i.instancesMtx.Lock()
+	defer i.instancesMtx.Unlock()
+
+	i.readonly = true
 }
 
 // removeShutdownMarkerFile removes the shutdown marker if it exists. Any errors are logged.
@@ -584,7 +584,7 @@ func (i *Ingester) loop() {
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
-	level.Debug(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+	level.Info(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
 
 	select {
 	case <-initialDelay.C:
@@ -594,8 +594,9 @@ func (i *Ingester) loop() {
 		return
 	}
 
-	// Add +/- 1% of flush interval as jitter
-	j := i.cfg.FlushCheckPeriod / 100
+	// Add +/- 20% of flush interval as jitter.
+	// The default flush check period is 30s so max jitter will be 6s.
+	j := i.cfg.FlushCheckPeriod / 5
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 

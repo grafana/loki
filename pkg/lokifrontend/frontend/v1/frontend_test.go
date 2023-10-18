@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
-	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
@@ -31,6 +30,8 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 )
@@ -38,15 +39,15 @@ import (
 const (
 	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
 	responseBody = `{"status":"success","data":{"resultType":"Matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	labelQuery   = `/api/v1/label/foo/values`
 )
 
 func TestFrontend(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte("Hello World"))
-		require.NoError(t, err)
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
 	})
 	test := func(addr string, _ *Frontend) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
 		require.NoError(t, err)
@@ -55,10 +56,11 @@ func TestFrontend(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
 
+		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		assert.Equal(t, "Hello World", string(body))
+		assert.JSONEq(t, `{"values":["Hello", "world"]}`, string(body))
 	}
 
 	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
@@ -72,23 +74,22 @@ func TestFrontendPropagateTrace(t *testing.T) {
 
 	observedTraceID := make(chan string, 2)
 
-	handler := middleware.Tracer{}.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sp := opentracing.SpanFromContext(r.Context())
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		sp := opentracing.SpanFromContext(ctx)
 		defer sp.Finish()
 
 		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
 		observedTraceID <- traceID
 
-		_, err = w.Write([]byte(responseBody))
-		require.NoError(t, err)
-	}))
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
+	})
 
 	test := func(addr string, _ *Frontend) {
 		sp, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
 		defer sp.Finish()
 		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
 
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, query), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
 		req = req.WithContext(ctx)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
@@ -105,12 +106,15 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		defer resp.Body.Close()
-		_, err = io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
+
+		assert.JSONEq(t, `{"values":["Hello", "world"]}`, string(body))
 
 		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
+
 	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
 	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
@@ -150,12 +154,13 @@ func TestFrontendCheckReady(t *testing.T) {
 // the underlying query is correctly cancelled _and not retried_.
 func TestFrontendCancel(t *testing.T) {
 	var tries atomic.Int32
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		<-ctx.Done()
 		tries.Inc()
+		return nil, ctx.Err()
 	})
 	test := func(addr string, _ *Frontend) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 		require.NoError(t, err)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
 		require.NoError(t, err)
@@ -180,16 +185,15 @@ func TestFrontendCancel(t *testing.T) {
 }
 
 func TestFrontendMetricsCleanup(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte("Hello World"))
-		require.NoError(t, err)
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
 	})
 
 	for _, matchMaxConcurrency := range []bool{false, true} {
 		reg := prometheus.NewPedanticRegistry()
 
 		test := func(addr string, fr *Frontend) {
-			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
 			require.NoError(t, err)
 			err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
 			require.NoError(t, err)
@@ -202,7 +206,7 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			assert.Equal(t, "Hello World", string(body))
+			assert.JSONEq(t, `{"values":["Hello", "world"]}`, string(body))
 
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 				# HELP cortex_query_frontend_queue_length Number of queries in the queue.
@@ -222,14 +226,12 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 	}
 }
 
-func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string, frontend *Frontend), matchMaxConcurrency bool, reg prometheus.Registerer) {
+func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, test func(addr string, frontend *Frontend), matchMaxConcurrency bool, reg prometheus.Registerer) {
 	logger := log.NewNopLogger()
 
 	var workerConfig querier_worker.Config
 	flagext.DefaultValues(&workerConfig)
-	workerConfig.Parallelism = 1
-	workerConfig.MatchMaxConcurrency = matchMaxConcurrency
-	workerConfig.MaxConcurrentRequests = 1
+	workerConfig.MaxConcurrent = 1
 
 	// localhost:0 prevents firewall warnings on Mac OS X.
 	grpcListen, err := net.Listen("tcp", "localhost:0")
@@ -274,7 +276,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
 	var worker services.Service
-	worker, err = querier_worker.NewQuerierWorker(workerConfig, nil, httpgrpc_server.NewServer(handler), logger, nil)
+	worker, err = querier_worker.NewQuerierWorker(workerConfig, nil, handler, logger, nil, queryrange.DefaultCodec)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 

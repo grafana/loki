@@ -2100,6 +2100,14 @@ func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil 
 func ReducesLabels(e Expr) (conflict bool) {
 	e.Walk(func(e interface{}) {
 		switch expr := e.(type) {
+		case *RangeAggregationExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
+		case *VectorAggregationExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
 		// Technically, any parser that mutates labels could cause the query
 		// to be non-shardable _if_ the total (inherent+extracted) labels
 		// exist on two different shards, but this is incredibly unlikely
@@ -2122,4 +2130,18 @@ func ReducesLabels(e Expr) (conflict bool) {
 		}
 	})
 	return
+}
+
+func groupingReducesLabels(grp *Grouping) bool {
+	if grp == nil {
+		return false
+	}
+
+	// both without(foo) and by (bar) have the potential
+	// to reduce labels
+	if len(grp.Groups) > 0 {
+		return true
+	}
+
+	return false
 }

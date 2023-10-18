@@ -49,10 +49,10 @@ var (
 			CacheResults:         true,
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -62,10 +62,10 @@ var (
 		StatsCacheConfig: IndexStatsCacheConfig{
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -73,10 +73,10 @@ var (
 		VolumeCacheConfig: VolumeCacheConfig{
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -468,11 +468,13 @@ func TestLabelsTripperware(t *testing.T) {
 	require.NoError(t, err)
 	defer rt.Close()
 
-	lreq := &LokiLabelNamesRequest{
-		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
-		EndTs:   testTime,
-		Path:    "/loki/api/v1/labels",
-	}
+	lreq := NewLabelRequest(
+		testTime.Add(-25*time.Hour), // bigger than the limit
+		testTime,
+		"",
+		"",
+		"/loki/api/v1/labels",
+	)
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
@@ -485,10 +487,10 @@ func TestLabelsTripperware(t *testing.T) {
 	handler := newFakeHandler(
 		// we expect 2 calls.
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blop"}}, w))
+			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blop"}, w))
 		}),
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blip"}}, w))
+			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blip"}, w))
 		}),
 	)
 	rt.setHandler(handler)
@@ -732,11 +734,10 @@ func TestVolumeTripperware(t *testing.T) {
 
 func TestNewTripperware_Caches(t *testing.T) {
 	for _, tc := range []struct {
-		name        string
-		config      Config
-		numCaches   int
-		equalCaches bool
-		err         string
+		name      string
+		config    Config
+		numCaches int
+		err       string
 	}{
 		{
 			name: "results cache disabled, stats cache disabled",
@@ -757,7 +758,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 						CacheConfig: cache.Config{
 							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled: true,
+								MaxSizeMB: 1,
+								Enabled:   true,
 							},
 						},
 					},
@@ -775,16 +777,16 @@ func TestNewTripperware_Caches(t *testing.T) {
 					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 						CacheConfig: cache.Config{
 							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled: true,
+								MaxSizeMB: 1,
+								Enabled:   true,
 							},
 						},
 					},
 				},
 				CacheIndexStatsResults: true,
 			},
-			numCaches:   2,
-			equalCaches: true,
-			err:         "",
+			numCaches: 2,
+			err:       "",
 		},
 		{
 			name: "results cache enabled, stats cache enabled but different",
@@ -812,9 +814,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 					},
 				},
 			},
-			numCaches:   2,
-			equalCaches: false,
-			err:         "",
+			numCaches: 2,
+			err:       "",
 		},
 		{
 			name: "results cache enabled (no config provided)",
@@ -856,19 +857,13 @@ func TestNewTripperware_Caches(t *testing.T) {
 				if s != nil {
 					c, ok := s.(cache.Cache)
 					require.True(t, ok)
+
+					require.NotNil(t, c)
 					caches = append(caches, c)
 				}
 			}
 
 			require.Equal(t, tc.numCaches, len(caches))
-
-			if tc.numCaches == 2 {
-				if tc.equalCaches {
-					require.Equal(t, caches[0], caches[1])
-				} else {
-					require.NotEqual(t, caches[0], caches[1])
-				}
-			}
 		})
 	}
 }
@@ -1495,7 +1490,7 @@ func promqlResult(v parser.Value) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: v}, w); err != nil {
+		if err := marshal.WriteQueryResponseJSON(v, stats.Result{}, w); err != nil {
 			panic(err)
 		}
 		count++
@@ -1508,7 +1503,7 @@ func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteSeriesResponseJSON(v, w); err != nil {
+		if err := marshal.WriteSeriesResponseJSON(v.GetSeries(), w); err != nil {
 			panic(err)
 		}
 		count++

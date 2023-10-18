@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +30,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -490,10 +491,11 @@ func (g *Group) AlertingRules() []*AlertingRule {
 			alerts = append(alerts, alertingRule)
 		}
 	}
-	sort.Slice(alerts, func(i, j int) bool {
-		return alerts[i].State() > alerts[j].State() ||
-			(alerts[i].State() == alerts[j].State() &&
-				alerts[i].Name() < alerts[j].Name())
+	slices.SortFunc(alerts, func(a, b *AlertingRule) int {
+		if a.State() == b.State() {
+			return strings.Compare(a.Name(), b.Name())
+		}
+		return int(b.State() - a.State())
 	})
 	return alerts
 }
@@ -561,11 +563,26 @@ func (g *Group) setLastEvalTimestamp(ts time.Time) {
 func (g *Group) EvalTimestamp(startTime int64) time.Time {
 	var (
 		offset = int64(g.hash() % uint64(g.interval))
+
+		// This group's evaluation times differ from the perfect time intervals by `offset` nanoseconds.
+		// But we can only use `% interval` to align with the interval. And `% interval` will always
+		// align with the perfect time intervals, instead of this group's. Because of this we add
+		// `offset` _after_ aligning with the perfect time interval.
+		//
+		// There can be cases where adding `offset` to the perfect evaluation time can yield a
+		// timestamp in the future, which is not what EvalTimestamp should do.
+		// So we subtract one `offset` to make sure that `now - (now % interval) + offset` gives an
+		// evaluation time in the past.
 		adjNow = startTime - offset
-		base   = adjNow - (adjNow % int64(g.interval))
+
+		// Adjust to perfect evaluation intervals.
+		base = adjNow - (adjNow % int64(g.interval))
+
+		// Add one offset to randomize the evaluation times of this group.
+		next = base + offset
 	)
 
-	return time.Unix(0, base+offset).UTC()
+	return time.Unix(0, next).UTC()
 }
 
 func nameAndLabels(rule Rule) string {
@@ -800,7 +817,7 @@ func (g *Group) RestoreForState(ts time.Time) {
 	// We allow restoration only if alerts were active before after certain time.
 	mint := ts.Add(-g.opts.OutageTolerance)
 	mintMS := int64(model.TimeFromUnixNano(mint.UnixNano()))
-	q, err := g.opts.Queryable.Querier(g.opts.Context, mintMS, maxtMS)
+	q, err := g.opts.Queryable.Querier(mintMS, maxtMS)
 	if err != nil {
 		level.Error(g.logger).Log("msg", "Failed to get Querier", "err", err)
 		return
@@ -829,7 +846,7 @@ func (g *Group) RestoreForState(ts time.Time) {
 		alertRule.ForEachActiveAlert(func(a *Alert) {
 			var s storage.Series
 
-			s, err := alertRule.QueryforStateSeries(a, q)
+			s, err := alertRule.QueryforStateSeries(g.opts.Context, a, q)
 			if err != nil {
 				// Querier Warnings are ignored. We do not care unless we have an error.
 				level.Error(g.logger).Log(
@@ -1189,11 +1206,15 @@ func (m *Manager) RuleGroups() []*Group {
 		rgs = append(rgs, g)
 	}
 
-	sort.Slice(rgs, func(i, j int) bool {
-		if rgs[i].file != rgs[j].file {
-			return rgs[i].file < rgs[j].file
+	slices.SortFunc(rgs, func(a, b *Group) int {
+		fileCompare := strings.Compare(a.file, b.file)
+
+		// If its 0, then the file names are the same.
+		// Lets look at the group names in that case.
+		if fileCompare != 0 {
+			return fileCompare
 		}
-		return rgs[i].name < rgs[j].name
+		return strings.Compare(a.name, b.name)
 	})
 
 	return rgs

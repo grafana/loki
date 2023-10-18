@@ -129,6 +129,12 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		assert.ElementsMatch(t, []string{"fake"}, resp)
 	})
 
+	t.Run("series", func(t *testing.T) {
+		resp, err := cliQueryFrontend.Series(context.Background(), `{job="fake"}`)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []map[string]string{{"job": "fake"}}, resp)
+	})
+
 	t.Run("per-request-limits", func(t *testing.T) {
 		queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryLength": "1m"}`}})
 		cliQueryFrontendLimited := client.New(tenantID, "", tQueryFrontend.HTTPURL(), queryLimitsPolicy)
@@ -588,7 +594,7 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 			"index-gateway",
 			"-target=index-gateway",
 			"-tsdb.enable-postings-cache=true",
-			"-store.index-cache-read.cache.enable-fifocache=true",
+			"-store.index-cache-read.embedded-cache.enabled=true",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -652,7 +658,6 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	require.NoError(t, err)
 	assertCacheState(t, igwMetrics, &expectedCacheState{
 		cacheName: "store.index-cache-read.embedded-cache",
-		gets:      0,
 		misses:    0,
 		added:     0,
 	})
@@ -685,7 +690,6 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	require.NoError(t, err)
 	assertCacheState(t, igwMetrics, &expectedCacheState{
 		cacheName: "store.index-cache-read.embedded-cache",
-		gets:      50,
 		misses:    1,
 		added:     1,
 	})
@@ -734,22 +738,27 @@ func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
 		},
 	}
 
-	mf, found := mfs["querier_cache_added_new_total"]
+	mf, found := mfs["loki_embeddedcache_added_new_total"]
 	require.True(t, found)
 	require.Equal(t, e.added, getValueFromMF(mf, lbs))
 
-	mf, found = mfs["querier_cache_gets_total"]
-	require.True(t, found)
-	require.Equal(t, e.gets, getValueFromMF(mf, lbs))
+	lbs = []*dto.LabelPair{
+		{
+			Name:  proto.String("name"),
+			Value: proto.String(e.cacheName),
+		},
+	}
 
-	mf, found = mfs["querier_cache_misses_total"]
+	gets, found := mfs["loki_cache_fetched_keys"]
 	require.True(t, found)
-	require.Equal(t, e.misses, getValueFromMF(mf, lbs))
+
+	hits, found := mfs["loki_cache_hits"]
+	require.True(t, found)
+	require.Equal(t, e.misses, getValueFromMF(gets, lbs)-getValueFromMF(hits, lbs))
 }
 
 type expectedCacheState struct {
 	cacheName string
-	gets      float64
 	misses    float64
 	added     float64
 }

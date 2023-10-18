@@ -350,6 +350,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
+
 	if next && r != nil {
 		switch vec := r.(type) {
 		case SampleVector:
@@ -367,7 +368,10 @@ func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluato
 
 	seriesIndex := map[uint64]*promql.Series{}
 
-	vec := r.SampleVector()
+	vec := promql.Vector{}
+	if next {
+		vec = r.SampleVector()
+	}
 
 	// fail fast for the first step or instant query
 	if len(vec) > maxSeries {
