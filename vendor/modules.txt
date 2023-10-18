@@ -902,7 +902,7 @@ github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/gomemcache v0.0.0-20230914135007-70d78eaabfe1
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
-# github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765 => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20231017082930-695c5b0f8336 => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
 # github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
@@ -1515,11 +1515,12 @@ go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp
 # go.opentelemetry.io/collector/semconv v0.81.0
 ## explicit; go 1.19
 go.opentelemetry.io/collector/semconv/v1.6.1
-# go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.42.0
+# go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0
 ## explicit; go 1.19
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
-# go.opentelemetry.io/otel v1.16.0
-## explicit; go 1.19
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconvutil
+# go.opentelemetry.io/otel v1.18.0
+## explicit; go 1.20
 go.opentelemetry.io/otel
 go.opentelemetry.io/otel/attribute
 go.opentelemetry.io/otel/baggage
@@ -1529,15 +1530,13 @@ go.opentelemetry.io/otel/internal/attribute
 go.opentelemetry.io/otel/internal/baggage
 go.opentelemetry.io/otel/internal/global
 go.opentelemetry.io/otel/propagation
-go.opentelemetry.io/otel/semconv/internal/v2
 go.opentelemetry.io/otel/semconv/v1.17.0
-go.opentelemetry.io/otel/semconv/v1.17.0/httpconv
-# go.opentelemetry.io/otel/metric v1.16.0
-## explicit; go 1.19
+# go.opentelemetry.io/otel/metric v1.18.0
+## explicit; go 1.20
 go.opentelemetry.io/otel/metric
 go.opentelemetry.io/otel/metric/embedded
-# go.opentelemetry.io/otel/trace v1.16.0
-## explicit; go 1.19
+# go.opentelemetry.io/otel/trace v1.18.0
+## explicit; go 1.20
 go.opentelemetry.io/otel/trace
 # go.uber.org/atomic v1.11.0
 ## explicit; go 1.18
