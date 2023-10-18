@@ -296,6 +296,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
 		return &LabelRequest{
 			LabelRequest: *req,
 			path:         r.URL.Path,
@@ -622,7 +623,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 			}, nil
 		case loghttp.ResultTypeStream:
 			// This is the same as in querysharding.go
-			params, err := paramsFromRequest(req)
+			params, err := ParamsFromRequest(req)
 			if err != nil {
 				return nil, err
 			}
@@ -720,7 +721,7 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		case *QueryResponse_QuantileSketches:
 			return concrete.QuantileSketches.WithHeaders(headers), nil
 		default:
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.Response)
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%T)", resp.Response)
 		}
 	}
 }
@@ -814,31 +815,9 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 
-	p := QueryResponse{}
-
-	switch response := res.(type) {
-	case *LokiPromResponse:
-		p.Response = &QueryResponse_Prom{response}
-	case *LokiResponse:
-		p.Response = &QueryResponse_Streams{response}
-	case *LokiSeriesResponse:
-		p.Response = &QueryResponse_Series{response}
-	case *MergedSeriesResponseView:
-		mat, err := response.Materialize()
-		if err != nil {
-			return nil, err
-		}
-		p.Response = &QueryResponse_Series{mat}
-	case *LokiLabelNamesResponse:
-		p.Response = &QueryResponse_Labels{response}
-	case *IndexStatsResponse:
-		p.Response = &QueryResponse_Stats{response}
-	case *TopKSketchesResponse:
-		p.Response = &QueryResponse_TopkSketches{response}
-	case *QuantileSketchResponse:
-		p.Response = &QueryResponse_QuantileSketches{response}
-	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
+	p, err := QueryResponseWrap(res)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, err.Error())
 	}
 
 	buf, err := p.Marshal()
@@ -1149,7 +1128,7 @@ func (res LokiResponse) Count() int64 {
 	return result
 }
 
-func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
+func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 	switch r := req.(type) {
 	case *LokiRequest:
 		return &paramsRangeWrapper{

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package queryrange;
 
+import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
@@ -11,6 +12,7 @@ import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
+option go_package = "github.com/grafana/loki/pkg/querier/queryrange";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -158,14 +160,26 @@ message QuantileSketchResponse {
 }
 
 message QueryResponse {
+  google.rpc.Status status = 1;
   oneof response {
-    LokiSeriesResponse series = 1;
-    LokiLabelNamesResponse labels = 2;
-    IndexStatsResponse stats = 3;
-    LokiPromResponse prom = 4;
-    LokiResponse streams = 5;
-    VolumeResponse volume = 6;
-    TopKSketchesResponse topkSketches = 7;
-    QuantileSketchResponse quantileSketches = 8;
+    LokiSeriesResponse series = 2;
+    LokiLabelNamesResponse labels = 3;
+    IndexStatsResponse stats = 4;
+    LokiPromResponse prom = 5;
+    LokiResponse streams = 6;
+    VolumeResponse volume = 7;
+    TopKSketchesResponse topkSketches = 8;
+    QuantileSketchResponse quantileSketches = 9;
+  }
+}
+
+message QueryRequest {
+  oneof request {
+    LokiSeriesRequest series = 1;
+    logproto.LabelRequest labels = 2;
+    logproto.IndexStatsRequest stats = 3;
+    LokiInstantRequest instant = 4;
+    LokiRequest streams = 5;
+    logproto.VolumeRequest volume = 6;
   }
 }

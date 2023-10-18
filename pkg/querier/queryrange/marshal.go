@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/gogo/googleapis/google/rpc"
+	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -24,7 +26,7 @@ const (
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
-func WriteResponse(req *http.Request, params *logql.LiteralParams, v any, w http.ResponseWriter) error {
+func WriteResponse(req *http.Request, params logql.Params, v any, w http.ResponseWriter) error {
 	if req.Header.Get("Accept") == ProtobufType {
 		w.Header().Add("Content-Type", ProtobufType)
 		return WriteResponseProtobuf(req, params, v, w)
@@ -34,7 +36,7 @@ func WriteResponse(req *http.Request, params *logql.LiteralParams, v any, w http
 	return marshal.WriteResponseJSON(req, v, w)
 }
 
-func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any, w http.ResponseWriter) error {
+func WriteResponseProtobuf(req *http.Request, params logql.Params, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		return WriteQueryResponseProtobuf(params, result, w)
@@ -54,8 +56,13 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any
 
 // WriteQueryResponseProtobuf marshals the promql.Value to queryrange QueryResonse and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseProtobuf(params *logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {
-	p, err := ResultToResponse(v, params)
+func WriteQueryResponseProtobuf(params logql.Params, v logqlmodel.Result, w io.Writer) error {
+	r, err := ResultToResponse(v, params)
+	if err != nil {
+		return err
+	}
+
+	p, err := QueryResponseWrap(r)
 	if err != nil {
 		return err
 	}
@@ -77,7 +84,6 @@ func WriteLabelResponseProtobuf(version loghttp.Version, l logproto.LabelRespons
 				Status:  "success",
 				Data:    l.Values,
 				Version: uint32(version),
-				// Statistics: statResult,
 			},
 		},
 	}
@@ -143,8 +149,8 @@ func WriteVolumeResponseProtobuf(r *logproto.VolumeResponse, w io.Writer) error 
 	return err
 }
 
-// ResultToResponse is the reverse of ResponseToResult in downstreamer.
-func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*QueryResponse, error) {
+// ResultToResponse is the reverse of ResponseToResult below.
+func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrangebase.Response, error) {
 	switch data := result.Data.(type) {
 	case promql.Vector:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -152,38 +158,30 @@ func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*Q
 			return nil, err
 		}
 
-		return &QueryResponse{
-			Response: &QueryResponse_Prom{
-				Prom: &LokiPromResponse{
-					Response: &queryrangebase.PrometheusResponse{
-						Status: "success",
-						Data: queryrangebase.PrometheusData{
-							ResultType: loghttp.ResultTypeVector,
-							Result:     sampleStream,
-						},
-					},
-					Statistics: result.Statistics,
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Status: "success",
+				Data: queryrangebase.PrometheusData{
+					ResultType: loghttp.ResultTypeVector,
+					Result:     sampleStream,
 				},
 			},
+			Statistics: result.Statistics,
 		}, nil
 	case promql.Matrix:
 		sampleStream, err := queryrangebase.FromValue(data)
 		if err != nil {
 			return nil, err
 		}
-		return &QueryResponse{
-			Response: &QueryResponse_Prom{
-				Prom: &LokiPromResponse{
-					Response: &queryrangebase.PrometheusResponse{
-						Status: "success",
-						Data: queryrangebase.PrometheusData{
-							ResultType: loghttp.ResultTypeMatrix,
-							Result:     sampleStream,
-						},
-					},
-					Statistics: result.Statistics,
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Status: "success",
+				Data: queryrangebase.PrometheusData{
+					ResultType: loghttp.ResultTypeMatrix,
+					Result:     sampleStream,
 				},
 			},
+			Statistics: result.Statistics,
 		}, nil
 	case promql.Scalar:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -191,53 +189,221 @@ func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*Q
 			return nil, err
 		}
 
-		return &QueryResponse{
-			Response: &QueryResponse_Prom{
-				Prom: &LokiPromResponse{
-					Response: &queryrangebase.PrometheusResponse{
-						Status: "success",
-						Data: queryrangebase.PrometheusData{
-							ResultType: loghttp.ResultTypeScalar,
-							Result:     sampleStream,
-						},
-					},
-					Statistics: result.Statistics,
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Status: "success",
+				Data: queryrangebase.PrometheusData{
+					ResultType: loghttp.ResultTypeScalar,
+					Result:     sampleStream,
 				},
 			},
+			Statistics: result.Statistics,
 		}, nil
 	case logqlmodel.Streams:
-		return &QueryResponse{
-			Response: &QueryResponse_Streams{
-				// Note: we are omitting the Version here because the Protobuf already defines a schema.
-				Streams: &LokiResponse{
-					Direction: params.Direction(),
-					Limit:     params.Limit(),
-					Data: LokiData{
-						ResultType: loghttp.ResultTypeStream,
-						Result:     data,
-					},
-					Status:     "success",
-					Statistics: result.Statistics,
-				},
+		return &LokiResponse{
+			Direction: params.Direction(),
+			Limit:     params.Limit(),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result:     data,
 			},
+			Status:     "success",
+			Statistics: result.Statistics,
 		}, nil
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
-		if err != nil {
-			return nil, err
-		}
-		return &QueryResponse{
-			Response: &QueryResponse_TopkSketches{
-				TopkSketches: &TopKSketchesResponse{Response: sk},
-			},
-		}, nil
+		return &TopKSketchesResponse{Response: sk}, err
 	case sketch.QuantileSketchMatrix:
-		return &QueryResponse{
-			Response: &QueryResponse_QuantileSketches{
-				QuantileSketches: &QuantileSketchResponse{Response: data.ToProto()},
-			},
-		}, nil
+		return &QuantileSketchResponse{Response: data.ToProto()}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
+}
+
+// TODO: we probably should get rid off logqlmodel.Result and user queryrangebase.Response instead.
+func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
+	switch r := resp.(type) {
+	case *LokiResponse:
+		if r.Error != "" {
+			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.ErrorType, r.Error)
+		}
+
+		streams := make(logqlmodel.Streams, 0, len(r.Data.Result))
+
+		for _, stream := range r.Data.Result {
+			streams = append(streams, stream)
+		}
+
+		return logqlmodel.Result{
+			Statistics: r.Statistics,
+			Data:       streams,
+			Headers:    resp.GetHeaders(),
+		}, nil
+
+	case *LokiPromResponse:
+		if r.Response.Error != "" {
+			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.Response.ErrorType, r.Response.Error)
+		}
+		if r.Response.Data.ResultType == loghttp.ResultTypeVector {
+			return logqlmodel.Result{
+				Statistics: r.Statistics,
+				Data:       sampleStreamToVector(r.Response.Data.Result),
+				Headers:    resp.GetHeaders(),
+			}, nil
+		}
+		return logqlmodel.Result{
+			Statistics: r.Statistics,
+			Data:       sampleStreamToMatrix(r.Response.Data.Result),
+			Headers:    resp.GetHeaders(),
+		}, nil
+	case *TopKSketchesResponse:
+		matrix, err := sketch.TopKMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode topk sketch: %w", err)
+		}
+
+		return logqlmodel.Result{
+			Data:    matrix,
+			Headers: resp.GetHeaders(),
+		}, nil
+	case *QuantileSketchResponse:
+		matrix, err := sketch.QuantileSketchMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
+		}
+		return logqlmodel.Result{
+			Data:    matrix,
+			Headers: resp.GetHeaders(),
+		}, nil
+	default:
+		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
+	}
+}
+
+func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
+	if res.Status != nil && res.Status.Code != int32(rpc.OK) {
+		return nil, status.ErrorProto(res.Status)
+	}
+
+	switch concrete := res.Response.(type) {
+	case *QueryResponse_Series:
+		return concrete.Series, nil
+	case *QueryResponse_Labels:
+		return concrete.Labels, nil
+	case *QueryResponse_Stats:
+		return concrete.Stats, nil
+	case *QueryResponse_Prom:
+		return concrete.Prom, nil
+	case *QueryResponse_Streams:
+		return concrete.Streams, nil
+	case *QueryResponse_Volume:
+		return concrete.Volume, nil
+	case *QueryResponse_TopkSketches:
+		return concrete.TopkSketches, nil
+	case *QueryResponse_QuantileSketches:
+		return concrete.QuantileSketches, nil
+	default:
+		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
+	}
+}
+
+func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
+	p := &QueryResponse{}
+
+	switch response := res.(type) {
+	case *LokiPromResponse:
+		p.Response = &QueryResponse_Prom{response}
+	case *LokiResponse:
+		p.Response = &QueryResponse_Streams{response}
+	case *LokiSeriesResponse:
+		p.Response = &QueryResponse_Series{response}
+	case *MergedSeriesResponseView:
+		mat, err := response.Materialize()
+		if err != nil {
+			return p, err
+		}
+		p.Response = &QueryResponse_Series{mat}
+	case *LokiLabelNamesResponse:
+		p.Response = &QueryResponse_Labels{response}
+	case *IndexStatsResponse:
+		// TODO: *queryrange.IndexStatsResponse
+		p.Response = &QueryResponse_Stats{response}
+	case *TopKSketchesResponse:
+		p.Response = &QueryResponse_TopkSketches{response}
+	case *QuantileSketchResponse:
+		p.Response = &QueryResponse_QuantileSketches{response}
+	default:
+		return nil, fmt.Errorf("invalid response format, got (%T)", res)
+	}
+
+	return p, nil
+
+}
+
+func QueryRequestUnwrap(req *QueryRequest) (queryrangebase.Request, error) {
+	if req == nil {
+		return nil, nil
+	}
+
+	switch concrete := req.Request.(type) {
+	case *QueryRequest_Series:
+		return concrete.Series, nil
+	case *QueryRequest_Instant:
+		return concrete.Instant, nil
+	case *QueryRequest_Stats:
+		return concrete.Stats, nil
+	case *QueryRequest_Volume:
+		return concrete.Volume, nil
+	case *QueryRequest_Streams:
+		return concrete.Streams, nil
+	case *QueryRequest_Labels:
+		return &LabelRequest{
+			LabelRequest: *concrete.Labels,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported request type, got (%t)", req.Request)
+	}
+}
+
+func QueryRequestWrap(r queryrangebase.Request) (*QueryRequest, error) {
+	switch req := r.(type) {
+	case *LokiSeriesRequest:
+		return &QueryRequest{
+			Request: &QueryRequest_Series{
+				Series: req,
+			},
+		}, nil
+	case *LabelRequest:
+		return &QueryRequest{
+			Request: &QueryRequest_Labels{
+				Labels: &req.LabelRequest,
+			},
+		}, nil
+	case *logproto.IndexStatsRequest:
+		return &QueryRequest{
+			Request: &QueryRequest_Stats{
+				Stats: req,
+			},
+		}, nil
+	case *logproto.VolumeRequest:
+		return &QueryRequest{
+			Request: &QueryRequest_Volume{
+				Volume: req,
+			},
+		}, nil
+	case *LokiInstantRequest:
+		return &QueryRequest{
+			Request: &QueryRequest_Instant{
+				Instant: req,
+			},
+		}, nil
+	case *LokiRequest:
+		return &QueryRequest{
+			Request: &QueryRequest_Streams{
+				Streams: req,
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported request type, got (%t)", r)
+	}
 }
