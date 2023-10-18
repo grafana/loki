@@ -293,18 +293,18 @@ func (k FourByteKey) Equal(other ByteKey) bool {
 	return false
 }
 
-// TwentySixByteKey represents a key of 26 bytes.
-type TwentySixByteKey [26]byte
+// ThirtyOneByteKey represents a key of 31 bytes.
+type ThirtyOneByteKey [31]byte
 
-// Size returns the size of the TwentySixByteKey.
-func (k TwentySixByteKey) Size() int {
-	return 26
+// Size returns the size of the ThirtyOneByteKey.
+func (k ThirtyOneByteKey) Size() int {
+	return 31
 }
 
-// Equal checks if two TwentySixByteKeys are equal.
-func (k TwentySixByteKey) Equal(other ByteKey) bool {
-	if otherTwentySixByteKey, ok := other.(TwentySixByteKey); ok {
-		return k == otherTwentySixByteKey
+// Equal checks if two ThirtyOneByteKeys are equal.
+func (k ThirtyOneByteKey) Equal(other ByteKey) bool {
+	if otherThirtyOneByteKey, ok := other.(ThirtyOneByteKey); ok {
+		return k == otherThirtyOneByteKey
 	}
 	return false
 }
@@ -419,9 +419,9 @@ func NewFourByteKeyFromSlice(slice []byte) FourByteKey {
 	return key
 }
 
-// NewTwentySixByteKeyFromSlice converts a byte slice to a FourByteKey.
-func NewTwentySixByteKeyFromSlice(slice []byte) TwentySixByteKey {
-	var key TwentySixByteKey
+// NewThirtyOneByteKeyFromSlice converts a byte slice to a FourByteKey.
+func NewThirtyOneByteKeyFromSlice(slice []byte) ThirtyOneByteKey {
+	var key ThirtyOneByteKey
 	copy(key[:], slice)
 	return key
 }

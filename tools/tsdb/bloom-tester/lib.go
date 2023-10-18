@@ -120,26 +120,26 @@ var experiments = []Experiment{
 		true,
 		onePctError,
 	),
-
-	NewExperiment(
-		"token=4skip1_error=1%_indexchunks=true",
-		fourSkip1,
-		true,
-		onePctError,
-	),
 	/*
+			NewExperiment(
+				"token=4skip1_error=1%_indexchunks=true",
+				fourSkip1,
+				true,
+				onePctError,
+			),
+
+				NewExperiment(
+					"token=4skip2_error=1%_indexchunks=true",
+					fourSkip2,
+					true,
+					onePctError,
+				),
 		NewExperiment(
-			"token=4skip2_error=1%_indexchunks=true",
-			fourSkip2,
+			"token=4skip0_error=5%_indexchunks=true",
+			four,
 			true,
-			onePctError,
+			fivePctError,
 		),*/
-	NewExperiment(
-		"token=4skip0_error=5%_indexchunks=true",
-		four,
-		true,
-		fivePctError,
-	),
 	/*
 		NewExperiment(
 			"token=4skip1_error=5%_indexchunks=true",
@@ -308,7 +308,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								return
 							}
 
-							cache := NewLRUCache4(150000)
+							cache := NewLRUCache5(150000)
 
 							transformed := make([]chunk.Chunk, 0, len(chks))
 							for _, chk := range chks {
@@ -391,10 +391,17 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											for itr.Next() && itr.Error() == nil {
 												toks := tokenizer.Tokens(itr.Entry().Line)
 												lines++
+
 												for _, tok := range toks {
 													if tok.Key != nil {
-														if !cache.GetString(tok.Value) {
-															cache.PutStringByte(tok.Value, tok.Key)
+														if !cache.Get(tok.Value) {
+															cache.Put(tok.Value)
+															/*
+																found := sbf.Test(tok.Key)
+																if !found {
+																	sbf.Add(tok.Key)
+																}*/
+
 															if dup := sbf.TestAndAdd(tok.Key); dup {
 																collisions++
 															}

@@ -162,7 +162,7 @@ func BenchmarkByteKeyLRUCacheSet(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		binary.LittleEndian.PutUint64(buf, uint64(i))
 
-		cache.Put(NewTwentySixByteKeyFromSlice(buf))
+		cache.Put(NewThirtyOneByteKeyFromSlice(buf))
 	}
 }
 
@@ -173,14 +173,14 @@ func BenchmarkByteKeyLRUCacheGet(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		binary.LittleEndian.PutUint64(buf, uint64(i))
 
-		cache.Put(NewTwentySixByteKeyFromSlice(buf))
+		cache.Put(NewThirtyOneByteKeyFromSlice(buf))
 		//cache.Put(NewTwentySixByteKeyFromSlice([]byte(strconv.Itoa(i))))
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		binary.LittleEndian.PutUint64(buf, uint64(i))
 
-		cache.Get(NewTwentySixByteKeyFromSlice(buf))
+		cache.Get(NewThirtyOneByteKeyFromSlice(buf))
 		//cache.Get(NewTwentySixByteKeyFromSlice([]byte(strconv.Itoa(i))))
 	}
 }

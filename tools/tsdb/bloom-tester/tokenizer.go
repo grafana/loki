@@ -67,8 +67,8 @@ func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
 		t.buffers[i-t.min] = make([]rune, i)
 	}
 	t.runeBuffer = make([]byte, 0, max*4)
-	t.tokenBuffer = make([]Token, 0, 1024)
-	t.internalTokenBuffer = make([]Token, 0, 1024)
+	t.tokenBuffer = make([]Token, 0, 4096)
+	t.internalTokenBuffer = make([]Token, 0, 4096)
 	for i := 0; i < cap(t.internalTokenBuffer); i++ {
 		tok := Token{}
 		tok.Key = make([]byte, 0, 132)
@@ -109,7 +109,7 @@ func (t *ngramTokenizer) Tokens(line string) []Token {
 				//fmt.Println(numToks, cap(t.internalTokenBuffer), len(t.internalTokenBuffer))
 				if numToks >= cap(t.internalTokenBuffer) || numToks == len(t.internalTokenBuffer) {
 					tok := Token{}
-					tok.Key = make([]byte, 0, 132)
+					tok.Key = make([]byte, 0, 132) // Using a 4 byte token and a chunk identifier, it's really 31 bytes. Adding in for special chars and the like here
 					t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
 				}
 				//fmt.Println(numToks, cap(t.internalTokenBuffer), len(t.internalTokenBuffer))
