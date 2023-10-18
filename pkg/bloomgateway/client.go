@@ -81,7 +81,7 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type Client interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, fingerprints []uint64, chunkRefs [][]*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]uint64, [][]*logproto.ChunkRef, error)
+	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...*logproto.LineFilterExpression) ([]*logproto.GroupedChunkRefs, error)
 }
 
 type GatewayClient struct {
@@ -132,20 +132,19 @@ func shuffleAddrs(addrs []string) []string {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, fingerprints []uint64, chunkRefs [][]*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]uint64, [][]*logproto.ChunkRef, error) {
+func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...*logproto.LineFilterExpression) ([]*logproto.GroupedChunkRefs, error) {
 	// Get the addresses of corresponding bloom gateways for each series.
-	_, addrs, err := c.serverAddrsForFingerprints(tenant, fingerprints)
+	fingerprints, addrs, err := c.serverAddrsForFingerprints(tenant, groups)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Group chunk refs by addresses of one or more bloom gateways.
 	// All chunk refs of series that belong to one and the same bloom gateway are set in one batch.
-	streamsByAddr := c.groupStreamsByAddr(fingerprints, chunkRefs, addrs)
+	streamsByAddr := c.groupStreamsByAddr(groups, addrs)
 
 	// TODO(chaudum): We might over-allocate for the filtered responses here?
-	filteredChunkRefs := make([][]*logproto.ChunkRef, 0, len(fingerprints))
-	filteredFingerprints := make([]uint64, 0, len(fingerprints))
+	filteredChunkRefs := make([]*logproto.GroupedChunkRefs, 0, len(fingerprints))
 
 	for _, item := range streamsByAddr {
 		// randomize order of addresses so we don't hotspot the first server in the list
@@ -161,29 +160,14 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 			if err != nil {
 				return err
 			}
-			for _, refGroup := range resp.ChunkRefs {
-				chunkRefs := make([]*logproto.ChunkRef, 0, len(refGroup.Refs))
-				for _, shortRef := range refGroup.Refs {
-					chunkRefs = append(chunkRefs,
-						&logproto.ChunkRef{
-							Fingerprint: refGroup.Fingerprint,
-							UserID:      refGroup.Tenant,
-							From:        shortRef.From,
-							Through:     shortRef.Through,
-							Checksum:    shortRef.Checksum,
-						},
-					)
-				}
-				filteredFingerprints = append(filteredFingerprints, refGroup.Fingerprint)
-				filteredChunkRefs = append(filteredChunkRefs, chunkRefs)
-			}
+			filteredChunkRefs = append(filteredChunkRefs, resp.ChunkRefs...)
 			return nil
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
-	return fingerprints, filteredChunkRefs, nil
+	return filteredChunkRefs, nil
 }
 
 // isEqualStringElements checks if two string slices contain the same elements.
@@ -215,29 +199,19 @@ func listContainsAddrs(list []chunkRefsByAddrs, addrs []string) (int, bool) {
 }
 
 type chunkRefsByAddrs struct {
-	addrs   []string
-	refs    []*logproto.ChunkRef
-	streams []uint64
+	addrs []string
+	refs  []*logproto.GroupedChunkRefs
 }
 
-// groupStreamsByAddr takes a slice of stream fingerprints, a slices of chunkRef slices, and a slice of address slices
-// and groups them into a slice of chunkRefsByAddrs.
-// streams is a slice of uint64 stream fingerprints
-// chunks is a slice of chunk ref slices
-// addresses is a slice of string slices containing server addresses
-// It is necessary that len(streams) == len(chunks) == len(addresses), but the
-// function implementation does not validate the precondition and would fail silently.
-func (c *GatewayClient) groupStreamsByAddr(streams []uint64, chunks [][]*logproto.ChunkRef, addresses [][]string) []chunkRefsByAddrs {
+func (c *GatewayClient) groupStreamsByAddr(groups []*logproto.GroupedChunkRefs, addresses [][]string) []chunkRefsByAddrs {
 	res := make([]chunkRefsByAddrs, 0, len(addresses))
 	for i := 0; i < len(addresses); i++ {
 		addrs := addresses[i]
-		refs := chunks[i]
-		fp := streams[i]
+		refs := groups[i]
 		if idx, ok := listContainsAddrs(res, addrs); ok {
-			res[idx].refs = append(res[idx].refs, refs...)
-			res[idx].streams = append(res[idx].streams, fp)
+			res[idx].refs = append(res[idx].refs, refs)
 		} else {
-			res = append(res, chunkRefsByAddrs{addrs: addrs, refs: refs, streams: []uint64{fp}})
+			res = append(res, chunkRefsByAddrs{addrs: addrs, refs: []*logproto.GroupedChunkRefs{refs}})
 		}
 	}
 	return res
@@ -272,7 +246,7 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 // Returns an error in case the bloom gateway ring could not get the
 // corresponding replica set for a given fingerprint.
 // Warning: This function becomes inefficient when the number of fingerprints is very large.
-func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, fingerprints []uint64) ([]uint64, [][]string, error) {
+func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, groups []*logproto.GroupedChunkRefs) ([]uint64, [][]string, error) {
 	subRing := GetShuffleShardingSubring(c.ring, tenantID, c.limits)
 
 	rs, err := subRing.GetAllHealthy(BlocksRead)
@@ -285,7 +259,7 @@ func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, fingerprints
 		numTokens += len(instanceDesc.Tokens)
 	}
 
-	numFingerprints := len(fingerprints)
+	numFingerprints := len(groups)
 	if numFingerprints > int(float64(numTokens)*math.Log2(float64(numFingerprints))) {
 		// TODO(chaudum): Implement algorithm in O(n * m * log(k) + n) instead of O(k) by iterating over ring tokens
 		// and finding corresponding fingerprint ranges using binary search.
@@ -295,14 +269,16 @@ func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, fingerprints
 		level.Warn(c.logger).Log("msg", "using an inefficient algorithm to determin server addresses for fingerprints", "fingerprints", numFingerprints, "tokens", numTokens)
 	}
 
+	fingerprints := make([]uint64, numFingerprints)
 	addresses := make([][]string, numFingerprints)
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
-	for idx, key := range fingerprints {
-		rs, err = subRing.Get(uint32(key), BlocksRead, bufDescs, bufHosts, bufZones)
+	for idx, key := range groups {
+		rs, err = subRing.Get(uint32(key.Fingerprint), BlocksRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "bloom gateway get ring")
 		}
+		fingerprints[idx] = key.Fingerprint
 		addresses[idx] = rs.GetAddresses()
 	}
 
