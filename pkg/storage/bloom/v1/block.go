@@ -141,7 +141,7 @@ func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRef
 
 	// First, see if the search passes the series level bloom before checking for chunks individually
 	for _, search := range searches {
-		if !bloom.sbf.Test(search) {
+		if !bloom.Sbf.Test(search) {
 			// the entire series bloom didn't pass one of the searches,
 			// so we can skip checking chunks individually.
 			// We still return all chunks that are not included in the bloom
@@ -161,7 +161,7 @@ outer:
 			// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
 			var combined = search
 
-			if !bloom.sbf.Test(combined) {
+			if !bloom.Sbf.Test(combined) {
 				continue outer
 			}
 		}

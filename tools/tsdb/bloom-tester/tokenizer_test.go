@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/binary"
 	"github.com/grafana/loki/pkg/logproto"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,6 +65,45 @@ func Test3Gram0SkipTokenizer(t *testing.T) {
 			desc:  "four chars",
 			input: "abcd",
 			exp:   []Token{{Key: []byte("abc"), Value: "abc"}, {Key: []byte("bcd"), Value: "bcd"}},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, tokenizer.Tokens(tc.input))
+		})
+	}
+}
+
+func Test3Gram1SkipTokenizer(t *testing.T) {
+	tokenizer := threeSkip1
+	for _, tc := range []struct {
+		desc  string
+		input string
+		exp   []Token
+	}{
+		{
+			desc:  "empty",
+			input: "",
+			exp:   []Token{},
+		},
+		{
+			desc:  "single char",
+			input: "a",
+			exp:   []Token{},
+		},
+		{
+			desc:  "three char",
+			input: "abc",
+			exp:   []Token{{Key: []byte("abc"), Value: "abc"}},
+		},
+		{
+			desc:  "four chars",
+			input: "abcd",
+			exp:   []Token{{Key: []byte("abc"), Value: "abc"}},
+		},
+		{
+			desc:  "five chars",
+			input: "abcde",
+			exp:   []Token{{Key: []byte("abc"), Value: "abc"}, {Key: []byte("cde"), Value: "cde"}},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -401,5 +442,35 @@ func TestWrappedTokenizer(t *testing.T) {
 			}, tokenizer)
 			require.Equal(t, tc.exp, chunkTokenizer.Tokens(tc.input))
 		})
+	}
+}
+
+func BenchmarkTokens(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			_ = three.Tokens(line)
+		}
+	}
+}
+
+func BenchmarkOldTokens(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		file, _ := os.Open("big.txt")
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+
+		b.StartTimer()
+		for scanner.Scan() {
+			line := scanner.Text()
+			_ = three.OldTokens(line)
+		}
 	}
 }

@@ -161,6 +161,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # object store.
 [index_gateway: <index_gateway>]
 
+# The bloom_compactor block configures the Loki bloom compactor server,
+# responsible for compacting stream indexes into bloom filters and merging them
+# as bloom blocks
+[bloom_compactor: <bloom_compactor>]
+
 # The bloom_gateway block configures the Loki bloom gateway server, responsible
 # for serving queries for filtering chunks based on filter expressions.
 [bloom_gateway: <bloom_gateway>]
@@ -391,6 +396,11 @@ grpc_tls_config:
 # streams, server will send GOAWAY and close the connection.
 # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
 [grpc_server_ping_without_stream_allowed: <boolean> | default = true]
+
+# If non-zero, configures the amount of GRPC server workers used to serve the
+# requests.
+# CLI flag: -server.grpc.num-workers
+[grpc_server_num_workers: <int> | default = 0]
 
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
@@ -2457,6 +2467,105 @@ compactor_ring:
 [deletion_mode: <string> | default = ""]
 ```
 
+### bloom_compactor
+
+The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks
+
+```yaml
+# Defines the ring to be used by the bloom-compactor servers. In case this isn't
+# configured, this block supports inheriting configuration from the common ring
+# section.
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -bloom-compactor.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -bloom-compactor.ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
+    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
+    [consul: <consul>]
+
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
+    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
+    [etcd: <etcd>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -bloom-compactor.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -bloom-compactor.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -bloom-compactor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -bloom-compactor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -bloom-compactor.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which compactors are considered unhealthy within
+  # the ring. 0 = never (timeout disabled).
+  # CLI flag: -bloom-compactor.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -bloom-compactor.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # True to enable zone-awareness and replicate blocks across different
+  # availability zones.
+  # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # Instance ID to register in the ring.
+  # CLI flag: -bloom-compactor.ring.instance-id
+  [instance_id: <string> | default = "<hostname>"]
+
+  # Name of network interface to read address from.
+  # CLI flag: -bloom-compactor.ring.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Port to advertise in the ring (defaults to server.grpc-listen-port).
+  # CLI flag: -bloom-compactor.ring.instance-port
+  [instance_port: <int> | default = 0]
+
+  # IP address to advertise in the ring.
+  # CLI flag: -bloom-compactor.ring.instance-addr
+  [instance_addr: <string> | default = ""]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -bloom-compactor.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
+# Flag to enable or disable the usage of the bloom-compactor component.
+# CLI flag: -bloom-compactor.enabled
+[enabled: <boolean> | default = false]
+
+[working_directory: <string> | default = ""]
+
+[max_look_back_period: <duration>]
+```
+
 ### limits_config
 
 The `limits_config` block configures global and per-tenant limits in Loki.
@@ -3490,6 +3599,7 @@ ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-compactor.ring`
 - `bloom-gateway.ring`
 - `common.storage.ring`
 - `compactor.ring`
@@ -3535,6 +3645,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-compactor.ring`
 - `bloom-gateway.ring`
 - `common.storage.ring`
 - `compactor.ring`

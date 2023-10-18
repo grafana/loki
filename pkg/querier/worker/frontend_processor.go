@@ -10,10 +10,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
+	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
 var (
@@ -23,18 +25,21 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) processor {
+func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec GRPCCodec) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
+		codec:          codec,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 	}
 }
 
-// Handles incoming queries from frontend.
+// Handles incoming queries from frontend. This is used if there's no query-scheduler between the frontend and querier.
+// This should be used by Frontend V1.
 type frontendProcessor struct {
 	handler        RequestHandler
+	codec          GRPCCodec
 	maxMessageSize int
 	querierID      string
 
@@ -113,23 +118,24 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 	}
 }
 
-func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error) {
+func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error) {
+
+	tracer := opentracing.GlobalTracer()
+	// Ignore errors here. If we cannot get parent span, we just don't create new one.
+	parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request)
+	if parentSpanContext != nil {
+		queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "frontend_processor_runRequest", opentracing.ChildOf(parentSpanContext))
+		defer queueSpan.Finish()
+
+		ctx = spanCtx
+	}
+
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response, err := fp.handler.Handle(ctx, request)
-	if err != nil {
-		var ok bool
-		response, ok = httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
-			}
-		}
-	}
+	response := handle(ctx, request, fp.handler, fp.codec)
 
 	// Ensure responses that are too big are not retried.
 	if len(response.Body) >= fp.maxMessageSize {
@@ -141,7 +147,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 		level.Error(fp.log).Log("msg", "error processing query", "err", errMsg)
 	}
 
-	if err := sendHTTPResponse(response, stats); err != nil {
+	if err := sendResponse(response, stats); err != nil {
 		level.Error(fp.log).Log("msg", "error processing requests", "err", err)
 	}
 }
