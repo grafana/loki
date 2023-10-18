@@ -37,6 +37,9 @@ const (
 	// ErrorTypeResourceTypeUnsupported indicates the receipt of a message from
 	// the management server with resources of an unsupported resource type.
 	ErrorTypeResourceTypeUnsupported
+	// ErrTypeStreamFailedAfterRecv indicates an ADS stream error, after
+	// successful receipt of at least one message from the server.
+	ErrTypeStreamFailedAfterRecv
 )
 
 type xdsClientError struct {

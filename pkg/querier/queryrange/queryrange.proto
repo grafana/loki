@@ -96,19 +96,6 @@ message LokiSeriesResponse {
   ];
 }
 
-message LokiLabelNamesRequest {
-  google.protobuf.Timestamp startTs = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  google.protobuf.Timestamp endTs = 2 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  string path = 3;
-  string query = 4;
-}
-
 message LokiLabelNamesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];

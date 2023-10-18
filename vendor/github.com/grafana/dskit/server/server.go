@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // anonymous import to get the pprof handler registered
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,6 +119,7 @@ type Config struct {
 	GRPCServerTimeout                  time.Duration `yaml:"grpc_server_keepalive_timeout"`
 	GRPCServerMinTimeBetweenPings      time.Duration `yaml:"grpc_server_min_time_between_pings"`
 	GRPCServerPingWithoutStreamAllowed bool          `yaml:"grpc_server_ping_without_stream_allowed"`
+	GRPCServerNumWorkers               int           `yaml:"grpc_server_num_workers"`
 
 	LogFormat                    string           `yaml:"log_format"`
 	LogLevel                     log.Level        `yaml:"log_level"`
@@ -137,6 +139,9 @@ type Config struct {
 	Gatherer   prometheus.Gatherer   `yaml:"-"`
 
 	PathPrefix string `yaml:"http_path_prefix"`
+
+	// This limiter is called for every started and finished gRPC request.
+	GrpcMethodLimiter GrpcInflightMethodLimiter `yaml:"-"`
 }
 
 var infinty = time.Duration(math.MaxInt64)
@@ -176,6 +181,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.GRPCServerTimeout, "server.grpc.keepalive.timeout", time.Second*20, "After having pinged for keepalive check, the duration after which an idle connection should be closed, Default: 20s")
 	f.DurationVar(&cfg.GRPCServerMinTimeBetweenPings, "server.grpc.keepalive.min-time-between-pings", 5*time.Minute, "Minimum amount of time a client should wait before sending a keepalive ping. If client sends keepalive ping more often, server will send GOAWAY and close the connection.")
 	f.BoolVar(&cfg.GRPCServerPingWithoutStreamAllowed, "server.grpc.keepalive.ping-without-stream-allowed", false, "If true, server allows keepalive pings even when there are no active streams(RPCs). If false, and client sends ping when there are no active streams, server will send GOAWAY and close the connection.")
+	f.IntVar(&cfg.GRPCServerNumWorkers, "server.grpc.num-workers", 0, "If non-zero, configures the amount of GRPC server workers used to serve the requests.")
 	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	f.StringVar(&cfg.LogFormat, "log.format", log.LogfmtFormat, "Output log messages in the given format. Valid formats: [logfmt, json]")
 	cfg.LogLevel.RegisterFlags(f)
@@ -248,7 +254,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		network = DefaultNetwork
 	}
 	// Setup listeners first, so we can fail early if the port is in use.
-	httpListener, err := net.Listen(network, fmt.Sprintf("%s:%d", cfg.HTTPListenAddress, cfg.HTTPListenPort))
+	httpListener, err := net.Listen(network, net.JoinHostPort(cfg.HTTPListenAddress, strconv.Itoa(cfg.HTTPListenPort)))
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +278,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if network == "" {
 		network = DefaultNetwork
 	}
-	grpcListener, err := net.Listen(network, fmt.Sprintf("%s:%d", cfg.GRPCListenAddress, cfg.GRPCListenPort))
+	grpcListener, err := net.Listen(network, net.JoinHostPort(cfg.GRPCListenAddress, strconv.Itoa(cfg.GRPCListenPort)))
 	if err != nil {
 		return nil, err
 	}
@@ -375,12 +381,22 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),
 		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
 		grpc.MaxConcurrentStreams(uint32(cfg.GPRCServerMaxConcurrentStreams)),
+		grpc.NumStreamWorkers(uint32(cfg.GRPCServerNumWorkers)),
+	}
+
+	if cfg.GrpcMethodLimiter != nil {
+		grpcServerLimit := newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter)
+		grpcOptions = append(grpcOptions, grpc.InTapHandle(grpcServerLimit.TapHandle), grpc.StatsHandler(grpcServerLimit))
+	}
+
+	grpcOptions = append(grpcOptions,
 		grpc.StatsHandler(middleware.NewStatsHandler(
 			metrics.ReceivedMessageSize,
 			metrics.SentMessageSize,
 			metrics.InflightRequests,
 		)),
-	}
+	)
+
 	grpcOptions = append(grpcOptions, cfg.GRPCOptions...)
 	if grpcTLSConfig != nil {
 		grpcCreds := credentials.NewTLS(grpcTLSConfig)
@@ -405,15 +421,18 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		RegisterInstrumentationWithGatherer(router, gatherer)
 	}
 
-	var sourceIPs *middleware.SourceIPExtractor
-	if cfg.LogSourceIPs {
-		sourceIPs, err = middleware.NewSourceIPs(cfg.LogSourceIPsHeader, cfg.LogSourceIPsRegex)
-		if err != nil {
-			return nil, fmt.Errorf("error setting up source IP extraction: %v", err)
-		}
+	sourceIPs, err := middleware.NewSourceIPs(cfg.LogSourceIPsHeader, cfg.LogSourceIPsRegex)
+	if err != nil {
+		return nil, fmt.Errorf("error setting up source IP extraction: %v", err)
+	}
+	logSourceIPs := sourceIPs
+	if !cfg.LogSourceIPs {
+		// We always include the source IPs for traces,
+		// but only want to log them in the middleware if that is enabled.
+		logSourceIPs = nil
 	}
 
-	defaultLogMiddleware := middleware.NewLogMiddleware(logger, cfg.LogRequestHeaders, cfg.LogRequestAtInfoLevel, sourceIPs, strings.Split(cfg.LogRequestExcludeHeadersList, ","))
+	defaultLogMiddleware := middleware.NewLogMiddleware(logger, cfg.LogRequestHeaders, cfg.LogRequestAtInfoLevel, logSourceIPs, strings.Split(cfg.LogRequestExcludeHeadersList, ","))
 	defaultLogMiddleware.DisableRequestSuccessLog = cfg.DisableRequestSuccessLog
 
 	defaultHTTPMiddleware := []middleware.Interface{
