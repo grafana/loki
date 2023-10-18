@@ -25,6 +25,7 @@ package filter
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash"
 	"hash/fnv"
 	"io"
@@ -242,11 +243,9 @@ func (p *PartitionedBloomFilter) WriteTo(stream io.Writer) (int64, error) {
 	return numBytes + int64(5*binary.Size(uint64(0))), err
 }
 
-// ReadFrom reads a binary representation of PartitionedBloomFilter (such as might
-// have been written by WriteTo()) from an i/o stream. It returns the number
-// of bytes read.
-func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
-	var m, k, s, estimatedCount, optimalCount, len uint64
+func (p *PartitionedBloomFilter) readParams(stream io.Reader) (int64, error) {
+	var m, k, s, estimatedCount, optimalCount uint64
+
 	err := binary.Read(stream, binary.BigEndian, &m)
 	if err != nil {
 		return 0, err
@@ -267,6 +266,27 @@ func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	p.m = uint(m)
+	p.k = uint(k)
+	p.s = uint(s)
+	p.estimatedCount = uint(estimatedCount)
+	p.optimalCount = uint(optimalCount)
+
+	// Bytes read: m, k, s, estimatedCount, optimalCount. All uint64
+	return int64(5 * binary.Size(uint64(0))), nil
+}
+
+// ReadFrom reads a binary representation of PartitionedBloomFilter (such as might
+// have been written by WriteTo()) from an i/o stream. It returns the number
+// of bytes read.
+func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
+	bytesParams, err := p.readParams(stream)
+	if err != nil {
+		return 0, err
+	}
+
+	var len uint64
 	err = binary.Read(stream, binary.BigEndian, &len)
 	if err != nil {
 		return 0, err
@@ -282,13 +302,9 @@ func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 		numBytes += num
 		partitions[i] = buckets
 	}
-	p.m = uint(m)
-	p.k = uint(k)
-	p.s = uint(s)
-	p.estimatedCount = uint(estimatedCount)
-	p.optimalCount = uint(optimalCount)
 	p.partitions = partitions
-	return numBytes + int64(5*binary.Size(uint64(0))), nil
+	// Bytes read: bytesParams + len (uint64), partitions (numBytes)
+	return bytesParams + int64(binary.Size(uint64(0))) + numBytes, nil
 }
 
 // GobEncode implements gob.GobEncoder interface.
@@ -310,64 +326,36 @@ func (p *PartitionedBloomFilter) GobDecode(data []byte) error {
 	return err
 }
 
-type PartitionedBloomFilterLazyReader struct {
-	partitions []BucketsLazyReader // partitioned filter data
-	hash       hash.Hash64         // hash function (kernel for all k functions)
-	k          uint                // number of hash functions (and partitions)
-	s          uint                // partition size (m / k)
-}
-
-// NewPartitionedBloomFilterLazyReader creates a new PartitionedBloomFilterLazyReader from the provided data
+// DecodePartitionedBloomFilterFromBuf creates a new PartitionedBloomFilter from the provided data
 // and returns the number of bytes used by the PartitionedBloomFilter.
 // The data is expected to be in the format written by PartitionedBloomFilter.WriteTo().
 // Whereas PartitionedBloomFilter.ReadFrom() calls Buckets.ReadFrom() hence making a copy of the data,
-// NewPartitionedBloomFilterLazyReader calls NewBucketsLazyReader which keeps a reference to the original data buffer.
-func NewPartitionedBloomFilterLazyReader(data []byte) (PartitionedBloomFilterLazyReader, int) {
-	// Skip m (uint64),
-	offset := binary.Size(uint64(0))
-	k := binary.BigEndian.Uint64(data[offset:])
+// DecodePartitionedBloomFilterFromBuf calls DecodeBucketsFromBuf which keeps a reference to the original data buffer.
+func DecodePartitionedBloomFilterFromBuf(data []byte) (*PartitionedBloomFilter, int64, error) {
+	out := PartitionedBloomFilter{
+		hash: getNewHashFunction(),
+	}
 
-	// Skip m (uint64), k (uint64),
-	sOffset := 2 * binary.Size(uint64(0))
-	s := binary.BigEndian.Uint64(data[sOffset:])
+	bytesParams, err := out.readParams(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read PartitionedBloomFilter params from buffer: %w", err)
+	}
 
-	// Skip m (uint64), k (uint64), s (uint64), estimatedCount (uint64), optimalCount (uint64)
-	lenBucketsOffset := 5 * binary.Size(uint64(0))
-	lenBuckets := binary.BigEndian.Uint64(data[lenBucketsOffset:])
+	lenBuckets := int64(binary.BigEndian.Uint64(data[bytesParams:]))
+	bucketStartOffset := bytesParams + int64(binary.Size(uint64(0)))
 
-	bucketStartOffset := lenBucketsOffset + binary.Size(uint64(0))
-
-	partitions := make([]BucketsLazyReader, lenBuckets)
+	partitions := make([]*Buckets, lenBuckets)
 	for i := range partitions {
-		b, n := NewBucketsLazyReader(data[bucketStartOffset:])
+		b, n, err := DecodeBucketsFromBuf(data[bucketStartOffset:])
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to decode bucket %d from buffer: %w", i, err)
+		}
 		bucketStartOffset += n
 		partitions[i] = b
 	}
+	out.partitions = partitions
 
 	// The length is the bucketStartOffset since we updated it in the last
 	// iteration of the loop above with the length of the last bucket.
-	return PartitionedBloomFilterLazyReader{
-		partitions: partitions,
-		hash:       getNewHashFunction(),
-		k:          uint(k),
-		s:          uint(s),
-	}, bucketStartOffset
-}
-
-// Test will test for membership of the data and returns true if it is a
-// member, false if not. This is a probabilistic test, meaning there is a
-// non-zero probability of false positives but a zero probability of false
-// negatives. Due to the way the filter is partitioned, the probability of
-// false positives is uniformly distributed across all elements.
-func (p PartitionedBloomFilterLazyReader) Test(data []byte) bool {
-	lower, upper := hashKernel(data, p.hash)
-
-	// If any of the K partition bits are not set, then it's not a member.
-	for i := uint(0); i < p.k; i++ {
-		if p.partitions[i].Get((uint(lower)+uint(upper)*i)%p.s) == 0 {
-			return false
-		}
-	}
-
-	return true
+	return &out, bucketStartOffset, nil
 }

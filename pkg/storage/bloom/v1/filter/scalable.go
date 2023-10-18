@@ -26,6 +26,7 @@ package filter
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash"
 	"io"
 	"math"
@@ -259,12 +260,10 @@ func (s *ScalableBloomFilter) WriteTo(stream io.Writer) (int64, error) {
 	return numBytes + int64(5*binary.Size(uint64(0))), err
 }
 
-// ReadFrom reads a binary representation of ScalableBloomFilter (such as might
-// have been written by WriteTo()) from an i/o stream. It returns the number
-// of bytes read.
-func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
+func (s *ScalableBloomFilter) readParams(stream io.Reader) (int64, error) {
 	var r, fp, p float64
-	var hint, growthFactor, additions, len uint64
+	var hint, growthFactor, additions uint64
+
 	err := binary.Read(stream, binary.BigEndian, &r)
 	if err != nil {
 		return 0, err
@@ -289,6 +288,28 @@ func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	s.r = r
+	s.fp = fp
+	s.p = p
+	s.hint = uint(hint)
+	s.s = uint(growthFactor)
+	s.additionsSinceFillRatioCheck = uint(additions)
+
+	// Bytes read: r, fp, p float64 and hint, s, additionsSinceFillRatioCheck uint64
+	return 3*int64(binary.Size(float64(0))) + 3*int64(binary.Size(uint64(0))), nil
+}
+
+// ReadFrom reads a binary representation of ScalableBloomFilter (such as might
+// have been written by WriteTo()) from an i/o stream. It returns the number
+// of bytes read.
+func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
+	bytesParams, err := s.readParams(stream)
+	if err != nil {
+		return 0, err
+	}
+
+	var len uint64
 	err = binary.Read(stream, binary.BigEndian, &len)
 	if err != nil {
 		return 0, err
@@ -296,7 +317,7 @@ func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	var numBytes int64
 	filters := make([]*PartitionedBloomFilter, len)
 	for i := range filters {
-		filter := NewPartitionedBloomFilter(0, fp)
+		filter := NewPartitionedBloomFilter(0, s.fp)
 		num, err := filter.ReadFrom(stream)
 		if err != nil {
 			return 0, err
@@ -304,14 +325,9 @@ func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 		numBytes += num
 		filters[i] = filter
 	}
-	s.r = r
-	s.fp = fp
-	s.p = p
-	s.hint = uint(hint)
-	s.s = uint(growthFactor)
-	s.additionsSinceFillRatioCheck = uint(additions)
 	s.filters = filters
-	return numBytes + int64(5*binary.Size(uint64(0))), nil
+	// Bytes read: bytesParams + len (uint64), partitions (numBytes)
+	return bytesParams + int64(binary.Size(uint64(0))) + numBytes, nil
 }
 
 // GobEncode implements gob.GobEncoder interface.
@@ -333,40 +349,33 @@ func (s *ScalableBloomFilter) GobDecode(data []byte) error {
 	return err
 }
 
-type ScalableBloomFilterLazyReader struct {
-	filters []PartitionedBloomFilterLazyReader
-}
+// DecodeScalableBloomFilterFromBuf creates a new ScalableBloomFilter from the provided data
+// and returns the number of bytes used by the ScalableBloomFilter.
+// The data is expected to be in the format written by ScalableBloomFilter.WriteTo().
+// Whereas ScalableBloomFilter.ReadFrom() calls PartitionedBloomFilter.ReadFrom() hence making a copy of the data,
+// DecodeScalableBloomFilterFromBuf calls DecodePartitionedBloomFilterFromBuf which keeps a reference to the original data buffer.
+func DecodeScalableBloomFilterFromBuf(data []byte) (*ScalableBloomFilter, int64, error) {
+	var out ScalableBloomFilter
+	bytesParams, err := out.readParams(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read ScalableBloomFilter params from buffer: %w", err)
+	}
 
-func NewScalableBloomFilterLazyReader(data []byte) (ScalableBloomFilterLazyReader, int) {
-	// Skip r, fp, p float64 and hint, s, additionsSinceFillRatioCheck uint64
-	filtersLenOffset := 3*binary.Size(float64(0)) + 3*binary.Size(uint64(0))
-	filtersLen := binary.BigEndian.Uint64(data[filtersLenOffset:])
+	lenFilters := int64(binary.BigEndian.Uint64(data[bytesParams:]))
+	filterStartOffset := bytesParams + int64(binary.Size(uint64(0)))
 
-	filterStartOffset := filtersLenOffset + binary.Size(uint64(0))
-
-	filters := make([]PartitionedBloomFilterLazyReader, filtersLen)
+	filters := make([]*PartitionedBloomFilter, lenFilters)
 	for i := range filters {
-		filter, n := NewPartitionedBloomFilterLazyReader(data[filterStartOffset:])
+		filter, n, err := DecodePartitionedBloomFilterFromBuf(data[filterStartOffset:])
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to decode PartitionedBloomFilter %d from buffer: %w", i, err)
+		}
 		filterStartOffset += n
 		filters[i] = filter
 	}
+	out.filters = filters
 
-	return ScalableBloomFilterLazyReader{
-		filters: filters,
-	}, filterStartOffset
-}
-
-// Test will test for membership of the data and returns true if it is a
-// member, false if not. This is a probabilistic test, meaning there is a
-// non-zero probability of false positives but a zero probability of false
-// negatives.
-func (s ScalableBloomFilterLazyReader) Test(data []byte) bool {
-	// Querying is made by testing for the presence in each filter.
-	for _, bf := range s.filters {
-		if bf.Test(data) {
-			return true
-		}
-	}
-
-	return false
+	// The length is the filterStartOffset since we updated it in the last
+	// iteration of the loop above with the length of the last filter.
+	return &out, filterStartOffset, nil
 }

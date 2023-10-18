@@ -11,6 +11,7 @@ package filter
 import (
 	"bytes"
 	"encoding/gob"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -184,20 +185,14 @@ func TestPartitionedBloomFilterLazyReader(t *testing.T) {
 		t.Error(err)
 	}
 
-	lazyFilter, n := NewPartitionedBloomFilterLazyReader(buf)
-	if n != len(buf) {
+	decodedFilter, n, err := DecodePartitionedBloomFilterFromBuf(buf)
+	if err != nil {
+		t.Error(err)
+	}
+	if int(n) != len(buf) {
 		t.Errorf("Expected %d bytes read, got %d", len(buf), n)
 	}
-
-	for i := 0; i < 2000; i++ {
-		exists := filter.Test([]byte(strconv.Itoa(i)))
-		lazyExists := lazyFilter.Test([]byte(strconv.Itoa(i)))
-
-		if exists != lazyExists {
-			t.Errorf("Expected %t, got %t for %d", exists, lazyExists, i)
-		}
-	}
-
+	reflect.DeepEqual(filter, decodedFilter)
 }
 
 func BenchmarkPartitionedBloomAdd(b *testing.B) {

@@ -2,7 +2,7 @@ package v1
 
 import "github.com/pkg/errors"
 
-type BloomSeeker interface {
+type BloomQuerier interface {
 	Seek(BloomOffset) (*Bloom, error)
 }
 
@@ -108,7 +108,7 @@ func (it *LazyBloomIter) next() bool {
 	return false
 }
 
-func (it *LazyBloomIter) At() *BloomQuerier {
+func (it *LazyBloomIter) At() *Bloom {
 	return it.curPage.At()
 }
 

@@ -32,14 +32,29 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	return nil
 }
 
-type BloomQuerier struct {
-	filter.ScalableBloomFilterLazyReader
-}
-
-func (b *BloomQuerier) Decode(dec *encoding.Decbuf) {
+func (b *Bloom) DecodeCopy(dec *encoding.Decbuf) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
-	b.ScalableBloomFilterLazyReader, _ = filter.NewScalableBloomFilterLazyReader(data)
+
+	_, err := b.ReadFrom(bytes.NewReader(data))
+	if err != nil {
+		return errors.Wrap(err, "decoding copy of bloom filter")
+	}
+
+	return nil
+}
+
+func (b *Bloom) Decode(dec *encoding.Decbuf) error {
+	ln := dec.Uvarint()
+	data := dec.Bytes(ln)
+
+	sbf, _, err := filter.DecodeScalableBloomFilterFromBuf(data)
+	if err != nil {
+		return errors.Wrap(err, "decoding bloom filter")
+	}
+
+	b.ScalableBloomFilter = *sbf
+	return nil
 }
 
 func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) (*BloomPageDecoder, error) {
@@ -89,7 +104,7 @@ type BloomPageDecoder struct {
 	dec  *encoding.Decbuf
 
 	n   int // number of blooms in page
-	cur *BloomQuerier
+	cur *Bloom
 	err error
 }
 
@@ -109,14 +124,14 @@ func (d *BloomPageDecoder) Next() bool {
 		return false
 	}
 
-	var b BloomQuerier
-	b.Decode(d.dec)
+	var b Bloom
+	d.err = b.Decode(d.dec)
 	d.cur = &b
 
 	return true
 }
 
-func (d *BloomPageDecoder) At() *BloomQuerier {
+func (d *BloomPageDecoder) At() *Bloom {
 	return d.cur
 }
 

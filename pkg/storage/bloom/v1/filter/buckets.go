@@ -12,6 +12,7 @@ package filter
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math/bits"
 )
@@ -149,17 +150,15 @@ func (b *Buckets) WriteTo(stream io.Writer) (int64, error) {
 	return int64(len(b.data) + 2*binary.Size(uint8(0)) + 2*binary.Size(uint64(0))), err
 }
 
-// ReadFrom reads a binary representation of Buckets (such as might
-// have been written by WriteTo()) from an i/o stream. It returns the number
-// of bytes read.
-func (b *Buckets) ReadFrom(stream io.Reader) (int64, error) {
-	var bucketSize, max uint8
-	var count, len uint64
+func (b *Buckets) readParams(stream io.Reader) (int64, error) {
+	var bucketSize, maximum uint8
+	var count uint64
+
 	err := binary.Read(stream, binary.BigEndian, &bucketSize)
 	if err != nil {
 		return 0, err
 	}
-	err = binary.Read(stream, binary.BigEndian, &max)
+	err = binary.Read(stream, binary.BigEndian, &maximum)
 	if err != nil {
 		return 0, err
 	}
@@ -167,6 +166,25 @@ func (b *Buckets) ReadFrom(stream io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	b.bucketSize = bucketSize
+	b.max = maximum
+	b.count = uint(count)
+
+	// Bytes read: bucketSize (uint8), max (uint8), count (uint64)
+	return int64(2*binary.Size(uint8(0)) + binary.Size(uint64(0))), nil
+}
+
+// ReadFrom reads a binary representation of Buckets (such as might
+// have been written by WriteTo()) from an i/o stream. It returns the number
+// of bytes read.
+func (b *Buckets) ReadFrom(stream io.Reader) (int64, error) {
+	bytesParams, err := b.readParams(stream)
+	if err != nil {
+		return 0, err
+	}
+
+	var len uint64
 	err = binary.Read(stream, binary.BigEndian, &len)
 	if err != nil {
 		return 0, err
@@ -176,11 +194,10 @@ func (b *Buckets) ReadFrom(stream io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	b.bucketSize = bucketSize
-	b.max = max
-	b.count = uint(count)
 	b.data = data
-	return int64(int(len) + 2*binary.Size(uint8(0)) + 2*binary.Size(uint64(0))), nil
+
+	// Bytes read: bytesParams + dataLen (uint64) + data ([]byte)
+	return bytesParams + int64(binary.Size(uint64(0))) + int64(len), nil
 }
 
 // GobEncode implements gob.GobEncoder interface.
@@ -202,34 +219,23 @@ func (b *Buckets) GobDecode(data []byte) error {
 	return err
 }
 
-type BucketsLazyReader struct {
-	Buckets
-}
-
-// NewBucketsLazyReader creates a new BucketsLazyReader from the provided data
+// DecodeBucketsFromBuf creates a new Buckets from the provided data
 // and returns the number of bytes used by the Buckets
 // The data is expected to be in the format written by Buckets.WriteTo().
 // Whereas Buckets.ReadFrom() reads the entire data into memory and
-// makes a copy of the data buffer, BucketsLazyReader keeps a reference
-// to the original data buffer and only reads from it when needed.
-func NewBucketsLazyReader(data []byte) (BucketsLazyReader, int) {
-	bucketSize := data[0]
+// makes a copy of the data buffer, DecodeBucketsFromBuf keeps a reference
+// to the original data buffer and can only be used to Test.
+func DecodeBucketsFromBuf(data []byte) (*Buckets, int64, error) {
+	var out Buckets
+	bytesParams, err := out.readParams(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read Buckets params from buffer: %w", err)
+	}
 
-	// Skip bucketSize (uint8), max (uint8), count (uint64)
-	lenDataOffset := 2*binary.Size(uint8(0)) + binary.Size(uint64(0))
-	// Add len field (uint64(0)) to the above offset
-	dataStart := lenDataOffset + binary.Size(uint64(0))
-	dataEnd := dataStart + int(binary.BigEndian.Uint64(data[lenDataOffset:]))
+	dataLen := int64(binary.BigEndian.Uint64(data[bytesParams:]))
+	dataStart := bytesParams + int64(binary.Size(uint64(0)))
+	dataEnd := dataStart + dataLen
+	out.data = data[dataStart:dataEnd]
 
-	return BucketsLazyReader{
-		Buckets: Buckets{
-			data:       data[dataStart:dataEnd],
-			bucketSize: bucketSize,
-		},
-	}, dataEnd
-}
-
-// Get returns the value in the specified bucket.
-func (s BucketsLazyReader) Get(bucket uint) uint32 {
-	return s.Buckets.Get(bucket)
+	return &out, dataEnd, nil
 }

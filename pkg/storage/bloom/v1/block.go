@@ -62,16 +62,11 @@ func (b *Block) Blooms() *LazyBloomIter {
 	return NewLazyBloomIter(b)
 }
 
-type SeriesWithBloomQuerier struct {
-	Series *Series
-	Bloom  *BloomQuerier
-}
-
 type BlockQuerier struct {
 	series *LazySeriesIter
 	blooms *LazyBloomIter
 
-	cur *SeriesWithBloomQuerier
+	cur *SeriesWithBloom
 }
 
 func NewBlockQuerier(b *Block) *BlockQuerier {
@@ -99,7 +94,7 @@ func (bq *BlockQuerier) Next() bool {
 
 	bloom := bq.blooms.At()
 
-	bq.cur = &SeriesWithBloomQuerier{
+	bq.cur = &SeriesWithBloom{
 		Series: &series.Series,
 		Bloom:  bloom,
 	}
@@ -107,7 +102,7 @@ func (bq *BlockQuerier) Next() bool {
 
 }
 
-func (bq *BlockQuerier) At() *SeriesWithBloomQuerier {
+func (bq *BlockQuerier) At() *SeriesWithBloom {
 	return bq.cur
 }
 
