@@ -2,15 +2,17 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring/client"
@@ -23,17 +25,17 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics, codec GRPCCodec) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
+		codec:          codec,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
@@ -57,6 +59,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 type schedulerProcessor struct {
 	log            log.Logger
 	handler        RequestHandler
+	codec          GRPCCodec
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
@@ -150,7 +153,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			}
 			logger := util_log.WithContext(ctx, sp.log)
 
-			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.QueryRequest)
+			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
@@ -160,48 +163,17 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *queryrange.QueryRequest) {
+func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	var resp *queryrange.QueryResponse
-
-	req, err := queryrange.QueryRequestUnwrap(request)
-	if err != nil {
-		resp = &queryrange.QueryResponse{
-			Status: &rpc.Status{
-				Code:    int32(rpc.INTERNAL),
-				Message: err.Error(),
-			},
-		}
-	} else {
-		response, err := sp.handler.Do(ctx, req)
-		if err != nil {
-			resp = &queryrange.QueryResponse{
-				Status: &rpc.Status{
-					Code:    int32(rpc.INTERNAL),
-					Message: err.Error(),
-				},
-			}
-		} else {
-			resp, err = queryrange.QueryResponseWrap(response)
-			if err != nil {
-				resp = &queryrange.QueryResponse{
-					Status: &rpc.Status{
-						Code:    int32(rpc.INTERNAL),
-						Message: err.Error(),
-					},
-				}
-			}
-		}
-	}
+	response := handle(ctx, request, sp.handler, sp.codec)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
 	// Ensure responses that are too big are not retried.
-	/* TODO(karsten): determine message size somehow.
 	if len(response.Body) >= sp.maxMessageSize {
 		level.Error(logger).Log("msg", "response larger than max message size", "size", len(response.Body), "maxMessageSize", sp.maxMessageSize)
 
@@ -211,7 +183,6 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 			Body: []byte(errMsg),
 		}
 	}
-	*/
 
 	runPoolWithBackoff(
 		ctx,
@@ -220,11 +191,10 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		frontendAddress,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
-			_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-				QueryID:       queryID,
-				HttpResponse:  nil, // TODO: set http response for backwards compatibility
-				Stats:         stats,
-				QueryResponse: resp,
+			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
+				QueryID:      queryID,
+				HttpResponse: response,
+				Stats:        stats,
 			})
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)

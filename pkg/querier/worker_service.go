@@ -2,20 +2,15 @@ package querier
 
 import (
 	"fmt"
-	"net/http"
 
 	"github.com/go-kit/log/level"
-	"github.com/gorilla/mux"
-	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
 type WorkerServiceConfig struct {
@@ -23,10 +18,25 @@ type WorkerServiceConfig struct {
 	ReadEnabled           bool
 	GrpcListenAddress     string
 	GrpcListenPort        int
+	QuerierMaxConcurrent  int
 	QuerierWorkerConfig   *querier_worker.Config
 	QueryFrontendEnabled  bool
 	QuerySchedulerEnabled bool
 	SchedulerRing         ring.ReadRing
+}
+
+func (cfg WorkerServiceConfig) QuerierRunningStandalone() bool {
+	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.ReadEnabled && !cfg.AllEnabled
+	level.Debug(util_log.Logger).Log(
+		"msg", "determining if querier is running as standalone target",
+		"runningStandalone", runningStandalone,
+		"queryFrontendEnabled", cfg.QueryFrontendEnabled,
+		"queryScheduleEnabled", cfg.QuerySchedulerEnabled,
+		"readEnabled", cfg.ReadEnabled,
+		"allEnabled", cfg.AllEnabled,
+	)
+
+	return runningStandalone
 }
 
 // InitWorkerService takes a config object, a map of routes to handlers, an external http router and external
@@ -44,44 +54,15 @@ type WorkerServiceConfig struct {
 func InitWorkerService(
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
-	queryRouterPathPrefix string,
-	queryRoutesToHandlers map[string]http.Handler,
-	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	handler queryrangebase.Handler,
-	externalRouter *mux.Router,
-	externalHandler http.Handler,
-	authMiddleware middleware.Interface,
+	codec querier_worker.GRPCCodec,
 ) (serve services.Service, err error) {
-
-	// Create a couple Middlewares used to handle panics, perform auth, parse forms in http request, and set content type in response
-	handlerMiddleware := middleware.Merge(
-		httpreq.ExtractQueryTagsMiddleware(),
-		serverutil.RecoveryHTTPMiddleware,
-		authMiddleware,
-		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
-	)
-
-	// There are some routes which are always registered on the external router, add them now and
-	// wrap them with the externalMiddleware
-	for route, handler := range alwaysExternalRoutesToHandlers {
-		externalRouter.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(handler))
-	}
 
 	// If the querier is running standalone without the query-frontend or query-scheduler, we must register the internal
 	// HTTP handler externally (as it's the only handler that needs to register on querier routes) and provide the
 	// external Loki Server HTTP handler to the frontend worker to ensure requests it processes use the default
 	// middleware instrumentation.
-	if querierRunningStandalone(cfg) {
-
-		// First, register the internal querier handler with the external HTTP server
-		router := externalRouter
-		if queryRouterPathPrefix != "" {
-			router = router.PathPrefix(queryRouterPathPrefix).Subrouter()
-		}
-		for route, h := range queryRoutesToHandlers {
-			router.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(h))
-		}
+	if cfg.QuerierRunningStandalone() {
 
 		//If no scheduler ring or frontend or scheduler address has been configured, then there is no place for the
 		//querier worker to request work from, so no need to start a worker service
@@ -97,6 +78,7 @@ func InitWorkerService(
 			handler,
 			util_log.Logger,
 			reg,
+			codec,
 		)
 	}
 
@@ -114,8 +96,6 @@ func InitWorkerService(
 		cfg.QuerierWorkerConfig.FrontendAddress = address
 	}
 
-	// TODO: enable tracing for the handler.
-
 	//Return a querier worker pointed to the internal querier HTTP handler so there is not a conflict in routes between the querier
 	//and the query frontend
 	return querier_worker.NewQuerierWorker(
@@ -124,19 +104,6 @@ func InitWorkerService(
 		handler,
 		util_log.Logger,
 		reg,
+		codec,
 	)
-}
-
-func querierRunningStandalone(cfg WorkerServiceConfig) bool {
-	runningStandalone := !cfg.QueryFrontendEnabled && !cfg.QuerySchedulerEnabled && !cfg.ReadEnabled && !cfg.AllEnabled
-	level.Debug(util_log.Logger).Log(
-		"msg", "determining if querier is running as standalone target",
-		"runningStandalone", runningStandalone,
-		"queryFrontendEnabled", cfg.QueryFrontendEnabled,
-		"queryScheduleEnabled", cfg.QuerySchedulerEnabled,
-		"readEnabled", cfg.ReadEnabled,
-		"allEnabled", cfg.AllEnabled,
-	)
-
-	return runningStandalone
 }

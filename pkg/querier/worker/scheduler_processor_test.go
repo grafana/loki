@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -59,8 +60,11 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			switch recvCount.Inc() {
 			case 1:
 				return &schedulerpb.SchedulerToQuerier{
-					QueryID:         1,
-					HttpRequest:     nil,
+					QueryID: 1,
+					HttpRequest: &httpgrpc.HTTPRequest{
+						Method: "GET",
+						Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
+					},
 					FrontendAddress: "127.0.0.2",
 					UserID:          "user-1",
 				}, nil
@@ -140,7 +144,7 @@ func prepareSchedulerProcessor() (*schedulerProcessor, *querierLoopClientMock, *
 
 	requestHandler := &requestHandlerMock{}
 	metrics := NewMetrics(Config{}, nil)
-	sp, _ := newSchedulerProcessor(Config{QuerierID: "test-querier-id"}, requestHandler, log.NewNopLogger(), metrics)
+	sp, _ := newSchedulerProcessor(Config{QuerierID: "test-querier-id"}, requestHandler, log.NewNopLogger(), metrics, queryrange.DefaultCodec)
 	sp.schedulerClientFactory = func(_ *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient {
 		return schedulerClient
 	}

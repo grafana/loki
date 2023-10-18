@@ -13,8 +13,6 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/dskit/tenant"
@@ -69,8 +67,12 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 	}
 }
 
-// RangeQueryHandler is a http.HandlerFunc for range queries.
+// RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
 func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
+	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
+		return logqlmodel.Result{}, err
+	}
+
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
 		return logqlmodel.Result{}, err
@@ -92,60 +94,6 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 	}
 	query := q.engine.Query(params)
 	return query.Exec(ctx)
-}
-
-// LogQueryHandler is a http.HandlerFunc for log only queries.
-func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := loghttp.ParseRangeQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-	request.Query, err = parseRegexQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	expr, err := syntax.ParseExpr(request.Query)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	// short circuit metric queries
-	if _, ok := expr.(syntax.SampleExpr); ok {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams), w)
-		return
-	}
-
-	ctx := r.Context()
-	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	params := logql.NewLiteralParams(
-		request.Query,
-		request.Start,
-		request.End,
-		request.Step,
-		request.Interval,
-		request.Direction,
-		request.Limit,
-		request.Shards,
-	)
-	query := q.engine.Query(params)
-
-	result, err := query.Exec(ctx)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
@@ -186,12 +134,6 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	req.Query, err = parseRegexQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -349,83 +291,18 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 
 //TODO(trevorwhitney): add test for the handler split
 
-// VolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
-// Returns N values where N is the time range / step.
-func (q *QuerierAPI) VolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseVolumeRangeQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	req := &logproto.VolumeRequest{
-		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers:     rawReq.Query,
-		Step:         rawReq.Step.Milliseconds(),
-		Limit:        int32(rawReq.Limit),
-		TargetLabels: rawReq.TargetLabels,
-		AggregateBy:  rawReq.AggregateBy,
-	}
-
-	q.seriesVolumeHandler(r.Context(), r, req, w)
-}
-
-// VolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
-// Returns a single value for the time range.
-func (q *QuerierAPI) VolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseVolumeInstantQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
-	req := &logproto.VolumeRequest{
-		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers:     rawReq.Query,
-		Step:         0,
-		Limit:        int32(rawReq.Limit),
-		TargetLabels: rawReq.TargetLabels,
-		AggregateBy:  rawReq.AggregateBy,
-	}
-
-	q.seriesVolumeHandler(r.Context(), r, req, w)
-}
-
-func (q *QuerierAPI) seriesVolumeHandler(ctx context.Context, r *http.Request, req *logproto.VolumeRequest, w http.ResponseWriter) {
+// VolumeHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns either N values where N is the time range / step and a single value for a time range depending on the request.
+func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	resp, err := q.querier.Volume(ctx, req)
 	if err != nil {
-		serverutil.WriteError(err, w)
-		return
+		return nil, err
 	}
-
 	if resp == nil { // Some stores don't implement this
-		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
+		return &logproto.VolumeResponse{Volumes: []logproto.Volume{}}, nil
 	}
 
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
-}
-
-// parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
-// This is used only to keep regexp query string support until it gets fully deprecated.
-func parseRegexQuery(httpRequest *http.Request) (string, error) {
-	query := httpRequest.Form.Get("query")
-	regexp := httpRequest.Form.Get("regexp")
-	if regexp != "" {
-		expr, err := syntax.ParseLogSelector(query, true)
-		if err != nil {
-			return "", err
-		}
-		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
-		if err != nil {
-			return "", err
-		}
-		query = newExpr.String()
-	}
-	return query, nil
+	return resp, nil
 }
 
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {

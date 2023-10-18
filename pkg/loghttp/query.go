@@ -12,9 +12,14 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/httpgrpc"
+
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -469,6 +474,23 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, errNegativeInterval
 	}
 
+	if GetVersion(r.URL.Path) == VersionLegacy {
+		result.Query, err = parseRegexQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		expr, err := syntax.ParseExpr(result.Query)
+		if err != nil {
+			return nil, err
+		}
+
+		// short circuit metric queries
+		if _, ok := expr.(syntax.SampleExpr); ok {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams)
+		}
+	}
+
 	return &result, nil
 }
 
@@ -476,6 +498,27 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+func NewVolumeRangeQueryWithDefaults(matchers string) *logproto.VolumeRequest {
+	start, end, _ := determineBounds(time.Now(), "", "", "")
+	step := (time.Duration(defaultQueryRangeStep(start, end)) * time.Second).Milliseconds()
+	from, through := util.RoundToMilliseconds(start, end)
+	return &logproto.VolumeRequest{
+		From:         from,
+		Through:      through,
+		Matchers:     matchers,
+		Limit:        seriesvolume.DefaultLimit,
+		Step:         step,
+		TargetLabels: nil,
+		AggregateBy:  seriesvolume.DefaultAggregateBy,
+	}
+}
+
+func NewVolumeInstantQueryWithDefaults(matchers string) *logproto.VolumeRequest {
+	r := NewVolumeRangeQueryWithDefaults(matchers)
+	r.Step = 0
+	return r
 }
 
 type VolumeInstantQuery struct {

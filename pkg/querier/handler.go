@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/opentracing/opentracing-go"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange"
@@ -22,6 +24,9 @@ func NewQuerierHandler(api *QuerierAPI) *Handler {
 }
 
 func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "queryHandler")
+	defer span.Finish()
+
 	switch concrete := req.(type) {
 	case *queryrange.LokiRequest:
 		res, err := h.api.RangeQueryHandler(ctx, concrete)
@@ -48,7 +53,12 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 
 		return queryrange.ResultToResponse(res, params)
 	case *queryrange.LokiSeriesRequest:
-		request := &logproto.SeriesRequest{}
+		request := &logproto.SeriesRequest{
+			Start:  concrete.StartTs,
+			End:    concrete.EndTs,
+			Groups: concrete.Match,
+			Shards: concrete.Shards,
+		}
 		result, statResult, err := h.api.SeriesHandler(ctx, request)
 		if err != nil {
 			return nil, err
@@ -83,8 +93,9 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 			return nil, err
 		}
 		return &queryrange.IndexStatsResponse{Response: result}, nil
+	case *logproto.VolumeRequest:
+		return h.api.VolumeHandler(ctx, concrete)
 	default:
-		// TODO: This should be a user error
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}
 }

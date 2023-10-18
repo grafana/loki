@@ -4,7 +4,6 @@ package schedulerpb;
 
 import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
-import "pkg/querier/queryrange/queryrange.proto";
 
 option go_package = "schedulerpb";
 option (gogoproto.marshaler_all) = true;
@@ -45,8 +44,6 @@ message SchedulerToQuerier {
   // Whether query statistics tracking should be enabled. The response will include
   // statistics only when this option is enabled.
   bool statsEnabled = 5;
-
-  queryrange.QueryRequest queryRequest = 8;
 }
 
 // Scheduler interface exposed to Frontend. Frontend can enqueue and cancel requests.
@@ -78,12 +75,10 @@ message FrontendToScheduler {
 
   // Following are used by ENQUEUE only.
   string userID = 4;
-  httpgrpc.HTTPRequest httpRequest = 5 [deprecated = true];
+  httpgrpc.HTTPRequest httpRequest = 5;
   bool statsEnabled = 6;
   // Path to queue to which the request will be enqueued.
   repeated string queuePath = 7;
-
-  queryrange.QueryRequest queryRequest = 8;
 }
 
 enum SchedulerToFrontendStatus {

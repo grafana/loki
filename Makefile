@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.30.0
+BUILD_IMAGE_VERSION := 0.30.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -786,33 +786,34 @@ check-doc: doc
 ###################
 # Example Configs #
 ###################
-CONFIG_DOC_PATH := $(DOC_SOURCES_PATH)/configure
-CONFIG_EXAMPLES_PATH := $(CONFIG_DOC_PATH)/examples
-CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
+EXAMPLES_DOC_PATH := $(DOC_SOURCES_PATH)/configure/examples
+EXAMPLES_DOC_OUTPUT_PATH := $(EXAMPLES_DOC_PATH)/configuration-examples.md
+EXAMPLES_YAML_PATH := $(EXAMPLES_DOC_PATH)/yaml
+EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 
 # Validate the example configurations that we provide in ./docs/sources/configure/examples
 # We run the validation only for complete examples, not snippets.
 # Complete examples should contain "Example" in their file name.
 validate-example-configs: loki
-	for f in $$(grep -rL $(CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG) $(CONFIG_EXAMPLES_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
+	echo "Removing existing doc at $(EXAMPLES_DOC_OUTPUT_PATH) and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > $(CONFIG_DOC_PATH)/examples.md
+	echo -e "---\ntitle: Configuration\ndescription: Loki Configuration Examples and Snippets\nweight:  100\n---\n# Configuration" > $(EXAMPLES_DOC_OUTPUT_PATH)
 	# Append each configuration and its file name to examples.md
-	for f in $$(find $(CONFIG_EXAMPLES_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
-		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(CONFIG_DOC_PATH)/examples.md; \
-		grep -v $(CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG) $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
-		echo -e "\n\`\`\`\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+	for f in $$(find $(EXAMPLES_YAML_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
+		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		grep -v $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/$$f >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		echo -e "\n\`\`\`\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
 	done
 
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if ! (git diff --exit-code ./docs/sources/configure/examples.md); then \
+	@if ! (git diff --exit-code $(EXAMPLES_DOC_OUTPUT_PATH)); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \

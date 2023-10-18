@@ -10,14 +10,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/httpgrpc"
-	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
-	"github.com/grafana/dskit/user"
+	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
+	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
 )
 
 var (
@@ -27,10 +25,11 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) processor {
+func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec GRPCCodec) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
+		codec:          codec,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 	}
@@ -40,6 +39,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) pr
 // This should be used by Frontend V1.
 type frontendProcessor struct {
 	handler        RequestHandler
+	codec          GRPCCodec
 	maxMessageSize int
 	querierID      string
 
@@ -119,55 +119,35 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 }
 
 func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error) {
+
+	tracer := opentracing.GlobalTracer()
+	// Ignore errors here. If we cannot get parent span, we just don't create new one.
+	parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request)
+	if parentSpanContext != nil {
+		queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "frontend_processor_runRequest", opentracing.ChildOf(parentSpanContext))
+		defer queueSpan.Finish()
+
+		ctx = spanCtx
+	}
+
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	// TODO: handler error
-	httpReq, _ := httpgrpc_server.ToHTTP(ctx, request)
-
-	_, ctx, _ = user.ExtractOrgIDFromHTTPRequest(httpReq)
-
-	req, _ := queryrange.DefaultCodec.DecodeRequest(ctx, httpReq, nil)
-
-	// TODO return error code
-	response, err := fp.handler.Do(ctx, req)
-
-	var httpResp *http.Response
-	var grpcResp *httpgrpc.HTTPResponse
-	if err == nil {
-		httpResp, err = queryrange.DefaultCodec.EncodeResponse(ctx, httpReq, response)
-		if err == nil {
-			grpcResp, err = transport.HTTPtoHttpgrpcResponse(httpResp)
-		}
-	}
-
-	if err != nil {
-		var ok bool
-		grpcResp, ok = httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			grpcResp = &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
-			}
-		}
-	}
+	response := handle(ctx, request, fp.handler, fp.codec)
 
 	// Ensure responses that are too big are not retried.
-	// TODO
-	/*
-		if len(response.Body) >= fp.maxMessageSize {
-			errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), fp.maxMessageSize)
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusRequestEntityTooLarge,
-				Body: []byte(errMsg),
-			}
-			level.Error(fp.log).Log("msg", "error processing query", "err", errMsg)
+	if len(response.Body) >= fp.maxMessageSize {
+		errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), fp.maxMessageSize)
+		response = &httpgrpc.HTTPResponse{
+			Code: http.StatusRequestEntityTooLarge,
+			Body: []byte(errMsg),
 		}
-	*/
+		level.Error(fp.log).Log("msg", "error processing query", "err", errMsg)
+	}
 
-	if err := sendResponse(grpcResp, stats); err != nil {
+	if err := sendResponse(response, stats); err != nil {
 		level.Error(fp.log).Log("msg", "error processing requests", "err", err)
 	}
 }

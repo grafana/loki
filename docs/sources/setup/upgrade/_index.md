@@ -266,11 +266,11 @@ ruler:
 
 ### Querier
 
-#### query-frontend k8s headless service changed to load balanced service
+#### query-frontend Kubernetes headless service changed to load balanced service
 
 *Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/)
 
-The `query-frontend` k8s service was previously headless and was used for two purposes:
+The `query-frontend` Kubernetes service was previously headless and was used for two purposes:
 * Distributing the Loki query requests amongst all the available Query Frontend pods.
 * Discover IPs of Query Frontend pods from Queriers to connect as workers.
 
@@ -278,7 +278,7 @@ The problem here is that a headless service does not support load balancing and 
 Additionally, a load-balanced service does not let us discover the IPs of the underlying pods.
 
 To meet both these requirements, we have made the following changes:
-* Changed the existing `query-frontend` k8s service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
+* Changed the existing `query-frontend` Kubernetes service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
 * Added `query-frontend-headless` to discover QF pod IPs from queriers to connect as workers.
 
 If you are deploying Loki with Query Scheduler by setting [query_scheduler_enabled](https://github.com/grafana/loki/blob/cc4ab7487ab3cd3b07c63601b074101b0324083b/production/ksonnet/loki/config.libsonnet#L18) config to `true`, then there is nothing to do here for this change.
@@ -1094,7 +1094,7 @@ and the Kubelet.
 This commit adds the same to the Loki scrape config. It also removes
 the container_name label. It is the same as the container label
 and was already added to Loki previously. However, the
-container_name label is deprecated and has disappeared in K8s 1.16,
+container_name label is deprecated and has disappeared in Kubernetes 1.16,
 so that it will soon become useless for direct joining.
 ````
 

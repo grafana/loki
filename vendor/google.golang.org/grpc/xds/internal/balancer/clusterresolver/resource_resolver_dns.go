@@ -20,8 +20,9 @@ package clusterresolver
 
 import (
 	"fmt"
+	"net/url"
+	"sync"
 
-	"google.golang.org/grpc/internal/testutils"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 )
@@ -39,31 +40,54 @@ var (
 // It implements resolver.ClientConn interface to work with the DNS resolver.
 type dnsDiscoveryMechanism struct {
 	target           string
-	topLevelResolver *resourceResolver
-	r                resolver.Resolver
+	topLevelResolver topLevelResolver
+	dnsR             resolver.Resolver
 
+	mu             sync.Mutex
 	addrs          []string
 	updateReceived bool
 }
 
-func newDNSResolver(target string, topLevelResolver *resourceResolver) *dnsDiscoveryMechanism {
+// newDNSResolver creates an endpoints resolver which uses a DNS resolver under
+// the hood.
+//
+// An error in parsing the provided target string or an error in creating a DNS
+// resolver means that we will never be able to resolve the provided target
+// strings to endpoints. The topLevelResolver propagates address updates to the
+// clusterresolver LB policy **only** after it receives updates from all its
+// child resolvers. Therefore, an error here means that the topLevelResolver
+// will never send address updates to the clusterresolver LB policy.
+//
+// Calling the onError() callback will ensure that this error is
+// propagated to the child policy which eventually move the channel to
+// transient failure.
+//
+// The `dnsR` field is unset if we run into erros in this function. Therefore, a
+// nil check is required wherever we access that field.
+func newDNSResolver(target string, topLevelResolver topLevelResolver) *dnsDiscoveryMechanism {
 	ret := &dnsDiscoveryMechanism{
 		target:           target,
 		topLevelResolver: topLevelResolver,
 	}
-	r, err := newDNS(resolver.Target{Scheme: "dns", URL: *testutils.MustParseURL("dns:///" + target)}, ret, resolver.BuildOptions{})
+	u, err := url.Parse("dns:///" + target)
 	if err != nil {
-		select {
-		case <-topLevelResolver.updateChannel:
-		default:
-		}
-		topLevelResolver.updateChannel <- &resourceUpdate{err: err}
+		topLevelResolver.onError(fmt.Errorf("failed to parse dns hostname %q in clusterresolver LB policy", target))
+		return ret
 	}
-	ret.r = r
+
+	r, err := newDNS(resolver.Target{Scheme: "dns", URL: *u}, ret, resolver.BuildOptions{})
+	if err != nil {
+		topLevelResolver.onError(fmt.Errorf("failed to build DNS resolver for target %q: %v", target, err))
+		return ret
+	}
+	ret.dnsR = r
 	return ret
 }
 
 func (dr *dnsDiscoveryMechanism) lastUpdate() (interface{}, bool) {
+	dr.mu.Lock()
+	defer dr.mu.Unlock()
+
 	if !dr.updateReceived {
 		return nil, false
 	}
@@ -71,35 +95,42 @@ func (dr *dnsDiscoveryMechanism) lastUpdate() (interface{}, bool) {
 }
 
 func (dr *dnsDiscoveryMechanism) resolveNow() {
-	dr.r.ResolveNow(resolver.ResolveNowOptions{})
+	if dr.dnsR != nil {
+		dr.dnsR.ResolveNow(resolver.ResolveNowOptions{})
+	}
 }
 
+// The definition of stop() mentions that implementations must not invoke any
+// methods on the topLevelResolver once the call to `stop()` returns. The
+// underlying dns resolver does not send any updates to the resolver.ClientConn
+// interface passed to it (implemented by dnsDiscoveryMechanism in this case)
+// after its `Close()` returns. Therefore, we can guarantee that no methods of
+// the topLevelResolver are invoked after we return from this method.
 func (dr *dnsDiscoveryMechanism) stop() {
-	dr.r.Close()
+	if dr.dnsR != nil {
+		dr.dnsR.Close()
+	}
 }
 
 // dnsDiscoveryMechanism needs to implement resolver.ClientConn interface to receive
 // updates from the real DNS resolver.
 
 func (dr *dnsDiscoveryMechanism) UpdateState(state resolver.State) error {
-	dr.topLevelResolver.mu.Lock()
-	defer dr.topLevelResolver.mu.Unlock()
+	dr.mu.Lock()
 	addrs := make([]string, len(state.Addresses))
 	for i, a := range state.Addresses {
 		addrs[i] = a.Addr
 	}
 	dr.addrs = addrs
 	dr.updateReceived = true
-	dr.topLevelResolver.generate()
+	dr.mu.Unlock()
+
+	dr.topLevelResolver.onUpdate()
 	return nil
 }
 
 func (dr *dnsDiscoveryMechanism) ReportError(err error) {
-	select {
-	case <-dr.topLevelResolver.updateChannel:
-	default:
-	}
-	dr.topLevelResolver.updateChannel <- &resourceUpdate{err: err}
+	dr.topLevelResolver.onError(err)
 }
 
 func (dr *dnsDiscoveryMechanism) NewAddress(addresses []resolver.Address) {

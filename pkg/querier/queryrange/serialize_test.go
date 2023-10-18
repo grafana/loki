@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -20,25 +21,33 @@ func TestResponseFormat(t *testing.T) {
 	for _, tc := range []struct {
 		url             string
 		accept          string
-		result          logqlmodel.Result
+		response        queryrangebase.Response
+		expectedCode    int
 		expectedRespone string
 	}{
 		{
 			url: "/api/prom/query",
-			result: logqlmodel.Result{
-				Data: logqlmodel.Streams{
-					logproto.Stream{
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012345).UTC(),
-								Line:      "super line",
+			response: &LokiResponse{
+				Direction: logproto.BACKWARD,
+				Limit:     200,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: logqlmodel.Streams{
+						logproto.Stream{
+							Entries: []logproto.Entry{
+								{
+									Timestamp: time.Unix(0, 123456789012345).UTC(),
+									Line:      "super line",
+								},
 							},
+							Labels: `{foo="bar"}`,
 						},
-						Labels: `{foo="bar"}`,
 					},
 				},
+				Status:     "success",
 				Statistics: statsResult,
 			},
+			expectedCode: http.StatusOK,
 			expectedRespone: `{
 				` + statsResultString + `
 				"streams": [
@@ -56,20 +65,27 @@ func TestResponseFormat(t *testing.T) {
 		},
 		{
 			url: "/loki/api/v1/query_range",
-			result: logqlmodel.Result{
-				Data: logqlmodel.Streams{
-					logproto.Stream{
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012345).UTC(),
-								Line:      "super line",
+			response: &LokiResponse{
+				Direction: logproto.BACKWARD,
+				Limit:     200,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: logqlmodel.Streams{
+						logproto.Stream{
+							Entries: []logproto.Entry{
+								{
+									Timestamp: time.Unix(0, 123456789012345).UTC(),
+									Line:      "super line",
+								},
 							},
+							Labels: `{foo="bar"}`,
 						},
-						Labels: `{foo="bar"}`,
 					},
 				},
+				Status:     "success",
 				Statistics: statsResult,
 			},
+			expectedCode: http.StatusOK,
 			expectedRespone: `{
 				"status": "success",
 				"data": {
@@ -84,15 +100,16 @@ func TestResponseFormat(t *testing.T) {
 				}
 			}`,
 		},
+		{
+			url:             "/loki/wrong/path",
+			response:        nil,
+			expectedCode:    http.StatusNotFound,
+			expectedRespone: "unknown request path: /loki/wrong/path\n",
+		},
 	} {
 		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {
 			handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-				// TODO: return tc.response instead.
-				params, err := ParamsFromRequest(r)
-				if err != nil {
-					return nil, err
-				}
-				return ResultToResponse(tc.result, params)
+				return tc.response, nil
 			})
 			httpHandler := NewSerializeHTTPHandler(handler, DefaultCodec)
 
@@ -104,8 +121,12 @@ func TestResponseFormat(t *testing.T) {
 			req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
 			httpHandler.ServeHTTP(w, req)
 
-			require.Equalf(t, http.StatusOK, w.Code, "unexpected response: %s", w.Body.String())
-			require.JSONEq(t, tc.expectedRespone, w.Body.String())
+			require.Equalf(t, tc.expectedCode, w.Code, "unexpected response: %s", w.Body.String())
+			if tc.expectedCode/100 == 2 {
+				require.JSONEq(t, tc.expectedRespone, w.Body.String())
+			} else {
+				require.Equal(t, tc.expectedRespone, w.Body.String())
+			}
 		})
 	}
 }

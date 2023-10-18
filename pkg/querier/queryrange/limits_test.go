@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -90,10 +91,8 @@ func Test_seriesLimiter(t *testing.T) {
 		}()
 		// first time returns  a single series
 		if *c == 0 {
-			// TODO: refactor and use ResultToResponse
-			sampleStream, err := base.FromValue(matrix)
-			if err != nil {
-				return nil, err
+			if err := marshal.WriteQueryResponseJSON(matrix, stats.Result{}, rw); err != nil {
+				panic(err)
 			}
 			return &LokiPromResponse{
 				Response: &base.PrometheusResponse{
@@ -106,12 +105,14 @@ func Test_seriesLimiter(t *testing.T) {
 			}, nil
 		}
 		// second time returns a different series.
-		m := promql.Matrix{
-			{
-				Floats: []promql.FPoint{
-					{
-						T: toMs(testTime.Add(-4 * time.Hour)),
-						F: 0.013333333333333334,
+		if err := marshal.WriteQueryResponseJSON(
+			promql.Matrix{
+				{
+					Floats: []promql.FPoint{
+						{
+							T: toMs(testTime.Add(-4 * time.Hour)),
+							F: 0.013333333333333334,
+						},
 					},
 				},
 				Metric: []labels.Label{
@@ -125,6 +126,9 @@ func Test_seriesLimiter(t *testing.T) {
 					},
 				},
 			},
+			stats.Result{},
+			rw); err != nil {
+			panic(err)
 		}
 		// TODO: refactor and use ResultToResponse
 		sampleStream, err := base.FromValue(m)
