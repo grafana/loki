@@ -11,9 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"go.uber.org/atomic"
-
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 // newExecutionContext returns a new execution context (execCtx) that wraps the input workerCtx and
