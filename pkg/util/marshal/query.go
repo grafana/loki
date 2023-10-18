@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value
@@ -173,14 +174,14 @@ func NewMetric(l labels.Labels) model.Metric {
 	return ret
 }
 
-func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream) error {
+func EncodeResult(data parser.Value, statistics stats.Result, s *jsoniter.Stream) error {
 	s.WriteObjectStart()
 	s.WriteObjectField("status")
 	s.WriteString("success")
 
 	s.WriteMore()
 	s.WriteObjectField("data")
-	err := encodeData(v, s)
+	err := encodeData(data, statistics, s)
 	if err != nil {
 		return err
 	}
@@ -189,22 +190,22 @@ func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream) error {
 	return nil
 }
 
-func encodeData(v logqlmodel.Result, s *jsoniter.Stream) error {
+func encodeData(data parser.Value, statistics stats.Result, s *jsoniter.Stream) error {
 	s.WriteObjectStart()
 
 	s.WriteObjectField("resultType")
-	s.WriteString(string(v.Data.Type()))
+	s.WriteString(string(data.Type()))
 
 	s.WriteMore()
 	s.WriteObjectField("result")
-	err := encodeResult(v.Data, s)
+	err := encodeResult(data, s)
 	if err != nil {
 		return err
 	}
 
 	s.WriteMore()
 	s.WriteObjectField("stats")
-	s.WriteVal(v.Statistics)
+	s.WriteVal(statistics)
 
 	s.WriteObjectEnd()
 	s.Flush()

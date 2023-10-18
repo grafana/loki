@@ -245,10 +245,7 @@ func TestMergedViewJSON(t *testing.T) {
 	actual := b.String()
 	b.Reset()
 
-	result := logproto.SeriesResponse{
-		Series: response.Data,
-	}
-	err = marshal.WriteSeriesResponseJSON(result, &b)
+	err = marshal.WriteSeriesResponseJSON(response.Data, &b)
 	require.NoError(t, err)
 	expected := b.String()
 
