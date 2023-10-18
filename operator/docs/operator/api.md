@@ -2484,6 +2484,9 @@ used with the Loki cluster.</p>
 </tr><tr><td><p>&#34;v12&#34;</p></td>
 <td><p>ObjectStorageSchemaV12 when using v12 for the storage schema</p>
 </td>
+</tr><tr><td><p>&#34;v13&#34;</p></td>
+<td><p>ObjectStorageSchemaV13 when using v13 for the storage schema</p>
+</td>
 </tr></tbody>
 </table>
 
