@@ -62,12 +62,18 @@ func (q QuantileSketchVector) ToProto() *logproto.QuantileSketchVector {
 	return &logproto.QuantileSketchVector{Samples: samples}
 }
 
-func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) QuantileSketchVector {
+func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) (QuantileSketchVector, error) {
 	out := make([]quantileSketchSample, len(proto.Samples))
-	for i, s := range proto.Samples {
-		out[i] = quantileSketchSampleFromProto(s)
+	var s quantileSketchSample
+	var err error
+	for i, sample := range proto.Samples {
+		s, err = quantileSketchSampleFromProto(sample)
+		if err != nil {
+			return QuantileSketchVector{}, err
+		}
+		out[i] = s
 	}
-	return out
+	return out, nil
 }
 
 func (QuantileSketchMatrix) String() string {
@@ -84,12 +90,18 @@ func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	return &logproto.QuantileSketchMatrix{Values: values}
 }
 
-func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) QuantileSketchMatrix {
-	out := make([]QuantileSketchVector, len(proto.Values)) 
+func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) (QuantileSketchMatrix, error) {
+	out := make([]QuantileSketchVector, len(proto.Values))
+	var s QuantileSketchVector
+	var err error
 	for i, v := range proto.Values {
-		out[i] = QuantileSketchVectorFromProto(v)
+		s, err = QuantileSketchVectorFromProto(v)
+		if err != nil {
+			return QuantileSketchMatrix{}, err
+		}
+		out[i] = s
 	}
-	return out
+	return out, nil
 }
 
 type QuantileSketchStepEvaluator struct {
@@ -171,10 +183,14 @@ func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
 	}
 }
 
-func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) quantileSketchSample {
+func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (quantileSketchSample, error) {
+	s, err := sketch.QuantileSketchFromProto(proto.F)
+	if err != nil {
+		return quantileSketchSample{}, err
+	}
 	out := quantileSketchSample{
-		T: proto.TimestampMs,
-		F: sketch.QuantileSketchFromProto(proto.F),
+		T:      proto.TimestampMs,
+		F:      s,
 		Metric: make(labels.Labels, len(proto.Metric)),
 	}
 
@@ -182,7 +198,7 @@ func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) quantil
 		out.Metric[i] = labels.Label{Name: p.Name, Value: p.Value}
 	}
 
-	return out
+	return out, nil
 }
 
 type tdigestBatchRangeVectorIterator struct {
