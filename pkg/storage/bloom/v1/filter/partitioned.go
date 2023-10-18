@@ -307,6 +307,36 @@ func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	return bytesParams + int64(binary.Size(uint64(0))) + numBytes, nil
 }
 
+// DecodeFrom reads a binary representation of PartitionedBloomFilter (such as might
+// have been written by WriteTo()) from a buffer.
+// Whereas ReadFrom() calls Buckets.ReadFrom() hence making a copy of the data,
+// DecodeFrom calls Buckets.DecodeFrom which keeps a reference to the original data buffer.
+func (p *PartitionedBloomFilter) DecodeFrom(data []byte) (int64, error) {
+	bytesParams, err := p.readParams(bytes.NewReader(data))
+	if err != nil {
+		return 0, fmt.Errorf("failed to read PartitionedBloomFilter params from buffer: %w", err)
+	}
+
+	lenBuckets := int64(binary.BigEndian.Uint64(data[bytesParams:]))
+	bucketStartOffset := bytesParams + int64(binary.Size(uint64(0)))
+
+	partitions := make([]*Buckets, lenBuckets)
+	for i := range partitions {
+		var b Buckets
+		n, err := b.DecodeFrom(data[bucketStartOffset:])
+		if err != nil {
+			return 0, fmt.Errorf("failed to decode bucket %d from buffer: %w", i, err)
+		}
+		bucketStartOffset += n
+		partitions[i] = &b
+	}
+	p.partitions = partitions
+
+	// The length is the bucketStartOffset since we updated it in the last
+	// iteration of the loop above with the length of the last bucket.
+	return bucketStartOffset, nil
+}
+
 // GobEncode implements gob.GobEncoder interface.
 func (p *PartitionedBloomFilter) GobEncode() ([]byte, error) {
 	var buf bytes.Buffer
@@ -324,38 +354,4 @@ func (p *PartitionedBloomFilter) GobDecode(data []byte) error {
 	_, err := p.ReadFrom(buf)
 
 	return err
-}
-
-// DecodePartitionedBloomFilterFromBuf creates a new PartitionedBloomFilter from the provided data
-// and returns the number of bytes used by the PartitionedBloomFilter.
-// The data is expected to be in the format written by PartitionedBloomFilter.WriteTo().
-// Whereas PartitionedBloomFilter.ReadFrom() calls Buckets.ReadFrom() hence making a copy of the data,
-// DecodePartitionedBloomFilterFromBuf calls DecodeBucketsFromBuf which keeps a reference to the original data buffer.
-func DecodePartitionedBloomFilterFromBuf(data []byte) (*PartitionedBloomFilter, int64, error) {
-	out := PartitionedBloomFilter{
-		hash: getNewHashFunction(),
-	}
-
-	bytesParams, err := out.readParams(bytes.NewReader(data))
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read PartitionedBloomFilter params from buffer: %w", err)
-	}
-
-	lenBuckets := int64(binary.BigEndian.Uint64(data[bytesParams:]))
-	bucketStartOffset := bytesParams + int64(binary.Size(uint64(0)))
-
-	partitions := make([]*Buckets, lenBuckets)
-	for i := range partitions {
-		b, n, err := DecodeBucketsFromBuf(data[bucketStartOffset:])
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to decode bucket %d from buffer: %w", i, err)
-		}
-		bucketStartOffset += n
-		partitions[i] = b
-	}
-	out.partitions = partitions
-
-	// The length is the bucketStartOffset since we updated it in the last
-	// iteration of the loop above with the length of the last bucket.
-	return &out, bucketStartOffset, nil
 }

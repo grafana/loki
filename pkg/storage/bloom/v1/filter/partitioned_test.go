@@ -185,7 +185,8 @@ func TestPartitionedBloomFilterLazyReader(t *testing.T) {
 		t.Error(err)
 	}
 
-	decodedFilter, n, err := DecodePartitionedBloomFilterFromBuf(buf)
+	var decodedFilter PartitionedBloomFilter
+	n, err := decodedFilter.DecodeFrom(buf)
 	if err != nil {
 		t.Error(err)
 	}

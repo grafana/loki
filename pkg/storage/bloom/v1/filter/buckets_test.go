@@ -124,7 +124,8 @@ func TestBucketsLazyReader(t *testing.T) {
 		t.Error(err)
 	}
 
-	decodedFilter, n, err := DecodeBucketsFromBuf(buf)
+	var decodedFilter Buckets
+	n, err := decodedFilter.DecodeFrom(buf)
 	if err != nil {
 		t.Error(err)
 	}

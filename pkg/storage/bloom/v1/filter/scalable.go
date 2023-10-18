@@ -330,6 +330,36 @@ func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	return bytesParams + int64(binary.Size(uint64(0))) + numBytes, nil
 }
 
+// DecodeFrom reads a binary representation of ScalableBloomFilter (such as might
+// have been written by WriteTo()) from a buffer.
+// Whereas ReadFrom() calls PartitionedBloomFilter.ReadFrom() hence making a copy of the data,
+// DecodeFrom calls PartitionedBloomFilter.DecodeFrom which keeps a reference to the original data buffer.
+func (s *ScalableBloomFilter) DecodeFrom(data []byte) (int64, error) {
+	bytesParams, err := s.readParams(bytes.NewReader(data))
+	if err != nil {
+		return 0, fmt.Errorf("failed to read PartitionedBloomFilter params from buffer: %w", err)
+	}
+
+	lenFilters := int64(binary.BigEndian.Uint64(data[bytesParams:]))
+	filterStartOffset := bytesParams + int64(binary.Size(uint64(0)))
+
+	filters := make([]*PartitionedBloomFilter, lenFilters)
+	for i := range filters {
+		filter := NewPartitionedBloomFilter(0, s.fp)
+		n, err := filter.DecodeFrom(data[filterStartOffset:])
+		if err != nil {
+			return 0, fmt.Errorf("failed to decode PartitionedBloomFilter %d from buffer: %w", i, err)
+		}
+		filterStartOffset += n
+		filters[i] = filter
+	}
+	s.filters = filters
+
+	// The length is the filterStartOffset since we updated it in the last
+	// iteration of the loop above with the length of the last filter.
+	return filterStartOffset, nil
+}
+
 // GobEncode implements gob.GobEncoder interface.
 func (s *ScalableBloomFilter) GobEncode() ([]byte, error) {
 	var buf bytes.Buffer
@@ -347,35 +377,4 @@ func (s *ScalableBloomFilter) GobDecode(data []byte) error {
 	_, err := s.ReadFrom(buf)
 
 	return err
-}
-
-// DecodeScalableBloomFilterFromBuf creates a new ScalableBloomFilter from the provided data
-// and returns the number of bytes used by the ScalableBloomFilter.
-// The data is expected to be in the format written by ScalableBloomFilter.WriteTo().
-// Whereas ScalableBloomFilter.ReadFrom() calls PartitionedBloomFilter.ReadFrom() hence making a copy of the data,
-// DecodeScalableBloomFilterFromBuf calls DecodePartitionedBloomFilterFromBuf which keeps a reference to the original data buffer.
-func DecodeScalableBloomFilterFromBuf(data []byte) (*ScalableBloomFilter, int64, error) {
-	var out ScalableBloomFilter
-	bytesParams, err := out.readParams(bytes.NewReader(data))
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read ScalableBloomFilter params from buffer: %w", err)
-	}
-
-	lenFilters := int64(binary.BigEndian.Uint64(data[bytesParams:]))
-	filterStartOffset := bytesParams + int64(binary.Size(uint64(0)))
-
-	filters := make([]*PartitionedBloomFilter, lenFilters)
-	for i := range filters {
-		filter, n, err := DecodePartitionedBloomFilterFromBuf(data[filterStartOffset:])
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to decode PartitionedBloomFilter %d from buffer: %w", i, err)
-		}
-		filterStartOffset += n
-		filters[i] = filter
-	}
-	out.filters = filters
-
-	// The length is the filterStartOffset since we updated it in the last
-	// iteration of the loop above with the length of the last filter.
-	return &out, filterStartOffset, nil
 }

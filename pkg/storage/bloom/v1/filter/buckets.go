@@ -200,6 +200,25 @@ func (b *Buckets) ReadFrom(stream io.Reader) (int64, error) {
 	return bytesParams + int64(binary.Size(uint64(0))) + int64(len), nil
 }
 
+// DecodeFrom reads a binary representation of Buckets (such as might
+// have been written by WriteTo()) from a buffer.
+// Whereas ReadFrom() reads the entire data into memory and
+// makes a copy of the data buffer, DecodeFrom keeps a reference
+// to the original data buffer and can only be used to Test.
+func (b *Buckets) DecodeFrom(data []byte) (int64, error) {
+	bytesParams, err := b.readParams(bytes.NewReader(data))
+	if err != nil {
+		return 0, fmt.Errorf("failed to read Buckets params from buffer: %w", err)
+	}
+
+	dataLen := int64(binary.BigEndian.Uint64(data[bytesParams:]))
+	dataStart := bytesParams + int64(binary.Size(uint64(0)))
+	dataEnd := dataStart + dataLen
+	b.data = data[dataStart:dataEnd]
+
+	return dataEnd, nil
+}
+
 // GobEncode implements gob.GobEncoder interface.
 func (b *Buckets) GobEncode() ([]byte, error) {
 	var buf bytes.Buffer
@@ -217,25 +236,4 @@ func (b *Buckets) GobDecode(data []byte) error {
 	_, err := b.ReadFrom(buf)
 
 	return err
-}
-
-// DecodeBucketsFromBuf creates a new Buckets from the provided data
-// and returns the number of bytes used by the Buckets
-// The data is expected to be in the format written by Buckets.WriteTo().
-// Whereas Buckets.ReadFrom() reads the entire data into memory and
-// makes a copy of the data buffer, DecodeBucketsFromBuf keeps a reference
-// to the original data buffer and can only be used to Test.
-func DecodeBucketsFromBuf(data []byte) (*Buckets, int64, error) {
-	var out Buckets
-	bytesParams, err := out.readParams(bytes.NewReader(data))
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read Buckets params from buffer: %w", err)
-	}
-
-	dataLen := int64(binary.BigEndian.Uint64(data[bytesParams:]))
-	dataStart := bytesParams + int64(binary.Size(uint64(0)))
-	dataEnd := dataStart + dataLen
-	out.data = data[dataStart:dataEnd]
-
-	return &out, dataEnd, nil
 }

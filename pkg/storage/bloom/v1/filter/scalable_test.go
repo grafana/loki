@@ -179,7 +179,9 @@ func TestScalableBloomFilterLazyReader(t *testing.T) {
 		t.Error(err)
 	}
 
-	decodedFilter, n, err := DecodeScalableBloomFilterFromBuf(buf)
+	var decodedFilter ScalableBloomFilter
+	n, err := decodedFilter.DecodeFrom(buf)
+
 	if err != nil {
 		t.Error(err)
 	}

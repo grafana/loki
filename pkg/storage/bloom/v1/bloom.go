@@ -48,12 +48,11 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
 
-	sbf, _, err := filter.DecodeScalableBloomFilterFromBuf(data)
+	_, err := b.DecodeFrom(data)
 	if err != nil {
 		return errors.Wrap(err, "decoding bloom filter")
 	}
 
-	b.ScalableBloomFilter = *sbf
 	return nil
 }
 
@@ -126,8 +125,11 @@ func (d *BloomPageDecoder) Next() bool {
 
 	var b Bloom
 	d.err = b.Decode(d.dec)
+	// end of iteration, error
+	if d.err != nil {
+		return false
+	}
 	d.cur = &b
-
 	return true
 }
 
