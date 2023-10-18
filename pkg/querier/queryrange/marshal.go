@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/gogo/googleapis/google/rpc"
-	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -113,3 +111,35 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
 }
+
+func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
+	p := &QueryResponse{}
+
+	switch response := res.(type) {
+	case *LokiPromResponse:
+		p.Response = &QueryResponse_Prom{response}
+	case *LokiResponse:
+		p.Response = &QueryResponse_Streams{response}
+	case *LokiSeriesResponse:
+		p.Response = &QueryResponse_Series{response}
+	case *MergedSeriesResponseView:
+		mat, err := response.Materialize()
+		if err != nil {
+			return p, err
+		}
+		p.Response = &QueryResponse_Series{mat}
+	case *LokiLabelNamesResponse:
+		p.Response = &QueryResponse_Labels{response}
+	case *IndexStatsResponse:
+		p.Response = &QueryResponse_Stats{response}
+	case *TopKSketchesResponse:
+		p.Response = &QueryResponse_TopkSketches{response}
+	case *QuantileSketchResponse:
+		p.Response = &QueryResponse_QuantileSketches{response}
+	default:
+		return nil, fmt.Errorf("invalid response format, got (%T)", res)
+	}
+
+	return p, nil
+
+

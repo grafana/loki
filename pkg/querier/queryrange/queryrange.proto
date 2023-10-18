@@ -158,3 +158,16 @@ message QuantileSketchResponse {
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
 }
+
+message QueryResponse {
+  oneof response {
+    LokiSeriesResponse series = 1;
+    LokiLabelNamesResponse labels = 2;
+    IndexStatsResponse stats = 3;
+    LokiPromResponse prom = 4;
+    LokiResponse streams = 5;
+    VolumeResponse volume = 6;
+    TopKSketchesResponse topkSketches = 7;
+    QuantileSketchResponse quantileSketches = 8;
+  }
+}
