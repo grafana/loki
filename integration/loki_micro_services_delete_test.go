@@ -236,7 +236,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// ingest some log lines
 		for _, pr := range pushRequests {
 			for _, entry := range pr.entries {
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata(
+				require.NoError(t, cliDistributor.PushLogLine(
 					entry.Line,
 					entry.Timestamp,
 					logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata).Map(),

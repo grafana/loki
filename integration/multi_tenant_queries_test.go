@@ -32,8 +32,8 @@ func TestMultiTenantQuery(t *testing.T) {
 	cliMultitenant := client.New("org1|org2", "", tAll.HTTPURL())
 
 	// ingest log lines for tenant 1 and tenant 2.
-	require.NoError(t, cliTenant1.PushLogLineWithTimestamp("lineA", cliTenant1.Now.Add(-45*time.Minute), map[string]string{"job": "fake1"}))
-	require.NoError(t, cliTenant2.PushLogLineWithTimestamp("lineB", cliTenant2.Now.Add(-45*time.Minute), map[string]string{"job": "fake2"}))
+	require.NoError(t, cliTenant1.PushLogLine("lineA", cliTenant1.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake1"}))
+	require.NoError(t, cliTenant2.PushLogLine("lineB", cliTenant2.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake2"}))
 
 	// check that tenant1 only have access to log line A.
 	matchLines(t, cliTenant1, `{job="fake2"}`, []string{})

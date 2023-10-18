@@ -15,6 +15,9 @@ import (
 
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 const requestTimeout = 30 * time.Second
@@ -85,22 +88,7 @@ func New(instanceID, token, baseURL string, opts ...Option) *Client {
 	}
 }
 
-// PushLogLine creates a new logline with the current time as timestamp
-func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) error {
-	return c.pushLogLine(line, c.Now, nil, extraLabels...)
-}
-
-func (c *Client) PushLogLineWithStructuredMetadata(line string, structuredMetadata map[string]string, extraLabels ...map[string]string) error {
-	return c.PushLogLineWithTimestampAndStructuredMetadata(line, c.Now, structuredMetadata, extraLabels...)
-}
-
-// PushLogLineWithTimestamp creates a new logline at the given timestamp
-// The timestamp has to be a Unix timestamp (epoch seconds)
-func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabels ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, nil, extraLabels...)
-}
-
-func (c *Client) PushLogLineWithTimestampAndStructuredMetadata(line string, timestamp time.Time, structuredMetadata map[string]string, extraLabelList ...map[string]string) error {
+func (c *Client) PushLogLine(line string, timestamp time.Time, structuredMetadata map[string]string, extraLabelList ...map[string]string) error {
 	// If the structuredMetadata map is empty, labels.FromMap will allocate some empty slices.
 	// Since this code is executed for every log line we receive, as an optimization
 	// to avoid those allocations we'll call labels.FromMap only if the map is not empty.
@@ -109,6 +97,10 @@ func (c *Client) PushLogLineWithTimestampAndStructuredMetadata(line string, time
 		metadata = labels.FromMap(structuredMetadata)
 	}
 	return c.pushLogLine(line, timestamp, metadata, extraLabelList...)
+}
+
+func (c *Client) PushOTLPLogLine(line string, timestamp time.Time, logAttributes map[string]any) error {
+	return c.pushOTLPLogLine(line, timestamp, logAttributes)
 }
 
 func formatTS(ts time.Time) string {
@@ -148,6 +140,54 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadat
 	}{
 		Streams: []stream{s},
 	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", apiEndpoint, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Scope-OrgID", c.instanceID)
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode/100 == 2 {
+		defer res.Body.Close()
+		return nil
+	}
+
+	buf, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("reading request failed with status code %v: %w", res.StatusCode, err)
+	}
+
+	return fmt.Errorf("request failed with status code %v: %w", res.StatusCode, errors.New(string(buf)))
+}
+
+// pushLogLine creates a new logline
+func (c *Client) pushOTLPLogLine(line string, timestamp time.Time, logAttributes map[string]any) error {
+	apiEndpoint := fmt.Sprintf("%s/otlp/v1/logs", c.baseURL)
+
+	logs := plog.NewLogs()
+
+	logs.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "varlog")
+	logRecord := logs.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+	logRecord.SetTimestamp(pcommon.Timestamp(timestamp.UnixNano()))
+	logRecord.Body().SetStr(line)
+	if len(logAttributes) > 0 {
+		if err := logRecord.Attributes().FromRaw(logAttributes); err != nil {
+			return err
+		}
+	}
+
+	ereq := plogotlp.NewExportRequestFromLogs(logs)
+
+	data, err := ereq.MarshalJSON()
 	if err != nil {
 		return err
 	}

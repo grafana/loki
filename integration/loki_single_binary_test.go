@@ -29,11 +29,12 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 
 	tenantID := randStringRunes()
 	cli := client.New(tenantID, "", tAll.HTTPURL())
+	now := time.Now()
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
 		// ingest some log lines
-		require.NoError(t, cli.PushLogLineWithTimestamp("lineA", cli.Now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
-		require.NoError(t, cli.PushLogLineWithTimestamp("lineB", cli.Now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
+		require.NoError(t, cli.PushLogLine("lineA", cli.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cli.PushLogLine("lineB", cli.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
 
 		// TODO: Flushing is currently causing a panic, as the boltdb shipper is shared using a global variable in:
 		// https://github.com/grafana/loki/blob/66a4692423582ed17cce9bd86b69d55663dc7721/pkg/storage/factory.go#L32-L35
@@ -42,8 +43,8 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 
 	t.Run("ingest-logs-ingester", func(t *testing.T) {
 		// ingest some log lines
-		require.NoError(t, cli.PushLogLine("lineC", map[string]string{"job": "fake"}))
-		require.NoError(t, cli.PushLogLine("lineD", map[string]string{"job": "fake"}))
+		require.NoError(t, cli.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cli.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 	})
 
 	t.Run("query", func(t *testing.T) {
