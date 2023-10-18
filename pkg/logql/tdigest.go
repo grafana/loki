@@ -227,7 +227,9 @@ func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.Qu
 	s := sketch.NewTDigestSketch()
 	//s := sketch.NewDDSketch()
 	for _, v := range samples {
-		s.Add(v.F)
+		// The sketch from the underlying tdigest package we are using
+		// cannot return an error when calling Add.
+		s.Add(v.F) //nolint:errcheck
 	}
 	return s
 }
