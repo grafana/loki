@@ -1041,8 +1041,8 @@ github.com/jcmturner/rpc/v2/ndr
 # github.com/jmespath/go-jmespath v0.4.0
 ## explicit; go 1.14
 github.com/jmespath/go-jmespath
-# github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
-## explicit
+# github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
+## explicit; go 1.13
 github.com/joncrlsn/dque
 # github.com/josharian/intern v1.0.0
 ## explicit; go 1.5
