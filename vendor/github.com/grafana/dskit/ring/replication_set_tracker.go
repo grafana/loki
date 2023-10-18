@@ -108,7 +108,8 @@ func (t *defaultResultTracker) done(instance *InstanceDesc, err error) {
 	} else {
 		level.Warn(t.logger).Log(
 			"msg", "instance failed",
-			"instance", instance.Addr,
+			"instanceAddr", instance.Addr,
+			"instanceID", instance.Id,
 			"err", err,
 		)
 
@@ -155,7 +156,7 @@ func (t *defaultResultTracker) startMinimumRequests() {
 		if len(t.pendingInstances) < t.maxErrors {
 			t.pendingInstances = append(t.pendingInstances, instance)
 		} else {
-			level.Debug(t.logger).Log("msg", "starting request to instance", "reason", "initial requests", "instance", instance.Addr)
+			level.Debug(t.logger).Log("msg", "starting request to instance", "reason", "initial requests", "instanceAddr", instance.Addr, "instanceID", instance.Id)
 			t.instanceRelease[instance] <- struct{}{}
 		}
 	}
@@ -175,7 +176,7 @@ func (t *defaultResultTracker) startAdditionalRequestsDueTo(reason string) {
 	if len(t.pendingInstances) > 0 {
 		// There are some outstanding requests we could make before we reach maxErrors. Release the next one.
 		i := t.pendingInstances[0]
-		level.Debug(t.logger).Log("msg", "starting request to instance", "reason", reason, "instance", i.Addr)
+		level.Debug(t.logger).Log("msg", "starting request to instance", "reason", reason, "instanceAddr", i.Addr, "instanceID", i.Id)
 		t.instanceRelease[i] <- struct{}{}
 		t.pendingInstances = t.pendingInstances[1:]
 	}
@@ -186,7 +187,7 @@ func (t *defaultResultTracker) startAllRequests() {
 
 	for i := range t.instances {
 		instance := &t.instances[i]
-		level.Debug(t.logger).Log("msg", "starting request to instance", "reason", "initial requests", "instance", instance.Addr)
+		level.Debug(t.logger).Log("msg", "starting request to instance", "reason", "initial requests", "instanceAddr", instance.Addr, "instanceID", instance.Id)
 		t.instanceRelease[instance] = make(chan struct{}, 1)
 		t.instanceRelease[instance] <- struct{}{}
 	}
@@ -283,9 +284,10 @@ func (t *zoneAwareResultTracker) done(instance *InstanceDesc, err error) {
 
 		if t.failuresByZone[instance.Zone] == 1 {
 			level.Warn(t.logger).Log(
-				"msg", "zone has failed",
+				"msg", "request to instance has failed, zone cannot contribute to quorum",
 				"zone", instance.Zone,
-				"failingInstance", instance.Addr,
+				"failingInstanceAddr", instance.Addr,
+				"failingInstanceID", instance.Id,
 				"err", err,
 			)
 

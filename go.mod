@@ -49,7 +49,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20231006094724-ad2fd7e7931e
+	github.com/grafana/dskit v0.0.0-20231017083947-7b512eb54d47
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20230914135007-70d78eaabfe1
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
