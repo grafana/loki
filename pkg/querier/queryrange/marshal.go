@@ -112,6 +112,66 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
 }
 
+// TODO: we probably should get rid off logqlmodel.Result and user queryrangebase.Response instead.
+func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
+	switch r := resp.(type) {
+	case *LokiResponse:
+		if r.Error != "" {
+			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.ErrorType, r.Error)
+		}
+
+		streams := make(logqlmodel.Streams, 0, len(r.Data.Result))
+
+		for _, stream := range r.Data.Result {
+			streams = append(streams, stream)
+		}
+
+		return logqlmodel.Result{
+			Statistics: r.Statistics,
+			Data:       streams,
+			Headers:    resp.GetHeaders(),
+		}, nil
+
+	case *LokiPromResponse:
+		if r.Response.Error != "" {
+			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.Response.ErrorType, r.Response.Error)
+		}
+		if r.Response.Data.ResultType == loghttp.ResultTypeVector {
+			return logqlmodel.Result{
+				Statistics: r.Statistics,
+				Data:       sampleStreamToVector(r.Response.Data.Result),
+				Headers:    resp.GetHeaders(),
+			}, nil
+		}
+		return logqlmodel.Result{
+			Statistics: r.Statistics,
+			Data:       sampleStreamToMatrix(r.Response.Data.Result),
+			Headers:    resp.GetHeaders(),
+		}, nil
+	case *TopKSketchesResponse:
+		matrix, err := sketch.TopKMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode topk sketch: %w", err)
+		}
+
+		return logqlmodel.Result{
+			Data:    matrix,
+			Headers: resp.GetHeaders(),
+		}, nil
+	case *QuantileSketchResponse:
+		matrix, err := sketch.QuantileSketchMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
+		}
+		return logqlmodel.Result{
+			Data:    matrix,
+			Headers: resp.GetHeaders(),
+		}, nil
+	default:
+		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
+	}
+}
+
 func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	p := &QueryResponse{}
 
@@ -141,5 +201,5 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	}
 
 	return p, nil
-
+}
 

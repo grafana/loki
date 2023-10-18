@@ -5,10 +5,7 @@ import (
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 	"time"
 
-	"github.com/gogo/googleapis/google/rpc"
 	"github.com/grafana/dskit/httpgrpc"
-
-	"github.com/grafana/loki/pkg/querier/queryrange"
 )
 
 type contextKey int
@@ -103,8 +100,4 @@ func (s *Stats) Merge(other *Stats) {
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {
 	// Do no track statistics for requests failed because of a server error.
 	return r.Code < 500
-}
-
-func ShouldTrackQueryResponse(r *queryrange.QueryResponse) bool {
-	return r.Status == nil || r.Status.Code == int32(rpc.OK)
 }

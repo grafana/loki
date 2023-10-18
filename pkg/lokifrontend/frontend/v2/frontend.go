@@ -29,7 +29,6 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -92,7 +91,6 @@ var _ transport.GrpcRoundTripper = &Frontend{}
 type frontendRequest struct {
 	queryID      uint64
 	request      *httpgrpc.HTTPRequest
-	queryRequest *queryrange.QueryRequest
 	tenantID     string
 	actor        []string
 	statsEnabled bool
@@ -286,10 +284,6 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			header.Set(httpreq.LokiActorPathHeader, actor)
 		}
 	*/
-	queryRequest, err := queryrange.QueryRequestWrap(req)
-	if err != nil {
-		return nil, fmt.Errorf("could not encode request: %w", err)
-	}
 
 	// For backwards comaptibility we are sending both encodings
 	httpReq, err := f.codec.EncodeRequest(ctx, req)
@@ -308,7 +302,6 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	freq := &frontendRequest{
 		queryID:      f.lastQueryID.Inc(),
 		request:      httpgrpcReq,
-		queryRequest: queryRequest,
 		tenantID:     tenantID,
 		actor:        httpreq.ExtractActorPath(ctx),
 		statsEnabled: stats.IsEnabled(ctx),
@@ -341,15 +334,6 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		if resp.QueryResponse != nil {
-			if stats.ShouldTrackQueryResponse(resp.QueryResponse) {
-				stats := stats.FromContext(ctx)
-				stats.Merge(resp.Stats) // Safe if stats is nil.
-			}
-			return queryrange.QueryResponseUnwrap(resp.QueryResponse)
-		}
-
-		// Backwards compatiblity gpr HTTPGRPC responses.
 		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
 			stats := stats.FromContext(ctx)
 			stats.Merge(resp.Stats) // Safe if stats is nil.

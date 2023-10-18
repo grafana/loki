@@ -291,7 +291,6 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				HttpRequest:     req.request,
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,
-				QueryRequest:    req.queryRequest,
 			})
 			if err != nil {
 				req.enqueue <- enqueueResult{status: failed}

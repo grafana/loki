@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
 	valid "github.com/grafana/loki/pkg/validation"
 )
@@ -420,11 +419,19 @@ func TestLabelsTripperware(t *testing.T) {
 
 	handler := newFakeHandler(
 		// we expect 2 calls.
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blop"}, w))
+		base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+			return &LokiLabelNamesResponse{
+				Status:  "success",
+				Data:    []string{"foo", "bar", "blop"},
+				Version: uint32(1),
+			}, nil
 		}),
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blip"}, w))
+		base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+			return &LokiLabelNamesResponse{
+				Status:  "success",
+				Data:    []string{"foo", "bar", "blip"},
+				Version: uint32(1),
+			}, nil
 		}),
 	)
 	lokiLabelsResponse, err := tpw.Wrap(handler).Do(ctx, lreq)
@@ -1318,9 +1325,6 @@ func counterWithError(err error) (*int, base.Handler) {
 	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(v, stats.Result{}, w); err != nil {
-			panic(err)
-		}
 		count++
 		return nil, err
 	})
@@ -1332,9 +1336,6 @@ func promqlResult(v parser.Value) (*int, base.Handler) {
 	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteSeriesResponseJSON(v.GetSeries(), w); err != nil {
-			panic(err)
-		}
 		count++
 		params, err := ParamsFromRequest(r)
 		if err != nil {
