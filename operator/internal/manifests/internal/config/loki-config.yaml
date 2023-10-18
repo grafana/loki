@@ -1,5 +1,5 @@
 {{- /*gotype: github.com/grafana/loki/operator/internal/manifests/internal/config.Options*/ -}}
-{{ $schemas := schemas .ObjectStorage.Schemas }}
+{{ $shippersDic := shippers .ObjectStorage.Schemas }}
 ---
 auth_enabled: true
 chunk_store_config:
@@ -184,10 +184,10 @@ limits_config:
   max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
   max_query_length: 721h
-  {{- with $schemas.boltdb }}
+  {{- with $shippersDic.boltdb }}
   max_query_parallelism: 32
   {{- end }}
-  {{- with $schemas.tsdb }}
+  {{- with $shippersDic.tsdb }}
   tsdb_max_query_parallelism: 512
   {{- end }}
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
@@ -478,13 +478,13 @@ server:
 {{- end }}
   log_level: info
 storage_config:
-{{- range $schema, $_ := $schemas }}
-{{- if eq $schema "boltdb" }}
+{{- range $ship, $_ := $shippersDic }}
+{{- if eq $ship "boltdb" }}
   boltdb_shipper:
     active_index_directory: {{ $.StorageDirectory }}/index
     cache_location: {{ $.StorageDirectory }}/index_cache
 {{- end }}
-{{- if eq $schema "tsdb" }}
+{{- if eq $ship "tsdb" }}
   tsdb_shipper:
     active_index_directory: {{ $.StorageDirectory }}/tsdb-index
     cache_location: {{ $.StorageDirectory }}/tsdb-cache
