@@ -852,7 +852,7 @@ github.com/gorilla/websocket
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20231006094724-ad2fd7e7931e
+# github.com/grafana/dskit v0.0.0-20231017083947-7b512eb54d47
 ## explicit; go 1.19
 github.com/grafana/dskit/aws
 github.com/grafana/dskit/backoff
@@ -902,7 +902,7 @@ github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/gomemcache v0.0.0-20230914135007-70d78eaabfe1
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
-# github.com/grafana/loki/pkg/push v0.0.0-20231017082930-695c5b0f8336 => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20231017172654-cfc4f0e84adc => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
 # github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd

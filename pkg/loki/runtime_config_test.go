@@ -130,7 +130,7 @@ func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfig {
 	require.NoError(t, flagset.Parse(nil))
 
 	reg := prometheus.NewPedanticRegistry()
-	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
+	runtimeConfig, err := runtimeconfig.New(cfg, "test", prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, runtimeConfig.StartAsync(context.Background()))
@@ -164,7 +164,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
 
 	reg := prometheus.NewPedanticRegistry()
-	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
+	runtimeConfig, err := runtimeconfig.New(cfg, "test", prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, runtimeConfig.StartAsync(context.Background()))
