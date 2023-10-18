@@ -428,7 +428,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		}
 
 		if req.Name == "" {
-			if match := labelNamesRouter.FindSubmatch([]byte(httpReq.URL.Path)); len(match) > 1 {
+			if match := labelNamesRoutes.FindSubmatch([]byte(httpReq.URL.Path)); len(match) > 1 {
 				req.Name = string(match[1])
 				req.Values = true
 			}
