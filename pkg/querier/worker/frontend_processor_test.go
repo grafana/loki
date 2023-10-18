@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/util/test"
 )
 
@@ -32,7 +33,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{}
-	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger())
+	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger(), queryrange.DefaultCodec)
 	running := atomic.NewBool(false)
 	go func() {
 		running.Store(true)

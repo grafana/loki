@@ -144,7 +144,7 @@ func prepareSchedulerProcessor() (*schedulerProcessor, *querierLoopClientMock, *
 
 	requestHandler := &requestHandlerMock{}
 	metrics := NewMetrics(Config{}, nil)
-	sp, _ := newSchedulerProcessor(Config{QuerierID: "test-querier-id"}, requestHandler, log.NewNopLogger(), metrics)
+	sp, _ := newSchedulerProcessor(Config{QuerierID: "test-querier-id"}, requestHandler, log.NewNopLogger(), metrics, queryrange.DefaultCodec)
 	sp.schedulerClientFactory = func(_ *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient {
 		return schedulerClient
 	}

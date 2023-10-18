@@ -493,10 +493,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(http.HandlerFunc(t.querierAPI.TailHandler))
 	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(http.HandlerFunc(t.querierAPI.TailHandler))
 
+	// Default codec
+	if t.Codec == nil {
+		t.Codec = queryrange.DefaultCodec
+	}
+
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
 		prometheus.DefaultRegisterer,
 		handler,
+		t.Codec,
 	)
 	if err != nil {
 		return nil, err

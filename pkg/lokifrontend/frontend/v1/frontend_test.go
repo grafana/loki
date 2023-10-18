@@ -276,7 +276,7 @@ func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, t
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
 	var worker services.Service
-	worker, err = querier_worker.NewQuerierWorker(workerConfig, nil, handler, logger, nil)
+	worker, err = querier_worker.NewQuerierWorker(workerConfig, nil, handler, logger, nil, queryrange.DefaultCodec)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 

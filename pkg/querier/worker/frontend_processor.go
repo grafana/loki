@@ -25,10 +25,11 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) processor {
+func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec GRPCCodec) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
+		codec:          codec,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 	}
@@ -38,6 +39,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) pr
 // This should be used by Frontend V1.
 type frontendProcessor struct {
 	handler        RequestHandler
+	codec          GRPCCodec
 	maxMessageSize int
 	querierID      string
 
@@ -133,7 +135,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response := handle(ctx, request, fp.handler)
+	response := handle(ctx, request, fp.handler, fp.codec)
 
 	// Ensure responses that are too big are not retried.
 	if len(response.Body) >= fp.maxMessageSize {

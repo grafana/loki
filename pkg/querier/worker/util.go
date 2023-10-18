@@ -13,6 +13,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 // newExecutionContext returns a new execution context (execCtx) that wraps the input workerCtx and
@@ -83,8 +84,8 @@ func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx 
 }
 
 // handle converts the request and applies it to the handler.
-func handle(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler) *httpgrpc.HTTPResponse {
-	req, ctx, err := queryrange.DefaultCodec.DecodeHTTPGrpcRequest(ctx, request)
+func handle(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler, codec GRPCCodec) *httpgrpc.HTTPResponse {
+	req, ctx, err := codec.DecodeHTTPGrpcRequest(ctx, request)
 	if err != nil {
 		response, ok := httpgrpc.HTTPResponseFromError(err)
 		if !ok {
