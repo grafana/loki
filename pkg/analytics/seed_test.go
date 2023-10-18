@@ -36,7 +36,7 @@ func createMemberlist(t *testing.T, port, memberID int) *memberlist.KV {
 	var cfg memberlist.KVConfig
 	flagext.DefaultValues(&cfg)
 	cfg.TCPTransport = memberlist.TCPTransportConfig{
-		BindAddrs: []string{"localhost"},
+		BindAddrs: []string{"0.0.0.0"},
 		BindPort:  0,
 	}
 	cfg.GossipInterval = 100 * time.Millisecond

@@ -636,6 +636,7 @@ func (t *Loki) setupModuleManager() error {
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		BloomGatewayRing:         {Overrides, MemberlistKV},
+		BloomCompactorRing:       {Overrides, MemberlistKV},
 		MemberlistKV:             {Server},
 
 		Read:    {QueryFrontend, Querier},
