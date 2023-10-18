@@ -323,6 +323,8 @@ type Loki struct {
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
+
+	Codec worker.GRPCCodec
 }
 
 // New makes a new Loki.
