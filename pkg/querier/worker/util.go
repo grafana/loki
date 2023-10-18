@@ -4,11 +4,15 @@ package worker
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/querier/queryrange"
 )
 
 // newExecutionContext returns a new execution context (execCtx) that wraps the input workerCtx and
@@ -76,4 +80,45 @@ func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx 
 	}()
 
 	return
+}
+
+// handle converts the request and applies it to the handler.
+func handle(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler, codec GRPCCodec) *httpgrpc.HTTPResponse {
+	req, ctx, err := codec.DecodeHTTPGrpcRequest(ctx, request)
+	if err != nil {
+		response, ok := httpgrpc.HTTPResponseFromError(err)
+		if !ok {
+			return &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			}
+		}
+		return response
+	}
+
+	resp, err := handler.Do(ctx, req)
+	if err != nil {
+		response, ok := httpgrpc.HTTPResponseFromError(err)
+		if !ok {
+			return &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			}
+		}
+		return response
+	}
+
+	response, err := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
+	if err != nil {
+		response, ok := httpgrpc.HTTPResponseFromError(err)
+		if !ok {
+			return &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			}
+		}
+		return response
+	}
+
+	return response
 }

@@ -7,11 +7,11 @@ weight:
 
 # Zone aware ingesters
 
-Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra k8s config you could deploy them in separate zones.
+Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra Kubernetes config you could deploy them in separate zones.
 
 By default, an incoming log stream's logs are replicated to 3 random ingesters. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost, but two restarting can mean data is lost and also impacts the systems ability to ingest logs because of an unhealthy ring status.
 
-With zone awareness enabled, an incomming log line will be replicated to one ingester in each zone. This means that we're not only concerned if ingesters in multiple zones restart at the same time. We can now rollout, or lose, an entire zone at once and not impact the system. This allows deployments with a large number of ingesters to be deployed too much more quickly.
+With zone awareness enabled, an incoming log line will be replicated to one ingester in each zone. This means that we're not only concerned if ingesters in multiple zones restart at the same time. We can now rollout, or lose, an entire zone at once and not impact the system. This allows deployments with a large number of ingesters to be deployed too much more quickly.
 
 We also make use of [rollout-operator](https://github.com/grafana/rollout-operator) to manage rollouts to the 3 StatefulSets gracefully. The rollout-operator looks for labels on StatefulSets to know which StatefulSets are part of a certain rollout group, and coordinate rollouts of pods only from a single StatefulSet in the group at a time. See the README in the rollout-operator repo. for a more in depth explanation.
 
@@ -19,15 +19,15 @@ We also make use of [rollout-operator](https://github.com/grafana/rollout-operat
 
 Migrating from a single ingester StatefulSet to 3 zone aware ingester StatefulSets. The migration follows a few general steps, regardless of deployment method.
 
-0. Configure your existing ingesters to be part of a zone, for example `zone-default`, this will allow us to later exclude them from the write path while still allowing for graceful shutdowns.
+1. Configure your existing ingesters to be part of a zone, for example `zone-default`, this will allow us to later exclude them from the write path while still allowing for graceful shutdowns.
 1. Prep for the increase in active streams (due to the way streams are split between ingesters) by increasing the # of active streams allowed for your tenants.
-2. Add and scale up your new zone aware ingester StatefulSets such that each has 1/3 of the total # of replicas you want to run.
-3. Enable zone awareness on the write path by setting `distributor.zone-awareness-enabled` to true for distributors and rulers.
-4. Wait some time to ensure that the new zone aware ingesters have data for the time period they are queried for (`query_ingesters_within`).
-5. Enable zone awareness on the read path by setting `distributor.zone-awareness-enabled` to true for queriers.
-6. Configure distributors and rulers to exclude ingesters in the `zone-default` so those ingesters no longer receive write traffic via `distributor.excluded-zones`.
-7. Use the shutdown endpoint to flush data from the default ingesters, then scale down and remove the associated StatefulSet.
-8. Clean up any config remaining from the migration.
+1. Add and scale up your new zone aware ingester StatefulSets such that each has 1/3 of the total # of replicas you want to run.
+1. Enable zone awareness on the write path by setting `distributor.zone-awareness-enabled` to true for distributors and rulers.
+1. Wait some time to ensure that the new zone aware ingesters have data for the time period they are queried for (`query_ingesters_within`).
+1. Enable zone awareness on the read path by setting `distributor.zone-awareness-enabled` to true for queriers.
+1. Configure distributors and rulers to exclude ingesters in the `zone-default` so those ingesters no longer receive write traffic via `distributor.excluded-zones`.
+1. Use the shutdown endpoint to flush data from the default ingesters, then scale down and remove the associated StatefulSet.
+1. Clean up any config remaining from the migration.
 
 ### Detailed Migration Steps
 
