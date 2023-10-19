@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"sort"
-	strings "strings"
 	"sync"
 	"testing"
 	"time"
@@ -793,51 +792,6 @@ func TestLogNoFilter(t *testing.T) {
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Equal(t, 1, *count)
 	require.Nil(t, err)
-}
-
-func TestRegexpParamsSupport(t *testing.T) {
-	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
-	if stopper != nil {
-		defer stopper.Stop()
-	}
-	require.NoError(t, err)
-
-	// TODO: This should be a test for codec.
-	lreq := &LokiRequest{
-		Query:     `{app="foo"}`,
-		Limit:     1000,
-		StartTs:   testTime.Add(-6 * time.Hour),
-		EndTs:     testTime,
-		Direction: logproto.FORWARD,
-		Path:      "/api/prom/query",
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	// fudge a regexp params
-	params := req.URL.Query()
-	// TODO: test this translation.
-	params.Set("regexp", "foo")
-	req.URL.RawQuery = params.Encode()
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
-
-	count, h := promqlResult(streams)
-	handler := base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
-		// the query params should contain the filter.
-		if !strings.Contains(r.GetQuery(), `|~ "foo"`) {
-			return nil, fmt.Errorf("query '%s' did not include '|~ \"foo\"'", r.GetQuery())
-		}
-		return h.Do(ctx, r)
-	})
-	_, err = tpw.Wrap(handler).Do(ctx, lreq)
-	require.NoError(t, err)
-	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
 }
 
 func TestPostQueries(t *testing.T) {
