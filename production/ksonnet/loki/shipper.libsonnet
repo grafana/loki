@@ -26,7 +26,7 @@
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
         },
-      } else {} + if $._config.using_tsdb_shipper then {
+      } + if $._config.using_tsdb_shipper then {
         tsdb_shipper+: {
           active_index_directory: '/data/tsdb-index',
           cache_location: '/data/tsdb-cache',

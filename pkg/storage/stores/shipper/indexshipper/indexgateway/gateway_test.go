@@ -229,7 +229,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			},
 		},
 	}}
-	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, nil, indexClients)
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, nil, indexClients, nil)
 	require.NoError(t, err)
 
 	expectedQueries = append(expectedQueries,
@@ -254,7 +254,7 @@ func TestVolume(t *testing.T) {
 		{Name: "bar", Volume: 38},
 	}}, nil)
 
-	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil)
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil, nil)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")

@@ -468,11 +468,13 @@ func TestLabelsTripperware(t *testing.T) {
 	require.NoError(t, err)
 	defer rt.Close()
 
-	lreq := &LokiLabelNamesRequest{
-		StartTs: testTime.Add(-25 * time.Hour), // bigger than the limit
-		EndTs:   testTime,
-		Path:    "/loki/api/v1/labels",
-	}
+	lreq := NewLabelRequest(
+		testTime.Add(-25*time.Hour), // bigger than the limit
+		testTime,
+		"",
+		"",
+		"/loki/api/v1/labels",
+	)
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
@@ -485,10 +487,10 @@ func TestLabelsTripperware(t *testing.T) {
 	handler := newFakeHandler(
 		// we expect 2 calls.
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blop"}}, w))
+			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blop"}, w))
 		}),
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, marshal.WriteLabelResponseJSON(logproto.LabelResponse{Values: []string{"foo", "bar", "blip"}}, w))
+			require.NoError(t, marshal.WriteLabelResponseJSON([]string{"foo", "bar", "blip"}, w))
 		}),
 	)
 	rt.setHandler(handler)
@@ -1488,7 +1490,7 @@ func promqlResult(v parser.Value) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: v}, w); err != nil {
+		if err := marshal.WriteQueryResponseJSON(v, stats.Result{}, w); err != nil {
 			panic(err)
 		}
 		count++
@@ -1501,7 +1503,7 @@ func seriesResult(v logproto.SeriesResponse) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteSeriesResponseJSON(v, w); err != nil {
+		if err := marshal.WriteSeriesResponseJSON(v.GetSeries(), w); err != nil {
 			panic(err)
 		}
 		count++

@@ -31,10 +31,11 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics, codec GRPCCodec) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
+		codec:          codec,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
@@ -58,6 +59,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 type schedulerProcessor struct {
 	log            log.Logger
 	handler        RequestHandler
+	codec          GRPCCodec
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
@@ -167,17 +169,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response, err := sp.handler.Handle(ctx, request)
-	if err != nil {
-		var ok bool
-		response, ok = httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
-			}
-		}
-	}
+	response := handle(ctx, request, sp.handler, sp.codec)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
@@ -199,7 +191,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		frontendAddress,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
-			_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
+			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 				QueryID:      queryID,
 				HttpResponse: response,
 				Stats:        stats,

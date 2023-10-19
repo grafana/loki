@@ -28,9 +28,9 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -71,24 +71,24 @@ var (
 )
 
 type Config struct {
-	WorkingDirectory            string          `yaml:"working_directory"`
-	CompactionInterval          time.Duration   `yaml:"compaction_interval"`
-	ApplyRetentionInterval      time.Duration   `yaml:"apply_retention_interval"`
-	RetentionEnabled            bool            `yaml:"retention_enabled"`
-	RetentionDeleteDelay        time.Duration   `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount    int             `yaml:"retention_delete_worker_count"`
-	RetentionTableTimeout       time.Duration   `yaml:"retention_table_timeout"`
-	DeleteRequestStore          string          `yaml:"delete_request_store"`
-	DeleteRequestStoreKeyPrefix string          `yaml:"delete_request_store_key_prefix"`
-	DeleteBatchSize             int             `yaml:"delete_batch_size"`
-	DeleteRequestCancelPeriod   time.Duration   `yaml:"delete_request_cancel_period"`
-	DeleteMaxInterval           time.Duration   `yaml:"delete_max_interval"`
-	MaxCompactionParallelism    int             `yaml:"max_compaction_parallelism"`
-	UploadParallelism           int             `yaml:"upload_parallelism"`
-	CompactorRing               util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
-	RunOnce                     bool            `yaml:"_" doc:"hidden"`
-	TablesToCompact             int             `yaml:"tables_to_compact"`
-	SkipLatestNTables           int             `yaml:"skip_latest_n_tables"`
+	WorkingDirectory            string              `yaml:"working_directory"`
+	CompactionInterval          time.Duration       `yaml:"compaction_interval"`
+	ApplyRetentionInterval      time.Duration       `yaml:"apply_retention_interval"`
+	RetentionEnabled            bool                `yaml:"retention_enabled"`
+	RetentionDeleteDelay        time.Duration       `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount    int                 `yaml:"retention_delete_worker_count"`
+	RetentionTableTimeout       time.Duration       `yaml:"retention_table_timeout"`
+	DeleteRequestStore          string              `yaml:"delete_request_store"`
+	DeleteRequestStoreKeyPrefix string              `yaml:"delete_request_store_key_prefix"`
+	DeleteBatchSize             int                 `yaml:"delete_batch_size"`
+	DeleteRequestCancelPeriod   time.Duration       `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval           time.Duration       `yaml:"delete_max_interval"`
+	MaxCompactionParallelism    int                 `yaml:"max_compaction_parallelism"`
+	UploadParallelism           int                 `yaml:"upload_parallelism"`
+	CompactorRing               lokiring.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
+	RunOnce                     bool                `yaml:"_" doc:"hidden"`
+	TablesToCompact             int                 `yaml:"tables_to_compact"`
+	SkipLatestNTables           int                 `yaml:"skip_latest_n_tables"`
 
 	// Deprecated
 	DeletionMode string `yaml:"deletion_mode" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
@@ -110,7 +110,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.DeleteRequestStore, prefix+"compactor.delete-request-store", "", deprecated+"Store used for managing delete requests.")
 	f.IntVar(&cfg.DeleteBatchSize, prefix+"compactor.delete-batch-size", 70, deprecated+"The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, prefix+"compactor.delete-request-cancel-period", 24*time.Hour, deprecated+"Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
-	f.DurationVar(&cfg.DeleteMaxInterval, prefix+"compactor.delete-max-interval", 0, deprecated+"Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
+	f.DurationVar(&cfg.DeleteMaxInterval, prefix+"compactor.delete-max-interval", 24*time.Hour, deprecated+"Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
 	f.DurationVar(&cfg.RetentionTableTimeout, prefix+"compactor.retention-table-timeout", 0, deprecated+"The maximum amount of time to spend running retention and deletion on any given table in the index.")
 	f.IntVar(&cfg.MaxCompactionParallelism, prefix+"compactor.max-compaction-parallelism", 1, deprecated+"Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 	f.IntVar(&cfg.UploadParallelism, prefix+"compactor.upload-parallelism", 10, deprecated+"Number of upload/remove operations to execute in parallel when finalizing a compaction. NOTE: This setting is per compaction operation, which can be executed in parallel. The upper bound on the number of concurrent uploads is upload_parallelism * max_compaction_parallelism.")

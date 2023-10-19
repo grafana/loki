@@ -1,16 +1,25 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+
+	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"hash/fnv"
 	"math"
-	"runtime"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -24,7 +33,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
 )
@@ -63,9 +71,11 @@ func execute() {
 	helpers.ExitErr("creating index shipper", err)
 
 	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
+	level.Info(util_log.Logger).Log("tenants", strings.Join(tenants, ","), "table", tableName)
 	helpers.ExitErr("resolving tenants", err)
 
-	sampler, err := NewProbabilisticSampler(0.00008)
+	//sampler, err := NewProbabilisticSampler(0.00008)
+	sampler, err := NewProbabilisticSampler(1.000)
 	helpers.ExitErr("creating sampler", err)
 
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
@@ -75,7 +85,7 @@ func execute() {
 	helpers.ExitErr("waiting for service to start", err)
 	level.Info(util_log.Logger).Log("msg", "server started")
 
-	err = analyze(metrics, sampler, indexShipper, chunkClient, tableName, tenants)
+	err = analyze(metrics, sampler, indexShipper, chunkClient, tableName, tenants, objectClient)
 	helpers.ExitErr("analyzing", err)
 }
 
@@ -84,106 +94,191 @@ var (
 	threeSkip1 = newNGramTokenizer(3, 4, 1)
 	threeSkip2 = newNGramTokenizer(3, 4, 2)
 	threeSkip3 = newNGramTokenizer(3, 4, 3)
+	four       = newNGramTokenizer(4, 5, 0)
+	fourSkip1  = newNGramTokenizer(4, 5, 1)
+	fourSkip2  = newNGramTokenizer(4, 5, 2)
+	five       = newNGramTokenizer(5, 6, 0)
+	six        = newNGramTokenizer(6, 7, 0)
 
-	onePctError  = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.01, 0.8) }
-	fivePctError = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.05, 0.8) }
+	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
+	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
 )
 
 var experiments = []Experiment{
 	// n > error > skip > index
 
+	/*
+		NewExperiment(
+			"token=3skip0_error=1%_indexchunks=true",
+			three,
+			true,
+			onePctError,
+		),
+	*/
 	NewExperiment(
-		"token=3skip0_error=1%_indexchunks=true",
-		three,
+		"token=4skip0_error=1%_indexchunks=true",
+		four,
 		true,
-		onePctError,
-	),
-	NewExperiment(
-		"token=3skip0_error=1%_indexchunks=false",
-		three,
-		false,
 		onePctError,
 	),
 
 	NewExperiment(
-		"token=3skip1_error=1%_indexchunks=true",
-		threeSkip1,
+		"token=4skip1_error=1%_indexchunks=true",
+		fourSkip1,
 		true,
 		onePctError,
 	),
+	/*
+		NewExperiment(
+			"token=4skip2_error=1%_indexchunks=true",
+			fourSkip2,
+			true,
+			onePctError,
+		),*/
 	NewExperiment(
-		"token=3skip1_error=1%_indexchunks=false",
-		threeSkip1,
-		false,
-		onePctError,
-	),
-
-	NewExperiment(
-		"token=3skip2_error=1%_indexchunks=true",
-		threeSkip2,
-		true,
-		onePctError,
-	),
-	NewExperiment(
-		"token=3skip2_error=1%_indexchunks=false",
-		threeSkip2,
-		false,
-		onePctError,
-	),
-
-	NewExperiment(
-		"token=3skip0_error=5%_indexchunks=true",
-		three,
+		"token=4skip0_error=5%_indexchunks=true",
+		four,
 		true,
 		fivePctError,
 	),
-	NewExperiment(
-		"token=3skip0_error=5%_indexchunks=false",
-		three,
-		false,
-		fivePctError,
-	),
+	/*
+		NewExperiment(
+			"token=4skip1_error=5%_indexchunks=true",
+			fourSkip1,
+			true,
+			fivePctError,
+		),
+		NewExperiment(
+			"token=4skip2_error=5%_indexchunks=true",
+			fourSkip2,
+			true,
+			fivePctError,
+		),
+		/*
+			NewExperiment(
+				"token=5skip0_error=1%_indexchunks=true",
+				five,
+				true,
+				onePctError,
+			),
+			NewExperiment(
+				"token=6skip0_error=1%_indexchunks=true",
+				six,
+				true,
+				onePctError,
+			),
+	*/
+	/*
+		NewExperiment(
+			"token=3skip0_error=1%_indexchunks=false",
+			three,
+			false,
+			onePctError,
+		),
+	*/
+	/*
+		NewExperiment(
+			"token=3skip1_error=1%_indexchunks=true",
+			threeSkip1,
+			true,
+			onePctError,
+		),*/
+	/*
+		NewExperiment(
+			"token=3skip1_error=1%_indexchunks=false",
+			threeSkip1,
+			false,
+			onePctError,
+		),
+	*/
+	/*
+		NewExperiment(
+			"token=3skip2_error=1%_indexchunks=true",
+			threeSkip2,
+			true,
+			onePctError,
+		),*/
+	/*
+		NewExperiment(
+			"token=3skip2_error=1%_indexchunks=false",
+			threeSkip2,
+			false,
+			onePctError,
+		),
+	*/
+	/*
+		NewExperiment(
+			"token=3skip0_error=5%_indexchunks=true",
+			three,
+			true,
+			fivePctError,
+		),*/
+	/*
+		NewExperiment(
+			"token=3skip0_error=5%_indexchunks=false",
+			three,
+			false,
+			fivePctError,
+		),
+	*/
+	/*
+		NewExperiment(
+			"token=3skip1_error=5%_indexchunks=true",
+			threeSkip1,
+			true,
+			fivePctError,
+		),*/
+	/*
+		NewExperiment(
+			"token=3skip1_error=5%_indexchunks=false",
+			threeSkip1,
+			false,
+			fivePctError,
+		),
+	*/
+	/*
+		NewExperiment(
+			"token=3skip2_error=5%_indexchunks=true",
+			threeSkip2,
+			true,
+			fivePctError,
+		),*/
+	/*
+		NewExperiment(
+			"token=3skip2_error=5%_indexchunks=false",
+			threeSkip2,
+			false,
+			fivePctError,
+		),
 
-	NewExperiment(
-		"token=3skip1_error=5%_indexchunks=true",
-		threeSkip1,
-		true,
-		fivePctError,
-	),
-	NewExperiment(
-		"token=3skip1_error=5%_indexchunks=false",
-		threeSkip1,
-		false,
-		fivePctError,
-	),
-
-	NewExperiment(
-		"token=3skip2_error=5%_indexchunks=true",
-		threeSkip2,
-		true,
-		fivePctError,
-	),
-	NewExperiment(
-		"token=3skip2_error=5%_indexchunks=false",
-		threeSkip2,
-		false,
-		fivePctError,
-	),
+	*/
 }
 
-func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
+func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string, objectClient client.ObjectClient) error {
 	metrics.tenants.Add(float64(len(tenants)))
+
+	testerNumber := extractTesterNumber(os.Getenv("HOSTNAME"))
+	if testerNumber == -1 {
+		helpers.ExitErr("extracting hostname index number", nil)
+	}
+	numTesters, _ := strconv.Atoi(os.Getenv("NUM_TESTERS"))
+	if numTesters == -1 {
+		helpers.ExitErr("extracting total number of testers", nil)
+	}
+	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
 	var n int         // count iterated series
 	reportEvery := 10 // report every n chunks
-	pool := newPool(runtime.NumCPU())
+	//pool := newPool(runtime.NumCPU())
+	//pool := newPool(1)
 
 	for _, tenant := range tenants {
+		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
 			context.Background(),
 			tableName,
 			tenant,
-			shipperindex.ForEachIndexCallback(func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+			func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 				if isMultiTenantIndex {
 					return nil
 				}
@@ -193,40 +288,47 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 					context.Background(),
 					nil, model.Earliest, model.Latest,
 					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
-						chksCpy := make([]tsdbindex.ChunkMeta, len(chks))
-						copy(chksCpy, chks)
-						pool.acquire(
+						seriesString := ls.String()
+						seriesStringHash := FNV32a(seriesString)
+						pos, _ := strconv.Atoi(seriesStringHash)
+
+						workernumber := AssignToWorker(pos, numTesters)
+
+						if (workernumber == testerNumber) && (len(chks) < 10000) { // for each series
+
+							/*(pool.acquire(
 							ls.Copy(),
 							fp,
 							chksCpy,
-							func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+							func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {*/
 
-								metrics.series.Inc()
-								metrics.chunks.Add(float64(len(chks)))
+							metrics.series.Inc()
+							metrics.chunks.Add(float64(len(chks)))
 
-								if !sampler.Sample() {
-									return
-								}
+							if !sampler.Sample() {
+								return
+							}
 
-								transformed := make([]chunk.Chunk, 0, len(chks))
-								for _, chk := range chks {
-									transformed = append(transformed, chunk.Chunk{
-										ChunkRef: logproto.ChunkRef{
-											Fingerprint: uint64(fp),
-											UserID:      tenant,
-											From:        chk.From(),
-											Through:     chk.Through(),
-											Checksum:    chk.Checksum,
-										},
-									})
-								}
+							cache := NewLRUCache4(150000)
 
-								got, err := client.GetChunks(
-									context.Background(),
-									transformed,
-								)
-								helpers.ExitErr("getting chunks", err)
+							transformed := make([]chunk.Chunk, 0, len(chks))
+							for _, chk := range chks {
+								transformed = append(transformed, chunk.Chunk{
+									ChunkRef: logproto.ChunkRef{
+										Fingerprint: uint64(fp),
+										UserID:      tenant,
+										From:        chk.From(),
+										Through:     chk.Through(),
+										Checksum:    chk.Checksum,
+									},
+								})
+							}
 
+							got, err := client.GetChunks(
+								context.Background(),
+								transformed,
+							)
+							if err == nil {
 								// record raw chunk sizes
 								var chunkTotalUncompressedSize int
 								for _, c := range got {
@@ -237,75 +339,114 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 								// iterate experiments
 								for experimentIdx, experiment := range experiments {
+									bucketPrefix := os.Getenv("BUCKET_PREFIX")
+									if strings.EqualFold(bucketPrefix, "") {
+										bucketPrefix = "named-experiments-"
+									}
+									if !sbfFileExists("bloomtests",
+										fmt.Sprint(bucketPrefix, experiment.name),
+										os.Getenv("BUCKET"),
+										tenant,
+										ls.String(),
+										objectClient) {
 
-									sbf := experiment.bloom()
+										level.Info(util_log.Logger).Log("Starting work on: ", ls.String(), "'", FNV32a(ls.String()), "'", experiment.name, tenant)
+										startTime := time.Now().UnixMilli()
 
-									// Iterate chunks
-									var (
-										lines, inserts, collisions float64
-									)
-									for idx := range got {
-										tokenizer := experiment.tokenizer
-										if experiment.encodeChunkID {
-											tokenizer = ChunkIDTokenizer(got[idx].ChunkRef, tokenizer)
-										}
-										lc := got[idx].Data.(*chunkenc.Facade).LokiChunk()
+										sbf := experiment.bloom()
+										cache.Clear()
 
-										// Only report on the last experiment since they run serially
-										if experimentIdx == len(experiments)-1 && (n+idx+1)%reportEvery == 0 {
-											estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
-											level.Info(util_log.Logger).Log(
-												"msg", "iterated",
-												"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
-												"chunks", len(chks),
-												"series", ls.String(),
-											)
-										}
-
-										itr, err := lc.Iterator(
-											context.Background(),
-											time.Unix(0, 0),
-											time.Unix(0, math.MaxInt64),
-											logproto.FORWARD,
-											log.NewNoopPipeline().ForStream(ls),
+										// Iterate chunks
+										var (
+											lines, inserts, collisions float64
 										)
-										helpers.ExitErr("getting iterator", err)
+										for cidx := range got {
+											chunkTokenizer := ChunkIDTokenizer(got[cidx].ChunkRef, experiment.tokenizer)
 
-										for itr.Next() && itr.Error() == nil {
-											toks := tokenizer.Tokens(itr.Entry().Line)
-											lines++
-											for _, tok := range toks {
-												for _, str := range []string{tok.Key, tok.Value} {
-													if str != "" {
-														if dup := sbf.TestAndAdd([]byte(str)); dup {
-															collisions++
+											var tokenizer Tokenizer = chunkTokenizer
+											if !experiment.encodeChunkID {
+												tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
+											}
+											lc := got[cidx].Data.(*chunkenc.Facade).LokiChunk()
+
+											// Only report on the last experiment since they run serially
+											if experimentIdx == len(experiments)-1 && (n+cidx+1)%reportEvery == 0 {
+												estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
+												level.Info(util_log.Logger).Log(
+													"msg", "iterated",
+													"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
+													"chunks", len(chks),
+													"series", ls.String(),
+												)
+											}
+
+											itr, err := lc.Iterator(
+												context.Background(),
+												time.Unix(0, 0),
+												time.Unix(0, math.MaxInt64),
+												logproto.FORWARD,
+												log.NewNoopPipeline().ForStream(ls),
+											)
+											helpers.ExitErr("getting iterator", err)
+
+											for itr.Next() && itr.Error() == nil {
+												toks := tokenizer.Tokens(itr.Entry().Line)
+												lines++
+												for _, tok := range toks {
+													if tok.Key != nil {
+														if !cache.GetString(tok.Value) {
+															cache.PutStringByte(tok.Value, tok.Key)
+															if dup := sbf.TestAndAdd(tok.Key); dup {
+																collisions++
+															}
+															inserts++
 														}
-														inserts++
 													}
 												}
 											}
-										}
-										helpers.ExitErr("iterating chunks", itr.Error())
-									}
+											helpers.ExitErr("iterating chunks", itr.Error())
+										} // for each chunk
 
-									metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))
-									fillRatio := sbf.FillRatio()
-									metrics.hammingWeightRatio.WithLabelValues(experiment.name).Observe(fillRatio)
-									metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
-										float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
-									)
-									metrics.lines.WithLabelValues(experiment.name).Add(lines)
-									metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
-									metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
+										endTime := time.Now().UnixMilli()
+										if len(got) > 0 {
+											metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))
+											fillRatio := sbf.FillRatio()
+											metrics.hammingWeightRatio.WithLabelValues(experiment.name).Observe(fillRatio)
+											metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
+												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
+											)
+											metrics.lines.WithLabelValues(experiment.name).Add(lines)
+											metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
+											metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
 
-								}
+											writeSBF(sbf,
+												os.Getenv("DIR"),
+												fmt.Sprint(bucketPrefix, experiment.name),
+												os.Getenv("BUCKET"),
+												tenant,
+												ls.String(),
+												objectClient)
 
-								metrics.seriesKept.Inc()
-								metrics.chunksKept.Add(float64(len(chks)))
-								metrics.chunksPerSeries.Observe(float64(len(chks)))
+											metrics.sbfCreationTime.WithLabelValues(experiment.name).Add(float64(endTime - startTime))
+											metrics.sbfsCreated.WithLabelValues(experiment.name).Inc()
 
-							},
-						)
+											if err != nil {
+												helpers.ExitErr("writing sbf to file", err)
+											}
+										} // logging chunk stats block
+									} // if sbf doesn't exist
+								} // for each experiment
+							} else {
+								level.Info(util_log.Logger).Log("error getting chunks", err)
+							}
+
+							metrics.seriesKept.Inc()
+							metrics.chunksKept.Add(float64(len(chks)))
+							metrics.chunksPerSeries.Observe(float64(len(chks)))
+
+							/*},
+							)*/
+						} // for each series
 
 					},
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
@@ -313,20 +454,125 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 				return nil
 
-			}),
+			},
 		)
 		helpers.ExitErr(fmt.Sprintf("iterating tenant %s", tenant), err)
 
 	}
 
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
-	pool.drain() // wait for workers to finishh
+	//pool.drain() // wait for workers to finish
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
-	time.Sleep(30 * time.Second) // allow final scrape
+	//time.Sleep(30 * time.Second)         // allow final scrape
+	time.Sleep(time.Duration(1<<63 - 1)) // wait forever
 	return nil
 }
 
 // n ≈ −m ln(1 − p).
 func estimatedCount(m uint, p float64) uint {
 	return uint(-float64(m) * math.Log(1-p))
+}
+
+func extractTesterNumber(input string) int {
+	// Split the input string by '-' to get individual parts
+	parts := strings.Split(input, "-")
+
+	// Extract the last part (the number)
+	lastPart := parts[len(parts)-1]
+
+	// Attempt to convert the last part to an integer
+	extractedNumber, err := strconv.Atoi(lastPart)
+	if err != nil {
+		return -1
+	}
+
+	// Send the extracted number to the result channel
+	return extractedNumber
+}
+
+func AssignToWorker(index int, numWorkers int) int {
+	// Calculate the hash of the index
+	h := fnv.New32a()
+	h.Write([]byte(fmt.Sprintf("%d", index)))
+	hash := int(h.Sum32())
+
+	// Use modulo to determine which worker should handle the index
+	workerID := hash % numWorkers
+
+	return workerID
+}
+
+func FNV32a(text string) string {
+	hashAlgorithm := fnv.New32a()
+	hashAlgorithm.Reset()
+	hashAlgorithm.Write([]byte(text))
+	return strconv.Itoa(int(hashAlgorithm.Sum32()))
+}
+
+func sbfFileExists(location, prefix, period, tenant, series string, objectClient client.ObjectClient) bool {
+	dirPath := fmt.Sprintf("%s/%s/%s/%s", location, prefix, period, tenant)
+	fullPath := fmt.Sprintf("%s/%s", dirPath, FNV32a(series))
+
+	result, _ := objectClient.ObjectExists(context.Background(), fullPath)
+	//fmt.Println(fullPath, result)
+	return result
+}
+
+func writeSBF(sbf *filter.ScalableBloomFilter, location, prefix, period, tenant, series string, objectClient client.ObjectClient) {
+	dirPath := fmt.Sprintf("%s/%s/%s/%s", location, prefix, period, tenant)
+	objectStoragePath := fmt.Sprintf("bloomtests/%s/%s/%s", prefix, period, tenant)
+	if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
+		helpers.ExitErr("error creating sbf dir", err)
+	}
+
+	err := writeSBFToFile(sbf, fmt.Sprintf("%s/%s", dirPath, FNV32a(series)))
+	if err != nil {
+		helpers.ExitErr("writing sbf to file", err)
+	}
+
+	writeSBFToObjectStorage(sbf,
+		fmt.Sprintf("%s/%s", objectStoragePath, FNV32a(series)),
+		fmt.Sprintf("%s/%s", dirPath, FNV32a(series)),
+		objectClient)
+}
+
+func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	bytesWritten, err := sbf.WriteTo(w)
+	if err != nil {
+		return err
+	}
+	level.Info(util_log.Logger).Log("msg", "wrote sbf", "bytes", bytesWritten, "file", filename)
+
+	err = w.Flush()
+	return err
+}
+
+func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+	// Probably a better way to do this than to reopen the file, but it's late
+	file, err := os.Open(localFilename)
+	if err != nil {
+		level.Info(util_log.Logger).Log("error opening", localFilename, "error", err)
+	}
+
+	defer file.Close()
+
+	fileInfo, _ := file.Stat()
+	var size = fileInfo.Size()
+
+	buffer := make([]byte, size)
+
+	// read file content to buffer
+	_, _ = file.Read(buffer)
+
+	fileBytes := bytes.NewReader(buffer) // converted to io.ReadSeeker type
+
+	_ = objectClient.PutObject(context.Background(), objectStorageFilename, fileBytes)
+	level.Info(util_log.Logger).Log("done writing", objectStorageFilename)
 }

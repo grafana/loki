@@ -29,10 +29,19 @@ func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.L
 }
 
 func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+	return c.GetChunkRefsFiltered(ctx, "", from, through, nil, allMatchers...)
+}
+
+func (c *IndexGatewayClientStore) GetChunkRefsFiltered(ctx context.Context, _ string, from, through model.Time, filters []syntax.LineFilterExpr, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+	lineFilters := make([]*logproto.LineFilterExpression, 0, len(filters))
+	for _, filter := range filters {
+		lineFilters = append(lineFilters, &logproto.LineFilterExpression{Operator: int64(filter.Ty), Match: filter.Match})
+	}
 	response, err := c.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{
 		From:     from,
 		Through:  through,
 		Matchers: (&syntax.MatchersExpr{Mts: allMatchers}).String(),
+		Filters:  lineFilters,
 	})
 	if err != nil {
 		return nil, err
