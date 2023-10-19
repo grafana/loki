@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	strings "strings"
 	"sync"
 	"testing"
 	"time"
@@ -802,13 +803,14 @@ func TestRegexpParamsSupport(t *testing.T) {
 	}
 	require.NoError(t, err)
 
+	// TODO: This should be a test for codec.
 	lreq := &LokiRequest{
 		Query:     `{app="foo"}`,
 		Limit:     1000,
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
-		Path:      "/loki/api/v1/query_range",
+		Path:      "/api/prom/query",
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -828,12 +830,14 @@ func TestRegexpParamsSupport(t *testing.T) {
 	count, h := promqlResult(streams)
 	handler := base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		// the query params should contain the filter.
-		require.Contains(t, r.GetQuery(), `|~ "foo"`)
+		if !strings.Contains(r.GetQuery(), `|~ "foo"`) {
+			return nil, fmt.Errorf("query '%s' did not include '|~ \"foo\"'", r.GetQuery())
+		}
 		return h.Do(ctx, r)
 	})
 	_, err = tpw.Wrap(handler).Do(ctx, lreq)
-	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
 	require.NoError(t, err)
+	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
 }
 
 func TestPostQueries(t *testing.T) {

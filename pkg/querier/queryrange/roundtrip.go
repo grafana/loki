@@ -93,7 +93,7 @@ func newResultsCacheFromConfig(cfg base.ResultsCacheConfig, registerer prometheu
 	return c, nil
 }
 
-// NewMiddleware returns a Tripperware configured with middlewares to align, split and cache requests.
+// NewMiddleware returns a Middleware configured with middlewares to align, split and cache requests.
 func NewMiddleware(
 	cfg Config,
 	engineOpts logql.EngineOpts,
@@ -266,9 +266,6 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			}
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
-			// Note, this function can mutate the request
-			// expr, err := transformRegexQuery(req, e) // TODO: this might be important
-
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
