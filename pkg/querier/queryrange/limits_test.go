@@ -15,8 +15,8 @@ import (
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -82,7 +82,7 @@ func Test_seriesLimiter(t *testing.T) {
 	// 2 series should not be allowed.
 	c := new(int)
 	m := &sync.Mutex{}
-	h = base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+	h = base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
 		m.Lock()
 		defer m.Unlock()
 		defer func() {
@@ -90,20 +90,11 @@ func Test_seriesLimiter(t *testing.T) {
 		}()
 		// first time returns  a single series
 		if *c == 0 {
-			// TODO: refactor and use ResultToResponse
-			sampleStream, err := base.FromValue(matrix)
+			params, err := ParamsFromRequest(req)
 			if err != nil {
 				return nil, err
 			}
-			return &LokiPromResponse{
-				Response: &base.PrometheusResponse{
-					Status: "success",
-					Data: base.PrometheusData{
-						ResultType: loghttp.ResultTypeMatrix,
-						Result:     sampleStream,
-					},
-				},
-			}, nil
+			return ResultToResponse(logqlmodel.Result{Data: matrix}, params)
 		}
 		// second time returns a different series.
 		m := promql.Matrix{
@@ -126,20 +117,11 @@ func Test_seriesLimiter(t *testing.T) {
 				},
 			},
 		}
-		// TODO: refactor and use ResultToResponse
-		sampleStream, err := base.FromValue(m)
+		params, err := ParamsFromRequest(req)
 		if err != nil {
 			return nil, err
 		}
-		return &LokiPromResponse{
-			Response: &base.PrometheusResponse{
-				Status: "success",
-				Data: base.PrometheusData{
-					ResultType: loghttp.ResultTypeMatrix,
-					Result:     sampleStream,
-				},
-			},
-		}, nil
+		return ResultToResponse(logqlmodel.Result{Data: m}, params)
 	})
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
