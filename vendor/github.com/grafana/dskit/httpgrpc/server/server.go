@@ -51,10 +51,14 @@ func (n nopCloser) BytesBuffer() *bytes.Buffer { return n.Buffer }
 
 // Handle implements HTTPServer.
 func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
-	req, err := ToHTTP(ctx, r)
+	req, err := http.NewRequest(r.Method, r.Url, nopCloser{Buffer: bytes.NewBuffer(r.Body)})
 	if err != nil {
 		return nil, err
 	}
+	toHeader(r.Headers, req.Header)
+	req = req.WithContext(ctx)
+	req.RequestURI = r.Url
+	req.ContentLength = int64(len(r.Body))
 
 	recorder := httptest.NewRecorder()
 	s.handler.ServeHTTP(recorder, req)
@@ -67,19 +71,6 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 		return nil, httpgrpc.ErrorFromHTTPResponse(resp)
 	}
 	return resp, nil
-}
-
-func ToHTTP(ctx context.Context, r *httpgrpc.HTTPRequest) (*http.Request, error) {
-	req, err := http.NewRequest(r.Method, r.Url, nopCloser{Buffer: bytes.NewBuffer(r.Body)})
-	if err != nil {
-		return nil, err
-	}
-	toHeader(r.Headers, req.Header)
-	req = req.WithContext(ctx)
-	req.RequestURI = r.Url
-	req.ContentLength = int64(len(r.Body))
-
-	return req, nil
 }
 
 // Client is a http.Handler that forwards the request over gRPC.
