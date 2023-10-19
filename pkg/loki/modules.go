@@ -1194,7 +1194,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 				return nil, fmt.Errorf("failed to create delete request store object client: %w", err)
 			}
 		} else {
-			return nil, fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled.")
+			return nil, fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled")
 		}
 	}
 

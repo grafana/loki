@@ -35,7 +35,7 @@ var (
 	start = model.Now().Add(-30 * 24 * time.Hour)
 )
 
-func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClient, periodConfigs []config.PeriodConfig, tempDir string) *Compactor {
+func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.ObjectClient, periodConfigs []config.PeriodConfig, tempDir string) *Compactor {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
@@ -47,7 +47,7 @@ func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClie
 
 	require.NoError(t, cfg.Validate())
 
-	c, err := NewCompactor(cfg, objectClients, config.SchemaConfig{
+	c, err := NewCompactor(cfg, objectClients, nil, config.SchemaConfig{
 		Configs: periodConfigs,
 	}, nil, nil)
 	require.NoError(t, err)
@@ -74,6 +74,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 			IndexType:  "dummy",
 			ObjectType: "fs_01",
 			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix: "index/",
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: indexTablePrefix,
 					Period: config.ObjectStorageIndexRequiredPeriod,
@@ -86,10 +87,10 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	}
 
 	var (
-		objectClients = map[string]client.ObjectClient{}
+		objectClients = map[config.DayTime]client.ObjectClient{}
 		err           error
 	)
-	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+	objectClients[periodConfigs[0].From], err = local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
 	require.NoError(t, err)
 
 	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
@@ -125,6 +126,7 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 			IndexType:  "dummy",
 			ObjectType: "fs_01",
 			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix: "index/",
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: indexTablePrefix,
 					Period: config.ObjectStorageIndexRequiredPeriod,
@@ -135,6 +137,7 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 			IndexType:  "dummy",
 			ObjectType: "fs_02",
 			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix: "index/",
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: indexTablePrefix,
 					Period: config.ObjectStorageIndexRequiredPeriod,
@@ -156,13 +159,13 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 	}
 
 	var (
-		objectClients = map[string]client.ObjectClient{}
+		objectClients = map[config.DayTime]client.ObjectClient{}
 		err           error
 	)
-	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodOnePath})
+	objectClients[periodConfigs[0].From], err = local.NewFSObjectClient(local.FSConfig{Directory: periodOnePath})
 	require.NoError(t, err)
 
-	objectClients["fs_02"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodTwoPath})
+	objectClients[periodConfigs[1].From], err = local.NewFSObjectClient(local.FSConfig{Directory: periodTwoPath})
 	require.NoError(t, err)
 
 	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
@@ -204,6 +207,7 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			ObjectType: "filesystem",
 			Schema:     "v9",
 			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix: "index/",
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: indexTablePrefix,
 					Period: time.Hour * 24,
@@ -216,6 +220,7 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			ObjectType: "filesystem",
 			Schema:     "v12",
 			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix: "index/",
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: indexTablePrefix,
 					Period: time.Hour * 24,
@@ -228,6 +233,7 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			ObjectType: "filesystem",
 			Schema:     "v12",
 			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix: "index/",
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: tsdbIndexTablePrefix,
 					Period: time.Hour * 24,
@@ -240,6 +246,7 @@ func Test_schemaPeriodForTable(t *testing.T) {
 			ObjectType: "filesystem",
 			Schema:     "v12",
 			IndexTables: config.IndexPeriodicTableConfig{
+				PathPrefix: "index/",
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Prefix: indexTablePrefix,
 					Period: time.Hour * 24,
