@@ -116,7 +116,7 @@ func (bq *BlockQuerier) Err() error {
 
 // CheckChunksForSeries checks if the given chunks pass a set of searches in the given bloom block.
 // It returns the list of chunks which will need to be downloaded for a query based on the initial list
-// passed as the `chks` argument. Chunks will be removed from the result set if they they are indexed in the bloom
+// passed as the `chks` argument. Chunks will be removed from the result set if they are indexed in the bloom
 // and fail to pass all the searches.
 func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRefs, searches [][]byte) (ChunkRefs, error) {
 	if err := bq.Seek(fp); err != nil {

@@ -28,7 +28,12 @@ var (
 	testTargetSize = 1500 * 1024
 )
 
-func Test_CompactChunks(t *testing.T) {
+// Test that chunk data can be stored at a bloom filter and then queried back
+// Test1: Create one series with one chunk
+// Test2: Create one series with N chunks
+// Test3: Create M series with one chunk per series
+// Test4: Create M Series with N chunks per series
+func Test_BuildAndQueryBloomsCase1(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	fp := model.Fingerprint(lbs.Hash())
 	// todo initialize a bloom for a series.
@@ -37,7 +42,7 @@ func Test_CompactChunks(t *testing.T) {
 			Fingerprint: fp,
 		},
 		Bloom: &v1.Bloom{
-			Sbf: *filter.NewDefaultScalableBloomFilter(0.01),
+			*filter.NewDefaultScalableBloomFilter(0.01),
 		},
 	}
 	// 1. create real chunks
@@ -87,6 +92,181 @@ func Test_CompactChunks(t *testing.T) {
 	require.Equal(t, 0, len(matches))
 }
 
+//func createSeriesWithBloom(lbs labels.Labels) (v1.SeriesWithBloom, model.Fingerprint) {
+//
+//}
+
+func Test_BuildAndQueryBloomsCase2(t *testing.T) {
+	lbs := labels.FromStrings("foo", "bar")
+	fp := model.Fingerprint(lbs.Hash())
+
+	//createSeriesWithBloom(lbs)
+	bloomForChunks := v1.SeriesWithBloom{
+		Series: &v1.Series{
+			Fingerprint: fp,
+		},
+		Bloom: &v1.Bloom{
+			*filter.NewDefaultScalableBloomFilter(0.01),
+		},
+	}
+
+	var (
+		chunks    []chunk.Chunk        = make([]chunk.Chunk, 3)
+		refs      []v1.ChunkRef        = make([]v1.ChunkRef, 3)
+		memChunks []*chunkenc.MemChunk = make([]*chunkenc.MemChunk, 0)
+	)
+
+	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk0.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line",
+	})
+
+	memChunk1 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk1.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line for second chunk",
+	})
+
+	memChunk2 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk2.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line for third chunk",
+	})
+
+	memChunks = append(memChunks, memChunk0, memChunk1, memChunk2)
+
+	for i := range chunks {
+		chunks[i] = chunk.NewChunk(userID,
+			fp, lbs, chunkenc.NewFacade(memChunks[i], testBlockSize, testTargetSize), from, to)
+		require.NoError(t, chunks[i].Encode())
+		refs[i] = v1.ChunkRef{
+			Start:    chunks[i].From,
+			End:      chunks[i].Through,
+			Checksum: chunks[i].Checksum,
+		}
+	}
+
+	// that's what we test
+	for _, c := range chunks {
+		fillBloom(bloomForChunks, c, SpaceTokenizer)
+	}
+
+	blockDir := t.TempDir()
+	// Write the block to disk
+	writer := v1.NewDirectoryBlockWriter(blockDir)
+	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), writer)
+	require.NoError(t, err)
+	err = builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChunks}))
+	require.NoError(t, err)
+
+	// read and verify the data.
+	querier := v1.NewBlockQuerier(v1.NewBlock(v1.NewDirectoryBlockReader(blockDir)))
+
+	// This test demonstrates the problem
+	// In a single series if a single chunk matches the search, all chunks from the series are returned by the bloom_querier.
+	// Whereas it should return only the matching chunks.
+	matches, err := querier.CheckChunksForSeries(fp, refs, [][]byte{[]byte("second")})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(matches))
+
+	matches, err = querier.CheckChunksForSeries(fp, refs, [][]byte{[]byte("line")})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(matches))
+
+	matches, err = querier.CheckChunksForSeries(fp, refs, [][]byte{[]byte("bar")})
+	require.NoError(t, err)
+	require.Equal(t, 0, len(matches))
+}
+
+func Test_BuildAndQueryBloomsCase3(t *testing.T) {
+	lbsList := [3]labels.Labels{
+		labels.FromStrings("app1", "value1"),
+		labels.FromStrings("app2", "value2"),
+		labels.FromStrings("app3", "value3")}
+
+	var fps [3]model.Fingerprint
+	var bloomsForChunks []v1.SeriesWithBloom
+
+	for i, lb := range lbsList {
+		fps[i] = model.Fingerprint(lb.Hash())
+		bloomsForChunks = append(bloomsForChunks, v1.SeriesWithBloom{
+			Series: &v1.Series{
+				Fingerprint: fps[i],
+			},
+			Bloom: &v1.Bloom{
+				*filter.NewDefaultScalableBloomFilter(0.01),
+			},
+		})
+	}
+
+	var (
+		chunks    []chunk.Chunk        = make([]chunk.Chunk, 3)
+		refs      []v1.ChunkRef        = make([]v1.ChunkRef, 3)
+		memChunks []*chunkenc.MemChunk = make([]*chunkenc.MemChunk, 0)
+	)
+
+	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk0.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line",
+	})
+
+	memChunk1 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk1.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line for second chunk",
+	})
+
+	memChunk2 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk2.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line for third chunk",
+	})
+
+	memChunks = append(memChunks, memChunk0, memChunk1, memChunk2)
+
+	for i := range chunks {
+		chunks[i] = chunk.NewChunk(userID, fps[i], lbsList[i], chunkenc.NewFacade(memChunks[i], testBlockSize, testTargetSize), from, to)
+		require.NoError(t, chunks[i].Encode())
+		refs[i] = v1.ChunkRef{
+			Start:    chunks[i].From,
+			End:      chunks[i].Through,
+			Checksum: chunks[i].Checksum,
+		}
+	}
+
+	// that's what we test
+	for i, c := range chunks {
+		fillBloom(bloomsForChunks[i], c, SpaceTokenizer)
+	}
+
+	blockDir := t.TempDir()
+	// Write the block to disk
+	writer := v1.NewDirectoryBlockWriter(blockDir)
+	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), writer)
+	require.NoError(t, err)
+	err = builder.BuildFrom(v1.NewSliceIter(bloomsForChunks))
+	require.NoError(t, err)
+
+	// read and verify the data.
+	querier := v1.NewBlockQuerier(v1.NewBlock(v1.NewDirectoryBlockReader(blockDir)))
+
+	// result may be in the other 2 series
+	matches, err := querier.CheckChunksForSeries(fps[0], refs, [][]byte{[]byte("second")})
+	require.NoError(t, err)
+	require.Equal(t, 2, len(matches))
+
+	matches, err = querier.CheckChunksForSeries(fps[0], refs, [][]byte{[]byte("line")})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(matches))
+
+	// found match + result may be in the other 2 series
+	matches, err = querier.CheckChunksForSeries(fps[1], refs, [][]byte{[]byte("second")})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(matches))
+}
+
 type TokenizerFunc func(e logproto.Entry) [][]byte
 
 var SpaceTokenizer TokenizerFunc = func(e logproto.Entry) [][]byte {
@@ -109,7 +289,7 @@ func fillBloom(b v1.SeriesWithBloom, c chunk.Chunk, tokenizer TokenizerFunc) err
 	defer itr.Close()
 	for itr.Next() {
 		for _, t := range tokenizer(itr.Entry()) {
-			b.Bloom.Sbf.Add(t)
+			b.Bloom.Add(t)
 		}
 	}
 	if err := itr.Error(); err != nil {
