@@ -202,4 +202,3 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 
 	return p, nil
 }
-
