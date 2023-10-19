@@ -82,6 +82,32 @@ func fillBloom(b v1.SeriesWithBloom, c chunk.Chunk, tokenizer TokenizerFunc) err
 	return nil
 }
 
+func createMemchunks() []*chunkenc.MemChunk {
+	var memChunks []*chunkenc.MemChunk = make([]*chunkenc.MemChunk, 0)
+
+	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk0.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line",
+	})
+
+	memChunk1 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk1.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line for second chunk",
+	})
+
+	memChunk2 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
+	memChunk2.Append(&push.Entry{
+		Timestamp: time.Unix(0, 1),
+		Line:      "this is a log line for third chunk",
+	})
+
+	memChunks = append(memChunks, memChunk0, memChunk1, memChunk2)
+
+	return memChunks
+}
+
 // Test that chunk data can be stored at a bloom filter and then queried back
 // Test1: Create one series with one chunk
 // Test2: Create one series with N chunks
@@ -102,11 +128,7 @@ func Test_BuildAndQueryBloomsCase1(t *testing.T) {
 		refs   []v1.ChunkRef = make([]v1.ChunkRef, 1)
 	)
 
-	memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChk.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      "foo",
-	})
+	memChk := createMemchunks()[0]
 
 	for i := range chunks {
 		chunks[i] = chunk.NewChunk(userID, fp, lbs, chunkenc.NewFacade(memChk, testBlockSize, testTargetSize), from, to)
@@ -133,7 +155,7 @@ func Test_BuildAndQueryBloomsCase1(t *testing.T) {
 	// read and verify the data.
 	querier := v1.NewBlockQuerier(v1.NewBlock(v1.NewDirectoryBlockReader(blockDir)))
 
-	matches, err := querier.CheckChunksForSeries(fp, refs, [][]byte{[]byte("foo")})
+	matches, err := querier.CheckChunksForSeries(fp, refs, [][]byte{[]byte("line")})
 	require.NoError(t, err)
 	require.Equal(t, 1, len(matches))
 
@@ -155,28 +177,8 @@ func Test_BuildAndQueryBloomsCase2(t *testing.T) {
 	var (
 		chunks    []chunk.Chunk        = make([]chunk.Chunk, 3)
 		refs      []v1.ChunkRef        = make([]v1.ChunkRef, 3)
-		memChunks []*chunkenc.MemChunk = make([]*chunkenc.MemChunk, 0)
+		memChunks []*chunkenc.MemChunk = createMemchunks()
 	)
-
-	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk0.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      "this is a log line",
-	})
-
-	memChunk1 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk1.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      "this is a log line for second chunk",
-	})
-
-	memChunk2 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk2.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      "this is a log line for third chunk",
-	})
-
-	memChunks = append(memChunks, memChunk0, memChunk1, memChunk2)
 
 	for i := range chunks {
 		chunks[i] = chunk.NewChunk(userID,
@@ -234,28 +236,8 @@ func Test_BuildAndQueryBloomsCase3(t *testing.T) {
 	var (
 		chunks    []chunk.Chunk        = make([]chunk.Chunk, 3)
 		refs      []v1.ChunkRef        = make([]v1.ChunkRef, 3)
-		memChunks []*chunkenc.MemChunk = make([]*chunkenc.MemChunk, 0)
+		memChunks []*chunkenc.MemChunk = createMemchunks()
 	)
-
-	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk0.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      "this is a log line",
-	})
-
-	memChunk1 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk1.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      "this is a log line for second chunk",
-	})
-
-	memChunk2 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk2.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      "this is a log line for third chunk",
-	})
-
-	memChunks = append(memChunks, memChunk0, memChunk1, memChunk2)
 
 	for i := range chunks {
 		chunks[i] = chunk.NewChunk(userID, fps[i], lbsList[i], chunkenc.NewFacade(memChunks[i], testBlockSize, testTargetSize), from, to)
