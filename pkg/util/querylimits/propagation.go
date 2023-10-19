@@ -44,14 +44,19 @@ func MarshalQueryLimits(limits *QueryLimits) ([]byte, error) {
 
 // InjectQueryLimitsHTTP adds the query limits to the request headers.
 func InjectQueryLimitsHTTP(r *http.Request, limits *QueryLimits) error {
+	return InjectQueryLimitsHeader(&r.Header, limits)
+}
+
+// InjectQueryLimitsHeader adds the query limits to the headers.
+func InjectQueryLimitsHeader(h *http.Header, limits *QueryLimits) error {
 	// Ensure any existing policy sets are erased
-	r.Header.Del(HTTPHeaderQueryLimitsKey)
+	h.Del(HTTPHeaderQueryLimitsKey)
 
 	encodedLimits, err := MarshalQueryLimits(limits)
 	if err != nil {
 		return err
 	}
-	r.Header.Add(HTTPHeaderQueryLimitsKey, string(encodedLimits))
+	h.Add(HTTPHeaderQueryLimitsKey, string(encodedLimits))
 	return nil
 }
 

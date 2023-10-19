@@ -54,7 +54,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewTripperware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -221,7 +221,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{

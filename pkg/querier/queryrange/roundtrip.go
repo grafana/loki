@@ -93,8 +93,8 @@ func newResultsCacheFromConfig(cfg base.ResultsCacheConfig, registerer prometheu
 	return c, nil
 }
 
-// NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
-func NewTripperware(
+// NewMiddleware returns a Tripperware configured with middlewares to align, split and cache requests.
+func NewMiddleware(
 	cfg Config,
 	engineOpts logql.EngineOpts,
 	log log.Logger,

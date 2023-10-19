@@ -590,7 +590,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
-	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -653,7 +653,6 @@ func (t *Loki) setupModuleManager() error {
 		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
 		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
-		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
 
 		// Ensure query limiter embeds overrides after they've been
 		// created.
