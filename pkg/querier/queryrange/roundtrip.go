@@ -165,7 +165,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -177,7 +177,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, codec, metrics, schema)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, metrics, schema, DefaultCodec)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -387,7 +387,7 @@ func NewLogFilterTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	codec base.Codec, // TODO see if this could be removed
+	merger base.Merger,
 	c cache.Cache,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
@@ -400,7 +400,7 @@ func NewLogFilterTripperware(
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime, metrics.SplitByMetrics),
 		}
 
 		if cfg.CacheResults {
@@ -427,7 +427,6 @@ func NewLogFilterTripperware(
 					log,
 					schema.Configs,
 					engineOpts,
-					codec,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.MiddlewareMapperMetrics.shardMapper,
 					limits,
@@ -451,7 +450,7 @@ func NewLogFilterTripperware(
 		}
 
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}), nil
@@ -464,9 +463,9 @@ func NewLimitedTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	codec base.Codec,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
+	merger base.Merger,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
@@ -481,12 +480,12 @@ func NewLimitedTripperware(
 			// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
 			// Therefore we force max parallelism to one so that these queries are executed sequentially.
 			// Below we also fix the number of shards to a static number.
-			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), codec, splitByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), merger, splitByTime, metrics.SplitByMetrics),
 			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 		}
 
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}), nil
@@ -497,9 +496,9 @@ func NewSeriesTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	codec base.Codec,
 	metrics *Metrics,
 	schema config.SchemaConfig,
+	merger base.Merger,
 ) (base.Middleware, error) {
 	queryRangeMiddleware := []base.Middleware{
 		StatsCollectorMiddleware(),
@@ -508,7 +507,7 @@ func NewSeriesTripperware(
 		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
 		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
 		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -526,14 +525,14 @@ func NewSeriesTripperware(
 				metrics.InstrumentMiddlewareMetrics,
 				metrics.MiddlewareMapperMetrics.shardMapper,
 				limits,
-				codec,
+				merger,
 			),
 		)
 	}
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}), nil
@@ -544,7 +543,7 @@ func NewLabelsTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
-	codec base.Codec,
+	merger base.Merger,
 	metrics *Metrics,
 	schema config.SchemaConfig,
 ) (base.Middleware, error) {
@@ -554,7 +553,7 @@ func NewLabelsTripperware(
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
 		// This is because the labels API is an index-only operation.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), codec, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -580,7 +579,7 @@ func NewMetricTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	codec base.Codec,
+	merger base.Merger,
 	c cache.Cache,
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
@@ -597,7 +596,7 @@ func NewMetricTripperware(
 			c,
 			cacheKey,
 			limits,
-			codec,
+			merger,
 			extractor,
 			cacheGenNumLoader,
 			func(_ context.Context, r base.Request) bool {
@@ -641,7 +640,7 @@ func NewMetricTripperware(
 			queryRangeMiddleware,
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitMetricByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitMetricByTime, metrics.SplitByMetrics),
 		)
 
 		if cfg.CacheResults {
@@ -658,7 +657,6 @@ func NewMetricTripperware(
 					log,
 					schema.Configs,
 					engineOpts,
-					codec,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.MiddlewareMapperMetrics.shardMapper,
 					limits,
@@ -684,7 +682,7 @@ func NewMetricTripperware(
 
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			rt := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 			return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 				_, ok := r.(*LokiRequest)
 				if !ok {
@@ -704,7 +702,7 @@ func NewInstantMetricTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	codec base.Codec,
+	merger base.Merger,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
 ) (base.Middleware, error) {
@@ -724,7 +722,6 @@ func NewInstantMetricTripperware(
 					log,
 					schema.Configs,
 					engineOpts,
-					codec,
 					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
 					metrics.MiddlewareMapperMetrics.shardMapper,
 					limits,
@@ -743,7 +740,7 @@ func NewInstantMetricTripperware(
 		}
 
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}), nil
@@ -754,7 +751,7 @@ func NewVolumeTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	codec base.Codec,
+	merger base.Merger,
 	c cache.Cache,
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
@@ -769,7 +766,7 @@ func NewVolumeTripperware(
 		cacheMiddleware, err = NewVolumeCacheMiddleware(
 			log,
 			limits,
-			codec,
+			merger,
 			c,
 			cacheGenNumLoader,
 			func(_ context.Context, r base.Request) bool {
@@ -797,7 +794,7 @@ func NewVolumeTripperware(
 	indexTw, err := sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
-		codec,
+		merger,
 		limits,
 		log,
 		metrics,
@@ -854,7 +851,7 @@ func NewIndexStatsTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	codec base.Codec,
+	merger base.Merger,
 	c cache.Cache,
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
@@ -870,7 +867,7 @@ func NewIndexStatsTripperware(
 		cacheMiddleware, err = NewIndexStatsCacheMiddleware(
 			log,
 			limits,
-			codec,
+			merger,
 			c,
 			cacheGenNumLoader,
 			func(_ context.Context, r base.Request) bool {
@@ -898,7 +895,7 @@ func NewIndexStatsTripperware(
 	return sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
-		codec,
+		merger,
 		limits,
 		log,
 		metrics,
@@ -909,7 +906,7 @@ func NewIndexStatsTripperware(
 func sharedIndexTripperware(
 	cacheMiddleware base.Middleware,
 	cfg Config,
-	codec base.Codec,
+	merger base.Merger,
 	limits Limits,
 	log log.Logger,
 	metrics *Metrics,
@@ -919,7 +916,7 @@ func sharedIndexTripperware(
 		middlewares := []base.Middleware{
 			NewLimitsMiddleware(limits),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime, metrics.SplitByMetrics),
 		}
 
 		if cacheMiddleware != nil {

@@ -146,7 +146,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
-	_, _ = NewLimitedRoundTripper(h, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, _ = NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
 			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
@@ -177,7 +177,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
-	_, err := NewLimitedRoundTripper(h, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
 			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
@@ -204,7 +204,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	})
 	ctx := user.InjectOrgID(context.Background(), "foo")
 
-	_, err := NewLimitedRoundTripper(h, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
 			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {

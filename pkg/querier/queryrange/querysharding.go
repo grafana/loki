@@ -36,7 +36,6 @@ func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
 	engineOpts logql.EngineOpts,
-	_ queryrangebase.Codec,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
