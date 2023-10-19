@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [10906](https://github.com/grafana/loki/pull/10906) **kavirajk**: Support Loki ruler to notify WAL writes to remote storage.
 * [10613](https://github.com/grafana/loki/pull/10613) **ngc4579**: Helm: allow GrafanaAgent tolerations
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
@@ -37,6 +38,8 @@
 
 #### Promtail
 
+* [10752](https://github.com/grafana/loki/pull/10752) **gonzalesraul**: structured_metadata: enable structured_metadata convert labels
+
 ##### Enhancements
 
 * [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
@@ -56,22 +59,24 @@
 
 #### LogCLI
 
-##### Fixes
-
 #### Mixins
-
-#### Enhancements
 
 #### Fixes
 
 #### FluentD
 
-##### Enhancements
-
 #### Jsonnet
-## Unreleased
 
+* [10784](https://github.com/grafana/loki/pull/10894) **slim-bean** Update index gateway client to use a headless service.
 
+## 2.9.2 (2023-10-16)
+
+### All Changes
+
+##### Security
+
+* [10879](https://github.com/grafana/loki/pull/10879) **DylanGuedes**: Upgrade golang.org/x/net to v0.17.0 to patch CVE-2023-39325 / CVE-2023-44487
+* [10871](https://github.com/grafana/loki/pull/10871) **ashwanthgoli**: Upgrade go to v1.21.3 and grpc-go to v1.56.3 to patch CVE-2023-39325 / CVE-2023-44487
 
 ## 2.9.1 (2023-09-14)
 
@@ -221,6 +226,15 @@
 * [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
 * [9978](https://github.com/grafana/loki/pull/9978) ****vlad-diachenko****: replaced deprecated `policy.v1beta1` with `policy.v1`.
+
+## 2.8.6 (2023-10-17)
+
+#### Loki
+
+##### Security
+
+* [10887](https://github.com/grafana/loki/pull/10887) upgrade go-grpc to v1.56.3 and golang.org/x/net to v0.17.0 to patch CVE-2023-39325 / CVE-2023-44487
+* [10889](https://github.com/grafana/loki/pull/10889) upgrade go to v1.20.10 to patch CVE-2023-39325 / CVE-2023-44487
 
 ## 2.8.5 (2023-09-14)
 

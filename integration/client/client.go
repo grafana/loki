@@ -549,7 +549,7 @@ func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
 	return values.Data, nil
 }
 
-// LabelValues return a LabelValues query
+// LabelValues return a LabelValues query result
 func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
@@ -575,6 +575,40 @@ func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, e
 		Data []string `json:"data"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&values); err != nil {
+		return nil, err
+	}
+
+	return values.Data, nil
+}
+
+// Series return a series query result
+func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]string, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
+	v := url.Values{}
+	v.Set("match[]", matcher)
+
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		panic(err)
+	}
+	u.Path = "/loki/api/v1/series"
+	u.RawQuery = v.Encode()
+
+	buf, statusCode, err := c.run(ctx, u.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	}
+
+	var values struct {
+		Data []map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(buf, &values); err != nil {
 		return nil, err
 	}
 

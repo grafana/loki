@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -104,14 +104,14 @@ func Test_seriesLimiter(t *testing.T) {
 		}()
 		// first time returns  a single series
 		if *c == 0 {
-			if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: matrix}, rw, nil); err != nil {
+			if err := marshal.WriteQueryResponseJSON(matrix, stats.Result{}, rw, nil); err != nil {
 				panic(err)
 			}
 			return
 		}
 		// second time returns a different series.
-		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{
-			Data: promql.Matrix{
+		if err := marshal.WriteQueryResponseJSON(
+			promql.Matrix{
 				{
 					Floats: []promql.FPoint{
 						{
@@ -131,7 +131,9 @@ func Test_seriesLimiter(t *testing.T) {
 					},
 				},
 			},
-		}, rw, nil); err != nil {
+			stats.Result{},
+			rw,
+			nil); err != nil {
 			panic(err)
 		}
 	})

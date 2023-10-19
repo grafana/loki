@@ -5,22 +5,22 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type Bloom struct {
-	sbf boom.ScalableBloomFilter
+	filter.ScalableBloomFilter
 }
 
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
-	buf := bytes.NewBuffer(BlockPool.Get(int(b.sbf.Capacity() / 8)))
+	buf := bytes.NewBuffer(BlockPool.Get(int(b.Capacity() / 8)))
 
-	_, err := b.sbf.WriteTo(buf)
+	_, err := b.WriteTo(buf)
 	if err != nil {
 		return errors.Wrap(err, "encoding bloom filter")
 	}
@@ -32,11 +32,23 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	return nil
 }
 
+func (b *Bloom) DecodeCopy(dec *encoding.Decbuf) error {
+	ln := dec.Uvarint()
+	data := dec.Bytes(ln)
+
+	_, err := b.ReadFrom(bytes.NewReader(data))
+	if err != nil {
+		return errors.Wrap(err, "decoding copy of bloom filter")
+	}
+
+	return nil
+}
+
 func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
 
-	_, err := b.sbf.ReadFrom(bytes.NewReader(data))
+	_, err := b.DecodeFrom(data)
 	if err != nil {
 		return errors.Wrap(err, "decoding bloom filter")
 	}

@@ -19,6 +19,7 @@ import (
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
@@ -469,14 +470,14 @@ var tailTests = []struct {
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b, nil)
+		err := WriteQueryResponseJSON(queryTest.actual, stats.Result{}, &b, nil)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
 	}
 	for i, queryTest := range queryTestWithEncodingFlags {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b, queryTest.encodingFlags)
+		err := WriteQueryResponseJSON(queryTest.actual, stats.Result{}, &b, queryTest.encodingFlags)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
@@ -486,7 +487,7 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 func Test_WriteLabelResponseJSON(t *testing.T) {
 	for i, labelTest := range labelTests {
 		var b bytes.Buffer
-		err := WriteLabelResponseJSON(labelTest.actual, &b)
+		err := WriteLabelResponseJSON(labelTest.actual.GetValues(), &b)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, labelTest.expected, b.String(), "Label Test %d failed", i)
@@ -508,7 +509,7 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 		},
 	}
 	var b bytes.Buffer
-	err := WriteQueryResponseJSON(broken, &b, nil)
+	err := WriteQueryResponseJSON(broken.Data, stats.Result{}, &b, nil)
 	require.Error(t, err)
 }
 
@@ -623,7 +624,7 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			var b bytes.Buffer
-			err := WriteSeriesResponseJSON(tc.input, &b)
+			err := WriteSeriesResponseJSON(tc.input.GetSeries(), &b)
 			require.NoError(t, err)
 
 			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
@@ -770,7 +771,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b bytes.Buffer
-			err := WriteQueryResponseJSON(logqlmodel.Result{Data: inputStream}, &b, tc.encodeFlags)
+			err := WriteQueryResponseJSON(inputStream, stats.Result{}, &b, tc.encodeFlags)
 			require.NoError(t, err)
 			require.JSONEq(t, tc.expected, b.String())
 		})
@@ -904,7 +905,7 @@ func Benchmark_Encode(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		for _, queryTest := range queryTests {
-			require.NoError(b, WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, buf, nil))
+			require.NoError(b, WriteQueryResponseJSON(queryTest.actual, stats.Result{}, buf, nil))
 			buf.Reset()
 		}
 	}

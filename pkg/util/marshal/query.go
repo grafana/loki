@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
@@ -75,7 +76,6 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 	ret := make([]loghttp.Stream, len(s))
 
 	for i, stream := range s {
-		// We set the FlagCategorizeLabels to keep the categorized labels
 		ret[i], err = NewStream(stream)
 
 		if err != nil {
@@ -175,14 +175,14 @@ func NewMetric(l labels.Labels) model.Metric {
 	return ret
 }
 
-func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+func EncodeResult(data parser.Value, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
 	s.WriteObjectStart()
 	s.WriteObjectField("status")
 	s.WriteString("success")
 
 	s.WriteMore()
 	s.WriteObjectField("data")
-	err := encodeData(v, s, encodeFlags)
+	err := encodeData(data, statistics, s, encodeFlags)
 	if err != nil {
 		return err
 	}
@@ -207,11 +207,11 @@ func encodeEncodingFlags(s *jsoniter.Stream, flags httpreq.EncodingFlags) error 
 	return nil
 }
 
-func encodeData(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+func encodeData(data parser.Value, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
 	s.WriteObjectStart()
 
 	s.WriteObjectField("resultType")
-	s.WriteString(string(v.Data.Type()))
+	s.WriteString(string(data.Type()))
 
 	if len(encodeFlags) > 0 {
 		s.WriteMore()
@@ -223,14 +223,14 @@ func encodeData(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags httpreq.Enc
 
 	s.WriteMore()
 	s.WriteObjectField("result")
-	err := encodeResult(v.Data, s, encodeFlags)
+	err := encodeResult(data, s, encodeFlags)
 	if err != nil {
 		return err
 	}
 
 	s.WriteMore()
 	s.WriteObjectField("stats")
-	s.WriteVal(v.Statistics)
+	s.WriteVal(statistics)
 
 	s.WriteObjectEnd()
 	s.Flush()

@@ -9,12 +9,14 @@ import (
 
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
@@ -25,20 +27,20 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 		version := loghttp.GetVersion(r.RequestURI)
 		encodeFlags := httpreq.ExtractEncodingFlags(r)
 		if version == loghttp.VersionV1 {
-			return WriteQueryResponseJSON(result, w, encodeFlags)
+			return WriteQueryResponseJSON(result.Data, result.Statistics, w, encodeFlags)
 		}
 
 		return marshal_legacy.WriteQueryResponseJSON(result, w)
 	case *logproto.LabelResponse:
 		version := loghttp.GetVersion(r.RequestURI)
 		if version == loghttp.VersionV1 {
-			return WriteLabelResponseJSON(*result, w)
+			return WriteLabelResponseJSON(result.GetValues(), w)
 		}
 
 		return marshal_legacy.WriteLabelResponseJSON(*result, w)
 	case *logproto.SeriesResponse:
-		return WriteSeriesResponseJSON(*result, w)
-	case *stats.Stats:
+		return WriteSeriesResponseJSON(result.GetSeries(), w)
+	case *indexStats.Stats:
 		return WriteIndexStatsResponseJSON(result, w)
 	case *logproto.VolumeResponse:
 		return WriteVolumeResponseJSON(result, w)
@@ -48,10 +50,10 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
+func WriteQueryResponseJSON(data parser.Value, statistics stats.Result, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
-	err := EncodeResult(v, s, encodeFlags)
+	err := EncodeResult(data, statistics, s, encodeFlags)
 	if err != nil {
 		return fmt.Errorf("could not write JSON response: %w", err)
 	}
@@ -61,10 +63,10 @@ func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer, encodeFlags httpre
 
 // WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON
 // and then writes it to the provided io.Writer.
-func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
+func WriteLabelResponseJSON(data []string, w io.Writer) error {
 	v1Response := loghttp.LabelResponse{
 		Status: "success",
-		Data:   l.GetValues(),
+		Data:   data,
 	}
 
 	s := jsoniter.ConfigFastest.BorrowStream(w)
@@ -95,13 +97,13 @@ func WriteTailResponseJSON(r legacy.TailResponse, c WebsocketWriter, encodeFlags
 
 // WriteSeriesResponseJSON marshals a logproto.SeriesResponse to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteSeriesResponseJSON(r logproto.SeriesResponse, w io.Writer) error {
+func WriteSeriesResponseJSON(series []logproto.SeriesIdentifier, w io.Writer) error {
 	adapter := &seriesResponseAdapter{
 		Status: "success",
-		Data:   make([]map[string]string, 0, len(r.GetSeries())),
+		Data:   make([]map[string]string, 0, len(series)),
 	}
 
-	for _, series := range r.GetSeries() {
+	for _, series := range series {
 		adapter.Data = append(adapter.Data, series.GetLabels())
 	}
 
@@ -121,7 +123,7 @@ type seriesResponseAdapter struct {
 
 // WriteIndexStatsResponseJSON marshals a gatewaypb.Stats to JSON and then
 // writes it to the provided io.Writer.
-func WriteIndexStatsResponseJSON(r *stats.Stats, w io.Writer) error {
+func WriteIndexStatsResponseJSON(r *indexStats.Stats, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
 	s.WriteVal(r)
