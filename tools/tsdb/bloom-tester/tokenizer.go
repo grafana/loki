@@ -19,6 +19,8 @@ type Tokenizer interface {
 	getMax() int
 }
 
+const TokenBufferSize = 4096
+
 /*
 type logfmtTokenizer struct {
 	parser *log.LogfmtParser
@@ -67,8 +69,8 @@ func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
 		t.buffers[i-t.min] = make([]rune, i)
 	}
 	t.runeBuffer = make([]byte, 0, max*4)
-	t.tokenBuffer = make([]Token, 0, 4096)
-	t.internalTokenBuffer = make([]Token, 0, 4096)
+	t.tokenBuffer = make([]Token, 0, TokenBufferSize)
+	t.internalTokenBuffer = make([]Token, 0, TokenBufferSize)
 	for i := 0; i < cap(t.internalTokenBuffer); i++ {
 		tok := Token{}
 		tok.Key = make([]byte, 0, 132)
@@ -214,7 +216,7 @@ func ChunkIDTokenizer(chk logproto.ChunkRef, t Tokenizer) *WrappedTokenizer {
 			tok.Value = string(tok.Key)
 			return tok
 		},
-		tokenBuffer: make([]Token, 0, 1024),
+		tokenBuffer: make([]Token, 0, TokenBufferSize),
 		prefix:      p,
 		i64buf:      i64buf,
 		i32buf:      i32buf,
@@ -225,7 +227,7 @@ func ChunkIDTokenizerHalfInit(t Tokenizer) *WrappedTokenizer {
 	p := make([]byte, 0, 256)
 	return &WrappedTokenizer{
 		t:           t,
-		tokenBuffer: make([]Token, 0, 1024),
+		tokenBuffer: make([]Token, 0, TokenBufferSize),
 		prefix:      p,
 		i64buf:      make([]byte, binary.MaxVarintLen64),
 		i32buf:      make([]byte, 4),
