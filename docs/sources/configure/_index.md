@@ -1791,7 +1791,7 @@ ring:
   # CLI flag: -bloom-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-  # Factor for data replication on the bloom gateways.
+  # Factor for data replication.
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 

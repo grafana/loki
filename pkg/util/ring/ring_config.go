@@ -1,4 +1,4 @@
-package util
+package ring
 
 import (
 	"flag"
@@ -21,7 +21,7 @@ import (
 // many options not really required by the distributors ring. This config
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
-type RingConfig struct {
+type RingConfig struct { // nolint:revive
 	KVStore              kv.Config     `yaml:"kvstore"`
 	HeartbeatPeriod      time.Duration `yaml:"heartbeat_period"`
 	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
@@ -121,4 +121,19 @@ func (cfg *RingConfig) ToRingConfig(replicationFactor int) ring.Config {
 	rc.ReplicationFactor = replicationFactor
 
 	return rc
+}
+
+// RingConfigWithRF is a wrapper for our internally used ring configuration plus the replication factor.
+type RingConfigWithRF struct { // nolint:revive
+	// RingConfig configures the ring.
+	RingConfig `yaml:",inline"`
+
+	// ReplicationFactor defines how many replicas store a single data shard.
+	ReplicationFactor int `yaml:"replication_factor"`
+}
+
+// RegisterFlagsWithPrefix registers all Bloom Gateway CLI flags.
+func (cfg *RingConfigWithRF) RegisterFlagsWithPrefix(prefix, storePrefix string, f *flag.FlagSet) {
+	cfg.RingConfig.RegisterFlagsWithPrefix(prefix, storePrefix, f)
+	f.IntVar(&cfg.ReplicationFactor, prefix+"replication-factor", 3, "Factor for data replication.")
 }
