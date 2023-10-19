@@ -29,7 +29,6 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -83,7 +82,7 @@ type Frontend struct {
 	schedulerWorkers *frontendSchedulerWorkers
 	requests         *requestsInProgress
 
-	codec queryrangebase.Codec
+	codec transport.Codec
 }
 
 var _ queryrangebase.Handler = &Frontend{}
@@ -119,7 +118,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer, codec queryrangebase.Codec) (*Frontend, error) {
+func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer, codec transport.Codec) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), ring, requestsCh, log)
@@ -324,8 +323,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			stats.Merge(resp.Stats) // Safe if stats is nil.
 		}
 
-		// TODO: inject codec
-		return queryrange.DefaultCodec.DecodeHTTPGrpcResponse(resp.HttpResponse, req)
+		return f.codec.DecodeHTTPGrpcResponse(resp.HttpResponse, req)
 	}
 }
 

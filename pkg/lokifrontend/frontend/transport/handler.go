@@ -22,7 +22,6 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -256,14 +255,14 @@ func statsValue(name string, d time.Duration) string {
 	return name + ";dur=" + durationInMs
 }
 
-func AdaptGrpcRoundTripperToHandler(r GrpcRoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
+func AdaptGrpcRoundTripperToHandler(r GrpcRoundTripper, codec Codec) queryrangebase.Handler {
 	return &grpcRoundTripperToHandlerAdapter{roundTripper: r, codec: codec}
 }
 
 // This adapter wraps GrpcRoundTripper and converts it into a queryrangebase.Handler
 type grpcRoundTripperToHandlerAdapter struct {
 	roundTripper GrpcRoundTripper
-	codec        queryrangebase.Codec
+	codec        Codec
 }
 
 func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -285,6 +284,5 @@ func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrang
 		return nil, err
 	}
 
-	// TODO: use a.codec
-	return queryrange.DefaultCodec.DecodeHTTPGrpcResponse(grpcResp, req)
+	return a.codec.DecodeHTTPGrpcResponse(grpcResp, req)
 }
