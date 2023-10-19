@@ -929,7 +929,6 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 				require.Equal(t, `{"streams":[{"stream":{"app":"foo"},"values":[["1","foobar"]]}],"dropped_entries":[{"timestamp":"2","labels":{"app":"dropped"}}]}`, string(b))
 				return nil
 			}),
-			nil,
 		),
 	)
 }

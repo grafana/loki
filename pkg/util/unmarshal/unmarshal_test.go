@@ -231,7 +231,7 @@ func Test_ReadTailResponse(t *testing.T) {
 		DroppedEntries: []legacy_loghttp.DroppedEntry{
 			{Timestamp: time.Unix(0, 1), Labels: `{app="foo"}`},
 		},
-	}, ws, nil))
+	}, ws))
 	res := &loghttp.TailResponse{}
 	require.NoError(t, ReadTailResponseJSON(res, ws))
 

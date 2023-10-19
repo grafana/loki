@@ -83,7 +83,7 @@ type WebsocketWriter interface {
 
 // WriteTailResponseJSON marshals the legacy.TailResponse to v1 loghttp JSON and
 // then writes it to the provided connection.
-func WriteTailResponseJSON(r legacy.TailResponse, c WebsocketWriter, encodeFlags httpreq.EncodingFlags) error {
+func WriteTailResponseJSON(r legacy.TailResponse, c WebsocketWriter) error {
 	v1Response, err := NewTailResponse(r)
 	if err != nil {
 		return err
