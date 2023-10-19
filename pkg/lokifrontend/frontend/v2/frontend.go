@@ -266,31 +266,15 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	}
 	tenantID := tenant.JoinTenantIDs(tenantIDs)
 
-	// TODO: Propagate trace context in gRPC too - this will be ignored if using HTTP.
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	// TODO(karsten): forward query tags and actor paths in protobuf
-	/*
-		header := make(http.Header)
-		queryTags := getQueryTags(ctx)
-		if queryTags != "" {
-			header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
-		}
-
-		actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
-		if actor != "" {
-			header.Set(httpreq.LokiActorPathHeader, actor)
-		}
-	*/
 
 	// For backwards comaptibility we are sending both encodings
 	httpReq, err := f.codec.EncodeRequest(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
 	}
-	// TODO(karsten): use tenant in scheduler
+
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
