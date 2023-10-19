@@ -40,14 +40,19 @@ package bloomgateway
 import (
 	"context"
 	"sort"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -56,10 +61,30 @@ import (
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
 var errInvalidTenant = errors.New("invalid tenant in chunk refs")
 
-type metrics struct{}
+type metrics struct {
+	queueDuration    prometheus.Histogram
+	inflightRequests prometheus.Summary
+}
 
-func newMetrics(r prometheus.Registerer) *metrics {
-	return &metrics{}
+func newMetrics(subsystem string, registerer prometheus.Registerer) *metrics {
+	return &metrics{
+		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "queue_duration_seconds",
+			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
+			Buckets:   prometheus.DefBuckets,
+		}),
+		inflightRequests: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+			Namespace:  "loki",
+			Subsystem:  subsystem,
+			Name:       "inflight_tasks",
+			Help:       "Number of inflight tasks (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight tasks over the last 60s.",
+			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
+			MaxAge:     time.Minute,
+			AgeBuckets: 6,
+		}),
+	}
 }
 
 type Gateway struct {
@@ -69,9 +94,16 @@ type Gateway struct {
 	logger  log.Logger
 	metrics *metrics
 
+	queue      *queue.RequestQueue
 	bloomStore bloomshipper.Store
 
 	sharding ShardingStrategy
+
+	pendingRequestsMu sync.Mutex
+	pendingRequests   map[string]queue.Request
+
+	serviceMngr    *services.Manager
+	serviceWatcher *services.FailureWatcher
 }
 
 // New returns a new instance of the Bloom Gateway.
@@ -79,8 +111,9 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 	g := &Gateway{
 		cfg:      cfg,
 		logger:   logger,
-		metrics:  newMetrics(reg),
+		metrics:  newMetrics("bloom_gateway", reg),
 		sharding: shardingStrategy,
+		queue:    queue.NewRequestQueue(1024, time.Minute, queue.NewMetrics("bloom_gateway", reg)),
 	}
 
 	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
@@ -99,18 +132,64 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 	}
 
 	g.bloomStore = bloomStore
-	g.Service = services.NewIdleService(g.starting, g.stopping)
+
+	svcs := []services.Service{g.queue}
+	g.serviceMngr, err = services.NewManager(svcs...)
+	if err != nil {
+		return nil, err
+	}
+	g.serviceWatcher = services.NewFailureWatcher()
+	g.serviceWatcher.WatchManager(g.serviceMngr)
+
+	g.Service = services.NewBasicService(g.starting, g.running, g.stopping).WithName("bloom-gateway")
 
 	return g, nil
 }
 
 func (g *Gateway) starting(ctx context.Context) error {
+	var err error
+	defer func() {
+		if err == nil || g.serviceMngr == nil {
+			return
+		}
+		if err := services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr); err != nil {
+			level.Error(g.logger).Log("msg", "failed to gracefully stop bloom gateway dependencies", "err", err)
+		}
+	}()
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, g.serviceMngr); err != nil {
+		return errors.Wrap(err, "unable to start bloom gateway subservices")
+	}
+
 	return nil
+}
+
+func (g *Gateway) running(ctx context.Context) error {
+	// We observe inflight tasks frequently and at regular intervals, to have a good
+	// approximation of max inflight tasks over percentiles of time. We also do it with
+	// a ticker so that we keep tracking it even if we have no new requests but stuck inflight
+	// tasks (eg. worker are all exhausted).
+	inflightTasksTicker := time.NewTicker(250 * time.Millisecond)
+	defer inflightTasksTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-g.serviceWatcher.Chan():
+			return errors.Wrap(err, "bloom gateway subservice failed")
+		case <-inflightTasksTicker.C:
+			g.pendingRequestsMu.Lock()
+			inflight := len(g.pendingRequests)
+			g.pendingRequestsMu.Unlock()
+			g.metrics.inflightRequests.Observe(float64(inflight))
+		}
+	}
 }
 
 func (g *Gateway) stopping(_ error) error {
 	g.bloomStore.Stop()
-	return nil
+	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
 // FilterChunkRefs implements BloomGatewayServer
