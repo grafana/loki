@@ -28,6 +28,16 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
+func NewBlockOptions() BlockOptions {
+	return BlockOptions{
+		schema: Schema{
+			version: byte(1),
+		},
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10, // 0.01MB
+	}
+}
+
 func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, error) {
 	index, err := writer.Index()
 	if err != nil {

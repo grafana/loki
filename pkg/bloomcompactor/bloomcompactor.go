@@ -121,13 +121,13 @@ func NoopGetChunks() []byte { return nil }
 // part1: Create a compact method that assumes no block/meta files exists (eg first compaction)
 // part2: Write logic to check first for existing block/meta files and does above.
 func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error) {
-	//part1
+	// part1
 	series := NoopGetSeries()
 	data := NoopGetChunks()
 
-	bloom := v1.Bloom{Sbf: *filter.NewDefaultScalableBloomFilter(0.01)}
+	bloom := v1.Bloom{ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(0.01)}
 	// create bloom filters from that.
-	bloom.Sbf.Add([]byte(fmt.Sprint(data)))
+	bloom.Add([]byte(fmt.Sprint(data)))
 
 	// block and seriesList
 	seriesList := []v1.SeriesWithBloom{
@@ -190,7 +190,7 @@ func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error
 }
 
 func (c *Compactor) runCompact(ctx context.Context) error {
-	//TODO set MaxLookBackPeriod to Max ingester accepts
+	// TODO set MaxLookBackPeriod to Max ingester accepts
 	maxLookBackPeriod := c.cfg.MaxLookBackPeriod
 
 	stFp, endFp := NoopGetFingerprintRange()
@@ -213,7 +213,7 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 	}
 
 	if len(metas) == 0 {
-		//run compaction from scratch
+		// run compaction from scratch
 		tempDst := os.TempDir()
 		err = c.compactNewChunks(ctx, tempDst)
 		if err != nil {
@@ -232,15 +232,15 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 		}
 
 		// TODO complete part 2 - discuss with Owen - add part to compare chunks and blocks.
-		//1. for each period at hand, get TSDB table indexes for given fp range
-		//2. Check blocks for given uniqueIndexPaths and TSDBindexes
+		// 1. for each period at hand, get TSDB table indexes for given fp range
+		// 2. Check blocks for given uniqueIndexPaths and TSDBindexes
 		//	if bloomBlock refs are a superset (covers TSDBIndexes plus more outside of range)
 		//	create a new meta.json file, tombstone unused index/block paths.
 
-		//else if: there are TSDBindexes that are not covered in bloomBlocks (a subset)
-		//then call compactNewChunks on them and create a new meta.json
+		// else if: there are TSDBindexes that are not covered in bloomBlocks (a subset)
+		// then call compactNewChunks on them and create a new meta.json
 
-		//else: all good, no compaction
+		// else: all good, no compaction
 	}
 	return nil
 }
