@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	querier_limits "github.com/grafana/loki/pkg/querier/limits"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/pkg/util"
@@ -92,14 +93,7 @@ type Querier interface {
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 }
 
-type Limits interface {
-	logql.Limits
-	timeRangeLimits
-	QueryTimeout(context.Context, string) time.Duration
-	MaxStreamsMatchersPerQuery(context.Context, string) int
-	MaxConcurrentTailRequests(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) int
-}
+type Limits querier_limits.Limits
 
 // Store is the store interface we need on the querier.
 type Store interface {
@@ -667,12 +661,9 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 	return validateQueryTimeRangeLimits(ctx, userID, q.limits, req.GetStart(), req.GetEnd())
 }
 
-type timeRangeLimits interface {
-	MaxQueryLookback(context.Context, string) time.Duration
-	MaxQueryLength(context.Context, string) time.Duration
-}
+type TimeRangeLimits querier_limits.TimeRangeLimits
 
-func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
+func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
 	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)

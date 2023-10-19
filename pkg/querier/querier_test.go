@@ -1136,7 +1136,7 @@ func Test_validateQueryTimeRangeLimits(t *testing.T) {
 	nowFunc = func() time.Time { return now }
 	tests := []struct {
 		name        string
-		limits      timeRangeLimits
+		limits      TimeRangeLimits
 		from        time.Time
 		through     time.Time
 		wantFrom    time.Time

@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 
-	//"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -26,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -50,27 +50,7 @@ var (
 	ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
 )
 
-// Limits extends the cortex limits interface with support for per tenant splitby parameters
-type Limits interface {
-	queryrangebase.Limits
-	logql.Limits
-	QuerySplitDuration(string) time.Duration
-	MaxQuerySeries(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) int
-	MinShardingLookback(string) time.Duration
-	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
-	// frontend will process in parallel for TSDB queries.
-	TSDBMaxQueryParallelism(context.Context, string) int
-	// TSDBMaxBytesPerShard returns the limit to the number of bytes a single shard
-	TSDBMaxBytesPerShard(string) int
-
-	RequiredLabels(context.Context, string) []string
-	RequiredNumberLabels(context.Context, string) int
-	MaxQueryBytesRead(context.Context, string) int
-	MaxQuerierBytesRead(context.Context, string) int
-	MaxStatsCacheFreshness(context.Context, string) time.Duration
-	VolumeEnabled(string) bool
-}
+type Limits queryrange_limits.Limits
 
 type limits struct {
 	Limits

@@ -35,7 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	//"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/pkg/util/querylimits"
 )
 
 var DefaultCodec = &Codec{}
@@ -526,12 +526,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
-	/*
 	limits := querylimits.ExtractQueryLimitsContext(ctx)
 	if limits != nil {
 		querylimits.InjectQueryLimitsHeader(&header, limits)
 	}
-	*/
 
 	switch request := r.(type) {
 	case *LokiRequest:
