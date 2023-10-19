@@ -795,8 +795,6 @@ func TestLogNoFilter(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
-	// TODO: This one times out
-	t.Skip("FIXME. I time out")
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
 	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {

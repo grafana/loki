@@ -528,7 +528,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 
 	limits := querylimits.ExtractQueryLimitsContext(ctx)
 	if limits != nil {
-		querylimits.InjectQueryLimitsHeader(&header, limits)
+		err := querylimits.InjectQueryLimitsHeader(&header, limits)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	switch request := r.(type) {
