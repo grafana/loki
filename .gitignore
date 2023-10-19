@@ -51,3 +51,6 @@ pkg/loki/wal
 
 # nix
 nix/result
+
+# snyk
+.dccache

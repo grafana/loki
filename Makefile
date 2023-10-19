@@ -839,6 +839,7 @@ trivy: loki-image
 .PHONY: snyk
 snyk: loki-image
 	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	snyk code test
 
 .PHONY: scan-vulnerabilities
 scan-vulnerabilities: trivy snyk
