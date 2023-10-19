@@ -51,7 +51,7 @@ type RequestChannel chan Request
 type RequestQueue struct {
 	services.Service
 
-	connectedQuerierWorkers *atomic.Int32
+	connectedConsumers *atomic.Int32
 
 	mtx     sync.Mutex
 	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
@@ -63,13 +63,13 @@ type RequestQueue struct {
 
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
 	q := &RequestQueue{
-		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
-		connectedQuerierWorkers: atomic.NewInt32(0),
-		metrics:                 metrics,
+		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay),
+		connectedConsumers: atomic.NewInt32(0),
+		metrics:            metrics,
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
-	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedQueriers, q.stopping).WithName("request queue")
+	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedConsumers, q.stopping).WithName("request queue")
 
 	return q
 }
@@ -127,8 +127,8 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 
 // Dequeue find next tenant queue and takes the next request off of it. Will block if there are no requests.
 // By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
-// If querier finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
-func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID string) (Request, QueueIndex, error) {
+// If consumer finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
+func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, consumerID string) (Request, QueueIndex, error) {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -140,7 +140,7 @@ FindQueue:
 		querierWait = false
 		start := time.Now()
 		q.cond.Wait(ctx)
-		q.metrics.querierWaitTime.WithLabelValues(querierID).Observe(time.Since(start).Seconds())
+		q.metrics.querierWaitTime.WithLabelValues(consumerID).Observe(time.Since(start).Seconds())
 	}
 
 	if q.stopped {
@@ -152,7 +152,7 @@ FindQueue:
 	}
 
 	for {
-		queue, tenant, idx := q.queues.getNextQueueForQuerier(last, querierID)
+		queue, tenant, idx := q.queues.getNextQueueForConsumer(last, consumerID)
 		last = idx
 		if queue == nil {
 			break
@@ -181,11 +181,11 @@ FindQueue:
 	goto FindQueue
 }
 
-func (q *RequestQueue) forgetDisconnectedQueriers(_ context.Context) error {
+func (q *RequestQueue) forgetDisconnectedConsumers(_ context.Context) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
-	if q.queues.forgetDisconnectedQueriers(time.Now()) > 0 {
+	if q.queues.forgetDisconnectedConsumers(time.Now()) > 0 {
 		// We need to notify goroutines cause having removed some queriers
 		// may have caused a resharding.
 		q.cond.Broadcast()
@@ -198,7 +198,7 @@ func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
-	for !q.queues.hasNoTenantQueues() && q.connectedQuerierWorkers.Load() > 0 {
+	for !q.queues.hasNoTenantQueues() && q.connectedConsumers.Load() > 0 {
 		q.cond.Wait(context.Background())
 	}
 
@@ -212,19 +212,19 @@ func (q *RequestQueue) stopping(_ error) error {
 }
 
 func (q *RequestQueue) RegisterQuerierConnection(querier string) {
-	q.connectedQuerierWorkers.Inc()
+	q.connectedConsumers.Inc()
 
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
-	q.queues.addQuerierConnection(querier)
+	q.queues.addConsumerToConnection(querier)
 }
 
 func (q *RequestQueue) UnregisterQuerierConnection(querier string) {
-	q.connectedQuerierWorkers.Dec()
+	q.connectedConsumers.Dec()
 
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
-	q.queues.removeQuerierConnection(querier, time.Now())
+	q.queues.removeConsumerConnection(querier, time.Now())
 }
 
 func (q *RequestQueue) NotifyQuerierShutdown(querierID string) {
@@ -234,7 +234,7 @@ func (q *RequestQueue) NotifyQuerierShutdown(querierID string) {
 }
 
 func (q *RequestQueue) GetConnectedQuerierWorkersMetric() float64 {
-	return float64(q.connectedQuerierWorkers.Load())
+	return float64(q.connectedConsumers.Load())
 }
 
 // contextCond is a *sync.Cond with Wait() method overridden to support context-based waiting.
