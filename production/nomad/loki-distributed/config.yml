@@ -104,7 +104,7 @@ storage_config:
 
 compactor:
   working_directory: {{ env "NOMAD_ALLOC_DIR" }}/compactor
-  shared_store: s3
+  delete_requests_store: s3
   compaction_interval: 24h
   retention_enabled: true
 

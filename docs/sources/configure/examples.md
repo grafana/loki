@@ -180,7 +180,6 @@ storage_config:
 
 compactor:
   working_directory: /tmp/loki/compactor
-  shared_store: s3
   compaction_interval: 5m
 
 ```

@@ -2139,19 +2139,6 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.working-directory
 [working_directory: <string> | default = ""]
 
-# The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
-# to operate on all the object stores that contain either boltdb-shipper or tsdb
-# index.
-# CLI flag: -compactor.shared-store
-[shared_store: <string> | default = ""]
-
-# Prefix to add to object keys in shared store. Path separator(if any) should
-# always be a '/'. Prefix should never start with a separator but should always
-# end with it.
-# CLI flag: -compactor.shared-store.key-prefix
-[shared_store_key_prefix: <string> | default = "index/"]
-
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
@@ -2179,9 +2166,13 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. Defaults to -compactor.shared-store.
+# Store used for managing delete requests.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
+
+# Path prefix for storing delete requests.
+# CLI flag: -compactor.delete-request-store.key-prefix
+[delete_request_store_key_prefix: <string> | default = "index/"]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -compactor.delete-batch-size

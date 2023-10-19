@@ -88,6 +88,19 @@ period_config:
 - If you have configured `-boltdb.shipper.shared-store.key-prefix` or its YAML setting to a value other than `index/`, ensure that all the existing period configs that use `boltdb-shipper` as the index have `path_prefix` set to the value previously configured.
 - If you have configured `-tsdb.shipper.shared-store.key-prefix` or its YAML setting to a value other than `index/`, ensure that all the existing period configs that use `tsdb` as the index have the `path_prefix` set to the value previously configured.
 
+#### Removed `shared_store` and `shared_store_key_prefix` from compactor configuration
+
+The following CLI flags and the corresponding YAML settings to configure the shared store and path prefix for compactor are now removed:
+- `-boltdb.shipper.compactor.shared-store`
+- `-boltdb.shipper.compactor.shared-store.key-prefix`
+
+Going forward compactor will run compaction and retention on all the object stores configured in [period configs](/docs/loki/latest/configure/#period_config) where the index type is either tsdb or boltdb-shipper.
+
+#### `delete_request_store` should be explicitly configured
+
+`-compactor.delete-request-store` or its YAML setting should be explicitly configured when retention is enabled, this is required for storing delete requests.
+The path prefix under which the delete requests are stored is decided by `-compactor.delete-request-store.key-prefix`, it defaults to "index/".
+
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
 The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.

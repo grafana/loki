@@ -9,7 +9,7 @@ weight: 700
 Grafana Loki supports the deletion of log entries from a specified stream.
 Log entries that fall within a specified time window and match an optional line filter are those that will be deleted.
 
-Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB or BoltDB shipper is configured as the index store.
 
 The compactor component exposes REST [endpoints]({{< relref "../../reference/api#compactor" >}}) that process delete requests.
 Hitting the endpoint specifies the streams and the time window.
@@ -20,6 +20,7 @@ Log entry deletion relies on configuration of the custom logs retention workflow
 ## Configuration
 
 Enable log entry deletion by setting `retention_enabled` to true in the compactor's configuration and setting and `deletion_mode` to `filter-only` or `filter-and-delete` in the runtime config.
+`delete_request_store` also needs to be configured when retention is enabled to process delete requests, this decides the storage bucket that stores the delete requests.
 
 > **Warning:** Be very careful when enabling retention. It is strongly recommended that you also enable versioning on your objects in object storage to allow you to recover from accidental misconfiguration of a retention setting. If you want to enable deletion but not not want to enforce retention, configure the `retention_period` setting with a value of `0s`.
 

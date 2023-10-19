@@ -12,7 +12,7 @@ compactor:
     compaction_interval: 1m
     retention_delete_worker_count: 500
     retention_enabled: true
-    shared_store: s3
+    delete_request_store: s3
     working_directory: /data/compactor
 distributor:
     ring:

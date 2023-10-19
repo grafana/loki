@@ -286,7 +286,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -309,7 +308,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -332,7 +330,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
-		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -400,7 +397,6 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
-	cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost

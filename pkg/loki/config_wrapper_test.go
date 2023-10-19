@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -720,60 +719,6 @@ storage_config:
 			// from common config
 			assert.EqualValues(t, 27, config.StorageConfig.GCSConfig.ChunkBufferSize)
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
-		})
-
-		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
-			configString := `common:
-  storage:
-    s3:
-      s3: s3://foo-bucket/example
-      access_key_id: abc123
-      secret_access_key: def789
-compactor:
-  shared_store: gcs`
-			config, _ := testContext(configString, nil)
-
-			assert.Equal(t, "gcs", config.CompactorConfig.SharedStoreType)
-		})
-	})
-
-	t.Run("compactor shared storage type", func(t *testing.T) {
-		t.Run("shared store types provided via config file", func(t *testing.T) {
-			const schemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: tsdb
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-
-compactor:
-  shared_store: s3`
-			cfg, _ := testContext(schemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
-		})
-
-		t.Run("shared store types provided via command line take precedence", func(t *testing.T) {
-			const schemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: tsdb
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-
-compactor:
-  shared_store: gcs`
-			cfg, _ := testContext(schemaConfig, []string{"-compactor.shared-store", "s3"})
-
-			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
 		})
 	})
 

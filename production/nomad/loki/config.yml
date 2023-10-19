@@ -56,8 +56,8 @@ limits_config:
 
 compactor:
   working_directory: {{ env "NOMAD_ALLOC_DIR" }}/compactor
-  shared_store: s3
   compaction_interval: 5m
+  delete_requests_store: s3
   retention_enabled: true
 
 ruler:

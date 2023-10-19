@@ -428,9 +428,9 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, ce ChunkEntry, tableIn
 	return wroteChunks, linesDeleted, nil
 }
 
-// CopyMarkers checks for markers in common markers dir and copies them to store specific markers dir.
-func CopyMarkers(workingDir string, store string) error {
-	markersDir := filepath.Join(workingDir, MarkersFolder)
+// CopyMarkers checks for markers in the src dir and copies them to the dst.
+func CopyMarkers(src string, dst string) error {
+	markersDir := filepath.Join(src, MarkersFolder)
 	info, err := os.Stat(markersDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -450,12 +450,12 @@ func CopyMarkers(workingDir string, store string) error {
 		return fmt.Errorf("read markers dir: %w", err)
 	}
 
-	targetDir := filepath.Join(workingDir, store, MarkersFolder)
+	targetDir := filepath.Join(dst, MarkersFolder)
 	if err := chunk_util.EnsureDirectory(targetDir); err != nil {
 		return fmt.Errorf("ensure target markers dir: %w", err)
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir, moving them to store specific dir: %s", targetDir))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific dir: %s", markersDir, targetDir))
 	for _, marker := range markers {
 		if marker.IsDir() {
 			continue

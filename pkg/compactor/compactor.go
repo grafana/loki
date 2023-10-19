@@ -71,26 +71,24 @@ var (
 )
 
 type Config struct {
-	WorkingDirectory          string          `yaml:"working_directory"`
-	SharedStoreType           string          `yaml:"shared_store"`
-	SharedStoreKeyPrefix      string          `yaml:"shared_store_key_prefix"`
-	CompactionInterval        time.Duration   `yaml:"compaction_interval"`
-	ApplyRetentionInterval    time.Duration   `yaml:"apply_retention_interval"`
-	RetentionEnabled          bool            `yaml:"retention_enabled"`
-	RetentionDeleteDelay      time.Duration   `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount  int             `yaml:"retention_delete_worker_count"`
-	RetentionTableTimeout     time.Duration   `yaml:"retention_table_timeout"`
-	DeleteRequestStore        string          `yaml:"delete_request_store"`
-	DefaultDeleteRequestStore string          `yaml:"-" doc:"hidden"`
-	DeleteBatchSize           int             `yaml:"delete_batch_size"`
-	DeleteRequestCancelPeriod time.Duration   `yaml:"delete_request_cancel_period"`
-	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
-	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
-	UploadParallelism         int             `yaml:"upload_parallelism"`
-	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
-	RunOnce                   bool            `yaml:"_" doc:"hidden"`
-	TablesToCompact           int             `yaml:"tables_to_compact"`
-	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
+	WorkingDirectory            string          `yaml:"working_directory"`
+	CompactionInterval          time.Duration   `yaml:"compaction_interval"`
+	ApplyRetentionInterval      time.Duration   `yaml:"apply_retention_interval"`
+	RetentionEnabled            bool            `yaml:"retention_enabled"`
+	RetentionDeleteDelay        time.Duration   `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount    int             `yaml:"retention_delete_worker_count"`
+	RetentionTableTimeout       time.Duration   `yaml:"retention_table_timeout"`
+	DeleteRequestStore          string          `yaml:"delete_request_store"`
+	DeleteRequestStoreKeyPrefix string          `yaml:"delete_request_store_key_prefix"`
+	DeleteBatchSize             int             `yaml:"delete_batch_size"`
+	DeleteRequestCancelPeriod   time.Duration   `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval           time.Duration   `yaml:"delete_max_interval"`
+	MaxCompactionParallelism    int             `yaml:"max_compaction_parallelism"`
+	UploadParallelism           int             `yaml:"upload_parallelism"`
+	CompactorRing               util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
+	RunOnce                     bool            `yaml:"_" doc:"hidden"`
+	TablesToCompact             int             `yaml:"tables_to_compact"`
+	SkipLatestNTables           int             `yaml:"skip_latest_n_tables"`
 
 	// Deprecated
 	DeletionMode string `yaml:"deletion_mode" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
@@ -104,14 +102,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	}
 
 	f.StringVar(&cfg.WorkingDirectory, prefix+"compactor.working-directory", "", deprecated+"Directory where files can be downloaded for compaction.")
-	f.StringVar(&cfg.SharedStoreType, prefix+"compactor.shared-store", "", deprecated+"The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos, cos. If not set, compactor will be initialized to operate on all the object stores that contain either boltdb-shipper or tsdb index.")
-	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+"compactor.shared-store.key-prefix", "index/", deprecated+"Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, prefix+"compactor.compaction-interval", 10*time.Minute, deprecated+"Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, prefix+"compactor.apply-retention-interval", 0, deprecated+"Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, prefix+"compactor.retention-delete-delay", 2*time.Hour, deprecated+"Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, prefix+"compactor.retention-enabled", false, deprecated+"(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, prefix+"compactor.retention-delete-worker-count", 150, deprecated+"The total amount of worker to use to delete chunks.")
-	f.StringVar(&cfg.DeleteRequestStore, prefix+"compactor.delete-request-store", "", deprecated+"Store used for managing delete requests. Defaults to -compactor.shared-store.")
+	f.StringVar(&cfg.DeleteRequestStore, prefix+"compactor.delete-request-store", "", deprecated+"Store used for managing delete requests.")
 	f.IntVar(&cfg.DeleteBatchSize, prefix+"compactor.delete-batch-size", 70, deprecated+"The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, prefix+"compactor.delete-request-cancel-period", 24*time.Hour, deprecated+"Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.DurationVar(&cfg.DeleteMaxInterval, prefix+"compactor.delete-max-interval", 0, deprecated+"Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
@@ -128,6 +124,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
+	f.StringVar(&cfg.DeleteRequestStoreKeyPrefix, "compactor.delete-request-store.key-prefix", "index/", "Path prefix for storing delete requests.")
 
 	// Deprecated. CLI flags with boltdb.shipper. prefix will be removed in the next major version.
 	cfg.RegisterFlagsWithPrefix("boltdb.shipper.", f)
@@ -142,10 +139,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.RetentionEnabled && cfg.ApplyRetentionInterval != 0 && cfg.ApplyRetentionInterval%cfg.CompactionInterval != 0 {
 		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
-	}
-
-	if err := config.ValidatePathPrefix(cfg.SharedStoreKeyPrefix); err != nil {
-		return fmt.Errorf("invalid compactor.shared-store.key-prefix: %w", err)
 	}
 
 	if cfg.DeletionMode != "" {
@@ -182,8 +175,8 @@ type Compactor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	// one for each object store
-	storeContainers map[string]storeContainer
+	// one for each period
+	storeContainers map[config.DayTime]storeContainer
 }
 
 type storeContainer struct {
@@ -198,7 +191,7 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
-func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.ObjectClient, deleteStoreClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -253,61 +246,61 @@ func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient,
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(objectStoreClients, schemaConfig, limits, r); err != nil {
-		return nil, err
+	if err := compactor.init(objectStoreClients, deleteStoreClient, schemaConfig, limits, r); err != nil {
+		return nil, fmt.Errorf("init compactor: %w", err)
 	}
 
 	compactor.Service = services.NewBasicService(compactor.starting, compactor.loop, compactor.stopping)
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
+func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClient, deleteStoreClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
 	}
 
 	if c.cfg.RetentionEnabled {
-		deleteRequestsStore := func() string {
-			switch {
-			case c.cfg.DeleteRequestStore != "":
-				return c.cfg.DeleteRequestStore
-			case c.cfg.SharedStoreType != "":
-				// If -boltdb.shipper.compactor.delete-request-store is not set, delete requests should be stored in either shared_store or it's legacy defaults.
-				// This ensures that any pending delete requests are processed.
-				return c.cfg.SharedStoreType
-			default:
-				return c.cfg.DefaultDeleteRequestStore
-			}
-		}()
-
-		objectClient, ok := objectStoreClients[deleteRequestsStore]
-		if !ok {
-			return fmt.Errorf("failed to init delete store. Object client not found for %s", deleteRequestsStore)
+		if deleteStoreClient == nil {
+			return fmt.Errorf("delete store client not initialised when retention is enabled")
 		}
 
-		if err := c.initDeletes(objectClient, r, limits); err != nil {
+		if err := c.initDeletes(deleteStoreClient, r, limits); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
 		}
 	}
 
-	c.storeContainers = make(map[string]storeContainer, len(objectStoreClients))
-	for objectStoreType, objectClient := range objectStoreClients {
+	legacyMarkerDirs := make(map[string]struct{})
+	c.storeContainers = make(map[config.DayTime]storeContainer, len(objectStoreClients))
+	for from, objectClient := range objectStoreClients {
+		period, err := schemaConfig.SchemaForTime(from.Time)
+		if err != nil {
+			return err
+		}
+
 		var sc storeContainer
-		sc.indexStorageClient = storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
+		sc.indexStorageClient = storage.NewIndexStorageClient(objectClient, period.IndexTables.PathPrefix)
 
 		if c.cfg.RetentionEnabled {
-			// given that compaction can now run on multiple object stores, marker files are stored under /retention/{objectStoreType}/markers/
-			// if any markers are found in the common markers dir (/retention/markers/), copy them to the store specific dirs
-			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), objectStoreType); err != nil {
-				return fmt.Errorf("failed to move markers to store specific dir: %w", err)
-			}
-
 			var (
 				encoder          client.KeyEncoder
-				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", objectStoreType)
-				r                = prometheus.WrapRegistererWith(prometheus.Labels{"object_store": objectStoreType}, r)
+				name             = fmt.Sprintf("%s_%s", period.ObjectType, period.From.String())
+				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", name)
+				r                = prometheus.WrapRegistererWith(prometheus.Labels{"from": name}, r)
 			)
+
+			// given that compaction can now run on multiple periods, marker files are stored under /retention/{objectStoreType}_{periodFrom}/markers/
+			// if any markers are found in the common markers dir (/retention/markers/) or store specific markers dir (/retention/{objectStoreType}/markers/), copy them to the period specific dirs
+			// chunk would be removed by the sweeper if it belongs to a given period or no-op if it doesn't exist.
+			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), retentionWorkDir); err != nil {
+				return fmt.Errorf("failed to move common markers to period specific dir: %w", err)
+			}
+
+			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", period.ObjectType), retentionWorkDir); err != nil {
+				return fmt.Errorf("failed to move store markers to period specific dir: %w", err)
+			}
+			// remove markers from the store dir after copying them to period specific dirs.
+			legacyMarkerDirs[period.ObjectType] = struct{}{}
 
 			if _, ok := objectClient.(*local.FSObjectClient); ok {
 				encoder = client.FSEncoder
@@ -325,11 +318,17 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 			}
 		}
 
-		c.storeContainers[objectStoreType] = sc
+		c.storeContainers[from] = sc
 	}
 
 	if c.cfg.RetentionEnabled {
 		// remove legacy markers
+		for store := range legacyMarkerDirs {
+			if err := os.RemoveAll(filepath.Join(c.cfg.WorkingDirectory, "retention", store, retention.MarkersFolder)); err != nil {
+				return fmt.Errorf("remove old markers from store dir: %w", err)
+			}
+		}
+
 		if err := os.RemoveAll(filepath.Join(c.cfg.WorkingDirectory, "retention", retention.MarkersFolder)); err != nil {
 			return fmt.Errorf("remove old markers: %w", err)
 		}
@@ -341,7 +340,7 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 
 func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.Registerer, limits Limits) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
-	store, err := deletion.NewDeleteStore(deletionWorkDir, storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix))
+	store, err := deletion.NewDeleteStore(deletionWorkDir, storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix))
 	if err != nil {
 		return err
 	}
@@ -578,9 +577,9 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
 	}
 
-	sc, ok := c.storeContainers[schemaCfg.ObjectType]
+	sc, ok := c.storeContainers[schemaCfg.From]
 	if !ok {
-		return fmt.Errorf("index store client not found for %s", schemaCfg.ObjectType)
+		return fmt.Errorf("index store client not found for period starting at %s", &schemaCfg.From)
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
@@ -639,7 +638,13 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 		}
 	}()
 
-	var tables []string
+	var (
+		tables []string
+		// it possible for two periods to use the same storage bucket and path prefix (different indexType or schema version)
+		// so more than one index storage client may end up listing the same set of buckets
+		// avoid including the same table twice in the compact tables list.
+		seen = make(map[string]struct{})
+	)
 	for _, sc := range c.storeContainers {
 		// refresh index list cache since previous compaction would have changed the index files in the object store
 		sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
@@ -649,7 +654,14 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 			return fmt.Errorf("failed to list tables: %w", err)
 		}
 
-		tables = append(tables, tbls...)
+		for _, table := range tbls {
+			if _, ok := seen[table]; ok {
+				continue
+			}
+
+			tables = append(tables, table)
+			seen[table] = struct{}{}
+		}
 	}
 
 	// process most recent tables first

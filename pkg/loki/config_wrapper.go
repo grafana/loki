@@ -525,10 +525,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -543,10 +539,6 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 }
 
 func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 

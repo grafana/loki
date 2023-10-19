@@ -60,11 +60,11 @@ This Compactor configuration example activates retention.
 ```yaml
 compactor:
   working_directory: /data/retention
-  shared_store: gcs
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+  delete_requests_store: gcs
 schema_config:
     configs:
       - from: "2020-07-31"
@@ -87,6 +87,8 @@ Retention is only available if the index period is 24h. Single store TSDB and si
 {{% /admonition %}}
 
 `retention_enabled` should be set to true. Without this, the Compactor will only compact tables.
+
+`delete_request_store` should be set to configure the store for delete requests. This is required when retention is enabled.
 
 `working_directory` is the directory where marked chunks and temporary tables will be saved.
 
@@ -254,6 +256,6 @@ limits_config:
 
 compactor:
   working_directory: /data/retention
-  shared_store: gcs
+  delete_requests_store: gcs
   retention_enabled: true
 ```
