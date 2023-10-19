@@ -110,7 +110,7 @@ func (lt *Table) Snapshot() error {
 		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("checking db %s for snapshot", name))
 		srcWriteCount := 0
 		err := db.View(func(tx *bbolt.Tx) error {
-			srcWriteCount = db.Stats().TxStats.Write
+			srcWriteCount = int(db.Stats().TxStats.Write)
 			return nil
 		})
 		if err != nil {
