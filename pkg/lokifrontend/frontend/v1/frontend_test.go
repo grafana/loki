@@ -33,7 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
-	"github.com/grafana/loki/pkg/scheduler/queue"
+	"github.com/grafana/loki/pkg/queue"
 )
 
 const (
