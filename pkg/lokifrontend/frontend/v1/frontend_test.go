@@ -28,6 +28,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/querier/queryrange"
@@ -44,7 +45,7 @@ const (
 
 func TestFrontend(t *testing.T) {
 	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 	test := func(addr string, _ *Frontend) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
@@ -81,7 +82,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
 		observedTraceID <- traceID
 
-		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 
 	test := func(addr string, _ *Frontend) {
@@ -186,7 +187,7 @@ func TestFrontendCancel(t *testing.T) {
 
 func TestFrontendMetricsCleanup(t *testing.T) {
 	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}}, nil
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 
 	for _, matchMaxConcurrency := range []bool{false, true} {
@@ -260,12 +261,12 @@ func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, t
 	handlerCfg := transport.HandlerConfig{}
 	flagext.DefaultValues(&handlerCfg)
 
-	rt := transport.AdaptGrpcRoundTripperToHTTPRoundTripper(v1)
+	rt := queryrange.NewSerializeHTTPHandler(transport.AdaptGrpcRoundTripperToHandler(v1, queryrange.DefaultCodec), queryrange.DefaultCodec)
 	r := mux.NewRouter()
 	r.PathPrefix("/").Handler(middleware.Merge(
 		middleware.AuthenticateUser,
 		middleware.Tracer{},
-	).Wrap(transport.NewHandler(handlerCfg, rt, logger, nil)))
+	).Wrap(rt))
 
 	httpServer := http.Server{
 		Handler: r,

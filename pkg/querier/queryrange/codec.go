@@ -353,7 +353,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 // labelNamesRoutes is used to extract the name for querying label values.
 var labelNamesRoutes = regexp.MustCompile(`/loki/api/v1/label/(?P<name>[^/]+)/values`)
 
-// DecodeHTTPGrpcRequest decodes an httpgrp.HTTPrequest to queryrangebase.Request.
+// DecodeHTTPGrpcRequest decodes an httpgrp.HTTPRequest to queryrangebase.Request.
 func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest) (queryrangebase.Request, context.Context, error) {
 	httpReq, err := http.NewRequest(r.Method, r.Url, io.NopCloser(bytes.NewBuffer(r.Body)))
 	if err != nil {
@@ -484,6 +484,15 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	default:
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.Url))
 	}
+}
+
+// DecodeHTTPGrpcResponse decodes an httpgrp.HTTPResponse to queryrangebase.Response.
+func (Codec) DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase.Request) (queryrangebase.Response, error) {
+	headers := make(http.Header)
+	for _, header := range r.Headers {
+		headers[header.Key] = header.Values
+	}
+	return decodeResponseJSONFrom(r.Body, req, headers)
 }
 
 func (Codec) EncodeHTTPGrpcResponse(ctx context.Context, req *httpgrpc.HTTPRequest, res queryrangebase.Response) (*httpgrpc.HTTPResponse, error) {
@@ -698,7 +707,6 @@ func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangeb
 }
 
 func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
-
 	var buf []byte
 	var err error
 	if buffer, ok := r.Body.(Buffer); ok {
@@ -709,6 +717,11 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 	}
+
+	return decodeResponseJSONFrom(buf, req, r.Header)
+}
+
+func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http.Header) (queryrangebase.Response, error) {
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
@@ -729,7 +742,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path)),
 			Data:    data,
-			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
+			Headers: httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	case *LabelRequest:
 		var resp loghttp.LabelResponse
@@ -740,7 +753,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path())),
 			Data:    resp.Data,
-			Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
+			Headers: httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	case *logproto.IndexStatsRequest:
 		var resp logproto.IndexStatsResponse
@@ -749,7 +762,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 		}
 		return &IndexStatsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	case *logproto.VolumeRequest:
 		var resp logproto.VolumeResponse
@@ -758,7 +771,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 		}
 		return &VolumeResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	default:
 		var resp loghttp.QueryResponse
@@ -774,7 +787,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 						ResultType: loghttp.ResultTypeMatrix,
 						Result:     toProtoMatrix(resp.Data.Result.(loghttp.Matrix)),
 					},
-					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
+					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
@@ -804,7 +817,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 					ResultType: loghttp.ResultTypeStream,
 					Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
 				},
-				Headers: httpResponseHeadersToPromResponseHeaders(r.Header),
+				Headers: httpResponseHeadersToPromResponseHeaders(headers),
 			}, nil
 		case loghttp.ResultTypeVector:
 			return &LokiPromResponse{
@@ -814,7 +827,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 						ResultType: loghttp.ResultTypeVector,
 						Result:     toProtoVector(resp.Data.Result.(loghttp.Vector)),
 					},
-					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
+					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil
@@ -826,7 +839,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 						ResultType: loghttp.ResultTypeScalar,
 						Result:     toProtoScalar(resp.Data.Result.(loghttp.Scalar)),
 					},
-					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(r.Header)),
+					Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 				},
 				Statistics: resp.Data.Statistics,
 			}, nil

@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -284,12 +285,6 @@ func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrang
 		return nil, err
 	}
 
-	httpResp := HttpgrpcToHTTPResponse(grpcResp)
-
-	resp, err := a.codec.DecodeResponse(ctx, httpResp, req)
-	if err != nil {
-		return nil, fmt.Errorf("cannot convert HTTP response to response: %w", err)
-	}
-
-	return resp, nil
+	// TODO: use a.codec
+	return queryrange.DefaultCodec.DecodeHTTPGrpcResponse(grpcResp, req)
 }
