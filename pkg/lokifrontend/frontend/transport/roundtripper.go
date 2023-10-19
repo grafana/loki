@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/grafana/dskit/httpgrpc"
+
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
