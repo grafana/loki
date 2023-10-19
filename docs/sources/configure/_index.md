@@ -2751,10 +2751,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
-# Number of days of index to be kept always downloaded for queries. Applies only
-# to per user index in boltdb-shipper index store. 0 to disable.
+# Number of days of index to be kept always downloaded for queries. 0 to
+# disable.
 # CLI flag: -store.query-ready-index-num-days
-[query_ready_index_num_days: <int> | default = 0]
+[query_ready_index_num_days: <int> | default = 10]
 
 # Timeout when querying backends (ingesters or storage) during the execution of
 # a query request. When a specific per-tenant timeout is used, the global
