@@ -785,7 +785,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		return
 	}
 	t.stopper = stopper
-	t.QueryFrontEndTripperware = tripperware
+	t.QueryFrontEndMiddleware = tripperware
 
 	return services.NewIdleService(nil, nil), nil
 }
@@ -877,7 +877,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
 	}
 
-	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndTripperware.Wrap(frontendTripper), queryrange.DefaultCodec)
+	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec)
 
 	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	if t.Cfg.Frontend.CompressResponses {

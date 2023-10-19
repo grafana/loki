@@ -311,7 +311,7 @@ type Loki struct {
 	runtimeConfig             *runtimeconfig.Manager
 	MemberlistKV              *memberlist.KVInitService
 	compactor                 *compactor.Compactor
-	QueryFrontEndTripperware  queryrangebase.Middleware
+	QueryFrontEndMiddleware   queryrangebase.Middleware
 	queryScheduler            *scheduler.Scheduler
 	querySchedulerRingManager *scheduler.RingManager
 	usageReport               *analytics.Reporter
