@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	"math"
@@ -62,30 +61,32 @@ func executeRead() {
 
 	flag.Parse()
 
-	objectClient, err := storage.NewObjectClient(conf.StorageConfig.TSDBShipperConfig.SharedStoreType, conf.StorageConfig, clientMetrics)
+	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
+	helpers.ExitErr("find period config for bucket", err)
+
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
-
-	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
 
 	openFn := func(p string) (shipperindex.Index, error) {
 		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
+		periodCfg.IndexTables.PathPrefix,
 		conf.StorageConfig.TSDBShipperConfig.Config,
 		objectClient,
 		overrides,
 		nil,
 		openFn,
-		tableRanges[len(tableRanges)-1],
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,
 	)
 	helpers.ExitErr("creating index shipper", err)
 
-	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
+	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
 	level.Info(util_log.Logger).Log("tenants", strings.Join(tenants, ","), "table", tableName)
 	helpers.ExitErr("resolving tenants", err)
 
