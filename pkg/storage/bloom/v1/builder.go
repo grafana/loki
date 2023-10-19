@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"sort"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
@@ -52,19 +54,10 @@ type SeriesWithBloom struct {
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) error {
 	for itr.Next() {
-		series := itr.At()
-
-		offset, err := b.blooms.Append(series)
-		if err != nil {
-			return errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
+		if err := b.AddSeries(itr.At()); err != nil {
+			return err
 		}
 
-		if err := b.index.Append(SeriesWithOffset{
-			Offset: offset,
-			Series: *series.Series,
-		}); err != nil {
-			return errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
-		}
 	}
 
 	if err := itr.Err(); err != nil {
@@ -77,6 +70,22 @@ func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) error {
 	if err := b.index.Close(); err != nil {
 		return errors.Wrap(err, "closing series file")
 	}
+	return nil
+}
+
+func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
+	offset, err := b.blooms.Append(series)
+	if err != nil {
+		return errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
+	}
+
+	if err := b.index.Append(SeriesWithOffset{
+		Offset: offset,
+		Series: *series.Series,
+	}); err != nil {
+		return errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
+	}
+
 	return nil
 }
 
@@ -418,4 +427,135 @@ func (b *IndexBuilder) Close() error {
 		return errors.Wrap(err, "writing series page headers")
 	}
 	return errors.Wrap(b.writer.Close(), "closing series writer")
+}
+
+// SortBlocksIntoOverlappingGroups sorts a list of blocks into a sorted list of lists,
+// where each list contains blocks that overlap with each other.
+// TODO(owen-d): implement as an iterator so we don't have to load all blocks at once
+// NB: unused now, but likely useful when we want to optimize compaction. I wrote this expecting to need it now
+// but it feels unsavory to remove it
+func SortBlocksIntoOverlappingGroups(xs []*Block) (groups [][]*Block) {
+	sort.Slice(xs, func(i, j int) bool {
+		a, b := xs[i].index, xs[j].index
+		return a.pageHeaders[0].FromFp <= b.pageHeaders[0].FromFp
+	})
+
+	var curGroup []*Block
+	for _, x := range xs {
+		switch {
+		case len(curGroup) == 0:
+			curGroup = append(curGroup, x)
+		case curGroup[len(curGroup)-1].dataRange.OverlapFingerprintRange(x.dataRange):
+			curGroup = append(curGroup, x)
+		default:
+			groups = append(groups, curGroup)
+			curGroup = []*Block{x}
+		}
+	}
+
+	if len(curGroup) > 0 {
+		groups = append(groups, curGroup)
+	}
+	return groups
+}
+
+// Simplistic implementation of a merge builder that builds a single block
+// from a list of blocks and a store of series.
+type MergeBuilder struct {
+	// existing blocks
+	blocks []*Block
+	// store
+	store Iterator[*Series]
+	// Add chunks to a bloom
+	populate func(*Series, *Bloom) error
+}
+
+func NewMergeBuilder(blocks []*Block, store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
+	return &MergeBuilder{
+		blocks:   blocks,
+		store:    store,
+		populate: populate,
+	}
+}
+
+// NB: this will build one block. Ideally we would build multiple blocks once a target size threshold is met
+// but this gives us a good starting point.
+func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
+	var (
+		xs           = make([]PeekingIterator[*SeriesWithBloom], 0, len(mb.blocks))
+		nextInBlocks *SeriesWithBloom
+	)
+
+	for _, block := range mb.blocks {
+		xs = append(xs, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(block)))
+	}
+
+	// Turn the list of blocks into a single iterator that returns the next series
+	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewMergeBlockQuerier(xs...))
+	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
+	// preferring the one with the most chunks already indexed since we'll have
+	// to add fewer chunks to the bloom
+	deduped := NewDedupingIter[*SeriesWithBloom](
+		func(a, b *SeriesWithBloom) bool {
+			return a.Series.Fingerprint == b.Series.Fingerprint
+		},
+		func(a, b *SeriesWithBloom) *SeriesWithBloom {
+			if len(a.Series.Chunks) > len(b.Series.Chunks) {
+				return a
+			}
+			return b
+		},
+		mergedBlocks,
+	)
+
+	for mb.store.Next() {
+		nextInStore := mb.store.At()
+
+		// advance the merged blocks iterator until we find a series that is
+		// greater than or equal to the next series in the store.
+		// TODO(owen-d): expensive, but Seek is not implemented for this itr.
+		// It's also more efficient to build an iterator over the Series file in the index
+		// without the blooms until we find a bloom we actually need to unpack from the blooms file.
+		for nextInBlocks == nil || nextInBlocks.Series.Fingerprint < mb.store.At().Fingerprint {
+			if !deduped.Next() {
+				// we've exhausted all the blocks
+				nextInBlocks = nil
+				break
+			}
+			nextInBlocks = deduped.At()
+		}
+
+		cur := nextInBlocks
+		chunksToAdd := nextInStore.Chunks
+		// The next series from the store doesn't exist in the blocks, so we add it
+		// in its entirety
+		if nextInBlocks == nil || nextInBlocks.Series.Fingerprint > nextInStore.Fingerprint {
+			cur = &SeriesWithBloom{
+				Series: nextInStore,
+				Bloom: &Bloom{
+					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+				},
+			}
+		} else {
+			// if the series already exists in the block, we only need to add the new chunks
+			chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
+		}
+
+		if len(chunksToAdd) > 0 {
+			if err := mb.populate(
+				&Series{
+					Fingerprint: nextInStore.Fingerprint,
+					Chunks:      chunksToAdd,
+				},
+				cur.Bloom,
+			); err != nil {
+				return errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+			}
+		}
+
+		if err := builder.AddSeries(*cur); err != nil {
+			return errors.Wrap(err, "adding series to block")
+		}
+	}
+	return nil
 }
