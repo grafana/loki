@@ -2754,7 +2754,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Number of days of index to be kept always downloaded for queries. 0 to
 # disable.
 # CLI flag: -store.query-ready-index-num-days
-[query_ready_index_num_days: <int> | default = 10]
+[query_ready_index_num_days: <int> | default = 7]
 
 # Timeout when querying backends (ingesters or storage) during the execution of
 # a query request. When a specific per-tenant timeout is used, the global

@@ -47,9 +47,9 @@ The previous default value `false` is applied.
 
 #### Deprecated configuration options are removed
 
-1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
+1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting.
 1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-1. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
+1. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type.
 1. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
 1. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
 1. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
@@ -97,6 +97,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `querier.tsdb-max-query-parallelism`                   | 128         | 512         | - |
 | `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
 | `validation.max-label-names-per-series`                | 15          | 30          | - |
+| `-store.query-ready-index-num-days    `                | 7           | 0           | - | Now by default, we make sure 7 days of indexes are pre-fetched both during startup and every `shipper.resync-interval`
 {{% /responsive-table %}}
 
 #### Write dedupe cache is deprecated
