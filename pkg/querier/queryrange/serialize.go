@@ -3,11 +3,11 @@ package queryrange
 import (
 	"net/http"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
