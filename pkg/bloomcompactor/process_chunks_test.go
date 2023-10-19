@@ -28,25 +28,75 @@ var (
 	testTargetSize = 1500 * 1024
 )
 
+type TokenizerFunc func(e logproto.Entry) [][]byte
+
+var SpaceTokenizer TokenizerFunc = func(e logproto.Entry) [][]byte {
+	// todo verify []byte(e.Line) doesn't do an allocation.
+	return bytes.Split([]byte(e.Line), []byte(` `))
+}
+
+func createSeriesWithBloom(lbs []labels.Labels) ([]v1.SeriesWithBloom, []model.Fingerprint) {
+	var fps []model.Fingerprint
+	var bloomsForChunks []v1.SeriesWithBloom
+
+	for i, lb := range lbs {
+		fps = append(fps, model.Fingerprint(lb.Hash()))
+		bloomsForChunks = append(bloomsForChunks, v1.SeriesWithBloom{
+			Series: &v1.Series{
+				Fingerprint: fps[i],
+			},
+			Bloom: &v1.Bloom{
+				*filter.NewDefaultScalableBloomFilter(0.01),
+			},
+		})
+	}
+	return bloomsForChunks, fps
+}
+
+func fillBloom(b v1.SeriesWithBloom, c chunk.Chunk, tokenizer TokenizerFunc) error {
+	itr, err := c.Data.(*chunkenc.Facade).LokiChunk().Iterator(
+		context.Background(),
+		time.Unix(0, 0),
+		time.Unix(0, math.MaxInt64),
+		logproto.FORWARD,
+		log.NewNoopPipeline().ForStream(c.Metric),
+	)
+	if err != nil {
+		return err
+	}
+	// todo log error of close
+	defer itr.Close()
+	for itr.Next() {
+		for _, t := range tokenizer(itr.Entry()) {
+			b.Bloom.Add(t)
+		}
+	}
+	if err := itr.Error(); err != nil {
+		return err
+	}
+	b.Series.Chunks = append(b.Series.Chunks, v1.ChunkRef{
+		Start:    c.From,
+		End:      c.Through,
+		Checksum: c.Checksum,
+	})
+	return nil
+}
+
 // Test that chunk data can be stored at a bloom filter and then queried back
 // Test1: Create one series with one chunk
 // Test2: Create one series with N chunks
 // Test3: Create M series with one chunk per series
 // Test4: Create M Series with N chunks per series
 func Test_BuildAndQueryBloomsCase1(t *testing.T) {
-	lbs := labels.FromStrings("foo", "bar")
-	fp := model.Fingerprint(lbs.Hash())
-	// todo initialize a bloom for a series.
-	bloomForChunks := v1.SeriesWithBloom{
-		Series: &v1.Series{
-			Fingerprint: fp,
-		},
-		Bloom: &v1.Bloom{
-			*filter.NewDefaultScalableBloomFilter(0.01),
-		},
-	}
-	// 1. create real chunks
-	// 2. create SeriesWithBloom
+	var lbsList []labels.Labels
+	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
+
+	bloomsForChunks, fps := createSeriesWithBloom(lbsList)
+
+	bloomForChunks := bloomsForChunks[0]
+	fp := fps[0]
+	lbs := lbsList[0]
+
 	var (
 		chunks []chunk.Chunk = make([]chunk.Chunk, 1)
 		refs   []v1.ChunkRef = make([]v1.ChunkRef, 1)
@@ -80,7 +130,7 @@ func Test_BuildAndQueryBloomsCase1(t *testing.T) {
 	err = builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChunks}))
 	require.NoError(t, err)
 
-	// readn and verify the data.
+	// read and verify the data.
 	querier := v1.NewBlockQuerier(v1.NewBlock(v1.NewDirectoryBlockReader(blockDir)))
 
 	matches, err := querier.CheckChunksForSeries(fp, refs, [][]byte{[]byte("foo")})
@@ -92,23 +142,15 @@ func Test_BuildAndQueryBloomsCase1(t *testing.T) {
 	require.Equal(t, 0, len(matches))
 }
 
-//func createSeriesWithBloom(lbs labels.Labels) (v1.SeriesWithBloom, model.Fingerprint) {
-//
-//}
-
 func Test_BuildAndQueryBloomsCase2(t *testing.T) {
-	lbs := labels.FromStrings("foo", "bar")
-	fp := model.Fingerprint(lbs.Hash())
+	var lbsList []labels.Labels
+	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
-	//createSeriesWithBloom(lbs)
-	bloomForChunks := v1.SeriesWithBloom{
-		Series: &v1.Series{
-			Fingerprint: fp,
-		},
-		Bloom: &v1.Bloom{
-			*filter.NewDefaultScalableBloomFilter(0.01),
-		},
-	}
+	bloomsForChunks, fps := createSeriesWithBloom(lbsList)
+
+	bloomForChunks := bloomsForChunks[0]
+	fp := fps[0]
+	lbs := lbsList[0]
 
 	var (
 		chunks    []chunk.Chunk        = make([]chunk.Chunk, 3)
@@ -180,25 +222,14 @@ func Test_BuildAndQueryBloomsCase2(t *testing.T) {
 }
 
 func Test_BuildAndQueryBloomsCase3(t *testing.T) {
-	lbsList := [3]labels.Labels{
+	var lbsList []labels.Labels
+
+	lbsList = append(lbsList,
 		labels.FromStrings("app1", "value1"),
 		labels.FromStrings("app2", "value2"),
-		labels.FromStrings("app3", "value3")}
+		labels.FromStrings("app3", "value3"))
 
-	var fps [3]model.Fingerprint
-	var bloomsForChunks []v1.SeriesWithBloom
-
-	for i, lb := range lbsList {
-		fps[i] = model.Fingerprint(lb.Hash())
-		bloomsForChunks = append(bloomsForChunks, v1.SeriesWithBloom{
-			Series: &v1.Series{
-				Fingerprint: fps[i],
-			},
-			Bloom: &v1.Bloom{
-				*filter.NewDefaultScalableBloomFilter(0.01),
-			},
-		})
-	}
+	bloomsForChunks, fps := createSeriesWithBloom(lbsList)
 
 	var (
 		chunks    []chunk.Chunk        = make([]chunk.Chunk, 3)
@@ -265,40 +296,4 @@ func Test_BuildAndQueryBloomsCase3(t *testing.T) {
 	matches, err = querier.CheckChunksForSeries(fps[1], refs, [][]byte{[]byte("second")})
 	require.NoError(t, err)
 	require.Equal(t, 3, len(matches))
-}
-
-type TokenizerFunc func(e logproto.Entry) [][]byte
-
-var SpaceTokenizer TokenizerFunc = func(e logproto.Entry) [][]byte {
-	// todo verify []byte(e.Line) doesn't do an allocation.
-	return bytes.Split([]byte(e.Line), []byte(` `))
-}
-
-func fillBloom(b v1.SeriesWithBloom, c chunk.Chunk, tokenizer TokenizerFunc) error {
-	itr, err := c.Data.(*chunkenc.Facade).LokiChunk().Iterator(
-		context.Background(),
-		time.Unix(0, 0),
-		time.Unix(0, math.MaxInt64),
-		logproto.FORWARD,
-		log.NewNoopPipeline().ForStream(c.Metric),
-	)
-	if err != nil {
-		return err
-	}
-	// todo log error of close
-	defer itr.Close()
-	for itr.Next() {
-		for _, t := range tokenizer(itr.Entry()) {
-			b.Bloom.Add(t)
-		}
-	}
-	if err := itr.Error(); err != nil {
-		return err
-	}
-	b.Series.Chunks = append(b.Series.Chunks, v1.ChunkRef{
-		Start:    c.From,
-		End:      c.Through,
-		Checksum: c.Checksum,
-	})
-	return nil
 }
