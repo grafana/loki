@@ -123,7 +123,7 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gogo/googleapis v1.4.0
-	github.com/grafana/loki/pkg/push v0.0.0-20231017172654-cfc4f0e84adc
+	github.com/grafana/loki/pkg/push v0.0.0-20231019084834-47f8d8bd5b4b
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/prometheus/alertmanager v0.26.0

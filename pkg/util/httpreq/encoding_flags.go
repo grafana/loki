@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"github.com/grafana/dskit/httpgrpc"
 )
 
 type EncodingFlag string
@@ -31,12 +33,41 @@ func (ef *EncodingFlags) Has(flag EncodingFlag) bool {
 	return ok
 }
 
+func (ef *EncodingFlags) String() string {
+	var sb strings.Builder
+	var i int
+	for flag := range *ef {
+		if i > 0 {
+			sb.WriteString(EncodeFlagsDelimiter)
+		}
+		sb.WriteString(string(flag))
+		i++
+	}
+	return sb.String()
+}
+
 const (
 	LokiEncodingFlagsHeader              = "X-Loki-Response-Encoding-Flags"
 	FlagCategorizeLabels    EncodingFlag = "categorize-labels"
 
 	EncodeFlagsDelimiter = ","
 )
+
+func AddEncodingFlags(req *http.Request, flags EncodingFlags) {
+	if len(flags) == 0 {
+		return
+	}
+
+	req.Header.Set(LokiEncodingFlagsHeader, flags.String())
+}
+
+func AddEncodingFlagsToContext(ctx context.Context, flags EncodingFlags) context.Context {
+	if len(flags) == 0 {
+		return ctx
+	}
+
+	return context.WithValue(ctx, headerContextKey(LokiEncodingFlagsHeader), flags.String())
+}
 
 func ExtractEncodingFlags(req *http.Request) EncodingFlags {
 	rawValue := req.Header.Get(LokiEncodingFlagsHeader)
@@ -45,6 +76,22 @@ func ExtractEncodingFlags(req *http.Request) EncodingFlags {
 	}
 
 	return parseEncodingFlags(rawValue)
+}
+
+func ExtractEncodingFlagsFromProto(req *httpgrpc.HTTPRequest) EncodingFlags {
+	var rawValue string
+	for _, header := range req.GetHeaders() {
+		if header.GetKey() == LokiEncodingFlagsHeader {
+			rawValue = header.GetValues()[0]
+			if rawValue == "" {
+				return nil
+			}
+
+			return parseEncodingFlags(rawValue)
+		}
+	}
+
+	return nil
 }
 
 func ExtractEncodingFlagsFromCtx(ctx context.Context) EncodingFlags {

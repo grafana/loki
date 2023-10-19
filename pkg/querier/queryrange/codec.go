@@ -376,6 +376,14 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		}
 	}
 
+	// If there is not encoding flags in the context, we try the HTTP request.
+	if encFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx); encFlags == nil {
+		encFlags = httpreq.ExtractEncodingFlagsFromProto(r)
+		if encFlags != nil {
+			ctx = httpreq.AddEncodingFlagsToContext(ctx, encFlags)
+		}
+	}
+
 	if err := httpReq.ParseForm(); err != nil {
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -489,7 +497,9 @@ func (Codec) EncodeHTTPGrpcResponse(ctx context.Context, req *httpgrpc.HTTPReque
 	version := loghttp.GetVersion(req.Url)
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(version, res, &buf)
+	encodingFlags := httpreq.ExtractEncodingFlagsFromProto(req)
+
+	err := encodeResponseJSONTo(version, res, &buf, encodingFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -903,7 +913,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	defer sp.Finish()
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(version, res, &buf)
+	err := encodeResponseJSONTo(version, res, &buf, encodeFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -920,7 +930,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	return &resp, nil
 }
 
-func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, w io.Writer) error {
+func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	switch response := res.(type) {
 	case *LokiPromResponse:
 		return response.encodeTo(w)

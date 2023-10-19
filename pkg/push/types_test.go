@@ -14,20 +14,20 @@ var (
 		Labels: `{job="foobar", cluster="foo-central1", namespace="bar", container_name="buzz"}`,
 		Hash:   1234*10 ^ 9,
 		Entries: []Entry{
-			{now, line, nil},
-			{now.Add(1 * time.Second), line, LabelsAdapter{{Name: "traceID", Value: "1234"}}},
-			{now.Add(2 * time.Second), line, nil},
-			{now.Add(3 * time.Second), line, LabelsAdapter{{Name: "user", Value: "abc"}}},
+			{now, line, nil, nil},
+			{now.Add(1 * time.Second), line, LabelsAdapter{{Name: "traceID", Value: "1234"}}, nil},
+			{now.Add(2 * time.Second), line, nil, nil},
+			{now.Add(3 * time.Second), line, LabelsAdapter{{Name: "user", Value: "abc"}}, LabelsAdapter{{Name: "msg", Value: "text"}}},
 		},
 	}
 	streamAdapter = StreamAdapter{
 		Labels: `{job="foobar", cluster="foo-central1", namespace="bar", container_name="buzz"}`,
 		Hash:   1234*10 ^ 9,
 		Entries: []EntryAdapter{
-			{now, line, nil},
-			{now.Add(1 * time.Second), line, []LabelPairAdapter{{Name: "traceID", Value: "1234"}}},
-			{now.Add(2 * time.Second), line, nil},
-			{now.Add(3 * time.Second), line, []LabelPairAdapter{{Name: "user", Value: "abc"}}},
+			{now, line, nil, nil},
+			{now.Add(1 * time.Second), line, []LabelPairAdapter{{Name: "traceID", Value: "1234"}}, nil},
+			{now.Add(2 * time.Second), line, nil, nil},
+			{now.Add(3 * time.Second), line, []LabelPairAdapter{{Name: "user", Value: "abc"}}, []LabelPairAdapter{{Name: "msg", Value: "text"}}},
 		},
 	}
 )

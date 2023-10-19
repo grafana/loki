@@ -3,6 +3,7 @@ package queryrange
 import (
 	"net/http"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -70,7 +71,8 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	}
 
 	version := loghttp.GetVersion(r.RequestURI)
-	if err := encodeResponseJSONTo(version, response, w); err != nil {
+	encodingFlags := httpreq.ExtractEncodingFlags(r)
+	if err := encodeResponseJSONTo(version, response, w, encodingFlags); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }

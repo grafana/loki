@@ -1396,7 +1396,7 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// is LegacyMode needed?
-	//legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
+	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 
 	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, 1, util_log.Logger, prometheus.DefaultRegisterer)
 
