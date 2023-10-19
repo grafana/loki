@@ -108,11 +108,17 @@ func createMemchunks() []*chunkenc.MemChunk {
 	return memChunks
 }
 
-// Test that chunk data can be stored at a bloom filter and then queried back
-// Test1: Create one series with one chunk
-// Test2: Create one series with N chunks
-// Test3: Create M series with one chunk per series
-// Test4: Create M Series with N chunks per series
+/*
+Test that chunk data can be stored at a bloom filter and then queried back
+Case1: Create one series with one chunk
+Case2: Create one series with N chunks**
+Case3: Create M series with one chunk per series
+
+**Suspected bug in bloom_querier:
+In Case2 test1 CheckChunksForSeries returns all chunks in a series if a single chunk matches search, whereas it should be only matched chunks
+Whereas Case3 tests shows that it behaves as expected with unmatched data.
+*/
+
 func Test_BuildAndQueryBloomsCase1(t *testing.T) {
 	var lbsList []labels.Labels
 	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
@@ -208,7 +214,7 @@ func Test_BuildAndQueryBloomsCase2(t *testing.T) {
 	querier := v1.NewBlockQuerier(v1.NewBlock(v1.NewDirectoryBlockReader(blockDir)))
 
 	// This test demonstrates the problem
-	// In a single series if a single chunk matches the search, all chunks from the series are returned by the bloom_querier.
+	// In a single series if a single chunk matches the search, all chunks from the series are returned by the CheckChunksForSeries.
 	// Whereas it should return only the matching chunks.
 	matches, err := querier.CheckChunksForSeries(fp, refs, [][]byte{[]byte("second")})
 	require.NoError(t, err)
@@ -270,11 +276,12 @@ func Test_BuildAndQueryBloomsCase3(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, len(matches))
 
+	//present in all
 	matches, err = querier.CheckChunksForSeries(fps[0], refs, [][]byte{[]byte("line")})
 	require.NoError(t, err)
 	require.Equal(t, 3, len(matches))
 
-	// found match + result may be in the other 2 series
+	// returns matched chunk + other chunks as results may be in the other unmatched 2 series
 	matches, err = querier.CheckChunksForSeries(fps[1], refs, [][]byte{[]byte("second")})
 	require.NoError(t, err)
 	require.Equal(t, 3, len(matches))
