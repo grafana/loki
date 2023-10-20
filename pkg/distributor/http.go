@@ -19,7 +19,7 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseHTTPRequest)
+	d.pushHandler(w, r, push.ParseLokiRequest)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {

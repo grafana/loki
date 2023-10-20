@@ -55,18 +55,6 @@ func init() {
 	}
 }
 
-type Stats struct {
-	errs                     []error
-	numLines                 int64
-	logLinesBytes            map[time.Duration]int64
-	structuredMetadataBytes  map[time.Duration]int64
-	streamLabelsSize         int64
-	mostRecentEntryTimestamp time.Time
-	contentType              string
-	contentEncoding          string
-	bodySize                 int64
-}
-
 func newPushStats() *Stats {
 	return &Stats{
 		logLinesBytes:           map[time.Duration]int64{},
@@ -226,6 +214,15 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 				log := logs.At(k)
 
 				entry := otlpLogToPushEntry(log)
+
+				// if entry.StructuredMetadata doesn't have capacity to add resource and scope attributes, make a new slice with enough capacity
+				attributesAsStructuredMetadataLen := len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
+				if cap(entry.StructuredMetadata) < len(entry.StructuredMetadata)+attributesAsStructuredMetadataLen {
+					structuredMetadata := make(push.LabelsAdapter, 0, len(entry.StructuredMetadata)+len(scopeAttributesAsStructuredMetadata)+len(resourceAttributesAsStructuredMetadata))
+					structuredMetadata = append(structuredMetadata, entry.StructuredMetadata...)
+					entry.StructuredMetadata = structuredMetadata
+				}
+
 				entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
 				entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
 				stream := pushRequestsByStream[labelsStr]

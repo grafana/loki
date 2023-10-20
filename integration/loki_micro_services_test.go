@@ -402,8 +402,8 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 				require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-36*time.Hour), map[string]string{"traceID": "456"}, map[string]string{"job": "fake"}))
 
 				// ingest logs to the current period
-				require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineC", now, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineD", now, map[string]string{"job": "fake"}))
 
 			})
 
@@ -797,6 +797,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
+		numLinesReceived := 0
 		for i, stream := range resp.Data.Stream {
 			switch i {
 			case 0:
@@ -806,6 +807,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 				require.Equal(t, map[string]string{
 					"service_name": "varlog",
 				}, stream.Stream)
+				numLinesReceived += 2
 			case 1:
 				require.Len(t, stream.Values, 1)
 				require.Equal(t, "lineA", stream.Values[0][1])
@@ -814,6 +816,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 					"trace_id":     "1",
 					"user_id":      "2",
 				}, stream.Stream)
+				numLinesReceived += 1
 			case 2:
 				require.Len(t, stream.Values, 1)
 				require.Equal(t, "lineC", stream.Values[0][1])
@@ -821,10 +824,12 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 					"service_name": "varlog",
 					"order_ids":    "[5,6]",
 				}, stream.Stream)
+				numLinesReceived += 1
 			default:
 				t.Errorf("unexpected case %d", i)
 			}
 		}
+		require.Equal(t, 4, numLinesReceived)
 	})
 }
 

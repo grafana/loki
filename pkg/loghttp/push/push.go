@@ -59,6 +59,18 @@ type TenantsRetention interface {
 
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention) (*logproto.PushRequest, *Stats, error)
 
+type Stats struct {
+	errs                     []error
+	numLines                 int64
+	logLinesBytes            map[time.Duration]int64
+	structuredMetadataBytes  map[time.Duration]int64
+	streamLabelsSize         int64
+	mostRecentEntryTimestamp time.Time
+	contentType              string
+	contentEncoding          string
+	bodySize                 int64
+}
+
 func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, pushRequestParser RequestParser) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention)
 	if err != nil {
@@ -118,7 +130,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, nil
 }
 
-func ParseHTTPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body

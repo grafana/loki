@@ -163,10 +163,10 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadat
 
 	buf, err := io.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("reading request failed with status code %v: %w", res.StatusCode, err)
+		return fmt.Errorf("reading response failed with status code %v: %v", res.StatusCode, err)
 	}
 
-	return fmt.Errorf("request failed with status code %v: %w", res.StatusCode, errors.New(string(buf)))
+	return fmt.Errorf("request failed with status code %v: %s", res.StatusCode, buf)
 }
 
 // pushLogLine creates a new logline
@@ -211,10 +211,10 @@ func (c *Client) pushOTLPLogLine(line string, timestamp time.Time, logAttributes
 
 	buf, err := io.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("reading request failed with status code %v: %w", res.StatusCode, err)
+		return fmt.Errorf("reading response failed with status code %v: %v", res.StatusCode, err)
 	}
 
-	return fmt.Errorf("request failed with status code %v: %w", res.StatusCode, errors.New(string(buf)))
+	return fmt.Errorf("request failed with status code %v: %s", res.StatusCode, buf)
 }
 
 func (c *Client) Get(path string) (*http.Response, error) {
