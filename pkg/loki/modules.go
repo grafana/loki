@@ -507,7 +507,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
 		prometheus.DefaultRegisterer,
-		handler,
+		serverutil.RecoveryMiddleware.Wrap(handler),
 		t.Codec,
 	)
 	if err != nil {
