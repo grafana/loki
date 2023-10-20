@@ -19,7 +19,11 @@ ruler:
     client: "Use clients instead."
 
 compactor:
-  deletion_mode: "Use deletion_mode per tenant configuration instead."
+  deletion_mode: "Use global or per-tenant deletion_mode configuration from limits_config."
+
+index_gateway:
+  ring:
+    replication_factor: "Use global or per-tenant index_gateway_shard_size configuration from limits_config."
 
 schema_config:
   configs:
@@ -40,7 +44,7 @@ storage_config:
 
 chunk_store_config:
   write_dedupe_cache_config: "Write dedupe cache is deprecated along with deprecated index types. Consider using TSDB index which does not require a write dedupe cache."
-  max_look_back_period: "Use global or per-tenant max_query_lookback instead."
+  max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
 
 ## NOTE: This will also be used to validate per-tenant overrides.
 limits_config:
@@ -62,9 +66,3 @@ limits_config:
   per_tenant_override_config: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.file"
   per_tenant_override_period: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.period"
   allow_deletes: "Use deletion_mode per tenant configuration instead."
-
-# TODO:
-# - ruler.storage: Use -ruler-storage.
-#      I cannot find where ruler-storage is defined.
-# - index_gateway.replication_factor: Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.
-#      I'm not sure which shard-size is being referred to here.

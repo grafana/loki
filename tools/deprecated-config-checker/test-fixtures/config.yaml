@@ -34,6 +34,11 @@ frontend_worker:
   parallelism: 1 # DELETED
   match_max_concurrent: false # DELETED
 
+index_gateway:
+  ring:
+    replication_factor: 2 # DEPRECATED
+    instance_interface_names: ["eth0", "eth1"]
+
 compactor:
   working_directory: /tmp/loki/boltdb-shipper-active
   deletion_mode: "delete" # DEPRECATED

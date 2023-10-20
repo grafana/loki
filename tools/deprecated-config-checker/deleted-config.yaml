@@ -7,7 +7,7 @@ ingester:
 
 querier:
   engine:
-    timeout: "Configure global or per-tenant query_timeout limit."
+    timeout: "Use global or per-tenant query_timeout configuration from limits_config."
 
 query_range:
   split_queries_by_interval: "Configure global or per-tenant split_queries_by_interval limit"

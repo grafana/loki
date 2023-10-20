@@ -31,6 +31,7 @@ var (
 	expectedConfigDeprecates = []string{
 		"ruler.remote_write.client",
 		"compactor.deletion_mode",
+		"index_gateway.ring.replication_factor",
 		"storage_config.bigtable",
 		"storage_config.cassandra",
 		"storage_config.boltdb",

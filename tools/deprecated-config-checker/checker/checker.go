@@ -155,17 +155,23 @@ func getDeprecationAnnotation(value interface{}) (deprecationAnnotation, bool) {
 
 type DeprecationNotes struct {
 	deprecationAnnotation
-	ItemPath  string
-	ItemValue string
+	ItemPath   string
+	ItemValues []string
 }
 
 func (d DeprecationNotes) String() string {
 	var sb strings.Builder
 
 	sb.WriteString(d.ItemPath)
-	if d.ItemValue != "" {
+	if len(d.ItemValues) > 0 {
 		sb.WriteString(" = ")
-		sb.WriteString(d.ItemValue)
+		if len(d.ItemValues) == 1 {
+			sb.WriteString(d.ItemValues[0])
+		} else {
+			sb.WriteString("[")
+			sb.WriteString(strings.Join(d.ItemValues, ", "))
+			sb.WriteString("]")
+		}
 	}
 	sb.WriteString(": " + d.Msg)
 	if len(d.DeprecatedValues) > 0 {
@@ -240,31 +246,43 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, depre
 
 		note, isDeprecatedNote := getDeprecationAnnotation(deprecate)
 		if isDeprecatedNote {
-			var inputDeprecated bool
+			var inputValueStrSlice []string
+			switch v := inputValue.(type) {
+			case []interface{}:
+				for _, val := range v {
+					inputValueStrSlice = append(inputValueStrSlice, val.(string))
+				}
+			case string:
+				inputValueStrSlice = []string{v}
+			case int, int32, int64, uint, uint32, uint64, float32, float64:
+				inputValueStrSlice = []string{fmt.Sprintf("%d", v)}
+			case bool:
+				inputValueStrSlice = []string{fmt.Sprintf("%t", v)}
+			}
 
 			// If there are no specific values deprecated, the whole config is deprecated.
 			// Otherwise, look for the config value in the list of deprecated values.
+			var inputDeprecated bool
 			if len(note.DeprecatedValues) == 0 {
 				inputDeprecated = true
 			} else {
+				// If the config is a list, check each item.
+			FindDeprecatedValues:
 				for _, v := range note.DeprecatedValues {
-					if v == inputValue {
-						inputDeprecated = true
-						break
+					for _, itemValueStr := range inputValueStrSlice {
+						if v == itemValueStr {
+							inputDeprecated = true
+							break FindDeprecatedValues
+						}
 					}
 				}
 			}
 
 			if inputDeprecated {
-				var itemValueStr string
-				if v, is := inputValue.(string); is {
-					itemValueStr = v
-				}
-
 				deprecations = append(deprecations, DeprecationNotes{
 					deprecationAnnotation: note,
 					ItemPath:              path,
-					ItemValue:             itemValueStr,
+					ItemValues:            inputValueStrSlice,
 				})
 				continue
 			}
