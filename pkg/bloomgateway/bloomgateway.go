@@ -141,7 +141,7 @@ type pendingTasks SyncMap[ulid.ULID, Task]
 
 func (t *pendingTasks) Len() int {
 	t.RLock()
-	defer t.Unlock()
+	defer t.RUnlock()
 	return len(t.Map)
 }
 
