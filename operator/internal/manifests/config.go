@@ -169,9 +169,7 @@ func ConfigOptions(opt Options) config.Options {
 		},
 		StorageDirectory: dataDirectory,
 		MaxConcurrent: config.MaxConcurrent{
-			// Here we multiply by 2 since with TSDB index dispatches many more,
-			// but each individually smaller, requests VS boltdb_shipper.
-			AvailableQuerierCPUCores: int32(opt.ResourceRequirements.Querier.Requests.Cpu().Value()) * 2,
+			AvailableQuerierCPUCores: int32(opt.ResourceRequirements.Querier.Requests.Cpu().Value()),
 		},
 		WriteAheadLog: config.WriteAheadLog{
 			Directory:             walDirectory,
