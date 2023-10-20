@@ -231,10 +231,6 @@
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
 
-        // disables transfers when running as statefulsets.
-        // pod rolling stragety will always fail transfers
-        // and the WAL supersedes this.
-        max_transfer_retries: 0,
         wal+: {
           enabled: true,
           dir: '/loki/wal',
