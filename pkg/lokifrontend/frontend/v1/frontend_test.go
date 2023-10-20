@@ -136,7 +136,7 @@ func TestFrontendCheckReady(t *testing.T) {
 				requestQueue: queue.NewRequestQueue(5, 0, qm),
 			}
 			for i := 0; i < tt.connectedClients; i++ {
-				f.requestQueue.RegisterQuerierConnection("test")
+				f.requestQueue.RegisterConsumerConnection("test")
 			}
 			err := f.CheckReady(context.Background())
 			errMsg := ""

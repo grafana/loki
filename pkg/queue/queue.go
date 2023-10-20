@@ -211,7 +211,7 @@ func (q *RequestQueue) stopping(_ error) error {
 	return nil
 }
 
-func (q *RequestQueue) RegisterQuerierConnection(querier string) {
+func (q *RequestQueue) RegisterConsumerConnection(querier string) {
 	q.connectedConsumers.Inc()
 
 	q.mtx.Lock()
@@ -219,7 +219,7 @@ func (q *RequestQueue) RegisterQuerierConnection(querier string) {
 	q.queues.addConsumerToConnection(querier)
 }
 
-func (q *RequestQueue) UnregisterQuerierConnection(querier string) {
+func (q *RequestQueue) UnregisterConsumerConnection(querier string) {
 	q.connectedConsumers.Dec()
 
 	q.mtx.Lock()
@@ -227,13 +227,13 @@ func (q *RequestQueue) UnregisterQuerierConnection(querier string) {
 	q.queues.removeConsumerConnection(querier, time.Now())
 }
 
-func (q *RequestQueue) NotifyQuerierShutdown(querierID string) {
+func (q *RequestQueue) NotifyConsumerShutdown(querierID string) {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 	q.queues.notifyQuerierShutdown(querierID)
 }
 
-func (q *RequestQueue) GetConnectedQuerierWorkersMetric() float64 {
+func (q *RequestQueue) GetConnectedConsumersMetric() float64 {
 	return float64(q.connectedConsumers.Load())
 }
 

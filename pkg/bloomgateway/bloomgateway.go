@@ -283,8 +283,8 @@ func (g *Gateway) stopping(_ error) error {
 func (g *Gateway) startWorker(_ context.Context, id string) error {
 	level.Info(g.logger).Log("msg", "starting worker", "worker", id)
 
-	g.queue.RegisterQuerierConnection(id)
-	defer g.queue.UnregisterQuerierConnection(id)
+	g.queue.RegisterConsumerConnection(id)
+	defer g.queue.UnregisterConsumerConnection(id)
 
 	idx := queue.StartIndexWithLocalQueue
 

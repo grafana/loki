@@ -90,7 +90,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 		// Wait for workers to connect to queue
 		time.Sleep(50 * time.Millisecond)
-		require.Equal(t, float64(numWorkers), gw.queue.GetConnectedQuerierWorkersMetric())
+		require.Equal(t, float64(numWorkers), gw.queue.GetConnectedConsumersMetric())
 
 		err = services.StopAndAwaitTerminated(context.Background(), gw)
 		require.NoError(t, err)

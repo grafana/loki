@@ -76,8 +76,8 @@ func BenchmarkQueryFairness(t *testing.B) {
 				go func(id string) {
 					defer wg.Done()
 
-					requestQueue.RegisterQuerierConnection(id)
-					defer requestQueue.UnregisterQuerierConnection(id)
+					requestQueue.RegisterConsumerConnection(id)
+					defer requestQueue.UnregisterConsumerConnection(id)
 					idx := StartIndex
 					for ctx.Err() == nil {
 						r, newIdx, err := requestQueue.Dequeue(ctx, idx, id)
@@ -151,8 +151,8 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	requestQueue.RegisterQuerierConnection("querier")
-	defer requestQueue.UnregisterQuerierConnection("querier")
+	requestQueue.RegisterConsumerConnection("querier")
+	defer requestQueue.UnregisterConsumerConnection("querier")
 
 	idx := StartIndexWithLocalQueue
 	for ctx.Err() == nil {
