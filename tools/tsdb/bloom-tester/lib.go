@@ -308,7 +308,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								return
 							}
 
-							cache := NewLRUCache5(150000)
+							//cache := NewLRUCache5(150000)
+							cache := make(map[string]interface{}, 150000)
 
 							transformed := make([]chunk.Chunk, 0, len(chks))
 							for _, chk := range chks {
@@ -333,7 +334,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								for _, c := range got {
 									chunkTotalUncompressedSize += c.Data.(*chunkenc.Facade).LokiChunk().UncompressedSize()
 								}
-								metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
+								//metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 								n += len(got)
 
 								// iterate experiments
@@ -353,18 +354,21 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										cache.Clear()
+										clearCache(cache)
+										//cache.Clear()
 
 										// Iterate chunks
 										var (
 											lines, inserts, collisions float64
 										)
+										chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
 										for cidx := range got {
-											chunkTokenizer := ChunkIDTokenizer(got[cidx].ChunkRef, experiment.tokenizer)
 
 											var tokenizer Tokenizer = chunkTokenizer
 											if !experiment.encodeChunkID {
 												tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
+											} else {
+												chunkTokenizer.reinit(got[cidx].ChunkRef)
 											}
 											lc := got[cidx].Data.(*chunkenc.Facade).LokiChunk()
 
@@ -394,19 +398,31 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 												for _, tok := range toks {
 													if tok.Key != nil {
-														if !cache.Get(tok.Value) {
-															cache.Put(tok.Value)
-															/*
-																found := sbf.Test(tok.Key)
-																if !found {
-																	sbf.Add(tok.Key)
-																}*/
+
+														_, found := cache[tok.Value]
+														if !found {
+															cache[tok.Value] = nil
 
 															if dup := sbf.TestAndAdd(tok.Key); dup {
 																collisions++
 															}
 															inserts++
+
+															if len(cache) > 150000 {
+																clearCache(cache)
+															}
 														}
+
+														/*
+															if !cache.Get(tok.Value) {
+																cache.Put(tok.Value)
+
+																if dup := sbf.TestAndAdd(tok.Key); dup {
+																	collisions++
+																}
+																inserts++
+															}*/
+
 													}
 												}
 											}
@@ -435,6 +451,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 											metrics.sbfCreationTime.WithLabelValues(experiment.name).Add(float64(endTime - startTime))
 											metrics.sbfsCreated.WithLabelValues(experiment.name).Inc()
+											metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 
 											if err != nil {
 												helpers.ExitErr("writing sbf to file", err)
@@ -513,6 +530,12 @@ func FNV32a(text string) string {
 	hashAlgorithm.Reset()
 	hashAlgorithm.Write([]byte(text))
 	return strconv.Itoa(int(hashAlgorithm.Sum32()))
+}
+
+func clearCache(cache map[string]interface{}) {
+	for k := range cache {
+		delete(cache, k)
+	}
 }
 
 func sbfFileExists(location, prefix, period, tenant, series string, objectClient client.ObjectClient) bool {
