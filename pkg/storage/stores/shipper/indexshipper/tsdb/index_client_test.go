@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -77,7 +78,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{}, &prometheus.Registry{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -143,7 +144,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{}, &prometheus.Registry{})
 
 	for _, tc := range []struct {
 		name               string
@@ -272,7 +273,7 @@ func TestIndexClient_Volume(t *testing.T) {
 	})
 
 	limits := &fakeLimits{volumeMaxSeries: 5}
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, limits)
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, limits, &prometheus.Registry{})
 	from := indexStartYesterday
 	through := indexStartToday + 1000
 

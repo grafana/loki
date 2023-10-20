@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -25,6 +26,8 @@ type IndexClient struct {
 	idx    Index
 	opts   IndexClientOptions
 	limits Limits
+
+	metrics *storeMetrics
 }
 
 type IndexClientOptions struct {
@@ -57,11 +60,12 @@ type Limits interface {
 	VolumeMaxSeries(string) int
 }
 
-func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
+func NewIndexClient(idx Index, opts IndexClientOptions, l Limits, register prometheus.Registerer) *IndexClient {
 	return &IndexClient{
-		idx:    idx,
-		opts:   opts,
-		limits: l,
+		idx:     idx,
+		opts:    opts,
+		limits:  l,
+		metrics: newIndexClientMetrics(register),
 	}
 }
 

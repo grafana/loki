@@ -10,9 +10,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -25,6 +27,22 @@ import (
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
+type storeMetrics struct {
+	// duration in seconds spent in serving request on index managed by TSDB Shipper
+	requestDurationSeconds *prometheus.HistogramVec
+}
+
+func newIndexClientMetrics(r prometheus.Registerer) *storeMetrics {
+	return &storeMetrics{
+		requestDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_tsdb_shipper",
+			Name:      "request_duration_seconds",
+			Help:      "Time (in seconds) spent serving requests when using tsdb shipper",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"operation", "status_code"}),
+	}
+}
+
 type IndexWriter interface {
 	Append(userID string, ls labels.Labels, fprint uint64, chks tsdbindex.ChunkMetas) error
 }
@@ -35,6 +53,7 @@ type store struct {
 	indexWriter  IndexWriter
 	logger       log.Logger
 	stopOnce     sync.Once
+	metrics      *storeMetrics
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -145,7 +164,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
-	s.Reader = NewIndexClient(multiIndex, opts, limits)
+	s.Reader = NewIndexClient(multiIndex, opts, limits, reg)
 
 	return nil
 }
@@ -161,7 +180,7 @@ func (s *store) Stop() {
 	})
 }
 
-func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
+func (s *store) IndexChunk(ctx context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := tsdbindex.ChunkMetas{
@@ -173,7 +192,9 @@ func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk ch
 			Entries:  uint32(chk.Data.Entries()),
 		},
 	}
-	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
+	if err := instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(s.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		return s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas)
+	}); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}
 	return nil
