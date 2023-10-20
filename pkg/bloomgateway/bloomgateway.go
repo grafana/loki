@@ -66,8 +66,9 @@ var errInvalidTenant = errors.New("invalid tenant in chunk refs")
 
 // TODO(chaudum): Make these configurable
 const (
-	numWorkers        = 4
-	maxTasksPerTenant = 1024
+	numWorkers             = 4
+	maxTasksPerTenant      = 1024
+	pendingTasksInitialCap = 1024
 )
 
 type metrics struct {
@@ -191,7 +192,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		logger:       logger,
 		metrics:      newMetrics("bloom_gateway", reg),
 		sharding:     shardingStrategy,
-		pendingTasks: makePendingTasks(1024),
+		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 	}
 
 	g.queueMetrics = queue.NewMetrics("bloom_gateway", reg)
