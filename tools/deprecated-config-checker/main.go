@@ -9,14 +9,14 @@ import (
 	"github.com/grafana/loki/tools/deprecated-config-checker/checker"
 )
 
-const upgradeGuideUrl = "https://grafana.com/docs/loki/latest/setup/upgrade/"
+const upgradeGuideURL = "https://grafana.com/docs/loki/latest/setup/upgrade/"
 
 func RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&color.NoColor, "no-color", false, "Disable color output")
 }
 
 func main() {
-	var cfg checker.CheckerConfig
+	var cfg checker.Config
 
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	RegisterFlags(fs)
@@ -36,7 +36,7 @@ func main() {
 
 	deprecates := c.CheckConfigDeprecated()
 	if len(deprecates) > 0 {
-		fmt.Printf(color.YellowString("-- Deprecated Configs --\n\n"))
+		fmt.Print(color.YellowString("-- Deprecated Configs --\n\n"))
 		for _, d := range deprecates {
 			fmt.Printf("%s %s\n\n", color.YellowString("[*]"), d)
 		}
@@ -44,7 +44,7 @@ func main() {
 
 	deletes := c.CheckConfigDeleted()
 	if len(deletes) > 0 {
-		fmt.Printf(color.RedString("-- Deleted Configs --\n\n"))
+		fmt.Print(color.RedString("-- Deleted Configs --\n\n"))
 		for _, d := range deletes {
 			fmt.Printf("%s %s\n\n", color.RedString("[-]"), d)
 		}
@@ -52,7 +52,7 @@ func main() {
 
 	deprecatesRuntime := c.CheckRuntimeConfigDeprecated()
 	if len(deprecatesRuntime) > 0 {
-		fmt.Printf(color.YellowString("-- Deprecated Runtime Configs --\n\n"))
+		fmt.Print(color.YellowString("-- Deprecated Runtime Configs --\n\n"))
 		for _, d := range deprecatesRuntime {
 			fmt.Printf("%s %s\n\n", color.YellowString("[*]"), d)
 		}
@@ -60,14 +60,14 @@ func main() {
 
 	deletesRuntime := c.CheckRuntimeConfigDeleted()
 	if len(deletesRuntime) > 0 {
-		fmt.Printf(color.RedString("-- Deleted Runtime Configs --\n\n"))
+		fmt.Print(color.RedString("-- Deleted Runtime Configs --\n\n"))
 		for _, d := range deletesRuntime {
 			fmt.Printf("%s %s\n\n", color.RedString("[-]"), d)
 		}
 	}
 
 	if len(deprecates) > 0 || len(deletes) > 0 {
-		fmt.Printf("Please refer to the upgrade guide for more details: %s\n", upgradeGuideUrl)
+		fmt.Printf("Please refer to the upgrade guide for more details: %s\n", upgradeGuideURL)
 		os.Exit(1)
 	}
 

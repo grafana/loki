@@ -115,7 +115,7 @@ var (
 )
 
 func TestConfigDeprecatesAndDeletes(t *testing.T) {
-	cfg := CheckerConfig{
+	cfg := Config{
 		DeprecatesFile: defaultDeprecatesFilePath,
 		DeletesFile:    defaultDeletesFilePath,
 		ConfigFile:     configPath,
@@ -140,7 +140,7 @@ func TestConfigDeprecatesAndDeletes(t *testing.T) {
 }
 
 func TestRuntimeConfigDeprecatesAndDeletes(t *testing.T) {
-	cfg := CheckerConfig{
+	cfg := Config{
 		DeprecatesFile:    defaultDeprecatesFilePath,
 		DeletesFile:       defaultDeletesFilePath,
 		RuntimeConfigFile: runtimeConfigPath,

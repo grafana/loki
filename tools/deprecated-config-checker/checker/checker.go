@@ -19,21 +19,21 @@ const (
 	configRequiredErrorMsg = "config.file or runtime-config.file are required"
 )
 
-type CheckerConfig struct {
+type Config struct {
 	DeprecatesFile    string
 	DeletesFile       string
 	ConfigFile        string
 	RuntimeConfigFile string
 }
 
-func (c *CheckerConfig) RegisterFlags(f *flag.FlagSet) {
+func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.DeprecatesFile, "deprecates-file", defaultDeprecatesFilePath, "YAML file with deprecated configs")
 	f.StringVar(&c.DeletesFile, "deletes-file", defaultDeletesFilePath, "YAML file with deleted configs")
 	f.StringVar(&c.ConfigFile, "config.file", "", "User-defined config file to validate")
 	f.StringVar(&c.RuntimeConfigFile, "runtime-config.file", "", "User-defined runtime config file to validate")
 }
 
-func (c *CheckerConfig) Validate() error {
+func (c *Config) Validate() error {
 	if c.ConfigFile == "" && c.RuntimeConfigFile == "" {
 		return fmt.Errorf(configRequiredErrorMsg)
 	}
@@ -64,7 +64,7 @@ func loadYAMLFile(path string) (RawYaml, error) {
 	return out, nil
 }
 
-func NewChecker(cfg CheckerConfig) (*Checker, error) {
+func NewChecker(cfg Config) (*Checker, error) {
 	deprecates, err := loadYAMLFile(cfg.DeprecatesFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read deprecates YAML: %w", err)
