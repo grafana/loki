@@ -136,9 +136,29 @@ type SyncMap[k comparable, v any] struct {
 	Map map[k]v
 }
 
+type pendingTasks SyncMap[ulid.ULID, Task]
+
+func (t *pendingTasks) Len() int {
+	t.RLock()
+	defer t.Unlock()
+	return len(t.Map)
+}
+
+func (t *pendingTasks) Add(k ulid.ULID, v Task) {
+	t.Lock()
+	t.Map[k] = v
+	t.Unlock()
+}
+
+func (t *pendingTasks) Delete(k ulid.ULID) {
+	t.Lock()
+	delete(t.Map, k)
+	t.Unlock()
+}
+
 // makePendingTasks creates a SyncMap that holds pending tasks
-func makePendingTasks(n int) SyncMap[ulid.ULID, Task] {
-	return SyncMap[ulid.ULID, Task]{
+func makePendingTasks(n int) *pendingTasks {
+	return &pendingTasks{
 		RWMutex: sync.RWMutex{},
 		Map:     make(map[ulid.ULID]Task, n),
 	}
@@ -158,7 +178,7 @@ type Gateway struct {
 
 	sharding ShardingStrategy
 
-	pendingTasks SyncMap[ulid.ULID, Task]
+	pendingTasks *pendingTasks
 
 	serviceMngr    *services.Manager
 	serviceWatcher *services.FailureWatcher
@@ -245,9 +265,7 @@ func (g *Gateway) running(ctx context.Context) error {
 		case err := <-g.serviceWatcher.Chan():
 			return errors.Wrap(err, "bloom gateway subservice failed")
 		case <-inflightTasksTicker.C:
-			g.pendingTasks.RLock()
-			inflight := len(g.pendingTasks.Map)
-			g.pendingTasks.RUnlock()
+			inflight := g.pendingTasks.Len()
 			g.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
@@ -288,9 +306,7 @@ func (g *Gateway) startWorker(_ context.Context, id string) error {
 
 		idx = newIdx
 		level.Info(g.logger).Log("msg", "dequeued task", "worker", id, "task", task.ID)
-		g.pendingTasks.Lock()
-		delete(g.pendingTasks.Map, task.ID)
-		g.pendingTasks.Unlock()
+		g.pendingTasks.Delete(task.ID)
 
 		r := task.Request
 		if len(r.Filters) > 0 {
@@ -333,9 +349,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID)
 	g.queue.Enqueue(tenantID, []string{}, task, 100, func() {
 		// When enqueuing, we also add the task to the pending tasks
-		g.pendingTasks.Lock()
-		g.pendingTasks.Map[task.ID] = task
-		g.pendingTasks.Unlock()
+		g.pendingTasks.Add(task.ID, task)
 	})
 
 	response := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
