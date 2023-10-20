@@ -423,12 +423,13 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	if err := cfg.IndexTables.Validate(); err != nil {
-		return fmt.Errorf("validating index: %w", err)
+		return fmt.Errorf("validating index tables: %w", err)
 	}
 
-	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%(24*time.Hour) != 0 {
-		return errInvalidTablePeriod
+	if err := cfg.ChunkTables.Validate(); err != nil {
+		return fmt.Errorf("validating chunk tables: %w", err)
 	}
+
 	v, err := cfg.VersionAsInt()
 	if err != nil {
 		return err
@@ -483,9 +484,8 @@ type IndexPeriodicTableConfig struct {
 }
 
 func (cfg *IndexPeriodicTableConfig) Validate() error {
-	// Ensure the tables period is a multiple of the bucket period
-	if cfg.Period > 0 && cfg.Period%(24*time.Hour) != 0 {
-		return errInvalidTablePeriod
+	if err := cfg.PeriodicTableConfig.Validate(); err != nil {
+		return err
 	}
 
 	return ValidatePathPrefix(cfg.PathPrefix)
@@ -545,6 +545,15 @@ func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
 	}
 
 	return g, nil
+}
+
+func (cfg PeriodicTableConfig) Validate() error {
+	// Ensure the tables period is a multiple of the bucket period
+	if cfg.Period > 0 && cfg.Period%(24*time.Hour) != 0 {
+		return errInvalidTablePeriod
+	}
+
+	return nil
 }
 
 // AutoScalingConfig for DynamoDB tables.

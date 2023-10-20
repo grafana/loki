@@ -44,7 +44,7 @@ The following CLI flags and the corresponding YAML settings to configure shared 
 - `-boltdb.shipper.shared-store`
 - `-tsdb.shipper.shared-store`
 
-Going forward `object_store` setting in the [period_config](/docs/loki/latest/configure/#period_config) will be used to configure store for the index.
+Going forward the `object_store` setting in the [period_config](/docs/loki/latest/configure/#period_config) will be used to configure the store for the index.
 This enforces chunks and index files to reside together in the same storage bucket for a given period.
 
 We are removing the shared store setting in an effort to simplify storage configuration and reduce the possibility for misconfiguration.
@@ -94,12 +94,12 @@ The following CLI flags and the corresponding YAML settings to configure the sha
 - `-boltdb.shipper.compactor.shared-store`
 - `-boltdb.shipper.compactor.shared-store.key-prefix`
 
-Going forward compactor will run compaction and retention on all the object stores configured in [period configs](/docs/loki/latest/configure/#period_config) where the index type is either tsdb or boltdb-shipper.
+Going forward compactor will run compaction and retention on all the object stores configured in [period configs](/docs/loki/latest/configure/#period_config) where the index type is either `tsdb` or `boltdb-shipper`.
 
 #### `delete_request_store` should be explicitly configured
 
 `-compactor.delete-request-store` or its YAML setting should be explicitly configured when retention is enabled, this is required for storing delete requests.
-The path prefix under which the delete requests are stored is decided by `-compactor.delete-request-store.key-prefix`, it defaults to "index/".
+The path prefix under which the delete requests are stored is decided by `-compactor.delete-request-store.key-prefix`, it defaults to `index/`.
 
 #### Configuration `use_boltdb_shipper_as_backup` is removed
 
@@ -185,7 +185,7 @@ If you using a [legacy index type]({{< relref "../../storage#index-storage" >}})
 
 #### Store for retrieving remote schema
 
-Previously LogCLI used to fetch remote schema from the store configured in `-boltdb.shipper.shared-store` when `-remote-schema` is set to true.
+Previously LogCLI used to fetch remote schema from the store configured in `-boltdb.shipper.shared-store` when `-remote-schema` is set to `true`.
 A new CLI flag `-schema-store` is introduced as a replacement to configure the store for retrieving remote schema.
 
 ## 2.9.0
