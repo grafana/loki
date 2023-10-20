@@ -3,6 +3,8 @@ package indexgateway
 import (
 	"github.com/grafana/dskit/ring"
 	"github.com/pkg/errors"
+
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
 var (
@@ -103,8 +105,8 @@ func (s *NoopStrategy) FilterTenants(tenantIDs []string) ([]string, error) {
 
 // GetShardingStrategy returns the correct ShardingStrategy implementation based
 // on provided configuration.
-func GetShardingStrategy(cfg Config, indexGatewayRingManager *RingManager, o Limits) ShardingStrategy {
-	if cfg.Mode != RingMode || indexGatewayRingManager.Mode == ClientMode {
+func GetShardingStrategy(cfg Config, indexGatewayRingManager *lokiring.RingManager, o Limits) ShardingStrategy {
+	if cfg.Mode != RingMode || indexGatewayRingManager.Mode == lokiring.ClientMode {
 		return NewNoopStrategy()
 	}
 	instanceAddr := indexGatewayRingManager.RingLifecycler.GetInstanceAddr()

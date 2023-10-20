@@ -1,4 +1,4 @@
-package bloomgateway
+package ring
 
 import (
 	"context"
@@ -17,15 +17,7 @@ import (
 
 const (
 	ringAutoForgetUnhealthyPeriods = 10
-	ringNameForServer              = "bloom-gateway"
-	ringNumTokens                  = 128
-	ringCheckPeriod                = 3 * time.Second
-
-	// RingIdentifier is used as a unique name to register the Bloom Gateway ring.
-	RingIdentifier = "bloom-gateway"
-
-	// RingKey is the name of the key used to register the different Bloom Gateway instances in the key-value store.
-	RingKey = "bloom-gateway"
+	RingCheckPeriod                = 3 * time.Second
 )
 
 // ManagerMode defines the different modes for the RingManager to execute.
@@ -48,10 +40,16 @@ const (
 // All Loki components that are involved with the Bloom Gateway (including the Bloom Gateway itself) will
 // require a RingManager. However, the components that are clients of the Bloom Gateway will ran it in client
 // mode while the Bloom Gateway itself will ran the manager in server mode.
-type RingManager struct {
+type RingManager struct { // nolint:revive
 	services.Service
 
-	cfg    Config
+	Mode ManagerMode
+
+	name   string
+	rf     int
+	tokens int
+
+	cfg    RingConfig
 	logger log.Logger
 
 	subservices        *services.Manager
@@ -59,40 +57,39 @@ type RingManager struct {
 
 	RingLifecycler *ring.BasicLifecycler
 	Ring           *ring.Ring
-	Mode           ManagerMode
 }
 
 // NewRingManager instantiates a new RingManager instance.
 // The other functions will assume the RingManager was instantiated through this function.
-func NewRingManager(mode ManagerMode, cfg Config, logger log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
+func NewRingManager(name string, mode ManagerMode, cfg RingConfig, rf int, tokens int, logger log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
 	rm := &RingManager{
-		cfg: cfg, logger: logger, Mode: mode,
+		cfg: cfg, logger: logger, Mode: mode, name: name, tokens: tokens, rf: rf,
 	}
 
 	// instantiate kv store for both modes.
 	ringStore, err := kv.NewClient(
-		rm.cfg.Ring.KVStore,
+		rm.cfg.KVStore,
 		ring.GetCodec(),
-		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), "bloom-gateway-ring-manager"),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", registerer), fmt.Sprintf("%s-ring-manager", name)),
 		rm.logger,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "bloom gateway ring manager create KV store client")
+		return nil, errors.Wrapf(err, "%s ring manager create KV store client", name)
 	}
 
 	// instantiate ring for both mode modes.
-	ringCfg := rm.cfg.Ring.ToRingConfig(rm.cfg.Ring.ReplicationFactor)
+	ringCfg := rm.cfg.ToRingConfig(rf)
 	rm.Ring, err = ring.NewWithStoreClientAndStrategy(
 		ringCfg,
-		ringNameForServer,
-		RingKey,
+		name,
+		name,
 		ringStore,
 		ring.NewIgnoreUnhealthyInstancesReplicationStrategy(),
 		prometheus.WrapRegistererWithPrefix("loki_", registerer),
 		rm.logger,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "bloom gateway ring manager create ring client")
+		return nil, errors.Wrapf(err, "%s ring manager create ring client", name)
 	}
 
 	switch mode {
@@ -105,32 +102,32 @@ func NewRingManager(mode ManagerMode, cfg Config, logger log.Logger, registerer 
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("starting bloom gateway in unsupported mode %v", mode)
+		return nil, fmt.Errorf("starting %s ring in unsupported mode %v", name, mode)
 	}
 
 	return rm, nil
 }
 
 func (rm *RingManager) startServerMode(ringStore kv.Client, registerer prometheus.Registerer) error {
-	lifecyclerCfg, err := rm.cfg.Ring.ToLifecyclerConfig(ringNumTokens, rm.logger)
+	lifecyclerCfg, err := rm.cfg.ToLifecyclerConfig(rm.tokens, rm.logger)
 	if err != nil {
 		return errors.Wrap(err, "invalid ring lifecycler config")
 	}
 
 	delegate := ring.BasicLifecyclerDelegate(rm)
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, rm.logger)
-	delegate = ring.NewTokensPersistencyDelegate(rm.cfg.Ring.TokensFilePath, ring.JOINING, delegate, rm.logger)
-	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*rm.cfg.Ring.HeartbeatTimeout, delegate, rm.logger)
+	delegate = ring.NewTokensPersistencyDelegate(rm.cfg.TokensFilePath, ring.JOINING, delegate, rm.logger)
+	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*rm.cfg.HeartbeatTimeout, delegate, rm.logger)
 
-	rm.RingLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, RingKey, ringStore, delegate, rm.logger, registerer)
+	rm.RingLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rm.name, rm.name, ringStore, delegate, rm.logger, registerer)
 	if err != nil {
-		return errors.Wrap(err, "bloom gateway ring manager create ring lifecycler")
+		return errors.Wrapf(err, "%s ring manager create ring lifecycler", rm.name)
 	}
 
 	svcs := []services.Service{rm.RingLifecycler, rm.Ring}
 	rm.subservices, err = services.NewManager(svcs...)
 	if err != nil {
-		return errors.Wrap(err, "new bloom gateway services manager in server mode")
+		return errors.Wrapf(err, "new %s services manager in server mode", rm.name)
 	}
 
 	rm.subservicesWatcher = services.NewFailureWatcher()
@@ -146,7 +143,7 @@ func (rm *RingManager) startClientMode() error {
 	svcs := []services.Service{rm.Ring}
 	rm.subservices, err = services.NewManager(svcs...)
 	if err != nil {
-		return errors.Wrap(err, "new bloom gateway services manager in client mode")
+		return errors.Wrapf(err, "new %s services manager in client mode", rm.name)
 	}
 
 	rm.subservicesWatcher = services.NewFailureWatcher()
@@ -172,12 +169,12 @@ func (rm *RingManager) starting(ctx context.Context) (err error) {
 		}
 
 		if stopErr := services.StopManagerAndAwaitStopped(context.Background(), rm.subservices); stopErr != nil {
-			level.Error(rm.logger).Log("msg", "failed to gracefully stop bloom gateway ring manager dependencies", "err", stopErr)
+			level.Error(rm.logger).Log("msg", "failed to gracefully stop ring manager dependencies", "name", rm.name, "err", stopErr)
 		}
 	}()
 
 	if err := services.StartManagerAndAwaitHealthy(ctx, rm.subservices); err != nil {
-		return errors.Wrap(err, "unable to start bloom gateway ring manager subservices")
+		return errors.Wrapf(err, "unable to start %s ring manager subservices", rm.name)
 	}
 
 	// The BasicLifecycler does not automatically move state to ACTIVE such that any additional work that
@@ -186,11 +183,11 @@ func (rm *RingManager) starting(ctx context.Context) (err error) {
 	// Wait until the ring client detected this instance in the JOINING
 	// state to make sure that when we'll run the initial sync we already
 	// know the tokens assigned to this instance.
-	level.Info(rm.logger).Log("msg", "waiting until bloom gateway is JOINING in the ring")
+	level.Info(rm.logger).Log("msg", fmt.Sprintf("waiting until %s is JOINING in the ring", rm.name))
 	if err := ring.WaitInstanceState(ctx, rm.Ring, rm.RingLifecycler.GetInstanceID(), ring.JOINING); err != nil {
 		return err
 	}
-	level.Info(rm.logger).Log("msg", "bloom gateway is JOINING in the ring")
+	level.Info(rm.logger).Log("msg", fmt.Sprintf("%s is JOINING in the ring", rm.name))
 
 	if err = rm.RingLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
 		return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)
@@ -199,25 +196,25 @@ func (rm *RingManager) starting(ctx context.Context) (err error) {
 	// Wait until the ring client detected this instance in the ACTIVE state to
 	// make sure that when we'll run the loop it won't be detected as a ring
 	// topology change.
-	level.Info(rm.logger).Log("msg", "waiting until bloom gateway is ACTIVE in the ring")
+	level.Info(rm.logger).Log("msg", fmt.Sprintf("waiting until %s is ACTIVE in the ring", rm.name))
 	if err := ring.WaitInstanceState(ctx, rm.Ring, rm.RingLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
 		return err
 	}
-	level.Info(rm.logger).Log("msg", "bloom gateway is ACTIVE in the ring")
+	level.Info(rm.logger).Log("msg", fmt.Sprintf("%s is ACTIVE in the ring", rm.name))
 
 	return nil
 }
 
 // running implements the Lifecycler interface and is one of the lifecycle hooks.
 func (rm *RingManager) running(ctx context.Context) error {
-	t := time.NewTicker(ringCheckPeriod)
+	t := time.NewTicker(RingCheckPeriod)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case err := <-rm.subservicesWatcher.Chan():
-			return errors.Wrap(err, "running bloom gateway ring manager subservice failed")
+			return errors.Wrapf(err, "running %s ring manager subservice failed", rm.name)
 		case <-t.C:
 			continue
 		}
@@ -226,7 +223,7 @@ func (rm *RingManager) running(ctx context.Context) error {
 
 // stopping implements the Lifecycler interface and is one of the lifecycle hooks.
 func (rm *RingManager) stopping(_ error) error {
-	level.Debug(rm.logger).Log("msg", "stopping bloom gateway ring manager")
+	level.Debug(rm.logger).Log("msg", fmt.Sprintf("stopping %s ring manager", rm.name))
 	return services.StopManagerAndAwaitStopped(context.Background(), rm.subservices)
 }
 
@@ -246,7 +243,7 @@ func (rm *RingManager) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc 
 
 	takenTokens := ringDesc.GetTokens()
 	gen := ring.NewRandomTokenGenerator()
-	newTokens := gen.GenerateTokens(ringNumTokens-len(tokens), takenTokens)
+	newTokens := gen.GenerateTokens(rm.tokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

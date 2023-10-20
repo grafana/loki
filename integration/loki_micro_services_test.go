@@ -129,6 +129,12 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		assert.ElementsMatch(t, []string{"fake"}, resp)
 	})
 
+	t.Run("series", func(t *testing.T) {
+		resp, err := cliQueryFrontend.Series(context.Background(), `{job="fake"}`)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []map[string]string{{"job": "fake"}}, resp)
+	})
+
 	t.Run("per-request-limits", func(t *testing.T) {
 		queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryLength": "1m"}`}})
 		cliQueryFrontendLimited := client.New(tenantID, "", tQueryFrontend.HTTPURL(), queryLimitsPolicy)

@@ -36,7 +36,7 @@
           active_index_directory: '/data/tsdb-index',
           cache_location: '/data/tsdb-cache',
         },
-      },
+      } else {},
       compactor+: {
         working_directory: '/data/compactor',
         // prefer tsdb index over boltdb

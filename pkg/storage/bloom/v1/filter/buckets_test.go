@@ -11,6 +11,7 @@ package filter
 import (
 	"bytes"
 	"encoding/gob"
+	"reflect"
 	"testing"
 
 	"github.com/d4l3k/messagediff"
@@ -123,20 +124,15 @@ func TestBucketsLazyReader(t *testing.T) {
 		t.Error(err)
 	}
 
-	lazyFilter, n := NewBucketsLazyReader(buf)
-	if n != len(buf) {
+	var decodedFilter Buckets
+	n, err := decodedFilter.DecodeFrom(buf)
+	if err != nil {
+		t.Error(err)
+	}
+	if int(n) != len(buf) {
 		t.Errorf("Expected %d bytes read, got %d", len(buf), n)
 	}
-
-	for i := 0; i < 2000; i++ {
-		value := filter.Get(uint(i))
-		lazyValue := lazyFilter.Get(uint(i))
-
-		if value != lazyValue {
-			t.Errorf("Expected %d, got %d for %d", value, lazyValue, i)
-		}
-	}
-
+	reflect.DeepEqual(filter, decodedFilter)
 }
 
 func BenchmarkBucketsIncrement(b *testing.B) {

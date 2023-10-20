@@ -121,8 +121,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	for _, ref := range req.Refs {
-		if ref.UserID != tenantID {
-			return nil, errors.Wrapf(errInvalidTenant, "expected chunk refs from tenant %s, got tenant %s", tenantID, ref.UserID)
+		if ref.Tenant != tenantID {
+			return nil, errors.Wrapf(errInvalidTenant, "expected chunk refs from tenant %s, got tenant %s", tenantID, ref.Tenant)
 		}
 	}
 
@@ -141,22 +141,5 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}
 	}
 
-	// TODO(chaudum): Re-use buffers for response.
-	resp := make([]*logproto.GroupedChunkRefs, 0)
-	for idx, chunkRef := range chunkRefs {
-		fp := chunkRef.Fingerprint
-		shortRef := &logproto.ShortRef{From: chunkRef.From, Through: chunkRef.Through, Checksum: chunkRef.Checksum}
-		if idx == 0 || fp > resp[len(resp)-1].Fingerprint {
-			r := &logproto.GroupedChunkRefs{
-				Fingerprint: fp,
-				Tenant:      tenantID,
-				Refs:        []*logproto.ShortRef{shortRef},
-			}
-			resp = append(resp, r)
-			continue
-		}
-		resp[len(resp)-1].Refs = append(resp[len(resp)-1].Refs, shortRef)
-	}
-
-	return &logproto.FilterChunkRefResponse{ChunkRefs: resp}, nil
+	return &logproto.FilterChunkRefResponse{ChunkRefs: chunkRefs}, nil
 }
