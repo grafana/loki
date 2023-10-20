@@ -23,6 +23,10 @@ of line filter expressions.
 			             |
 			      bloomgateway.Gateway
 			             |
+			       queue.RequestQueue
+			             |
+			       bloomgateway.Worker
+			             |
 			       bloomshipper.Store
 			             |
 			      bloomshipper.Shipper
@@ -215,9 +219,14 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		return nil, err
 	}
 
+	// We need to keep a reference to be able to call Stop() on shutdown of the gateway.
 	g.bloomStore = bloomStore
 
 	svcs := []services.Service{g.queue, g.activeUsers}
+	for i := 0; i < numWorkers; i++ {
+		w := newWorker(i, g.queue, g.bloomStore, g.pendingTasks, logger)
+		svcs = append(svcs, w)
+	}
 	g.serviceMngr, err = services.NewManager(svcs...)
 	if err != nil {
 		return nil, err
@@ -243,10 +252,6 @@ func (g *Gateway) starting(ctx context.Context) error {
 
 	if err := services.StartManagerAndAwaitHealthy(ctx, g.serviceMngr); err != nil {
 		return errors.Wrap(err, "unable to start bloom gateway subservices")
-	}
-
-	for i := 0; i < numWorkers; i++ {
-		go g.startWorker(ctx, fmt.Sprintf("worker-%d", i))
 	}
 
 	return nil
@@ -276,52 +281,6 @@ func (g *Gateway) running(ctx context.Context) error {
 func (g *Gateway) stopping(_ error) error {
 	g.bloomStore.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
-}
-
-// This is just a dummy implementation of the worker!
-// TODO(chaudum): Implement worker that dequeues multiple pending tasks and
-// multiplexes them prior to execution.
-func (g *Gateway) startWorker(_ context.Context, id string) error {
-	level.Info(g.logger).Log("msg", "starting worker", "worker", id)
-
-	g.queue.RegisterConsumerConnection(id)
-	defer g.queue.UnregisterConsumerConnection(id)
-
-	idx := queue.StartIndexWithLocalQueue
-
-	for {
-		ctx := context.Background()
-		item, newIdx, err := g.queue.Dequeue(ctx, idx, id)
-		if err != nil {
-			if err != queue.ErrStopped {
-				level.Error(g.logger).Log("msg", "failed to dequeue task", "worker", id, "err", err)
-				continue
-			}
-			level.Info(g.logger).Log("msg", "stopping worker", "worker", id)
-			return err
-		}
-		task, ok := item.(Task)
-		if !ok {
-			level.Error(g.logger).Log("msg", "failed to cast to Task", "item", item)
-			continue
-		}
-
-		idx = newIdx
-		level.Info(g.logger).Log("msg", "dequeued task", "worker", id, "task", task.ID)
-		g.pendingTasks.Delete(task.ID)
-
-		r := task.Request
-		if len(r.Filters) > 0 {
-			r.Refs, err = g.bloomStore.FilterChunkRefs(ctx, task.Tenant, r.From.Time(), r.Through.Time(), r.Refs, r.Filters...)
-		}
-		if err != nil {
-			task.ErrCh <- err
-		} else {
-			for _, ref := range r.Refs {
-				task.ResCh <- ref
-			}
-		}
-	}
 }
 
 // FilterChunkRefs implements BloomGatewayServer
@@ -370,4 +329,82 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			}
 		}
 	}
+}
+
+// Worker is a datastructure that consumes tasks from the request queue,
+// processes them and returns the result/error back to the response channels of
+// the tasks.
+// It is responsible for multiplexing tasks so they can be processes in a more
+// efficient way.
+type worker struct {
+	services.Service
+
+	ID     string
+	queue  *queue.RequestQueue
+	store  bloomshipper.Store
+	tasks  *pendingTasks
+	logger log.Logger
+}
+
+func newWorker(i int, queue *queue.RequestQueue, store bloomshipper.Store, tasks *pendingTasks, logger log.Logger) *worker {
+	id := fmt.Sprintf("bloom-query-worker-%d", i)
+	w := &worker{
+		ID:     id,
+		queue:  queue,
+		store:  store,
+		tasks:  tasks,
+		logger: log.With(logger, "worker", id),
+	}
+	w.Service = services.NewBasicService(w.starting, w.running, w.stopping)
+	return w
+}
+
+func (w *worker) starting(_ context.Context) error {
+	level.Debug(w.logger).Log("msg", "starting worker")
+	w.queue.RegisterConsumerConnection(w.ID)
+	return nil
+}
+
+func (w *worker) running(_ context.Context) error {
+	idx := queue.StartIndexWithLocalQueue
+
+	for {
+		ctx := context.Background()
+		item, newIdx, err := w.queue.Dequeue(ctx, idx, w.ID)
+		if err != nil {
+			if err != queue.ErrStopped {
+				level.Error(w.logger).Log("msg", "failed to dequeue task", "err", err)
+				continue
+			}
+			return err
+		}
+		task, ok := item.(Task)
+		if !ok {
+			level.Error(w.logger).Log("msg", "failed to cast dequeued item to Task", "item", item)
+			continue
+		}
+		level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
+
+		w.tasks.Delete(task.ID)
+
+		idx = newIdx
+
+		r := task.Request
+		if len(r.Filters) > 0 {
+			r.Refs, err = w.store.FilterChunkRefs(ctx, task.Tenant, r.From.Time(), r.Through.Time(), r.Refs, r.Filters...)
+		}
+		if err != nil {
+			task.ErrCh <- err
+		} else {
+			for _, ref := range r.Refs {
+				task.ResCh <- ref
+			}
+		}
+	}
+}
+
+func (w *worker) stopping(err error) error {
+	level.Debug(w.logger).Log("msg", "stopping worker", "err", err)
+	w.queue.UnregisterConsumerConnection(w.ID)
+	return nil
 }
