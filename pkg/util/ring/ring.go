@@ -1,9 +1,11 @@
-package util
+package ring
 
 import (
 	"hash/fnv"
 
 	"github.com/grafana/dskit/ring"
+
+	"github.com/grafana/loki/pkg/util"
 )
 
 // TokenFor generates a token used for finding ingesters from ring
@@ -22,5 +24,5 @@ func IsInReplicationSet(r ring.ReadRing, ringKey uint32, address string) (bool, 
 	if err != nil {
 		return false, err
 	}
-	return StringsContain(rs.GetAddresses(), address), nil
+	return util.StringsContain(rs.GetAddresses(), address), nil
 }

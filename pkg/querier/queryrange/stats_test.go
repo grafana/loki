@@ -99,7 +99,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params, _ = paramsFromRequest(&LokiRequest{
+				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -119,7 +119,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params, _ = paramsFromRequest(&LokiRequest{
+				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -140,7 +140,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params, _ = paramsFromRequest(&LokiRequest{
+				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -163,7 +163,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params, _ = paramsFromRequest(&logproto.VolumeRequest{
+				data.params, _ = ParamsFromRequest(&logproto.VolumeRequest{
 					Matchers: "foo",
 					Limit:    100,
 				})

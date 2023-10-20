@@ -122,6 +122,7 @@ require (
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
+	github.com/gogo/googleapis v1.4.0
 	github.com/grafana/loki/pkg/push v0.0.0-20231017172654-cfc4f0e84adc
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
@@ -220,7 +221,6 @@ require (
 	github.com/go-playground/validator/v10 v10.11.2 // indirect
 	github.com/go-zookeeper/zk v1.0.3 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
-	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.1.2 // indirect
@@ -337,7 +337,7 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20220216145902-b5e698eff68e
 
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.5.1
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85

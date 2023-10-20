@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
 func parseDayTime(s string) config.DayTime {
@@ -30,6 +30,12 @@ func parseDayTime(s string) config.DayTime {
 	return config.DayTime{
 		Time: model.TimeFromUnix(t.Unix()),
 	}
+}
+
+func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
+	t.Helper()
+	grouped := make([]*logproto.GroupedChunkRefs, 0, len(chunkRefs))
+	return groupChunkRefs(chunkRefs, grouped)
 }
 
 func TestBloomGateway_StartStopService(t *testing.T) {
@@ -65,8 +71,8 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 		cfg := Config{
 			Enabled: true,
-			Ring: RingCfg{
-				RingConfig: util.RingConfig{
+			Ring: lokiring.RingConfigWithRF{
+				RingConfig: lokiring.RingConfig{
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
@@ -119,8 +125,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	cfg := Config{
 		Enabled: true,
-		Ring: RingCfg{
-			RingConfig: util.RingConfig{
+		Ring: lokiring.RingConfigWithRF{
+			RingConfig: lokiring.RingConfig{
 				KVStore: kv.Config{
 					Mock: kvStore,
 				},
@@ -145,7 +151,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			From:    now.Add(-24 * time.Hour),
 			Through: now,
-			Refs:    chunkRefs,
+			Refs:    groupRefs(t, chunkRefs),
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -181,7 +187,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			From:    now.Add(-24 * time.Hour),
 			Through: now,
-			Refs:    chunkRefs,
+			Refs:    groupRefs(t, chunkRefs),
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)

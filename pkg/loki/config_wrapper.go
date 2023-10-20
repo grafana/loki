@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	loki_net "github.com/grafana/loki/pkg/util/net"
@@ -211,7 +211,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 		// neither common ring nor memberlist set, use ingester ring configuration for all rings
 		// that have not been configured. Don't merge any ingester ring configurations for rings
 		// that deviate from the default in any way.
-		ingesterRingCfg := util.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
+		ingesterRingCfg := lokiring.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
 		applyConfigToRings(r, defaults, ingesterRingCfg, false)
 	}
 }
@@ -223,7 +223,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 // ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
 // any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
 // derivations, with the derivations taking precedence.
-func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
+func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, mergeWithExisting bool) {
 	// Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
 	// change ingester ring values when applying the common config, so there's no need for the DeepEqual
 	// check here.
@@ -304,16 +304,16 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 	}
 
 	// BloomCompactor
-	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.RingCfg, defaults.BloomCompactor.RingCfg) {
-		r.BloomCompactor.RingCfg.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.BloomCompactor.RingCfg.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.BloomCompactor.RingCfg.InstancePort = rc.InstancePort
-		r.BloomCompactor.RingCfg.InstanceAddr = rc.InstanceAddr
-		r.BloomCompactor.RingCfg.InstanceID = rc.InstanceID
-		r.BloomCompactor.RingCfg.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.BloomCompactor.RingCfg.InstanceZone = rc.InstanceZone
-		r.BloomCompactor.RingCfg.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.BloomCompactor.RingCfg.KVStore = rc.KVStore
+	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
+		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
+		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
+		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
+		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
+		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.BloomCompactor.Ring.KVStore = rc.KVStore
 	}
 
 	// BloomGateway
@@ -364,7 +364,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	if err != nil {
 		return err
 	}
-	cfg.BloomCompactor.RingCfg.TokensFilePath = f
+	cfg.BloomCompactor.Ring.TokensFilePath = f
 
 	// Bloom-Gateway
 	f, err = tokensFile(cfg, "bloomgateway.tokens")
@@ -454,8 +454,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.BloomCompactor.RingCfg.InstanceInterfaceNames, defaults.BloomCompactor.RingCfg.InstanceInterfaceNames) {
-		cfg.BloomCompactor.RingCfg.InstanceInterfaceNames = append(cfg.BloomCompactor.RingCfg.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
+		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
 	if reflect.DeepEqual(cfg.BloomGateway.Ring.InstanceInterfaceNames, defaults.BloomGateway.Ring.InstanceInterfaceNames) {
@@ -474,7 +474,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.BloomCompactor.RingCfg.KVStore.Store = memberlistStr
+	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
 	r.BloomGateway.Ring.KVStore.Store = memberlistStr
 }
 

@@ -8,14 +8,15 @@ import (
 
 func TestMergeDedupeIter(t *testing.T) {
 	var (
-		data = PointerSlice(
-			mkBasicSeriesWithBlooms(100, 0, 0xffff, 0, 10000),
-		)
-		queriers = make([]PeekingIterator[*SeriesWithBloom], 4)
+		numSeries        = 100
+		numKeysPerSeries = 10000
+		data, _          = mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+		dataPtr          = PointerSlice(data)
+		queriers         = make([]PeekingIterator[*SeriesWithBloom], 4)
 	)
 
 	for i := 0; i < len(queriers); i++ {
-		queriers[i] = NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](data))
+		queriers[i] = NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](dataPtr))
 	}
 
 	mbq := NewMergeBlockQuerier(queriers...)
