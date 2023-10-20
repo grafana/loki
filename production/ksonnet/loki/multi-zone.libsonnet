@@ -61,19 +61,6 @@ local rolloutOperator = import 'rollout-operator.libsonnet';
       'ingester.availability-zone': 'zone-default',
     })),
 
-  // The ingesters should persist TSDB blocks and WAL on a persistent
-  // volume in order to be crash resilient.
-  local ingester_data_pvc =
-    pvc.new('ingester-data') +
-    pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_data_disk_size }) +
-    pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName($._config.ingester_data_disk_class),
-
-  local ingester_wal_pvc =
-    pvc.new('ingester-wal') +
-    pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_wal_disk_size }) +
-    pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName($._config.ingester_wal_disk_class),
 
   // remove after upstream PR is merged and is in a K release
   // functions for k8s objects
@@ -104,15 +91,6 @@ local rolloutOperator = import 'rollout-operator.libsonnet';
       $._config.overrides_configmap_mount_name,
       $._config.overrides_configmap_mount_path,
     ),
-
-  newIngesterStatefulSet(name, container, with_anti_affinity=true)::
-    self.newLokiStatefulSet(name, 3, container, [ingester_data_pvc, ingester_wal_pvc]) +
-    // When the ingester needs to flush blocks to the storage, it may take quite a lot of time.
-    // For this reason, we grant an high termination period (80 minutes).
-    statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800) +
-    // $.lokiVolumeMounts +
-    $.util.podPriority('high') +
-    (if with_anti_affinity then $.util.antiAffinity else {}),
 
   newIngesterZoneContainer(zone, zone_args)::
     $.ingester_container +

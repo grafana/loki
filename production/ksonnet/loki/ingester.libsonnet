@@ -10,20 +10,20 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   // The ingesters should persist TSDB blocks and WAL on a persistent
   // volume in order to be crash resilient.
-  local ingester_data_pvc =
+  ingester_data_pvc::
     pvc.new('ingester-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_data_disk_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName($._config.ingester_data_disk_class),
 
-  local ingester_wal_pvc =
+  ingester_wal_pvc::
     pvc.new('ingester-wal') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_wal_disk_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
     pvc.mixin.spec.withStorageClassName($._config.ingester_wal_disk_class),
 
   newIngesterStatefulSet(name, container, with_anti_affinity=true)::
-    $.newLokiStatefulSet(name, 3, container, [ingester_data_pvc, ingester_wal_pvc]) +
+    $.newLokiStatefulSet(name, 3, container, [self.ingester_data_pvc, self.ingester_wal_pvc]) +
     // When the ingester needs to flush blocks to the storage, it may take quite a lot of time.
     // For this reason, we grant an high termination period (80 minutes).
     statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800) +
