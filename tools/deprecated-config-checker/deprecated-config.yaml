@@ -1,5 +1,6 @@
 # This file should contain a list fo deprecated config options.
 #
+# -- Syntax --
 # The value for a deprecated option should be a message that explains why the option is deprecated and what to use instead. E.g.
 # storage_config:
 #  cassandra: "Cassandra is deprecated. Use any other non-deprecated storage instead.

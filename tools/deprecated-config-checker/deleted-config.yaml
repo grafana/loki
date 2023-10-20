@@ -1,8 +1,6 @@
-# This file should contain a list fo deprecated config options.
+# This file should contain a list fo deleted config options.
 #
-# The value for a deprecated option should be a message that explains why the option is deprecated and what to use instead. E.g.
-# ingester:
-#   max_transfer_retries: "Use the WAL instead"
+# The syntax for this file is the same as the syntax for deprecated-config.yaml.
 
 ingester:
   max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
