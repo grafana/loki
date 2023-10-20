@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	configPath        = "tools/deprecated-config-checker/test-fixtures/config.yaml"
-	runtimeConfigPath = "tools/deprecated-config-checker/test-fixtures/runtime-config.yaml"
+	deprecatesFilePath = "../deprecated-config.yaml"
+	deletesFilePath    = "../deleted-config.yaml"
+	configPath         = "../test-fixtures/config.yaml"
+	runtimeConfigPath  = "../test-fixtures/runtime-config.yaml"
 )
 
 var (
@@ -116,8 +118,8 @@ var (
 
 func TestConfigDeprecatesAndDeletes(t *testing.T) {
 	cfg := Config{
-		DeprecatesFile: defaultDeprecatesFilePath,
-		DeletesFile:    defaultDeletesFilePath,
+		DeprecatesFile: deprecatesFilePath,
+		DeletesFile:    deletesFilePath,
 		ConfigFile:     configPath,
 	}
 
@@ -141,8 +143,8 @@ func TestConfigDeprecatesAndDeletes(t *testing.T) {
 
 func TestRuntimeConfigDeprecatesAndDeletes(t *testing.T) {
 	cfg := Config{
-		DeprecatesFile:    defaultDeprecatesFilePath,
-		DeletesFile:       defaultDeletesFilePath,
+		DeprecatesFile:    deprecatesFilePath,
+		DeletesFile:       deletesFilePath,
 		RuntimeConfigFile: runtimeConfigPath,
 	}
 
