@@ -8,6 +8,11 @@ else
     systemd_version=$(systemctl --version | head -1 | sed 's/systemd \([0-9]\+\).*/\1/')
 fi
 
+on_rpm=""
+if command -V rpm >/dev/null 2>&1; then
+  on_rpm="true"
+fi
+
 cleanInstall() {
     printf "\033[32m Post Install of a clean install\033[0m\n"
 
@@ -28,9 +33,13 @@ cleanInstall() {
     systemctl unmask promtail ||:
     printf "\033[32m Set the preset flag for the service unit\033[0m\n"
     systemctl preset promtail ||:
-    printf "\033[32m Set the enabled flag for the service unit\033[0m\n"
-    systemctl enable promtail ||:
-    systemctl restart promtail ||:
+
+    # If current distro is RPM-based, don't enable systemd service
+    if [ -z "${on_rpm}" ]; then
+      printf "\033[32m Set the enabled flag for the service unit\033[0m\n"
+      systemctl enable promtail ||:
+      systemctl restart promtail ||:
+    fi
 }
 
 upgrade() {
