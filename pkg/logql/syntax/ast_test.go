@@ -671,7 +671,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 		&promql.Sample{F: 2},
 		&promql.Sample{F: 0},
 		true,
-		true,
+		false,
 		true,
 	)
 	require.NoError(t, err)

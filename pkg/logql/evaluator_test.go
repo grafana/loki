@@ -22,7 +22,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 			T: 1, F: 0,
 		},
 		false,
-		false,
+		true,
 		false,
 	)
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestDefaultEvaluator_DivideByZero(t *testing.T) {
 			T: 1, F: 0,
 		},
 		false,
-		false,
+		true,
 		false,
 	)
 	require.NoError(t, err)
@@ -225,14 +225,14 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			// comparing a binop should yield the unfiltered (non-nil variant) regardless
 			// of whether this is a vector-vector comparison or not.
-			op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false, false)
+			op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true, false)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, op)
-			op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false, true)
+			op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true, true)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, op2)
 
-			op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, false, true)
+			op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, true, true)
 			require.NoError(t, err)
 			require.Nil(t, op3)
 
@@ -240,16 +240,16 @@ func TestEvaluator_mergeBinOpComparisons(t *testing.T) {
 			if tc.expected.F == 0 {
 				//  ensure zeroed predicates are filtered out
 
-				op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true, false)
+				op, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false, false)
 				require.NoError(t, err)
 				require.Nil(t, op)
-				op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, true, true)
+				op2, err := syntax.MergeBinOp(tc.op, tc.lhs, tc.rhs, false, false, true)
 				require.NoError(t, err)
 				require.Nil(t, op2)
 
 				// for vector-vector comparisons, ensure that nil right hand sides
 				// translate into nil results
-				op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, true, true)
+				op3, err := syntax.MergeBinOp(tc.op, tc.lhs, nil, false, false, true)
 				require.NoError(t, err)
 				require.Nil(t, op3)
 

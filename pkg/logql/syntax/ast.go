@@ -1630,7 +1630,7 @@ func reduceBinOp(op string, left, right float64) *LiteralExpr {
 		&promql.Sample{F: left},
 		&promql.Sample{F: right},
 		false,
-		false,
+		true,
 		false,
 	)
 	if err != nil {
@@ -1644,11 +1644,11 @@ func reduceBinOp(op string, left, right float64) *LiteralExpr {
 // (left: vector) op (right: vector) -> return value from left
 // (left: vector) op (right: scalar) -> return value from left
 // (left: scaler) op (right: vector) -> return value from right (to identify this case, we use `swap` argument)
-// left is always assumed to be a vector in case vector and scalar binops.
+// left is always assumed `left` to be a vector in case vector and scalar binops.
 // if this assumption is wrong, pass `swap=true`.
 // This is to make sure, in case returning non-bool, we have to return the sample value of vector instead of scalar.
 // So this function needed to told which of the left or right is an vector correctly.
-func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSampleValue, isVectorComparison bool) (*promql.Sample, error) {
+func MergeBinOp(op string, left, right *promql.Sample, swap, returnBool, isVectorComparison bool) (*promql.Sample, error) {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -1734,7 +1734,7 @@ func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSample
 			val := 0.
 			if left.F == right.F {
 				val = 1.
-			} else if returnSampleValue {
+			} else if !returnBool {
 				return nil
 			}
 			res.F = val
@@ -1751,7 +1751,7 @@ func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSample
 			val := 0.
 			if left.F != right.F {
 				val = 1.
-			} else if returnSampleValue {
+			} else if !returnBool {
 				return nil
 			}
 			res.F = val
@@ -1768,7 +1768,7 @@ func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSample
 			val := 0.
 			if left.F > right.F {
 				val = 1.
-			} else if returnSampleValue {
+			} else if !returnBool {
 				return nil
 			}
 			res.F = val
@@ -1785,7 +1785,7 @@ func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSample
 			val := 0.
 			if left.F >= right.F {
 				val = 1.
-			} else if returnSampleValue {
+			} else if !returnBool {
 				return nil
 			}
 			res.F = val
@@ -1802,7 +1802,7 @@ func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSample
 			val := 0.
 			if left.F < right.F {
 				val = 1.
-			} else if returnSampleValue {
+			} else if !returnBool {
 				return nil
 			}
 			res.F = val
@@ -1819,7 +1819,7 @@ func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSample
 			val := 0.
 			if left.F <= right.F {
 				val = 1.
-			} else if returnSampleValue {
+			} else if !returnBool {
 				return nil
 			}
 			res.F = val
@@ -1835,11 +1835,11 @@ func MergeBinOp(op string, left, right *promql.Sample, vectorRight, returnSample
 		return res, nil
 	}
 
-	if returnSampleValue {
+	if !returnBool {
 		// Catch cases where the scalar is the LHS in a scalar-vector comparison operation.
 		// We want to always keep the vector element value as the output value, even if it's on the RHS.
 		// https://github.com/grafana/loki/issues/10741
-		if vectorRight {
+		if swap {
 			left, right = right, left
 		}
 

@@ -22,6 +22,8 @@ func TestBugWorking(t *testing.T) {
 		{newSeries(4, constant(70), `{app="foo",pool="foo"}`)},
 	}
 
+	fmt.Printf("%+v\n", data)
+
 	params := []SelectSampleParams{
 		{&logproto.SampleQueryRequest{Start: time.Unix(10, 0), End: time.Unix(70, 0), Selector: `sum(count_over_time({app="foo"}[1m]))`}},
 	}

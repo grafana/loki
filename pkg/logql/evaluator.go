@@ -784,7 +784,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 
 		metric := resultMetric(ls.Metric, rs.Metric, opts)
 		insertedSigs, exists := matchedSigs[sig]
-		filter := true
+		returnBool := false
 		if opts != nil {
 			if opts.VectorMatching.Card == syntax.CardOneToOne {
 				if exists {
@@ -802,16 +802,15 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				insertedSigs[insertSig] = struct{}{}
 			}
 			// merge
-			if opts.ReturnBool {
-				filter = false
-			}
+			returnBool = opts.ReturnBool
+
 			// swap back before apply binary operator
 			if opts.VectorMatching.Card == syntax.CardOneToMany {
 				swapped = true
 				ls, rs = rs, ls
 			}
 		}
-		merged, err := syntax.MergeBinOp(op, ls, rs, swapped, filter, syntax.IsComparisonOperator(op))
+		merged, err := syntax.MergeBinOp(op, ls, rs, swapped, returnBool, syntax.IsComparisonOperator(op))
 		if err != nil {
 			return nil, err
 		}
@@ -975,8 +974,8 @@ func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 			e.op,
 			left,
 			right,
-			e.inverted,
-			!e.returnBool,
+			!e.inverted,
+			e.returnBool,
 			syntax.IsComparisonOperator(e.op),
 		)
 		if err != nil {
