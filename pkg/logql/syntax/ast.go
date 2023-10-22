@@ -1631,6 +1631,7 @@ func reduceBinOp(op string, left, right float64) *LiteralExpr {
 		&promql.Sample{F: right},
 		false,
 		false,
+		false,
 	)
 	if err != nil {
 		return &LiteralExpr{err: err}
@@ -1638,7 +1639,12 @@ func reduceBinOp(op string, left, right float64) *LiteralExpr {
 	return &LiteralExpr{Val: merged.F}
 }
 
-func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) (*promql.Sample, error) {
+// MergeBinOp performs `op` on `left` and `right` arguments and return the `promql.Sample` value.
+// In case of vector and scalar arguments, MergeBinOp assumes `left` is always vector.
+// pass `swap=true` otherwise.
+// This matters because, either it's (vector op scalar) or (scalar op vector), the return sample value is
+// always sample value of vector argument.
+func MergeBinOp(op string, left, right *promql.Sample, swap, notReturnBool, isVectorComparison bool) (*promql.Sample, error) {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -1724,7 +1730,7 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			val := 0.
 			if left.F == right.F {
 				val = 1.
-			} else if filter {
+			} else if notReturnBool {
 				return nil
 			}
 			res.F = val
@@ -1741,7 +1747,7 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			val := 0.
 			if left.F != right.F {
 				val = 1.
-			} else if filter {
+			} else if notReturnBool {
 				return nil
 			}
 			res.F = val
@@ -1758,7 +1764,7 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			val := 0.
 			if left.F > right.F {
 				val = 1.
-			} else if filter {
+			} else if notReturnBool {
 				return nil
 			}
 			res.F = val
@@ -1775,7 +1781,7 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			val := 0.
 			if left.F >= right.F {
 				val = 1.
-			} else if filter {
+			} else if notReturnBool {
 				return nil
 			}
 			res.F = val
@@ -1792,7 +1798,7 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			val := 0.
 			if left.F < right.F {
 				val = 1.
-			} else if filter {
+			} else if notReturnBool {
 				return nil
 			}
 			res.F = val
@@ -1809,7 +1815,7 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			val := 0.
 			if left.F <= right.F {
 				val = 1.
-			} else if filter {
+			} else if notReturnBool {
 				return nil
 			}
 			res.F = val
@@ -1825,10 +1831,14 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 		return res, nil
 	}
 
-	if filter {
-		// if a filter-enabled vector-wise comparison has returned non-nil,
+	if notReturnBool {
+		if swap {
+			left, right = right, left
+		}
+
+		// if a notReturnBool is enabled vector-wise comparison has returned non-nil,
 		// ensure we return the left hand side's value (2) instead of the
-		// comparison operator's result (1: the truthy answer)
+		// comparison operator's result (1: the truthy answer. a.k.a bool)
 		if res != nil {
 			return left, nil
 		}
