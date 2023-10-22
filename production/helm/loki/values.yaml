@@ -235,6 +235,11 @@ loki:
     frontend_worker:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    {{- with .Values.loki.distributor }}
+    distributor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -338,6 +343,8 @@ loki:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   frontend_worker:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
+  # -- Optional distributor configuration
+  distributor: {}
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
