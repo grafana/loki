@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/ring"
 )
 
 // Config holds common config that can be shared between multiple other config sections.
@@ -27,7 +27,7 @@ type Config struct {
 	Storage           Storage         `yaml:"storage"`
 	PersistTokens     bool            `yaml:"persist_tokens"`
 	ReplicationFactor int             `yaml:"replication_factor"`
-	Ring              util.RingConfig `yaml:"ring"`
+	Ring              ring.RingConfig `yaml:"ring"`
 
 	// InstanceInterfaceNames represents a common list of net interfaces used to look for host addresses.
 	//

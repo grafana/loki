@@ -60,7 +60,7 @@ func BenchmarkQueryFairness(t *testing.B) {
 			enqueueRequestsForActor(t, []string{}, useActor, requestQueue, numSubRequestsActorA, 50*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"a"}, useActor, requestQueue, numSubRequestsActorA, 100*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"b"}, useActor, requestQueue, numSubRequestsActorB, 50*time.Millisecond)
-			requestQueue.queues.recomputeUserQueriers()
+			requestQueue.queues.recomputeUserConsumers()
 
 			// set timeout to minize impact on overall test run duration in case something goes wrong
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -76,8 +76,8 @@ func BenchmarkQueryFairness(t *testing.B) {
 				go func(id string) {
 					defer wg.Done()
 
-					requestQueue.RegisterQuerierConnection(id)
-					defer requestQueue.UnregisterQuerierConnection(id)
+					requestQueue.RegisterConsumerConnection(id)
+					defer requestQueue.UnregisterConsumerConnection(id)
 					idx := StartIndex
 					for ctx.Err() == nil {
 						r, newIdx, err := requestQueue.Dequeue(ctx, idx, id)
@@ -143,7 +143,7 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(22), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "123"}, r(200), 0, nil)
 	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "456"}, r(210), 0, nil)
-	requestQueue.queues.recomputeUserQueriers()
+	requestQueue.queues.recomputeUserConsumers()
 
 	items := make([]int, 0)
 
@@ -151,8 +151,8 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	requestQueue.RegisterQuerierConnection("querier")
-	defer requestQueue.UnregisterQuerierConnection("querier")
+	requestQueue.RegisterConsumerConnection("querier")
+	defer requestQueue.UnregisterConsumerConnection("querier")
 
 	idx := StartIndexWithLocalQueue
 	for ctx.Err() == nil {

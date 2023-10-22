@@ -9,7 +9,7 @@ weight:
 Grafana Loki does not come with any included authentication layer. Operators are
 expected to run an authenticating reverse proxy in front of your services.
 
-The scalable monolithic [deployment mode]({{< relref "../get-started/deployment-modes" >}}) requires a reverse proxy to be deployed in front of Loki, to direct client API requests to either the read or write nodes. The Loki Helm chart includes a default reverse proxy configuration, using Nginx.
+The simple scalable [deployment mode]({{< relref "../get-started/deployment-modes" >}}) requires a reverse proxy to be deployed in front of Loki, to direct client API requests to either the read or write nodes. The Loki Helm chart includes a default reverse proxy configuration, using Nginx.
 
 A list of open-source reverse proxies you can use:
 

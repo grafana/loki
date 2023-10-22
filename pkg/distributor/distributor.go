@@ -44,6 +44,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -376,7 +377,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				keys = append(keys, derivedKeys...)
 				streams = append(streams, derivedStreams...)
 			} else {
-				keys = append(keys, util.TokenFor(tenantID, stream.Labels))
+				keys = append(keys, lokiring.TokenFor(tenantID, stream.Labels))
 				streams = append(streams, streamTracker{stream: stream})
 			}
 		}
@@ -474,7 +475,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []uint32{util.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
+		return []uint32{lokiring.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
 	d.streamShardCount.Inc()
@@ -518,7 +519,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		shardNum := (startShard + i) % totalShards
 		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 
-		derivedKeys = append(derivedKeys, util.TokenFor(tenantID, shard.Labels))
+		derivedKeys = append(derivedKeys, lokiring.TokenFor(tenantID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
 		if shardStreamsCfg.LoggingEnabled {
