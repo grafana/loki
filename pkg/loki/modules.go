@@ -1174,6 +1174,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	objectClients := make(map[string]client.ObjectClient)
+	indexObjectClients := make(map[int64]client.ObjectClient)
 	if sharedStoreType := t.Cfg.CompactorConfig.SharedStoreType; sharedStoreType != "" {
 		objectClient, err := storage.NewObjectClient(sharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
 		if err != nil {
@@ -1181,6 +1182,15 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		}
 
 		objectClients[sharedStoreType] = objectClient
+
+		for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
+			indexObjectClient, err := storage.NewObjectClient(sharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create index object client: %w", err)
+			}
+
+			indexObjectClients[periodConfig.From.Unix()] = indexObjectClient
+		}
 	} else {
 		for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
 			if !config.IsObjectStorageIndex(periodConfig.IndexType) {
@@ -1197,6 +1207,13 @@ func (t *Loki) initCompactor() (services.Service, error) {
 			}
 
 			objectClients[periodConfig.ObjectType] = objectClient
+
+			indexObjectClient, err := storage.NewIndexObjectClient(periodConfig, t.Cfg.StorageConfig, t.clientMetrics)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create index object client: %w", err)
+			}
+
+			indexObjectClients[periodConfig.From.Unix()] = indexObjectClient
 		}
 
 		stores := make([]string, 0, len(objectClients))
@@ -1206,7 +1223,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		level.Info(util_log.Logger).Log("msg", "-boltdb.shipper.compactor.shared-store not specified, initializing compactor to operator on the following object stores", "stores", strings.Join(stores, ", "))
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, indexObjectClients, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

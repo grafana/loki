@@ -35,7 +35,7 @@ var (
 	start = model.Now().Add(-30 * 24 * time.Hour)
 )
 
-func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClient, periodConfigs []config.PeriodConfig, tempDir string) *Compactor {
+func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClient, indexObjectStoreClients map[int64]client.ObjectClient, periodConfigs []config.PeriodConfig, tempDir string) *Compactor {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
@@ -47,7 +47,7 @@ func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClie
 
 	require.NoError(t, cfg.Validate())
 
-	c, err := NewCompactor(cfg, objectClients, config.SchemaConfig{
+	c, err := NewCompactor(cfg, objectClients, indexObjectStoreClients, config.SchemaConfig{
 		Configs: periodConfigs,
 	}, nil, nil)
 	require.NoError(t, err)
@@ -85,13 +85,17 @@ func TestCompactor_RunCompaction(t *testing.T) {
 	}
 
 	var (
-		objectClients = map[string]client.ObjectClient{}
-		err           error
+		objectClients      = map[string]client.ObjectClient{}
+		indexObjectClients = map[int64]client.ObjectClient{}
+		err                error
 	)
 	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
 	require.NoError(t, err)
 
-	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
+	indexObjectClients[periodConfigs[0].From.Unix()], err = local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+	require.NoError(t, err)
+
+	compactor := setupTestCompactor(t, objectClients, indexObjectClients, periodConfigs, tempDir)
 	err = compactor.RunCompaction(context.Background(), false)
 	require.NoError(t, err)
 
@@ -153,8 +157,9 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 	}
 
 	var (
-		objectClients = map[string]client.ObjectClient{}
-		err           error
+		objectClients      = map[string]client.ObjectClient{}
+		indexObjectClients = map[int64]client.ObjectClient{}
+		err                error
 	)
 	objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodOnePath})
 	require.NoError(t, err)
@@ -162,7 +167,13 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 	objectClients["fs_02"], err = local.NewFSObjectClient(local.FSConfig{Directory: periodTwoPath})
 	require.NoError(t, err)
 
-	compactor := setupTestCompactor(t, objectClients, periodConfigs, tempDir)
+	indexObjectClients[periodConfigs[0].From.Unix()], err = local.NewFSObjectClient(local.FSConfig{Directory: periodOnePath})
+	require.NoError(t, err)
+
+	indexObjectClients[periodConfigs[1].From.Unix()], err = local.NewFSObjectClient(local.FSConfig{Directory: periodTwoPath})
+	require.NoError(t, err)
+
+	compactor := setupTestCompactor(t, objectClients, indexObjectClients, periodConfigs, tempDir)
 	err = compactor.RunCompaction(context.Background(), false)
 	require.NoError(t, err)
 

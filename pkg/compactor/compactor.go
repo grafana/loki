@@ -159,9 +159,6 @@ type Compactor struct {
 	services.Service
 
 	cfg                       Config
-	indexStorageClient        storage.Client
-	tableMarker               retention.TableMarker
-	sweeper                   *retention.Sweeper
 	deleteRequestsStore       deletion.DeleteRequestsStore
 	DeleteRequestsHandler     *deletion.DeleteRequestHandler
 	DeleteRequestsGRPCHandler *deletion.GRPCRequestHandler
@@ -183,13 +180,13 @@ type Compactor struct {
 	subservicesWatcher *services.FailureWatcher
 
 	// one for each object store
-	storeContainers map[string]storeContainer
+	storeContainers     map[string]storeContainer
+	indexStorageClients map[int64]storage.Client
 }
 
 type storeContainer struct {
-	tableMarker        retention.TableMarker
-	sweeper            *retention.Sweeper
-	indexStorageClient storage.Client
+	tableMarker retention.TableMarker
+	sweeper     *retention.Sweeper
 }
 
 type Limits interface {
@@ -198,7 +195,7 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
-func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient, indexObjectStoreClients map[int64]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -253,7 +250,7 @@ func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient,
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(objectStoreClients, schemaConfig, limits, r); err != nil {
+	if err := compactor.init(objectStoreClients, indexObjectStoreClients, schemaConfig, limits, r); err != nil {
 		return nil, err
 	}
 
@@ -261,7 +258,7 @@ func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient,
 	return compactor, nil
 }
 
-func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
+func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, indexObjectStoreClients map[int64]client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
 		return err
@@ -291,10 +288,14 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 		}
 	}
 
+	c.indexStorageClients = make(map[int64]storage.Client, len(indexObjectStoreClients))
+	for objectStoreType, objectClient := range indexObjectStoreClients {
+		c.indexStorageClients[objectStoreType] = storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
+	}
+
 	c.storeContainers = make(map[string]storeContainer, len(objectStoreClients))
 	for objectStoreType, objectClient := range objectStoreClients {
 		var sc storeContainer
-		sc.indexStorageClient = storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
 
 		if c.cfg.RetentionEnabled {
 			// given that compaction can now run on multiple object stores, marker files are stored under /retention/{objectStoreType}/markers/
@@ -578,12 +579,17 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return fmt.Errorf("index processor not found for index type %s", schemaCfg.IndexType)
 	}
 
-	sc, ok := c.storeContainers[schemaCfg.ObjectType]
+	indexStorageClient, ok := c.indexStorageClients[schemaCfg.From.Unix()]
 	if !ok {
 		return fmt.Errorf("index store client not found for %s", schemaCfg.ObjectType)
 	}
 
-	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
+	sc, ok := c.storeContainers[schemaCfg.ObjectType]
+	if !ok {
+		return fmt.Errorf("store client not found for %s", schemaCfg.ObjectType)
+	}
+
+	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), indexStorageClient, indexCompactor,
 		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
@@ -640,10 +646,10 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	}()
 
 	var tables []string
-	for _, sc := range c.storeContainers {
+	for _, indexStorageClient := range c.indexStorageClients {
 		// refresh index list cache since previous compaction would have changed the index files in the object store
-		sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
-		tbls, err := sc.indexStorageClient.ListTables(ctx)
+		indexStorageClient.RefreshIndexTableNamesCache(ctx)
+		tbls, err := indexStorageClient.ListTables(ctx)
 		if err != nil {
 			status = statusFailure
 			return fmt.Errorf("failed to list tables: %w", err)
