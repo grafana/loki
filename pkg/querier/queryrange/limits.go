@@ -469,7 +469,7 @@ func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (int64, erro
 	start := time.Now()
 
 	if err := s.sem.Acquire(ctx, int64(n)); err != nil {
-		return 0, fmt.Errorf("could not acquire work: %w", err)
+		return 0, err
 	}
 
 	elapsed := time.Since(start)
@@ -509,8 +509,6 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
 	}
 
-	// sem := semaphore.NewWeighted(int64(parallelism))
-
 	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))
 
 	return rt.middleware.Wrap(
@@ -522,7 +520,6 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 			// the thousands.
 			// Note: It is the responsibility of the caller to run
 			// the handler in parallel.
-
 			elapsed, err := semWithTiming.Acquire(ctx, int64(1))
 
 			if err != nil {
