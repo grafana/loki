@@ -63,10 +63,12 @@ type Manager struct {
 }
 
 // New creates an instance of Manager. Manager is a services.Service, and must be explicitly started to perform any work.
-func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Manager, error) {
+func New(cfg Config, configName string, registerer prometheus.Registerer, logger log.Logger) (*Manager, error) {
 	if len(cfg.LoadPath) == 0 {
 		return nil, errors.New("LoadPath is empty")
 	}
+
+	registerer = prometheus.WrapRegistererWith(prometheus.Labels{"config": configName}, registerer)
 
 	mgr := Manager{
 		cfg: cfg,

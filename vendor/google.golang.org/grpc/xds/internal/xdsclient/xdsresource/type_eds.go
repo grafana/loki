@@ -73,11 +73,3 @@ type EndpointsUpdate struct {
 	// Raw is the resource from the xds response.
 	Raw *anypb.Any
 }
-
-// EndpointsUpdateErrTuple is a tuple with the update and error. It contains the
-// results from unmarshal functions. It's used to pass unmarshal results of
-// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
-type EndpointsUpdateErrTuple struct {
-	Update EndpointsUpdate
-	Err    error
-}

@@ -173,7 +173,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				data.statistics = responseStats
 				data.result = res
 				data.queryType = queryType
-				p, errReq := paramsFromRequest(req)
+				p, errReq := ParamsFromRequest(req)
 				if errReq != nil {
 					return nil, errReq
 				}

@@ -45,6 +45,10 @@ import (
 // Name is the name of the priority balancer.
 const Name = "priority_experimental"
 
+// DefaultSubBalancerCloseTimeout is defined as a variable instead of const for
+// testing.
+var DefaultSubBalancerCloseTimeout = 15 * time.Minute
+
 func init() {
 	balancer.Register(bb{})
 }
@@ -60,7 +64,13 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 	}
 
 	b.logger = prefixLogger(b)
-	b.bg = balancergroup.New(cc, bOpts, b, b.logger)
+	b.bg = balancergroup.New(balancergroup.Options{
+		CC:                      cc,
+		BuildOpts:               bOpts,
+		StateAggregator:         b,
+		Logger:                  b.logger,
+		SubBalancerCloseTimeout: DefaultSubBalancerCloseTimeout,
+	})
 	b.bg.Start()
 	go b.run()
 	b.logger.Infof("Created")
@@ -200,7 +210,7 @@ func (b *priorityBalancer) ResolverError(err error) {
 }
 
 func (b *priorityBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	b.bg.UpdateSubConnState(sc, state)
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 func (b *priorityBalancer) Close() {

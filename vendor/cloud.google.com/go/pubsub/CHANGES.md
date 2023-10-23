@@ -1,5 +1,17 @@
 # Changes
 
+## [1.33.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.32.0...pubsub/v1.33.0) (2023-07-24)
+
+
+### Features
+
+* **pubsub:** Support payload wrapping for push subs ([#8292](https://github.com/googleapis/google-cloud-go/issues/8292)) ([fd49db5](https://github.com/googleapis/google-cloud-go/commit/fd49db50cd333a2c918f6a1c94f779b8936876fc))
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Update maxMessageRetentionDuration to be 31 days ([#8199](https://github.com/googleapis/google-cloud-go/issues/8199)) ([1fa4bb8](https://github.com/googleapis/google-cloud-go/commit/1fa4bb8b3f22aad0b97ccae610408720522a8b31))
+
 ## [1.32.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.31.0...pubsub/v1.32.0) (2023-06-27)
 
 
