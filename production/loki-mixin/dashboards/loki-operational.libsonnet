@@ -63,11 +63,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                local replacePerClusterMatchers(expr) =
                                  std.strReplace(
                                    std.strReplace(
-                                     expr, 
-                                     'cluster="$cluster"', 
+                                     expr,
+                                     'cluster="$cluster"',
                                      $._config.per_cluster_label + '="$cluster"'
                                    ),
-                                   'cluster=~"$cluster"', 
+                                   'cluster=~"$cluster"',
                                    $._config.per_cluster_label + '=~"$cluster"'
                                  ),
 
