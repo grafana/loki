@@ -3,8 +3,11 @@ package logql
 import (
 	"math"
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -282,6 +285,52 @@ func TestEmptyNestedEvaluator(t *testing.T) {
 
 }
 
+func TestLiteralStepEvaluator(t *testing.T) {
+	cases := []struct {
+		name     string
+		expr     *LiteralStepEvaluator
+		expected []float64
+	}{
+		{
+			name: "vector op scalar",
+			// e.g: sum(count_over_time({app="foo"}[1m])) > 20
+			expr: &LiteralStepEvaluator{
+				nextEv:   newReturnVectorEvaluator([]float64{20, 21, 22, 23}),
+				val:      20,
+				inverted: true, //  set to true, because literal expression is not on left.
+				op:       ">",
+			},
+			expected: []float64{21, 22, 23},
+		},
+		{
+			name: "scalar op vector",
+			// e.g: 20 < sum(count_over_time({app="foo"}[1m]))
+			expr: &LiteralStepEvaluator{
+				nextEv:   newReturnVectorEvaluator([]float64{20, 21, 22, 23}),
+				val:      20,
+				inverted: false,
+				op:       "<",
+			},
+			expected: []float64{21, 22, 23},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ok, _, got := tc.expr.Next()
+			require.True(t, ok)
+			vecs := got.SampleVector()
+			gotSamples := make([]float64, 0, len(vecs))
+
+			for _, v := range vecs {
+				gotSamples = append(gotSamples, v.F)
+			}
+
+			assert.Equal(t, tc.expected, gotSamples)
+		})
+	}
+}
+
 type emptyEvaluator struct{}
 
 func (*emptyEvaluator) Next() (ok bool, ts int64, r StepResult) {
@@ -297,3 +346,43 @@ func (*emptyEvaluator) Error() error {
 }
 
 func (*emptyEvaluator) Explain(Node) {}
+
+// returnVectorEvaluator returns elements of vector
+// passed in, everytime it's `Next()` is called. Used for testing.
+type returnVectorEvaluator struct {
+	vec promql.Vector
+}
+
+func (e *returnVectorEvaluator) Next() (ok bool, ts int64, r StepResult) {
+	return true, 0, SampleVector(e.vec)
+}
+
+func (*returnVectorEvaluator) Close() error {
+	return nil
+}
+
+func (*returnVectorEvaluator) Error() error {
+	return nil
+}
+
+func (*returnVectorEvaluator) Explain(Node) {
+
+}
+
+func newReturnVectorEvaluator(vec []float64) *returnVectorEvaluator {
+	testTime := time.Now().Unix()
+
+	pvec := make([]promql.Sample, 0, len(vec))
+
+	for _, v := range vec {
+		pvec = append(pvec, promql.Sample{
+			T:      testTime,
+			F:      v,
+			Metric: labels.FromStrings("foo", "bar"),
+		})
+	}
+
+	return &returnVectorEvaluator{
+		vec: pvec,
+	}
+}
