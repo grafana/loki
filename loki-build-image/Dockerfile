@@ -8,6 +8,9 @@
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
 FROM golang:1.21.3-bullseye as helm
 ARG HELM_VER="v3.2.3"
+
+RUN echo "hello world"
+
 RUN curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \
     tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
     mv /tmp/linux-amd64/helm /usr/bin/helm && \
