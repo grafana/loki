@@ -509,6 +509,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 		func(a, b *SeriesWithBloom) bool {
 			return a.Series.Fingerprint == b.Series.Fingerprint
 		},
+		id[*SeriesWithBloom],
 		func(a, b *SeriesWithBloom) *SeriesWithBloom {
 			if len(a.Series.Chunks) > len(b.Series.Chunks) {
 				return a

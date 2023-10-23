@@ -14,8 +14,6 @@ type request struct {
 	response chan<- output
 }
 
-type inputs Iterator[request]
-
 type CancellableInputsIter struct {
 	ctx context.Context
 	Iterator[request]
@@ -39,19 +37,20 @@ type output struct {
 
 // Fuse combines multiple requests into a single loop iteration
 // over the data set and returns the corresponding outputs
-func (bq *BlockQuerier) Fuse(inputs []inputs) *FusedQuerier {
+func (bq *BlockQuerier) Fuse(inputs []Iterator[request]) *FusedQuerier {
 	return NewFusedQuerier(bq, inputs)
 }
 
 type FusedQuerier struct {
 	bq     *BlockQuerier
-	inputs []inputs
+	inputs Iterator[[]request]
 }
 
-func NewFusedQuerier(bq *BlockQuerier, inputs []inputs) *FusedQuerier {
+func NewFusedQuerier(bq *BlockQuerier, inputs []Iterator[request]) *FusedQuerier {
+	// heap := NewHeapIterator[request]()
 	return &FusedQuerier{
 		bq:     bq,
-		inputs: inputs,
+		inputs: nil,
 	}
 }
 

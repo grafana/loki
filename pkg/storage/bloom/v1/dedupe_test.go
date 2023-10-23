@@ -26,8 +26,9 @@ func TestMergeDedupeIter(t *testing.T) {
 	merge := func(a, _ *SeriesWithBloom) *SeriesWithBloom {
 		return a
 	}
-	deduper := NewDedupingIter[*SeriesWithBloom](
+	deduper := NewDedupingIter[*SeriesWithBloom, *SeriesWithBloom](
 		eq,
+		id[*SeriesWithBloom],
 		merge,
 		NewPeekingIter[*SeriesWithBloom](mbq),
 	)
