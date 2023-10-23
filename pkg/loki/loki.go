@@ -109,11 +109,12 @@ type Config struct {
 	Common common.Config `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+
+	MetricsPrefix string `yaml:"metrics_prefix"`
 }
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Server.MetricsNamespace = "loki"
 	c.Server.ExcludeRequestInLog = true
 
 	// Set the default module list to 'all'
@@ -144,6 +145,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The default will be flipped to false in the next Loki release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
+
+	f.StringVar(&c.MetricsPrefix, "metrics-prefix", "loki", "Prefix of the metrics.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -267,6 +270,8 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	c.MetricsPrefix = c.Server.MetricsNamespace
+
 	return nil
 }
 
@@ -332,7 +337,7 @@ type Loki struct {
 func New(cfg Config) (*Loki, error) {
 	loki := &Loki{
 		Cfg:                 cfg,
-		clientMetrics:       storage.NewClientMetrics(),
+		clientMetrics:       storage.NewClientMetrics(cfg.MetricsPrefix),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 	}
 	analytics.Edition("oss")

@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
 
-var metrics = NewBlobStorageMetrics()
+var metrics = NewBlobStorageMetrics("loki")
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
 

@@ -404,7 +404,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	cm := storage.NewClientMetrics()
+	cm := storage.NewClientMetrics("loki")
 	if useRemoteSchema {
 		client, err := GetObjectClient(conf, cm)
 		if err != nil {

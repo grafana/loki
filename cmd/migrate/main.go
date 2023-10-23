@@ -126,7 +126,7 @@ func main() {
 	}
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
-	clientMetrics := storage.NewClientMetrics()
+	clientMetrics := storage.NewClientMetrics("loki")
 	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create source store:", err)

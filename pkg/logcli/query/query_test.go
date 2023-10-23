@@ -513,7 +513,7 @@ func TestLoadFromURL(t *testing.T) {
 	}
 
 	// Missing SharedStoreType should error
-	cm := storage.NewClientMetrics()
+	cm := storage.NewClientMetrics("loki")
 	client, err := GetObjectClient(conf, cm)
 	require.Error(t, err)
 	require.Nil(t, client)

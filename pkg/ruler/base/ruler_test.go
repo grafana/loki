@@ -230,7 +230,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 }
 
 func newTestRuler(t *testing.T, rulerConfig Config) *Ruler {
-	m := loki_storage.NewClientMetrics()
+	m := loki_storage.NewClientMetrics("loki")
 	defer m.Unregister()
 	ruler := buildRuler(t, rulerConfig, nil, m, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
@@ -471,7 +471,7 @@ func TestGetRules(t *testing.T) {
 						Mock: kvStore,
 					},
 				}
-				m := loki_storage.NewClientMetrics()
+				m := loki_storage.NewClientMetrics("loki")
 				defer m.Unregister()
 				r := buildRuler(t, cfg, nil, m, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
@@ -1415,7 +1415,7 @@ func TestSharding(t *testing.T) {
 					DisabledTenants:  tc.disabledUsers,
 				}
 
-				m := loki_storage.NewClientMetrics()
+				m := loki_storage.NewClientMetrics("loki")
 				defer m.Unregister()
 				r := buildRuler(t, cfg, nil, m, nil)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
@@ -1768,7 +1768,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
 	downAtActiveSec := downAtActiveAtTime.Unix()
 
-	m := loki_storage.NewClientMetrics()
+	m := loki_storage.NewClientMetrics("loki")
 	defer m.Unregister()
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
 	r := buildRuler(t, rulerCfg, &fakeQuerier{
@@ -1910,7 +1910,7 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 			}
 
 			rulerCfg := defaultRulerConfig(t, newMockRuleStore(mockRuleGroupList))
-			m := loki_storage.NewClientMetrics()
+			m := loki_storage.NewClientMetrics("loki")
 			defer m.Unregister()
 
 			r := buildRuler(tt, rulerCfg, &fakeQuerier{

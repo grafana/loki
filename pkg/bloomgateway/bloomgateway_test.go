@@ -45,7 +45,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
-	cm := storage.NewClientMetrics()
+	cm := storage.NewClientMetrics("loki")
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{
@@ -104,7 +104,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	logger := log.NewLogfmtLogger(os.Stderr)
 	reg := prometheus.NewRegistry()
 
-	cm := storage.NewClientMetrics()
+	cm := storage.NewClientMetrics("loki")
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{

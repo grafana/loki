@@ -41,7 +41,7 @@ var (
 	start      = model.Time(1523750400000)
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
-	cm         = NewClientMetrics()
+	cm         = NewClientMetrics("loki")
 	chunkStore = getLocalStore(cm)
 )
 

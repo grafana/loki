@@ -147,10 +147,10 @@ type BlobStorageMetrics struct {
 }
 
 // NewBlobStorageMetrics creates the blob storage metrics struct and registers all of it's metrics.
-func NewBlobStorageMetrics() BlobStorageMetrics {
+func NewBlobStorageMetrics(metriceNamespace string) BlobStorageMetrics {
 	b := BlobStorageMetrics{
 		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: metriceNamespace,
 			Name:      "azure_blob_request_duration_seconds",
 			Help:      "Time spent doing azure blob requests.",
 			// Latency seems to range from a few ms to a few secs and is
@@ -158,7 +158,7 @@ func NewBlobStorageMetrics() BlobStorageMetrics {
 			Buckets: prometheus.ExponentialBuckets(0.005, 4, 6),
 		}, []string{"operation", "status_code"}),
 		egressBytesTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: metriceNamespace,
 			Name:      "azure_blob_egress_bytes_total",
 			Help:      "Total bytes downloaded from Azure Blob Storage.",
 		}),

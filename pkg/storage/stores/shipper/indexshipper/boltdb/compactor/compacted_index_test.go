@@ -25,7 +25,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 	for _, tt := range allSchemas {
 		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
-			cm := storage.NewClientMetrics()
+			cm := storage.NewClientMetrics("loki")
 			defer cm.Unregister()
 			testSchema := config.SchemaConfig{Configs: []config.PeriodConfig{tt.config}}
 			store := newTestStore(t, cm)

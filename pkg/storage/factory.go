@@ -641,9 +641,9 @@ type ClientMetrics struct {
 	AzureMetrics azure.BlobStorageMetrics
 }
 
-func NewClientMetrics() ClientMetrics {
+func NewClientMetrics(metricsNamespace string) ClientMetrics {
 	return ClientMetrics{
-		AzureMetrics: azure.NewBlobStorageMetrics(),
+		AzureMetrics: azure.NewBlobStorageMetrics(metricsNamespace),
 	}
 }
 

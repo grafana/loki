@@ -34,7 +34,7 @@ var (
 
 // fill up the local filesystem store with 1gib of data to run benchmark
 func main() {
-	cm := storage.NewClientMetrics()
+	cm := storage.NewClientMetrics("loki")
 	defer cm.Unregister()
 	if _, err := os.Stat("/tmp/benchmark/chunks"); os.IsNotExist(err) {
 		if err := fillStore(cm); err != nil {

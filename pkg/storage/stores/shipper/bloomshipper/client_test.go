@@ -511,7 +511,7 @@ func createShipper(t *testing.T) *BloomClient {
 	require.NoError(t, namedStores.Validate())
 	storageConfig := storage.Config{NamedStores: namedStores}
 
-	metrics := storage.NewClientMetrics()
+	metrics := storage.NewClientMetrics("loki")
 	t.Cleanup(metrics.Unregister)
 	bshipper, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
 	require.NoError(t, err)

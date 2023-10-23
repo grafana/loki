@@ -26,7 +26,7 @@ func Test_ChunkIterator(t *testing.T) {
 	for _, tt := range allSchemas {
 		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
-			cm := storage.NewClientMetrics()
+			cm := storage.NewClientMetrics("loki")
 			defer cm.Unregister()
 			store := newTestStore(t, cm)
 			chunkfmt, headfmt, err := tt.config.ChunkFormat()
@@ -73,7 +73,7 @@ func Test_ChunkIterator(t *testing.T) {
 }
 
 func Test_ChunkIteratorContextCancelation(t *testing.T) {
-	cm := storage.NewClientMetrics()
+	cm := storage.NewClientMetrics("loki")
 	defer cm.Unregister()
 	store := newTestStore(t, cm)
 
@@ -110,7 +110,7 @@ func Test_SeriesCleaner(t *testing.T) {
 	for _, tt := range allSchemas {
 		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
-			cm := storage.NewClientMetrics()
+			cm := storage.NewClientMetrics("loki")
 			defer cm.Unregister()
 			testSchema := config.SchemaConfig{Configs: []config.PeriodConfig{tt.config}}
 			store := newTestStore(t, cm)
@@ -233,7 +233,7 @@ func entryFromChunk(s config.SchemaConfig, c chunk.Chunk) retention.ChunkEntry {
 var chunkEntry retention.ChunkEntry
 
 func Benchmark_ChunkIterator(b *testing.B) {
-	cm := storage.NewClientMetrics()
+	cm := storage.NewClientMetrics("loki")
 	defer cm.Unregister()
 	store := newTestStore(b, cm)
 	chunkfmt, headfmt, err := allSchemas[0].config.ChunkFormat()

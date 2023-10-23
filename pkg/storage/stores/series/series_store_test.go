@@ -59,7 +59,7 @@ var (
 			},
 		},
 	}
-	cm = storage.NewClientMetrics()
+	cm = storage.NewClientMetrics("loki")
 )
 
 // newTestStore creates a new Store for testing.

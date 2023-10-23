@@ -24,7 +24,7 @@ func TestRulerShutdown(t *testing.T) {
 
 	config := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
-	m := storage.NewClientMetrics()
+	m := storage.NewClientMetrics("loki")
 	defer m.Unregister()
 	r := buildRuler(t, config, nil, m, nil)
 
@@ -59,7 +59,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 
 	ctx := context.Background()
 	config := defaultRulerConfig(t, newMockRuleStore(mockRules))
-	m := storage.NewClientMetrics()
+	m := storage.NewClientMetrics("loki")
 	defer m.Unregister()
 	r := buildRuler(t, config, nil, m, nil)
 	r.cfg.EnableSharding = true

@@ -49,7 +49,7 @@ func exit(code int) {
 // Ussage: TSDB_VERSION=3 TABLE_NUM_MIN=19464 TABLE_NUM_MAX=19465 NEW_TABLE_PREFIX=tsdb_v3_ go run tools/tsdb/migrate-versions/main.go --config.file /tmp/loki-config.yaml
 func main() {
 	lokiCfg := setup()
-	clientMetrics := storage.NewClientMetrics()
+	clientMetrics := storage.NewClientMetrics("loki")
 
 	if got := os.Getenv("TSDB_VERSION"); got != "" {
 		n, err := strconv.Atoi(got)

@@ -48,7 +48,7 @@ func TestMigrateTables(t *testing.T) {
 			Directory: tempDir,
 		},
 	}
-	clientMetrics := storage.NewClientMetrics()
+	clientMetrics := storage.NewClientMetrics("loki")
 
 	objClient, err := storage.NewObjectClient(pcfg.ObjectType, storageCfg, clientMetrics)
 	require.NoError(t, err)
