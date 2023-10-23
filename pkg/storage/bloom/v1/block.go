@@ -21,6 +21,7 @@ type Block struct {
 	reader BlockReader // should this be decoupled from the struct (accepted as method arg instead)?
 
 	initialized bool
+	dataRange   SeriesHeader
 }
 
 func NewBlock(reader BlockReader) *Block {
@@ -40,6 +41,13 @@ func (b *Block) LoadHeaders() error {
 		if err := b.index.DecodeHeaders(idx); err != nil {
 			return errors.Wrap(err, "decoding index")
 		}
+
+		// TODO(owen-d): better pattern
+		xs := make([]SeriesHeader, 0, len(b.index.pageHeaders))
+		for _, h := range b.index.pageHeaders {
+			xs = append(xs, h.SeriesHeader)
+		}
+		b.dataRange = aggregateHeaders(xs)
 
 		blooms, err := b.reader.Blooms()
 		if err != nil {
