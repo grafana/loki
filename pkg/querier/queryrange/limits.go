@@ -454,6 +454,29 @@ func NewLimitedRoundTripper(next queryrangebase.Handler, limits Limits, configs 
 	return transport
 }
 
+type SemaphoreWithTiming struct {
+	sem *semaphore.Weighted
+}
+
+func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
+	return &SemaphoreWithTiming{
+		sem: semaphore.NewWeighted(int64(max)), // Replace with your semaphore creation logic
+	}
+}
+
+// acquires the semaphore and records the time it takes.
+func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (int64, error) {
+	start := time.Now()
+
+	if err := s.sem.Acquire(ctx, int64(n)); err != nil {
+		return 0, fmt.Errorf("could not acquire work: %w", err)
+	}
+
+	elapsed := time.Since(start)
+
+	return elapsed.Milliseconds(), nil
+}
+
 func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	var (
 		ctx, cancel = context.WithCancel(c)
@@ -486,7 +509,9 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
 	}
 
-	sem := semaphore.NewWeighted(int64(parallelism))
+	// sem := semaphore.NewWeighted(int64(parallelism))
+
+	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))
 
 	return rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -497,20 +522,21 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 			// the thousands.
 			// Note: It is the responsibility of the caller to run
 			// the handler in parallel.
-			start := time.Now()
 
-			if err := sem.Acquire(ctx, int64(1)); err != nil {
+			elapsed, err := semWithTiming.Acquire(ctx, int64(1))
+
+			if err != nil {
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
 
 			if span != nil {
 				span.LogFields(
-					otlog.Int64("wait_goroutine_capacity_time_ms", time.Since(start).Milliseconds()),
+					otlog.Int64("wait_goroutine_capacity_time_ms", elapsed),
 					otlog.Int64("min_weighted_parallism", int64(parallelism)),
 				)
 			}
 
-			defer sem.Release(int64(1))
+			defer semWithTiming.sem.Release(int64(1))
 
 			return rt.next.Do(ctx, r)
 		})).Do(ctx, request)

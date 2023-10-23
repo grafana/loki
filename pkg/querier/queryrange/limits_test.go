@@ -623,3 +623,41 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 		})
 	}
 }
+
+func TestWeightedAcquire(t *testing.T) {
+
+	ctx := context.Background()
+	sem := NewSemaphoreWithTiming(2)
+
+	// Channel to collect waiting times
+	waitingTimes := make(chan int64, 3) // Three requests
+
+	tryAcquire := func(n int64) {
+		elapsed, err := sem.Acquire(ctx, n)
+
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		waitingTimes <- elapsed
+
+		defer sem.sem.Release(n)
+
+		time.Sleep(10 * time.Millisecond)
+
+	}
+
+	// Start concurrent requests
+	go tryAcquire(1)
+	go tryAcquire(1)
+	go tryAcquire(1)
+
+	// Collect waiting times
+	waiting1 := <-waitingTimes
+	waiting2 := <-waitingTimes
+	waiting3 := <-waitingTimes
+
+	// Check that at least one request waited for some time
+	if waiting1 == 0 && waiting2 == 0 && waiting3 == 0 {
+		t.Errorf("Expected at least one request to wait for some time, but all waited for 0ms.")
+	}
+}
