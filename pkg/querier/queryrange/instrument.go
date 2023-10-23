@@ -18,11 +18,11 @@ type QueryHandlerMetrics struct {
 	InflightRequests *prometheus.GaugeVec
 }
 
-func NewQueryHandlerMetrics(registerer prometheus.Registerer, metricsNamespace string) *QueryHandlerMetrics {
+func NewQueryHandlerMetrics(registerer prometheus.Registerer) *QueryHandlerMetrics {
 	return &QueryHandlerMetrics{
 		InflightRequests: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Name:      "inflight_requests",
+			Namespace: "loki",
+			Name:      "inflight_requests_grpc",
 			Help:      "Current number of inflight requests.",
 		}, []string{"method", "route"}),
 	}
