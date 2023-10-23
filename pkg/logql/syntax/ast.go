@@ -1833,15 +1833,16 @@ func MergeBinOp(op string, left, right *promql.Sample, swap, notReturnBool, isVe
 	}
 
 	if notReturnBool {
-		if swap {
-			left, right = right, left
-		}
-
 		// if a notReturnBool is enabled vector-wise comparison has returned non-nil,
-		// ensure we return the left hand side's value (2) instead of the
+		// ensure we return the vector hand side's sample value, instead of the
 		// comparison operator's result (1: the truthy answer. a.k.a bool)
+
+		retSample := left
+		if swap {
+			retSample = right
+		}
 		if res != nil {
-			return left, nil
+			return retSample, nil
 		}
 	}
 	return res, nil
