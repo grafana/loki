@@ -21,9 +21,6 @@
 (import 'memcached.libsonnet') +
 (import 'overrides-exporter.libsonnet') +
 
-// WAL support
-(import 'wal.libsonnet') +
-
 // Index Gateway support
 (import 'index-gateway.libsonnet') +
 

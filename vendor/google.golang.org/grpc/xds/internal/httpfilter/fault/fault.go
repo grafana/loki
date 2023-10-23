@@ -297,5 +297,5 @@ func (*okStream) Header() (metadata.MD, error) { return nil, nil }
 func (*okStream) Trailer() metadata.MD         { return nil }
 func (*okStream) CloseSend() error             { return nil }
 func (o *okStream) Context() context.Context   { return o.ctx }
-func (*okStream) SendMsg(m interface{}) error  { return io.EOF }
-func (*okStream) RecvMsg(m interface{}) error  { return io.EOF }
+func (*okStream) SendMsg(m any) error          { return io.EOF }
+func (*okStream) RecvMsg(m any) error          { return io.EOF }
