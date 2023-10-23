@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
