@@ -1,4 +1,4 @@
-package bloomtokenizer
+package v1
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/tools/tsdb/helpers"
+	//"github.com/grafana/loki/tools/tsdb/helpers"
 )
 
 type metrics struct{}
@@ -35,7 +35,7 @@ type BloomTokenizer struct {
 
 const CacheSize = 150000
 
-// New returns a new instance of the Bloom Tokenizer.
+// NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
 func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
 		metrics: newMetrics(reg),
@@ -67,14 +67,15 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
 		bt.chunkIDTokenizer.reinit(chunks[idx].ChunkRef)
 
-		itr, err := lc.Iterator(
+		// TODO: error handling
+		itr, _ := lc.Iterator(
 			context.Background(),
 			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps
 			time.Unix(0, math.MaxInt64),
 			logproto.FORWARD,
 			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
 		)
-		helpers.ExitErr("getting iterator", err)
+		//helpers.ExitErr("getting iterator", err)
 
 		for itr.Next() && itr.Error() == nil {
 			toks := bt.chunkIDTokenizer.Tokens(itr.Entry().Line)
@@ -94,7 +95,7 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 				}
 			}
 		}
-		helpers.ExitErr("iterating chunks", itr.Error())
+		//helpers.ExitErr("iterating chunks", itr.Error())
 	} // for each chunk
 
 }

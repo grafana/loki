@@ -1,4 +1,4 @@
-package bloomtokenizer
+package v1
 
 import (
 	"encoding/binary"
