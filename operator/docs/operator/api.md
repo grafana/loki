@@ -2246,6 +2246,20 @@ Alternatively the public pod IP can be used in case private networks (RFC 1918 a
 are not available.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>enableIPv6</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>EnableIPv6 enables IPv6 support for the memberlist based hash ring.</p>
+<p>Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+for the memberlist.</p>
+</td>
+</tr>
 </tbody>
 </table>
 

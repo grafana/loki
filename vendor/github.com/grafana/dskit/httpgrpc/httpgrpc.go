@@ -5,9 +5,11 @@
 package httpgrpc
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/go-kit/log/level"
+	"google.golang.org/grpc/metadata"
 
 	spb "github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/protobuf/types"
@@ -59,4 +61,16 @@ func HTTPResponseFromError(err error) (*HTTPResponse, bool) {
 	}
 
 	return &resp, true
+}
+
+const (
+	MetadataMethod = "httpgrpc-method"
+	MetadataURL    = "httpgrpc-url"
+)
+
+// AppendRequestMetadataToContext appends metadata of HTTPRequest into gRPC metadata.
+func AppendRequestMetadataToContext(ctx context.Context, req *HTTPRequest) context.Context {
+	return metadata.AppendToOutgoingContext(ctx,
+		MetadataMethod, req.Method,
+		MetadataURL, req.Url)
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
@@ -31,7 +30,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -80,10 +78,7 @@ type ResultsCacheConfig struct {
 
 func (cfg *ResultsCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix(prefix, "", f)
-
 	f.StringVar(&cfg.Compression, prefix+"compression", "", "Use compression in cache. The default is an empty value '', which disables compression. Supported values are: 'snappy' and ''.")
-	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
-	flagext.DeprecatedFlag(f, prefix+"cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.", util_log.Logger)
 }
 
 // RegisterFlags registers flags.
@@ -99,7 +94,7 @@ func (cfg *ResultsCacheConfig) Validate() error {
 		return errors.Errorf("unsupported compression type: %s", cfg.Compression)
 	}
 
-	return cfg.CacheConfig.Validate()
+	return nil
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.

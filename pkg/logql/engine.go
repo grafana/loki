@@ -351,9 +351,12 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, r := stepEvaluator.Next()
-	vec := r.SampleVector()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
+	}
+	vec := promql.Vector{}
+	if next {
+		vec = r.SampleVector()
 	}
 
 	// fail fast for the first step or instant query

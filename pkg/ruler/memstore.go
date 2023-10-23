@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -166,25 +167,23 @@ func (m *MemStore) run() {
 // implement storage.Queryable. It is only called with the desired ts as maxtime. Mint is
 // parameterized via the outage tolerance, but since we're synthetically generating these,
 // we only care about the desired time.
-func (m *MemStore) Querier(ctx context.Context, _, maxt int64) (storage.Querier, error) {
+func (m *MemStore) Querier(_, maxt int64) (storage.Querier, error) {
 	<-m.initiated
 	return &memStoreQuerier{
 		ts:       util.TimeFromMillis(maxt),
 		MemStore: m,
-		ctx:      ctx,
 	}, nil
 
 }
 
 type memStoreQuerier struct {
-	ts  time.Time
-	ctx context.Context
+	ts time.Time
 	*MemStore
 }
 
 // Select implements storage.Querier but takes advantage of the fact that it's only called when restoring for state
 // in order to lookup & cache previous rule evaluations. This results in a sort of synthetic metric store.
-func (m *memStoreQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (m *memStoreQuerier) Select(ctx context.Context, _ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	b := labels.NewBuilder(nil)
 	var ruleKey string
 	for _, matcher := range matchers {
@@ -243,7 +242,7 @@ func (m *memStoreQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*la
 	// that's the only condition under which this is queried (via RestoreForState).
 	holDuration := time.Duration(rule.For)
 	checkTime := m.ts.Add(-holDuration)
-	vec, err := m.queryFunc(m.ctx, rule.Expr, checkTime)
+	vec, err := m.queryFunc(ctx, rule.Expr, checkTime)
 	if err != nil {
 		level.Info(m.logger).Log("msg", "error querying for rule", "rule", ruleKey, "err", err.Error())
 		m.metrics.evaluations.WithLabelValues(statusFailure, m.userID).Inc()
@@ -297,12 +296,12 @@ func (m *memStoreQuerier) findRule(name string) (rulefmt.Rule, bool) {
 }
 
 // LabelValues returns all potential values for a label name.
-func (*memStoreQuerier) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (*memStoreQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 

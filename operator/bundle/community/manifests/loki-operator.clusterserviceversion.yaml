@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.4.0
-    createdAt: "2023-09-15T08:01:22Z"
+    createdAt: "2023-10-17T07:40:27Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -265,6 +265,13 @@ spec:
       - description: MemberList configuration spec
         displayName: Memberlist Config
         path: hashRing.memberlist
+      - description: "EnableIPv6 enables IPv6 support for the memberlist based hash
+          ring. \n Currently this also forces the instanceAddrType to podIP to avoid
+          local address lookup for the memberlist."
+        displayName: Enable IPv6
+        path: hashRing.memberlist.enableIPv6
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: InstanceAddrType defines the type of address to use to advertise
           to the ring. Defaults to the first address from any private network interfaces
           of the current pod. Alternatively the public pod IP can be used in case
@@ -1636,7 +1643,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.9.1
+                  value: docker.io/grafana/loki:2.9.2
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1747,7 +1754,7 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.9.1
+  - image: docker.io/grafana/loki:2.9.2
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

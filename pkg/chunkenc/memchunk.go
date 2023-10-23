@@ -508,7 +508,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 		if fromCheckpoint {
 			bc.symbolizer = symbolizerFromCheckpoint(lb)
 		} else {
-			symbolizer, err := symbolizerFromEnc(lb, getReaderPool(bc.encoding))
+			symbolizer, err := symbolizerFromEnc(lb, GetReaderPool(bc.encoding))
 			if err != nil {
 				return nil, err
 			}
@@ -626,7 +626,7 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 			}
 		} else {
 			var err error
-			n, crcHash, err = c.symbolizer.SerializeTo(w, getWriterPool(c.encoding))
+			n, crcHash, err = c.symbolizer.SerializeTo(w, GetWriterPool(c.encoding))
 			if err != nil {
 				return offset, errors.Wrap(err, "write structured metadata")
 			}
@@ -912,7 +912,7 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.Serialise(getWriterPool(c.encoding))
+	b, err := c.head.Serialise(GetWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
@@ -1153,14 +1153,14 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline, opt
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer, options...)
+	return newEntryIterator(ctx, GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer, options...)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newSampleIterator(ctx, getReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	return newSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
 
 func (b block) Offset() int {

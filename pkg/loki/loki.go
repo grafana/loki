@@ -30,6 +30,11 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomcompactor"
+	"github.com/grafana/loki/pkg/bloomgateway"
+	"github.com/grafana/loki/pkg/compactor"
+	compactorclient "github.com/grafana/loki/pkg/compactor/client"
+	"github.com/grafana/loki/pkg/compactor/deletion"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -47,16 +52,14 @@ import (
 	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
-	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -73,27 +76,29 @@ type Config struct {
 	UseBufferedLogger bool `yaml:"use_buffered_logger" doc:"hidden"`
 	UseSyncLogger     bool `yaml:"use_sync_logger" doc:"hidden"`
 
-	Server              server.Config               `yaml:"server,omitempty"`
-	InternalServer      internalserver.Config       `yaml:"internal_server,omitempty" doc:"hidden"`
-	Distributor         distributor.Config          `yaml:"distributor,omitempty"`
-	Querier             querier.Config              `yaml:"querier,omitempty"`
-	QueryScheduler      scheduler.Config            `yaml:"query_scheduler"`
-	Frontend            lokifrontend.Config         `yaml:"frontend,omitempty"`
-	QueryRange          queryrange.Config           `yaml:"query_range,omitempty"`
-	Ruler               ruler.Config                `yaml:"ruler,omitempty"`
-	IngesterClient      ingester_client.Config      `yaml:"ingester_client,omitempty"`
-	Ingester            ingester.Config             `yaml:"ingester,omitempty"`
-	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
-	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
-	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
-	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
-	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
-	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
-	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
+	Server              server.Config              `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
+	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
+	Querier             querier.Config             `yaml:"querier,omitempty"`
+	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
+	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
+	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway"`
+	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
+	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
+	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
+	LimitsConfig        validation.Limits          `yaml:"limits_config,omitempty"`
+	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
+	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
+	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
@@ -150,6 +155,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Ingester.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
 	c.IndexGateway.RegisterFlags(f)
+	c.BloomGateway.RegisterFlags(f)
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
@@ -162,6 +168,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
+	c.BloomCompactor.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
 }
@@ -305,16 +312,20 @@ type Loki struct {
 	runtimeConfig             *runtimeconfig.Manager
 	MemberlistKV              *memberlist.KVInitService
 	compactor                 *compactor.Compactor
-	QueryFrontEndTripperware  queryrangebase.Tripperware
+	QueryFrontEndMiddleware   queryrangebase.Middleware
 	queryScheduler            *scheduler.Scheduler
-	querySchedulerRingManager *scheduler.RingManager
+	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
-	indexGatewayRingManager   *indexgateway.RingManager
+	indexGatewayRingManager   *lokiring.RingManager
+	bloomCompactorRingManager *lokiring.RingManager
+	bloomGatewayRingManager   *lokiring.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
+
+	Codec worker.GRPCCodec
 }
 
 // New makes a new Loki.
@@ -335,13 +346,10 @@ func New(cfg Config) (*Loki, error) {
 }
 
 func (t *Loki) setupAuthMiddleware() {
-	// Don't check auth header on TransferChunks, as we weren't originally
-	// sending it and this could cause transfers to fail on update.
 	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
 			"/grpc.health.v1.Health/Check",
-			"/logproto.Ingester/TransferChunks",
 			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
@@ -582,16 +590,20 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
-	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
+	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
+	mm.RegisterModule(BloomGateway, t.initBloomGateway)
+	mm.RegisterModule(BloomGatewayRing, t.initBloomGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
@@ -620,40 +632,37 @@ func (t *Loki) setupModuleManager() error {
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing, IndexGatewayInterceptors},
+		IndexGateway:             {Server, Store, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
+		BloomGateway:             {Server, BloomGatewayRing, Analytics},
+		BloomCompactor:           {Server, BloomCompactorRing, Analytics},
 		IngesterQuerier:          {Ring},
-		QuerySchedulerRing:       {Overrides, Server, MemberlistKV},
-		IndexGatewayRing:         {Overrides, Server, MemberlistKV},
-		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
-		Read:                     {QueryFrontend, Querier},
-		Write:                    {Ingester, Distributor},
-		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
+		QuerySchedulerRing:       {Overrides, MemberlistKV},
+		IndexGatewayRing:         {Overrides, MemberlistKV},
+		BloomGatewayRing:         {Overrides, MemberlistKV},
+		BloomCompactorRing:       {Overrides, MemberlistKV},
 		MemberlistKV:             {Server},
+
+		Read:    {QueryFrontend, Querier},
+		Write:   {Ingester, Distributor},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
+
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
 		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
 		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
-		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
+
+		// This module is defunct but the target remains for backwards compatibility.
+		mm.RegisterModule(QueryLimitsTripperware, func() (services.Service, error) { return nil, nil }, modules.UserInvisibleModule)
 
 		// Ensure query limiter embeds overrides after they've been
 		// created.
 		deps[QueryLimiter] = []string{Overrides}
 		deps[QueryLimitsInterceptors] = []string{}
 
-		// Ensure query limits tripperware embeds the query frontend
-		// tripperware after it's been created. Any additional
-		// middleware/tripperware you want to add to the querier or
-		// frontend must happen inject a dependence on the query limits
-		// tripperware.
-		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
-
 		deps[Querier] = append(deps[Querier], QueryLimiter)
-
-		// The frontend receives a tripperware. Make sure it uses the
-		// wrapped one.
-		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
 
 		// query frontend tripperware uses t.Overrides. Make sure it
 		// uses the one wrapped by query limiter.
@@ -681,8 +690,9 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
+	//TODO(poyzannur) not sure this is needed for BloomCompactor
 	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway)
+		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor)
 	}
 
 	if t.Cfg.InternalServer.Enable {

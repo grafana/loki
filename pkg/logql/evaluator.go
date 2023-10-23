@@ -952,6 +952,9 @@ type LiteralStepEvaluator struct {
 
 func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.nextEv.Next()
+	if !ok {
+		return ok, ts, r
+	}
 	vec := r.SampleVector()
 	results := make(promql.Vector, 0, len(vec))
 	for _, sample := range vec {
@@ -1062,10 +1065,10 @@ type LabelReplaceEvaluator struct {
 
 func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
 	next, ts, r := e.nextEvaluator.Next()
-	vec := r.SampleVector()
 	if !next {
 		return false, 0, SampleVector{}
 	}
+	vec := r.SampleVector()
 	if e.labelCache == nil {
 		e.labelCache = make(map[uint64]labels.Labels, len(vec))
 	}

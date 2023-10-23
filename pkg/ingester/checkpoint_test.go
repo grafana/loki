@@ -47,7 +47,6 @@ func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time,
 
 func defaultIngesterTestConfigWithWAL(t *testing.T, walDir string) Config {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	ingesterConfig.MaxTransferRetries = 0
 	ingesterConfig.WAL.Enabled = true
 	ingesterConfig.WAL.Dir = walDir
 	ingesterConfig.WAL.CheckpointDuration = time.Second

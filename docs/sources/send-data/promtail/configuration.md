@@ -922,7 +922,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#push-log-entries-to-loki" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -2089,16 +2089,6 @@ sync_period: "10s"
 ```
 
 ## options_config
-
-```yaml
-# Deprecated.
-# A comma-separated list of labels to include in the stream lag metric
-# `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
-# always included. The stream lag metric indicates which streams are falling behind
-# on writes to Loki; be mindful about using too many labels,
-# as it can increase cardinality.
-[stream_lag_labels: <string> | default = "filename"]
-```
 
 ## tracing_config
 

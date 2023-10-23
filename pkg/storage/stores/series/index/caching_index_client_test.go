@@ -49,7 +49,7 @@ func TestCachingStorageClientBasic(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
+	cache := cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
 	client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
 	queries := []index.Query{{
 		TableName: "table",
@@ -81,7 +81,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
+	cache := cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
 	client := index.NewCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger, false)
 	queries := []index.Query{
 		{TableName: "table", HashValue: "foo"},
@@ -140,7 +140,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
+	cache := cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
 	client := index.NewCachingIndexClient(store, cache, 100*time.Millisecond, limits, logger, false)
 	queries := []index.Query{
 		{TableName: "table", HashValue: "foo", Immutable: true},
@@ -196,7 +196,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
+	cache := cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
 	client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
 	queries := []index.Query{{TableName: "table", HashValue: "foo"}}
 	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
@@ -235,7 +235,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	limits, err := defaultLimits()
 	require.NoError(t, err)
 	logger := log.NewNopLogger()
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
+	cache := cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
 	client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
 	queries := []index.Query{
 		{TableName: "table", HashValue: "foo", RangeValuePrefix: []byte("bar")},
@@ -415,7 +415,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 				require.NoError(t, err)
 				logger := log.NewNopLogger()
 				cache := &mockCache{
-					Cache: cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test"),
+					Cache: cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test"),
 				}
 				client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, disableBroadQueries)
 				var callbackQueries []index.Query

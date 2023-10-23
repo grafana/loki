@@ -1,0 +1,8 @@
+# doc-example:skip-validation=true
+# This partial configuration sets the compactor to use S3 and run the compaction every 5 minutes.
+# Downloaded index files for compaction are stored in /loki/compactor.
+
+compactor:
+  working_directory: /tmp/loki/compactor
+  shared_store: s3
+  compaction_interval: 5m

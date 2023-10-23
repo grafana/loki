@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package queryrange;
 
+import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
@@ -11,6 +12,7 @@ import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
+option go_package = "github.com/grafana/loki/pkg/querier/queryrange";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -96,19 +98,6 @@ message LokiSeriesResponse {
   ];
 }
 
-message LokiLabelNamesRequest {
-  google.protobuf.Timestamp startTs = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  google.protobuf.Timestamp endTs = 2 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  string path = 3;
-  string query = 4;
-}
-
 message LokiLabelNamesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
@@ -144,21 +133,6 @@ message IndexStatsResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
-}
-
-message VolumeRequest {
-  int64 from = 1 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  int64 through = 2 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  string matchers = 3;
-  int32 limit = 4;
-  int64 step = 5;
-  repeated string targetLabels = 6;
 }
 
 message VolumeResponse {

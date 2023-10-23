@@ -49,9 +49,9 @@ jobs:
       id: go
     - uses: actions/checkout@v3
     - name: Lint
-      uses: golangci/golangci-lint-action@v3.7.0
+      uses: golangci/golangci-lint-action@v3
       with:
-        version: v1.53.3
+        version: v1.54.2
         args: --timeout=4m
         working-directory: ./operator
     - name: Check prometheus rules

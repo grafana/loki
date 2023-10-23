@@ -37,7 +37,7 @@ type wrapper struct {
 func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (WAL, error) {
 	// TODO: We should fine-tune the WAL instantiated here to allow some buffering of written entries, but not written to disk
 	// yet. This will attest for the lack of buffering in the channel Writer exposes.
-	tsdbWAL, err := wlog.NewSize(log, registerer, cfg.Dir, wlog.DefaultSegmentSize, false)
+	tsdbWAL, err := wlog.NewSize(log, registerer, cfg.Dir, wlog.DefaultSegmentSize, wlog.CompressionNone)
 	if err != nil {
 		return nil, fmt.Errorf("failde to create tsdb WAL: %w", err)
 	}

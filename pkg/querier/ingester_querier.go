@@ -46,7 +46,7 @@ func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 		return client.New(clientCfg, addr)
 	}
 
-	return newIngesterQuerier(clientCfg, ring, extraQueryDelay, factory)
+	return newIngesterQuerier(clientCfg, ring, extraQueryDelay, ring_client.PoolAddrFunc(factory))
 }
 
 // newIngesterQuerier creates a new IngesterQuerier and allows to pass a custom ingester client factory
@@ -54,7 +54,7 @@ func NewIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryD
 func newIngesterQuerier(clientCfg client.Config, ring ring.ReadRing, extraQueryDelay time.Duration, clientFactory ring_client.PoolFactory) (*IngesterQuerier, error) {
 	iq := IngesterQuerier{
 		ring:            ring,
-		pool:            clientpool.NewPool(clientCfg.PoolConfig, ring, clientFactory, util_log.Logger),
+		pool:            clientpool.NewPool("ingester", clientCfg.PoolConfig, ring, clientFactory, util_log.Logger),
 		extraQueryDelay: extraQueryDelay,
 	}
 
