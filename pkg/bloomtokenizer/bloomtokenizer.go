@@ -19,6 +19,12 @@ import (
 
 type metrics struct{}
 
+/*
+BloomTokenizer is a utility that converts either Loki chunks or individual lines into tokens.
+These tokens are n-grams, representing adjacent letters, that are used to populate a bloom filter.
+https://en.wikipedia.org/wiki/Bloom_filter
+Bloom filters are utilized for faster lookups of log lines.
+*/
 type BloomTokenizer struct {
 	metrics *metrics
 
@@ -75,13 +81,13 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 
 			for _, tok := range toks {
 				if tok.Key != nil {
-					_, found := bt.cache[tok.Value]
+					_, found := bt.cache[tok.Value] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
 					if !found {
 						bt.cache[tok.Value] = nil
 
 						sbf.TestAndAdd(tok.Key)
 
-						if len(bt.cache) > 150000 {
+						if len(bt.cache) > 150000 { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
 						}
 					}
