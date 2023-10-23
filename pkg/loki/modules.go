@@ -329,15 +329,13 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
-	lokiPushHandler := middleware.Merge(
+	httpPushHandlerMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
-	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
+	)
 
-	otlpPushHandler := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-		t.HTTPAuthMiddleware,
-	).Wrap(http.HandlerFunc(t.distributor.OTLPPushHandler))
+	lokiPushHandler := httpPushHandlerMiddleware.Wrap(http.HandlerFunc(t.distributor.PushHandler))
+	otlpPushHandler := httpPushHandlerMiddleware.Wrap(http.HandlerFunc(t.distributor.OTLPPushHandler))
 
 	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
