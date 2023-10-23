@@ -112,37 +112,6 @@ func (c *clientImpl) WatchCluster(resourceName string, cb func(xdsresource.Clust
 	return xdsresource.WatchCluster(c, resourceName, watcher)
 }
 
-// This is only required temporarily, while we modify the
-// clientImpl.WatchEndpoints API to be implemented via the wrapper
-// WatchEndpoints() API which calls the WatchResource() API.
-type endpointsWatcher struct {
-	resourceName string
-	cb           func(xdsresource.EndpointsUpdate, error)
-}
-
-func (c *endpointsWatcher) OnUpdate(update *xdsresource.EndpointsResourceData) {
-	c.cb(update.Resource, nil)
-}
-
-func (c *endpointsWatcher) OnError(err error) {
-	c.cb(xdsresource.EndpointsUpdate{}, err)
-}
-
-func (c *endpointsWatcher) OnResourceDoesNotExist() {
-	err := xdsresource.NewErrorf(xdsresource.ErrorTypeResourceNotFound, "resource name %q of type Endpoints not found in received response", c.resourceName)
-	c.cb(xdsresource.EndpointsUpdate{}, err)
-}
-
-// WatchEndpoints uses EDS to discover information about the
-// ClusterLoadAssignment resource identified by resourceName.
-//
-// WatchEndpoints can be called multiple times, with same or different
-// clusterNames. Each call will start an independent watcher for the resource.
-func (c *clientImpl) WatchEndpoints(resourceName string, cb func(xdsresource.EndpointsUpdate, error)) (cancel func()) {
-	watcher := &endpointsWatcher{resourceName: resourceName, cb: cb}
-	return xdsresource.WatchEndpoints(c, resourceName, watcher)
-}
-
 // WatchResource uses xDS to discover the resource associated with the provided
 // resource name. The resource type implementation determines how xDS requests
 // are sent out and how responses are deserialized and validated. Upon receipt

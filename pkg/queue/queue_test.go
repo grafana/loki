@@ -49,7 +49,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				queues = append(queues, queue)
 
 				for ix := 0; ix < queriers; ix++ {
-					queue.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
+					queue.RegisterConsumerConnection(fmt.Sprintf("querier-%d", ix))
 				}
 
 				for i := 0; i < maxOutstandingPerTenant; i++ {
@@ -106,7 +106,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 		q := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics("query_scheduler", nil))
 
 		for ix := 0; ix < queriers; ix++ {
-			q.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
+			q.RegisterConsumerConnection(fmt.Sprintf("querier-%d", ix))
 		}
 
 		queues = append(queues, q)
@@ -143,8 +143,8 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 	})
 
 	// Two queriers connect.
-	queue.RegisterQuerierConnection("querier-1")
-	queue.RegisterQuerierConnection("querier-2")
+	queue.RegisterConsumerConnection("querier-1")
+	queue.RegisterConsumerConnection("querier-2")
 
 	// Querier-2 waits for a new request.
 	querier2wg := sync.WaitGroup{}
@@ -156,7 +156,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 	}()
 
 	// Querier-1 crashes (no graceful shutdown notification).
-	queue.UnregisterQuerierConnection("querier-1")
+	queue.UnregisterConsumerConnection("querier-1")
 
 	// Enqueue a request from an user which would be assigned to querier-1.
 	// NOTE: "user-1" hash falls in the querier-1 shard.
@@ -305,7 +305,7 @@ func TestMaxQueueSize(t *testing.T) {
 	t.Run("queue size is tracked per tenant", func(t *testing.T) {
 		maxSize := 3
 		queue := NewRequestQueue(maxSize, 0, NewMetrics("query_scheduler", nil))
-		queue.RegisterQuerierConnection("querier")
+		queue.RegisterConsumerConnection("querier")
 
 		// enqueue maxSize items with different actors
 		// different actors have individual channels with maxSize length
