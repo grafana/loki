@@ -63,7 +63,7 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 
 		itr, err := lc.Iterator(
 			context.Background(),
-			time.Unix(0, 0),
+			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps
 			time.Unix(0, math.MaxInt64),
 			logproto.FORWARD,
 			log.NewNoopPipeline().ForStream(chunks[idx].Metric),

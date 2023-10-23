@@ -267,7 +267,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
 	var n int // count iterated series
-	//reportEvery := 10 // report every n chunks
 	//pool := newPool(runtime.NumCPU())
 	//pool := newPool(1)
 	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer)
@@ -308,9 +307,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								return
 							}
 
-							//cache := NewLRUCache5(150000)
-							//cache := make(map[string]interface{}, 150000)
-
 							transformed := make([]chunk.Chunk, 0, len(chks))
 							for _, chk := range chks {
 								transformed = append(transformed, chunk.Chunk{
@@ -334,7 +330,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								for _, c := range got {
 									chunkTotalUncompressedSize += c.Data.(*chunkenc.Facade).LokiChunk().UncompressedSize()
 								}
-								//metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 								n += len(got)
 
 								// iterate experiments
@@ -355,74 +350,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 										sbf := experiment.bloom()
 										bloomTokenizer.PopulateSBF(sbf, got)
-										//bloomTokenizer := New(experiment.tokenizer)
-										/*
-											clearCache(cache)
-											//cache.Clear()
-
-											// Iterate chunks
-											var (
-												lines, inserts, collisions float64
-											)
-											chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
-											for cidx := range got {
-
-												var tokenizer Tokenizer = chunkTokenizer
-												if !experiment.encodeChunkID {
-													tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
-												} else {
-													chunkTokenizer.reinit(got[cidx].ChunkRef)
-												}
-												lc := got[cidx].Data.(*chunkenc.Facade).LokiChunk()
-
-												// Only report on the last experiment since they run serially
-												if experimentIdx == len(experiments)-1 && (n+cidx+1)%reportEvery == 0 {
-													estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
-													level.Info(util_log.Logger).Log(
-														"msg", "iterated",
-														"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
-														"chunks", len(chks),
-														"series", ls.String(),
-													)
-												}
-
-												itr, err := lc.Iterator(
-													context.Background(),
-													time.Unix(0, 0),
-													time.Unix(0, math.MaxInt64),
-													logproto.FORWARD,
-													log.NewNoopPipeline().ForStream(ls),
-												)
-												helpers.ExitErr("getting iterator", err)
-
-												for itr.Next() && itr.Error() == nil {
-													toks := tokenizer.Tokens(itr.Entry().Line)
-													lines++
-
-													for _, tok := range toks {
-														if tok.Key != nil {
-
-															_, found := cache[tok.Value]
-															if !found {
-																cache[tok.Value] = nil
-
-																if dup := sbf.TestAndAdd(tok.Key); dup {
-																	collisions++
-																}
-																inserts++
-
-																if len(cache) > 150000 {
-																	clearCache(cache)
-																}
-															}
-
-														}
-													}
-												}
-												helpers.ExitErr("iterating chunks", itr.Error())
-											} // for each chunk
-
-										*/
 
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
@@ -432,9 +359,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
 												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 											)
-											//metrics.lines.WithLabelValues(experiment.name).Add(lines)
-											//metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
-											//metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
 
 											writeSBF(sbf,
 												os.Getenv("DIR"),

@@ -203,7 +203,7 @@ var num = 1000000
 func BenchmarkSBFTestAndAdd(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -227,7 +227,7 @@ func BenchmarkSBFTestAndAdd(b *testing.B) {
 func BenchmarkSBFAdd(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -251,7 +251,7 @@ func BenchmarkSBFAdd(b *testing.B) {
 func BenchmarkSBFSeparateTestAndAdd(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -278,7 +278,7 @@ func BenchmarkSBFSeparateTestAndAdd(b *testing.B) {
 func BenchmarkSBFTestAndAddWithLRU(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -306,7 +306,7 @@ func BenchmarkSBFTestAndAddWithLRU(b *testing.B) {
 func BenchmarkSBFSeparateTestAndAddWithLRU(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -339,7 +339,7 @@ func BenchmarkSBFSeparateTestAndAddWithLRU(b *testing.B) {
 func BenchmarkSBFSeparateTestAndAddWithLRU5(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -373,7 +373,7 @@ func BenchmarkSBFSeparateTestAndAddWithLRU5(b *testing.B) {
 func BenchmarkSBFTestAndAddWithLRU5(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -403,7 +403,7 @@ func BenchmarkSBFTestAndAddWithLRU5(b *testing.B) {
 func BenchmarkSBFTestAndAddWithByteKeyLRU(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -434,7 +434,7 @@ func BenchmarkSBFTestAndAddWithByteKeyLRU(b *testing.B) {
 func BenchmarkSBFTestAndAddWithFourByteKeyLRU(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -467,7 +467,7 @@ func BenchmarkSBFTestAndAddWithFourByteKeyLRU(b *testing.B) {
 func BenchmarkSBFAddWithLRU(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -495,7 +495,7 @@ func BenchmarkSBFAddWithLRU(b *testing.B) {
 func BenchmarkSBFSeparateTestAndAddWithLRU1(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(
@@ -527,7 +527,7 @@ func BenchmarkSBFSeparateTestAndAddWithLRU1(b *testing.B) {
 func BenchmarkSBFSeparateTestAndAddWithMap(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		experiment := NewExperiment(

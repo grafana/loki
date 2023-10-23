@@ -448,7 +448,7 @@ func TestWrappedTokenizer(t *testing.T) {
 func BenchmarkTokens(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 
@@ -463,7 +463,7 @@ func BenchmarkTokens(b *testing.B) {
 func BenchmarkOldTokens(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("big.txt")
+		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 
