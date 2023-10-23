@@ -139,6 +139,7 @@ loki:
     {{- if and .enabled (or .host .addresses) }}
     chunk_store_config:
       chunk_cache_config:
+        ﻿default_validity: {{ .default_validity }}
         memcached:
           batch_size: {{ .batch_size }}
           parallelism: {{ .parallelism }}
@@ -308,6 +309,7 @@ loki:
       service: "memcached-client"
       batch_size: 256
       parallelism: 10
+      default_validity: "1h"
     results_cache:
       enabled: false
       host: ""
