@@ -781,10 +781,10 @@ type disabledShuffleShardingLimits struct{}
 
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) int { return 0 }
 
-func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
+func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	tripperware, stopper, err := queryrange.NewTripperware(
+	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
 		util_log.Logger,
@@ -797,7 +797,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		return
 	}
 	t.stopper = stopper
-	t.QueryFrontEndTripperware = tripperware
+	t.QueryFrontEndMiddleware = middleware
 
 	return services.NewIdleService(nil, nil), nil
 }
@@ -864,13 +864,15 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		FrontendV2:    t.Cfg.Frontend.FrontendV2,
 		DownstreamURL: t.Cfg.Frontend.DownstreamURL,
 	}
-	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
+	frontendTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
 		combinedCfg,
 		scheduler.SafeReadRing(t.Cfg.QueryScheduler, t.querySchedulerRingManager),
 		disabledShuffleShardingLimits{},
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
-		prometheus.DefaultRegisterer)
+		prometheus.DefaultRegisterer,
+		queryrange.DefaultCodec,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -887,7 +889,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
 	}
 
-	roundTripper = t.QueryFrontEndTripperware(roundTripper)
+	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec)
 
 	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	if t.Cfg.Frontend.CompressResponses {
@@ -1473,15 +1475,6 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
-
-	return nil, nil
-}
-
-func (t *Loki) initQueryLimitsTripperware() (services.Service, error) {
-	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits tripperware")
-	t.QueryFrontEndTripperware = querylimits.WrapTripperware(
-		t.QueryFrontEndTripperware,
-	)
 
 	return nil, nil
 }
