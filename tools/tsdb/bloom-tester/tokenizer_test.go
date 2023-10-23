@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const BigFile = "../../../pkg/logql/sketch/testdata/war_peace.txt"
+
 func TestNGramTokenizer(t *testing.T) {
 	tokenizer := threeSkip2
 	for _, tc := range []struct {
@@ -448,7 +450,7 @@ func TestWrappedTokenizer(t *testing.T) {
 func BenchmarkTokens(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
+		file, _ := os.Open(BigFile)
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 
@@ -463,7 +465,7 @@ func BenchmarkTokens(b *testing.B) {
 func BenchmarkOldTokens(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		file, _ := os.Open("../../../pkg/logql/sketch/testdata/war_peace.txt")
+		file, _ := os.Open(BigFile)
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 
