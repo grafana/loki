@@ -21,32 +21,30 @@ package clusterresolver
 import (
 	"sync"
 
+	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
-type edsResourceWatcher interface {
-	WatchEndpoints(string, func(xdsresource.EndpointsUpdate, error)) func()
-}
-
 type edsDiscoveryMechanism struct {
+	nameToWatch      string
 	cancelWatch      func()
 	topLevelResolver topLevelResolver
 	stopped          *grpcsync.Event
+	logger           *grpclog.PrefixLogger
 
-	mu             sync.Mutex
-	update         xdsresource.EndpointsUpdate
-	updateReceived bool
+	mu     sync.Mutex
+	update *xdsresource.EndpointsUpdate // Nil indicates no update received so far.
 }
 
-func (er *edsDiscoveryMechanism) lastUpdate() (interface{}, bool) {
+func (er *edsDiscoveryMechanism) lastUpdate() (any, bool) {
 	er.mu.Lock()
 	defer er.mu.Unlock()
 
-	if !er.updateReceived {
+	if er.update == nil {
 		return nil, false
 	}
-	return er.update, true
+	return *er.update, true
 }
 
 func (er *edsDiscoveryMechanism) resolveNow() {
@@ -64,31 +62,79 @@ func (er *edsDiscoveryMechanism) stop() {
 	er.cancelWatch()
 }
 
-func (er *edsDiscoveryMechanism) handleEndpointsUpdate(update xdsresource.EndpointsUpdate, err error) {
+// newEDSResolver returns an implementation of the endpointsResolver interface
+// that uses EDS to resolve the given name to endpoints.
+func newEDSResolver(nameToWatch string, producer xdsresource.Producer, topLevelResolver topLevelResolver, logger *grpclog.PrefixLogger) *edsDiscoveryMechanism {
+	ret := &edsDiscoveryMechanism{
+		nameToWatch:      nameToWatch,
+		topLevelResolver: topLevelResolver,
+		logger:           logger,
+		stopped:          grpcsync.NewEvent(),
+	}
+	ret.cancelWatch = xdsresource.WatchEndpoints(producer, nameToWatch, ret)
+	return ret
+}
+
+// OnUpdate is invoked to report an update for the resource being watched.
+func (er *edsDiscoveryMechanism) OnUpdate(update *xdsresource.EndpointsResourceData) {
 	if er.stopped.HasFired() {
 		return
 	}
 
-	if err != nil {
-		er.topLevelResolver.onError(err)
-		return
-	}
-
 	er.mu.Lock()
-	er.update = update
-	er.updateReceived = true
+	er.update = &update.Resource
 	er.mu.Unlock()
 
 	er.topLevelResolver.onUpdate()
 }
 
-// newEDSResolver returns an implementation of the endpointsResolver interface
-// that uses EDS to resolve the given name to endpoints.
-func newEDSResolver(nameToWatch string, watcher edsResourceWatcher, topLevelResolver topLevelResolver) *edsDiscoveryMechanism {
-	ret := &edsDiscoveryMechanism{
-		topLevelResolver: topLevelResolver,
-		stopped:          grpcsync.NewEvent(),
+func (er *edsDiscoveryMechanism) OnError(err error) {
+	if er.stopped.HasFired() {
+		return
 	}
-	ret.cancelWatch = watcher.WatchEndpoints(nameToWatch, ret.handleEndpointsUpdate)
-	return ret
+
+	if er.logger.V(2) {
+		er.logger.Infof("EDS discovery mechanism for resource %q reported error: %v", er.nameToWatch, err)
+	}
+
+	er.mu.Lock()
+	if er.update != nil {
+		// Continue using a previously received good configuration if one
+		// exists.
+		er.mu.Unlock()
+		return
+	}
+
+	// Else report an empty update that would result in no priority child being
+	// created for this discovery mechanism. This would result in the priority
+	// LB policy reporting TRANSIENT_FAILURE (as there would be no priorities or
+	// localities) if this was the only discovery mechanism, or would result in
+	// the priority LB policy using a lower priority discovery mechanism when
+	// that becomes available.
+	er.update = &xdsresource.EndpointsUpdate{}
+	er.mu.Unlock()
+
+	er.topLevelResolver.onUpdate()
+}
+
+func (er *edsDiscoveryMechanism) OnResourceDoesNotExist() {
+	if er.stopped.HasFired() {
+		return
+	}
+
+	if er.logger.V(2) {
+		er.logger.Infof("EDS discovery mechanism for resource %q reported resource-does-not-exist error", er.nameToWatch)
+	}
+
+	// Report an empty update that would result in no priority child being
+	// created for this discovery mechanism. This would result in the priority
+	// LB policy reporting TRANSIENT_FAILURE (as there would be no priorities or
+	// localities) if this was the only discovery mechanism, or would result in
+	// the priority LB policy using a lower priority discovery mechanism when
+	// that becomes available.
+	er.mu.Lock()
+	er.update = &xdsresource.EndpointsUpdate{}
+	er.mu.Unlock()
+
+	er.topLevelResolver.onUpdate()
 }

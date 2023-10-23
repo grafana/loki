@@ -410,7 +410,7 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, testEngineOpts, DefaultCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,

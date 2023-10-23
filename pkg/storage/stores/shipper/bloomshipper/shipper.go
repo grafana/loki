@@ -40,7 +40,7 @@ func (s *Shipper) ForEachBlock(
 	fingerprints []uint64,
 	callback ForEachBlockCallback) error {
 
-	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", fingerprints)
+	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
 
 	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), fingerprints)
 	if err != nil {

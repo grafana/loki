@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
 func parseDayTime(s string) config.DayTime {
@@ -30,6 +31,12 @@ func parseDayTime(s string) config.DayTime {
 	return config.DayTime{
 		Time: model.TimeFromUnix(t.Unix()),
 	}
+}
+
+func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
+	t.Helper()
+	grouped := make([]*logproto.GroupedChunkRefs, 0, len(chunkRefs))
+	return groupChunkRefs(chunkRefs, grouped)
 }
 
 func TestBloomGateway_StartStopService(t *testing.T) {
@@ -65,8 +72,8 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 		cfg := Config{
 			Enabled: true,
-			Ring: RingCfg{
-				RingConfig: util.RingConfig{
+			Ring: lokiring.RingConfigWithRF{
+				RingConfig: lokiring.RingConfig{
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
@@ -81,6 +88,10 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 		err = services.StartAndAwaitRunning(context.Background(), gw)
 		require.NoError(t, err)
 
+		// Wait for workers to connect to queue
+		time.Sleep(50 * time.Millisecond)
+		require.Equal(t, float64(numWorkers), gw.queue.GetConnectedConsumersMetric())
+
 		err = services.StopAndAwaitTerminated(context.Background(), gw)
 		require.NoError(t, err)
 	})
@@ -90,7 +101,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
 
 	ss := NewNoopStrategy()
-	logger := log.NewNopLogger()
+	logger := log.NewLogfmtLogger(os.Stderr)
 	reg := prometheus.NewRegistry()
 
 	cm := storage.NewClientMetrics()
@@ -119,8 +130,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	cfg := Config{
 		Enabled: true,
-		Ring: RingCfg{
-			RingConfig: util.RingConfig{
+		Ring: lokiring.RingConfigWithRF{
+			RingConfig: lokiring.RingConfig{
 				KVStore: kv.Config{
 					Mock: kvStore,
 				},
@@ -130,8 +141,16 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	}
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
 		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
 		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
 
 		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
 		now := model.TimeFromUnix(ts.Unix())
@@ -145,7 +164,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			From:    now.Add(-24 * time.Hour),
 			Through: now,
-			Refs:    chunkRefs,
+			Refs:    groupRefs(t, chunkRefs),
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -168,6 +187,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 
 	t.Run("returns error if chunk refs do not belong to tenant", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
 		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
 		require.NoError(t, err)
 
@@ -181,7 +201,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		req := &logproto.FilterChunkRefRequest{
 			From:    now.Add(-24 * time.Hour),
 			Through: now,
-			Refs:    chunkRefs,
+			Refs:    groupRefs(t, chunkRefs),
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -190,4 +210,41 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		require.Equal(t, "expected chunk refs from tenant test, got tenant other: invalid tenant in chunk refs", err.Error())
 	})
 
+	t.Run("gateway tracks active users", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
+		now := model.TimeFromUnix(ts.Unix())
+
+		tenants := []string{"tenant-a", "tenant-b", "tenant-c"}
+		for idx, tenantID := range tenants {
+			chunkRefs := []*logproto.ChunkRef{
+				{
+					Fingerprint: uint64(1000 + 100*idx),
+					UserID:      tenantID,
+					From:        now.Add(-24 * time.Hour),
+					Through:     now,
+					Checksum:    uint32(idx),
+				},
+			}
+			req := &logproto.FilterChunkRefRequest{
+				From:    now.Add(-24 * time.Hour),
+				Through: now,
+				Refs:    groupRefs(t, chunkRefs),
+			}
+			ctx := user.InjectOrgID(context.Background(), tenantID)
+			_, err = gw.FilterChunkRefs(ctx, req)
+			require.NoError(t, err)
+		}
+		require.ElementsMatch(t, tenants, gw.activeUsers.ActiveUsers())
+	})
 }

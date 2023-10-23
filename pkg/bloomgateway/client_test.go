@@ -45,25 +45,22 @@ func TestBloomGatewayClient_GroupStreamsByAddresses(t *testing.T) {
 
 	testCases := []struct {
 		name      string
-		streams   []uint64
-		chunks    [][]*logproto.ChunkRef
+		chunks    []*logproto.GroupedChunkRefs
 		addresses [][]string
 		expected  []chunkRefsByAddrs
 	}{
 		{
 			name:      "empty input yields empty result",
-			streams:   []uint64{},
-			chunks:    [][]*logproto.ChunkRef{},
+			chunks:    []*logproto.GroupedChunkRefs{},
 			addresses: [][]string{},
 			expected:  []chunkRefsByAddrs{},
 		},
 		{
-			name:    "addresses with same elements are grouped into single item",
-			streams: []uint64{1, 2, 3},
-			chunks: [][]*logproto.ChunkRef{
-				{{Fingerprint: 1, Checksum: 1}},
-				{{Fingerprint: 2, Checksum: 2}},
-				{{Fingerprint: 3, Checksum: 3}},
+			name: "addresses with same elements are grouped into single item",
+			chunks: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 1, Refs: []*logproto.ShortRef{{Checksum: 1}}},
+				{Fingerprint: 2, Refs: []*logproto.ShortRef{{Checksum: 2}}},
+				{Fingerprint: 3, Refs: []*logproto.ShortRef{{Checksum: 3}}},
 			},
 			addresses: [][]string{
 				{"10.0.0.1", "10.0.0.2", "10.0.0.3"},
@@ -73,21 +70,19 @@ func TestBloomGatewayClient_GroupStreamsByAddresses(t *testing.T) {
 			expected: []chunkRefsByAddrs{
 				{
 					addrs: []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"},
-					refs: []*logproto.ChunkRef{
-						{Fingerprint: 1, Checksum: 1},
-						{Fingerprint: 2, Checksum: 2},
-						{Fingerprint: 3, Checksum: 3},
+					refs: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 1, Refs: []*logproto.ShortRef{{Checksum: 1}}},
+						{Fingerprint: 2, Refs: []*logproto.ShortRef{{Checksum: 2}}},
+						{Fingerprint: 3, Refs: []*logproto.ShortRef{{Checksum: 3}}},
 					},
-					streams: []uint64{1, 2, 3},
 				},
 			},
 		},
 		{
-			name:    "partially overlapping addresses are not grouped together",
-			streams: []uint64{1, 2},
-			chunks: [][]*logproto.ChunkRef{
-				{{Fingerprint: 1, Checksum: 1}},
-				{{Fingerprint: 2, Checksum: 2}},
+			name: "partially overlapping addresses are not grouped together",
+			chunks: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 1, Refs: []*logproto.ShortRef{{Checksum: 1}}},
+				{Fingerprint: 2, Refs: []*logproto.ShortRef{{Checksum: 2}}},
 			},
 			addresses: [][]string{
 				{"10.0.0.1", "10.0.0.2"},
@@ -96,17 +91,15 @@ func TestBloomGatewayClient_GroupStreamsByAddresses(t *testing.T) {
 			expected: []chunkRefsByAddrs{
 				{
 					addrs: []string{"10.0.0.1", "10.0.0.2"},
-					refs: []*logproto.ChunkRef{
-						{Fingerprint: 1, Checksum: 1},
+					refs: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 1, Refs: []*logproto.ShortRef{{Checksum: 1}}},
 					},
-					streams: []uint64{1},
 				},
 				{
 					addrs: []string{"10.0.0.2", "10.0.0.3"},
-					refs: []*logproto.ChunkRef{
-						{Fingerprint: 2, Checksum: 2},
+					refs: []*logproto.GroupedChunkRefs{
+						{Fingerprint: 2, Refs: []*logproto.ShortRef{{Checksum: 2}}},
 					},
-					streams: []uint64{2},
 				},
 			},
 		},
@@ -114,7 +107,7 @@ func TestBloomGatewayClient_GroupStreamsByAddresses(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			res := c.groupStreamsByAddr(tc.streams, tc.chunks, tc.addresses)
+			res := c.groupStreamsByAddr(tc.chunks, tc.addresses)
 			require.Equal(t, tc.expected, res)
 		})
 	}

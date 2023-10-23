@@ -35,7 +35,7 @@ func TestPerRequestLimits(t *testing.T) {
 	cliTenant := client.New("org1", "", tAll.HTTPURL(), queryLimitsPolicy)
 
 	// ingest log lines for tenant 1 and tenant 2.
-	require.NoError(t, cliTenant.PushLogLineWithTimestamp("lineA", cliTenant.Now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
+	require.NoError(t, cliTenant.PushLogLine("lineA", cliTenant.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
 
 	// check that per-rquest-limits are enforced
 	_, err := cliTenant.RunRangeQuery(context.Background(), `{job="fake"}`)
