@@ -30,7 +30,7 @@ import (
 // context/logic available at the xdsClient layer. Since these validation are
 // performed on internal update structs, they can be shared between different
 // API clients.
-type UpdateValidatorFunc func(interface{}) error
+type UpdateValidatorFunc func(any) error
 
 // UpdateMetadata contains the metadata for each update, including timestamp,
 // raw message, and so on.
