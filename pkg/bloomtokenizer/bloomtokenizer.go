@@ -2,7 +2,12 @@ package bloomtokenizer
 
 import (
 	"context"
+	"math"
+	"time"
+
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -10,9 +15,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
-	"github.com/prometheus/client_golang/prometheus"
-	"math"
-	"time"
 )
 
 type metrics struct{}

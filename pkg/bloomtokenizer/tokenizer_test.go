@@ -3,9 +3,10 @@ package bloomtokenizer
 import (
 	"bufio"
 	"encoding/binary"
-	"github.com/grafana/loki/pkg/logproto"
 	"os"
 	"testing"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/stretchr/testify/require"
 )
