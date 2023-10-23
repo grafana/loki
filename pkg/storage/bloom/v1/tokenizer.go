@@ -8,8 +8,7 @@ import (
 )
 
 type Token struct {
-	Key   []byte
-	Value string
+	Key []byte
 }
 
 type Tokenizer interface {
@@ -92,7 +91,6 @@ func (t *ngramTokenizer) Tokens(line string) []Token {
 				}
 				t.internalTokenBuffer[numToks].Key = t.internalTokenBuffer[numToks].Key[:0]
 				t.internalTokenBuffer[numToks].Key = append(t.internalTokenBuffer[numToks].Key, t.runeBuffer...)
-				t.internalTokenBuffer[numToks].Value = string(t.internalTokenBuffer[numToks].Key)
 				numToks++
 			}
 		}
@@ -151,7 +149,6 @@ func ChunkIDTokenizer(t Tokenizer) *WrappedTokenizer {
 		i32buf:      make([]byte, 4),
 		f: func(tok Token) Token {
 			tok.Key = append(append(tok.Key, p...), tok.Key...)[len(tok.Key):]
-			tok.Value = string(tok.Key)
 			return tok
 		},
 	}
@@ -169,7 +166,6 @@ func (w *WrappedTokenizer) reinit(chk logproto.ChunkRef) {
 
 	w.f = func(tok Token) Token {
 		tok.Key = append(append(tok.Key, w.prefix...), tok.Key...)[len(tok.Key):]
-		tok.Value = string(tok.Key)
 		return tok
 	}
 }

@@ -82,9 +82,10 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 
 			for _, tok := range toks {
 				if tok.Key != nil {
-					_, found := bt.cache[tok.Value] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+					str := string(tok.Key)
+					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
 					if !found {
-						bt.cache[tok.Value] = nil
+						bt.cache[str] = nil
 
 						sbf.TestAndAdd(tok.Key)
 
