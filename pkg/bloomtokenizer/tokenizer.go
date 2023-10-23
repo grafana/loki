@@ -145,6 +145,11 @@ func ChunkIDTokenizer(t Tokenizer) *WrappedTokenizer {
 		prefix:      p,
 		i64buf:      make([]byte, binary.MaxVarintLen64),
 		i32buf:      make([]byte, 4),
+		f: func(tok Token) Token {
+			tok.Key = append(append(tok.Key, p...), tok.Key...)[len(tok.Key):]
+			tok.Value = string(tok.Key)
+			return tok
+		},
 	}
 }
 

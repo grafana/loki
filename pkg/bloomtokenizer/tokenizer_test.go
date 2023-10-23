@@ -3,6 +3,7 @@ package bloomtokenizer
 import (
 	"bufio"
 	"encoding/binary"
+	"github.com/grafana/loki/pkg/logproto"
 	"os"
 	"testing"
 
@@ -534,6 +535,7 @@ func TestWrappedTokenizer(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			chunkTokenizer := ChunkIDTokenizer(tokenizer)
+			chunkTokenizer.reinit(logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1})
 			require.Equal(t, tc.exp, chunkTokenizer.Tokens(tc.input))
 		})
 	}
