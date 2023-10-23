@@ -24,9 +24,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	bt "github.com/grafana/loki/pkg/bloomtokenizer"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -266,11 +266,11 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	}
 	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
-	var n int         // count iterated series
-	reportEvery := 10 // report every n chunks
+	var n int // count iterated series
+	//reportEvery := 10 // report every n chunks
 	//pool := newPool(runtime.NumCPU())
 	//pool := newPool(1)
-
+	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
@@ -309,7 +309,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 							}
 
 							//cache := NewLRUCache5(150000)
-							cache := make(map[string]interface{}, 150000)
+							//cache := make(map[string]interface{}, 150000)
 
 							transformed := make([]chunk.Chunk, 0, len(chks))
 							for _, chk := range chks {
@@ -338,7 +338,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								n += len(got)
 
 								// iterate experiments
-								for experimentIdx, experiment := range experiments {
+								for _, experiment := range experiments {
 									bucketPrefix := os.Getenv("BUCKET_PREFIX")
 									if strings.EqualFold(bucketPrefix, "") {
 										bucketPrefix = "named-experiments-"
@@ -354,80 +354,75 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										clearCache(cache)
-										//cache.Clear()
+										bloomTokenizer.PopulateSBF(sbf, got)
+										//bloomTokenizer := New(experiment.tokenizer)
+										/*
+											clearCache(cache)
+											//cache.Clear()
 
-										// Iterate chunks
-										var (
-											lines, inserts, collisions float64
-										)
-										chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
-										for cidx := range got {
-
-											var tokenizer Tokenizer = chunkTokenizer
-											if !experiment.encodeChunkID {
-												tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
-											} else {
-												chunkTokenizer.reinit(got[cidx].ChunkRef)
-											}
-											lc := got[cidx].Data.(*chunkenc.Facade).LokiChunk()
-
-											// Only report on the last experiment since they run serially
-											if experimentIdx == len(experiments)-1 && (n+cidx+1)%reportEvery == 0 {
-												estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
-												level.Info(util_log.Logger).Log(
-													"msg", "iterated",
-													"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
-													"chunks", len(chks),
-													"series", ls.String(),
-												)
-											}
-
-											itr, err := lc.Iterator(
-												context.Background(),
-												time.Unix(0, 0),
-												time.Unix(0, math.MaxInt64),
-												logproto.FORWARD,
-												log.NewNoopPipeline().ForStream(ls),
+											// Iterate chunks
+											var (
+												lines, inserts, collisions float64
 											)
-											helpers.ExitErr("getting iterator", err)
+											chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
+											for cidx := range got {
 
-											for itr.Next() && itr.Error() == nil {
-												toks := tokenizer.Tokens(itr.Entry().Line)
-												lines++
+												var tokenizer Tokenizer = chunkTokenizer
+												if !experiment.encodeChunkID {
+													tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
+												} else {
+													chunkTokenizer.reinit(got[cidx].ChunkRef)
+												}
+												lc := got[cidx].Data.(*chunkenc.Facade).LokiChunk()
 
-												for _, tok := range toks {
-													if tok.Key != nil {
+												// Only report on the last experiment since they run serially
+												if experimentIdx == len(experiments)-1 && (n+cidx+1)%reportEvery == 0 {
+													estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
+													level.Info(util_log.Logger).Log(
+														"msg", "iterated",
+														"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
+														"chunks", len(chks),
+														"series", ls.String(),
+													)
+												}
 
-														_, found := cache[tok.Value]
-														if !found {
-															cache[tok.Value] = nil
+												itr, err := lc.Iterator(
+													context.Background(),
+													time.Unix(0, 0),
+													time.Unix(0, math.MaxInt64),
+													logproto.FORWARD,
+													log.NewNoopPipeline().ForStream(ls),
+												)
+												helpers.ExitErr("getting iterator", err)
 
-															if dup := sbf.TestAndAdd(tok.Key); dup {
-																collisions++
-															}
-															inserts++
+												for itr.Next() && itr.Error() == nil {
+													toks := tokenizer.Tokens(itr.Entry().Line)
+													lines++
 
-															if len(cache) > 150000 {
-																clearCache(cache)
-															}
-														}
+													for _, tok := range toks {
+														if tok.Key != nil {
 
-														/*
-															if !cache.Get(tok.Value) {
-																cache.Put(tok.Value)
+															_, found := cache[tok.Value]
+															if !found {
+																cache[tok.Value] = nil
 
 																if dup := sbf.TestAndAdd(tok.Key); dup {
 																	collisions++
 																}
 																inserts++
-															}*/
 
+																if len(cache) > 150000 {
+																	clearCache(cache)
+																}
+															}
+
+														}
 													}
 												}
-											}
-											helpers.ExitErr("iterating chunks", itr.Error())
-										} // for each chunk
+												helpers.ExitErr("iterating chunks", itr.Error())
+											} // for each chunk
+
+										*/
 
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
@@ -437,9 +432,9 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
 												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 											)
-											metrics.lines.WithLabelValues(experiment.name).Add(lines)
-											metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
-											metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
+											//metrics.lines.WithLabelValues(experiment.name).Add(lines)
+											//metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
+											//metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
 
 											writeSBF(sbf,
 												os.Getenv("DIR"),
