@@ -115,7 +115,6 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
 }
 
-// TODO: we probably should get rid off logqlmodel.Result and user queryrangebase.Response instead.
 func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 	switch r := resp.(type) {
 	case *LokiResponse:
@@ -232,7 +231,6 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	}
 
 	return p, nil
-
 }
 
 func QueryRequestUnwrap(req *QueryRequest) (queryrangebase.Request, error) {

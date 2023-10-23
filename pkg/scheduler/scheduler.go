@@ -30,7 +30,8 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/scheduler/queue"
+	"github.com/grafana/loki/pkg/scheduler/limits"
+	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -145,7 +146,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_connected_querier_clients",
 		Help: "Number of querier worker clients currently connected to the query-scheduler.",
-	}, s.requestQueue.GetConnectedQuerierWorkersMetric)
+	}, s.requestQueue.GetConnectedConsumersMetric)
 	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_connected_frontend_clients",
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
@@ -185,11 +186,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 	return s, nil
 }
 
-// Limits needed for the Query Scheduler - interface used for decoupling.
-type Limits interface {
-	// MaxQueriersPerUser returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	MaxQueriersPerUser(user string) int
-}
+type Limits limits.Limits
 
 type schedulerRequest struct {
 	frontendAddress string
@@ -407,8 +404,8 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	querierID := resp.GetQuerierID()
 	level.Debug(s.log).Log("msg", "querier connected", "querier", querierID)
 
-	s.requestQueue.RegisterQuerierConnection(querierID)
-	defer s.requestQueue.UnregisterQuerierConnection(querierID)
+	s.requestQueue.RegisterConsumerConnection(querierID)
+	defer s.requestQueue.UnregisterConsumerConnection(querierID)
 
 	lastIndex := queue.StartIndex
 
@@ -466,7 +463,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 func (s *Scheduler) NotifyQuerierShutdown(_ context.Context, req *schedulerpb.NotifyQuerierShutdownRequest) (*schedulerpb.NotifyQuerierShutdownResponse, error) {
 	level.Debug(s.log).Log("msg", "received shutdown notification from querier", "querier", req.GetQuerierID())
-	s.requestQueue.NotifyQuerierShutdown(req.GetQuerierID())
+	s.requestQueue.NotifyConsumerShutdown(req.GetQuerierID())
 
 	return &schedulerpb.NotifyQuerierShutdownResponse{}, nil
 }
