@@ -32,7 +32,7 @@ type storeMetrics struct {
 	requestDurationSeconds *prometheus.HistogramVec
 }
 
-func newIndexClientMetrics(r prometheus.Registerer) *storeMetrics {
+func newStoreMetrics(r prometheus.Registerer) *storeMetrics {
 	return &storeMetrics{
 		requestDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki_tsdb_shipper",
@@ -113,6 +113,8 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		return err
 	}
 
+	s.metrics = newStoreMetrics(reg)
+
 	var indices []Index
 	opts := DefaultIndexClientOptions()
 
@@ -164,7 +166,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
-	s.Reader = NewIndexClient(multiIndex, opts, limits, reg)
+	s.Reader = NewIndexClient(multiIndex, opts, limits, s.metrics)
 
 	return nil
 }

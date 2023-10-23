@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -60,12 +60,12 @@ type Limits interface {
 	VolumeMaxSeries(string) int
 }
 
-func NewIndexClient(idx Index, opts IndexClientOptions, l Limits, register prometheus.Registerer) *IndexClient {
+func NewIndexClient(idx Index, opts IndexClientOptions, l Limits, metrics *storeMetrics) *IndexClient {
 	return &IndexClient{
 		idx:     idx,
 		opts:    opts,
 		limits:  l,
-		metrics: newIndexClientMetrics(register),
+		metrics: metrics,
 	}
 }
 
@@ -159,7 +159,12 @@ func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, throug
 		return nil, err
 	}
 
-	xs, err := c.idx.Series(ctx, userID, from, through, nil, shard, matchers...)
+	var xs []Series
+	err = instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(c.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		xs, err = c.idx.Series(ctx, userID, from, through, nil, shard, matchers...)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -173,16 +178,29 @@ func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, throug
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
 func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	var labelValues []string
 	matchers, _, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
 	}
-	return c.idx.LabelValues(ctx, userID, from, through, labelName, matchers...)
+	err = instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(c.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		labelValues, err = c.idx.LabelValues(ctx, userID, from, through, labelName, matchers...)
+		return err
+	})
+
+	return labelValues, err
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
 func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string) ([]string, error) {
-	return c.idx.LabelNames(ctx, userID, from, through)
+	var labelNames []string
+	var err error
+	err = instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(c.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+		labelNames, err = c.idx.LabelNames(ctx, userID, from, through)
+		return err
+	})
+	return labelNames, err
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
@@ -222,7 +240,9 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 
 	for _, interval := range intervals {
-		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+		if err := instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(c.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+			return c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...)
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -269,7 +289,9 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 
 	acc := seriesvolume.NewAccumulator(limit, c.limits.VolumeMaxSeries(userID))
 	for _, interval := range intervals {
-		if err := c.idx.Volume(ctx, userID, interval.Start, interval.End, acc, shard, nil, targetLabels, aggregateBy, matchers...); err != nil {
+		if err := instrument.CollectedRequest(ctx, "Shipper.Query", instrument.NewHistogramCollector(c.metrics.requestDurationSeconds), instrument.ErrorCode, func(ctx context.Context) error {
+			return c.idx.Volume(ctx, userID, interval.Start, interval.End, acc, shard, nil, targetLabels, aggregateBy, matchers...)
+		}); err != nil {
 			return nil, err
 		}
 	}
