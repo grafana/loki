@@ -21,7 +21,7 @@ type BloomTokenizer struct {
 	metrics *metrics
 
 	lineTokenizer    Tokenizer
-	chunkIdTokenizer *WrappedTokenizer
+	chunkIDTokenizer *WrappedTokenizer
 	cache            map[string]interface{}
 }
 
@@ -35,7 +35,7 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 	t.cache = make(map[string]interface{}, CacheSize)
 	// TODO: make these configurable
 	t.lineTokenizer = newNGramTokenizer(4, 5, 0)
-	t.chunkIdTokenizer = ChunkIDTokenizer(t.lineTokenizer)
+	t.chunkIDTokenizer = ChunkIDTokenizer(t.lineTokenizer)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 
@@ -57,7 +57,7 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 	clearCache(bt.cache)
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		bt.chunkIdTokenizer.reinit(chunks[idx].ChunkRef)
+		bt.chunkIDTokenizer.reinit(chunks[idx].ChunkRef)
 
 		itr, err := lc.Iterator(
 			context.Background(),
@@ -69,11 +69,10 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 		helpers.ExitErr("getting iterator", err)
 
 		for itr.Next() && itr.Error() == nil {
-			toks := bt.chunkIdTokenizer.Tokens(itr.Entry().Line)
+			toks := bt.chunkIDTokenizer.Tokens(itr.Entry().Line)
 
 			for _, tok := range toks {
 				if tok.Key != nil {
-
 					_, found := bt.cache[tok.Value]
 					if !found {
 						bt.cache[tok.Value] = nil
@@ -84,7 +83,6 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 							clearCache(bt.cache)
 						}
 					}
-
 				}
 			}
 		}
