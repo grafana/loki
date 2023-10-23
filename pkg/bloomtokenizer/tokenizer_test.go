@@ -469,13 +469,10 @@ func makeBuf(from, through, checksum int) []byte {
 
 	binary.PutVarint(i64buf, int64(from))
 	p = append(p, i64buf...)
-	p = append(p, 58)
 	binary.PutVarint(i64buf, int64(through))
 	p = append(p, i64buf...)
-	p = append(p, 58)
 	binary.LittleEndian.PutUint32(i32buf, uint32(checksum))
 	p = append(p, i32buf...)
-	p = append(p, 58)
 	return p
 }
 

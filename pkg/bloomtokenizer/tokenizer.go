@@ -87,7 +87,7 @@ func (t *ngramTokenizer) Tokens(line string) []Token {
 				t.runeBuffer = reassemble(t.buffers[j], (i+1)%n, t.runeBuffer)
 				if numToks >= cap(t.internalTokenBuffer) || numToks == len(t.internalTokenBuffer) {
 					tok := Token{}
-					tok.Key = make([]byte, 0, 132) // Using a 4 byte token and a chunk identifier, it's really 31 bytes. Adding in for special chars and the like here
+					tok.Key = make([]byte, 0, 132) // Using a 4 byte token and a chunk identifier, it's really 28 bytes. Adding in for special chars and the like here
 					t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
 				}
 				t.internalTokenBuffer[numToks].Key = t.internalTokenBuffer[numToks].Key[:0]
@@ -158,18 +158,14 @@ func ChunkIDTokenizer(t Tokenizer) *WrappedTokenizer {
 }
 
 func (w *WrappedTokenizer) reinit(chk logproto.ChunkRef) {
-	//prefix := fmt.Sprintf("%d:%d:%d:", chk.From, chk.Through, chk.Checksum)
 	w.prefix = w.prefix[:0]
 
 	binary.PutVarint(w.i64buf, int64(chk.From))
 	w.prefix = append(w.prefix, w.i64buf...)
-	w.prefix = append(w.prefix, 58)
 	binary.PutVarint(w.i64buf, int64(chk.Through))
 	w.prefix = append(w.prefix, w.i64buf...)
-	w.prefix = append(w.prefix, 58)
 	binary.LittleEndian.PutUint32(w.i32buf, chk.Checksum)
 	w.prefix = append(w.prefix, w.i32buf...)
-	w.prefix = append(w.prefix, 58)
 
 	w.f = func(tok Token) Token {
 		tok.Key = append(append(tok.Key, w.prefix...), tok.Key...)[len(tok.Key):]
