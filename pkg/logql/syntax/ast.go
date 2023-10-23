@@ -1642,8 +1642,9 @@ func reduceBinOp(op string, left, right float64) *LiteralExpr {
 // MergeBinOp performs `op` on `left` and `right` arguments and return the `promql.Sample` value.
 // In case of vector and scalar arguments, MergeBinOp assumes `left` is always vector.
 // pass `swap=true` otherwise.
-// This matters because, either it's (vector op scalar) or (scalar op vector), the return sample value is
-// always sample value of vector argument.
+// This matters because, either it's (vector op scalar) or (scalar op vector), the return sample value should
+// always be sample value of vector argument.
+// https://github.com/grafana/loki/issues/10741
 func MergeBinOp(op string, left, right *promql.Sample, swap, notReturnBool, isVectorComparison bool) (*promql.Sample, error) {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
