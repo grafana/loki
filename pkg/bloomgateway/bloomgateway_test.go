@@ -245,6 +245,6 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			_, err = gw.FilterChunkRefs(ctx, req)
 			require.NoError(t, err)
 		}
-		require.Equal(t, tenants, gw.activeUsers.ActiveUsers())
+		require.ElementsMatch(t, tenants, gw.activeUsers.ActiveUsers())
 	})
 }

@@ -72,6 +72,19 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			StartTs:   start,
 			EndTs:     end,
 		}, false},
+		{"legacy query_range with refexp", func() (*http.Request, error) {
+			return http.NewRequest(http.MethodGet,
+				fmt.Sprintf(`/api/prom/query?start=%d&end=%d&query={foo="bar"}&interval=10&limit=200&direction=BACKWARD&regexp=foo`, start.UnixNano(), end.UnixNano()), nil)
+		}, &LokiRequest{
+			Query:     `{foo="bar"} |~ "foo"`,
+			Limit:     200,
+			Step:      14000, // step is expected in ms; calculated default if request param not present
+			Interval:  10000, // interval is expected in ms
+			Direction: logproto.BACKWARD,
+			Path:      "/api/prom/query",
+			StartTs:   start,
+			EndTs:     end,
+		}, false},
 		{"series", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/series?start=%d&end=%d&match={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
