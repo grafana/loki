@@ -81,7 +81,7 @@ func newResultsCacheFromConfig(cfg queryrangebase.ResultsCacheConfig, registerer
 		return nil, errors.Errorf("%s cache is not configured", cacheType)
 	}
 
-	c, err := cache.New(cfg.CacheConfig, registerer, log, cacheType)
+	c, err := cache.New(cfg.CacheConfig, registerer, log, cacheType, "cortex")
 	if err != nil {
 		return nil, err
 	}

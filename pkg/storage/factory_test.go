@@ -45,7 +45,7 @@ func TestFactoryStop(t *testing.T) {
 
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
-	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger(), "cortex")
 	require.NoError(t, err)
 
 	store.Stop()
@@ -84,7 +84,7 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger(), "cortex")
 	require.NoError(t, err)
 
 	store.Stop()
@@ -143,7 +143,7 @@ func TestNamedStores(t *testing.T) {
 			require.True(t, os.IsNotExist(err))
 		}
 
-		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 		require.NoError(t, err)
 		defer store.Stop()
 
@@ -160,7 +160,7 @@ func TestNamedStores(t *testing.T) {
 	t.Run("period config referring to unrecognized store", func(t *testing.T) {
 		schemaConfig := schemaConfig
 		schemaConfig.Configs[0].ObjectType = "not-found"
-		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unrecognized chunk client type not-found, choose one of:")
 	})

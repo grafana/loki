@@ -49,7 +49,7 @@ func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClie
 
 	c, err := NewCompactor(cfg, objectClients, config.SchemaConfig{
 		Configs: periodConfigs,
-	}, nil, nil)
+	}, nil, nil, "cortex_")
 	require.NoError(t, err)
 
 	c.RegisterIndexCompactor("dummy", testIndexCompactor{})

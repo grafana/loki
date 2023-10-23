@@ -109,6 +109,8 @@ type Config struct {
 	Common common.Config `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+
+	MetricsNamespace string `yaml:"cortex_shared_metrics_prefix"`
 }
 
 // RegisterFlags registers flag.
@@ -144,6 +146,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The default will be flipped to false in the next Loki release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
+
+	f.StringVar(&c.MetricsNamespace, "metrics-namespace", "loki", "Namespace of the metrics.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
