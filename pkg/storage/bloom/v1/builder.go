@@ -501,7 +501,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 	}
 
 	// Turn the list of blocks into a single iterator that returns the next series
-	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewMergeBlockQuerier(xs...))
+	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(xs...))
 	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
 	// preferring the one with the most chunks already indexed since we'll have
 	// to add fewer chunks to the bloom
