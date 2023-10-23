@@ -78,9 +78,26 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Changes to default configuration values
 
-1. `querier.max-concurrent` now defaults to 4. Consider increasing this if queriers have access to more CPU resources.
-    Note that you risk running into out of memory errors if you set this to a very high value.
-1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
+{{% responsive-table %}}
+| configuration                                          | new default | old default | notes |
+| ------------------------------------------------------ | ----------- | ----------- | --------
+| `compactor.delete-max-interval`                        | 24h         | 0           | splits the delete requests into intervals no longer than `delete_max_interval` |
+| `distributor.max-line-size`                            | 256KB       | 0           | - |
+| `ingester.sync-period`                                 | 1h          | 0           | ensures that the chunk cuts for a given stream are synchronized across the ingesters in the replication set. Helps with deduplicating chunks. |
+| `ingester.sync-min-utilization`                        | 0.1         | 0           | - |
+| `frontend.max-querier-bytes-read`                      | 150GB       | 0           | - |
+| `frontend.max-cache-freshness`                         | 10m         | 1m          | - |
+| `frontend.max-stats-cache-freshness`                   | 10m         | 0           | - |
+| `frontend.embedded-cache.max-size-mb`                  | 100MB       | 1GB         | embedded results cache size now defaults to 100MB |
+| `memcached.batchsize`                                  | 256         | 1024        | - |
+| `memcached.parallelism`                                | 10          | 100         | - |
+| `querier.compress-http-responses`                      | true        | false       | compress response if the request accepts gzip encoding |
+| `querier.max-concurrent`                               | 4           | 10          | Consider increasing this if queriers have access to more CPU resources. Note that you risk running into out of memory errors if you set this to a very high value. |
+| `querier.split-queries-by-interval`                    | 1h          | 30m         | - |
+| `querier.tsdb-max-query-parallelism`                   | 128         | 512         | - |
+| `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
+| `validation.max-label-names-per-series`                | 15          | 30          | - |
+{{% /responsive-table %}}
 
 #### Write dedupe cache is deprecated
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
@@ -249,11 +266,11 @@ ruler:
 
 ### Querier
 
-#### query-frontend k8s headless service changed to load balanced service
+#### query-frontend Kubernetes headless service changed to load balanced service
 
 *Note:* This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/latest/installation/tanka/)
 
-The `query-frontend` k8s service was previously headless and was used for two purposes:
+The `query-frontend` Kubernetes service was previously headless and was used for two purposes:
 * Distributing the Loki query requests amongst all the available Query Frontend pods.
 * Discover IPs of Query Frontend pods from Queriers to connect as workers.
 
@@ -261,7 +278,7 @@ The problem here is that a headless service does not support load balancing and 
 Additionally, a load-balanced service does not let us discover the IPs of the underlying pods.
 
 To meet both these requirements, we have made the following changes:
-* Changed the existing `query-frontend` k8s service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
+* Changed the existing `query-frontend` Kubernetes service from headless to load-balanced to have a fair load distribution on all the Query Frontend instances.
 * Added `query-frontend-headless` to discover QF pod IPs from queriers to connect as workers.
 
 If you are deploying Loki with Query Scheduler by setting [query_scheduler_enabled](https://github.com/grafana/loki/blob/cc4ab7487ab3cd3b07c63601b074101b0324083b/production/ksonnet/loki/config.libsonnet#L18) config to `true`, then there is nothing to do here for this change.
@@ -1077,7 +1094,7 @@ and the Kubelet.
 This commit adds the same to the Loki scrape config. It also removes
 the container_name label. It is the same as the container label
 and was already added to Loki previously. However, the
-container_name label is deprecated and has disappeared in K8s 1.16,
+container_name label is deprecated and has disappeared in Kubernetes 1.16,
 so that it will soon become useless for direct joining.
 ````
 

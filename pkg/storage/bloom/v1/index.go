@@ -387,6 +387,18 @@ type ChunkRef struct {
 	Checksum   uint32
 }
 
+func (r *ChunkRef) Less(other ChunkRef) bool {
+	if r.Start != other.Start {
+		return r.Start < other.Start
+	}
+
+	if r.End != other.End {
+		return r.End < other.End
+	}
+
+	return r.Checksum < other.Checksum
+}
+
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
 	// delta encode start time
 	enc.PutVarint64(int64(r.Start - previousEnd))
@@ -416,4 +428,59 @@ func (o *BloomOffset) Decode(dec *encoding.Decbuf, previousOffset BloomOffset) e
 	o.Page = previousOffset.Page + dec.Uvarint()
 	o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
 	return dec.Err()
+}
+
+type ChunkRefs []ChunkRef
+
+func (refs ChunkRefs) Len() int {
+	return len(refs)
+}
+
+func (refs ChunkRefs) Less(i, j int) bool {
+	return refs[i].Less(refs[j])
+}
+
+func (refs ChunkRefs) Swap(i, j int) {
+	refs[i], refs[j] = refs[j], refs[i]
+}
+
+// Unless returns the chunk refs in this set that are not in the other set.
+// Both must be sorted.
+func (refs ChunkRefs) Unless(others []ChunkRef) ChunkRefs {
+	res, _ := refs.Compare(others, false)
+	return res
+}
+
+// Compare returns two sets of chunk refs, both must be sorted:
+// 1) the chunk refs which are in the original set but not in the other set
+// 2) the chunk refs which are in both sets
+// the `populateInclusive` argument allows avoiding populating the inclusive set
+// if it is not needed
+// TODO(owen-d): can be improved to use binary search when one list
+// is signficantly larger than the other
+func (refs ChunkRefs) Compare(others ChunkRefs, populateInclusive bool) (exclusive ChunkRefs, inclusive ChunkRefs) {
+	var i, j int
+	for i < len(refs) && j < len(others) {
+		switch {
+
+		case refs[i] == others[j]:
+			if populateInclusive {
+				inclusive = append(inclusive, refs[i])
+			}
+			i++
+			j++
+		case refs[i].Less(others[j]):
+			exclusive = append(exclusive, refs[i])
+			i++
+		default:
+			j++
+		}
+	}
+
+	// append any remaining refs
+	if i < len(refs) {
+		exclusive = append(exclusive, refs[i:]...)
+	}
+
+	return
 }

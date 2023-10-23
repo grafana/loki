@@ -155,7 +155,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 	sgClient.cfg.PoolConfig.HealthCheckIngesters = true
 
 	if sgClient.cfg.Mode == indexgateway.RingMode {
-		sgClient.pool = clientpool.NewPool(sgClient.cfg.PoolConfig, sgClient.ring, client.PoolAddrFunc(factory), logger)
+		sgClient.pool = clientpool.NewPool("index-gateway", sgClient.cfg.PoolConfig, sgClient.ring, client.PoolAddrFunc(factory), logger)
 	} else {
 		// Note we don't use clientpool.NewPool because we want to provide our own discovery function
 		poolCfg := client.PoolConfig{

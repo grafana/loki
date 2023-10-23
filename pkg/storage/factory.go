@@ -32,7 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/bloomshipperconfig"
+	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"

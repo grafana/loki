@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
+
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -50,27 +51,7 @@ var (
 	ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
 )
 
-// Limits extends the cortex limits interface with support for per tenant splitby parameters
-type Limits interface {
-	queryrangebase.Limits
-	logql.Limits
-	QuerySplitDuration(string) time.Duration
-	MaxQuerySeries(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) int
-	MinShardingLookback(string) time.Duration
-	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
-	// frontend will process in parallel for TSDB queries.
-	TSDBMaxQueryParallelism(context.Context, string) int
-	// TSDBMaxBytesPerShard returns the limit to the number of bytes a single shard
-	TSDBMaxBytesPerShard(string) int
-
-	RequiredLabels(context.Context, string) []string
-	RequiredNumberLabels(context.Context, string) int
-	MaxQueryBytesRead(context.Context, string) int
-	MaxQuerierBytesRead(context.Context, string) int
-	MaxStatsCacheFreshness(context.Context, string) time.Duration
-	VolumeEnabled(string) bool
-}
+type Limits queryrange_limits.Limits
 
 type limits struct {
 	Limits
@@ -454,38 +435,32 @@ func (sl *seriesLimiter) isLimitReached() bool {
 
 type limitedRoundTripper struct {
 	configs []config.PeriodConfig
-	next    http.RoundTripper
+	next    queryrangebase.Handler
 	limits  Limits
 
-	codec      queryrangebase.Codec
 	middleware queryrangebase.Middleware
 }
 
+var _ queryrangebase.Handler = limitedRoundTripper{}
+
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
-func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) http.RoundTripper {
+func NewLimitedRoundTripper(next queryrangebase.Handler, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) queryrangebase.Handler {
 	transport := limitedRoundTripper{
 		configs:    configs,
 		next:       next,
-		codec:      codec,
 		limits:     limits,
 		middleware: queryrangebase.MergeMiddlewares(middlewares...),
 	}
 	return transport
 }
 
-func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	var (
-		ctx, cancel = context.WithCancel(r.Context())
+		ctx, cancel = context.WithCancel(c)
 	)
 	defer func() {
 		cancel()
 	}()
-
-	// Do not forward any request header.
-	request, err := rt.codec.DecodeRequest(ctx, r, nil)
-	if err != nil {
-		return nil, err
-	}
 
 	span := opentracing.SpanFromContext(ctx)
 
@@ -513,9 +488,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 
 	sem := semaphore.NewWeighted(int64(parallelism))
 
-	start := time.Now()
-
-	response, err := rt.middleware.Wrap(
+	return rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			// This inner handler is called multiple times by
 			// sharding outer middlewares such as the downstreamer.
@@ -524,6 +497,8 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 			// the thousands.
 			// Note: It is the responsibility of the caller to run
 			// the handler in parallel.
+			start := time.Now()
+
 			if err := sem.Acquire(ctx, int64(1)); err != nil {
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
@@ -537,35 +512,8 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 
 			defer sem.Release(int64(1))
 
-			return rt.do(ctx, r)
+			return rt.next.Do(ctx, r)
 		})).Do(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-
-	return rt.codec.EncodeResponse(ctx, r, response)
-}
-
-func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
-	defer sp.Finish()
-
-	request, err := rt.codec.EncodeRequest(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	response, err := rt.next.RoundTrip(request)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	return rt.codec.DecodeResponse(ctx, response, r)
 }
 
 // WeightedParallelism will calculate the request parallelism to use
@@ -702,13 +650,13 @@ func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []c
 }
 
 // validates log entries limits
-func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	tenantIDs, err := tenant.TenantIDs(req.Context())
+func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limits) error {
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
+	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(ctx, id) }
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
@@ -717,8 +665,8 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 	return nil
 }
 
-func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Matcher) error {
-	tenants, err := tenant.TenantIDs(req.Context())
+func validateMatchers(ctx context.Context, limits Limits, matchers []*labels.Matcher) error {
+	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return err
 	}
@@ -732,7 +680,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 
 	// Enforce RequiredLabels limit
 	for _, tenant := range tenants {
-		required := limits.RequiredLabels(req.Context(), tenant)
+		required := limits.RequiredLabels(ctx, tenant)
 		var missing []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {
@@ -749,7 +697,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 	// The reason to enforce this one after RequiredLabels is to avoid users
 	// from adding enough label matchers to pass the RequiredNumberLabels limit but then
 	// having to modify them to use the ones required by RequiredLabels.
-	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(req.Context(), id) }
+	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(ctx, id) }
 	if requiredNumberLabels := validation.SmallestPositiveNonZeroIntPerTenant(tenants, requiredNumberLabelsCapture); requiredNumberLabels > 0 {
 		if len(present) < requiredNumberLabels {
 			return fmt.Errorf(requiredNumberLabelsErrTmpl, strings.Join(present, ", "), len(present), requiredNumberLabels)

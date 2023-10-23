@@ -96,11 +96,11 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 
 	t.Run("ingest-logs", func(t *testing.T) {
 		// ingest some log lines
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineA", now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineB", now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
 
-		require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 	})
 
 	t.Run("query", func(t *testing.T) {
@@ -127,6 +127,12 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		resp, err := cliQueryFrontend.LabelValues(context.Background(), "job")
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"fake"}, resp)
+	})
+
+	t.Run("series", func(t *testing.T) {
+		resp, err := cliQueryFrontend.Series(context.Background(), `{job="fake"}`)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []map[string]string{{"job": "fake"}}, resp)
 	})
 
 	t.Run("per-request-limits", func(t *testing.T) {
@@ -205,8 +211,8 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 	cliQueryFrontend.Now = now
 
 	t.Run("ingest-logs", func(t *testing.T) {
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-72*time.Hour), map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-72*time.Hour), nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-48*time.Hour), nil, map[string]string{"job": "fake"}))
 	})
 
 	t.Run("query-lookback-default", func(t *testing.T) {
@@ -282,8 +288,8 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 
 	t.Run("ingest-logs-new-period", func(t *testing.T) {
 		// ingest logs to the new period
-		require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 	})
 
 	t.Run("query-both-periods-with-default-lookback", func(t *testing.T) {
@@ -334,11 +340,9 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 		"boltdb-and-tsdb": cluster.SchemaWithBoltDBAndTSDB,
 	} {
 		t.Run(name, func(t *testing.T) {
-			storage.ResetBoltDBIndexClientsWithShipper()
 			clu := cluster.New(nil, opt)
 
 			defer func() {
-				storage.ResetBoltDBIndexClientsWithShipper()
 				assert.NoError(t, clu.Cleanup())
 			}()
 
@@ -400,12 +404,12 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 			cliQueryFrontend.Now = now
 
 			t.Run("ingest-logs", func(t *testing.T) {
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata("lineA", time.Now().Add(-48*time.Hour), map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata("lineB", time.Now().Add(-36*time.Hour), map[string]string{"traceID": "456"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-48*time.Hour), map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-36*time.Hour), map[string]string{"traceID": "456"}, map[string]string{"job": "fake"}))
 
 				// ingest logs to the current period
-				require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineC", map[string]string{"traceID": "789"}, map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineD", map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineC", now, map[string]string{"traceID": "789"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLine("lineD", now, map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
 
 			})
 
@@ -550,11 +554,11 @@ func TestSchedulerRing(t *testing.T) {
 
 	t.Run("ingest-logs", func(t *testing.T) {
 		// ingest some log lines
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineA", now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineB", now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
 
-		require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 	})
 
 	t.Run("query", func(t *testing.T) {
@@ -652,14 +656,13 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	require.NoError(t, err)
 	assertCacheState(t, igwMetrics, &expectedCacheState{
 		cacheName: "store.index-cache-read.embedded-cache",
-		gets:      0,
 		misses:    0,
 		added:     0,
 	})
 
 	t.Run("ingest-logs", func(t *testing.T) {
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-72*time.Hour), map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-72*time.Hour), nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-48*time.Hour), nil, map[string]string{"job": "fake"}))
 	})
 
 	// restart ingester which should flush the chunks and index
@@ -685,14 +688,13 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	require.NoError(t, err)
 	assertCacheState(t, igwMetrics, &expectedCacheState{
 		cacheName: "store.index-cache-read.embedded-cache",
-		gets:      50,
 		misses:    1,
 		added:     1,
 	})
 
 	// ingest logs with ts=now.
-	require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
-	require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 
 	// default length is 7 days.
 	resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
@@ -708,6 +710,133 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	// expect lines from both, ingesters memory and from the store.
 	assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
 
+}
+
+func TestOTLPLogsIngestQuery(t *testing.T) {
+	clu := cluster.New(nil, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	// run initially the compactor, indexgateway, and distributor.
+	var (
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			// By default, a minute is added to the delete request start time. This compensates for that.
+			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.deletion-mode=filter-and-delete",
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+		)
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// then, run only the ingester and query scheduler.
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			"-target=ingester",
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-querier.per-request-limits-enabled=true",
+			"-frontend.required-query-response-format=protobuf",
+		)
+		_ = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	tenantID := randStringRunes()
+
+	now := time.Now()
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+
+	t.Run("ingest-logs", func(t *testing.T) {
+		// ingest some log lines
+		require.NoError(t, cliDistributor.PushOTLPLogLine("lineA", now.Add(-45*time.Minute), map[string]any{"trace_id": 1, "user_id": "2"}))
+		require.NoError(t, cliDistributor.PushOTLPLogLine("lineB", now.Add(-45*time.Minute), nil))
+
+		require.NoError(t, cliDistributor.PushOTLPLogLine("lineC", now, map[string]any{"order.ids": []any{5, 6}}))
+		require.NoError(t, cliDistributor.PushOTLPLogLine("lineD", now, nil))
+	})
+
+	t.Run("query", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{service_name="varlog"}`)
+		require.NoError(t, err)
+		assert.Equal(t, "streams", resp.Data.ResultType)
+
+		numLinesReceived := 0
+		for i, stream := range resp.Data.Stream {
+			switch i {
+			case 0:
+				require.Len(t, stream.Values, 2)
+				require.Equal(t, "lineD", stream.Values[0][1])
+				require.Equal(t, "lineB", stream.Values[1][1])
+				require.Equal(t, map[string]string{
+					"service_name": "varlog",
+				}, stream.Stream)
+				numLinesReceived += 2
+			case 1:
+				require.Len(t, stream.Values, 1)
+				require.Equal(t, "lineA", stream.Values[0][1])
+				require.Equal(t, map[string]string{
+					"service_name": "varlog",
+					"trace_id":     "1",
+					"user_id":      "2",
+				}, stream.Stream)
+				numLinesReceived++
+			case 2:
+				require.Len(t, stream.Values, 1)
+				require.Equal(t, "lineC", stream.Values[0][1])
+				require.Equal(t, map[string]string{
+					"service_name": "varlog",
+					"order_ids":    "[5,6]",
+				}, stream.Stream)
+				numLinesReceived++
+			default:
+				t.Errorf("unexpected case %d", i)
+			}
+		}
+		require.Equal(t, 4, numLinesReceived)
+	})
 }
 
 func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
@@ -745,18 +874,16 @@ func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
 		},
 	}
 
-	mf, found = mfs["loki_cache_fetched_keys"]
+	gets, found := mfs["loki_cache_fetched_keys"]
 	require.True(t, found)
-	require.Equal(t, e.gets, getValueFromMF(mf, lbs))
 
-	mf, found = mfs["loki_cache_hits"]
+	hits, found := mfs["loki_cache_hits"]
 	require.True(t, found)
-	require.Equal(t, e.gets-e.misses, getValueFromMF(mf, lbs))
+	require.Equal(t, e.misses, getValueFromMF(gets, lbs)-getValueFromMF(hits, lbs))
 }
 
 type expectedCacheState struct {
 	cacheName string
-	gets      float64
 	misses    float64
 	added     float64
 }

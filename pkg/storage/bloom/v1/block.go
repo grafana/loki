@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
@@ -110,4 +112,62 @@ func (bq *BlockQuerier) Err() error {
 	}
 
 	return bq.blooms.Err()
+}
+
+// CheckChunksForSeries checks if the given chunks pass a set of searches in the given bloom block.
+// It returns the list of chunks which will need to be downloaded for a query based on the initial list
+// passed as the `chks` argument. Chunks will be removed from the result set if they they are indexed in the bloom
+// and fail to pass all the searches.
+func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRefs, searches [][]byte) (ChunkRefs, error) {
+	if err := bq.Seek(fp); err != nil {
+		return chks, errors.Wrapf(err, "seeking to series for fp: %v", fp)
+	}
+
+	if !bq.series.Next() {
+		return chks, nil
+	}
+
+	series := bq.series.At()
+	if series.Fingerprint != fp {
+		return chks, nil
+	}
+
+	bq.blooms.Seek(series.Offset)
+	if !bq.blooms.Next() {
+		return chks, fmt.Errorf("seeking to bloom for fp: %v", fp)
+	}
+
+	bloom := bq.blooms.At()
+
+	// First, see if the search passes the series level bloom before checking for chunks individually
+	for _, search := range searches {
+		if !bloom.Test(search) {
+			// the entire series bloom didn't pass one of the searches,
+			// so we can skip checking chunks individually.
+			// We still return all chunks that are not included in the bloom
+			// as they may still have the data
+			return chks.Unless(series.Chunks), nil
+		}
+	}
+
+	// TODO(owen-d): pool, memoize chunk search prefix creation
+
+	// Check chunks individually now
+	mustCheck, inBlooms := chks.Compare(series.Chunks, true)
+
+outer:
+	for _, chk := range inBlooms {
+		for _, search := range searches {
+			// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
+			var combined = search
+
+			if !bloom.Test(combined) {
+				continue outer
+			}
+		}
+		// chunk passed all searches, add to the list of chunks to download
+		mustCheck = append(mustCheck, chk)
+
+	}
+	return mustCheck, nil
 }
