@@ -41,13 +41,17 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	// TODO: make these configurable ?
-	t.lineTokenizer = NewNGramTokenizer(4, 5, 0)
+	t.lineTokenizer = NewNGramTokenizer(4, 5, 0) // default to 4-grams, no skip
 	t.chunkIDTokenizer = ChunkIDTokenizer(t.lineTokenizer)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 
 	return t, nil
+}
+
+func (bt *BloomTokenizer) SetLineTokenizer(t Tokenizer) {
+	bt.lineTokenizer = t
+	bt.chunkIDTokenizer = ChunkIDTokenizer(bt.lineTokenizer)
 }
 
 // TODO: Something real here with metrics
