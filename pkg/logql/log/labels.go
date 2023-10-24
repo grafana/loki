@@ -502,7 +502,7 @@ func (b *BaseLabelsBuilder) toUncategorizedResult(buf labels.Labels) LabelsResul
 		return cached
 	}
 
-	res := NewLabelsResult(buf.String(), hash, buf, nil, nil)
+	res := NewLabelsResult(buf.String(), hash, buf.Copy(), nil, nil)
 	b.resultCache[hash] = res
 	return res
 }

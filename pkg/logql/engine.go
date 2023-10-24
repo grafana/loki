@@ -526,6 +526,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 			streamLabels := i.Labels()
 
 			// If categorizeLabels is true, We need to remove the structured metadata labels and parsed labels from the stream labels.
+			// TODO(salvacorts): If this is too slow, provided this is in the hot path, we can consider doing this in the iterator.
 			if categorizeLabels && (len(entry.StructuredMetadata) > 0 || len(entry.Parsed) > 0) {
 				lbls, err := syntax.ParseLabels(streamLabels)
 				if err != nil {

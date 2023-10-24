@@ -60,6 +60,17 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 				return
 			}
 
+			// Here we deserialize entries for both query responses and push requests.
+			//
+			// For push requests, we accept structured metadata as the third object in the entry array. E.g.:
+			// [ "<ts>", "<log line>", {"trace_id": "0242ac120002", "user_id": "superUser123"}]
+			//
+			// For query responses, we accept structured metadata and parsed labels in the third object in the entry array. E.g.:
+			// [ "<ts>", "<log line>", { "structuredMetadata": {"trace_id": "0242ac120002", "user_id": "superUser123"}, "parsed": {"msg": "text"}}]
+			//
+			// Therefore, we need to check if the third object contains the "structuredMetadata" or "parsed" fields. If it does,
+			// we deserialize the inner objects into the structured metadata and parsed labels respectively.
+			// If it doesn't, we deserialize the object into the structured metadata labels.
 			var structuredMetadata labels.Labels
 			var parsed labels.Labels
 			if err := jsonparser.ObjectEach(value, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
