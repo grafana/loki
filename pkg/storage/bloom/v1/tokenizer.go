@@ -19,6 +19,7 @@ type Tokenizer interface {
 }
 
 const TokenBufferSize = 4096
+const TokenKeySize = 132
 
 type NgramTokenizer struct {
 	// [min,max) exclusivity
@@ -36,20 +37,20 @@ These will be utilized for the bloom filters to allow for fuzzy searching.
 func NewNGramTokenizer(min, max, skip int) *NgramTokenizer {
 	capacity := max - min
 	t := &NgramTokenizer{
-		min:     min,
-		max:     max,
-		skip:    skip,
-		buffers: make([][]rune, capacity),
+		min:                 min,
+		max:                 max,
+		skip:                skip,
+		buffers:             make([][]rune, capacity),
+		runeBuffer:          make([]byte, 0, max*4),
+		internalTokenBuffer: make([]Token, 0, TokenBufferSize),
 	}
-	for i := t.min; i < t.max; i++ {
-		t.buffers[i-t.min] = make([]rune, i)
+	
+	for i := range t.buffers {
+		t.buffers[i] = make([]rune, t.min+i)
 	}
-	t.runeBuffer = make([]byte, 0, max*4)
-	t.internalTokenBuffer = make([]Token, 0, TokenBufferSize)
+
 	for i := 0; i < cap(t.internalTokenBuffer); i++ {
-		tok := Token{}
-		tok.Key = make([]byte, 0, 132)
-		t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
+		t.internalTokenBuffer = append(t.internalTokenBuffer, Token{Key: make([]byte, 0, TokenKeySize)})
 	}
 
 	return t
@@ -83,9 +84,7 @@ func (t *NgramTokenizer) Tokens(line string) []Token {
 			if i >= n-1 && (i+1-n)%(t.skip+1) == 0 {
 				t.runeBuffer = reassemble(t.buffers[j], (i+1)%n, t.runeBuffer)
 				if numToks >= cap(t.internalTokenBuffer) || numToks == len(t.internalTokenBuffer) {
-					tok := Token{}
-					tok.Key = make([]byte, 0, 132) // Using a 4 byte token and a chunk identifier, it's really 28 bytes. Adding in for special chars and the like here
-					t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
+					t.internalTokenBuffer = append(t.internalTokenBuffer, Token{Key: make([]byte, 0, TokenKeySize)})
 				}
 				t.internalTokenBuffer[numToks].Key = t.internalTokenBuffer[numToks].Key[:0]
 				t.internalTokenBuffer[numToks].Key = append(t.internalTokenBuffer[numToks].Key, t.runeBuffer...)
