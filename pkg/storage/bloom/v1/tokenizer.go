@@ -44,7 +44,7 @@ func NewNGramTokenizer(min, max, skip int) *NgramTokenizer {
 		runeBuffer:          make([]byte, 0, max*4),
 		internalTokenBuffer: make([]Token, 0, TokenBufferSize),
 	}
-	
+
 	for i := range t.buffers {
 		t.buffers[i] = make([]rune, t.min+i)
 	}
@@ -122,8 +122,8 @@ func (w *WrappedTokenizer) Tokens(line string) []Token {
 	w.tokenBuffer = w.tokenBuffer[:0] // Reset the result slice
 	toks := w.t.Tokens(line)
 	for _, tok := range toks {
-		w.tokenBuffer = append(w.tokenBuffer, chunkIDTransformer(tok, w.prefix))
-		w.tokenBuffer = append(w.tokenBuffer, tok)
+		w.tokenBuffer = append(w.tokenBuffer, chunkIDTransformer(tok, w.prefix), tok)
+		//w.tokenBuffer = append(w.tokenBuffer, tok)
 	}
 
 	return w.tokenBuffer

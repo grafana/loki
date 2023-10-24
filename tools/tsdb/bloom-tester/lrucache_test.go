@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+var num = 1000000
+
 func BenchmarkLRU1Put(b *testing.B) {
 	cache := NewLRUCache(num)
 	for i := 0; i < b.N; i++ {
