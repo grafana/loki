@@ -14,19 +14,19 @@ import (
 const BigFile = "../../pkg/logql/sketch/testdata/war_peace.txt"
 
 var (
-	twoSkipOne = newNGramTokenizer(2, 3, 1)
-	three      = newNGramTokenizer(3, 4, 0)
-	threeSkip1 = newNGramTokenizer(3, 4, 1)
-	threeSkip2 = newNGramTokenizer(3, 4, 2)
-	four       = newNGramTokenizer(4, 5, 0)
-	fourSkip1  = newNGramTokenizer(4, 5, 1)
-	fourSkip2  = newNGramTokenizer(4, 5, 2)
-	five       = newNGramTokenizer(5, 6, 0)
-	six        = newNGramTokenizer(6, 7, 0)
+	twoSkipOne = NewNGramTokenizer(2, 3, 1)
+	three      = NewNGramTokenizer(3, 4, 0)
+	threeSkip1 = NewNGramTokenizer(3, 4, 1)
+	threeSkip2 = NewNGramTokenizer(3, 4, 2)
+	four       = NewNGramTokenizer(4, 5, 0)
+	fourSkip1  = NewNGramTokenizer(4, 5, 1)
+	fourSkip2  = NewNGramTokenizer(4, 5, 2)
+	five       = NewNGramTokenizer(5, 6, 0)
+	six        = NewNGramTokenizer(6, 7, 0)
 )
 
 func TestNGrams(t *testing.T) {
-	tokenizer := newNGramTokenizer(2, 4, 0)
+	tokenizer := NewNGramTokenizer(2, 4, 0)
 	for _, tc := range []struct {
 		desc  string
 		input string
@@ -73,7 +73,7 @@ func TestNGramsSkip(t *testing.T) {
 
 	for _, tc := range []struct {
 		desc      string
-		tokenizer *ngramTokenizer
+		tokenizer *NgramTokenizer
 		input     string
 		exp       []Token
 	}{
@@ -91,7 +91,7 @@ func TestNGramsSkip(t *testing.T) {
 		},
 		{
 			desc:      "multi",
-			tokenizer: newNGramTokenizer(2, 4, 1),
+			tokenizer: NewNGramTokenizer(2, 4, 1),
 			input:     "abcdefghij",
 			exp: []Token{
 				{Key: []byte("ab")},
@@ -535,7 +535,7 @@ func TestWrappedTokenizer(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			chunkTokenizer := ChunkIDTokenizer(tokenizer)
-			chunkTokenizer.reinit(logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1})
+			chunkTokenizer.Reinit(logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1})
 			require.Equal(t, tc.exp, chunkTokenizer.Tokens(tc.input))
 		})
 	}

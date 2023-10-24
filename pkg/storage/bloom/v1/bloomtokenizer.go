@@ -41,8 +41,8 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	// TODO: make these configurable
-	t.lineTokenizer = newNGramTokenizer(4, 5, 0)
+	// TODO: make these configurable ?
+	t.lineTokenizer = NewNGramTokenizer(4, 5, 0)
 	t.chunkIDTokenizer = ChunkIDTokenizer(t.lineTokenizer)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
@@ -65,7 +65,7 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 	clearCache(bt.cache)
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		bt.chunkIDTokenizer.reinit(chunks[idx].ChunkRef)
+		bt.chunkIDTokenizer.Reinit(chunks[idx].ChunkRef)
 
 		// TODO: error handling
 		itr, _ := lc.Iterator(

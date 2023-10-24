@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
-	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"hash/fnv"
 	"math"
 	"os"
@@ -89,15 +88,15 @@ func execute() {
 }
 
 var (
-	three      = newNGramTokenizer(3, 4, 0)
-	threeSkip1 = newNGramTokenizer(3, 4, 1)
-	threeSkip2 = newNGramTokenizer(3, 4, 2)
-	threeSkip3 = newNGramTokenizer(3, 4, 3)
-	four       = newNGramTokenizer(4, 5, 0)
-	fourSkip1  = newNGramTokenizer(4, 5, 1)
-	fourSkip2  = newNGramTokenizer(4, 5, 2)
-	five       = newNGramTokenizer(5, 6, 0)
-	six        = newNGramTokenizer(6, 7, 0)
+	three      = bt.NewNGramTokenizer(3, 4, 0)
+	threeSkip1 = bt.NewNGramTokenizer(3, 4, 1)
+	threeSkip2 = bt.NewNGramTokenizer(3, 4, 2)
+	threeSkip3 = bt.NewNGramTokenizer(3, 4, 3)
+	four       = bt.NewNGramTokenizer(4, 5, 0)
+	fourSkip1  = bt.NewNGramTokenizer(4, 5, 1)
+	fourSkip2  = bt.NewNGramTokenizer(4, 5, 2)
+	five       = bt.NewNGramTokenizer(5, 6, 0)
+	six        = bt.NewNGramTokenizer(6, 7, 0)
 
 	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
 	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
@@ -449,12 +448,6 @@ func FNV32a(text string) string {
 	hashAlgorithm.Reset()
 	hashAlgorithm.Write([]byte(text))
 	return strconv.Itoa(int(hashAlgorithm.Sum32()))
-}
-
-func clearCache(cache map[string]interface{}) {
-	for k := range cache {
-		delete(cache, k)
-	}
 }
 
 func sbfFileExists(location, prefix, period, tenant, series string, objectClient client.ObjectClient) bool {

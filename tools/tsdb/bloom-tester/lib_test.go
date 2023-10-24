@@ -6,44 +6,48 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
+const BigFile = "../../../pkg/logql/sketch/testdata/war_peace.txt"
+
 func TestNGrams(t *testing.T) {
-	tokenizer := newNGramTokenizer(2, 4, 0)
+	tokenizer := bt.NewNGramTokenizer(2, 4, 0)
 	for _, tc := range []struct {
 		desc  string
 		input string
-		exp   []Token
+		exp   []bt.Token
 	}{
 		{
 			desc:  "empty",
 			input: "",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "single char",
 			input: "a",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "two chars",
 			input: "ab",
-			exp:   []Token{{Key: []byte("ab"), Value: "ab"}},
+			exp:   []bt.Token{{Key: []byte("ab")}},
 		},
 		{
 			desc:  "three chars",
 			input: "abc",
-			exp:   []Token{{Key: []byte("ab"), Value: "ab"}, {Key: []byte("bc"), Value: "bc"}, {Key: []byte("abc"), Value: "abc"}},
+			exp:   []bt.Token{{Key: []byte("ab")}, {Key: []byte("bc")}, {Key: []byte("abc")}},
 		},
 		{
 			desc:  "four chars",
 			input: "abcd",
-			exp:   []Token{{Key: []byte("ab"), Value: "ab"}, {Key: []byte("bc"), Value: "bc"}, {Key: []byte("abc"), Value: "abc"}, {Key: []byte("cd"), Value: "cd"}, {Key: []byte("bcd"), Value: "bcd"}},
+			exp:   []bt.Token{{Key: []byte("ab")}, {Key: []byte("bc")}, {Key: []byte("abc")}, {Key: []byte("cd")}, {Key: []byte("bcd")}},
 		},
 		{
 			desc:  "foo",
 			input: "日本語",
-			exp:   []Token{{Key: []byte("日本"), Value: "日本"}, {Key: []byte("本語"), Value: "本語"}, {Key: []byte("日本語"), Value: "日本語"}},
+			exp:   []bt.Token{{Key: []byte("日本")}, {Key: []byte("本語")}, {Key: []byte("日本語")}},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -57,37 +61,37 @@ func Test4NGrams(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		input string
-		exp   []Token
+		exp   []bt.Token
 	}{
 		{
 			desc:  "empty",
 			input: "",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "single char",
 			input: "a",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "two chars",
 			input: "ab",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "three chars",
 			input: "abc",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "four chars",
 			input: "abcd",
-			exp:   []Token{{Key: []byte("abcd"), Value: "abcd"}},
+			exp:   []bt.Token{{Key: []byte("abcd")}},
 		},
 		{
 			desc:  "five chars",
 			input: "abcde",
-			exp:   []Token{{Key: []byte("abcd"), Value: "abcd"}, {Key: []byte("bcde"), Value: "bcde"}},
+			exp:   []bt.Token{{Key: []byte("abcd")}, {Key: []byte("bcde")}},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -101,52 +105,52 @@ func Test6NGrams(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		input string
-		exp   []Token
+		exp   []bt.Token
 	}{
 		{
 			desc:  "empty",
 			input: "",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "single char",
 			input: "a",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "two chars",
 			input: "ab",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "three chars",
 			input: "abc",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "four chars",
 			input: "abcd",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "five chars",
 			input: "abcde",
-			exp:   []Token{},
+			exp:   []bt.Token{},
 		},
 		{
 			desc:  "six chars",
 			input: "abcdef",
-			exp:   []Token{{Key: []byte("abcdef"), Value: "abcdef"}},
+			exp:   []bt.Token{{Key: []byte("abcdef")}},
 		},
 		{
 			desc:  "seven chars",
 			input: "abcdefg",
-			exp:   []Token{{Key: []byte("abcdef"), Value: "abcdef"}, {Key: []byte("bcdefg"), Value: "bcdefg"}},
+			exp:   []bt.Token{{Key: []byte("abcdef")}, {Key: []byte("bcdefg")}},
 		},
 		{
 			desc:  "eight chars",
 			input: "abcdefgh",
-			exp:   []Token{{Key: []byte("abcdef"), Value: "abcdef"}, {Key: []byte("bcdefg"), Value: "bcdefg"}, {Key: []byte("cdefgh"), Value: "cdefgh"}},
+			exp:   []bt.Token{{Key: []byte("abcdef")}, {Key: []byte("bcdefg")}, {Key: []byte("cdefgh")}},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -156,39 +160,39 @@ func Test6NGrams(t *testing.T) {
 }
 
 func TestNGramsSkip(t *testing.T) {
-	twoSkipOne := newNGramTokenizer(2, 3, 1)
+	twoSkipOne := bt.NewNGramTokenizer(2, 3, 1)
 	for _, tc := range []struct {
 		desc      string
-		tokenizer *ngramTokenizer
+		tokenizer *bt.NgramTokenizer
 		input     string
-		exp       []Token
+		exp       []bt.Token
 	}{
 		{
 			desc:      "four chars",
 			tokenizer: twoSkipOne,
 			input:     "abcd",
-			exp:       []Token{{Key: []byte("ab"), Value: "ab"}, {Key: []byte("cd"), Value: "cd"}},
+			exp:       []bt.Token{{Key: []byte("ab")}, {Key: []byte("cd")}},
 		},
 		{
 			desc:      "special chars",
 			tokenizer: twoSkipOne,
 			input:     "日本語",
-			exp:       []Token{{Key: []byte("日本"), Value: "日本"}},
+			exp:       []bt.Token{{Key: []byte("日本")}},
 		},
 		{
 			desc:      "multi",
-			tokenizer: newNGramTokenizer(2, 4, 1),
+			tokenizer: bt.NewNGramTokenizer(2, 4, 1),
 			input:     "abcdefghij",
-			exp: []Token{
-				{Key: []byte("ab"), Value: "ab"},
-				{Key: []byte("abc"), Value: "abc"},
-				{Key: []byte("cd"), Value: "cd"},
-				{Key: []byte("cde"), Value: "cde"},
-				{Key: []byte("ef"), Value: "ef"},
-				{Key: []byte("efg"), Value: "efg"},
-				{Key: []byte("gh"), Value: "gh"},
-				{Key: []byte("ghi"), Value: "ghi"},
-				{Key: []byte("ij"), Value: "ij"},
+			exp: []bt.Token{
+				{Key: []byte("ab")},
+				{Key: []byte("abc")},
+				{Key: []byte("cd")},
+				{Key: []byte("cde")},
+				{Key: []byte("ef")},
+				{Key: []byte("efg")},
+				{Key: []byte("gh")},
+				{Key: []byte("ghi")},
+				{Key: []byte("ij")},
 			},
 		},
 	} {
@@ -356,14 +360,14 @@ func BenchmarkSBFSeparateTestAndAddWithLRU5(b *testing.B) {
 			line := scanner.Text()
 			tokens := experiment.tokenizer.Tokens(line)
 			for _, token := range tokens {
-				if !cache.Get(token.Value) {
-					cache.Put(token.Value)
+				str := string(token.Key)
+				if !cache.Get(str) {
+					cache.Put(str)
 
 					found := sbf.Test(token.Key)
 					if !found {
 						sbf.Add(token.Key)
 					}
-					//sbf.TestAndAdd(token.Key)
 				}
 			}
 		}
@@ -390,8 +394,9 @@ func BenchmarkSBFTestAndAddWithLRU5(b *testing.B) {
 			line := scanner.Text()
 			tokens := experiment.tokenizer.Tokens(line)
 			for _, token := range tokens {
-				if !cache.Get(token.Value) {
-					cache.Put(token.Value)
+				str := string(token.Key)
+				if !cache.Get(str) {
+					cache.Put(str)
 
 					sbf.TestAndAdd(token.Key)
 				}
@@ -511,8 +516,9 @@ func BenchmarkSBFSeparateTestAndAddWithLRU1(b *testing.B) {
 			line := scanner.Text()
 			tokens := experiment.tokenizer.Tokens(line)
 			for _, token := range tokens {
-				if !cache.Get(token.Value) {
-					cache.Put(token.Value)
+				str := string(token.Key)
+				if !cache.Get(str) {
+					cache.Put(str)
 					found := sbf.Test(token.Key)
 					if !found {
 						sbf.Add(token.Key)
@@ -543,10 +549,11 @@ func BenchmarkSBFSeparateTestAndAddWithMap(b *testing.B) {
 			line := scanner.Text()
 			tokens := experiment.tokenizer.Tokens(line)
 			for _, token := range tokens {
+				str := string(token.Key)
 
-				_, found := cache[token.Value]
+				_, found := cache[str]
 				if !found {
-					cache[token.Value] = ""
+					cache[str] = ""
 					f := sbf.Test(token.Key)
 					if !f {
 						sbf.Add(token.Key)
@@ -557,8 +564,6 @@ func BenchmarkSBFSeparateTestAndAddWithMap(b *testing.B) {
 							delete(cache, elem)
 						}
 					}
-					//sbf.Add(token.Key)
-
 				}
 			}
 		}

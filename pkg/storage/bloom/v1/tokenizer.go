@@ -13,29 +13,29 @@ type Token struct {
 
 type Tokenizer interface {
 	Tokens(line string) []Token
-	getSkip() int
-	getMin() int
-	getMax() int
+	GetSkip() int
+	GetMin() int
+	GetMax() int
 }
 
 const TokenBufferSize = 4096
 
-type ngramTokenizer struct {
+type NgramTokenizer struct {
 	// [min,max) exclusivity
-	min, max, skip      int
-	buffers             [][]rune // circular buffers used for ngram generation
-	runeBuffer          []byte   // buffer used for token generation
-	tokenBuffer         []Token  // buffer used for holding tokens that is returned
-	internalTokenBuffer []Token  // circular buffer for tokens
+	min, max, skip int
+	buffers        [][]rune // circular buffers used for ngram generation
+	runeBuffer     []byte   // buffer used for token generation
+	//tokenBuffer         []Token  // buffer used for holding tokens that is returned
+	internalTokenBuffer []Token // circular buffer for tokens
 }
 
 /*
 N-Grams (https://en.wikipedia.org/wiki/N-gram) are a series of 'n' adjacent characters in a string.
 These will be utilized for the bloom filters to allow for fuzzy searching.
 */
-func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
+func NewNGramTokenizer(min, max, skip int) *NgramTokenizer {
 	capacity := max - min
-	t := &ngramTokenizer{
+	t := &NgramTokenizer{
 		min:     min,
 		max:     max,
 		skip:    skip,
@@ -45,7 +45,7 @@ func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
 		t.buffers[i-t.min] = make([]rune, i)
 	}
 	t.runeBuffer = make([]byte, 0, max*4)
-	t.tokenBuffer = make([]Token, 0, TokenBufferSize)
+	//t.tokenBuffer = make([]Token, 0, TokenBufferSize)
 	t.internalTokenBuffer = make([]Token, 0, TokenBufferSize)
 	for i := 0; i < cap(t.internalTokenBuffer); i++ {
 		tok := Token{}
@@ -56,21 +56,21 @@ func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
 	return t
 }
 
-func (t *ngramTokenizer) getSkip() int {
+func (t *NgramTokenizer) GetSkip() int {
 	return t.skip
 }
 
-func (t *ngramTokenizer) getMin() int {
+func (t *NgramTokenizer) GetMin() int {
 	return t.min
 }
 
-func (t *ngramTokenizer) getMax() int {
+func (t *NgramTokenizer) GetMax() int {
 	return t.max
 }
 
-func (t *ngramTokenizer) Tokens(line string) []Token {
-	t.tokenBuffer = t.tokenBuffer[:0] // Reset the result slice
-	var i int                         // rune index (not position that is measured in the range loop)
+func (t *NgramTokenizer) Tokens(line string) []Token {
+	//t.tokenBuffer = t.tokenBuffer[:0] // Reset the result slice
+	var i int // rune index (not position that is measured in the range loop)
 	numToks := 0
 	for _, r := range line {
 
@@ -96,8 +96,9 @@ func (t *ngramTokenizer) Tokens(line string) []Token {
 		}
 		i++
 	}
-	t.tokenBuffer = append(t.tokenBuffer, t.internalTokenBuffer[:numToks]...)
-	return t.tokenBuffer
+	//t.tokenBuffer = append(t.tokenBuffer, t.internalTokenBuffer[:numToks]...)
+	//return t.tokenBuffer
+	return t.internalTokenBuffer[0:numToks]
 }
 
 func reassemble(buf []rune, pos int, result []byte) []byte {
@@ -127,16 +128,16 @@ func (w *WrappedTokenizer) Tokens(line string) []Token {
 	return append(w.tokenBuffer, toks...)
 }
 
-func (w *WrappedTokenizer) getSkip() int {
-	return w.t.getSkip()
+func (w *WrappedTokenizer) GetSkip() int {
+	return w.t.GetSkip()
 }
 
-func (w *WrappedTokenizer) getMin() int {
-	return w.t.getMin()
+func (w *WrappedTokenizer) GetMin() int {
+	return w.t.GetMin()
 }
 
-func (w *WrappedTokenizer) getMax() int {
-	return w.t.getMax()
+func (w *WrappedTokenizer) GetMax() int {
+	return w.t.GetMax()
 }
 
 func ChunkIDTokenizer(t Tokenizer) *WrappedTokenizer {
@@ -154,7 +155,7 @@ func ChunkIDTokenizer(t Tokenizer) *WrappedTokenizer {
 	}
 }
 
-func (w *WrappedTokenizer) reinit(chk logproto.ChunkRef) {
+func (w *WrappedTokenizer) Reinit(chk logproto.ChunkRef) {
 	w.prefix = w.prefix[:0]
 
 	binary.PutVarint(w.i64buf, int64(chk.From))
