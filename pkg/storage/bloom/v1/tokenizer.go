@@ -45,7 +45,6 @@ func NewNGramTokenizer(min, max, skip int) *NgramTokenizer {
 		t.buffers[i-t.min] = make([]rune, i)
 	}
 	t.runeBuffer = make([]byte, 0, max*4)
-	//t.tokenBuffer = make([]Token, 0, TokenBufferSize)
 	t.internalTokenBuffer = make([]Token, 0, TokenBufferSize)
 	for i := 0; i < cap(t.internalTokenBuffer); i++ {
 		tok := Token{}
@@ -69,7 +68,6 @@ func (t *NgramTokenizer) GetMax() int {
 }
 
 func (t *NgramTokenizer) Tokens(line string) []Token {
-	//t.tokenBuffer = t.tokenBuffer[:0] // Reset the result slice
 	var i int // rune index (not position that is measured in the range loop)
 	numToks := 0
 	for _, r := range line {
@@ -96,8 +94,6 @@ func (t *NgramTokenizer) Tokens(line string) []Token {
 		}
 		i++
 	}
-	//t.tokenBuffer = append(t.tokenBuffer, t.internalTokenBuffer[:numToks]...)
-	//return t.tokenBuffer
 	return t.internalTokenBuffer[0:numToks]
 }
 
@@ -110,9 +106,13 @@ func reassemble(buf []rune, pos int, result []byte) []byte {
 	return result
 }
 
+func chunkIDTransformer(tok Token, prefix []byte) Token {
+	tok.Key = append(append(tok.Key, prefix...), tok.Key...)[len(tok.Key):]
+	return tok
+}
+
 type WrappedTokenizer struct {
 	t           Tokenizer
-	f           func(Token) Token
 	tokenBuffer []Token
 	prefix      []byte
 	i64buf      []byte
@@ -123,9 +123,11 @@ func (w *WrappedTokenizer) Tokens(line string) []Token {
 	w.tokenBuffer = w.tokenBuffer[:0] // Reset the result slice
 	toks := w.t.Tokens(line)
 	for _, tok := range toks {
-		w.tokenBuffer = append(w.tokenBuffer, w.f(tok))
+		w.tokenBuffer = append(w.tokenBuffer, chunkIDTransformer(tok, w.prefix))
+		w.tokenBuffer = append(w.tokenBuffer, tok)
 	}
-	return append(w.tokenBuffer, toks...)
+
+	return w.tokenBuffer
 }
 
 func (w *WrappedTokenizer) GetSkip() int {
@@ -148,10 +150,6 @@ func ChunkIDTokenizer(t Tokenizer) *WrappedTokenizer {
 		prefix:      p,
 		i64buf:      make([]byte, binary.MaxVarintLen64),
 		i32buf:      make([]byte, 4),
-		f: func(tok Token) Token {
-			tok.Key = append(append(tok.Key, p...), tok.Key...)[len(tok.Key):]
-			return tok
-		},
 	}
 }
 
@@ -164,9 +162,4 @@ func (w *WrappedTokenizer) Reinit(chk logproto.ChunkRef) {
 	w.prefix = append(w.prefix, w.i64buf...)
 	binary.LittleEndian.PutUint32(w.i32buf, chk.Checksum)
 	w.prefix = append(w.prefix, w.i32buf...)
-
-	w.f = func(tok Token) Token {
-		tok.Key = append(append(tok.Key, w.prefix...), tok.Key...)[len(tok.Key):]
-		return tok
-	}
 }
