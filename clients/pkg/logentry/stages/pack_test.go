@@ -29,6 +29,7 @@ pipeline_stages:
           - pod
           - container
         ingest_timestamp: false
+		sort_labels: false
 - match:
     selector: "{container=\"bar\"}"
     stages:
@@ -336,6 +337,40 @@ func Test_packStage_Run(t *testing.T) {
 					Entry: logproto.Entry{
 						Timestamp: time.Unix(1, 0), // Ignored in test execution below
 						Line:      "{\"" + logqlmodel.PackedEntryKey + "\":\"test line 1\"}",
+					},
+				},
+			},
+		},
+		{
+			name: "Labels are not sorted",
+			config: &PackConfig{
+				Labels:          []string{"foo", "bar", "alpha"},
+				IngestTimestamp: &reallyFalse,
+			},
+			inputEntry: Entry{
+				Extracted: map[string]interface{}{},
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo":   "zeta",
+						"bar":   "baz",
+						"alpha": "beta",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0),
+						Line:      "test line 1 - do not sort labels",
+					},
+				},
+			},
+			expectedEntry: Entry{
+				Entry: api.Entry{
+					Labels: model.LabelSet{
+						"foo":   "zeta",
+						"bar":   "baz",
+						"alpha": "beta",
+					},
+					Entry: logproto.Entry{
+						Timestamp: time.Unix(1, 0), // Ignored in test execution below
+						Line:      "{\"" + logqlmodel.PackedEntryKey + "\":\"test line 1 - do not sort labels\"}",
 					},
 				},
 			},

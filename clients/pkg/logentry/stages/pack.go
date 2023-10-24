@@ -24,8 +24,10 @@ var (
 )
 
 type Packed struct {
-	Labels map[string]string `json:",inline"`
-	Entry  string            `json:"_entry"`
+	Labels              map[string]string `json:",inline"`
+	LabelsOriginalOrder map[string]int    `json:"-"`
+	SortLabels          bool              `json:"-"`
+	Entry               string            `json:"_entry"`
 }
 
 // UnmarshalJSON populates a Packed struct where every key except the _entry key is added to the Labels field
@@ -67,10 +69,16 @@ func (w Packed) MarshalJSON() ([]byte, error) {
 	// This is functionally ok but really annoying to humans and automated tests.
 	// Instead we will build the json ourselves after sorting all the labels to get a consistent output
 	keys := make([]string, 0, len(w.Labels))
-	for k := range w.Labels {
+
+	orderedKeys := orderKeysAsc(w.LabelsOriginalOrder)
+
+	for _, k := range orderedKeys {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+
+	if w.SortLabels {
+		sort.Strings(keys)
+	}
 
 	var buf bytes.Buffer
 
@@ -105,9 +113,21 @@ func (w Packed) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func orderKeysAsc(keyVal map[string]int) []string {
+	keys := make([]string, 0, len(keyVal))
+	for k := range keyVal {
+		keys = append(keys, k)
+	}
+
+	sort.Slice(keys, func(i, j int) bool { return keyVal[keys[i]] < keyVal[keys[j]] })
+
+	return keys
+}
+
 // PackConfig contains the configuration for a packStage
 type PackConfig struct {
-	Labels          []string `mapstrcuture:"labels"`
+	Labels          []string `mapstructure:"labels"`
+	SortLabels      *bool    `mapstructure:"sort_labels"`
 	IngestTimestamp *bool    `mapstructure:"ingest_timestamp"`
 }
 
@@ -119,6 +139,11 @@ func validatePackConfig(cfg *PackConfig) error {
 	if cfg.IngestTimestamp == nil {
 		cfg.IngestTimestamp = &reallyTrue
 	}
+
+	if cfg.SortLabels == nil {
+		cfg.SortLabels = &reallyTrue
+	}
+
 	return nil
 }
 
@@ -163,10 +188,11 @@ func (m *packStage) pack(e Entry) Entry {
 	lbls := e.Labels
 	packedLabels := make(map[string]string, len(m.cfg.Labels))
 	foundLabels := []model.LabelName{}
+	packedLabelsOrder := make(map[string]int, len(m.cfg.Labels))
 
 	// Iterate through all the extracted map (which also includes all the labels)
 	for lk, lv := range e.Extracted {
-		for _, wl := range m.cfg.Labels {
+		for i, wl := range m.cfg.Labels {
 			if lk == wl {
 				sv, err := getString(lv)
 				if err != nil {
@@ -176,6 +202,7 @@ func (m *packStage) pack(e Entry) Entry {
 					continue
 				}
 				packedLabels[wl] = sv
+				packedLabelsOrder[wl] = i
 				foundLabels = append(foundLabels, model.LabelName(lk))
 			}
 		}
@@ -183,8 +210,10 @@ func (m *packStage) pack(e Entry) Entry {
 
 	// Embed the extracted labels into the wrapper object
 	w := Packed{
-		Labels: packedLabels,
-		Entry:  e.Line,
+		Labels:              packedLabels,
+		LabelsOriginalOrder: packedLabelsOrder,
+		SortLabels:          *m.cfg.SortLabels,
+		Entry:               e.Line,
 	}
 
 	// Marshal to json

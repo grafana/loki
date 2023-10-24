@@ -42,6 +42,10 @@ pack:
   # If you are not combining multiple source files or you know your log lines won't have interlaced timestamps
   # you can set this value to false.
   [ingest_timestamp: <bool> | default = true]
+
+  # If the resulting log line needs to have its original sorting preserved (as per the order on the labels: key)
+  # The key sort_labels, if not provided defaults to true, meaning it will sort the output log line by alphabetical order. 
+  [sort_labels: <bool> | default = true]
 ```
 
 ## Examples
