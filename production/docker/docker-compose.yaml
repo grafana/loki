@@ -14,7 +14,8 @@ services:
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: &lokiImage grafana/loki:2.9.2
+    # TODO: revert this
+    image: &lokiImage grafana/loki:add_metrics_namespace_setting-f5e4808
     user: root
     entrypoint:
       - "chown"
