@@ -921,7 +921,7 @@ func TestCategorizedLabels(t *testing.T) {
 	cliIndexGateway.Now = now
 
 	now = time.Now()
-	require.NoError(t, cliDistributor.PushLogLine("lineA", now.Add(-1*time.Second), map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLine("lineA", now.Add(-1*time.Second), nil, map[string]string{"job": "fake"}))
 	require.NoError(t, cliDistributor.PushLogLine("lineB", now.Add(-2*time.Second), map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
 	require.NoError(t, tIngester.Restart())
 	require.NoError(t, cliDistributor.PushLogLine("lineC msg=foo", now.Add(-3*time.Second), map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
