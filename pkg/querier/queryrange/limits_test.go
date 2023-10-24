@@ -675,9 +675,7 @@ func TestAcquireWithTiming(t *testing.T) {
 		}
 	}
 
-	// Check that the waiting time for the third request is at least 10 milliseconds
-	if waiting3 == 0 {
-		t.Errorf("Expected some waiting time for goroutine 3, but didn't")
-	}
-
+	// Check that the waiting time for the third request is larger than 0 milliseconds and less than or equal to 10-5=5 milliseconds
+	require.Greater(t, waiting3, 0*time.Millisecond)
+	require.LessOrEqual(t, waiting3, 5*time.Millisecond)
 }
