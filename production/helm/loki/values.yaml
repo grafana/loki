@@ -1201,6 +1201,11 @@ ingress:
   labels: {}
   #    blackbox.monitoring.exclude: "true"
   paths:
+    backend:
+      - /api/prom/rules
+      - /loki/api/v1/rules
+      - /prometheus/api/v1/rules
+      - /prometheus/api/v1/alerts
     write:
       - /api/prom/push
       - /loki/api/v1/push
@@ -1208,10 +1213,6 @@ ingress:
       - /api/prom/tail
       - /loki/api/v1/tail
       - /loki/api
-      - /api/prom/rules
-      - /loki/api/v1/rules
-      - /prometheus/api/v1/rules
-      - /prometheus/api/v1/alerts
     singleBinary:
       - /api/prom/push
       - /loki/api/v1/push

@@ -453,6 +453,7 @@ Generate list of ingress service paths based on deployment type
 Ingress service paths for scalable deployment
 */}}
 {{- define "loki.ingress.scalableServicePaths" -}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "backend" "paths" .Values.ingress.paths.backend )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "read" "paths" .Values.ingress.paths.read )}}
 {{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "write" "paths" .Values.ingress.paths.write )}}
 {{- end -}}

@@ -31,6 +31,8 @@
 
 ##### Fixes
 
+* [11017](https://github.com/grafana/loki/pull/11017) **fernandocarletti**: Helm: Fix service paths in ingress for ruler
+
 ##### Changes
 
 * [10366](https://github.com/grafana/loki/pull/10366) **shantanualsi** Upgrade thanos objstore, dskit and other modules
