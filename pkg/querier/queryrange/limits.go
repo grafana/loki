@@ -460,21 +460,19 @@ type SemaphoreWithTiming struct {
 
 func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
 	return &SemaphoreWithTiming{
-		sem: semaphore.NewWeighted(int64(max)), // Replace with your semaphore creation logic
+		sem: semaphore.NewWeighted(int64(max)),
 	}
 }
 
 // acquires the semaphore and records the time it takes.
-func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (int64, error) {
+func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (time.Duration, error) {
 	start := time.Now()
 
 	if err := s.sem.Acquire(ctx, int64(n)); err != nil {
 		return 0, err
 	}
 
-	elapsed := time.Since(start)
-
-	return elapsed.Milliseconds(), nil
+	return time.Since(start), nil
 }
 
 func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
@@ -528,8 +526,8 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 
 			if span != nil {
 				span.LogFields(
-					otlog.Int64("wait_goroutine_capacity_time_ms", elapsed),
-					otlog.Int64("min_weighted_parallism", int64(parallelism)),
+					otlog.String("wait_goroutine_capacity_time", elapsed.String()),
+					otlog.Int64("min_weighted_parallelism", int64(parallelism)),
 				)
 			}
 

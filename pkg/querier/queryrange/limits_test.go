@@ -624,40 +624,60 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	}
 }
 
-func TestWeightedAcquire(t *testing.T) {
+func TestAcquireWithTiming(t *testing.T) {
 
 	ctx := context.Background()
 	sem := NewSemaphoreWithTiming(2)
 
 	// Channel to collect waiting times
-	waitingTimes := make(chan int64, 3) // Three requests
+	waitingTimes := make(chan struct {
+		GoroutineID int
+		WaitingTime int64
+	}, 3)
 
-	tryAcquire := func(n int64) {
+	tryAcquire := func(n int64, goroutineID int) {
 		elapsed, err := sem.Acquire(ctx, n)
-
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
 		}
-		waitingTimes <- elapsed
+		waitingTimes <- struct {
+			GoroutineID int
+			WaitingTime int64
+		}{goroutineID, elapsed.Milliseconds()}
 
 		defer sem.sem.Release(n)
 
 		time.Sleep(10 * time.Millisecond)
-
 	}
 
-	// Start concurrent requests
-	go tryAcquire(1)
-	go tryAcquire(1)
-	go tryAcquire(1)
+	go tryAcquire(1, 1)
+	go tryAcquire(1, 2)
 
-	// Collect waiting times
-	waiting1 := <-waitingTimes
-	waiting2 := <-waitingTimes
-	waiting3 := <-waitingTimes
+	// Sleep briefly to allow the first two goroutines to start running
+	time.Sleep(5 * time.Millisecond)
 
-	// Check that at least one request waited for some time
-	if waiting1 == 0 && waiting2 == 0 && waiting3 == 0 {
-		t.Errorf("Expected at least one request to wait for some time, but all waited for 0ms.")
+	go tryAcquire(1, 3)
+
+	// Collect and sort waiting times
+	var waitingDurations []struct {
+		GoroutineID int
+		WaitingTime int64
 	}
+	for i := 0; i < 3; i++ {
+		waitingDurations = append(waitingDurations, <-waitingTimes)
+	}
+	// Find and check the waiting time for the third goroutine
+	var waiting3 int64
+	for _, waiting := range waitingDurations {
+		if waiting.GoroutineID == 3 {
+			waiting3 = waiting.WaitingTime
+			break
+		}
+	}
+
+	// Check that the waiting time for the third request is at least 10 milliseconds
+	if waiting3 == 0 {
+		t.Errorf("Expected some waiting time for goroutine 3, but didn't")
+	}
+
 }
