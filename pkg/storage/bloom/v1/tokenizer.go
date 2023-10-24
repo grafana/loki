@@ -122,7 +122,6 @@ func (w *WrappedTokenizer) Tokens(line string) []Token {
 	toks := w.t.Tokens(line)
 	for _, tok := range toks {
 		w.tokenBuffer = append(w.tokenBuffer, chunkIDTransformer(tok, w.prefix), tok)
-		//w.tokenBuffer = append(w.tokenBuffer, tok)
 	}
 
 	return w.tokenBuffer
