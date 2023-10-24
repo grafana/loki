@@ -23,11 +23,10 @@ const TokenKeySize = 132
 
 type NgramTokenizer struct {
 	// [min,max) exclusivity
-	min, max, skip int
-	buffers        [][]rune // circular buffers used for ngram generation
-	runeBuffer     []byte   // buffer used for token generation
-	//tokenBuffer         []Token  // buffer used for holding tokens that is returned
-	internalTokenBuffer []Token // circular buffer for tokens
+	min, max, skip      int
+	buffers             [][]rune // circular buffers used for ngram generation
+	runeBuffer          []byte   // buffer used for token generation
+	internalTokenBuffer []Token  // circular buffer for tokens
 }
 
 /*
