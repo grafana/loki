@@ -2,8 +2,9 @@ package v1
 
 import (
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func BenchmarkMapClear(b *testing.B) {
