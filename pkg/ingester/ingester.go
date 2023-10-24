@@ -236,7 +236,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -284,7 +284,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
 	if err != nil {
 		return nil, err
 	}

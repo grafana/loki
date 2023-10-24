@@ -223,7 +223,7 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 }
 
 func (t *Loki) initRing() (_ services.Service, err error) {
-	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ingester.RingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
+	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ingester.RingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer))
 	if err != nil {
 		return
 	}
@@ -312,6 +312,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.ring,
 		t.Overrides,
 		prometheus.DefaultRegisterer,
+		t.Cfg.MetricsNamespace,
 	)
 	if err != nil {
 		return nil, err
@@ -534,7 +535,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return
 	}
@@ -614,7 +615,7 @@ func (t *Loki) initStore() (services.Service, error) {
 		}
 	}
 
-	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
+	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -1038,6 +1039,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		util_log.Logger,
 		t.RulerStorage,
 		t.Overrides,
+		t.Cfg.MetricsNamespace,
 	)
 
 	if err != nil {
@@ -1132,14 +1134,14 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
 
-	t.Cfg.MemberlistKV.MetricsNamespace = "loki"
+	t.Cfg.MemberlistKV.MetricsNamespace = t.Cfg.MetricsNamespace
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 		analytics.JSONCodec,
 	}
 
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
-		"cortex_",
+		t.Cfg.MetricsNamespace+"_",
 		prometheus.WrapRegistererWith(
 			prometheus.Labels{"name": "memberlist"},
 			reg,
@@ -1212,7 +1214,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		level.Info(util_log.Logger).Log("msg", "-boltdb.shipper.compactor.shared-store not specified, initializing compactor to operator on the following object stores", "stores", strings.Join(stores, ", "))
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return nil, err
 	}

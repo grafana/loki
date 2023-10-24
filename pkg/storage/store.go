@@ -90,6 +90,7 @@ type LokiStore struct {
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
 	limits StoreLimits, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger,
+	metricsNamespace string,
 ) (*LokiStore, error) {
 	if len(schemaCfg.Configs) != 0 {
 		if index := config.ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
@@ -99,7 +100,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		}
 	}
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -108,14 +109,14 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		level.Warn(logger).Log("msg", "write dedupe cache is deprecated along with legacy index types. Consider using TSDB index which does not require a write dedupe cache.")
 	}
 
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache)
+	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +124,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	chunkCacheCfgL2 := storeCfg.ChunkCacheConfigL2
 	chunkCacheCfgL2.Prefix = "chunksl2"
 	// TODO(E.Welch) would we want to disambiguate this cache in the stats? I think not but we'd need to change stats.ChunkCache to do so.
-	chunksCacheL2, err := cache.New(chunkCacheCfgL2, registerer, logger, stats.ChunkCache)
+	chunksCacheL2, err := cache.New(chunkCacheCfgL2, registerer, logger, stats.ChunkCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}

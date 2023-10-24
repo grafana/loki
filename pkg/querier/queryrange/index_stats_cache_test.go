@@ -24,7 +24,7 @@ func TestIndexStatsCache(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "cortex")
 	require.NoError(t, err)
 	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
 		log.NewNopLogger(),
@@ -161,7 +161,7 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 					Cache: cache.NewMockCache(),
 				},
 			}
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "cortex")
 			defer c.Stop()
 			require.NoError(t, err)
 

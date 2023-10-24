@@ -214,7 +214,7 @@ func getLocalStore(cm ClientMetrics) Store {
 		},
 	}
 
-	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 	if err != nil {
 		panic(err)
 	}
@@ -1058,7 +1058,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 	require.NoError(t, err)
 
 	// build and add chunks to the store
@@ -1126,7 +1126,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// restart to load the updated schema
 	store.Stop()
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 	require.NoError(t, err)
 	defer store.Stop()
 
@@ -1231,7 +1231,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			}
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 			require.NoError(t, err)
 
 			// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1273,7 +1273,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			store.Stop()
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 			require.NoError(t, err)
 
 			defer store.Stop()
@@ -1559,7 +1559,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	}
 
 	ResetBoltDBIndexClientsWithShipper()
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 	require.NoError(t, err)
 
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1619,7 +1619,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	require.Len(t, tsdbFiles, 1)
 	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, "cortex")
 	require.NoError(t, err)
 
 	defer store.Stop()
