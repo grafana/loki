@@ -113,7 +113,7 @@ type Config struct {
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Server.MetricsNamespace = "loki"
+	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
 
 	// Set the default module list to 'all'
