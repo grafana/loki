@@ -526,8 +526,8 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 
 			if span != nil {
 				span.LogFields(
-					otlog.String("wait_goroutine_capacity_time", elapsed.String()),
-					otlog.Int64("min_weighted_parallelism", int64(parallelism)),
+					otlog.String("wait_time", elapsed.String()),
+					otlog.Int64("max_parallelism", int64(parallelism)),
 				)
 			}
 
