@@ -219,7 +219,10 @@ type EntryAdapter struct {
 	Timestamp          time.Time          `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
 	Line               string             `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
 	StructuredMetadata []LabelPairAdapter `protobuf:"bytes,3,rep,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
-	Parsed             []LabelPairAdapter `protobuf:"bytes,4,rep,name=parsed,proto3" json:"parsed,omitempty"`
+	// This field shouldn't be used by clients to push data to Loki.
+	// It is only used by Loki to return parsed log lines in query responses.
+	// TODO: Remove this field from the write path Proto.
+	Parsed []LabelPairAdapter `protobuf:"bytes,4,rep,name=parsed,proto3" json:"parsed,omitempty"`
 }
 
 func (m *EntryAdapter) Reset()      { *m = EntryAdapter{} }
