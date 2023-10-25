@@ -30,7 +30,7 @@ func NewMiddlewareMapperMetrics(registerer prometheus.Registerer) *MiddlewareMap
 
 func NewMetrics(registerer prometheus.Registerer, metricsNamespace string) *Metrics {
 	return &Metrics{
-		InstrumentMiddlewareMetrics: queryrangebase.NewInstrumentMiddlewareMetrics(registerer),
+		InstrumentMiddlewareMetrics: queryrangebase.NewInstrumentMiddlewareMetrics(registerer, metricsNamespace),
 		RetryMiddlewareMetrics:      queryrangebase.NewRetryMiddlewareMetrics(registerer, metricsNamespace),
 		MiddlewareMapperMetrics:     NewMiddlewareMapperMetrics(registerer),
 		SplitByMetrics:              NewSplitByMetrics(registerer),

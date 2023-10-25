@@ -148,7 +148,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, "cortex"), reg, logger, overrides, "cortex")
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, "loki"), reg, logger, overrides, "loki")
 	require.NoError(t, err)
 
 	return manager
@@ -160,7 +160,7 @@ func newMultiTenantManager(t *testing.T, cfg Config, q storage.Querier, amConf m
 	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
 	overrides.alertManagerConfig = amConf
 
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, "cortex"), reg, logger, overrides, "cortex")
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, "loki"), reg, logger, overrides, "loki")
 	require.NoError(t, err)
 
 	return manager
@@ -212,8 +212,8 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
-	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg, "cortex")
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides, "cortex")
+	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg, "loki")
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides, "loki")
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -224,7 +224,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 		storage,
 		overrides,
 		newMockClientsPool(rulerConfig, logger, reg, "loki", rulerAddrMap),
-		"cortex",
+		"loki",
 	)
 	require.NoError(t, err)
 	return ruler
@@ -1516,7 +1516,7 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 	obj, rs := setupRuleGroupsStore(t, ruleGroups)
 	require.Equal(t, 3, obj.GetObjectCount())
 
-	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil, "cortex")
+	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil, "loki")
 	require.NoError(t, err)
 
 	{

@@ -236,7 +236,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		},
 	}
 
-	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger, "cortex")
+	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger, "loki")
 	require.NoError(t, err)
 	return &testStore{
 		indexDir:      indexDir,

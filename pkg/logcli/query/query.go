@@ -436,7 +436,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	conf.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	conf.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
-	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger, "cortex")
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger, "loki")
 	if err != nil {
 		return err
 	}

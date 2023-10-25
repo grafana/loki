@@ -25,7 +25,7 @@ func TestVolumeCache(t *testing.T) {
 				Cache: cache.NewMockCache(),
 			},
 		}
-		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "cortex")
+		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "loki")
 		require.NoError(t, err)
 		cacheMiddleware, err := NewVolumeCacheMiddleware(
 			log.NewNopLogger(),
@@ -284,7 +284,7 @@ func TestVolumeCache_RecentData(t *testing.T) {
 					Cache: cache.NewMockCache(),
 				},
 			}
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "cortex")
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "loki")
 			defer c.Stop()
 			require.NoError(t, err)
 

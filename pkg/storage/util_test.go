@@ -243,7 +243,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger, stats.ChunkCache, "cortex")
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger, stats.ChunkCache, "loki")
 	if err != nil {
 		panic(err)
 	}
