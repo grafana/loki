@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 )
 
@@ -70,7 +71,8 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	}
 
 	version := loghttp.GetVersion(r.RequestURI)
-	if err := encodeResponseJSONTo(version, response, w); err != nil {
+	encodingFlags := httpreq.ExtractEncodingFlags(r)
+	if err := encodeResponseJSONTo(version, response, w, encodingFlags); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }
