@@ -230,12 +230,6 @@ func (c *EmbeddedCache[K, V]) Stop() {
 	defer c.lock.Unlock()
 
 	close(c.done)
-	if c.onEntryRemoved != nil {
-		for _, entry := range c.entries {
-			castedEntry := entry.Value.(*cacheEntry[K, V])
-			c.onEntryRemoved(castedEntry.key, castedEntry.value)
-		}
-	}
 	c.entries = make(map[K]*list.Element)
 	c.lru.Init()
 	c.currSizeBytes = 0

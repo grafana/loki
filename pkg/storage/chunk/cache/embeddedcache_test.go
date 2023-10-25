@@ -167,9 +167,8 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
-		alreadyEvictedBeforeStop := evicted * 3
 		c.Stop()
-		assert.Equal(t, int64(alreadyEvictedBeforeStop+cnt), removedEntriesCount.Load())
+		assert.Equal(t, int64(evicted*3), removedEntriesCount.Load(), "onEntryRemoved must not be called for the items during the stop")
 	}
 }
 
