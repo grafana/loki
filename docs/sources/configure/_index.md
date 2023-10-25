@@ -227,7 +227,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 # Namespace of the metrics.
 # CLI flag: -metrics-namespace
-[cortex_shared_metrics_prefix: <string> | default = "cortex"]
+[metrics_namespace: <string> | default = "cortex"]
 ```
 
 ### server

@@ -110,7 +110,7 @@ type Config struct {
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
 
-	MetricsNamespace string `yaml:"cortex_shared_metrics_prefix"`
+	MetricsNamespace string `yaml:"metrics_namespace"`
 }
 
 // RegisterFlags registers flag.
