@@ -22,6 +22,11 @@ Promtail is also the client of choice on bare-metal since it can be configured t
 Lastly, Promtail works well if you want to extract metrics from logs such as counting the occurrences of a particular message.
 - [xk6-loki extension](https://github.com/grafana/xk6-loki) - The k6-loki extension lets you perform [load testing on Loki]({{< relref "./k6" >}}).
 
+## OpenTelemetry Collector
+
+Loki now natively supports ingesting OpenTelemetry logs over HTTP.
+See [Ingesting logs to Loki using OpenTelemetry Collector]({{< relref "./otel" >}}) for more details.
+
 ## Third-party clients
 
 The following clients have been developed by the Loki community or other third-parties and can be used to send log data to Loki.  
