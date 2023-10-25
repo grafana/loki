@@ -135,7 +135,6 @@ func Test_BuildAndQueryBloomsWithOneSeries(t *testing.T) {
 		}
 	}
 
-	// that's what we test
 	for _, c := range chunks {
 		fillBloom(bloomForChunks, c, SpaceTokenizer)
 	}

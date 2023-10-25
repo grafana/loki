@@ -27,6 +27,21 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/prometheus/common/model"
+	"path"
+
+	//"github.com/grafana/loki/pkg/validation"
+	//"github.com/grafana/loki/tools/tsdb/helpers"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,12 +50,15 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage"
+	//"github.com/grafana/loki/pkg/storage/chunk/client"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 )
 
 type Compactor struct {
@@ -49,17 +67,18 @@ type Compactor struct {
 	cfg                Config
 	logger             log.Logger
 	bloomCompactorRing ring.ReadRing
-	periodConfigs      []config.PeriodConfig
 
 	// temporary workaround until store has implemented read/write shipper interface
 	bloomShipperClient bloomshipper.Client
-	bloomStore         bloomshipper.Store
+	indexShipper       indexshipper.IndexShipper
+	chunkClient        client.Client
 }
 
 func New(cfg Config,
 	readRing ring.ReadRing,
 	storageCfg storage.Config,
-	periodConfigs []config.PeriodConfig,
+	schemaConfig config.SchemaConfig,
+	limits downloads.Limits,
 	logger log.Logger,
 	clientMetrics storage.ClientMetrics,
 	_ prometheus.Registerer) (*Compactor, error) {
@@ -67,31 +86,43 @@ func New(cfg Config,
 		cfg:                cfg,
 		logger:             logger,
 		bloomCompactorRing: readRing,
-		periodConfigs:      periodConfigs,
 	}
 
-	client, err := bloomshipper.NewBloomClient(periodConfigs, storageCfg, clientMetrics)
+	//Configure ObjectClient and IndexShipper for series and chunk management
+	objectClient, err := storage.NewObjectClient(storageCfg.TSDBShipperConfig.SharedStoreType, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
-	shipper, err := bloomshipper.NewShipper(
-		client,
-		storageCfg.BloomShipperConfig,
-		logger,
+	chunkClient := client.NewClient(objectClient, nil, schemaConfig)
+
+	tableRanges := GetIndexStoreTableRanges(config.TSDBType, schemaConfig.Configs)
+
+	openFn := func(p string) (shipperindex.Index, error) {
+		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+	}
+	indexShipper, err := indexshipper.NewIndexShipper(
+		storageCfg.TSDBShipperConfig.Config,
+		objectClient,
+		limits,
+		nil, // No need for tenant filter
+		openFn,
+		tableRanges[len(tableRanges)-1],
+		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
+		util_log.Logger,
 	)
-	if err != nil {
-		return nil, err
-	}
 
-	store, err := bloomshipper.NewBloomStore(shipper)
+	//Configure BloomClient for meta.json management
+	bloomClient, err := bloomshipper.NewBloomClient(schemaConfig.Configs, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
 	// temporary workaround until store has implemented read/write shipper interface
-	c.bloomShipperClient = client
-	c.bloomStore = store
+	c.bloomShipperClient = bloomClient
+	c.indexShipper = indexShipper
+	c.chunkClient = chunkClient
+
 	// TODO use a new service with a loop
 	c.Service = services.NewIdleService(c.starting, c.stopping)
 
@@ -104,6 +135,25 @@ func (c *Compactor) starting(_ context.Context) error {
 
 func (c *Compactor) stopping(_ error) error {
 	return nil
+}
+
+// TODO this logic is used in multiple places, better to be refactored out.
+// copied from storage/store.go
+func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
+	var ranges config.TableRanges
+	for i := range periodicConfigs {
+		if periodicConfigs[i].IndexType != indexType {
+			continue
+		}
+
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(periodicConfigs)-1 {
+			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+
+		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
+	}
+	return ranges
 }
 
 // TODO Get fpRange owned by the compactor instance
@@ -120,7 +170,69 @@ func NoopGetChunks() []byte { return nil }
 
 // part1: Create a compact method that assumes no block/meta files exists (eg first compaction)
 // part2: Write logic to check first for existing block/meta files and does above.
-func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error) {
+func CompactNewChunks(ctx context.Context, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient, dst string) (err error) {
+	// Get all tables - refactor out, return single table
+	_, tables, err := objectClient.List(ctx, "", "/")
+	if err != nil {
+		return err
+	}
+
+	tableNames := make([]string, 0, len(tables))
+	for _, table := range tables {
+		tableNames = append(tableNames, path.Base(string(table)))
+	}
+
+	tenant := "123" //get all somehow and loop over
+	tableName := "1234"
+
+	err = indexShipper.ForEach(
+		context.Background(),
+		tableName,
+		tenant,
+		func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+			if isMultiTenantIndex {
+				return nil
+			}
+
+			_ = idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
+				context.Background(),
+				nil, // no shards for now
+				model.Earliest, model.Latest,
+				func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+					//get chunkRefs from series
+					chunkRefs := make([]chunk.Chunk, 0, len(chks))
+					for _, chk := range chks {
+						chunkRefs = append(chunkRefs, chunk.Chunk{
+							ChunkRef: logproto.ChunkRef{
+								Fingerprint: uint64(fp),
+								UserID:      tenant,
+								From:        chk.From(),
+								Through:     chk.Through(),
+								Checksum:    chk.Checksum,
+							},
+						})
+					}
+
+					_, err := chunkClient.GetChunks(
+						context.Background(),
+						chunkRefs,
+					)
+					if err == nil {
+						level.Info(util_log.Logger).Log("error getting chunks", err)
+					}
+				},
+				labels.MustNewMatcher(labels.MatchEqual, "", ""),
+			)
+
+			//TODO doesn't return chunks now.
+			return nil
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
 	// part1
 	series := NoopGetSeries()
 	data := NoopGetChunks()
@@ -177,11 +289,11 @@ func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error
 		Blocks:     []bloomshipper.BlockRef{blockRef},
 	}
 
-	err = c.bloomShipperClient.PutMeta(ctx, meta)
+	err = bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		return err
 	}
-	_, err = c.bloomShipperClient.PutBlocks(ctx, blocks)
+	_, err = bloomShipperClient.PutBlocks(ctx, blocks)
 	if err != nil {
 		return err
 	}
@@ -189,7 +301,7 @@ func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error
 	return nil
 }
 
-func (c *Compactor) runCompact(ctx context.Context) error {
+func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient) error {
 	// TODO set MaxLookBackPeriod to Max ingester accepts
 	maxLookBackPeriod := c.cfg.MaxLookBackPeriod
 
@@ -207,7 +319,7 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 		EndTimestamp:   end,
 	}
 
-	metas, err := c.bloomShipperClient.GetMetas(ctx, metaSearchParams)
+	metas, err := bloomShipperClient.GetMetas(ctx, metaSearchParams)
 	if err != nil {
 		return err
 	}
@@ -215,7 +327,7 @@ func (c *Compactor) runCompact(ctx context.Context) error {
 	if len(metas) == 0 {
 		// run compaction from scratch
 		tempDst := os.TempDir()
-		err = c.compactNewChunks(ctx, tempDst)
+		err = CompactNewChunks(ctx, bloomShipperClient, chunkClient, indexShipper, objectClient, tempDst)
 		if err != nil {
 			return err
 		}
