@@ -8,6 +8,8 @@ type HeapIterator[T any] struct {
 	itrs []PeekingIterator[T]
 	less func(T, T) bool
 
+	currIter PeekingIterator[T]
+
 	zero  T // zero value of T
 	cache T
 	ok    bool
@@ -56,6 +58,11 @@ func (mbq *HeapIterator[T]) Next() (ok bool) {
 	return
 }
 
+// TODO(chaudum): find a better place
+func (mbq *HeapIterator[T]) CurrIter() PeekingIterator[T] {
+	return mbq.currIter
+}
+
 // TODO(owen-d): don't swallow this error
 func (mbq *HeapIterator[T]) Err() error {
 	return nil
@@ -76,15 +83,15 @@ func (mbq *HeapIterator[T]) pop() (T, bool) {
 			return mbq.zero, false
 		}
 
-		cur := mbq.itrs[0]
-		if ok := cur.Next(); !ok {
+		mbq.currIter = mbq.itrs[0]
+		if ok := mbq.currIter.Next(); !ok {
 			mbq.remove(0)
 			continue
 		}
 
-		result := cur.At()
+		result := mbq.currIter.At()
 
-		_, ok := cur.Peek()
+		_, ok := mbq.currIter.Peek()
 		if !ok {
 			// that was the end of the iterator. remove it from the heap
 			mbq.remove(0)

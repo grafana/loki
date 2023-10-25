@@ -202,6 +202,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			From:    now.Add(-24 * time.Hour),
 			Through: now,
 			Refs:    groupRefs(t, chunkRefs),
+			Filters: []*logproto.LineFilterExpression{
+				{Operator: 1, Match: "foo"},
+			},
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -240,6 +243,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				From:    now.Add(-24 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
+				Filters: []*logproto.LineFilterExpression{
+					{Operator: 1, Match: "foo"},
+				},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			_, err = gw.FilterChunkRefs(ctx, req)

@@ -56,10 +56,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
@@ -100,40 +102,6 @@ func newMetrics(subsystem string, registerer prometheus.Registerer) *metrics {
 			AgeBuckets: 6,
 		}),
 	}
-}
-
-// Task is the data structure that is enqueued to the internal queue and queued by query workers
-type Task struct {
-	// ID is a lexcographically sortable unique identifier of the task
-	ID ulid.ULID
-	// Tenant is the tenant ID
-	Tenant string
-	// Request is the original request
-	Request *logproto.FilterChunkRefRequest
-	// ErrCh is a send-only channel to write an error to
-	ErrCh chan<- error
-	// ResCh is a send-only channel to write partial responses to
-	ResCh chan<- *logproto.GroupedChunkRefs
-}
-
-// newTask returns a new Task that can be enqueued to the task queue.
-// As additional arguments, it returns a result and an error channel, as well
-// as an error if the instantiation fails.
-func newTask(tenantID string, req *logproto.FilterChunkRefRequest) (Task, chan *logproto.GroupedChunkRefs, chan error, error) {
-	key, err := ulid.New(ulid.Now(), nil)
-	if err != nil {
-		return Task{}, nil, nil, err
-	}
-	errCh := make(chan error, 1)
-	resCh := make(chan *logproto.GroupedChunkRefs, 1)
-	task := Task{
-		ID:      key,
-		Tenant:  tenantID,
-		Request: req,
-		ErrCh:   errCh,
-		ResCh:   resCh,
-	}
-	return task, resCh, errCh, nil
 }
 
 // SyncMap is a map structure which can be synchronized using the RWMutex
@@ -290,10 +258,21 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
+	// Shortcut if request does not contain filters
+	if len(req.Filters) == 0 {
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: req.Refs,
+		}, nil
+	}
+
 	for _, ref := range req.Refs {
 		if ref.Tenant != tenantID {
 			return nil, errors.Wrapf(errInvalidTenant, "expected chunk refs from tenant %s, got tenant %s", tenantID, ref.Tenant)
 		}
+		// Sort ShortRefs by From time in ascending order
+		sort.Slice(ref.Refs, func(i, j int) bool {
+			return ref.Refs[i].From.Before(ref.Refs[j].From)
+		})
 	}
 
 	// Sort ChunkRefs by fingerprint in ascending order
@@ -301,7 +280,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	task, resCh, errCh, err := newTask(tenantID, req)
+	task, resCh, errCh, err := NewTask(tenantID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -317,13 +296,17 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, errors.Wrap(ctx.Err(), "waiting for results")
 		case err := <-errCh:
-			return nil, err
+			return nil, errors.Wrap(err, "waiting for results")
 		case res := <-resCh:
-			level.Info(g.logger).Log("msg", "got result", "task", task.ID, "tenant", tenantID, "res", res)
+			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", res.Fp, "refs", res.Chks.Len())
 			// wait for all parts of the full response
-			response = append(response, res)
+			response = append(response, &logproto.GroupedChunkRefs{
+				Tenant:      tenantID,
+				Fingerprint: uint64(res.Fp),
+				Refs:        convertToShortRefs(res.Chks),
+			})
 			if len(response) == len(req.Refs) {
 				return &logproto.FilterChunkRefResponse{ChunkRefs: response}, nil
 			}
@@ -365,42 +348,108 @@ func (w *worker) starting(_ context.Context) error {
 	return nil
 }
 
-func (w *worker) running(_ context.Context) error {
+func (w *worker) running(ctx context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
-	for {
-		ctx := context.Background()
-		item, newIdx, err := w.queue.Dequeue(ctx, idx, w.ID)
+	maxItems := 10
+	maxWaitTime := 500 * time.Millisecond
+
+	for ctx.Err() == nil {
+		taskCtx := context.Background()
+		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.ID, maxItems, maxWaitTime)
 		if err != nil {
-			if err != queue.ErrStopped {
-				level.Error(w.logger).Log("msg", "failed to dequeue task", "err", err)
-				continue
+			// We only return an error if the queue is stopped and dequeuing did not yield any items
+			if err == queue.ErrStopped && len(items) == 0 {
+				return err
 			}
-			return err
+			level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err, "items", len(items))
 		}
-		task, ok := item.(Task)
-		if !ok {
-			level.Error(w.logger).Log("msg", "failed to cast dequeued item to Task", "item", item)
-			continue
-		}
-		level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
-
-		w.tasks.Delete(task.ID)
-
 		idx = newIdx
 
-		r := task.Request
-		if len(r.Filters) > 0 {
-			r.Refs, err = w.store.FilterChunkRefs(ctx, task.Tenant, r.From.Time(), r.Through.Time(), r.Refs, r.Filters...)
+		if len(items) == 0 {
+			continue
 		}
-		if err != nil {
-			task.ErrCh <- err
-		} else {
-			for _, ref := range r.Refs {
-				task.ResCh <- ref
+
+		tasksPerDay := make(map[time.Time][]Task)
+
+		for _, item := range items {
+			task, ok := item.(Task)
+			if !ok {
+				level.Error(w.logger).Log("msg", "failed to cast dequeued item to Task", "item", item)
+				continue
+			}
+			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
+			w.tasks.Delete(task.ID)
+
+			fromDay := getDayTime(task.Request.From)
+			throughDay := getDayTime(task.Request.Through)
+
+			if fromDay.Equal(throughDay) {
+				tasksPerDay[fromDay] = append(tasksPerDay[fromDay], task)
+			} else {
+				// split task into separate tasks per day
+				for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
+					r := filterRequestForDay(task.Request, i)
+					t := task.WithRequest(r)
+					tasksPerDay[i] = append(tasksPerDay[i], t)
+				}
 			}
 		}
+
+		// TODO(chaudum): Process days in parallel?
+		for day, tasks := range tasksPerDay {
+			level.Debug(w.logger).Log("msg", "process tasks for day", "day", day, "tasks", len(tasks))
+
+			it := newTaskMergeIterator(tasks...)
+			// TODO(chaudum): Use pool
+			fingerprints := make([]uint64, 0, 1024)
+			for it.Next() {
+				fingerprints = append(fingerprints, uint64(it.At().Fp))
+			}
+
+			it.Reset()
+
+			bqs, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour), fingerprints)
+			if err != nil {
+				for _, t := range tasks {
+					t.ErrCh <- err
+				}
+				continue
+			}
+
+			// no blocks found
+			if len(bqs) == 0 {
+				level.Warn(w.logger).Log("msg", "no blocks found for day", "day", day)
+				for _, t := range tasks {
+					for _, ref := range t.Request.Refs {
+						t.ResCh <- v1.Output{
+							Fp:   model.Fingerprint(ref.Fingerprint),
+							Chks: convertToChunkRefs(ref.Refs),
+						}
+					}
+				}
+				continue
+			}
+
+			for _, bq := range bqs {
+				// TODO(chaudum): Use pool
+				requests := make([]v1.Request, 0)
+				for it.Next(); it.At().Fp <= bq.MaxFp; {
+					requests = append(requests, it.At().Request)
+				}
+				fq := bq.Fuse([]v1.PeekingIterator[v1.Request]{NewIterWithIndex(0, requests)})
+				err := fq.Run()
+				if err != nil {
+					for _, t := range tasks {
+						t.ErrCh <- err
+					}
+					continue
+				}
+			}
+
+		}
 	}
+	return ctx.Err()
 }
 
 func (w *worker) stopping(err error) error {
