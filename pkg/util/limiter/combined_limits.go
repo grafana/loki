@@ -5,8 +5,8 @@ import (
 	"github.com/grafana/loki/pkg/compactor"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
-	"github.com/grafana/loki/pkg/querier"
-	"github.com/grafana/loki/pkg/querier/queryrange"
+	querier_limits "github.com/grafana/loki/pkg/querier/limits"
+	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
@@ -17,8 +17,8 @@ type CombinedLimits interface {
 	compactor.Limits
 	distributor.Limits
 	ingester.Limits
-	querier.Limits
-	queryrange.Limits
+	querier_limits.Limits
+	queryrange_limits.Limits
 	ruler.RulesLimits
 	scheduler.Limits
 	storage.StoreLimits
