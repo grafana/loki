@@ -42,4 +42,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   table_manager_service: if !$._config.using_shipper_store then
     k.util.serviceFor($.table_manager_deployment, $._config.service_ignored_labels)
   else {},
+
+  _config+: {
+    table_manager: if !$._config.using_shipper_store then super.table_manager else null,
+  },
 }
