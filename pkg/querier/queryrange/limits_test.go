@@ -43,7 +43,7 @@ func TestLimits(t *testing.T) {
 
 	require.Equal(
 		t,
-		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
+		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart().UnixMilli()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
 		cacheKeyLimits{wrapped, nil}.GenerateCacheKey(context.Background(), "a", r),
 	)
 }
@@ -580,7 +580,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 
 	statsHandler := base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
 		// This is the actual check that we're testing.
-		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
 
 		return &IndexStatsResponse{
 			Response: &logproto.IndexStatsResponse{
