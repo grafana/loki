@@ -138,11 +138,11 @@ func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
 func (*LokiInstantRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 func (r *LokiSeriesRequest) GetEnd() time.Time {
-	return r.EndTs //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	return r.EndTs
 }
 
 func (r *LokiSeriesRequest) GetStart() time.Time {
-	return r.StartTs //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	return r.StartTs
 }
 
 func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
@@ -200,7 +200,7 @@ func (r *LabelRequest) AsProto() *logproto.LabelRequest {
 }
 
 func (r *LabelRequest) GetEnd() time.Time {
-	return *r.End //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	return *r.End
 }
 
 func (r *LabelRequest) GetEndTs() time.Time {
@@ -208,7 +208,7 @@ func (r *LabelRequest) GetEndTs() time.Time {
 }
 
 func (r *LabelRequest) GetStart() time.Time {
-	return *r.Start //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	return *r.Start
 }
 
 func (r *LabelRequest) GetStartTs() time.Time {
@@ -496,7 +496,7 @@ func (Codec) DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase
 	return decodeResponseJSONFrom(r.Body, req, headers)
 }
 
-func (Codec) EncodeHTTPGrpcResponse(ctx context.Context, req *httpgrpc.HTTPRequest, res queryrangebase.Response) (*httpgrpc.HTTPResponse, error) {
+func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest, res queryrangebase.Response) (*httpgrpc.HTTPResponse, error) {
 	version := loghttp.GetVersion(req.Url)
 	var buf bytes.Buffer
 
