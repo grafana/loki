@@ -17,7 +17,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       'bigtable.table-cache.enabled': true,
     },
 
-  table_manager_container::
+  table_manager_container:: if $._config.using_shipper_store then {} else
     container.new('table-manager', $._images.tableManager) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin(k.util.mapToFlags($.table_manager_args)) +
@@ -31,11 +31,11 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   local deployment = k.apps.v1.deployment,
 
-  table_manager_deployment:
+  table_manager_deployment: if $._config.using_shipper_store then {} else
     deployment.new('table-manager', 1, [$.table_manager_container]) +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config'),
 
-  table_manager_service:
+  table_manager_service: if $._config.using_shipper_store then {} else
     k.util.serviceFor($.table_manager_deployment, $._config.service_ignored_labels),
 }
