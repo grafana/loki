@@ -793,6 +793,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 		t.Cfg.SchemaConfig,
 		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
+		t.Cfg.MetricsNamespace,
 	)
 	if err != nil {
 		return
@@ -872,6 +873,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
 		prometheus.DefaultRegisterer,
+		t.Cfg.MetricsNamespace,
 		queryrange.DefaultCodec,
 	)
 	if err != nil {
@@ -1424,7 +1426,7 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
-	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util_log.Logger, t.querySchedulerRingManager, prometheus.DefaultRegisterer)
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util_log.Logger, t.querySchedulerRingManager, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace)
 	if err != nil {
 		return nil, err
 	}

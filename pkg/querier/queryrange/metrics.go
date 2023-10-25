@@ -28,10 +28,10 @@ func NewMiddlewareMapperMetrics(registerer prometheus.Registerer) *MiddlewareMap
 	}
 }
 
-func NewMetrics(registerer prometheus.Registerer) *Metrics {
+func NewMetrics(registerer prometheus.Registerer, metricsNamespace string) *Metrics {
 	return &Metrics{
 		InstrumentMiddlewareMetrics: queryrangebase.NewInstrumentMiddlewareMetrics(registerer),
-		RetryMiddlewareMetrics:      queryrangebase.NewRetryMiddlewareMetrics(registerer),
+		RetryMiddlewareMetrics:      queryrangebase.NewRetryMiddlewareMetrics(registerer, metricsNamespace),
 		MiddlewareMapperMetrics:     NewMiddlewareMapperMetrics(registerer),
 		SplitByMetrics:              NewSplitByMetrics(registerer),
 		LogResultCacheMetrics:       NewLogResultCacheMetrics(registerer),

@@ -261,7 +261,7 @@ type Ruler struct {
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, metricsNamespace string) (*Ruler, error) {
-	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg), metricsNamespace)
+	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg, metricsNamespace), metricsNamespace)
 }
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool, metricsNamespace string) (*Ruler, error) {
@@ -281,13 +281,15 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		metricsNamespace: metricsNamespace,
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: metricsNamespace + "_ruler_ring_check_errors_total",
-			Help: "Number of errors that have occurred when checking the ring for ownership",
+			Namespace: metricsNamespace,
+			Name:      "ruler_ring_check_errors_total",
+			Help:      "Number of errors that have occurred when checking the ring for ownership",
 		}),
 
 		rulerSync: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: metricsNamespace + "_ruler_sync_rules_total",
-			Help: "Total number of times the ruler sync operation triggered.",
+			Namespace: metricsNamespace,
+			Name:      "ruler_sync_rules_total",
+			Help:      "Total number of times the ruler sync operation triggered.",
 		}, []string{"reason"}),
 	}
 

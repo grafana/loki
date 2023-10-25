@@ -56,7 +56,7 @@ var defaultPeriodConfigs = []config.PeriodConfig{
 	},
 }
 
-var NilMetrics = newIngesterMetrics(nil)
+var NilMetrics = newIngesterMetrics(nil, "loki")
 
 func TestLabelsCollisions(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)

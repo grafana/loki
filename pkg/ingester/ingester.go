@@ -22,7 +22,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -62,10 +61,6 @@ const (
 var (
 	ErrReadOnly = errors.New("Ingester is shutting down")
 
-	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_flush_queue_length",
-		Help: "The total number of series pending in the flush queue.",
-	})
 	compressionStats   = analytics.NewString("ingester_compression")
 	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
 	walStats           = analytics.NewString("ingester_wal")
@@ -246,7 +241,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if cfg.WAL.Enabled {
 		walStats.Set("enabled")
 	}
-	metrics := newIngesterMetrics(registerer)
+	metrics := newIngesterMetrics(registerer, metricsNamespace)
 
 	i := &Ingester{
 		cfg:                   cfg,

@@ -196,9 +196,9 @@ func (p *mockRulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
 	return nil, fmt.Errorf("unable to find ruler for add %s", addr)
 }
 
-func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
+func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, metricsNamespace string, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
 	return &mockRulerClientsPool{
-		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
+		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg, metricsNamespace),
 		cfg:          cfg,
 		rulerAddrMap: rulerAddrMap,
 	}
@@ -223,7 +223,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 		logger,
 		storage,
 		overrides,
-		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
+		newMockClientsPool(rulerConfig, logger, reg, "loki", rulerAddrMap),
 		"cortex",
 	)
 	require.NoError(t, err)

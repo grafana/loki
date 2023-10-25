@@ -62,6 +62,8 @@ type ingesterMetrics struct {
 
 	// Shutdown marker for ingester scale down
 	shutdownMarker prometheus.Gauge
+
+	flushQueueLength prometheus.Gauge
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -80,7 +82,7 @@ const (
 	duplicateReason = "duplicate"
 )
 
-func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
 	return &ingesterMetrics{
 		walDiskFullFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_disk_full_failures_total",
@@ -276,6 +278,13 @@ func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 			Subsystem: "ingester",
 			Name:      "shutdown_marker",
 			Help:      "1 if prepare shutdown has been called, 0 otherwise",
+		}),
+
+		flushQueueLength: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "ingester",
+			Name:      "flush_queue_length",
+			Help:      "The total number of series pending in the flush queue.",
 		}),
 	}
 }

@@ -23,7 +23,7 @@ import (
 func setupFrontend(t *testing.T, config Config) *Frontend {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, limits{queriers: 3}, logger, nil)
+	frontend, err := New(config, limits{queriers: 3}, logger, nil, "loki")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

@@ -24,7 +24,7 @@ func (f *dumbFlusher) Flush() {
 	}
 }
 
-func nilMetrics() *ingesterMetrics { return newIngesterMetrics(nil) }
+func nilMetrics() *ingesterMetrics { return newIngesterMetrics(nil, "loki") }
 
 func TestReplayController(t *testing.T) {
 	var ops []string

@@ -47,7 +47,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 	cfg.Port = grpcPort
 
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, nil, logger, nil, queryrange.DefaultCodec)
+	f, err := NewFrontend(cfg, nil, logger, nil, queryrange.DefaultCodec, "loki")
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
