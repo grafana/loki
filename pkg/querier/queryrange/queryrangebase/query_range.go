@@ -15,15 +15,14 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // StatusSuccess Prometheus success result.
@@ -52,8 +51,8 @@ type prometheusCodec struct{}
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
 func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
 	clone := *q
-	clone.Start = start
-	clone.End = end
+	clone.Start = time.UnixMilli(start)
+	clone.End = time.UnixMilli(end)
 	return &clone
 }
 
@@ -68,8 +67,8 @@ func (q *PrometheusRequest) WithQuery(query string) Request {
 func (q *PrometheusRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", q.GetQuery()),
-		otlog.String("start", timestamp.Time(q.GetStart()).String()),
-		otlog.String("end", timestamp.Time(q.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(q.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(q.GetEnd().UnixMilli()).String()),
 		otlog.Int64("step (ms)", q.GetStep()),
 	)
 }
@@ -140,19 +139,17 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (Request, error) {
 	var result PrometheusRequest
 	var err error
-	result.Start, err = util.ParseTime(r.FormValue("start"))
+	ts, err := util.ParseTime(r.FormValue("start"))
 	if err != nil {
 		return nil, decorateWithParamName(err, "start")
 	}
+	result.Start = time.UnixMilli(ts)
 
-	result.End, err = util.ParseTime(r.FormValue("end"))
+	ts, err = util.ParseTime(r.FormValue("end"))
 	if err != nil {
 		return nil, decorateWithParamName(err, "end")
 	}
-
-	if result.End < result.Start {
-		return nil, errEndBeforeStart
-	}
+	result.End = time.UnixMilli(ts)
 
 	result.Step, err = parseDurationMs(r.FormValue("step"))
 	if err != nil {
@@ -165,7 +162,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 
 	// For safety, limit the number of returned points per timeseries.
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
-	if (result.End-result.Start)/result.Step > 11000 {
+	if (result.End.UnixMilli()-result.Start.UnixMilli())/result.Step > 11000 {
 		return nil, errStepTooSmall
 	}
 
@@ -198,8 +195,8 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Requ
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
 	}
 	params := url.Values{
-		"start": []string{encodeTime(promReq.Start)},
-		"end":   []string{encodeTime(promReq.End)},
+		"start": []string{encodeTime(promReq.Start.UnixMilli())},
+		"end":   []string{encodeTime(promReq.End.UnixMilli())},
 		"step":  []string{encodeDurationMs(promReq.Step)},
 		"query": []string{promReq.Query},
 	}

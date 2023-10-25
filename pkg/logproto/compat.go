@@ -232,13 +232,13 @@ func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) 
 // Satisfy definitions.Request
 
 // GetStart returns the start timestamp of the request in milliseconds.
-func (m *IndexStatsRequest) GetStart() int64 {
-	return int64(m.From)
+func (m *IndexStatsRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
-func (m *IndexStatsRequest) GetEnd() int64 {
-	return int64(m.Through)
+func (m *IndexStatsRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
 }
 
 // GetStep returns the step of the request in milliseconds.
@@ -271,21 +271,21 @@ func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
 func (m *IndexStatsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", m.GetQuery()),
-		otlog.String("start", timestamp.Time(m.GetStart()).String()),
-		otlog.String("end", timestamp.Time(m.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(int64(m.From)).String()),
+		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
 }
 
 // Satisfy definitions.Request for Volume
 
 // GetStart returns the start timestamp of the request in milliseconds.
-func (m *VolumeRequest) GetStart() int64 {
-	return int64(m.From)
+func (m *VolumeRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
-func (m *VolumeRequest) GetEnd() int64 {
-	return int64(m.Through)
+func (m *VolumeRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
 }
 
 // GetQuery returns the query of the request.
@@ -315,8 +315,8 @@ func (m *VolumeRequest) WithQuery(query string) definitions.Request {
 func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", m.GetQuery()),
-		otlog.String("start", timestamp.Time(m.GetStart()).String()),
-		otlog.String("end", timestamp.Time(m.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(int64(m.From)).String()),
+		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
 }
 

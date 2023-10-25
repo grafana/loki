@@ -46,12 +46,12 @@ type RequestProtobufCodec struct {
 	Codec
 }
 
-func (r *LokiRequest) GetEnd() int64 {
-	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LokiRequest) GetEnd() time.Time {
+	return r.EndTs
 }
 
-func (r *LokiRequest) GetStart() int64 {
-	return r.StartTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LokiRequest) GetStart() time.Time {
+	return r.StartTs
 }
 
 func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
@@ -83,8 +83,8 @@ func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
 func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", r.GetQuery()),
-		otlog.String("start", timestamp.Time(r.GetStart()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
 		otlog.Int64("step (ms)", r.GetStep()),
 		otlog.Int64("interval (ms)", r.GetInterval()),
 		otlog.Int64("limit", int64(r.GetLimit())),
@@ -99,12 +99,12 @@ func (r *LokiInstantRequest) GetStep() int64 {
 	return 0
 }
 
-func (r *LokiInstantRequest) GetEnd() int64 {
-	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LokiInstantRequest) GetEnd() time.Time {
+	return r.TimeTs
 }
 
-func (r *LokiInstantRequest) GetStart() int64 {
-	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LokiInstantRequest) GetStart() time.Time {
+	return r.TimeTs
 }
 
 func (r *LokiInstantRequest) WithStartEnd(s int64, _ int64) queryrangebase.Request {
@@ -128,7 +128,7 @@ func (r *LokiInstantRequest) WithShards(shards logql.Shards) *LokiInstantRequest
 func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", r.GetQuery()),
-		otlog.String("ts", timestamp.Time(r.GetStart()).String()),
+		otlog.String("ts", timestamp.Time(r.GetStart().UnixMilli()).String()),
 		otlog.Int64("limit", int64(r.GetLimit())),
 		otlog.String("direction", r.GetDirection().String()),
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
@@ -137,12 +137,12 @@ func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiInstantRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
-func (r *LokiSeriesRequest) GetEnd() int64 {
-	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LokiSeriesRequest) GetEnd() time.Time {
+	return r.EndTs //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
-func (r *LokiSeriesRequest) GetStart() int64 {
-	return r.StartTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LokiSeriesRequest) GetStart() time.Time {
+	return r.StartTs //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
 func (r *LokiSeriesRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
@@ -168,8 +168,8 @@ func (r *LokiSeriesRequest) GetStep() int64 {
 func (r *LokiSeriesRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("matchers", strings.Join(r.GetMatch(), ",")),
-		otlog.String("start", timestamp.Time(r.GetStart()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
@@ -199,16 +199,16 @@ func (r *LabelRequest) AsProto() *logproto.LabelRequest {
 	return &r.LabelRequest
 }
 
-func (r *LabelRequest) GetEnd() int64 {
-	return r.End.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LabelRequest) GetEnd() time.Time {
+	return *r.End //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
 func (r *LabelRequest) GetEndTs() time.Time {
 	return *r.End
 }
 
-func (r *LabelRequest) GetStart() int64 {
-	return r.Start.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+func (r *LabelRequest) GetStart() time.Time {
+	return *r.Start //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
 func (r *LabelRequest) GetStartTs() time.Time {
@@ -236,8 +236,8 @@ func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {
 
 func (r *LabelRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
 	)
 }
 
@@ -1325,8 +1325,8 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 				Query:   r.GetQuery(),
 				Limit:   uint32(r.GetLimit()),
 				Step:    r.GetStep(),
-				StartTs: time.UnixMilli(r.GetStart()),
-				EndTs:   time.UnixMilli(r.GetEnd()),
+				StartTs: time.UnixMilli(r.GetStart().UnixNano()),
+				EndTs:   time.UnixMilli(r.GetEnd().UnixNano()),
 			},
 		}, nil
 	case *LokiInstantRequest:
