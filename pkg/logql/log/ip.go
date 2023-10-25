@@ -3,9 +3,8 @@ package log
 import (
 	"errors"
 	"fmt"
-	"unicode"
-
 	"net/netip"
+	"unicode"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"go4.org/netipx"
