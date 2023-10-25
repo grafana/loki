@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -54,7 +54,7 @@ func recordQueryMetrics(data *queryData) {
 	case queryTypeLabel:
 		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.Query(), data.status, *data.statistics)
 	case queryTypeSeries:
-		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
+		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, []string{}, *data.statistics)
 	case queryTypeVolume:
 		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.Query(), data.status, *data.statistics)
 	default:
@@ -79,7 +79,7 @@ type queryData struct {
 	result     promql_parser.Value
 	status     string
 	queryType  string
-	match      []string // used in `series` query.
+	match      []string // used in `series` query
 	label      string   // used in `labels` query
 
 	recorded bool

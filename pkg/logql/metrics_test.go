@@ -127,7 +127,7 @@ func TestLogSeriesQuery(t *testing.T) {
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", stats.Result{
+	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", []string{}, stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,

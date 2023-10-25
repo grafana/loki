@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -112,7 +113,7 @@ func RecordRangeAndInstantQueryMetrics(
 
 	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 
-	logValues := make([]interface{}, 0, 30)
+	logValues := make([]interface{}, 0, 50)
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
@@ -212,32 +213,19 @@ func RecordLabelQueryMetrics(
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
 		"length", end.Sub(start),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"label", label,
 		"query", query,
-		"splits", stats.Summary.Splits,
-		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
-		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
-	sharded := strconv.FormatBool(false)
-	if stats.Summary.Shards > 1 {
-		sharded = strconv.FormatBool(true)
-	}
-
-	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, sharded).
-		Observe(float64(stats.Summary.BytesProcessedPerSecond))
-	execLatency.WithLabelValues(status, queryType, "").
-		Observe(stats.Summary.ExecTime)
-	chunkDownloadLatency.WithLabelValues(status, queryType, "").
-		Observe(stats.ChunksDownloadTime().Seconds())
-	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
-	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
-		Add(float64(stats.TotalChunksDownloaded()))
-	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
 // fixLogger forces the given logger to include a caller=metrics.go kv pair.
@@ -256,14 +244,7 @@ func PrintMatches(matches []string) string {
 	return strings.Join(matches, ":")
 }
 
-func RecordSeriesQueryMetrics(
-	ctx context.Context,
-	log log.Logger,
-	start, end time.Time,
-	match []string,
-	status string,
-	stats logql_stats.Result,
-) {
+func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {
 	var (
 		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
@@ -276,34 +257,32 @@ func RecordSeriesQueryMetrics(
 		latencyType = latencyTypeSlow
 	}
 
-	// we also log queries, useful for troubleshooting slow queries.
-	level.Info(logger).Log(
+	shard := extractShard(shards)
+
+	logValues := make([]interface{}, 0, 15)
+	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
 		"length", end.Sub(start),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"match", PrintMatches(match),
-		"splits", stats.Summary.Splits,
-		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
-		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
-		"total_entries", stats.Summary.TotalEntriesReturned,
-	)
+		"total_entries", stats.Summary.TotalEntriesReturned)
 
-	sharded := strconv.FormatBool(false)
-	if stats.Summary.Shards > 1 {
-		sharded = strconv.FormatBool(true)
+	if shard != nil {
+		logValues = append(logValues,
+			"shard_num", shard.Shard,
+			"shard_count", shard.Of,
+		)
 	}
-	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, sharded).
-		Observe(float64(stats.Summary.BytesProcessedPerSecond))
-	execLatency.WithLabelValues(status, queryType, "").
-		Observe(stats.Summary.ExecTime)
-	chunkDownloadLatency.WithLabelValues(status, queryType, "").
-		Observe(stats.ChunksDownloadTime().Seconds())
-	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
-	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
-		Add(float64(stats.TotalChunksDownloaded()))
-	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+
+	level.Info(logger).Log(logValues...)
+
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
 func RecordVolumeQueryMetrics(
@@ -402,4 +381,18 @@ func tagsToKeyValues(queryTags string) []interface{} {
 	}
 
 	return res
+}
+
+func extractShard(shards []string) *astmapper.ShardAnnotation {
+	if len(shards) == 0 {
+		return nil
+	}
+
+	var shard astmapper.ShardAnnotation
+	shard, err := astmapper.ParseShard(shards[0])
+	if err != nil {
+		return nil
+	}
+
+	return &shard
 }
