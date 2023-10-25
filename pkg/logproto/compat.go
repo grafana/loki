@@ -233,12 +233,12 @@ func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) 
 
 // GetStart returns the start timestamp of the request in milliseconds.
 func (m *IndexStatsRequest) GetStart() time.Time {
-	return time.UnixMilli(int64(m.From))
+	return time.Unix(0, m.From.UnixNano())
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
 func (m *IndexStatsRequest) GetEnd() time.Time {
-	return time.UnixMilli(int64(m.Through))
+	return time.Unix(0, m.Through.UnixNano())
 }
 
 // GetStep returns the step of the request in milliseconds.

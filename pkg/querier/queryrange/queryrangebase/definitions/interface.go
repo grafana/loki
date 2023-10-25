@@ -43,7 +43,7 @@ type Request interface {
 	// GetCachingOptions returns the caching options.
 	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
-	WithStartEnd(startTime int64, endTime int64) Request
+	WithStartEnd(start time.Time, end time.Time) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
 	proto.Message

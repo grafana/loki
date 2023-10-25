@@ -54,10 +54,10 @@ func (r *LokiRequest) GetStart() time.Time {
 	return r.StartTs
 }
 
-func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
+func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
 	clone := *r
-	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	clone.StartTs = s 
+	clone.EndTs = e 
 	return &clone
 }
 

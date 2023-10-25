@@ -29,7 +29,6 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -150,28 +149,28 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// Clamp the time range based on the max query lookback.
 	lookbackCapture := func(id string) time.Duration { return l.MaxQueryLookback(ctx, id) }
 	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture); maxQueryLookback > 0 {
-		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
+		minStartTime := time.Now().Add(-maxQueryLookback)
 
-		if r.GetEnd().UnixMilli() < minStartTime {
+		if r.GetEnd().Before(minStartTime) {
 			// The request is fully outside the allowed range, so we can return an
 			// empty response.
 			level.Debug(log).Log(
 				"msg", "skipping the execution of the query because its time range is before the 'max query lookback' setting",
-				"reqStart", util.FormatTimeMillis(r.GetStart().UnixMilli()),
-				"redEnd", util.FormatTimeMillis(r.GetEnd().UnixMilli()),
+				"reqStart", r.GetStart().String(),
+				"redEnd", r.GetEnd().String(),
 				"maxQueryLookback", maxQueryLookback)
 
 			return NewEmptyResponse(r)
 		}
 
-		if r.GetStart().UnixMilli() < minStartTime {
+		if r.GetStart().Before(minStartTime) {
 			// Replace the start time in the request.
 			level.Debug(log).Log(
 				"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-				"original", util.FormatTimeMillis(r.GetStart().UnixMilli()),
-				"updated", util.FormatTimeMillis(minStartTime))
+				"original", r.GetStart().String(),
+				"updated", minStartTime.String())
 
-			r = r.WithStartEnd(minStartTime, r.GetEnd().UnixMilli())
+			r = r.WithStartEnd(minStartTime, r.GetEnd())
 		}
 	}
 
