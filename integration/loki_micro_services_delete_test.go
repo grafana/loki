@@ -26,13 +26,11 @@ type pushRequest struct {
 }
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	storage.ResetBoltDBIndexClientsWithShipper()
 	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientsWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
@@ -236,7 +234,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// ingest some log lines
 		for _, pr := range pushRequests {
 			for _, entry := range pr.entries {
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata(
+				require.NoError(t, cliDistributor.PushLogLine(
 					entry.Line,
 					entry.Timestamp,
 					logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata).Map(),
