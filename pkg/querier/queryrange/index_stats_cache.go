@@ -83,7 +83,7 @@ func shouldCacheStats(ctx context.Context, req queryrangebase.Request, lim Limit
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 
 	now := statsCacheMiddlewareNowTimeFunc()
-	return maxCacheFreshness == 0 || model.Time(req.GetEnd()).Before(now.Add(-maxCacheFreshness)), nil
+	return maxCacheFreshness == 0 || model.Time(req.GetEnd().UnixMilli()).Before(now.Add(-maxCacheFreshness)), nil
 }
 
 func NewIndexStatsCacheMiddleware(
