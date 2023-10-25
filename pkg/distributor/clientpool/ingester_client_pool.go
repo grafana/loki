@@ -8,7 +8,14 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+var clients = promauto.NewGauge(prometheus.GaugeOpts{
+	Namespace: "cortex",
+	Name:      "distributor_ingester_clients",
+	Help:      "The current number of ingester clients.",
+})
 
 // PoolConfig is config for creating a Pool.
 type PoolConfig struct {
@@ -24,18 +31,13 @@ func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, prefix+"remote-timeout", 1*time.Second, "Timeout for the health check.")
 }
 
-func NewPool(name string, cfg PoolConfig, ring ring.ReadRing, factory ring_client.PoolFactory, logger log.Logger, metricsNamespace string) *ring_client.Pool {
-	clients := prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: metricsNamespace,
-		Name:      "distributor_ingester_clients",
-		Help:      "The current number of ingester clients.",
-	})
-
+func NewPool(name string, cfg PoolConfig, ring ring.ReadRing, factory ring_client.PoolFactory, logger log.Logger) *ring_client.Pool {
 	poolCfg := ring_client.PoolConfig{
 		CheckInterval:      cfg.ClientCleanupPeriod,
 		HealthCheckEnabled: cfg.HealthCheckIngesters,
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
 
+	// TODO(chaudum): Allow cofiguration of metric name by the caller.
 	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, clients, logger)
 }

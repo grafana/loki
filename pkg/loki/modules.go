@@ -1137,7 +1137,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
 
-	t.Cfg.MemberlistKV.MetricsNamespace = t.Cfg.MetricsNamespace
+	t.Cfg.MemberlistKV.MetricsNamespace = "loki"
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 		analytics.JSONCodec,
@@ -1322,7 +1322,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var bloomQuerier indexgateway.BloomQuerier
 	if t.Cfg.BloomGateway.Enabled {
-		bloomGatewayClient, err := bloomgateway.NewGatewayClient(t.Cfg.BloomGateway.Client, t.Overrides, prometheus.DefaultRegisterer, logger, t.Cfg.MetricsNamespace)
+		bloomGatewayClient, err := bloomgateway.NewGatewayClient(t.Cfg.BloomGateway.Client, t.Overrides, prometheus.DefaultRegisterer, logger)
 		if err != nil {
 			return nil, err
 		}
