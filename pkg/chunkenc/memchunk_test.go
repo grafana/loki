@@ -193,10 +193,14 @@ func TestBlock(t *testing.T) {
 					e := it.Entry()
 					require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 					require.Equal(t, cases[idx].str, e.Line)
-					require.Empty(t, e.StructuredMetadata)
 					if chunkFormat < ChunkFormatV4 {
 						require.Equal(t, labels.EmptyLabels().String(), it.Labels())
+						require.Empty(t, e.StructuredMetadata)
 					} else {
+						if len(cases[idx].lbs) > 0 {
+							require.Equal(t, push.LabelsAdapter(cases[idx].lbs), e.StructuredMetadata)
+						}
+
 						expectedLabels := logproto.FromLabelAdaptersToLabels(cases[idx].lbs).String()
 						require.Equal(t, expectedLabels, it.Labels())
 					}
@@ -452,11 +456,12 @@ func TestSerialization(t *testing.T) {
 						e := it.Entry()
 						require.Equal(t, int64(i), e.Timestamp.UnixNano())
 						require.Equal(t, strconv.Itoa(i), e.Line)
-						require.Nil(t, e.StructuredMetadata)
 						if appendWithStructuredMetadata && testData.chunkFormat >= ChunkFormatV4 {
 							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)).String(), it.Labels())
+							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)), logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), it.Labels())
+							require.Nil(t, e.StructuredMetadata)
 						}
 					}
 					require.NoError(t, it.Error())
@@ -1735,10 +1740,11 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 			expectedBytes := lineBytes + expectedStructuredMetadataBytes
 
 			for _, tc := range []struct {
-				name            string
-				query           string
-				expectedLines   []string
-				expectedStreams []string
+				name                       string
+				query                      string
+				expectedLines              []string
+				expectedStreams            []string
+				expectedStructuredMetadata [][]logproto.LabelAdapter
 			}{
 				{
 					name:          "no-filter",
@@ -1750,6 +1756,12 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
 					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "a")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
+					},
 				},
 				{
 					name:          "filter",
@@ -1757,6 +1769,9 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 					expectedLines: []string{"lineC"},
 					expectedStreams: []string{
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
 					},
 				},
 				{
@@ -1767,6 +1782,10 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
+					},
 				},
 				{
 					name:          "filter-regex-contains",
@@ -1774,6 +1793,9 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 					expectedLines: []string{"lineB"},
 					expectedStreams: []string{
 						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
 					},
 				},
 				{
@@ -1784,6 +1806,10 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
 					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "a")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
+					},
 				},
 				{
 					name:          "multiple-filters",
@@ -1791,6 +1817,9 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 					expectedLines: []string{"lineD"},
 					expectedStreams: []string{
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
 					},
 				},
 				{
@@ -1803,6 +1832,12 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						labels.FromStrings("job", "fake", "user", "c").String(),
 						labels.FromStrings("job", "fake", "user", "d").String(),
 					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "c")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
+					},
 				},
 				{
 					name:          "keep-filter",
@@ -1813,6 +1848,9 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						labels.FromStrings("job", "fake", "user", "b").String(),
 						labels.FromStrings("job", "fake").String(),
 						labels.FromStrings("job", "fake").String(),
+					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
 					},
 				},
 				{
@@ -1825,6 +1863,12 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						labels.FromStrings("job", "fake", "user", "c").String(),
 						labels.FromStrings("job", "fake", "user", "d").String(),
 					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "c")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
+					},
 				},
 				{
 					name:          "drop-filter",
@@ -1835,6 +1879,12 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+					expectedStructuredMetadata: [][]logproto.LabelAdapter{
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
+						logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
 					},
 				},
 			} {
@@ -1855,18 +1905,21 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 
 							var lines []string
 							var streams []string
+							var structuredMetadata [][]logproto.LabelAdapter
 							for it.Next() {
 								require.NoError(t, it.Error())
 								e := it.Entry()
 								lines = append(lines, e.Line)
 								streams = append(streams, it.Labels())
 
-								// We don't want to send back the structured metadata since
-								// they are already part of the returned labels.
-								require.Empty(t, e.StructuredMetadata)
+								if len(e.StructuredMetadata) > 0 {
+									structuredMetadata = append(structuredMetadata, e.StructuredMetadata)
+								}
+								require.Empty(t, e.Parsed)
 							}
 							assert.ElementsMatch(t, tc.expectedLines, lines)
 							assert.ElementsMatch(t, tc.expectedStreams, streams)
+							assert.ElementsMatch(t, tc.expectedStructuredMetadata, structuredMetadata)
 
 							resultStats := sts.Result(0, 0, len(lines))
 							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
@@ -1905,64 +1958,6 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						}
 					})
 				})
-			}
-		})
-	}
-}
-
-func TestMemChunk_IteratorOptions(t *testing.T) {
-	chk := newMemChunkWithFormat(ChunkFormatV4, EncNone, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
-	require.NoError(t, chk.Append(logprotoEntryWithStructuredMetadata(0, "0", logproto.FromLabelsToLabelAdapters(
-		labels.FromStrings("a", "0"),
-	))))
-	require.NoError(t, chk.Append(logprotoEntryWithStructuredMetadata(1, "1", logproto.FromLabelsToLabelAdapters(
-		labels.FromStrings("a", "1"),
-	))))
-	require.NoError(t, chk.cut())
-	require.NoError(t, chk.Append(logprotoEntryWithStructuredMetadata(2, "2", logproto.FromLabelsToLabelAdapters(
-		labels.FromStrings("a", "2"),
-	))))
-	require.NoError(t, chk.Append(logprotoEntryWithStructuredMetadata(3, "3", logproto.FromLabelsToLabelAdapters(
-		labels.FromStrings("a", "3"),
-	))))
-
-	for _, tc := range []struct {
-		name                     string
-		options                  []iter.EntryIteratorOption
-		expectStructuredMetadata bool
-	}{
-		{
-			name:                     "No options",
-			expectStructuredMetadata: false,
-		},
-		{
-			name: "WithKeepStructuredMetadata",
-			options: []iter.EntryIteratorOption{
-				iter.WithKeepStructuredMetadata(),
-			},
-
-			expectStructuredMetadata: true,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline, tc.options...)
-			require.NoError(t, err)
-
-			var idx int64
-			for it.Next() {
-				expectedLabels := labels.FromStrings("a", fmt.Sprintf("%d", idx))
-				expectedEntry := logproto.Entry{
-					Timestamp: time.Unix(0, idx),
-					Line:      fmt.Sprintf("%d", idx),
-				}
-
-				if tc.expectStructuredMetadata {
-					expectedEntry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(expectedLabels)
-				}
-
-				require.Equal(t, expectedEntry, it.Entry())
-				require.Equal(t, expectedLabels.String(), it.Labels())
-				idx++
 			}
 		})
 	}
