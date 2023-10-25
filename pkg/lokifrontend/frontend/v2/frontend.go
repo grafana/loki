@@ -92,6 +92,7 @@ var _ transport.GrpcRoundTripper = &Frontend{}
 type frontendRequest struct {
 	queryID      uint64
 	request      *httpgrpc.HTTPRequest
+	queryRequest *queryrange.QueryRequest
 	tenantID     string
 	actor        []string
 	statsEnabled bool
@@ -288,6 +289,8 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	if err != nil {
 		return nil, fmt.Errorf("connot convert HTTP request to gRPC request: %w", err)
 	}
+
+	// TODO: check feature flag to set freq.queryRequest = QueryRequestWrap(req)
 
 	freq := &frontendRequest{
 		queryID:      f.lastQueryID.Inc(),
