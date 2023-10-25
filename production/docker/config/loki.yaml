@@ -1,5 +1,4 @@
 auth_enabled: true
-metrics_namespace: loki
 
 server:
   http_listen_address: 0.0.0.0
