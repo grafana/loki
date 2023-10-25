@@ -20,6 +20,7 @@ import (
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -89,7 +90,7 @@ func RecordRangeAndInstantQueryMetrics(
 	result promql_parser.Value,
 ) {
 	var (
-		logger        = util_log.WithContext(ctx, log)
+		logger        = fixLogger(ctx, log)
 		rt            = string(GetRangeType(p))
 		latencyType   = latencyTypeFast
 		returnedLines = 0
@@ -197,7 +198,7 @@ func RecordLabelQueryMetrics(
 	stats logql_stats.Result,
 ) {
 	var (
-		logger      = util_log.WithContext(ctx, log)
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeLabels
 	)
@@ -239,6 +240,17 @@ func RecordLabelQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }
 
+// fixLogger forces the given logger to include a caller=metrics.go kv pair.
+// The given logger might be a spanlogger instance, in which case it only logs caller=spanlogger.go:<line>.
+// We use `caller=metrics.go` when querying our logs for performance issues, and some logs were missing.
+func fixLogger(ctx context.Context, logger log.Logger) log.Logger {
+	nl := util_log.WithContext(ctx, logger)
+	if _, ok := logger.(*spanlogger.SpanLogger); ok {
+		return log.With(nl, "caller", "metrics.go")
+	}
+	return nl
+}
+
 func PrintMatches(matches []string) string {
 	// not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
 	return strings.Join(matches, ":")
@@ -253,7 +265,7 @@ func RecordSeriesQueryMetrics(
 	stats logql_stats.Result,
 ) {
 	var (
-		logger      = util_log.WithContext(ctx, log)
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeSeries
 	)
@@ -303,7 +315,7 @@ func RecordVolumeQueryMetrics(
 	stats logql_stats.Result,
 ) {
 	var (
-		logger      = util_log.WithContext(ctx, log)
+		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
 		queryType   = QueryTypeVolume
 	)
