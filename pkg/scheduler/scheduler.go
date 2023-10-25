@@ -326,7 +326,8 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	// Extract tracing information from headers in HTTP request. FrontendContext doesn't have the correct tracing
 	// information, since that is a long-running request.
 	tracer := opentracing.GlobalTracer()
-	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg.HttpRequest)
+	// TODO(karsten): add to metadata
+	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg.GetHttpRequest())
 	if err != nil {
 		return err
 	}
@@ -335,8 +336,8 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		frontendAddress: frontendAddr,
 		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
-		request:         msg.HttpRequest,
-		queryRequest:    msg.QueryRequest,
+		request:         msg.GetHttpRequest(),
+		queryRequest:    msg.GetQueryRequest(),
 		statsEnabled:    msg.StatsEnabled,
 	}
 

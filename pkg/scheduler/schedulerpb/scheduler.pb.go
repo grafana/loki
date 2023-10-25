@@ -131,16 +131,18 @@ func (m *QuerierToScheduler) GetQuerierID() string {
 type SchedulerToQuerier struct {
 	// Query ID as reported by frontend. When querier sends the response back to frontend (using frontendAddress),
 	// it identifies the query by using this ID.
-	QueryID     uint64                `protobuf:"varint,1,opt,name=queryID,proto3" json:"queryID,omitempty"`
-	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,2,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
+	QueryID uint64 `protobuf:"varint,1,opt,name=queryID,proto3" json:"queryID,omitempty"`
+	// Types that are valid to be assigned to Request:
+	//	*SchedulerToQuerier_HttpRequest
+	//	*SchedulerToQuerier_QueryRequest
+	Request isSchedulerToQuerier_Request `protobuf_oneof:"request"`
 	// Where should querier send HTTP Response to (using FrontendForQuerier interface).
 	FrontendAddress string `protobuf:"bytes,3,opt,name=frontendAddress,proto3" json:"frontendAddress,omitempty"`
 	// User who initiated the request. Needed to send reply back to frontend.
 	UserID string `protobuf:"bytes,4,opt,name=userID,proto3" json:"userID,omitempty"`
 	// Whether query statistics tracking should be enabled. The response will include
 	// statistics only when this option is enabled.
-	StatsEnabled bool                     `protobuf:"varint,5,opt,name=statsEnabled,proto3" json:"statsEnabled,omitempty"`
-	QueryRequest *queryrange.QueryRequest `protobuf:"bytes,8,opt,name=queryRequest,proto3" json:"queryRequest,omitempty"`
+	StatsEnabled bool `protobuf:"varint,5,opt,name=statsEnabled,proto3" json:"statsEnabled,omitempty"`
 }
 
 func (m *SchedulerToQuerier) Reset()      { *m = SchedulerToQuerier{} }
@@ -175,6 +177,30 @@ func (m *SchedulerToQuerier) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SchedulerToQuerier proto.InternalMessageInfo
 
+type isSchedulerToQuerier_Request interface {
+	isSchedulerToQuerier_Request()
+	Equal(interface{}) bool
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type SchedulerToQuerier_HttpRequest struct {
+	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,2,opt,name=httpRequest,proto3,oneof"`
+}
+type SchedulerToQuerier_QueryRequest struct {
+	QueryRequest *queryrange.QueryRequest `protobuf:"bytes,8,opt,name=queryRequest,proto3,oneof"`
+}
+
+func (*SchedulerToQuerier_HttpRequest) isSchedulerToQuerier_Request()  {}
+func (*SchedulerToQuerier_QueryRequest) isSchedulerToQuerier_Request() {}
+
+func (m *SchedulerToQuerier) GetRequest() isSchedulerToQuerier_Request {
+	if m != nil {
+		return m.Request
+	}
+	return nil
+}
+
 func (m *SchedulerToQuerier) GetQueryID() uint64 {
 	if m != nil {
 		return m.QueryID
@@ -183,8 +209,15 @@ func (m *SchedulerToQuerier) GetQueryID() uint64 {
 }
 
 func (m *SchedulerToQuerier) GetHttpRequest() *httpgrpc.HTTPRequest {
-	if m != nil {
-		return m.HttpRequest
+	if x, ok := m.GetRequest().(*SchedulerToQuerier_HttpRequest); ok {
+		return x.HttpRequest
+	}
+	return nil
+}
+
+func (m *SchedulerToQuerier) GetQueryRequest() *queryrange.QueryRequest {
+	if x, ok := m.GetRequest().(*SchedulerToQuerier_QueryRequest); ok {
+		return x.QueryRequest
 	}
 	return nil
 }
@@ -210,11 +243,12 @@ func (m *SchedulerToQuerier) GetStatsEnabled() bool {
 	return false
 }
 
-func (m *SchedulerToQuerier) GetQueryRequest() *queryrange.QueryRequest {
-	if m != nil {
-		return m.QueryRequest
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*SchedulerToQuerier) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*SchedulerToQuerier_HttpRequest)(nil),
+		(*SchedulerToQuerier_QueryRequest)(nil),
 	}
-	return nil
 }
 
 type FrontendToScheduler struct {
@@ -225,12 +259,14 @@ type FrontendToScheduler struct {
 	// Each frontend manages its own queryIDs. Different frontends may use same set of query IDs.
 	QueryID uint64 `protobuf:"varint,3,opt,name=queryID,proto3" json:"queryID,omitempty"`
 	// Following are used by ENQUEUE only.
-	UserID       string                `protobuf:"bytes,4,opt,name=userID,proto3" json:"userID,omitempty"`
-	HttpRequest  *httpgrpc.HTTPRequest `protobuf:"bytes,5,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"` // Deprecated: Do not use.
-	StatsEnabled bool                  `protobuf:"varint,6,opt,name=statsEnabled,proto3" json:"statsEnabled,omitempty"`
+	UserID string `protobuf:"bytes,4,opt,name=userID,proto3" json:"userID,omitempty"`
+	// Types that are valid to be assigned to Request:
+	//	*FrontendToScheduler_HttpRequest
+	//	*FrontendToScheduler_QueryRequest
+	Request      isFrontendToScheduler_Request `protobuf_oneof:"request"`
+	StatsEnabled bool                          `protobuf:"varint,6,opt,name=statsEnabled,proto3" json:"statsEnabled,omitempty"`
 	// Path to queue to which the request will be enqueued.
-	QueuePath    []string                 `protobuf:"bytes,7,rep,name=queuePath,proto3" json:"queuePath,omitempty"`
-	QueryRequest *queryrange.QueryRequest `protobuf:"bytes,8,opt,name=queryRequest,proto3" json:"queryRequest,omitempty"`
+	QueuePath []string `protobuf:"bytes,7,rep,name=queuePath,proto3" json:"queuePath,omitempty"`
 }
 
 func (m *FrontendToScheduler) Reset()      { *m = FrontendToScheduler{} }
@@ -265,6 +301,30 @@ func (m *FrontendToScheduler) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_FrontendToScheduler proto.InternalMessageInfo
 
+type isFrontendToScheduler_Request interface {
+	isFrontendToScheduler_Request()
+	Equal(interface{}) bool
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type FrontendToScheduler_HttpRequest struct {
+	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,5,opt,name=httpRequest,proto3,oneof"`
+}
+type FrontendToScheduler_QueryRequest struct {
+	QueryRequest *queryrange.QueryRequest `protobuf:"bytes,8,opt,name=queryRequest,proto3,oneof"`
+}
+
+func (*FrontendToScheduler_HttpRequest) isFrontendToScheduler_Request()  {}
+func (*FrontendToScheduler_QueryRequest) isFrontendToScheduler_Request() {}
+
+func (m *FrontendToScheduler) GetRequest() isFrontendToScheduler_Request {
+	if m != nil {
+		return m.Request
+	}
+	return nil
+}
+
 func (m *FrontendToScheduler) GetType() FrontendToSchedulerType {
 	if m != nil {
 		return m.Type
@@ -295,8 +355,15 @@ func (m *FrontendToScheduler) GetUserID() string {
 
 // Deprecated: Do not use.
 func (m *FrontendToScheduler) GetHttpRequest() *httpgrpc.HTTPRequest {
-	if m != nil {
-		return m.HttpRequest
+	if x, ok := m.GetRequest().(*FrontendToScheduler_HttpRequest); ok {
+		return x.HttpRequest
+	}
+	return nil
+}
+
+func (m *FrontendToScheduler) GetQueryRequest() *queryrange.QueryRequest {
+	if x, ok := m.GetRequest().(*FrontendToScheduler_QueryRequest); ok {
+		return x.QueryRequest
 	}
 	return nil
 }
@@ -315,11 +382,12 @@ func (m *FrontendToScheduler) GetQueuePath() []string {
 	return nil
 }
 
-func (m *FrontendToScheduler) GetQueryRequest() *queryrange.QueryRequest {
-	if m != nil {
-		return m.QueryRequest
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*FrontendToScheduler) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*FrontendToScheduler_HttpRequest)(nil),
+		(*FrontendToScheduler_QueryRequest)(nil),
 	}
-	return nil
 }
 
 type SchedulerToFrontend struct {
@@ -467,52 +535,52 @@ func init() {
 }
 
 var fileDescriptor_c3657184e8d38989 = []byte{
-	// 705 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x55, 0x4d, 0x4f, 0xdb, 0x40,
-	0x10, 0xf5, 0x3a, 0x1f, 0xc0, 0x84, 0xb6, 0xe9, 0x02, 0xad, 0x1b, 0x51, 0x13, 0x45, 0x55, 0x1b,
-	0x38, 0x24, 0x28, 0x3d, 0xb4, 0x52, 0x51, 0xa5, 0x00, 0xa6, 0x44, 0xa5, 0x0e, 0x71, 0x1c, 0xf5,
-	0xe3, 0x12, 0x25, 0xf1, 0xe2, 0x44, 0x50, 0xaf, 0xf1, 0x87, 0xaa, 0xdc, 0x7a, 0xef, 0xa5, 0x3f,
-	0xa3, 0x3f, 0xa5, 0x47, 0x8e, 0x1c, 0x7a, 0x28, 0xe6, 0xc2, 0x91, 0x9f, 0x50, 0xc5, 0x5e, 0x07,
-	0x9b, 0x26, 0x50, 0xa9, 0x27, 0xcf, 0xce, 0xbe, 0x67, 0xbf, 0x79, 0x33, 0xbb, 0x86, 0x55, 0xf3,
-	0x50, 0x2f, 0xdb, 0xbd, 0x3e, 0xd1, 0xdc, 0x23, 0x62, 0x5d, 0x45, 0x66, 0xf7, 0x2a, 0x2e, 0x99,
-	0x16, 0x75, 0x28, 0xce, 0x44, 0x36, 0x73, 0xeb, 0xfa, 0xc0, 0xe9, 0xbb, 0xdd, 0x52, 0x8f, 0x7e,
-	0x2e, 0xeb, 0x56, 0xe7, 0xa0, 0x63, 0x74, 0xca, 0x9a, 0x7d, 0x38, 0x70, 0xca, 0x7d, 0xc7, 0x31,
-	0x75, 0xcb, 0xec, 0x8d, 0x83, 0x80, 0x9e, 0x5b, 0xd4, 0xa9, 0x4e, 0xfd, 0xb0, 0x3c, 0x8a, 0x58,
-	0xf6, 0xd9, 0xe8, 0xfb, 0xc7, 0x2e, 0xb1, 0x06, 0xc4, 0xf2, 0x9f, 0x43, 0xab, 0x63, 0xe8, 0x24,
-	0x12, 0x06, 0xc0, 0x42, 0x05, 0x70, 0x23, 0x80, 0xa9, 0xb4, 0x19, 0x0a, 0xc1, 0xcb, 0x30, 0xc7,
-	0xc8, 0xb5, 0x6d, 0x01, 0xe5, 0x51, 0x71, 0x4e, 0xb9, 0x4a, 0x14, 0xbe, 0xf1, 0x80, 0xc7, 0x58,
-	0x95, 0x32, 0x3e, 0x16, 0x60, 0xc6, 0x7f, 0x3d, 0xa3, 0x24, 0x95, 0x70, 0x89, 0x5f, 0x40, 0x66,
-	0xa4, 0x5a, 0x21, 0xc7, 0x2e, 0xb1, 0x1d, 0x81, 0xcf, 0xa3, 0x62, 0xa6, 0xb2, 0x54, 0x1a, 0x57,
-	0xb2, 0xab, 0xaa, 0xfb, 0x6c, 0x53, 0x89, 0x22, 0x71, 0x11, 0xee, 0x1d, 0x58, 0xd4, 0x70, 0x88,
-	0xa1, 0x55, 0x35, 0xcd, 0x22, 0xb6, 0x2d, 0x24, 0x7c, 0x35, 0xd7, 0xd3, 0xf8, 0x01, 0xa4, 0x5d,
-	0xdb, 0x97, 0x9b, 0xf4, 0x01, 0x6c, 0x85, 0x0b, 0x30, 0x6f, 0x3b, 0x1d, 0xc7, 0x96, 0x8c, 0x4e,
-	0xf7, 0x88, 0x68, 0x42, 0x2a, 0x8f, 0x8a, 0xb3, 0x4a, 0x2c, 0x87, 0x37, 0x60, 0xde, 0x57, 0x1a,
-	0xea, 0x9b, 0xf5, 0xf5, 0x09, 0xa5, 0x88, 0x59, 0x8d, 0xc8, 0xbe, 0x12, 0x43, 0x17, 0x2e, 0x78,
-	0x58, 0xd8, 0x61, 0x6a, 0xa2, 0x1e, 0xbe, 0x84, 0xa4, 0x33, 0x34, 0x89, 0xef, 0xc5, 0xdd, 0xca,
-	0x93, 0x52, 0xa4, 0xcd, 0xa5, 0x09, 0x78, 0x75, 0x68, 0x12, 0xc5, 0x67, 0x4c, 0xaa, 0x9a, 0x9f,
-	0x5c, 0x75, 0xc4, 0xf2, 0x44, 0xdc, 0xf2, 0x69, 0x7e, 0xbc, 0x8a, 0xb7, 0x22, 0x75, 0x43, 0x2b,
-	0x36, 0x79, 0x01, 0xc5, 0xdb, 0x71, 0xdd, 0xcc, 0xf4, 0x04, 0x33, 0x83, 0xd1, 0x71, 0xc9, 0x7e,
-	0xc7, 0xe9, 0x0b, 0x33, 0xf9, 0x04, 0x1b, 0x9d, 0x20, 0xf1, 0x9f, 0x56, 0x1f, 0xc2, 0x42, 0x64,
-	0xee, 0x42, 0x13, 0xf1, 0x6b, 0x48, 0x8f, 0x24, 0xb8, 0x36, 0xf3, 0xfa, 0x69, 0xcc, 0xeb, 0x09,
-	0x8c, 0xa6, 0x8f, 0x56, 0x18, 0x0b, 0x2f, 0x42, 0x8a, 0x58, 0x16, 0xb5, 0x98, 0xcb, 0xc1, 0xa2,
-	0xb0, 0x01, 0xcb, 0x32, 0x75, 0x06, 0x07, 0x43, 0x36, 0xdf, 0xcd, 0xbe, 0xeb, 0x68, 0xf4, 0x8b,
-	0x11, 0x9a, 0x71, 0xf3, 0x19, 0x59, 0x81, 0xc7, 0x53, 0xd8, 0xb6, 0x49, 0x0d, 0x9b, 0xac, 0x6d,
-	0xc0, 0xc3, 0x29, 0x53, 0x80, 0x67, 0x21, 0x59, 0x93, 0x6b, 0x6a, 0x96, 0xc3, 0x19, 0x98, 0x91,
-	0xe4, 0x46, 0x4b, 0x6a, 0x49, 0x59, 0x84, 0x01, 0xd2, 0x5b, 0x55, 0x79, 0x4b, 0xda, 0xcb, 0xf2,
-	0x6b, 0x3d, 0x78, 0x34, 0xb5, 0x2e, 0x9c, 0x06, 0xbe, 0xfe, 0x36, 0xcb, 0xe1, 0x3c, 0x2c, 0xab,
-	0xf5, 0x7a, 0xfb, 0x5d, 0x55, 0xfe, 0xd8, 0x56, 0xa4, 0x46, 0x4b, 0x6a, 0xaa, 0xcd, 0xf6, 0xbe,
-	0xa4, 0xb4, 0x55, 0x49, 0xae, 0xca, 0x6a, 0x16, 0xe1, 0x39, 0x48, 0x49, 0x8a, 0x52, 0x57, 0xb2,
-	0x3c, 0xbe, 0x0f, 0x77, 0x9a, 0xbb, 0x2d, 0x55, 0xad, 0xc9, 0x6f, 0xda, 0xdb, 0xf5, 0xf7, 0x72,
-	0x36, 0x51, 0xf9, 0x85, 0x22, 0x7e, 0xef, 0x50, 0x2b, 0x3c, 0xe8, 0x2d, 0xc8, 0xb0, 0x70, 0x8f,
-	0x52, 0x13, 0xaf, 0xc4, 0xec, 0xfe, 0xfb, 0x36, 0xc9, 0xad, 0x4c, 0xeb, 0x07, 0xc3, 0x16, 0xb8,
-	0x22, 0x5a, 0x47, 0xd8, 0x80, 0xa5, 0x89, 0x96, 0xe1, 0xd5, 0x18, 0xff, 0xa6, 0xa6, 0xe4, 0xd6,
-	0xfe, 0x05, 0x1a, 0x74, 0xa0, 0x62, 0xc2, 0x62, 0xb4, 0xba, 0xf1, 0x38, 0x7d, 0x80, 0xf9, 0x30,
-	0xf6, 0xeb, 0xcb, 0xdf, 0x76, 0x74, 0x73, 0xf9, 0xdb, 0x06, 0x2e, 0xa8, 0x70, 0xb3, 0x7a, 0x72,
-	0x26, 0x72, 0xa7, 0x67, 0x22, 0x77, 0x79, 0x26, 0xa2, 0xaf, 0x9e, 0x88, 0x7e, 0x78, 0x22, 0xfa,
-	0xe9, 0x89, 0xe8, 0xc4, 0x13, 0xd1, 0x6f, 0x4f, 0x44, 0x17, 0x9e, 0xc8, 0x5d, 0x7a, 0x22, 0xfa,
-	0x7e, 0x2e, 0x72, 0x27, 0xe7, 0x22, 0x77, 0x7a, 0x2e, 0x72, 0x9f, 0xa2, 0x3f, 0x88, 0x6e, 0xda,
-	0xbf, 0xb6, 0x9f, 0xff, 0x09, 0x00, 0x00, 0xff, 0xff, 0x11, 0xc4, 0x4f, 0xfb, 0x61, 0x06, 0x00,
-	0x00,
+	// 715 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x55, 0x4d, 0x53, 0xd3, 0x40,
+	0x18, 0xce, 0xa6, 0x5f, 0xf4, 0x2d, 0x6a, 0x5d, 0x40, 0x63, 0x07, 0x43, 0xa7, 0xe3, 0x68, 0xe1,
+	0xd0, 0x32, 0xf5, 0xa2, 0x33, 0xc8, 0x4c, 0x81, 0x60, 0x3b, 0x62, 0x4a, 0xd3, 0x74, 0xfc, 0xb8,
+	0x74, 0xfa, 0xb1, 0xb4, 0x1d, 0x30, 0x1b, 0x36, 0xc9, 0x38, 0xbd, 0xf9, 0x13, 0x3c, 0xfb, 0x0b,
+	0xfc, 0x29, 0x1e, 0x39, 0x72, 0xf0, 0x20, 0xe5, 0xe2, 0x91, 0x9b, 0x57, 0xa7, 0xc9, 0xb6, 0x24,
+	0xd0, 0x82, 0x07, 0x4f, 0x7d, 0xf7, 0xdd, 0xe7, 0xd9, 0xe4, 0x79, 0x9e, 0x37, 0x5b, 0x58, 0x35,
+	0x0f, 0xbb, 0x79, 0xab, 0xdd, 0x23, 0x1d, 0xe7, 0x88, 0xb0, 0xcb, 0xca, 0x6c, 0x5d, 0xd6, 0x39,
+	0x93, 0x51, 0x9b, 0xe2, 0x84, 0x6f, 0x33, 0xb5, 0xde, 0xed, 0xdb, 0x3d, 0xa7, 0x95, 0x6b, 0xd3,
+	0x4f, 0xf9, 0x2e, 0x6b, 0x1e, 0x34, 0x8d, 0x66, 0xbe, 0x63, 0x1d, 0xf6, 0xed, 0x7c, 0xcf, 0xb6,
+	0xcd, 0x2e, 0x33, 0xdb, 0x93, 0xc2, 0xa3, 0xa7, 0x16, 0xbb, 0xb4, 0x4b, 0xdd, 0x32, 0x3f, 0xaa,
+	0x78, 0xf7, 0xd9, 0xe8, 0xf9, 0xc7, 0x0e, 0x61, 0x7d, 0xc2, 0xdc, 0xdf, 0x01, 0x6b, 0x1a, 0x5d,
+	0xe2, 0x2b, 0x3d, 0x60, 0xa6, 0x00, 0xb8, 0xea, 0xc1, 0x74, 0x5a, 0x1b, 0xbf, 0x08, 0x5e, 0x86,
+	0x38, 0x27, 0x97, 0x77, 0x24, 0x94, 0x46, 0xd9, 0xb8, 0x76, 0xd9, 0xc8, 0x7c, 0x13, 0x01, 0x4f,
+	0xb0, 0x3a, 0xe5, 0x7c, 0x2c, 0x41, 0xcc, 0x3d, 0x9e, 0x53, 0xc2, 0xda, 0x78, 0x89, 0x5f, 0x42,
+	0x62, 0xf4, 0xd6, 0x1a, 0x39, 0x76, 0x88, 0x65, 0x4b, 0x62, 0x1a, 0x65, 0x13, 0x85, 0xa5, 0xdc,
+	0x44, 0x49, 0x49, 0xd7, 0xf7, 0xf9, 0x66, 0x49, 0xd0, 0xfc, 0x58, 0xbc, 0x09, 0xf3, 0xee, 0x29,
+	0x63, 0xee, 0x9c, 0xcb, 0x95, 0x72, 0x3e, 0x21, 0x55, 0xdf, 0x7e, 0x49, 0xd0, 0x02, 0x78, 0x9c,
+	0x85, 0x7b, 0x07, 0x8c, 0x1a, 0x36, 0x31, 0x3a, 0xc5, 0x4e, 0x87, 0x11, 0xcb, 0x92, 0x42, 0xae,
+	0x9e, 0xab, 0x6d, 0xfc, 0x00, 0xa2, 0x8e, 0xe5, 0x0a, 0x0e, 0xbb, 0x00, 0xbe, 0xc2, 0x19, 0x98,
+	0xb7, 0xec, 0xa6, 0x6d, 0x29, 0x46, 0xb3, 0x75, 0x44, 0x3a, 0x52, 0x24, 0x8d, 0xb2, 0x73, 0x5a,
+	0xa0, 0xb7, 0x15, 0x87, 0x18, 0xf3, 0x1e, 0x98, 0xf9, 0x23, 0xc2, 0xc2, 0x2e, 0x3f, 0xda, 0x6f,
+	0xe9, 0x0b, 0x08, 0xdb, 0x03, 0x93, 0xb8, 0xd6, 0xdc, 0x2d, 0x3c, 0xc9, 0xf9, 0x52, 0xcf, 0x4d,
+	0xc1, 0xeb, 0x03, 0x93, 0x68, 0x2e, 0x63, 0x9a, 0x04, 0x71, 0xba, 0x04, 0x5f, 0x02, 0xa1, 0x60,
+	0x02, 0xb3, 0xc4, 0xbd, 0x0a, 0x26, 0x13, 0xb9, 0x21, 0x99, 0x2d, 0x51, 0x42, 0xff, 0x3b, 0x9d,
+	0xab, 0xde, 0x46, 0xaf, 0x7b, 0xcb, 0x67, 0xd1, 0x21, 0xfb, 0x4d, 0xbb, 0x27, 0xc5, 0xd2, 0x21,
+	0x3e, 0x8b, 0x5e, 0xc3, 0xef, 0xfc, 0x21, 0x2c, 0xf8, 0xa6, 0x72, 0xec, 0x29, 0xde, 0x84, 0xe8,
+	0xe8, 0x3c, 0xc7, 0xe2, 0xd6, 0x3f, 0x0d, 0x58, 0x3f, 0x85, 0x51, 0x73, 0xd1, 0x1a, 0x67, 0xe1,
+	0x45, 0x88, 0x10, 0xc6, 0x28, 0xe3, 0xa6, 0x7b, 0x8b, 0xcc, 0x06, 0x2c, 0xab, 0xd4, 0xee, 0x1f,
+	0x0c, 0xf8, 0xf4, 0xd7, 0x7a, 0x8e, 0xdd, 0xa1, 0x9f, 0x8d, 0xb1, 0xb2, 0x9b, 0xbf, 0xa0, 0x15,
+	0x78, 0x3c, 0x83, 0x6d, 0x99, 0xd4, 0xb0, 0xc8, 0xda, 0x06, 0x3c, 0x9c, 0x31, 0x14, 0x78, 0x0e,
+	0xc2, 0x65, 0xb5, 0xac, 0x27, 0x05, 0x9c, 0x80, 0x98, 0xa2, 0x56, 0xeb, 0x4a, 0x5d, 0x49, 0x22,
+	0x0c, 0x10, 0xdd, 0x2e, 0xaa, 0xdb, 0xca, 0x5e, 0x52, 0x5c, 0x6b, 0xc3, 0xa3, 0x99, 0xba, 0x70,
+	0x14, 0xc4, 0xca, 0x9b, 0xa4, 0x80, 0xd3, 0xb0, 0xac, 0x57, 0x2a, 0x8d, 0xb7, 0x45, 0xf5, 0x43,
+	0x43, 0x53, 0xaa, 0x75, 0xa5, 0xa6, 0xd7, 0x1a, 0xfb, 0x8a, 0xd6, 0xd0, 0x15, 0xb5, 0xa8, 0xea,
+	0x49, 0x84, 0xe3, 0x10, 0x51, 0x34, 0xad, 0xa2, 0x25, 0x45, 0x7c, 0x1f, 0xee, 0xd4, 0x4a, 0x75,
+	0x5d, 0x2f, 0xab, 0xaf, 0x1b, 0x3b, 0x95, 0x77, 0x6a, 0x32, 0x54, 0xf8, 0x89, 0x7c, 0x7e, 0xef,
+	0x52, 0x36, 0xbe, 0x06, 0xea, 0x90, 0xe0, 0xe5, 0x1e, 0xa5, 0x26, 0x5e, 0x09, 0xd8, 0x7d, 0xfd,
+	0xae, 0x49, 0xad, 0xcc, 0xca, 0x83, 0x63, 0x33, 0x42, 0x16, 0xad, 0x23, 0x6c, 0xc0, 0xd2, 0x54,
+	0xcb, 0xf0, 0x6a, 0x80, 0x7f, 0x53, 0x28, 0xa9, 0xb5, 0x7f, 0x81, 0x7a, 0x09, 0x14, 0x4c, 0x58,
+	0xf4, 0xab, 0x9b, 0x8c, 0xd3, 0x7b, 0x98, 0x1f, 0xd7, 0xae, 0xbe, 0xf4, 0x6d, 0x5f, 0x72, 0x2a,
+	0x7d, 0xdb, 0xc0, 0x79, 0x0a, 0xb7, 0x8a, 0x27, 0x67, 0xb2, 0x70, 0x7a, 0x26, 0x0b, 0x17, 0x67,
+	0x32, 0xfa, 0x32, 0x94, 0xd1, 0xf7, 0xa1, 0x8c, 0x7e, 0x0c, 0x65, 0x74, 0x32, 0x94, 0xd1, 0xaf,
+	0xa1, 0x8c, 0x7e, 0x0f, 0x65, 0xe1, 0x62, 0x28, 0xa3, 0xaf, 0xe7, 0xb2, 0x70, 0x72, 0x2e, 0x0b,
+	0xa7, 0xe7, 0xb2, 0xf0, 0xd1, 0xff, 0xf7, 0xd1, 0x8a, 0xba, 0x97, 0xfa, 0xf3, 0xbf, 0x01, 0x00,
+	0x00, 0xff, 0xff, 0x5b, 0x93, 0x90, 0x6e, 0x7f, 0x06, 0x00, 0x00,
 }
 
 func (x FrontendToSchedulerType) String() string {
@@ -575,7 +643,13 @@ func (this *SchedulerToQuerier) Equal(that interface{}) bool {
 	if this.QueryID != that1.QueryID {
 		return false
 	}
-	if !this.HttpRequest.Equal(that1.HttpRequest) {
+	if that1.Request == nil {
+		if this.Request != nil {
+			return false
+		}
+	} else if this.Request == nil {
+		return false
+	} else if !this.Request.Equal(that1.Request) {
 		return false
 	}
 	if this.FrontendAddress != that1.FrontendAddress {
@@ -585,6 +659,51 @@ func (this *SchedulerToQuerier) Equal(that interface{}) bool {
 		return false
 	}
 	if this.StatsEnabled != that1.StatsEnabled {
+		return false
+	}
+	return true
+}
+func (this *SchedulerToQuerier_HttpRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SchedulerToQuerier_HttpRequest)
+	if !ok {
+		that2, ok := that.(SchedulerToQuerier_HttpRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.HttpRequest.Equal(that1.HttpRequest) {
+		return false
+	}
+	return true
+}
+func (this *SchedulerToQuerier_QueryRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SchedulerToQuerier_QueryRequest)
+	if !ok {
+		that2, ok := that.(SchedulerToQuerier_QueryRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
 		return false
 	}
 	if !this.QueryRequest.Equal(that1.QueryRequest) {
@@ -623,7 +742,13 @@ func (this *FrontendToScheduler) Equal(that interface{}) bool {
 	if this.UserID != that1.UserID {
 		return false
 	}
-	if !this.HttpRequest.Equal(that1.HttpRequest) {
+	if that1.Request == nil {
+		if this.Request != nil {
+			return false
+		}
+	} else if this.Request == nil {
+		return false
+	} else if !this.Request.Equal(that1.Request) {
 		return false
 	}
 	if this.StatsEnabled != that1.StatsEnabled {
@@ -636,6 +761,51 @@ func (this *FrontendToScheduler) Equal(that interface{}) bool {
 		if this.QueuePath[i] != that1.QueuePath[i] {
 			return false
 		}
+	}
+	return true
+}
+func (this *FrontendToScheduler_HttpRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*FrontendToScheduler_HttpRequest)
+	if !ok {
+		that2, ok := that.(FrontendToScheduler_HttpRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.HttpRequest.Equal(that1.HttpRequest) {
+		return false
+	}
+	return true
+}
+func (this *FrontendToScheduler_QueryRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*FrontendToScheduler_QueryRequest)
+	if !ok {
+		that2, ok := that.(FrontendToScheduler_QueryRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
 	}
 	if !this.QueryRequest.Equal(that1.QueryRequest) {
 		return false
@@ -731,17 +901,30 @@ func (this *SchedulerToQuerier) GoString() string {
 	s := make([]string, 0, 10)
 	s = append(s, "&schedulerpb.SchedulerToQuerier{")
 	s = append(s, "QueryID: "+fmt.Sprintf("%#v", this.QueryID)+",\n")
-	if this.HttpRequest != nil {
-		s = append(s, "HttpRequest: "+fmt.Sprintf("%#v", this.HttpRequest)+",\n")
+	if this.Request != nil {
+		s = append(s, "Request: "+fmt.Sprintf("%#v", this.Request)+",\n")
 	}
 	s = append(s, "FrontendAddress: "+fmt.Sprintf("%#v", this.FrontendAddress)+",\n")
 	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
 	s = append(s, "StatsEnabled: "+fmt.Sprintf("%#v", this.StatsEnabled)+",\n")
-	if this.QueryRequest != nil {
-		s = append(s, "QueryRequest: "+fmt.Sprintf("%#v", this.QueryRequest)+",\n")
-	}
 	s = append(s, "}")
 	return strings.Join(s, "")
+}
+func (this *SchedulerToQuerier_HttpRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&schedulerpb.SchedulerToQuerier_HttpRequest{` +
+		`HttpRequest:` + fmt.Sprintf("%#v", this.HttpRequest) + `}`}, ", ")
+	return s
+}
+func (this *SchedulerToQuerier_QueryRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&schedulerpb.SchedulerToQuerier_QueryRequest{` +
+		`QueryRequest:` + fmt.Sprintf("%#v", this.QueryRequest) + `}`}, ", ")
+	return s
 }
 func (this *FrontendToScheduler) GoString() string {
 	if this == nil {
@@ -753,16 +936,29 @@ func (this *FrontendToScheduler) GoString() string {
 	s = append(s, "FrontendAddress: "+fmt.Sprintf("%#v", this.FrontendAddress)+",\n")
 	s = append(s, "QueryID: "+fmt.Sprintf("%#v", this.QueryID)+",\n")
 	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
-	if this.HttpRequest != nil {
-		s = append(s, "HttpRequest: "+fmt.Sprintf("%#v", this.HttpRequest)+",\n")
+	if this.Request != nil {
+		s = append(s, "Request: "+fmt.Sprintf("%#v", this.Request)+",\n")
 	}
 	s = append(s, "StatsEnabled: "+fmt.Sprintf("%#v", this.StatsEnabled)+",\n")
 	s = append(s, "QueuePath: "+fmt.Sprintf("%#v", this.QueuePath)+",\n")
-	if this.QueryRequest != nil {
-		s = append(s, "QueryRequest: "+fmt.Sprintf("%#v", this.QueryRequest)+",\n")
-	}
 	s = append(s, "}")
 	return strings.Join(s, "")
+}
+func (this *FrontendToScheduler_HttpRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&schedulerpb.FrontendToScheduler_HttpRequest{` +
+		`HttpRequest:` + fmt.Sprintf("%#v", this.HttpRequest) + `}`}, ", ")
+	return s
+}
+func (this *FrontendToScheduler_QueryRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&schedulerpb.FrontendToScheduler_QueryRequest{` +
+		`QueryRequest:` + fmt.Sprintf("%#v", this.QueryRequest) + `}`}, ", ")
+	return s
 }
 func (this *SchedulerToFrontend) GoString() string {
 	if this == nil {
@@ -1132,17 +1328,14 @@ func (m *SchedulerToQuerier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.QueryRequest != nil {
+	if m.Request != nil {
 		{
-			size, err := m.QueryRequest.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
+			size := m.Request.Size()
+			i -= size
+			if _, err := m.Request.MarshalTo(dAtA[i:]); err != nil {
 				return 0, err
 			}
-			i -= size
-			i = encodeVarintScheduler(dAtA, i, uint64(size))
 		}
-		i--
-		dAtA[i] = 0x42
 	}
 	if m.StatsEnabled {
 		i--
@@ -1168,6 +1361,20 @@ func (m *SchedulerToQuerier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1a
 	}
+	if m.QueryID != 0 {
+		i = encodeVarintScheduler(dAtA, i, uint64(m.QueryID))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SchedulerToQuerier_HttpRequest) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *SchedulerToQuerier_HttpRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	if m.HttpRequest != nil {
 		{
 			size, err := m.HttpRequest.MarshalToSizedBuffer(dAtA[:i])
@@ -1180,14 +1387,28 @@ func (m *SchedulerToQuerier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.QueryID != 0 {
-		i = encodeVarintScheduler(dAtA, i, uint64(m.QueryID))
+	return len(dAtA) - i, nil
+}
+func (m *SchedulerToQuerier_QueryRequest) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *SchedulerToQuerier_QueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.QueryRequest != nil {
+		{
+			size, err := m.QueryRequest.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintScheduler(dAtA, i, uint64(size))
+		}
 		i--
-		dAtA[i] = 0x8
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
-
 func (m *FrontendToScheduler) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -1208,17 +1429,14 @@ func (m *FrontendToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.QueryRequest != nil {
+	if m.Request != nil {
 		{
-			size, err := m.QueryRequest.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
+			size := m.Request.Size()
+			i -= size
+			if _, err := m.Request.MarshalTo(dAtA[i:]); err != nil {
 				return 0, err
 			}
-			i -= size
-			i = encodeVarintScheduler(dAtA, i, uint64(size))
 		}
-		i--
-		dAtA[i] = 0x42
 	}
 	if len(m.QueuePath) > 0 {
 		for iNdEx := len(m.QueuePath) - 1; iNdEx >= 0; iNdEx-- {
@@ -1238,18 +1456,6 @@ func (m *FrontendToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		i--
 		dAtA[i] = 0x30
-	}
-	if m.HttpRequest != nil {
-		{
-			size, err := m.HttpRequest.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintScheduler(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x2a
 	}
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
@@ -1278,6 +1484,46 @@ func (m *FrontendToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *FrontendToScheduler_HttpRequest) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *FrontendToScheduler_HttpRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.HttpRequest != nil {
+		{
+			size, err := m.HttpRequest.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintScheduler(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *FrontendToScheduler_QueryRequest) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *FrontendToScheduler_QueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.QueryRequest != nil {
+		{
+			size, err := m.QueryRequest.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintScheduler(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x42
+	}
+	return len(dAtA) - i, nil
+}
 func (m *SchedulerToFrontend) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -1399,9 +1645,8 @@ func (m *SchedulerToQuerier) Size() (n int) {
 	if m.QueryID != 0 {
 		n += 1 + sovScheduler(uint64(m.QueryID))
 	}
-	if m.HttpRequest != nil {
-		l = m.HttpRequest.Size()
-		n += 1 + l + sovScheduler(uint64(l))
+	if m.Request != nil {
+		n += m.Request.Size()
 	}
 	l = len(m.FrontendAddress)
 	if l > 0 {
@@ -1414,13 +1659,33 @@ func (m *SchedulerToQuerier) Size() (n int) {
 	if m.StatsEnabled {
 		n += 2
 	}
+	return n
+}
+
+func (m *SchedulerToQuerier_HttpRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HttpRequest != nil {
+		l = m.HttpRequest.Size()
+		n += 1 + l + sovScheduler(uint64(l))
+	}
+	return n
+}
+func (m *SchedulerToQuerier_QueryRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	if m.QueryRequest != nil {
 		l = m.QueryRequest.Size()
 		n += 1 + l + sovScheduler(uint64(l))
 	}
 	return n
 }
-
 func (m *FrontendToScheduler) Size() (n int) {
 	if m == nil {
 		return 0
@@ -1441,9 +1706,8 @@ func (m *FrontendToScheduler) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovScheduler(uint64(l))
 	}
-	if m.HttpRequest != nil {
-		l = m.HttpRequest.Size()
-		n += 1 + l + sovScheduler(uint64(l))
+	if m.Request != nil {
+		n += m.Request.Size()
 	}
 	if m.StatsEnabled {
 		n += 2
@@ -1454,13 +1718,33 @@ func (m *FrontendToScheduler) Size() (n int) {
 			n += 1 + l + sovScheduler(uint64(l))
 		}
 	}
+	return n
+}
+
+func (m *FrontendToScheduler_HttpRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.HttpRequest != nil {
+		l = m.HttpRequest.Size()
+		n += 1 + l + sovScheduler(uint64(l))
+	}
+	return n
+}
+func (m *FrontendToScheduler_QueryRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	if m.QueryRequest != nil {
 		l = m.QueryRequest.Size()
 		n += 1 + l + sovScheduler(uint64(l))
 	}
 	return n
 }
-
 func (m *SchedulerToFrontend) Size() (n int) {
 	if m == nil {
 		return 0
@@ -1521,10 +1805,29 @@ func (this *SchedulerToQuerier) String() string {
 	}
 	s := strings.Join([]string{`&SchedulerToQuerier{`,
 		`QueryID:` + fmt.Sprintf("%v", this.QueryID) + `,`,
-		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`Request:` + fmt.Sprintf("%v", this.Request) + `,`,
 		`FrontendAddress:` + fmt.Sprintf("%v", this.FrontendAddress) + `,`,
 		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
 		`StatsEnabled:` + fmt.Sprintf("%v", this.StatsEnabled) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SchedulerToQuerier_HttpRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SchedulerToQuerier_HttpRequest{`,
+		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SchedulerToQuerier_QueryRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SchedulerToQuerier_QueryRequest{`,
 		`QueryRequest:` + strings.Replace(fmt.Sprintf("%v", this.QueryRequest), "QueryRequest", "queryrange.QueryRequest", 1) + `,`,
 		`}`,
 	}, "")
@@ -1539,9 +1842,28 @@ func (this *FrontendToScheduler) String() string {
 		`FrontendAddress:` + fmt.Sprintf("%v", this.FrontendAddress) + `,`,
 		`QueryID:` + fmt.Sprintf("%v", this.QueryID) + `,`,
 		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
-		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`Request:` + fmt.Sprintf("%v", this.Request) + `,`,
 		`StatsEnabled:` + fmt.Sprintf("%v", this.StatsEnabled) + `,`,
 		`QueuePath:` + fmt.Sprintf("%v", this.QueuePath) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *FrontendToScheduler_HttpRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&FrontendToScheduler_HttpRequest{`,
+		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *FrontendToScheduler_QueryRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&FrontendToScheduler_QueryRequest{`,
 		`QueryRequest:` + strings.Replace(fmt.Sprintf("%v", this.QueryRequest), "QueryRequest", "queryrange.QueryRequest", 1) + `,`,
 		`}`,
 	}, "")
@@ -1747,12 +2069,11 @@ func (m *SchedulerToQuerier) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.HttpRequest == nil {
-				m.HttpRequest = &httpgrpc.HTTPRequest{}
-			}
-			if err := m.HttpRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			v := &httpgrpc.HTTPRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			m.Request = &SchedulerToQuerier_HttpRequest{v}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
@@ -1867,12 +2188,11 @@ func (m *SchedulerToQuerier) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.QueryRequest == nil {
-				m.QueryRequest = &queryrange.QueryRequest{}
-			}
-			if err := m.QueryRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			v := &queryrange.QueryRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			m.Request = &SchedulerToQuerier_QueryRequest{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -2058,12 +2378,11 @@ func (m *FrontendToScheduler) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.HttpRequest == nil {
-				m.HttpRequest = &httpgrpc.HTTPRequest{}
-			}
-			if err := m.HttpRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			v := &httpgrpc.HTTPRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			m.Request = &FrontendToScheduler_HttpRequest{v}
 			iNdEx = postIndex
 		case 6:
 			if wireType != 0 {
@@ -2146,12 +2465,11 @@ func (m *FrontendToScheduler) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.QueryRequest == nil {
-				m.QueryRequest = &queryrange.QueryRequest{}
-			}
-			if err := m.QueryRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			v := &queryrange.QueryRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			m.Request = &FrontendToScheduler_QueryRequest{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

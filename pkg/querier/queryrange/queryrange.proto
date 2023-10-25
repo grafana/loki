@@ -182,4 +182,10 @@ message QueryRequest {
     LokiRequest streams = 5;
     logproto.VolumeRequest volume = 6;
   }
+  repeated Header metadata = 7;
+}
+
+message Header {
+  string key = 1;
+  repeated string values = 2;
 }
