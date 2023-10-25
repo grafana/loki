@@ -104,6 +104,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					newReadRingMock(ringIngesters, 1),
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
+					"loki",
 				)
 				require.NoError(t, err)
 
@@ -203,6 +204,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					newReadRingMock(ringIngesters, 1),
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
+					"loki",
 				)
 				require.NoError(t, err)
 
@@ -300,6 +302,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 				newReadRingMock(testData.ringIngesters, 0),
 				mockQuerierConfig().ExtraQueryDelay,
 				newIngesterClientMockFactory(ingesterClient),
+				"loki",
 			)
 			require.NoError(t, err)
 
@@ -362,6 +365,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0),
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
+			"loki",
 		)
 		require.NoError(t, err)
 
@@ -382,6 +386,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 			newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0),
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
+			"loki",
 		)
 		require.NoError(t, err)
 
