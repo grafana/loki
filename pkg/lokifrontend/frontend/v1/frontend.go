@@ -81,7 +81,7 @@ type request struct {
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
 func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, metricsNamespace string) (*Frontend, error) {
-	queueMetrics := queue.NewMetrics("query_frontend", registerer, "loki")
+	queueMetrics := queue.NewMetrics("query_frontend", registerer, metricsNamespace)
 	f := &Frontend{
 		cfg:          cfg,
 		log:          log,
