@@ -37,7 +37,7 @@ type output struct {
 
 // Fuse combines multiple requests into a single loop iteration
 // over the data set and returns the corresponding outputs
-func (bq *BlockQuerier) Fuse(inputs []Iterator[request]) *FusedQuerier {
+func (bq *BlockQuerier) Fuse(inputs []PeekingIterator[request]) *FusedQuerier {
 	return NewFusedQuerier(bq, inputs)
 }
 
@@ -46,30 +46,34 @@ type FusedQuerier struct {
 	inputs Iterator[[]request]
 }
 
-func NewFusedQuerier(bq *BlockQuerier, inputs []Iterator[request]) *FusedQuerier {
-	// heap := NewHeapIterator[request]()
+func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[request]) *FusedQuerier {
+	heap := NewHeapIterator[request](
+		func(a, b request) bool {
+			return a.fp < b.fp
+		},
+		inputs...,
+	)
+
+	merging := NewDedupingIter[request, []request](
+		func(a request, b []request) bool {
+			return a.fp == b[0].fp
+		},
+		func(a request) []request { return []request{a} },
+		func(a request, b []request) []request {
+			return append(b, a)
+		},
+		NewPeekingIter[request](heap),
+	)
 	return &FusedQuerier{
 		bq:     bq,
-		inputs: nil,
+		inputs: merging,
 	}
 }
 
-// returns a batch of inputs for the next fingerprint
-func (fq *FusedQuerier) nextFP() ([]request, error) {
-	return nil, nil
-}
-
 func (fq *FusedQuerier) Run() error {
-	for {
+	for fq.inputs.Next() {
 		// find all queries for the next relevant fingerprint
-		nextBatch, err := fq.nextFP()
-		if err != nil {
-			return errors.Wrap(err, "getting next fingerprint")
-		}
-
-		if len(nextBatch) == 0 {
-			return nil
-		}
+		nextBatch := fq.inputs.At()
 
 		fp := nextBatch[0].fp
 
@@ -79,12 +83,19 @@ func (fq *FusedQuerier) Run() error {
 		}
 
 		if !fq.bq.series.Next() {
-			// TODO(owen-d): fingerprint not found, can't remove chunks
+			// no more series, we're done since we're iterating desired fingerprints in order
+			return nil
 		}
 
 		series := fq.bq.series.At()
 		if series.Fingerprint != fp {
-			// TODO(owen-d): fingerprint not found, can't remove chunks
+			// fingerprint not found, can't remove chunks
+			for _, input := range nextBatch {
+				input.response <- output{
+					fp:   fp,
+					chks: input.chks,
+				}
+			}
 		}
 
 		// Now that we've found the series, we need to find the unpack the bloom

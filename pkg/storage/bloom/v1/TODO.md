@@ -3,6 +3,10 @@
 * queue access to blooms
 * multiplex reads across blooms
 * Queueing system for bloom access
+* bloom hierarchies (bloom per block, etc). Test a tree of blooms down the to individual series/chunk
+* memoize hashing & bucket lookups during queries
+* encode bloom parameters in block
+
 
 # merge querier for different blocks
 * how to merge two block queriers with the same fp
