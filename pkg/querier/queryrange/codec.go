@@ -288,7 +288,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		return &LokiSeriesRequest{
+		return &logproto.SeriesRequest{
 			Match:   req.Groups,
 			StartTs: req.Start.UTC(),
 			EndTs:   req.End.UTC(),
