@@ -28,8 +28,8 @@ const (
 var (
 	parsedRequest = &PrometheusRequest{
 		Path:  "/api/v1/query_range",
-		Start: 1536673680 * 1e3,
-		End:   1536716898 * 1e3,
+		Start: time.UnixMilli(1536673680 * 1e3),
+		End:   time.UnixMilli(1536716898 * 1e3),
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
@@ -41,8 +41,8 @@ var (
 	}
 	noCacheRequest = &PrometheusRequest{
 		Path:           "/api/v1/query_range",
-		Start:          1536673680 * 1e3,
-		End:            1536716898 * 1e3,
+		Start:          time.UnixMilli(1536673680 * 1e3),
+		End:            time.UnixMilli(1536716898 * 1e3),
 		Step:           120 * 1e3,
 		Query:          "sum(container_memory_rss) by (namespace)",
 		CachingOptions: CachingOptions{Disabled: true},
@@ -278,111 +278,111 @@ func TestShouldCache(t *testing.T) {
 		// @ modifier on vector selectors.
 		{
 			name:     "@ modifier on vector selector, before end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 123", End: 125000},
+			request:  &PrometheusRequest{Query: "metric @ 123", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on vector selector, after end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 127", End: 125000},
+			request:  &PrometheusRequest{Query: "metric @ 127", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector, before end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 151", End: 200000},
+			request:  &PrometheusRequest{Query: "metric @ 151", End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector, after end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ 151", End: 125000},
+			request:  &PrometheusRequest{Query: "metric @ 151", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector with start() before maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ start()", Start: 100000, End: 200000},
+			request:  &PrometheusRequest{Query: "metric @ start()", Start: time.UnixMilli(100000), End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on vector selector with end() after maxCacheTime",
-			request:  &PrometheusRequest{Query: "metric @ end()", Start: 100000, End: 200000},
+			request:  &PrometheusRequest{Query: "metric @ end()", Start: time.UnixMilli(100000), End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		// @ modifier on matrix selectors.
 		{
 			name:     "@ modifier on matrix selector, before end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: 125000},
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on matrix selector, after end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 127)", End: 125000},
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 127)", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector, before end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 200000},
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector, after end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 125000},
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector with start() before maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ start())", Start: 100000, End: 200000},
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ start())", Start: time.UnixMilli(100000), End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on matrix selector with end() after maxCacheTime",
-			request:  &PrometheusRequest{Query: "rate(metric[5m] @ end())", Start: 100000, End: 200000},
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ end())", Start: time.UnixMilli(100000), End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		// @ modifier on subqueries.
 		{
 			name:     "@ modifier on subqueries, before end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: 125000},
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on subqueries, after end, before maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 127)", End: 125000},
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 127)", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries, before end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 200000},
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries, after end, after maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 125000},
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: time.UnixMilli(125000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries with start() before maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ start())", Start: 100000, End: 200000},
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ start())", Start: time.UnixMilli(100000), End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on subqueries with end() after maxCacheTime",
-			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ end())", Start: 100000, End: 200000},
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ end())", Start: time.UnixMilli(100000), End: time.UnixMilli(200000)},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
@@ -408,8 +408,8 @@ func TestPartition(t *testing.T) {
 		{
 			name: "Test a complete hit.",
 			input: &PrometheusRequest{
-				Start: 0,
-				End:   100,
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(100),
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
@@ -422,32 +422,32 @@ func TestPartition(t *testing.T) {
 		{
 			name: "Test with a complete miss.",
 			input: &PrometheusRequest{
-				Start: 0,
-				End:   100,
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(100),
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
-					Start: 0,
-					End:   100,
+					Start: time.UnixMilli(0),
+					End:   time.UnixMilli(100),
 				},
 			},
 		},
 		{
 			name: "Test a partial hit.",
 			input: &PrometheusRequest{
-				Start: 0,
-				End:   100,
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(100),
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(50, 100),
 			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
-					Start: 0,
-					End:   50,
+					Start: time.UnixMilli(0),
+					End:   time.UnixMilli(50),
 				},
 			},
 			expectedCachedResponse: []Response{
@@ -457,8 +457,8 @@ func TestPartition(t *testing.T) {
 		{
 			name: "Test multiple partial hits.",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   200,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(200),
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(50, 120),
@@ -466,8 +466,8 @@ func TestPartition(t *testing.T) {
 			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
-					Start: 120,
-					End:   160,
+					Start: time.UnixMilli(120),
+					End:   time.UnixMilli(160),
 				},
 			},
 			expectedCachedResponse: []Response{
@@ -478,8 +478,8 @@ func TestPartition(t *testing.T) {
 		{
 			name: "Partial hits with tiny gap.",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   160,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(160),
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(50, 120),
@@ -487,8 +487,8 @@ func TestPartition(t *testing.T) {
 			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
-					Start: 120,
-					End:   160,
+					Start: time.UnixMilli(120),
+					End:   time.UnixMilli(160),
 				},
 			},
 			expectedCachedResponse: []Response{
@@ -498,16 +498,16 @@ func TestPartition(t *testing.T) {
 		{
 			name: "Extent is outside the range and the request has a single step (same start and end).",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   100,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(100),
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(50, 90),
 			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
-					Start: 100,
-					End:   100,
+					Start: time.UnixMilli(100),
+					End:   time.UnixMilli(100),
 				},
 			},
 		},
@@ -515,8 +515,8 @@ func TestPartition(t *testing.T) {
 			name: "Test when hit has a large step and only a single sample extent.",
 			// If there is a only a single sample in the split interval, start and end will be the same.
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   100,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(100),
 			},
 			prevCachedResponse: []Extent{
 				mkExtent(100, 100),
@@ -549,8 +549,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should drop tiny extent that overlaps with non-tiny request only",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   120,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(120),
 				Step:  5,
 			},
 			cachedEntry: []Extent{
@@ -570,8 +570,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should replace tiny extents that are cover by bigger request",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   200,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(200),
 				Step:  5,
 			},
 			cachedEntry: []Extent{
@@ -594,8 +594,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should not drop tiny extent that completely overlaps with tiny request",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   105,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(105),
 				Step:  5,
 			},
 			cachedEntry: []Extent{
@@ -609,8 +609,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should not drop tiny extent that partially center-overlaps with tiny request",
 			input: &PrometheusRequest{
-				Start: 106,
-				End:   108,
+				Start: time.UnixMilli(106),
+				End:   time.UnixMilli(108),
 				Step:  2,
 			},
 			cachedEntry: []Extent{
@@ -623,8 +623,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should not drop tiny extent that partially left-overlaps with tiny request",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   106,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(106),
 				Step:  2,
 			},
 			cachedEntry: []Extent{
@@ -641,8 +641,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should not drop tiny extent that partially right-overlaps with tiny request",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   106,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(106),
 				Step:  2,
 			},
 			cachedEntry: []Extent{
@@ -659,8 +659,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should merge fragmented extents if request fills the hole",
 			input: &PrometheusRequest{
-				Start: 40,
-				End:   80,
+				Start: time.UnixMilli(40),
+				End:   time.UnixMilli(80),
 				Step:  20,
 			},
 			cachedEntry: []Extent{
@@ -674,8 +674,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should left-extend extent if request starts earlier than extent in cache",
 			input: &PrometheusRequest{
-				Start: 40,
-				End:   80,
+				Start: time.UnixMilli(40),
+				End:   time.UnixMilli(80),
 				Step:  20,
 			},
 			cachedEntry: []Extent{
@@ -688,8 +688,8 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should right-extend extent if request ends later than extent in cache",
 			input: &PrometheusRequest{
-				Start: 100,
-				End:   180,
+				Start: time.UnixMilli(100),
+				End:   time.UnixMilli(180),
 				Step:  20,
 			},
 			cachedEntry: []Extent{
@@ -704,8 +704,8 @@ func TestHandleHit(t *testing.T) {
 			input: &PrometheusRequest{
 				// This request is carefully crated such that cachedEntry is not used to fulfill
 				// the request.
-				Start: 160,
-				End:   180,
+				Start: time.UnixMilli(160),
+				End:   time.UnixMilli(180),
 				Step:  20,
 			},
 			cachedEntry: []Extent{
@@ -733,7 +733,7 @@ func TestHandleHit(t *testing.T) {
 				merger:            PrometheusCodec,
 				parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
 				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
-					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
+					return mkAPIResponse(req.GetStart().UnixMilli(), req.GetEnd().UnixMilli(), req.GetStep()), nil
 				}),
 			}
 
@@ -741,7 +741,7 @@ func TestHandleHit(t *testing.T) {
 			response, updatedExtents, err := sut.handleHit(ctx, tc.input, tc.cachedEntry, 0)
 			require.NoError(t, err)
 
-			expectedResponse := mkAPIResponse(tc.input.GetStart(), tc.input.GetEnd(), tc.input.GetStep())
+			expectedResponse := mkAPIResponse(tc.input.GetStart().UnixMilli(), tc.input.GetEnd().UnixMilli(), tc.input.GetStep())
 			require.Equal(t, expectedResponse, response, "response does not match the expectation")
 			require.Equal(t, tc.expectedUpdatedCachedEntry, updatedExtents, "updated cache entry does not match the expectation")
 		})
@@ -791,7 +791,7 @@ func TestResultsCache(t *testing.T) {
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing request with new end time should do one more query.
-	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd()+100)
+	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd().Add(100*time.Millisecond))
 	_, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
@@ -820,7 +820,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
+	req := parsedRequest.WithStartEnd(time.Now().Add(-60*1e3*time.Millisecond), time.Now())
 
 	calls := 0
 	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r Request) (Response, error) {
@@ -893,7 +893,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 
 			// create request with start end within the key extents
-			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
+			req := parsedRequest.WithStartEnd(time.UnixMilli(int64(modelNow)-(50*1e3)), time.UnixMilli(int64(modelNow)-(10*1e3)))
 
 			// fill cache
 			key := constSplitter(day).GenerateCacheKey(context.Background(), "1", req)
@@ -972,14 +972,14 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 		interval time.Duration
 		want     string
 	}{
-		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"<30m", &PrometheusRequest{Start: toMs(10 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
-		{"30m", &PrometheusRequest{Start: toMs(30 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
-		{"91m", &PrometheusRequest{Start: toMs(91 * time.Minute), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
-		{"0", &PrometheusRequest{Start: 0, Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"<1d", &PrometheusRequest{Start: toMs(22 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
-		{"4d", &PrometheusRequest{Start: toMs(4 * 24 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
-		{"3d5h", &PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
+		{"0", &PrometheusRequest{Start: time.UnixMilli(0), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
+		{"<30m", &PrometheusRequest{Start: time.UnixMilli(toMs(10 * time.Minute)), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:0"},
+		{"30m", &PrometheusRequest{Start: time.UnixMilli(toMs(30 * time.Minute)), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:1"},
+		{"91m", &PrometheusRequest{Start: time.UnixMilli(toMs(91 * time.Minute)), Step: 10, Query: "foo{}"}, 30 * time.Minute, "fake:foo{}:10:3"},
+		{"0", &PrometheusRequest{Start: time.UnixMilli(0), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
+		{"<1d", &PrometheusRequest{Start: time.UnixMilli(toMs(22 * time.Hour)), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:0"},
+		{"4d", &PrometheusRequest{Start: time.UnixMilli(toMs(4 * 24 * time.Hour)), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:4"},
+		{"3d5h", &PrometheusRequest{Start: time.UnixMilli(toMs(77 * time.Hour)), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {

@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
@@ -145,7 +144,7 @@ type constSplitter time.Duration
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
 func (t constSplitter) GenerateCacheKey(_ context.Context, userID string, r Request) string {
-	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
+	currentInterval := r.GetStart().UnixMilli() / int64(time.Duration(t)/time.Millisecond)
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
@@ -237,7 +236,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	sp.LogKV(
 		"query", r.GetQuery(),
 		"step", time.UnixMilli(r.GetStep()),
-		"start", time.UnixMilli(r.GetStart()),
+		"start", r.GetStart(),
 		"end", r.GetEnd(),
 		"key", key,
 	)
@@ -245,7 +244,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	if r.GetStart() > maxCacheTime {
+	if r.GetStart().UnixMilli() > maxCacheTime {
 		return s.next.Do(ctx, r)
 	}
 
@@ -338,9 +337,9 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	}
 
 	// This resolves the start() and end() used with the @ modifier.
-	expr = promql.PreprocessExpr(expr, timestamp.Time(r.GetStart()), timestamp.Time(r.GetEnd()))
+	expr = promql.PreprocessExpr(expr, r.GetStart(), r.GetEnd())
 
-	end := r.GetEnd()
+	end := r.GetEnd().UnixMilli()
 	atModCachable := true
 	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
 		switch e := n.(type) {
@@ -533,8 +532,8 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 		return Extent{}, err
 	}
 	return Extent{
-		Start:    req.GetStart(),
-		End:      req.GetEnd(),
+		Start:    req.GetStart().UnixMilli(),
+		End:      req.GetEnd().UnixMilli(),
 		Response: anyResp,
 		TraceId:  jaegerTraceID(ctx),
 	}, nil
@@ -545,11 +544,12 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Response, error) {
 	var requests []Request
 	var cachedResponses []Response
-	start := req.GetStart()
+	start := req.GetStart().UnixMilli()
+	end := req.GetEnd().UnixMilli()
 
 	for _, extent := range extents {
 		// If there is no overlap, ignore this extent.
-		if extent.GetEnd() < start || extent.Start > req.GetEnd() {
+		if extent.GetEnd() < start || extent.Start > end {
 			continue
 		}
 
@@ -559,13 +559,13 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		// However if the step is large enough, the split_query_by_interval middleware would generate a query with same start and end.
 		// For example, if the step size is more than 12h and the interval is 24h.
 		// This means the extent's start and end time would be same, even if the timerange covers several hours.
-		if (req.GetStart() != req.GetEnd()) && (req.GetEnd()-req.GetStart() > s.minCacheExtent) && (extent.End-extent.Start < s.minCacheExtent) {
+		if (req.GetStart() != req.GetEnd()) && ((end - start) > s.minCacheExtent) && (extent.End-extent.Start < s.minCacheExtent) {
 			continue
 		}
 
 		// If there is a bit missing at the front, make a request for that.
 		if start < extent.Start {
-			r := req.WithStartEnd(start, extent.Start)
+			r := req.WithStartEnd(time.UnixMilli(start), time.UnixMilli(extent.Start))
 			requests = append(requests, r)
 		}
 		res, err := extent.toResponse()
@@ -573,13 +573,13 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res, extent.GetStart(), extent.GetEnd()))
+		cachedResponses = append(cachedResponses, s.extractor.Extract(start, end, res, extent.GetStart(), extent.GetEnd()))
 		start = extent.End
 	}
 
 	// Lastly, make a request for any data missing at the end.
-	if start < req.GetEnd() {
-		r := req.WithStartEnd(start, req.GetEnd())
+	if start < req.GetEnd().UnixMilli() {
+		r := req.WithStartEnd(time.UnixMilli(start), time.UnixMilli(end))
 		requests = append(requests, r)
 	}
 
