@@ -82,7 +82,7 @@ type streamLineSampleExtractor struct {
 
 func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	l.builder.Reset()
-	l.builder.Add(structuredMetadata...)
+	l.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 
 	// short circuit.
 	if l.Stage == NoopStage {
@@ -174,7 +174,7 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
-	l.builder.Add(structuredMetadata...)
+	l.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	line, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false

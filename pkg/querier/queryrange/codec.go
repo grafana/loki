@@ -378,6 +378,14 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		}
 	}
 
+	// If there is not encoding flags in the context, we try the HTTP request.
+	if encFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx); encFlags == nil {
+		encFlags = httpreq.ExtractEncodingFlagsFromProto(r)
+		if encFlags != nil {
+			ctx = httpreq.AddEncodingFlagsToContext(ctx, encFlags)
+		}
+	}
+
 	if err := httpReq.ParseForm(); err != nil {
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -500,7 +508,9 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 	version := loghttp.GetVersion(req.Url)
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(version, res, &buf)
+	encodingFlags := httpreq.ExtractEncodingFlagsFromProto(req)
+
+	err := encodeResponseJSONTo(version, res, &buf, encodingFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -519,6 +529,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
+	}
+
+	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
+	if encodingFlags != "" {
+		header.Set(httpreq.LokiEncodingFlagsHeader, encodingFlags)
 	}
 
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
@@ -912,15 +927,16 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 
 	// Default to JSON.
 	version := loghttp.GetVersion(req.RequestURI)
-	return encodeResponseJSON(ctx, version, res)
+	encodingFlags := httpreq.ExtractEncodingFlags(req)
+	return encodeResponseJSON(ctx, version, res, encodingFlags)
 }
 
-func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response) (*http.Response, error) {
+func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(version, res, &buf)
+	err := encodeResponseJSONTo(version, res, &buf, encodeFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -937,7 +953,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	return &resp, nil
 }
 
-func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, w io.Writer) error {
+func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	switch response := res.(type) {
 	case *LokiPromResponse:
 		return response.encodeTo(w)
@@ -959,7 +975,7 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 				return err
 			}
 		} else {
-			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Statistics, w); err != nil {
+			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Statistics, w, encodeFlags); err != nil {
 				return err
 			}
 		}
