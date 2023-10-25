@@ -460,7 +460,7 @@ type SemaphoreWithTiming struct {
 
 func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
 	return &SemaphoreWithTiming{
-		sem: semaphore.NewWeighted(int64(max)),
+		sem: semaphore.NewWeighted(max),
 	}
 }
 
@@ -468,7 +468,7 @@ func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
 func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (time.Duration, error) {
 	start := time.Now()
 
-	if err := s.sem.Acquire(ctx, int64(n)); err != nil {
+	if err := s.sem.Acquire(ctx, n); err != nil {
 		return 0, err
 	}
 
