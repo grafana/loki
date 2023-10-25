@@ -477,14 +477,22 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	// monitoring the contexts in a select and cancel things appropriately.
 	errCh := make(chan error, 1)
 	go func() {
-		err := querier.Send(&schedulerpb.SchedulerToQuerier{
+		msg := &schedulerpb.SchedulerToQuerier{
 			UserID:          req.tenantID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
-			HttpRequest:     req.request,
+			Request:         &schedulerpb.SchedulerToQuerier_HttpRequest{
+				HttpRequest: req.request,
+			},
 			StatsEnabled:    req.statsEnabled,
-			QueryRequest:    req.queryRequest,
-		})
+		}
+		// Override HttpRequest if new request type is set.
+		if req.queryRequest != nil {
+			msg.Request = &schedulerpb.SchedulerToQuerier_HttpRequest{
+				HttpRequest: req.request,
+			}
+		}
+		err := querier.Send(msg)
 		if err != nil {
 			errCh <- err
 			return
@@ -538,9 +546,11 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 	userCtx := user.InjectOrgID(ctx, req.tenantID)
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
-		HttpResponse: &httpgrpc.HTTPResponse{
-			Code: http.StatusInternalServerError,
-			Body: []byte(requestErr.Error()),
+		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
+			HttpResponse: &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(requestErr.Error()),
+			},
 		},
 	})
 

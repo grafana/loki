@@ -87,7 +87,9 @@ func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, quer
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, _ = f.QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 		QueryID:      queryID,
-		HttpResponse: resp,
+		Response:     &frontendv2pb.QueryResultRequest_HttpResponse{
+			HttpResponse: resp,
+		},
 		Stats:        &stats.Stats{},
 	})
 }

@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -249,12 +250,17 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
-			stats := stats.FromContext(ctx)
-			stats.Merge(resp.Stats) // Safe if stats is nil.
-		}
+		switch concrete := resp.Response.(type) {
+		case *frontendv2pb.QueryResultRequest_HttpResponse:
+			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 
-		return resp.HttpResponse, nil
+			return concrete.HttpResponse, nil
+		default:
+			return nil, fmt.Errorf("unsupported response type for roundtrip: %T", resp.Response)
+		}
 	}
 }
 
@@ -318,12 +324,21 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
-			stats := stats.FromContext(ctx)
-			stats.Merge(resp.Stats) // Safe if stats is nil.
-		}
+		switch concrete := resp.Response.(type) {
+		case *frontendv2pb.QueryResultRequest_HttpResponse:
+			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 
-		return f.codec.DecodeHTTPGrpcResponse(resp.HttpResponse, req)
+			return f.codec.DecodeHTTPGrpcResponse(concrete.HttpResponse, req)
+		case *frontendv2pb.QueryResultRequest_QueryResponse:
+			// TODO: check if it should be tracked
+
+			return queryrange.QueryResponseUnwrap(concrete.QueryResponse)
+		default:
+			return nil, fmt.Errorf("unexpected frontend v2 response type: %T", concrete)
+		}
 	}
 }
 

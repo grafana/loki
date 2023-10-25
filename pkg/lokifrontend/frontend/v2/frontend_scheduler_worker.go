@@ -283,15 +283,18 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			return nil
 
 		case req := <-w.requestCh:
-			err := loop.Send(&schedulerpb.FrontendToScheduler{
+			msg := &schedulerpb.FrontendToScheduler{
 				Type:            schedulerpb.ENQUEUE,
 				QueryID:         req.queryID,
 				UserID:          req.tenantID,
 				QueuePath:       req.actor,
-				HttpRequest:     req.request,
+				Request: &schedulerpb.FrontendToScheduler_HttpRequest{
+					HttpRequest: req.request,
+				},
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,
-			})
+			}
+			err := loop.Send(msg)
 			if err != nil {
 				req.enqueue <- enqueueResult{status: failed}
 				return err

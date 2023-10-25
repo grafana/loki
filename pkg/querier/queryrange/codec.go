@@ -289,10 +289,10 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		return &logproto.SeriesRequest{
-			Match:   req.Groups,
-			StartTs: req.Start.UTC(),
-			EndTs:   req.End.UTC(),
-			Path:    r.URL.Path,
+			Groups:   req.Groups,
+			Start: req.Start.UTC(),
+			End:   req.End.UTC(),
+			//Path:    r.URL.Path,
 			Shards:  req.Shards,
 		}, nil
 	case LabelNamesOp:
@@ -1492,6 +1492,7 @@ func getQueryTags(ctx context.Context) string {
 
 func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error) {
 	switch req := r.(type) {
+	// TODO: replace with logproto.SeriesRequest
 	case *LokiSeriesRequest:
 		return &LokiSeriesResponse{
 			Status:  loghttp.QueryStatusSuccess,
