@@ -14,9 +14,11 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,7 +27,9 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -77,7 +81,12 @@ type Frontend struct {
 
 	schedulerWorkers *frontendSchedulerWorkers
 	requests         *requestsInProgress
+
+	codec transport.Codec
 }
+
+var _ queryrangebase.Handler = &Frontend{}
+var _ transport.GrpcRoundTripper = &Frontend{}
 
 type frontendRequest struct {
 	queryID      uint64
@@ -109,7 +118,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer, codec transport.Codec) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), ring, requestsCh, log)
@@ -123,6 +132,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,
 		requests:         newRequestsInProgress(),
+		codec:            codec,
 	}
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
 	// between different queries. Note that frontend verifies the user, so it cannot leak results between tenants.
@@ -219,32 +229,10 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		response: make(chan *frontendv2pb.QueryResultRequest, 1),
 	}
 
-	f.requests.put(freq)
+	cancelCh, err := f.enqueue(ctx, freq)
 	defer f.requests.delete(freq.queryID)
-
-	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
-
-enqueueAgain:
-	var cancelCh chan<- uint64
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-
-	case f.requestsCh <- freq:
-		// Enqueued, let's wait for response.
-		enqRes := <-freq.enqueue
-
-		if enqRes.status == waitForResponse {
-			cancelCh = enqRes.cancelCh
-			break // go wait for response.
-		} else if enqRes.status == failed {
-			retries--
-			if retries > 0 {
-				goto enqueueAgain
-			}
-		}
-
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
+	if err != nil {
+		return nil, err
 	}
 
 	select {
@@ -268,6 +256,106 @@ enqueueAgain:
 
 		return resp.HttpResponse, nil
 	}
+}
+
+// Do implements queryrangebase.Handler analogous to RoundTripGRPC.
+func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tenantID := tenant.JoinTenantIDs(tenantIDs)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// For backwards comaptibility we are sending both encodings
+	httpReq, err := f.codec.EncodeRequest(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
+	}
+
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	httpgrpcReq, err := server.HTTPRequest(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert HTTP request to gRPC request: %w", err)
+	}
+
+	freq := &frontendRequest{
+		queryID:      f.lastQueryID.Inc(),
+		request:      httpgrpcReq,
+		tenantID:     tenantID,
+		actor:        httpreq.ExtractActorPath(ctx),
+		statsEnabled: stats.IsEnabled(ctx),
+
+		cancel: cancel,
+
+		// Buffer of 1 to ensure response or error can be written to the channel
+		// even if this goroutine goes away due to client context cancellation.
+		enqueue:  make(chan enqueueResult, 1),
+		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+	}
+
+	cancelCh, err := f.enqueue(ctx, freq)
+	defer f.requests.delete(freq.queryID)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-ctx.Done():
+		if cancelCh != nil {
+			select {
+			case cancelCh <- freq.queryID:
+				// cancellation sent.
+			default:
+				// failed to cancel, ignore.
+				level.Warn(f.log).Log("msg", "failed to send cancellation request to scheduler, queue full")
+			}
+		}
+		return nil, ctx.Err()
+
+	case resp := <-freq.response:
+		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+			stats := stats.FromContext(ctx)
+			stats.Merge(resp.Stats) // Safe if stats is nil.
+		}
+
+		return f.codec.DecodeHTTPGrpcResponse(resp.HttpResponse, req)
+	}
+}
+
+func (f *Frontend) enqueue(ctx context.Context, freq *frontendRequest) (chan<- uint64, error) {
+	f.requests.put(freq)
+
+	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
+
+enqueueAgain:
+	var cancelCh chan<- uint64
+	select {
+	case <-ctx.Done():
+		return cancelCh, ctx.Err()
+
+	case f.requestsCh <- freq:
+		// Enqueued, let's wait for response.
+		enqRes := <-freq.enqueue
+
+		if enqRes.status == waitForResponse {
+			cancelCh = enqRes.cancelCh
+			break // go wait for response.
+		} else if enqRes.status == failed {
+			retries--
+			if retries > 0 {
+				goto enqueueAgain
+			}
+		}
+
+		return cancelCh, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
+	}
+
+	return cancelCh, nil
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {

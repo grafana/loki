@@ -16,7 +16,7 @@ message FilterChunkRefRequest {
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
-  repeated logproto.ChunkRef refs = 3;
+  repeated GroupedChunkRefs refs = 3;
   repeated logproto.LineFilterExpression filters = 4;
 }
 

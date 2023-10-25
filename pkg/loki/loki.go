@@ -59,6 +59,7 @@ import (
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -311,18 +312,20 @@ type Loki struct {
 	runtimeConfig             *runtimeconfig.Manager
 	MemberlistKV              *memberlist.KVInitService
 	compactor                 *compactor.Compactor
-	QueryFrontEndTripperware  queryrangebase.Tripperware
+	QueryFrontEndMiddleware   queryrangebase.Middleware
 	queryScheduler            *scheduler.Scheduler
-	querySchedulerRingManager *scheduler.RingManager
+	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
-	indexGatewayRingManager   *indexgateway.RingManager
-	bloomCompactorRingManager *bloomcompactor.RingManager
-	bloomGatewayRingManager   *bloomgateway.RingManager
+	indexGatewayRingManager   *lokiring.RingManager
+	bloomCompactorRingManager *lokiring.RingManager
+	bloomGatewayRingManager   *lokiring.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
+
+	Codec worker.GRPCCodec
 }
 
 // New makes a new Loki.
@@ -587,7 +590,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
-	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -650,25 +653,16 @@ func (t *Loki) setupModuleManager() error {
 		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
 		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
-		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
+
+		// This module is defunct but the target remains for backwards compatibility.
+		mm.RegisterModule(QueryLimitsTripperware, func() (services.Service, error) { return nil, nil }, modules.UserInvisibleModule)
 
 		// Ensure query limiter embeds overrides after they've been
 		// created.
 		deps[QueryLimiter] = []string{Overrides}
 		deps[QueryLimitsInterceptors] = []string{}
 
-		// Ensure query limits tripperware embeds the query frontend
-		// tripperware after it's been created. Any additional
-		// middleware/tripperware you want to add to the querier or
-		// frontend must happen inject a dependence on the query limits
-		// tripperware.
-		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
-
 		deps[Querier] = append(deps[Querier], QueryLimiter)
-
-		// The frontend receives a tripperware. Make sure it uses the
-		// wrapped one.
-		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
 
 		// query frontend tripperware uses t.Overrides. Make sure it
 		// uses the one wrapped by query limiter.

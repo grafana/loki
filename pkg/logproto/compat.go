@@ -319,3 +319,7 @@ func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("end", timestamp.Time(m.GetEnd()).String()),
 	)
 }
+
+func (*VolumeResponse) GetHeaders() []*definitions.PrometheusResponseHeader {
+	return nil
+}
