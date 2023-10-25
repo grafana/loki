@@ -605,8 +605,8 @@ func NewMetricTripperware(
 					tenantIDs,
 					schema.Configs,
 					limits,
-					model.Time(r.GetStart()),
-					model.Time(r.GetEnd()),
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
 				)
 			},
 			retentionEnabled,
@@ -775,8 +775,8 @@ func NewVolumeTripperware(
 					tenantIDs,
 					schema.Configs,
 					limits,
-					model.Time(r.GetStart()),
-					model.Time(r.GetEnd()),
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
 				)
 			},
 			retentionEnabled,
@@ -876,8 +876,8 @@ func NewIndexStatsTripperware(
 					tenantIDs,
 					schema.Configs,
 					limits,
-					model.Time(r.GetStart()),
-					model.Time(r.GetEnd()),
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
 				)
 			},
 			retentionEnabled,
