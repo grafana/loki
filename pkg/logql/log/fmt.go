@@ -76,6 +76,7 @@ var (
 	templateFunctions = []string{
 		"b64enc",
 		"b64dec",
+		"decryptAES",
 		"lower",
 		"upper",
 		"title",

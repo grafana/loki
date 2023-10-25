@@ -788,6 +788,24 @@ Examples:
 `{{ b64dec  .foo }}`
 ```
 
+## decryptAES
+
+Decrypts a base64-encoded AES-256 CBC encrypted payload. The encoded payload bytes **must** have the following format
+for successful decryption:
+* bytes \[0:16\]: 16-byte IV (initialization vector)
+* bytes \[16:\]: ciphertext
+
+Additionally, only the first 32 bytes of the key will be used. Keys shorter than 32 bytes will be padded with NUL bytes. 
+
+Signature: `decryptAES(key string, crypt64 string) string`
+
+Examples:
+
+```template
+"{{ `30tEfhuJSVRhpG97XCuWgz2okj7L8vQ1s6V9zVUPeDQ=` | decryptAES `secretkey` }}"
+"{{ decryptAES `secretkey` `30tEfhuJSVRhpG97XCuWgz2okj7L8vQ1s6V9zVUPeDQ=` }}"
+```
+
 ## bytes
 
 Convert a humanized byte string to bytes using [go-humanize](https://pkg.go.dev/github.com/dustin/go-humanize#ParseBytes)
