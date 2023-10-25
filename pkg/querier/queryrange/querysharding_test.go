@@ -85,10 +85,7 @@ var (
 )
 
 func Test_shardSplitter(t *testing.T) {
-	req := defaultReq().WithStartEnd(
-		util.TimeToMillis(start),
-		util.TimeToMillis(end),
-	)
+	req := defaultReq().WithStartEnd(start, end)
 
 	for _, tc := range []struct {
 		desc        string

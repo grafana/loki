@@ -363,7 +363,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 	}
 	end := time.Unix(0, endNs)
 
-	lokiReq = lokiReq.WithStartEnd(util.TimeToMillis(start), util.TimeToMillis(end)).(*LokiRequest)
+	lokiReq = lokiReq.WithStartEnd(start, end).(*LokiRequest)
 
 	// step is >= configured split interval, let us just split the query interval by step
 	if lokiReq.Step >= interval.Milliseconds() {

@@ -15,14 +15,15 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // StatusSuccess Prometheus success result.
@@ -49,10 +50,10 @@ var (
 type prometheusCodec struct{}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
-func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
+func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
 	clone := *q
-	clone.Start = time.UnixMilli(start)
-	clone.End = time.UnixMilli(end)
+	clone.Start = start
+	clone.End = end
 	return &clone
 }
 
@@ -150,6 +151,10 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 		return nil, decorateWithParamName(err, "end")
 	}
 	result.End = time.UnixMilli(ts)
+
+	if result.End.Before(result.Start) {
+		return nil, errEndBeforeStart
+	}
 
 	result.Step, err = parseDurationMs(r.FormValue("step"))
 	if err != nil {

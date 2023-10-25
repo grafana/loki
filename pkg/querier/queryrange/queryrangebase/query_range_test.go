@@ -39,10 +39,10 @@ func TestRequest(t *testing.T) {
 			url:         "api/v1/query_range?start=123&end=bar",
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid timestamp"),
 		},
-		//{ // not sure why this fails now, there should be a default step?
-		//	url:         "api/v1/query_range?start=123&end=0",
-		//	expectedErr: errEndBeforeStart,
-		//},
+		{
+			url:         "api/v1/query_range?start=123&end=0",
+			expectedErr: errEndBeforeStart,
+		},
 		{
 			url:         "api/v1/query_range?start=123&end=456&step=baz",
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"step\"; cannot parse \"baz\" to a valid duration"),

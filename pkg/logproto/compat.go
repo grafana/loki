@@ -253,10 +253,10 @@ func (m *IndexStatsRequest) GetQuery() string {
 func (m *IndexStatsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
-func (m *IndexStatsRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
+func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
-	clone.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
-	clone.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
 	return &clone
 }
 
@@ -297,10 +297,10 @@ func (m *VolumeRequest) GetQuery() string {
 func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
-func (m *VolumeRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
+func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
-	clone.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
-	clone.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
 	return &clone
 }
 

@@ -56,8 +56,8 @@ func (r *LokiRequest) GetStart() time.Time {
 
 func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
 	clone := *r
-	clone.StartTs = s 
-	clone.EndTs = e 
+	clone.StartTs = s
+	clone.EndTs = e
 	return &clone
 }
 
@@ -107,9 +107,9 @@ func (r *LokiInstantRequest) GetStart() time.Time {
 	return r.TimeTs
 }
 
-func (r *LokiInstantRequest) WithStartEnd(s int64, _ int64) queryrangebase.Request {
+func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangebase.Request {
 	clone := *r
-	clone.TimeTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.TimeTs = s
 	return &clone
 }
 
@@ -145,10 +145,10 @@ func (r *LokiSeriesRequest) GetStart() time.Time {
 	return r.StartTs //.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
-func (r *LokiSeriesRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
+func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	clone.StartTs = s
+	clone.EndTs = e
 	return &clone
 }
 
@@ -219,11 +219,11 @@ func (r *LabelRequest) GetStep() int64 {
 	return 0
 }
 
-func (r *LabelRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
+func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	tmp := time.Unix(0, s*int64(time.Millisecond))
+	tmp := s
 	clone.Start = &tmp
-	tmp = time.Unix(0, e*int64(time.Millisecond))
+	tmp = e
 	clone.End = &tmp
 	return &clone
 }

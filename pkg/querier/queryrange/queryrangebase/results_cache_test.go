@@ -791,7 +791,7 @@ func TestResultsCache(t *testing.T) {
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing request with new end time should do one more query.
-	req := parsedRequest.WithStartEnd(parsedRequest.GetStart().UnixMilli(), parsedRequest.GetEnd().UnixMilli()+100)
+	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd().Add(100*time.Millisecond))
 	_, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
@@ -820,7 +820,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
+	req := parsedRequest.WithStartEnd(time.Now().Add(-60*1e3*time.Millisecond), time.Now())
 
 	calls := 0
 	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r Request) (Response, error) {
@@ -893,7 +893,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 
 			// create request with start end within the key extents
-			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
+			req := parsedRequest.WithStartEnd(time.UnixMilli(int64(modelNow)-(50*1e3)), time.UnixMilli(int64(modelNow)-(10*1e3)))
 
 			// fill cache
 			key := constSplitter(day).GenerateCacheKey(context.Background(), "1", req)
