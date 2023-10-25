@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
@@ -24,8 +25,9 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		version := loghttp.GetVersion(r.RequestURI)
+		encodeFlags := httpreq.ExtractEncodingFlags(r)
 		if version == loghttp.VersionV1 {
-			return WriteQueryResponseJSON(result.Data, result.Statistics, w)
+			return WriteQueryResponseJSON(result.Data, result.Statistics, w, encodeFlags)
 		}
 
 		return marshal_legacy.WriteQueryResponseJSON(result, w)
@@ -48,10 +50,10 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(data parser.Value, statistics stats.Result, w io.Writer) error {
+func WriteQueryResponseJSON(data parser.Value, statistics stats.Result, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
-	err := EncodeResult(data, statistics, s)
+	err := EncodeResult(data, statistics, s, encodeFlags)
 	if err != nil {
 		return fmt.Errorf("could not write JSON response: %w", err)
 	}
