@@ -1,9 +1,7 @@
 package gcplog_test
 
 import (
-	"flag"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -14,7 +12,6 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -162,7 +159,7 @@ func TestPushTarget(t *testing.T) {
 			eh := fake.New(func() {})
 			defer eh.Stop()
 
-			serverConfig, port, err := getServerConfigWithAvailablePort()
+			serverConfig, port, err := gcplog.GetServerConfigWithAvailablePort()
 			require.NoError(t, err, "error generating server config or finding open port")
 			config := &scrapeconfig.GcplogTargetConfig{
 				Server:               serverConfig,
@@ -224,7 +221,7 @@ func TestPushTarget_UseIncomingTimestamp(t *testing.T) {
 	eh := fake.New(func() {})
 	defer eh.Stop()
 
-	serverConfig, port, err := getServerConfigWithAvailablePort()
+	serverConfig, port, err := gcplog.GetServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
 	config := &scrapeconfig.GcplogTargetConfig{
 		Server:               serverConfig,
@@ -268,7 +265,7 @@ func TestPushTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 	eh := fake.New(func() {})
 	defer eh.Stop()
 
-	serverConfig, port, err := getServerConfigWithAvailablePort()
+	serverConfig, port, err := gcplog.GetServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
 	config := &scrapeconfig.GcplogTargetConfig{
 		Server:               serverConfig,
@@ -321,7 +318,7 @@ func TestPushTarget_ErroneousPayloadsAreRejected(t *testing.T) {
 	eh := fake.New(func() {})
 	defer eh.Stop()
 
-	serverConfig, port, err := getServerConfigWithAvailablePort()
+	serverConfig, port, err := gcplog.GetServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
 	config := &scrapeconfig.GcplogTargetConfig{
 		Server:           serverConfig,
@@ -401,7 +398,7 @@ func TestPushTarget_UsePushTimeout(t *testing.T) {
 	eh := newBlockingEntryHandler()
 	defer eh.Stop()
 
-	serverConfig, port, err := getServerConfigWithAvailablePort()
+	serverConfig, port, err := gcplog.GetServerConfigWithAvailablePort()
 	require.NoError(t, err, "error generating server config or finding open port")
 	config := &scrapeconfig.GcplogTargetConfig{
 		Server:               serverConfig,
@@ -441,30 +438,4 @@ func waitForMessages(eh *fake.Client) {
 		time.Sleep(1 * time.Millisecond)
 		countdown--
 	}
-}
-
-func getServerConfigWithAvailablePort() (cfg server.Config, port int, err error) {
-	// Get a randomly available port by open and closing a TCP socket
-	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
-	if err != nil {
-		return
-	}
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return
-	}
-	port = l.Addr().(*net.TCPAddr).Port
-	err = l.Close()
-	if err != nil {
-		return
-	}
-
-	// Adjust some of the defaults
-	cfg.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
-	cfg.HTTPListenAddress = localhost
-	cfg.HTTPListenPort = port
-	cfg.GRPCListenAddress = localhost
-	cfg.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
-
-	return
 }

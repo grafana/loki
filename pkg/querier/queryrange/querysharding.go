@@ -36,7 +36,6 @@ func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
 	engineOpts logql.EngineOpts,
-	_ queryrangebase.Codec,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
@@ -204,7 +203,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	params, err := paramsFromRequest(r)
+	params, err := ParamsFromRequest(r)
 	if err != nil {
 		return nil, err
 	}

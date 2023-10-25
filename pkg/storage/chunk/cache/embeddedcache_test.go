@@ -64,14 +64,11 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 
 		reason := fullReason
 
-		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
-		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(0))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 		for i := 0; i < cnt; i++ {
@@ -81,14 +78,11 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 			require.Equal(t, []byte(key), value)
 		}
 
-		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
-		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 		// Check evictions
@@ -105,14 +99,11 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, c.entries, cnt)
 
-		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
-		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 		for i := 0; i < cnt-evicted; i++ {
@@ -126,14 +117,11 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 			require.Equal(t, []byte(key), value)
 		}
 
-		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
-		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+evicted))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 		// Check updates work
@@ -156,14 +144,11 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 			require.Equal(t, []byte(fmt.Sprintf("%02d", i*2)), value)
 		}
 
-		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(3))
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
-		assert.Equal(t, testutil.ToFloat64(c.totalGets), float64(cnt*2+evicted*2))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 		c.Stop()
@@ -197,15 +182,12 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	_, ok = c.Get(ctx, key1)
 	require.False(t, ok)
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesAdded))
 	assert.Equal(t, float64(4), testutil.ToFloat64(c.entriesAddedNew))
 	assert.Equal(t, float64(0), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(expiredReason)))
 	assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(fullReason)))
 	assert.Equal(t, float64(3), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(len(c.entries)), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))
-	assert.Equal(t, float64(2), testutil.ToFloat64(c.totalGets))
-	assert.Equal(t, float64(1), testutil.ToFloat64(c.totalMisses))
 	assert.Equal(t, float64(memorySz), testutil.ToFloat64(c.memoryBytes))
 
 	// Expire the item.
@@ -213,15 +195,12 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	_, ok = c.Get(ctx, key4)
 	require.False(t, ok)
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesAdded))
 	assert.Equal(t, float64(4), testutil.ToFloat64(c.entriesAddedNew))
 	assert.Equal(t, float64(3), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(expiredReason)))
 	assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(fullReason)))
 	assert.Equal(t, float64(0), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(len(c.entries)), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))
-	assert.Equal(t, float64(3), testutil.ToFloat64(c.totalGets))
-	assert.Equal(t, float64(2), testutil.ToFloat64(c.totalMisses))
 	assert.Equal(t, float64(memorySz), testutil.ToFloat64(c.memoryBytes))
 
 	c.Stop()

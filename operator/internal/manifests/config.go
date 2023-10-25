@@ -259,19 +259,31 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 }
 
 func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, replication *lokiv1.ReplicationSpec) config.GossipRing {
-	var instanceAddr string
+	var (
+		instanceAddr string
+		enableIPv6   bool
+	)
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
-			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+			instanceAddr = gossipInstanceAddrEnvVarTemplate
 		case lokiv1.InstanceAddrDefault:
 			// Do nothing use loki defaults
 		default:
 			// Do nothing use loki defaults
 		}
+
+		// Always default to use the pod IP address when IPv6 enabled to ensure:
+		// - On Single Stack IPv6: Skip interface checking
+		// - On Dual Stack IPv4/6: Eliminate duplicate memberlist node registration
+		if spec.MemberList.EnableIPv6 {
+			enableIPv6 = true
+			instanceAddr = gossipInstanceAddrEnvVarTemplate
+		}
 	}
 
 	return config.GossipRing{
+		EnableIPv6:                     enableIPv6,
 		InstanceAddr:                   instanceAddr,
 		InstancePort:                   grpcPort,
 		BindPort:                       gossipPort,

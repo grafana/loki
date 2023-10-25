@@ -25,18 +25,19 @@ const (
 
 	maxErrMsgLen = 1024
 
-	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
+	invalidExtraLabelsError = "invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
 )
 
 var (
-	writeAddress                                              *url.URL
-	username, password, extraLabelsRaw, tenantID, bearerToken string
-	keepStream                                                bool
-	batchSize                                                 int
-	s3Clients                                                 map[string]*s3.Client
-	extraLabels                                               model.LabelSet
-	skipTlsVerify                                             bool
-	printLogLine                                              bool
+	writeAddress                                                             *url.URL
+	username, password, extraLabelsRaw, dropLabelsRaw, tenantID, bearerToken string
+	keepStream                                                               bool
+	batchSize                                                                int
+	s3Clients                                                                map[string]*s3.Client
+	extraLabels                                                              model.LabelSet
+	dropLabels                                                               []model.LabelName
+	skipTlsVerify                                                            bool
+	printLogLine                                                             bool
 )
 
 func setupArguments() {
@@ -56,6 +57,11 @@ func setupArguments() {
 	omitExtraLabelsPrefix := os.Getenv("OMIT_EXTRA_LABELS_PREFIX")
 	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
 	extraLabels, err = parseExtraLabels(extraLabelsRaw, strings.EqualFold(omitExtraLabelsPrefix, "true"))
+	if err != nil {
+		panic(err)
+	}
+
+	dropLabels, err = getDropLabels()
 	if err != nil {
 		panic(err)
 	}
@@ -128,8 +134,30 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 	return extractedLabels, nil
 }
 
-func applyExtraLabels(labels model.LabelSet) model.LabelSet {
-	return labels.Merge(extraLabels)
+func getDropLabels() ([]model.LabelName, error) {
+	var result []model.LabelName
+
+	dropLabelsRaw = os.Getenv("DROP_LABELS")
+	dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
+	for _, dropLabelRaw := range dropLabelsRawSplit {
+		dropLabel := model.LabelName(dropLabelRaw)
+		if !dropLabel.IsValid() {
+			return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
+		}
+		result = append(result, dropLabel)
+	}
+
+	return result, nil
+}
+
+func applyLabels(labels model.LabelSet) model.LabelSet {
+	finalLabels := labels.Merge(extraLabels)
+
+	for _, dropLabel := range dropLabels {
+		delete(finalLabels, dropLabel)
+	}
+
+	return finalLabels
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {

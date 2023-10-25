@@ -373,7 +373,6 @@ Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs
 
 There are a few things coming to increase the robustness of this service. In no particular order:
 
-- WAL for recording rule.
 - Backend metric stores adapters for generated alert rule data.
 
 ## Misc Details: Metrics backends vs in-memory

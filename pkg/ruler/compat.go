@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 
@@ -343,7 +344,7 @@ type exprAdapter struct {
 	syntax.Expr
 }
 
-func (exprAdapter) PositionRange() parser.PositionRange { return parser.PositionRange{} }
-func (exprAdapter) PromQLExpr()                         {}
-func (exprAdapter) Type() parser.ValueType              { return parser.ValueType("unimplemented") }
-func (exprAdapter) Pretty(_ int) string                 { return "" }
+func (exprAdapter) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
+func (exprAdapter) PromQLExpr()                           {}
+func (exprAdapter) Type() parser.ValueType                { return parser.ValueType("unimplemented") }
+func (exprAdapter) Pretty(_ int) string                   { return "" }

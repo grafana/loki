@@ -82,11 +82,11 @@ var (
 	}
 )
 
-func getWriterPool(enc Encoding) WriterPool {
-	return getReaderPool(enc).(WriterPool)
+func GetWriterPool(enc Encoding) WriterPool {
+	return GetReaderPool(enc).(WriterPool)
 }
 
-func getReaderPool(enc Encoding) ReaderPool {
+func GetReaderPool(enc Encoding) ReaderPool {
 	switch enc {
 	case EncGZIP:
 		return &Gzip

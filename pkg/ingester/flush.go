@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -47,10 +48,18 @@ func (i *Ingester) InitFlushQueues() {
 	}
 }
 
+// Flush implements ring.FlushTransferer
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
 	i.flush(true)
+}
+
+// TransferOut implements ring.FlushTransferer
+// Noop implemenetation because ingesters have a WAL now that does not require transferring chunks any more.
+// We return ErrTransferDisabled to indicate that we don't support transfers, and therefore we may flush on shutdown if configured to do so.
+func (i *Ingester) TransferOut(_ context.Context) error {
+	return ring.ErrTransferDisabled
 }
 
 func (i *Ingester) flush(mayRemoveStreams bool) {

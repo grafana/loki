@@ -72,13 +72,12 @@ package regexp
 import (
 	"bytes"
 	"io"
+	"regexp/syntax"
 	"strconv"
 	"strings"
 	"sync"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/grafana/regexp/syntax"
 )
 
 // Regexp is the representation of a compiled regular expression.
@@ -95,7 +94,6 @@ type Regexp struct {
 	prefixBytes    []byte         // prefix, as a []byte
 	prefixRune     rune           // first rune in prefix
 	prefixEnd      uint32         // pc for last rune in prefix
-	prefixFoldCase bool           // check prefix case-insensitive
 	mpool          int            // pool for machines
 	matchcap       int            // size of recorded match lengths
 	prefixComplete bool           // prefix is the entire regexp
@@ -201,10 +199,10 @@ func compile(expr string, mode syntax.Flags, longest bool) (*Regexp, error) {
 		minInputLen: minInputLen(re),
 	}
 	if regexp.onepass == nil {
-		regexp.prefix, regexp.prefixComplete, regexp.prefixFoldCase = prog.PrefixAndCase()
+		regexp.prefix, regexp.prefixComplete = prog.Prefix()
 		regexp.maxBitStateLen = maxBitStateLen(prog)
 	} else {
-		regexp.prefix, regexp.prefixComplete, regexp.prefixFoldCase, regexp.prefixEnd = onePassPrefix(prog)
+		regexp.prefix, regexp.prefixComplete, regexp.prefixEnd = onePassPrefix(prog)
 	}
 	if regexp.prefix != "" {
 		// TODO(rsc): Remove this allocation by adding
@@ -406,26 +404,10 @@ func (i *inputString) canCheckPrefix() bool {
 }
 
 func (i *inputString) hasPrefix(re *Regexp) bool {
-	if re.prefixFoldCase {
-		n := len(re.prefix)
-		return len(i.str) >= n && strings.EqualFold(i.str[0:n], re.prefix)
-	}
 	return strings.HasPrefix(i.str, re.prefix)
 }
 
 func (i *inputString) index(re *Regexp, pos int) int {
-	if re.prefixFoldCase {
-		n := len(re.prefix)
-		// Brute-force compare at every position; could replace with sophisticated algo like strings.Index
-		for p := pos; p+n <= len(i.str); {
-			if strings.EqualFold(i.str[p:p+n], re.prefix) {
-				return p - pos
-			}
-			_, w := i.step(p)
-			p += w
-		}
-		return -1
-	}
 	return strings.Index(i.str[pos:], re.prefix)
 }
 
@@ -469,26 +451,10 @@ func (i *inputBytes) canCheckPrefix() bool {
 }
 
 func (i *inputBytes) hasPrefix(re *Regexp) bool {
-	if re.prefixFoldCase {
-		n := len(re.prefixBytes)
-		return len(i.str) >= n && bytes.EqualFold(i.str[0:n], re.prefixBytes)
-	}
 	return bytes.HasPrefix(i.str, re.prefixBytes)
 }
 
 func (i *inputBytes) index(re *Regexp, pos int) int {
-	if re.prefixFoldCase {
-		n := len(re.prefixBytes)
-		// Brute-force compare at every position; could replace with sophisticated algo like bytes.Index
-		for p := pos; p+n <= len(i.str); {
-			if bytes.EqualFold(i.str[p:p+n], re.prefixBytes) {
-				return p - pos
-			}
-			_, w := i.step(p)
-			p += w
-		}
-		return -1
-	}
 	return bytes.Index(i.str[pos:], re.prefixBytes)
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -27,14 +28,13 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/scheduler/queue"
+	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -73,7 +73,7 @@ type Scheduler struct {
 	inflightRequests         prometheus.Summary
 
 	// Ring used for finding schedulers
-	ringManager *RingManager
+	ringManager *lokiring.RingManager
 
 	// Controls for this being a chosen scheduler
 	shouldRun atomic.Bool
@@ -100,12 +100,12 @@ type Config struct {
 	QuerierForgetDelay      time.Duration     `yaml:"querier_forget_delay"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 	// Schedulers ring
-	UseSchedulerRing bool            `yaml:"use_scheduler_ring"`
-	SchedulerRing    util.RingConfig `yaml:"scheduler_ring,omitempty" doc:"description=The hash ring configuration. This option is required only if use_scheduler_ring is true."`
+	UseSchedulerRing bool                `yaml:"use_scheduler_ring"`
+	SchedulerRing    lokiring.RingConfig `yaml:"scheduler_ring,omitempty" doc:"description=The hash ring configuration. This option is required only if use_scheduler_ring is true."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
+	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 32000, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
 	f.IntVar(&cfg.MaxQueueHierarchyLevels, "query-scheduler.max-queue-hierarchy-levels", 3, "Maximum number of levels of nesting of hierarchical queues. 0 means that hierarchical queues are disabled.")
 	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
@@ -114,12 +114,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
-		} else if ringManager.managerMode != RingManagerModeMember {
-			return nil, errors.New("ring manager must be initialized in RingManagerModeMember for query schedulers")
+		} else if ringManager.Mode != lokiring.ServerMode {
+			return nil, errors.New("ring manager must be initialized in ServerMode for query schedulers")
 		}
 	}
 
@@ -144,7 +144,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingMa
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_connected_querier_clients",
 		Help: "Number of querier worker clients currently connected to the query-scheduler.",
-	}, s.requestQueue.GetConnectedQuerierWorkersMetric)
+	}, s.requestQueue.GetConnectedConsumersMetric)
 	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_connected_frontend_clients",
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
@@ -404,8 +404,8 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	querierID := resp.GetQuerierID()
 	level.Debug(s.log).Log("msg", "querier connected", "querier", querierID)
 
-	s.requestQueue.RegisterQuerierConnection(querierID)
-	defer s.requestQueue.UnregisterQuerierConnection(querierID)
+	s.requestQueue.RegisterConsumerConnection(querierID)
+	defer s.requestQueue.UnregisterConsumerConnection(querierID)
 
 	lastIndex := queue.StartIndex
 
@@ -463,7 +463,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 func (s *Scheduler) NotifyQuerierShutdown(_ context.Context, req *schedulerpb.NotifyQuerierShutdownRequest) (*schedulerpb.NotifyQuerierShutdownResponse, error) {
 	level.Debug(s.log).Log("msg", "received shutdown notification from querier", "querier", req.GetQuerierID())
-	s.requestQueue.NotifyQuerierShutdown(req.GetQuerierID())
+	s.requestQueue.NotifyConsumerShutdown(req.GetQuerierID())
 
 	return &schedulerpb.NotifyQuerierShutdownResponse{}, nil
 }
@@ -579,7 +579,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 	inflightRequestsTicker := time.NewTicker(250 * time.Millisecond)
 	defer inflightRequestsTicker.Stop()
 
-	ringCheckTicker := time.NewTicker(ringCheckPeriod)
+	ringCheckTicker := time.NewTicker(lokiring.RingCheckPeriod)
 	defer ringCheckTicker.Stop()
 
 	for {
@@ -592,7 +592,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 			if !s.cfg.UseSchedulerRing {
 				continue
 			}
-			isInSet, err := util.IsInReplicationSet(s.ringManager.Ring, util.RingKeyOfLeader, s.ringManager.RingLifecycler.GetInstanceAddr())
+			isInSet, err := lokiring.IsInReplicationSet(s.ringManager.Ring, util.RingKeyOfLeader, s.ringManager.RingLifecycler.GetInstanceAddr())
 			if err != nil {
 				level.Error(s.log).Log("msg", "failed to query the ring to see if scheduler instance is in ReplicatonSet, will try again", "err", err)
 				continue
@@ -662,10 +662,10 @@ func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
 // SafeReadRing does a nil check on the Scheduler before attempting to return it's ring
 // this is necessary as many callers of this function will only have a valid Scheduler
 // reference if the QueryScheduler target has been specified, which is not guaranteed
-func SafeReadRing(s *RingManager) ring.ReadRing {
-	if s == nil || s.Ring == nil || !s.cfg.UseSchedulerRing {
+func SafeReadRing(cfg Config, rm *lokiring.RingManager) ring.ReadRing {
+	if rm == nil || rm.Ring == nil || !cfg.UseSchedulerRing {
 		return nil
 	}
 
-	return s.Ring
+	return rm.Ring
 }
