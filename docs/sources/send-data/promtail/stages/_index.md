@@ -7,7 +7,7 @@ aliases:
 weight:  700
 ---
 
-# Prometheus pipeline stages
+# Promtail pipeline stages
 
 This section is a collection of all stages Promtail supports in a
 [Pipeline]({{< relref "../pipelines" >}}).
