@@ -1,5 +1,5 @@
 ---
-title: Prometheus pipeline stages
+title: Promtail pipeline stages
 menuTitle:  Pipeline stages
 description: Overview of the Promtail pipeline stages.
 aliases: 
