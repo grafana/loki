@@ -317,6 +317,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Overrides,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
+		util_log.Logger,
 	)
 	if err != nil {
 		return nil, err
