@@ -247,11 +247,6 @@ func (c *Config) Validate() error {
 	if err := c.ChunkStoreConfig.Validate(util_log.Logger); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
-	// TODO(cyriltovena): remove when MaxLookBackPeriod in the storage will be fully deprecated.
-	if c.ChunkStoreConfig.MaxLookBackPeriod > 0 {
-		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
-	}
-
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
