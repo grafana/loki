@@ -1,1 +1,0 @@
-ok  	main/lambda-promtail	0.211s	coverage: 44.0% of statements  
