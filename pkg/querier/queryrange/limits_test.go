@@ -288,8 +288,8 @@ func Test_MaxQueryLookBack_Types(t *testing.T) {
 
 	now := time.Now()
 	type tcase struct {
-		request          base.Request
-		expectedResponse base.Response
+		request          queryrangebase.Request
+		expectedResponse queryrangebase.Response
 	}
 	cases := []tcase{
 		{
@@ -310,7 +310,7 @@ func Test_MaxQueryLookBack_Types(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+	h := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
 	})
 
