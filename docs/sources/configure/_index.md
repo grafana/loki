@@ -397,6 +397,11 @@ grpc_tls_config:
 # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
 [grpc_server_ping_without_stream_allowed: <boolean> | default = true]
 
+# If non-zero, configures the amount of GRPC server workers used to serve the
+# requests.
+# CLI flag: -server.grpc.num-workers
+[grpc_server_num_workers: <int> | default = 0]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -1786,7 +1791,7 @@ ring:
   # CLI flag: -bloom-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-  # Factor for data replication on the bloom gateways.
+  # Factor for data replication.
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 
@@ -2267,10 +2272,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration> | default = 0s]
-
-# This flag is deprecated. Use -querier.max-query-lookback instead.
-# CLI flag: -store.max-look-back-period
-[max_look_back_period: <duration> | default = 0s]
 ```
 
 ### schema_config

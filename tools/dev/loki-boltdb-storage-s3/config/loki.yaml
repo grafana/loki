@@ -31,7 +31,6 @@ frontend:
 frontend_worker:
     grpc_client_config:
         max_send_msg_size: 1.048576e+08
-    parallelism: 6
     scheduler_address: query-scheduler:9009
 ingester:
     chunk_block_size: 262144
@@ -55,7 +54,6 @@ ingester:
                     http_client_timeout: 20s
                 store: consul
             replication_factor: 3
-    max_transfer_retries: 0
     sync_min_utilization: 0.2
     sync_period: 15m
     wal:
@@ -90,6 +88,7 @@ querier:
     query_ingesters_within: 2h
     multi_tenant_queries_enabled: true
     per_request_limits_enabled: true
+    max_concurrent: 6
 query_range:
     align_queries_with_step: true
     cache_results: true

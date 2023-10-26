@@ -40,6 +40,7 @@ import (
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -59,6 +60,7 @@ import (
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -246,11 +248,6 @@ func (c *Config) Validate() error {
 	if err := c.ChunkStoreConfig.Validate(util_log.Logger); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
-	// TODO(cyriltovena): remove when MaxLookBackPeriod in the storage will be fully deprecated.
-	if c.ChunkStoreConfig.MaxLookBackPeriod > 0 {
-		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
-	}
-
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
@@ -276,6 +273,12 @@ func (c *Config) isModuleEnabled(m string) bool {
 type Frontend interface {
 	services.Service
 	CheckReady(_ context.Context) error
+}
+
+// Codec defines methods to encode and decode requests from HTTP, httpgrpc and Protobuf.
+type Codec interface {
+	transport.Codec
+	worker.GRPCCodec
 }
 
 // Loki is the root datastructure for Loki.
@@ -311,18 +314,20 @@ type Loki struct {
 	runtimeConfig             *runtimeconfig.Manager
 	MemberlistKV              *memberlist.KVInitService
 	compactor                 *compactor.Compactor
-	QueryFrontEndTripperware  queryrangebase.Tripperware
+	QueryFrontEndMiddleware   queryrangebase.Middleware
 	queryScheduler            *scheduler.Scheduler
-	querySchedulerRingManager *scheduler.RingManager
+	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
-	indexGatewayRingManager   *indexgateway.RingManager
-	bloomCompactorRingManager *bloomcompactor.RingManager
-	bloomGatewayRingManager   *bloomgateway.RingManager
+	indexGatewayRingManager   *lokiring.RingManager
+	bloomCompactorRingManager *lokiring.RingManager
+	bloomGatewayRingManager   *lokiring.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
 	HTTPAuthMiddleware middleware.Interface
+
+	Codec Codec
 }
 
 // New makes a new Loki.
@@ -331,6 +336,7 @@ func New(cfg Config) (*Loki, error) {
 		Cfg:                 cfg,
 		clientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
+		Codec:               queryrange.DefaultCodec,
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
@@ -587,7 +593,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
-	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
@@ -650,25 +656,16 @@ func (t *Loki) setupModuleManager() error {
 		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
 		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
 		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
-		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
+
+		// This module is defunct but the target remains for backwards compatibility.
+		mm.RegisterModule(QueryLimitsTripperware, func() (services.Service, error) { return nil, nil }, modules.UserInvisibleModule)
 
 		// Ensure query limiter embeds overrides after they've been
 		// created.
 		deps[QueryLimiter] = []string{Overrides}
 		deps[QueryLimitsInterceptors] = []string{}
 
-		// Ensure query limits tripperware embeds the query frontend
-		// tripperware after it's been created. Any additional
-		// middleware/tripperware you want to add to the querier or
-		// frontend must happen inject a dependence on the query limits
-		// tripperware.
-		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
-
 		deps[Querier] = append(deps[Querier], QueryLimiter)
-
-		// The frontend receives a tripperware. Make sure it uses the
-		// wrapped one.
-		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
 
 		// query frontend tripperware uses t.Overrides. Make sure it
 		// uses the one wrapped by query limiter.

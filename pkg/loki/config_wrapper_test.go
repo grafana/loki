@@ -25,10 +25,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	loki_net "github.com/grafana/loki/pkg/util/net"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
 // Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.
@@ -1089,8 +1089,8 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
 		assert.Equal(t, 13,
-			reflect.TypeOf(util.RingConfig{}).NumField(),
-			fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
+			reflect.TypeOf(lokiring.RingConfig{}).NumField(),
+			fmt.Sprintf(msgf, reflect.TypeOf(lokiring.RingConfig{}).String()))
 	})
 
 	t.Run("compactor and scheduler tokens file should not be configured if persist_tokens is false", func(t *testing.T) {

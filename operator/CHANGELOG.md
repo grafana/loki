@@ -1,5 +1,7 @@
 ## Main
 
+## 0.5.0 (2023-10-24)
+
 - [10924](https://github.com/grafana/loki/pull/10924) **periklis**: Update Loki operand to v2.9.2
 - [10874](https://github.com/grafana/loki/pull/10874) **periklis**: Bump deps to address CVE-2023-39325 and CVE-2023-44487
 - [10854](https://github.com/grafana/loki/pull/10854) **periklis**: Add missing marker/sweeper panels in retention dashboard
