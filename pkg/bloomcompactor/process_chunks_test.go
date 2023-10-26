@@ -1,22 +1,18 @@
 package bloomcompactor
 
 import (
-	"bytes"
-	"context"
-	"math"
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/push"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -27,12 +23,6 @@ var (
 	testBlockSize  = 256 * 1024
 	testTargetSize = 1500 * 1024
 )
-
-type TokenizerFunc func(e logproto.Entry) [][]byte
-
-var SpaceTokenizer TokenizerFunc = func(e logproto.Entry) [][]byte {
-	return bytes.Split([]byte(e.Line), []byte(` `))
-}
 
 func createSeriesWithBloom(lbs []labels.Labels) ([]v1.SeriesWithBloom, []model.Fingerprint) {
 	var fps []model.Fingerprint
@@ -50,34 +40,6 @@ func createSeriesWithBloom(lbs []labels.Labels) ([]v1.SeriesWithBloom, []model.F
 		})
 	}
 	return bloomsForChunks, fps
-}
-
-func fillBloom(b v1.SeriesWithBloom, c chunk.Chunk, tokenizer TokenizerFunc) error {
-	itr, err := c.Data.(*chunkenc.Facade).LokiChunk().Iterator(
-		context.Background(),
-		time.Unix(0, 0),
-		time.Unix(0, math.MaxInt64),
-		logproto.FORWARD,
-		log.NewNoopPipeline().ForStream(c.Metric),
-	)
-	if err != nil {
-		return err
-	}
-	defer itr.Close()
-	for itr.Next() {
-		for _, t := range tokenizer(itr.Entry()) {
-			b.Bloom.Add(t)
-		}
-	}
-	if err := itr.Error(); err != nil {
-		return err
-	}
-	b.Series.Chunks = append(b.Series.Chunks, v1.ChunkRef{
-		Start:    c.From,
-		End:      c.Through,
-		Checksum: c.Checksum,
-	})
-	return nil
 }
 
 func createMemchunks() []*chunkenc.MemChunk {
@@ -135,9 +97,7 @@ func Test_BuildAndQueryBloomsWithOneSeries(t *testing.T) {
 		}
 	}
 
-	for _, c := range chunks {
-		fillBloom(bloomForChunks, c, SpaceTokenizer)
-	}
+	fillBloom(bloomForChunks, chunks)
 
 	blockDir := t.TempDir()
 	// Write the block to disk
@@ -197,7 +157,7 @@ func Test_BuildAndQueryBloomsWithNSeries(t *testing.T) {
 
 	// that's what we test
 	for i, c := range chunks {
-		fillBloom(bloomsForChunks[i], c, SpaceTokenizer)
+		fillBloom(bloomsForChunks[i], []chunk.Chunk{c})
 	}
 
 	blockDir := t.TempDir()

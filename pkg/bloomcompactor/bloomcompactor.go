@@ -25,9 +25,12 @@ bloomCompactor.Compactor
 package bloomcompactor
 
 import (
+	"bytes"
 	"context"
-	"fmt"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -36,8 +39,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/prometheus/common/model"
-	"path"
 
 	//"github.com/grafana/loki/pkg/validation"
 	//"github.com/grafana/loki/tools/tsdb/helpers"
@@ -52,7 +53,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
+	logql "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage"
+
 	//"github.com/grafana/loki/pkg/storage/chunk/client"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
@@ -156,34 +159,67 @@ func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodC
 	return ranges
 }
 
-// TODO Get fpRange owned by the compactor instance
 func NoopGetFingerprintRange() (uint64, uint64) { return 0, 0 }
 
 // TODO List Users from TSDB and add logic to owned user via ring
 func NoopGetUserID() string { return "" }
 
-// TODO get series from objectClient (TSDB) instead of params
-func NoopGetSeries() *v1.Series { return nil }
+func fillBloom(b v1.SeriesWithBloom, chks []chunk.Chunk) error {
+	// TODO remove/replace once https://github.com/grafana/loki/pull/10957 is merged
+	tokenizer := func(e logproto.Entry) [][]byte {
+		return bytes.Split([]byte(e.Line), []byte(` `))
+	}
 
-// TODO Then get chunk data from series
-func NoopGetChunks() []byte { return nil }
+	for _, c := range chks {
+		itr, err := c.Data.(*chunkenc.Facade).LokiChunk().Iterator(
+			context.Background(),
+			time.Unix(0, 0),
+			time.Unix(0, math.MaxInt64),
+			logproto.FORWARD,
+			logql.NewNoopPipeline().ForStream(c.Metric),
+		)
+		if err != nil {
+			return err
+		}
+		defer itr.Close()
+		for itr.Next() {
+			for _, t := range tokenizer(itr.Entry()) {
+				b.Bloom.Add(t)
+			}
+		}
+		if err := itr.Error(); err != nil {
+			return err
+		}
+		b.Series.Chunks = append(b.Series.Chunks, v1.ChunkRef{
+			Start:    c.From,
+			End:      c.Through,
+			Checksum: c.Checksum,
+		})
+	}
+	return nil
+}
+
+func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fingerprint) []chunk.Chunk {
+	chunkRefs := make([]chunk.Chunk, 0, len(chksMetas))
+	for _, chk := range chksMetas {
+		chunkRefs = append(chunkRefs, chunk.Chunk{
+			ChunkRef: logproto.ChunkRef{
+				Fingerprint: uint64(fp),
+				UserID:      tenant,
+				From:        chk.From(),
+				Through:     chk.Through(),
+				Checksum:    chk.Checksum,
+			},
+		})
+	}
+	return chunkRefs
+}
 
 // part1: Create a compact method that assumes no block/meta files exists (eg first compaction)
 // part2: Write logic to check first for existing block/meta files and does above.
 func CompactNewChunks(ctx context.Context, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient, dst string) (err error) {
-	// Get all tables - refactor out, return single table
-	_, tables, err := objectClient.List(ctx, "", "/")
-	if err != nil {
-		return err
-	}
-
-	tableNames := make([]string, 0, len(tables))
-	for _, table := range tables {
-		tableNames = append(tableNames, path.Base(string(table)))
-	}
-
-	tenant := "123" //get all somehow and loop over
-	tableName := "1234"
+	tenant := "123"     //FIXME all somehow and loop over
+	tableName := "1234" //FIXME get proper tables
 
 	err = indexShipper.ForEach(
 		context.Background(),
@@ -196,71 +232,61 @@ func CompactNewChunks(ctx context.Context, bloomShipperClient bloomshipper.Clien
 
 			_ = idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
 				context.Background(),
-				nil, // no shards for now
-				model.Earliest, model.Latest,
-				func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
-					//get chunkRefs from series
-					chunkRefs := make([]chunk.Chunk, 0, len(chks))
-					for _, chk := range chks {
-						chunkRefs = append(chunkRefs, chunk.Chunk{
-							ChunkRef: logproto.ChunkRef{
-								Fingerprint: uint64(fp),
-								UserID:      tenant,
-								From:        chk.From(),
-								Through:     chk.Through(),
-								Checksum:    chk.Checksum,
-							},
-						})
+				nil,                          // TODO no shards for now, revisit with ring work
+				model.Earliest, model.Latest, //FIXME turn into lookbacks
+				// Get chunks for a series label and a fp
+				func(ls labels.Labels, fp model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
+					// Create a bloom for this series
+					bloomForChks := v1.SeriesWithBloom{
+						Series: &v1.Series{
+							Fingerprint: fp,
+						},
+						Bloom: &v1.Bloom{
+							*filter.NewDefaultScalableBloomFilter(0.01),
+						},
 					}
 
-					_, err := chunkClient.GetChunks(
+					// Get chunks data from list of chunkRefs
+					chks, err := chunkClient.GetChunks(
 						context.Background(),
-						chunkRefs,
+						makeChunkRefs(chksMetas, tenant, fp),
 					)
-					if err == nil {
-						level.Info(util_log.Logger).Log("error getting chunks", err)
+					if err != nil {
+						level.Info(util_log.Logger).Log("getting chunks", err)
+						return
 					}
+
+					// Fill the bloom with chunk data
+					err = fillBloom(bloomForChks, chks)
+					if err != nil {
+						level.Info(util_log.Logger).Log("filling blooms", err)
+						return
+					}
+
+					writer := v1.NewDirectoryBlockWriter(dst)
+					builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), writer)
+					if err != nil {
+						level.Info(util_log.Logger).Log("creating builder", err)
+						return
+					}
+
+					// TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
+					//write bloom to a local dir
+					err = builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChks}))
+					if err != nil {
+						level.Info(util_log.Logger).Log("writing bloom", err)
+						return
+					}
+
+					// meta + upload to storage
+
 				},
 				labels.MustNewMatcher(labels.MatchEqual, "", ""),
 			)
-
-			//TODO doesn't return chunks now.
 			return nil
 		},
 	)
 
-	if err != nil {
-		return err
-	}
-
-	// part1
-	series := NoopGetSeries()
-	data := NoopGetChunks()
-
-	bloom := v1.Bloom{ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(0.01)}
-	// create bloom filters from that.
-	bloom.Add([]byte(fmt.Sprint(data)))
-
-	// block and seriesList
-	seriesList := []v1.SeriesWithBloom{
-		{
-			Series: series,
-			Bloom:  &bloom,
-		},
-	}
-
-	writer := v1.NewDirectoryBlockWriter(dst)
-
-	builder, err := v1.NewBlockBuilder(
-		v1.BlockOptions{
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		}, writer)
-	if err != nil {
-		return err
-	}
-	// BuildFrom closes itself
-	err = builder.BuildFrom(v1.NewSliceIter[v1.SeriesWithBloom](seriesList))
 	if err != nil {
 		return err
 	}
