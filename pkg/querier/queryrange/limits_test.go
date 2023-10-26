@@ -280,7 +280,7 @@ func Test_MaxQueryLookBack_Types(t *testing.T) {
 				From:    model.Time(now.UnixMilli()),
 				Through: model.Time(now.Add(-90 * time.Minute).UnixMilli()),
 			},
-			expectedResponse: &logproto.VolumeResponse{},
+			expectedResponse: &VolumeResponse{},
 		},
 	}
 
