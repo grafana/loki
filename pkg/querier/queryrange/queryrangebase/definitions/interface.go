@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/util/httpreq"
