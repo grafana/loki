@@ -1,5 +1,5 @@
 ---
-title: Install the scalable monolithic Helm chart 
+title: Install the simple scalable Helm chart 
 menuTitle: Install scalable Loki
 description: Install Loki in scalable mode.
 aliases:
@@ -9,13 +9,13 @@ weight: 300
 keywords: 
 ---
 
-# Install the scalable monolithic Helm chart
+# Install the simple scalable Helm chart
 <!-- vale Grafana.Quotes = NO -->
 <!-- vale Grafana.Quotes = YES -->
 
 This Helm Chart installation runs the Grafana Loki cluster within a Kubernetes cluster.
 
-If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode]({{< relref "../../../../get-started/deployment-modes#scalable-monolithic-deployment-mode" >}}), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
+If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode]({{< relref "../../../../get-started/deployment-modes#simple-scalable" >}}), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
 
 It is not possible to run the scalable mode with the `filesystem` storage.
 
