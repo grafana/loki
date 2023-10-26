@@ -1532,6 +1532,10 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 				ResultType: loghttp.ResultTypeStream,
 			},
 		}, nil
+	case *logproto.IndexStatsRequest:
+		return &logproto.IndexStatsResponse{}, nil
+	case *logproto.VolumeRequest:
+		return &VolumeResponse{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}
