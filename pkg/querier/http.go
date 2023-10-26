@@ -98,7 +98,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
 func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeLabels))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
@@ -247,7 +247,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, stats.Result, error) {
-	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("series"))
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeSeries))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
@@ -278,6 +278,12 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 
 // IndexStatsHandler queries the index for the data statistics related to a query
 func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQuery) (*logproto.IndexStatsResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeStats))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	// TODO(karsten): we might want to change IndexStats to receive a logproto.IndexStatsRequest instead
 	// TODO(owen-d): log metadata, record stats?
 	resp, err := q.querier.IndexStats(ctx, req)
@@ -285,6 +291,19 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 		// Some stores don't implement this
 		resp = &index_stats.Stats{}
 	}
+
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	// record stats about the label query
+	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
+	}
+
+	logql.RecordStatsQueryMetrics(ctx, log, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }

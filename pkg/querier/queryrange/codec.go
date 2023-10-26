@@ -1357,6 +1357,10 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsLabelWrapper{
 			LabelRequest: r,
 		}, nil
+	case *logproto.IndexStatsRequest:
+		return &paramsStatsWrapper{
+			IndexStatsRequest: r,
+		}, nil
 	default:
 		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
 	}
@@ -1473,6 +1477,34 @@ func (p paramsLabelWrapper) Direction() logproto.Direction {
 }
 func (p paramsLabelWrapper) Limit() uint32 { return 0 }
 func (p paramsLabelWrapper) Shards() []string {
+	return make([]string, 0)
+}
+
+type paramsStatsWrapper struct {
+	*logproto.IndexStatsRequest
+}
+
+func (p paramsStatsWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsStatsWrapper) Start() time.Time {
+	return p.From.Time()
+}
+
+func (p paramsStatsWrapper) End() time.Time {
+	return p.Through.Time()
+}
+
+func (p paramsStatsWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsStatsWrapper) Interval() time.Duration { return 0 }
+func (p paramsStatsWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsStatsWrapper) Limit() uint32 { return 0 }
+func (p paramsStatsWrapper) Shards() []string {
 	return make([]string, 0)
 }
 

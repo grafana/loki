@@ -33,6 +33,7 @@ const (
 	queryTypeMetric = "metric"
 	queryTypeSeries = "series"
 	queryTypeLabel  = "label"
+	queryTypeStats  = "stats"
 	queryTypeVolume = "volume"
 )
 
@@ -55,6 +56,8 @@ func recordQueryMetrics(data *queryData) {
 		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.Query(), data.status, *data.statistics)
 	case queryTypeSeries:
 		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, []string{}, *data.statistics)
+	case queryTypeStats:
+		logql.RecordStatsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.Query(), data.status, *data.statistics)
 	case queryTypeVolume:
 		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.Query(), data.status, *data.statistics)
 	default:
@@ -153,6 +156,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &r.Statistics // TODO: this is always nil. See codec.DecodeResponse
 					totalEntries = len(r.Data)
 					queryType = queryTypeLabel
+				case *IndexStatsResponse:
+					responseStats = &stats.Result{} // TODO: support stats in proto
+					totalEntries = 1
+					queryType = queryTypeStats
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
