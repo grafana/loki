@@ -62,7 +62,7 @@ require (
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
 	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
-	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
+	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.16.7
 	github.com/klauspost/pgzip v1.2.5
