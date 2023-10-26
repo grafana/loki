@@ -282,7 +282,8 @@ loki:
       signatureVersion: null
       s3ForcePathStyle: false
       insecure: false
-      http_config: {}
+      http_config:
+        insecure_skip_verify: true # -- Set to true to skip tls verification
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
