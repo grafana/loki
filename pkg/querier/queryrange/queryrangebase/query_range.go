@@ -19,6 +19,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -86,6 +88,136 @@ func (resp *PrometheusResponse) minTime() int64 {
 		return -1
 	}
 	return result[0].Samples[0].TimestampMs
+}
+
+func (resp *PrometheusResponse) EncodeJSON(_ bool, w io.Writer) error {
+	switch resp.Data.ResultType {
+	case loghttp.ResultTypeVector:
+		return resp.marshalVector(w)
+	case loghttp.ResultTypeMatrix:
+		return resp.marshalMatrix(w)
+	case loghttp.ResultTypeScalar:
+		return resp.marshalScalar(w)
+	}
+	return nil
+}
+
+func (resp *PrometheusResponse) marshalVector(w io.Writer) error {
+	vec := make(loghttp.Vector, len(resp.Data.Result))
+	for i, v := range resp.Data.Result {
+		lbs := make(model.LabelSet, len(v.Labels))
+		for _, v := range v.Labels {
+			lbs[model.LabelName(v.Name)] = model.LabelValue(v.Value)
+		}
+		vec[i] = model.Sample{
+			Metric:    model.Metric(lbs),
+			Timestamp: model.Time(v.Samples[0].TimestampMs),
+			Value:     model.SampleValue(v.Samples[0].Value),
+		}
+	}
+	b, err := json.Marshal(struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string         `json:"resultType"`
+			Result     loghttp.Vector `json:"result"`
+			Statistics stats.Result   `json:"stats,omitempty"`
+		} `json:"data,omitempty"`
+		ErrorType string `json:"errorType,omitempty"`
+		Error     string `json:"error,omitempty"`
+	}{
+		Error: resp.Error,
+		Data: struct {
+			ResultType string         `json:"resultType"`
+			Result     loghttp.Vector `json:"result"`
+			Statistics stats.Result   `json:"stats,omitempty"`
+		}{
+			ResultType: loghttp.ResultTypeVector,
+			Result:     vec,
+			Statistics: p.Statistics,
+		},
+		ErrorType: resp.ErrorType,
+		Status:    resp.Status,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(b)
+	return err
+}
+
+func (resp *PrometheusResponse) marshalMatrix(w io.Writer) error {
+	// embed response and add statistics.
+	b, err := json.Marshal(struct {
+		Status string `json:"status"`
+		Data   struct {
+			PrometheusData
+			Statistics stats.Result `json:"stats,omitempty"`
+		} `json:"data,omitempty"`
+		ErrorType string `json:"errorType,omitempty"`
+		Error     string `json:"error,omitempty"`
+	}{
+		Error: resp.Error,
+		Data: struct {
+			PrometheusData
+			Statistics stats.Result `json:"stats,omitempty"`
+		}{
+			PrometheusData: resp.Data,
+			Statistics:     p.Statistics,
+		},
+		ErrorType: resp.ErrorType,
+		Status:    resp.Status,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(b)
+	return err
+}
+
+func (resp *PrometheusResponse) marshalScalar(w io.Writer) error {
+	var scalar loghttp.Scalar
+
+	for _, r := range resp.Data.Result {
+		if len(r.Samples) <= 0 {
+			continue
+		}
+
+		scalar = loghttp.Scalar{
+			Value:     model.SampleValue(r.Samples[0].Value),
+			Timestamp: model.TimeFromUnix(r.Samples[0].TimestampMs),
+		}
+		break
+	}
+
+	b, err := json.Marshal(struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string         `json:"resultType"`
+			Result     loghttp.Scalar `json:"result"`
+			Statistics stats.Result   `json:"stats,omitempty"`
+		} `json:"data,omitempty"`
+		ErrorType string `json:"errorType,omitempty"`
+		Error     string `json:"error,omitempty"`
+	}{
+		Error: p.Response.Error,
+		Data: struct {
+			ResultType string         `json:"resultType"`
+			Result     loghttp.Scalar `json:"result"`
+			Statistics stats.Result   `json:"stats,omitempty"`
+		}{
+			ResultType: loghttp.ResultTypeScalar,
+			Result:     scalar,
+			Statistics: p.Statistics,
+		},
+		ErrorType: resp.ErrorType,
+		Status:    resp.Status,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(b)
+	return err
 }
 
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.

@@ -2,6 +2,7 @@ package definitions
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 
@@ -56,4 +57,5 @@ type Response interface {
 	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
 	GetHeaders() []*PrometheusResponseHeader
+	EncodeJSON(legacy bool, w io.Writer) error
 }

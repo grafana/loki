@@ -510,7 +510,7 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 
 	encodingFlags := httpreq.ExtractEncodingFlagsFromProto(req)
 
-	err := encodeResponseJSONTo(version, res, &buf, encodingFlags)
+	err := res.EncodeJSON(version == loghttp.VersionLegacy, &buf)
 	if err != nil {
 		return nil, err
 	}
@@ -936,7 +936,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	defer sp.Finish()
 	var buf bytes.Buffer
 
-	err := encodeResponseJSONTo(version, res, &buf, encodeFlags)
+	err := res.EncodeJSON(version == loghttp.VersionLegacy, &buf)
 	if err != nil {
 		return nil, err
 	}
@@ -953,63 +953,66 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	return &resp, nil
 }
 
-func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
-	switch response := res.(type) {
-	case *LokiPromResponse:
-		return response.encodeTo(w)
-	case *LokiResponse:
-		streams := make([]logproto.Stream, len(response.Data.Result))
+func (r *LokiPromResponse) EncodeJSON(legacy bool, w io.Writer) error {
+	return r.Response.EncodeJSON(legacy, w)
+}
 
-		for i, stream := range response.Data.Result {
-			streams[i] = logproto.Stream{
-				Labels:  stream.Labels,
-				Entries: stream.Entries,
-			}
+func (r *LokiResponse) EncodeJSON(legacy bool, w io.Writer) error {
+	streams := make([]logproto.Stream, len(r.Data.Result))
+
+	for i, stream := range r.Data.Result {
+		streams[i] = logproto.Stream{
+			Labels:  stream.Labels,
+			Entries: stream.Entries,
 		}
-		if version == loghttp.VersionLegacy {
-			result := logqlmodel.Result{
-				Data:       logqlmodel.Streams(streams),
-				Statistics: response.Statistics,
-			}
-			if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
-				return err
-			}
-		} else {
-			if err := marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), response.Statistics, w, encodeFlags); err != nil {
-				return err
-			}
+	}
+	if legacy {
+		result := logqlmodel.Result{
+			Data:       logqlmodel.Streams(streams),
+			Statistics: r.Statistics,
 		}
-	case *MergedSeriesResponseView:
-		if err := WriteSeriesResponseViewJSON(response, w); err != nil {
-			return err
-		}
-	case *LokiSeriesResponse:
-		if err := marshal.WriteSeriesResponseJSON(response.Data, w); err != nil {
-			return err
-		}
-	case *LokiLabelNamesResponse:
-		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
-			if err := marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, w); err != nil {
-				return err
-			}
-		} else {
-			if err := marshal.WriteLabelResponseJSON(response.Data, w); err != nil {
-				return err
-			}
-		}
-	case *IndexStatsResponse:
-		if err := marshal.WriteIndexStatsResponseJSON(response.Response, w); err != nil {
-			return err
-		}
-	case *VolumeResponse:
-		if err := marshal.WriteVolumeResponseJSON(response.Response, w); err != nil {
-			return err
-		}
-	default:
-		return httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
+		return marshal_legacy.WriteQueryResponseJSON(result, w)
 	}
 
-	return nil
+	return marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), r.Statistics, w, encodeFlags)
+}
+
+func (r *LokiSeriesResponseView) EncodeJSON(legacy bool, w io.Writer) error {
+	v := &MergedSeriesResponseView{}
+	v.responses = append(v.responses, r)
+	return v.EncodeJSON(legacy, w)
+}
+
+func (r *MergedSeriesResponseView) EncodeJSON(_ bool, w io.Writer) error {
+	return WriteSeriesResponseViewJSON(r, w)
+}
+
+func (r *LokiSeriesResponse) EncodeJSON(_ bool, w io.Writer) error {
+	return marshal.WriteSeriesResponseJSON(r.Data, w)
+}
+
+func (r *LokiLabelNamesResponse) EncodeJSON(legacy bool, w io.Writer) error {
+	if legacy {
+		return marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: r.Data}, w)
+	}
+
+	return marshal.WriteLabelResponseJSON(r.Data, w)
+}
+
+func (r *IndexStatsResponse) EncodeJSON(_ bool, w io.Writer) error {
+	return marshal.WriteIndexStatsResponseJSON(r.Response, w)
+}
+
+func (r *VolumeResponse) EncodeJSON(_ bool, w io.Writer) error {
+	return marshal.WriteVolumeResponseJSON(r.Response, w)
+}
+
+func (r *QuantileSketchResponse) EncodeJSON(_ bool, w io.Writer) error {
+	return fmt.Errorf("quantile sketch responses do not support JSON encoding")
+}
+
+func (r *TopKSketchesResponse) EncodeJSON(_ bool, w io.Writer) error {
+	return fmt.Errorf("topk sketch responses do not support JSON encoding")
 }
 
 func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
@@ -1533,9 +1536,9 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			},
 		}, nil
 	case *logproto.IndexStatsRequest:
-		return &logproto.IndexStatsResponse{}, nil
+		return &IndexStatsResponse{}, nil
 	case *logproto.VolumeRequest:
-		return &logproto.VolumeResponse{}, nil
+		return &VolumeResponse{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}
