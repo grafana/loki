@@ -46,4 +46,11 @@ message EntryAdapter {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "structuredMetadata,omitempty"
   ];
+  // This field shouldn't be used by clients to push data to Loki.
+  // It is only used by Loki to return parsed log lines in query responses.
+  // TODO: Remove this field from the write path Proto.
+  repeated LabelPairAdapter parsed = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "parsed,omitempty"
+  ];
 }

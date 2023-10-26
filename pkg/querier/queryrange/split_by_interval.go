@@ -230,7 +230,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
+	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err
@@ -276,8 +276,8 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 			reqs = append(reqs, NewLabelRequest(start, end, r.Query, r.Name, r.Path()))
 		})
 	case *logproto.IndexStatsRequest:
-		startTS := model.Time(r.GetStart()).Time()
-		endTS := model.Time(r.GetEnd()).Time()
+		startTS := r.GetStart()
+		endTS := r.GetEnd()
 		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
 			reqs = append(reqs, &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnix(start.Unix()),
@@ -286,8 +286,8 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 			})
 		})
 	case *logproto.VolumeRequest:
-		startTS := model.Time(r.GetStart()).Time()
-		endTS := model.Time(r.GetEnd()).Time()
+		startTS := r.GetStart()
+		endTS := r.GetEnd()
 		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{
 				From:         model.TimeFromUnix(start.Unix()),
@@ -363,7 +363,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 	}
 	end := time.Unix(0, endNs)
 
-	lokiReq = lokiReq.WithStartEnd(util.TimeToMillis(start), util.TimeToMillis(end)).(*LokiRequest)
+	lokiReq = lokiReq.WithStartEnd(start, end).(*LokiRequest)
 
 	// step is >= configured split interval, let us just split the query interval by step
 	if lokiReq.Step >= interval.Milliseconds() {
