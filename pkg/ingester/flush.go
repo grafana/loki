@@ -71,7 +71,7 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 	}
 
 	i.flushQueuesDone.Wait()
-	level.Debug(util_log.Logger).Log("msg", "flush queues have drained")
+	level.Debug(i.log).Log("msg", "flush queues have drained")
 }
 
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
@@ -136,7 +136,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 
 func (i *Ingester) flushLoop(j int) {
 	defer func() {
-		level.Debug(util_log.Logger).Log("msg", "Ingester.flushLoop() exited")
+		level.Debug(i.log).Log("msg", "Ingester.flushLoop() exited")
 		i.flushQueuesDone.Done()
 	}()
 
@@ -149,7 +149,7 @@ func (i *Ingester) flushLoop(j int) {
 
 		err := i.flushUserSeries(op.userID, op.fp, op.immediate)
 		if err != nil {
-			level.Error(util_log.WithUserID(op.userID, util_log.Logger)).Log("msg", "failed to flush", "err", err)
+			level.Error(util_log.WithUserID(op.userID, i.log)).Log("msg", "failed to flush", "err", err)
 		}
 
 		// If we're exiting & we failed to flush, put the failed operation
@@ -173,7 +173,7 @@ func (i *Ingester) flushUserSeries(userID string, fp model.Fingerprint, immediat
 	}
 
 	lbs := labels.String()
-	level.Info(util_log.Logger).Log("msg", "flushing stream", "user", userID, "fp", fp, "immediate", immediate, "num_chunks", len(chunks), "labels", lbs)
+	level.Info(i.log).Log("msg", "flushing stream", "user", userID, "fp", fp, "immediate", immediate, "num_chunks", len(chunks), "labels", lbs)
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 	ctx, cancel := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
@@ -382,7 +382,7 @@ func (i *Ingester) flushChunk(ctx context.Context, ch *chunk.Chunk) error {
 func (i *Ingester) reportFlushedChunkStatistics(ch *chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
 	byt, err := ch.Encoded()
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
+		level.Error(i.log).Log("msg", "failed to encode flushed wire chunk", "err", err)
 		return
 	}
 
