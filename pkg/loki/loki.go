@@ -40,6 +40,7 @@ import (
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -279,6 +280,12 @@ type Frontend interface {
 	CheckReady(_ context.Context) error
 }
 
+// Codec defines methods to encode and decode requests from HTTP, httpgrpc and Protobuf.
+type Codec interface {
+	transport.Codec
+	worker.GRPCCodec
+}
+
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	Cfg Config
@@ -325,7 +332,7 @@ type Loki struct {
 
 	HTTPAuthMiddleware middleware.Interface
 
-	Codec worker.GRPCCodec
+	Codec Codec
 }
 
 // New makes a new Loki.
@@ -608,6 +615,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
+	mm.RegisterModule(InitCodec, t.initCodec)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -624,9 +632,9 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, InitCodec},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, InitCodec},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
