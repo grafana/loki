@@ -1,5 +1,11 @@
 ## Main/Unreleased
 
+#### Loki
+
+##### Fixes
+
+* [10375](https://github.com/grafana/loki/pull/10375) **trevorwhitney**: Fix ingester query when getting label values by passing matchers
+
 ### All Changes
 
 ## 2.8.6 (2023-10-17)
