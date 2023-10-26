@@ -111,7 +111,6 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	if resp != nil {
 		resLength = len(resp.Values)
 	}
-	// record stats about the label query
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
@@ -261,7 +260,6 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 		resLength = len(resp.Series)
 	}
 
-	// record stats about the label query
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
@@ -285,7 +283,6 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	statsCtx, ctx := stats.NewContext(ctx)
 
 	// TODO(karsten): we might want to change IndexStats to receive a logproto.IndexStatsRequest instead
-	// TODO(owen-d): log metadata, record stats?
 	resp, err := q.querier.IndexStats(ctx, req)
 	if resp == nil {
 		// Some stores don't implement this
@@ -293,7 +290,6 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	}
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
-	// record stats about the label query
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
@@ -313,6 +309,12 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 // VolumeHandler queries the index label volumes related to the passed matchers and given time range.
 // Returns either N values where N is the time range / step and a single value for a time range depending on the request.
 func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeVolume))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.querier.Volume(ctx, req)
 	if err != nil {
 		return nil, err
@@ -320,6 +322,18 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	if resp == nil { // Some stores don't implement this
 		return &logproto.VolumeResponse{Volumes: []logproto.Volume{}}, nil
 	}
+
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
+	}
+
+	logql.RecordVolumeQueryMetrics(ctx, log, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
 }

@@ -223,6 +223,7 @@ func RecordLabelQueryMetrics(
 		"status", status,
 		"label", label,
 		"query", query,
+		"query_hash", HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
@@ -272,6 +273,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"match", PrintMatches(match),
+		"query_hash", HashedQuery(PrintMatches(match)),
 		"total_entries", stats.Summary.TotalEntriesReturned)
 
 	if shard != nil {
@@ -311,6 +313,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"query", query,
+		"query_hash", HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
 
 	level.Info(logger).Log(logValues...)
@@ -318,14 +321,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
-func RecordVolumeQueryMetrics(
-	ctx context.Context,
-	log log.Logger,
-	start, end time.Time,
-	query string,
-	status string,
-	stats logql_stats.Result,
-) {
+func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, limit uint32, step time.Duration, status string, stats logql_stats.Result) {
 	var (
 		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
@@ -338,23 +334,36 @@ func RecordVolumeQueryMetrics(
 		latencyType = latencyTypeSlow
 	}
 
+	rangeType := "range"
+	if step == 0 {
+		rangeType = "instant"
+	}
+
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
 		"query", query,
 		"query_hash", HashedQuery(query),
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"range_type", rangeType,
+		"step", step,
+		"limit", limit,
 		"length", end.Sub(start),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"splits", stats.Summary.Splits,
 		"total_entries", stats.Summary.TotalEntriesReturned,
-		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
-		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
-		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		// cache is accumulated by middleware used by the frontend only; logs from the queriers will not show cache stats
+		"cache_result_req", stats.Caches.VolumeResult.EntriesRequested,
+		"cache_result_hit", stats.Caches.VolumeResult.EntriesFound,
+		"cache_result_stored", stats.Caches.VolumeResult.EntriesStored,
+		"cache_result_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
 	)
 
-	execLatency.WithLabelValues(status, queryType, "").
-		Observe(stats.Summary.ExecTime)
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
 }
 
 func recordUsageStats(queryType string, stats logql_stats.Result) {
