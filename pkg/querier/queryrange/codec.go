@@ -1535,7 +1535,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 	case *logproto.IndexStatsRequest:
 		return &logproto.IndexStatsResponse{}, nil
 	case *logproto.VolumeRequest:
-		return &logproto.VolumeResponse{}, nil
+		return &VolumeResponse{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}
