@@ -83,7 +83,6 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 			logproto.FORWARD,
 			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
 		)
-		//helpers.ExitErr("getting iterator", err)
 
 		for itr.Next() && itr.Error() == nil {
 			toks := bt.chunkIDTokenizer.Tokens(itr.Entry().Line)
@@ -104,9 +103,7 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 				}
 			}
 		}
-		//helpers.ExitErr("iterating chunks", itr.Error())
 	} // for each chunk
-
 }
 
 func (bt *BloomTokenizer) TokenizeLine(line string) []Token {
