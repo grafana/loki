@@ -3,6 +3,7 @@ package definitions
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
@@ -32,9 +33,9 @@ type Merger interface {
 // Request represents a query range request that can be process by middlewares.
 type Request interface {
 	// GetStart returns the start timestamp of the request in milliseconds.
-	GetStart() int64
+	GetStart() time.Time
 	// GetEnd returns the end timestamp of the request in milliseconds.
-	GetEnd() int64
+	GetEnd() time.Time
 	// GetStep returns the step of the request in milliseconds.
 	GetStep() int64
 	// GetQuery returns the query of the request.
@@ -42,7 +43,7 @@ type Request interface {
 	// GetCachingOptions returns the caching options.
 	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
-	WithStartEnd(startTime int64, endTime int64) Request
+	WithStartEnd(start time.Time, end time.Time) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
 	proto.Message
