@@ -510,7 +510,7 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 
 	encodingFlags := httpreq.ExtractEncodingFlagsFromProto(req)
 
-	err := res.EncodeJSON(version == loghttp.VersionLegacy, &buf)
+	err := res.EncodeJSON(version == loghttp.VersionLegacy, &buf, encodingFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -936,7 +936,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	defer sp.Finish()
 	var buf bytes.Buffer
 
-	err := res.EncodeJSON(version == loghttp.VersionLegacy, &buf)
+	err := res.EncodeJSON(version == loghttp.VersionLegacy, &buf, encodeFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -953,11 +953,11 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 	return &resp, nil
 }
 
-func (r *LokiPromResponse) EncodeJSON(legacy bool, w io.Writer) error {
-	return r.Response.EncodeJSON(legacy, w)
+func (r *LokiPromResponse) EncodeJSON(legacy bool, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
+	return r.Response.EncodeJSON(legacy, w, encodeFlags)
 }
 
-func (r *LokiResponse) EncodeJSON(legacy bool, w io.Writer) error {
+func (r *LokiResponse) EncodeJSON(legacy bool, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	streams := make([]logproto.Stream, len(r.Data.Result))
 
 	for i, stream := range r.Data.Result {
@@ -977,21 +977,21 @@ func (r *LokiResponse) EncodeJSON(legacy bool, w io.Writer) error {
 	return marshal.WriteQueryResponseJSON(logqlmodel.Streams(streams), r.Statistics, w, encodeFlags)
 }
 
-func (r *LokiSeriesResponseView) EncodeJSON(legacy bool, w io.Writer) error {
+func (r *LokiSeriesResponseView) EncodeJSON(legacy bool, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	v := &MergedSeriesResponseView{}
 	v.responses = append(v.responses, r)
-	return v.EncodeJSON(legacy, w)
+	return v.EncodeJSON(legacy, w, encodeFlags)
 }
 
-func (r *MergedSeriesResponseView) EncodeJSON(_ bool, w io.Writer) error {
+func (r *MergedSeriesResponseView) EncodeJSON(_ bool, w io.Writer, _ httpreq.EncodingFlags) error {
 	return WriteSeriesResponseViewJSON(r, w)
 }
 
-func (r *LokiSeriesResponse) EncodeJSON(_ bool, w io.Writer) error {
+func (r *LokiSeriesResponse) EncodeJSON(_ bool, w io.Writer, _ httpreq.EncodingFlags) error {
 	return marshal.WriteSeriesResponseJSON(r.Data, w)
 }
 
-func (r *LokiLabelNamesResponse) EncodeJSON(legacy bool, w io.Writer) error {
+func (r *LokiLabelNamesResponse) EncodeJSON(legacy bool, w io.Writer, _ httpreq.EncodingFlags) error {
 	if legacy {
 		return marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: r.Data}, w)
 	}
@@ -999,19 +999,19 @@ func (r *LokiLabelNamesResponse) EncodeJSON(legacy bool, w io.Writer) error {
 	return marshal.WriteLabelResponseJSON(r.Data, w)
 }
 
-func (r *IndexStatsResponse) EncodeJSON(_ bool, w io.Writer) error {
+func (r *IndexStatsResponse) EncodeJSON(_ bool, w io.Writer, _ httpreq.EncodingFlags) error {
 	return marshal.WriteIndexStatsResponseJSON(r.Response, w)
 }
 
-func (r *VolumeResponse) EncodeJSON(_ bool, w io.Writer) error {
+func (r *VolumeResponse) EncodeJSON(_ bool, w io.Writer, _ httpreq.EncodingFlags) error {
 	return marshal.WriteVolumeResponseJSON(r.Response, w)
 }
 
-func (r *QuantileSketchResponse) EncodeJSON(_ bool, w io.Writer) error {
+func (r *QuantileSketchResponse) EncodeJSON(_ bool, w io.Writer, _ httpreq.EncodingFlags) error {
 	return fmt.Errorf("quantile sketch responses do not support JSON encoding")
 }
 
-func (r *TopKSketchesResponse) EncodeJSON(_ bool, w io.Writer) error {
+func (r *TopKSketchesResponse) EncodeJSON(_ bool, w io.Writer, _ httpreq.EncodingFlags) error {
 	return fmt.Errorf("topk sketch responses do not support JSON encoding")
 }
 

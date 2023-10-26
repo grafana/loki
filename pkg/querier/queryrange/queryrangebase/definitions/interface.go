@@ -7,7 +7,10 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -57,5 +60,5 @@ type Response interface {
 	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
 	GetHeaders() []*PrometheusResponseHeader
-	EncodeJSON(legacy bool, w io.Writer) error
+	EncodeJSON(legacy bool, w io.Writer, flags httpreq.EncodingFlags) error
 }
