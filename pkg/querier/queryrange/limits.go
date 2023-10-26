@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -29,7 +30,6 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -109,7 +109,7 @@ func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r q
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
-		currentInterval = r.GetStart() / denominator
+		currentInterval = r.GetStart().UnixMilli() / denominator
 	}
 
 	if l.transformer != nil {
@@ -150,26 +150,26 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// Clamp the time range based on the max query lookback.
 	lookbackCapture := func(id string) time.Duration { return l.MaxQueryLookback(ctx, id) }
 	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture); maxQueryLookback > 0 {
-		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
+		minStartTime := time.Now().Add(-maxQueryLookback)
 
-		if r.GetEnd() < minStartTime {
+		if r.GetEnd().Before(minStartTime) {
 			// The request is fully outside the allowed range, so we can return an
 			// empty response.
 			level.Debug(log).Log(
 				"msg", "skipping the execution of the query because its time range is before the 'max query lookback' setting",
-				"reqStart", util.FormatTimeMillis(r.GetStart()),
-				"redEnd", util.FormatTimeMillis(r.GetEnd()),
+				"reqStart", r.GetStart().String(),
+				"redEnd", r.GetEnd().String(),
 				"maxQueryLookback", maxQueryLookback)
 
 			return NewEmptyResponse(r)
 		}
 
-		if r.GetStart() < minStartTime {
+		if r.GetStart().Before(minStartTime) {
 			// Replace the start time in the request.
 			level.Debug(log).Log(
 				"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-				"original", util.FormatTimeMillis(r.GetStart()),
-				"updated", util.FormatTimeMillis(minStartTime))
+				"original", r.GetStart().String(),
+				"updated", minStartTime.String())
 
 			r = r.WithStartEnd(minStartTime, r.GetEnd())
 		}
@@ -178,7 +178,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// Enforce the max query length.
 	lengthCapture := func(id string) time.Duration { return l.MaxQueryLength(ctx, id) }
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
-		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
+		queryLen := timestamp.Time(r.GetEnd().UnixMilli()).Sub(timestamp.Time(r.GetStart().UnixMilli()))
 		if queryLen > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength))
 		}
@@ -281,7 +281,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
+	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
 	if err != nil {
 		return 0, err
 	}
@@ -309,8 +309,8 @@ func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.Period
 		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration: " + err.Error())
 	}
 
-	adjustedStart := int64(model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset))
-	adjustedEnd := int64(model.Time(r.GetEnd()).Add(-maxOffset))
+	adjustedStart := int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset))
+	adjustedEnd := int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset))
 
 	return ShardingConfigs(q.cfg).ValidRange(adjustedStart, adjustedEnd)
 }
@@ -453,6 +453,27 @@ func NewLimitedRoundTripper(next queryrangebase.Handler, limits Limits, configs 
 	return transport
 }
 
+type SemaphoreWithTiming struct {
+	sem *semaphore.Weighted
+}
+
+func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
+	return &SemaphoreWithTiming{
+		sem: semaphore.NewWeighted(max),
+	}
+}
+
+// acquires the semaphore and records the time it takes.
+func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (time.Duration, error) {
+	start := time.Now()
+
+	if err := s.sem.Acquire(ctx, n); err != nil {
+		return 0, err
+	}
+
+	return time.Since(start), nil
+}
+
 func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	var (
 		ctx, cancel = context.WithCancel(c)
@@ -461,9 +482,12 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 		cancel()
 	}()
 
-	if span := opentracing.SpanFromContext(ctx); span != nil {
+	span := opentracing.SpanFromContext(ctx)
+
+	if span != nil {
 		request.LogToSpan(span)
 	}
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -474,15 +498,15 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 		tenantIDs,
 		rt.configs,
 		rt.limits,
-		model.Time(request.GetStart()),
-		model.Time(request.GetEnd()),
+		model.Time(request.GetStart().UnixMilli()),
+		model.Time(request.GetEnd().UnixMilli()),
 	)
 
 	if parallelism < 1 {
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
 	}
 
-	sem := semaphore.NewWeighted(int64(parallelism))
+	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))
 
 	return rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -493,10 +517,20 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 			// the thousands.
 			// Note: It is the responsibility of the caller to run
 			// the handler in parallel.
-			if err := sem.Acquire(ctx, int64(1)); err != nil {
+			elapsed, err := semWithTiming.Acquire(ctx, int64(1))
+
+			if err != nil {
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
-			defer sem.Release(int64(1))
+
+			if span != nil {
+				span.LogFields(
+					otlog.String("wait_time", elapsed.String()),
+					otlog.Int64("max_parallelism", int64(parallelism)),
+				)
+			}
+
+			defer semWithTiming.sem.Release(int64(1))
 
 			return rt.next.Do(ctx, r)
 		})).Do(ctx, request)

@@ -187,8 +187,9 @@ func TestLabelShortCircuit(t *testing.T) {
 			_, result = tt.p.Process(0, tt.line, lbs)
 
 			require.Len(t, lbs.labels(), 1)
-			name, ok := lbs.Get("name")
+			name, category, ok := lbs.GetWithCategory("name")
 			require.True(t, ok)
+			require.Equal(t, ParsedLabel, category)
 			require.Contains(t, name, "text1")
 		})
 	}

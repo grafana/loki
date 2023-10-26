@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -335,10 +336,40 @@ func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
 	return deleteReqs, nil
 }
 
+type Entry []string
+
+func (e *Entry) UnmarshalJSON(data []byte) error {
+	if *e == nil {
+		*e = make([]string, 0, 3)
+	}
+
+	var parseError error
+	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
+		// The TS and the lines are strings. The labels are a JSON object.
+		// but we will parse them as strings.
+		if t != jsonparser.String && t != jsonparser.Object {
+			parseError = jsonparser.MalformedStringError
+			return
+		}
+
+		v, err := jsonparser.ParseString(value)
+		if err != nil {
+			parseError = err
+			return
+		}
+		*e = append(*e, v)
+	})
+
+	if parseError != nil {
+		return parseError
+	}
+	return err
+}
+
 // StreamValues holds a label key value pairs for the Stream and a list of a list of values
 type StreamValues struct {
 	Stream map[string]string
-	Values [][]string
+	Values []Entry
 }
 
 // MatrixValues holds a label key value pairs for the metric and a list of a list of values
@@ -377,17 +408,19 @@ func (a *VectorValues) UnmarshalJSON(b []byte) error {
 
 // DataType holds the result type and a list of StreamValues
 type DataType struct {
-	ResultType string
-	Stream     []StreamValues
-	Matrix     []MatrixValues
-	Vector     []VectorValues
+	ResultType    string
+	Stream        []StreamValues
+	Matrix        []MatrixValues
+	Vector        []VectorValues
+	EncodingFlags []string
 }
 
 func (a *DataType) UnmarshalJSON(b []byte) error {
 	// get the result type
 	var s struct {
-		ResultType string          `json:"resultType"`
-		Result     json.RawMessage `json:"result"`
+		ResultType    string          `json:"resultType"`
+		EncodingFlags []string        `json:"encodingFlags"`
+		Result        json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -410,6 +443,7 @@ func (a *DataType) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("unknown result type %s", s.ResultType)
 	}
 	a.ResultType = s.ResultType
+	a.EncodingFlags = s.EncodingFlags
 	return nil
 }
 
@@ -434,12 +468,16 @@ type Rules struct {
 	Rules []interface{}
 }
 
+type Header struct {
+	Name, Value string
+}
+
 // RunRangeQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, error) {
+func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
-	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query))
+	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query), extraHeaders...)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +486,7 @@ func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, er
 }
 
 // RunQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) {
+func (c *Client) RunQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
@@ -463,7 +501,7 @@ func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) 
 	u.Path = "/loki/api/v1/query"
 	u.RawQuery = v.Encode()
 
-	buf, statusCode, err := c.run(ctx, u.String())
+	buf, statusCode, err := c.run(ctx, u.String(), extraHeaders...)
 	if err != nil {
 		return nil, err
 	}
@@ -617,18 +655,21 @@ func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]strin
 	return values.Data, nil
 }
 
-func (c *Client) request(ctx context.Context, method string, url string) (*http.Request, error) {
+func (c *Client) request(ctx context.Context, method string, url string, extraHeaders ...Header) (*http.Request, error) {
 	ctx = user.InjectOrgID(ctx, c.instanceID)
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Scope-OrgID", c.instanceID)
+	for _, h := range extraHeaders {
+		req.Header.Add(h.Name, h.Value)
+	}
 	return req, nil
 }
 
-func (c *Client) run(ctx context.Context, u string) ([]byte, int, error) {
-	req, err := c.request(ctx, "GET", u)
+func (c *Client) run(ctx context.Context, u string, extraHeaders ...Header) ([]byte, int, error) {
+	req, err := c.request(ctx, "GET", u, extraHeaders...)
 	if err != nil {
 		return nil, 0, err
 	}
