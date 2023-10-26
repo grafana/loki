@@ -276,6 +276,10 @@ func (m *IndexStatsRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
+func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeader {
+	return nil
+}
+
 // Satisfy definitions.Request for Volume
 
 // GetStart returns the start timestamp of the request in milliseconds.

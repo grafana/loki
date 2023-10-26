@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -253,6 +254,48 @@ func Test_MaxQueryLookBack(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, called)
 	require.Equal(t, resp.(*LokiResponse).Status, "success")
+}
+
+func Test_MaxQueryLookBack_Types(t *testing.T) {
+	m := NewLimitsMiddleware(fakeLimits{
+		maxQueryLookback:    1 * time.Hour,
+		maxQueryParallelism: 1,
+	})
+
+	now := time.Now()
+	type tcase struct {
+		request          base.Request
+		expectedResponse base.Response
+	}
+	cases := []tcase{
+		{
+			request: &logproto.IndexStatsRequest{
+				From:    model.Time(now.UnixMilli()),
+				Through: model.Time(now.Add(-90 * time.Minute).UnixMilli()),
+			},
+			expectedResponse: &logproto.IndexStatsResponse{},
+		},
+		{
+			request: &logproto.VolumeRequest{
+				From:    model.Time(now.UnixMilli()),
+				Through: model.Time(now.Add(-90 * time.Minute).UnixMilli()),
+			},
+			expectedResponse: &logproto.VolumeResponse{},
+		},
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+		return nil, nil
+	})
+
+	for _, tcase := range cases {
+		resp, err := m.Wrap(h).Do(ctx, tcase.request)
+		require.NoError(t, err)
+
+		require.Equal(t, reflect.TypeOf(tcase.expectedResponse), reflect.TypeOf(resp))
+	}
 }
 
 func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
