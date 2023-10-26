@@ -341,6 +341,7 @@ func New(cfg Config) (*Loki, error) {
 		Cfg:                 cfg,
 		clientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
+		Codec:               queryrange.DefaultCodec,
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
@@ -615,7 +616,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
-	mm.RegisterModule(InitCodec, t.initCodec)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -632,9 +632,9 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, InitCodec},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, InitCodec},
+		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
