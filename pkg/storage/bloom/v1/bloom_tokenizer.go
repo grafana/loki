@@ -36,6 +36,10 @@ type BloomTokenizer struct {
 const CacheSize = 150000
 
 // NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
+// Warning: the tokens returned use the same byte slice to reduce allocations. This has two consequences:
+// 1) The token slices generated must not be mutated externally
+// 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
+// 2) This is not thread safe.
 func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
 		metrics: newMetrics(reg),
