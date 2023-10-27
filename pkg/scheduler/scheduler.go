@@ -481,10 +481,10 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 			UserID:          req.tenantID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
-			Request:         &schedulerpb.SchedulerToQuerier_HttpRequest{
+			Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
 				HttpRequest: req.request,
 			},
-			StatsEnabled:    req.statsEnabled,
+			StatsEnabled: req.statsEnabled,
 		}
 		// Override HttpRequest if new request type is set.
 		if req.queryRequest != nil {

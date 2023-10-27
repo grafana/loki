@@ -284,10 +284,10 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 
 		case req := <-w.requestCh:
 			msg := &schedulerpb.FrontendToScheduler{
-				Type:            schedulerpb.ENQUEUE,
-				QueryID:         req.queryID,
-				UserID:          req.tenantID,
-				QueuePath:       req.actor,
+				Type:      schedulerpb.ENQUEUE,
+				QueryID:   req.queryID,
+				UserID:    req.tenantID,
+				QueuePath: req.actor,
 				Request: &schedulerpb.FrontendToScheduler_HttpRequest{
 					HttpRequest: req.request,
 				},
@@ -320,7 +320,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- &frontendv2pb.QueryResultRequest{
 					Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-							HttpResponse: &httpgrpc.HTTPResponse{
+						HttpResponse: &httpgrpc.HTTPResponse{
 							Code: http.StatusInternalServerError,
 							Body: []byte(resp.Error),
 						},
@@ -331,7 +331,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- &frontendv2pb.QueryResultRequest{
 					Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-							HttpResponse: &httpgrpc.HTTPResponse{
+						HttpResponse: &httpgrpc.HTTPResponse{
 							Code: http.StatusTooManyRequests,
 							Body: []byte("too many outstanding requests"),
 						},
