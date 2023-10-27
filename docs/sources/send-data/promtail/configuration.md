@@ -922,7 +922,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#push-log-entries-to-loki" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1141,7 +1141,7 @@ The `group_id` defined the unique consumer group id to use for consuming logs. E
 - If all promtail instances have the same consumer group, then the records will effectively be load balanced over the promtail instances.
 - If all promtail instances have different consumer groups, then each record will be broadcast to all promtail instances.
 
-The `group_id` is useful if you want to effectively send the data to multiple loki instances and/or other sinks.
+The `group_id` is useful if you want to effectively send the data to multiple Loki instances and/or other sinks.
 
 The `assignor` configuration allow you to select the rebalancing strategy to use for the consumer group.
 Rebalancing is the process where a group of consumer instances (belonging to the same group) co-ordinate to own a mutually exclusive set of partitions of topics that the group is subscribed to.
@@ -2089,16 +2089,6 @@ sync_period: "10s"
 ```
 
 ## options_config
-
-```yaml
-# Deprecated.
-# A comma-separated list of labels to include in the stream lag metric
-# `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
-# always included. The stream lag metric indicates which streams are falling behind
-# on writes to Loki; be mindful about using too many labels,
-# as it can increase cardinality.
-[stream_lag_labels: <string> | default = "filename"]
-```
 
 ## tracing_config
 

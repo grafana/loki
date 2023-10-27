@@ -363,7 +363,6 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   depends_on: ['check'],
 };
 
-
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
@@ -499,7 +498,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.29.3-golangci.1.51.2',
+    local build_image_tag = '0.31.1',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -611,7 +610,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
         name: 'build-docs-website',
-        image: 'grafana/docs-base:latest',
+        image: 'grafana/docs-base:e6ef023f8b8',
         commands: [
           'mkdir -p /hugo/content/docs/loki/latest',
           'cp -r docs/sources/* /hugo/content/docs/loki/latest/',
@@ -917,6 +916,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
         },
         commands: [
+          'git fetch origin --tags',
           'make docker-driver-push',
         ],
         volumes: [

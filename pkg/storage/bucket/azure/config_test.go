@@ -44,6 +44,7 @@ func TestConfig(t *testing.T) {
 			config: `
 account_name: test-account-name
 account_key: test-account-key
+connection_string: test-connection-string
 container_name: test-container-name
 endpoint_suffix: test-endpoint-suffix
 max_retries: 1
@@ -60,8 +61,9 @@ http:
 			expectedConfig: Config{
 				StorageAccountName: "test-account-name",
 				StorageAccountKey:  flagext.SecretWithValue("test-account-key"),
+				ConnectionString:   flagext.SecretWithValue("test-connection-string"),
 				ContainerName:      "test-container-name",
-				Endpoint:           "test-endpoint-suffix",
+				EndpointSuffix:     "test-endpoint-suffix",
 				MaxRetries:         1,
 				Config: http.Config{
 					IdleConnTimeout:       2 * time.Second,

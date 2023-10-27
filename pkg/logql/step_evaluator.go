@@ -4,10 +4,22 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
+type StepResult interface {
+	SampleVector() promql.Vector
+}
+
+type SampleVector promql.Vector
+
+var _ StepResult = SampleVector{}
+
+func (p SampleVector) SampleVector() promql.Vector {
+	return promql.Vector(p)
+}
+
 // StepEvaluator evaluate a single step of a query.
 type StepEvaluator interface {
 	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
-	Next() (ok bool, ts int64, vec promql.Vector)
+	Next() (ok bool, ts int64, r StepResult)
 	// Close all resources used.
 	Close() error
 	// Reports any error

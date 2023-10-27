@@ -73,6 +73,19 @@ func ConfigureGatewayDeployment(
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
 	}
 
+	if mode == lokiv1.OpenshiftLogging {
+		// enable extraction of namespace selector
+		for i, c := range d.Spec.Template.Spec.Containers {
+			if c.Name != "gateway" {
+				continue
+			}
+
+			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
+				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatcher),
+			)
+		}
+	}
+
 	return nil
 }
 

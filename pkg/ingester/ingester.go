@@ -40,8 +40,9 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -74,9 +75,6 @@ var (
 // Config for an ingester.
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
-
-	// Config for transferring chunks.
-	MaxTransferRetries int `yaml:"max_transfer_retries,omitempty"`
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
@@ -120,7 +118,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
 
-	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
@@ -129,8 +126,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
-	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
-	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
+	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
+	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper/tsdb index and filesystem object store. -1 for infinite.")
@@ -151,10 +148,6 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
-	if cfg.MaxTransferRetries > 0 && cfg.WAL.Enabled {
-		return errors.New("the use of the write ahead log (WAL) is incompatible with chunk transfers. It's suggested to use the WAL. Please try setting ingester.max-transfer-retries to 0 to disable transfers")
-	}
-
 	if cfg.IndexShards <= 0 {
 		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
@@ -166,22 +159,19 @@ type Wrapper interface {
 	Wrap(wrapped Interface) Interface
 }
 
-// ChunkStore is the interface we need to store chunks.
-type ChunkStore interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-	GetSchemaConfigs() []config.PeriodConfig
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+// Store is the store interface we need on the ingester.
+type Store interface {
+	stores.ChunkWriter
+	stores.ChunkFetcher
+	storage.SelectStore
+	storage.SchemaConfigProvider
+	indexstore.StatsReader
 }
 
 // Interface is an interface for the Ingester
 type Interface interface {
 	services.Service
 
-	logproto.IngesterServer
 	logproto.PusherServer
 	logproto.QuerierServer
 	logproto.StreamDataServer
@@ -189,8 +179,6 @@ type Interface interface {
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
-	// deprecated
-	LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
 }
@@ -211,7 +199,7 @@ type Ingester struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	store           ChunkStore
+	store           Store
 	periodicConfigs []config.PeriodConfig
 
 	loopDone    sync.WaitGroup
@@ -248,7 +236,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -541,8 +529,6 @@ func (i *Ingester) stopping(_ error) error {
 	}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
-	// Normally, flushers are stopped via lifecycler (in transferOut), but if lifecycler fails,
-	// we better stop them.
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()
 	}
@@ -558,6 +544,17 @@ func (i *Ingester) stopping(_ error) error {
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
+}
+
+// stopIncomingRequests is called when ingester is stopping
+func (i *Ingester) stopIncomingRequests() {
+	i.shutdownMtx.Lock()
+	defer i.shutdownMtx.Unlock()
+
+	i.instancesMtx.Lock()
+	defer i.instancesMtx.Unlock()
+
+	i.readonly = true
 }
 
 // removeShutdownMarkerFile removes the shutdown marker if it exists. Any errors are logged.
@@ -587,7 +584,7 @@ func (i *Ingester) loop() {
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
-	level.Debug(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+	level.Info(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
 
 	select {
 	case <-initialDelay.C:
@@ -597,8 +594,9 @@ func (i *Ingester) loop() {
 		return
 	}
 
-	// Add +/- 1% of flush interval as jitter
-	j := i.cfg.FlushCheckPeriod / 100
+	// Add +/- 20% of flush interval as jitter.
+	// The default flush check period is 30s so max jitter will be 6s.
+	j := i.cfg.FlushCheckPeriod / 5
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
@@ -611,25 +609,6 @@ func (i *Ingester) loop() {
 			return
 		}
 	}
-}
-
-// LegacyShutdownHandler triggers the following set of operations in order:
-//   - Change the state of ring to stop accepting writes.
-//   - Flush all the chunks.
-//
-// Note: This handler does not trigger a termination of the Loki process,
-// despite its name. Instead, the ingester service is stopped, so an external
-// source can trigger a safe termination through a signal to the process.
-// The handler is deprecated and usage is discouraged. Use ShutdownHandler
-// instead.
-func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, _ *http.Request) {
-	level.Warn(util_log.Logger).Log("msg", "The handler /ingester/flush_shutdown is deprecated and usage is discouraged. Please use /ingester/shutdown?flush=true instead.")
-	originalState := i.lifecycler.FlushOnShutdown()
-	// We want to flush the chunks if transfer fails irrespective of original flag.
-	i.lifecycler.SetFlushOnShutdown(true)
-	_ = services.StopAndAwaitTerminated(context.Background(), i)
-	i.lifecycler.SetFlushOnShutdown(originalState)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // PrepareShutdown will handle the /ingester/prepare_shutdown endpoint.
@@ -1006,7 +985,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunkRefs(ctx, orgID, start, end, matchers...)
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, matchers...)
 	if err != nil {
 		return nil, err
 	}

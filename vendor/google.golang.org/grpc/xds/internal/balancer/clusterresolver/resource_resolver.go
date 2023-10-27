@@ -19,9 +19,11 @@
 package clusterresolver
 
 import (
+	"context"
 	"sync"
 
-	"google.golang.org/grpc/xds/internal/xdsclient"
+	"google.golang.org/grpc/internal/grpclog"
+	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -32,9 +34,33 @@ type resourceUpdate struct {
 	err        error
 }
 
-type discoveryMechanism interface {
-	lastUpdate() (interface{}, bool)
+// topLevelResolver is used by concrete endpointsResolver implementations for
+// reporting updates and errors. The `resourceResolver` type implements this
+// interface and takes appropriate actions upon receipt of updates and errors
+// from underlying concrete resolvers.
+type topLevelResolver interface {
+	onUpdate()
+}
+
+// endpointsResolver wraps the functionality to resolve a given resource name to
+// a set of endpoints. The mechanism used by concrete implementations depend on
+// the supported discovery mechanism type.
+type endpointsResolver interface {
+	// lastUpdate returns endpoint results from the most recent resolution.
+	//
+	// The type of the first return result is dependent on the resolver
+	// implementation.
+	//
+	// The second return result indicates whether the resolver was able to
+	// successfully resolve the resource name to endpoints. If set to false, the
+	// first return result is invalid and must not be used.
+	lastUpdate() (any, bool)
+
+	// resolverNow triggers re-resolution of the resource.
 	resolveNow()
+
+	// stop stops resolution of the resource. Implementations must not invoke
+	// any methods on the topLevelResolver interface once `stop()` returns.
 	stop()
 }
 
@@ -47,33 +73,35 @@ type discoveryMechanismKey struct {
 	name string
 }
 
-// resolverMechanismTuple is needed to keep the resolver and the discovery
-// mechanism together, because resolvers can be shared. And we need the
-// mechanism for fields like circuit breaking, LRS etc when generating the
+// discoveryMechanismAndResolver is needed to keep the resolver and the
+// discovery mechanism together, because resolvers can be shared. And we need
+// the mechanism for fields like circuit breaking, LRS etc when generating the
 // balancer config.
-type resolverMechanismTuple struct {
-	dm    DiscoveryMechanism
-	dmKey discoveryMechanismKey
-	r     discoveryMechanism
+type discoveryMechanismAndResolver struct {
+	dm DiscoveryMechanism
+	r  endpointsResolver
 
 	childNameGen *nameGenerator
 }
 
 type resourceResolver struct {
-	parent        *clusterResolverBalancer
-	updateChannel chan *resourceUpdate
+	parent           *clusterResolverBalancer
+	logger           *grpclog.PrefixLogger
+	updateChannel    chan *resourceUpdate
+	serializer       *grpcsync.CallbackSerializer
+	serializerCancel context.CancelFunc
 
 	// mu protects the slice and map, and content of the resolvers in the slice.
 	mu         sync.Mutex
 	mechanisms []DiscoveryMechanism
-	children   []resolverMechanismTuple
+	children   []discoveryMechanismAndResolver
 	// childrenMap's value only needs the resolver implementation (type
 	// discoveryMechanism) and the childNameGen. The other two fields are not
 	// used.
 	//
 	// TODO(cleanup): maybe we can make a new type with just the necessary
 	// fields, and use it here instead.
-	childrenMap map[discoveryMechanismKey]resolverMechanismTuple
+	childrenMap map[discoveryMechanismKey]discoveryMechanismAndResolver
 	// Each new discovery mechanism needs a child name generator to reuse child
 	// policy names. But to make sure the names across discover mechanism
 	// doesn't conflict, we need a seq ID. This ID is incremented for each new
@@ -81,12 +109,17 @@ type resourceResolver struct {
 	childNameGeneratorSeqID uint64
 }
 
-func newResourceResolver(parent *clusterResolverBalancer) *resourceResolver {
-	return &resourceResolver{
+func newResourceResolver(parent *clusterResolverBalancer, logger *grpclog.PrefixLogger) *resourceResolver {
+	rr := &resourceResolver{
 		parent:        parent,
+		logger:        logger,
 		updateChannel: make(chan *resourceUpdate, 1),
-		childrenMap:   make(map[discoveryMechanismKey]resolverMechanismTuple),
+		childrenMap:   make(map[discoveryMechanismKey]discoveryMechanismAndResolver),
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	rr.serializer = grpcsync.NewCallbackSerializer(ctx)
+	rr.serializerCancel = cancel
+	return rr
 }
 
 func equalDiscoveryMechanisms(a, b []DiscoveryMechanism) bool {
@@ -102,6 +135,21 @@ func equalDiscoveryMechanisms(a, b []DiscoveryMechanism) bool {
 	return true
 }
 
+func discoveryMechanismToKey(dm DiscoveryMechanism) discoveryMechanismKey {
+	switch dm.Type {
+	case DiscoveryMechanismTypeEDS:
+		nameToWatch := dm.EDSServiceName
+		if nameToWatch == "" {
+			nameToWatch = dm.Cluster
+		}
+		return discoveryMechanismKey{typ: dm.Type, name: nameToWatch}
+	case DiscoveryMechanismTypeLogicalDNS:
+		return discoveryMechanismKey{typ: dm.Type, name: dm.DNSHostname}
+	default:
+		return discoveryMechanismKey{}
+	}
+}
+
 func (rr *resourceResolver) updateMechanisms(mechanisms []DiscoveryMechanism) {
 	rr.mu.Lock()
 	defer rr.mu.Unlock()
@@ -109,65 +157,45 @@ func (rr *resourceResolver) updateMechanisms(mechanisms []DiscoveryMechanism) {
 		return
 	}
 	rr.mechanisms = mechanisms
-	rr.children = make([]resolverMechanismTuple, len(mechanisms))
+	rr.children = make([]discoveryMechanismAndResolver, len(mechanisms))
 	newDMs := make(map[discoveryMechanismKey]bool)
 
 	// Start one watch for each new discover mechanism {type+resource_name}.
 	for i, dm := range mechanisms {
+		dmKey := discoveryMechanismToKey(dm)
+		newDMs[dmKey] = true
+		dmAndResolver, ok := rr.childrenMap[dmKey]
+		if ok {
+			// If this is not new, keep the fields (especially childNameGen),
+			// and only update the DiscoveryMechanism.
+			//
+			// Note that the same dmKey doesn't mean the same
+			// DiscoveryMechanism. There are fields (e.g.
+			// MaxConcurrentRequests) in DiscoveryMechanism that are not copied
+			// to dmKey, we need to keep those updated.
+			dmAndResolver.dm = dm
+			rr.children[i] = dmAndResolver
+			continue
+		}
+
+		// Create resolver for a newly seen resource.
+		var resolver endpointsResolver
 		switch dm.Type {
 		case DiscoveryMechanismTypeEDS:
-			// If EDSServiceName is not set, use the cluster name as EDS service
-			// name to watch.
-			nameToWatch := dm.EDSServiceName
-			if nameToWatch == "" {
-				nameToWatch = dm.Cluster
-			}
-			dmKey := discoveryMechanismKey{typ: dm.Type, name: nameToWatch}
-			newDMs[dmKey] = true
-
-			r, ok := rr.childrenMap[dmKey]
-			if !ok {
-				r = resolverMechanismTuple{
-					dm:           dm,
-					dmKey:        dmKey,
-					r:            newEDSResolver(nameToWatch, rr.parent.xdsClient, rr),
-					childNameGen: newNameGenerator(rr.childNameGeneratorSeqID),
-				}
-				rr.childrenMap[dmKey] = r
-				rr.childNameGeneratorSeqID++
-			} else {
-				// If this is not new, keep the fields (especially
-				// childNameGen), and only update the DiscoveryMechanism.
-				//
-				// Note that the same dmKey doesn't mean the same
-				// DiscoveryMechanism. There are fields (e.g.
-				// MaxConcurrentRequests) in DiscoveryMechanism that are not
-				// copied to dmKey, we need to keep those updated.
-				r.dm = dm
-			}
-			rr.children[i] = r
+			resolver = newEDSResolver(dmKey.name, rr.parent.xdsClient, rr, rr.logger)
 		case DiscoveryMechanismTypeLogicalDNS:
-			// Name to resolve in DNS is the hostname, not the ClientConn
-			// target.
-			dmKey := discoveryMechanismKey{typ: dm.Type, name: dm.DNSHostname}
-			newDMs[dmKey] = true
-
-			r, ok := rr.childrenMap[dmKey]
-			if !ok {
-				r = resolverMechanismTuple{
-					dm:           dm,
-					dmKey:        dmKey,
-					r:            newDNSResolver(dm.DNSHostname, rr),
-					childNameGen: newNameGenerator(rr.childNameGeneratorSeqID),
-				}
-				rr.childrenMap[dmKey] = r
-				rr.childNameGeneratorSeqID++
-			} else {
-				r.dm = dm
-			}
-			rr.children[i] = r
+			resolver = newDNSResolver(dmKey.name, rr, rr.logger)
 		}
+		dmAndResolver = discoveryMechanismAndResolver{
+			dm:           dm,
+			r:            resolver,
+			childNameGen: newNameGenerator(rr.childNameGeneratorSeqID),
+		}
+		rr.childrenMap[dmKey] = dmAndResolver
+		rr.children[i] = dmAndResolver
+		rr.childNameGeneratorSeqID++
 	}
+
 	// Stop the resources that were removed.
 	for dm, r := range rr.childrenMap {
 		if !newDMs[dm] {
@@ -177,7 +205,7 @@ func (rr *resourceResolver) updateMechanisms(mechanisms []DiscoveryMechanism) {
 	}
 	// Regenerate even if there's no change in discovery mechanism, in case
 	// priority order changed.
-	rr.generate()
+	rr.generateLocked()
 }
 
 // resolveNow is typically called to trigger re-resolve of DNS. The EDS
@@ -190,8 +218,9 @@ func (rr *resourceResolver) resolveNow() {
 	}
 }
 
-func (rr *resourceResolver) stop() {
+func (rr *resourceResolver) stop(closing bool) {
 	rr.mu.Lock()
+
 	// Save the previous childrenMap to stop the children outside the mutex,
 	// and reinitialize the map.  We only need to reinitialize to allow for the
 	// policy to be reused if the resource comes back.  In practice, this does
@@ -199,23 +228,42 @@ func (rr *resourceResolver) stop() {
 	// be removed entirely, but a future use case might want to reuse the
 	// policy instead.
 	cm := rr.childrenMap
-	rr.childrenMap = make(map[discoveryMechanismKey]resolverMechanismTuple)
+	rr.childrenMap = make(map[discoveryMechanismKey]discoveryMechanismAndResolver)
 	rr.mechanisms = nil
 	rr.children = nil
+
 	rr.mu.Unlock()
 
 	for _, r := range cm {
 		r.r.stop()
 	}
+
+	if closing {
+		rr.serializerCancel()
+		<-rr.serializer.Done()
+	}
+
+	// stop() is called when the LB policy is closed or when the underlying
+	// cluster resource is removed by the management server. In the latter case,
+	// an empty config update needs to be pushed to the child policy to ensure
+	// that a picker that fails RPCs is sent up to the channel.
+	//
+	// Resource resolver implementations are expected to not send any updates
+	// after they are stopped. Therefore, we don't have to worry about another
+	// write to this channel happening at the same time as this one.
+	select {
+	case <-rr.updateChannel:
+	default:
+	}
+	rr.updateChannel <- &resourceUpdate{}
 }
 
-// generate collects all the updates from all the resolvers, and push the
-// combined result into the update channel. It only pushes the update when all
-// the child resolvers have received at least one update, otherwise it will
-// wait.
+// generateLocked collects updates from all resolvers. It pushes the combined
+// result on the update channel if all child resolvers have received at least
+// one update. Otherwise it returns early.
 //
 // caller must hold rr.mu.
-func (rr *resourceResolver) generate() {
+func (rr *resourceResolver) generateLocked() {
 	var ret []priorityConfig
 	for _, rDM := range rr.children {
 		u, ok := rDM.r.lastUpdate()
@@ -238,49 +286,10 @@ func (rr *resourceResolver) generate() {
 	rr.updateChannel <- &resourceUpdate{priorities: ret}
 }
 
-type edsDiscoveryMechanism struct {
-	cancel func()
-
-	update         xdsresource.EndpointsUpdate
-	updateReceived bool
-}
-
-func (er *edsDiscoveryMechanism) lastUpdate() (interface{}, bool) {
-	if !er.updateReceived {
-		return nil, false
-	}
-	return er.update, true
-}
-
-func (er *edsDiscoveryMechanism) resolveNow() {
-}
-
-func (er *edsDiscoveryMechanism) stop() {
-	er.cancel()
-}
-
-// newEDSResolver starts the EDS watch on the given xds client.
-func newEDSResolver(nameToWatch string, xdsc xdsclient.XDSClient, topLevelResolver *resourceResolver) *edsDiscoveryMechanism {
-	ret := &edsDiscoveryMechanism{}
-	topLevelResolver.parent.logger.Infof("EDS watch started on %v", nameToWatch)
-	cancel := xdsc.WatchEndpoints(nameToWatch, func(update xdsresource.EndpointsUpdate, err error) {
-		topLevelResolver.mu.Lock()
-		defer topLevelResolver.mu.Unlock()
-		if err != nil {
-			select {
-			case <-topLevelResolver.updateChannel:
-			default:
-			}
-			topLevelResolver.updateChannel <- &resourceUpdate{err: err}
-			return
-		}
-		ret.update = update
-		ret.updateReceived = true
-		topLevelResolver.generate()
+func (rr *resourceResolver) onUpdate() {
+	rr.serializer.Schedule(func(context.Context) {
+		rr.mu.Lock()
+		rr.generateLocked()
+		rr.mu.Unlock()
 	})
-	ret.cancel = func() {
-		topLevelResolver.parent.logger.Infof("EDS watch canceled on %v", nameToWatch)
-		cancel()
-	}
-	return ret
 }

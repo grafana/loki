@@ -1,7 +1,8 @@
 ---
 title: Observability
+menuTitle:  
 description: Observing Grafana Loki
-weight: 20
+weight: 
 ---
 # Observability
 
@@ -15,8 +16,8 @@ All components of Loki expose the following metrics:
 
 | Metric Name                        | Metric Type | Description                                                                                                                  |
 | ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by loki itself. |
-| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by loki itself.                                                                         |
+| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself. |
+| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by Loki itself.                                                                         |
 | `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                                                                            |
 
 The Loki Distributors expose the following metrics:

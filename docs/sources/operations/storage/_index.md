@@ -1,11 +1,12 @@
 ---
-title: Grafana Loki Storage
-description: Grafana Loki Storage
-weight: 40
+title: Manage storage
+menuTitle: Storage
+description: Describes Loki's storage needs and supported stores.
+weight: 
 ---
-# Grafana Loki Storage
+# Manage storage
 
-[High level storage overview here]({{< relref "../../storage/_index.md" >}})
+You can read a high level overview of Loki storage [here]({{< relref "../../storage/_index.md" >}})
 
 Grafana Loki needs to store two different types of data: **chunks** and **indexes**.
 
@@ -22,9 +23,9 @@ how to configure the storage and the index.
 
 For more information:
 
-1. [Table Manager]({{< relref "./table-manager" >}})
-1. [Retention]({{< relref "./retention" >}})
-1. [Logs Deletion]({{< relref "./logs-deletion" >}})
+- [Table Manager]({{< relref "./table-manager" >}})
+- [Retention]({{< relref "./retention" >}})
+- [Logs Deletion]({{< relref "./logs-deletion" >}})
 
 ## Supported Stores
 
@@ -133,7 +134,7 @@ Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
 When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role is needed.
 
-See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-cloud-object-storage" >}}) on the storage page for a detailed setup guide.
+See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-deployment-cos-single-store" >}}) on the storage page for a detailed setup guide.
 
 ## Chunk Format
 

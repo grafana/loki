@@ -29,7 +29,7 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
 	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*fetcher.Fetcher), args.Error(2)
 }
@@ -233,7 +233,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStoreMock()
-			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
 			store.On("GetChunkFetcher", mock.Anything).Return(tc.ingesterFetcher)
 
 			ingesterQuerier := newIngesterQuerierMock()
@@ -242,7 +242,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			asyncStoreCfg := AsyncStoreCfg{IngesterQuerier: ingesterQuerier}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			chunks, fetchers, err := asyncStore.GetChunkRefs(context.Background(), "fake", model.Now(), model.Now(), nil)
+			chunks, fetchers, err := asyncStore.GetChunks(context.Background(), "fake", model.Now(), model.Now(), nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedChunks, chunks)
@@ -293,7 +293,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			store := newStoreMock()
-			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
 
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
@@ -304,7 +304,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 			}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			_, _, err := asyncStore.GetChunkRefs(context.Background(), "fake", tc.queryFrom, tc.queryThrough, nil)
+			_, _, err := asyncStore.GetChunks(context.Background(), "fake", tc.queryFrom, tc.queryThrough, nil)
 			require.NoError(t, err)
 
 			expectedNumCalls := 0

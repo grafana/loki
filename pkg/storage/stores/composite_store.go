@@ -22,16 +22,21 @@ type ChunkWriter interface {
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
 }
 
-type ChunkFetcher interface {
+type ChunkFetcherProvider interface {
 	GetChunkFetcher(tm model.Time) *fetcher.Fetcher
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+}
+
+type ChunkFetcher interface {
+	GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 }
 
 type Store interface {
 	index.BaseReader
+	index.StatsReader
 	index.Filterable
 	ChunkWriter
 	ChunkFetcher
+	ChunkFetcherProvider
 	Stop()
 }
 
@@ -149,11 +154,11 @@ func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 	return result.Strings(), err
 }
 
-func (c CompositeStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		ids, fetcher, err := store.GetChunkRefs(innerCtx, userID, from, through, matchers...)
+		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, matchers...)
 		if err != nil {
 			return err
 		}

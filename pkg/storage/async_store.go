@@ -63,7 +63,7 @@ func (a *AsyncStore) shouldQueryIngesters(through, now model.Time) bool {
 	return a.queryIngestersWithin == 0 || through.After(now.Add(-a.queryIngestersWithin))
 }
 
-func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (a *AsyncStore) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	spanLogger := spanlogger.FromContext(ctx)
 
 	errs := make(chan error)
@@ -72,7 +72,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var fetchers []*fetcher.Fetcher
 	go func() {
 		var err error
-		storeChunks, fetchers, err = a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
+		storeChunks, fetchers, err = a.Store.GetChunks(ctx, userID, from, through, matchers...)
 		errs <- err
 	}()
 

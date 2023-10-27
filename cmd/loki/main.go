@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
@@ -27,6 +28,8 @@ func exit(code int) {
 }
 
 func main() {
+	startTime := time.Now()
+
 	var config loki.ConfigWrapper
 
 	if loki.PrintVersion(os.Args[1:]) {
@@ -108,6 +111,6 @@ func main() {
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
 
-	err = t.Run(loki.RunOpts{})
+	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)
 }

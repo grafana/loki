@@ -35,7 +35,7 @@ loki:
     type: 'filesystem'
 ```
 
-You will need to 1. Update the grafana helm repo, 2. delete the exsiting stateful set, and 3. updgrade making sure to have the values above included in your `values.yaml`. If you installed `grafana/loki` as `loki` in namespace `loki`, the commands would be:
+You will need to 1. Update the grafana helm repo, 2. delete the exsiting stateful set, and 3. upgrade making sure to have the values above included in your `values.yaml`. If you installed `grafana/loki` as `loki` in namespace `loki`, the commands would be:
 
 ```console
 helm repo update grafana

@@ -9,7 +9,7 @@ metadata:
   labels:
     {{- include "loki.singleBinaryLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
-  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.singleBinary.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -176,7 +176,9 @@ spec:
         {{- end }}
   {{- if .Values.singleBinary.persistence.enabled }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1	
+      kind: PersistentVolumeClaim
+      metadata:
         name: storage
       spec:
         accessModes:

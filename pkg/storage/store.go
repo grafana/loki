@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -28,12 +29,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/gatewayclient"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 )
@@ -52,10 +53,14 @@ type SelectStore interface {
 	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 }
 
+type SchemaConfigProvider interface {
+	GetSchemaConfigs() []config.PeriodConfig
+}
+
 type Store interface {
 	stores.Store
 	SelectStore
-	GetSchemaConfigs() []config.PeriodConfig
+	SchemaConfigProvider
 }
 
 type LokiStore struct {
@@ -97,6 +102,10 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache)
 	if err != nil {
 		return nil, err
+	}
+
+	if cache.IsCacheConfigured(storeCfg.WriteDedupeCacheConfig) {
+		level.Warn(logger).Log("msg", "write dedupe cache is deprecated along with legacy index types. Consider using TSDB index which does not require a write dedupe cache.")
 	}
 
 	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache)
@@ -274,24 +283,8 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			return nil, nil, nil, err
 		}
 
-		var backupIndexWriter index.Writer
-		backupStoreStop := func() {}
-		if s.cfg.TSDBShipperConfig.UseBoltDBShipperAsBackup {
-			pCopy := p
-			pCopy.IndexType = config.BoltDBShipperType
-			pCopy.IndexTables.Prefix = fmt.Sprintf("%sbackup_", pCopy.IndexTables.Prefix)
-
-			tableRange := tableRange
-			tableRange.PeriodConfig = &pCopy
-
-			_, backupIndexWriter, backupStoreStop, err = s.storeForPeriod(pCopy, tableRange, chunkClient, f)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-		}
-
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(fmt.Sprintf("%s_%s", p.ObjectType, p.From.String()), s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits,
-			tableRange, backupIndexWriter, indexClientReg, indexClientLogger, s.indexReadCache)
+		name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -305,7 +298,6 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 				chunkClient.Stop()
 				stopTSDBStoreFunc()
 				objectClient.Stop()
-				backupStoreStop()
 			}, nil
 	}
 
@@ -323,11 +315,11 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	}
 
 	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
-	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
-	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
+	monitoredReaderWriter := index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, monitoredReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 	return chunkWriter,
-		indexReaderWriter,
+		monitoredReaderWriter,
 		func() {
 			chunkClient.Stop()
 			f.Stop()
@@ -399,7 +391,7 @@ func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, 
 	stats := stats.FromContext(ctx)
 
 	start := time.Now()
-	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, matchers...)
 	stats.AddChunkRefsFetchTime(time.Since(start))
 
 	if err != nil {

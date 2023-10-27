@@ -261,6 +261,9 @@ azure:
   {{- with .accountKey }}
   account_key: {{ . }}
   {{- end }}
+  {{- with .connectionString }}
+  connection_string: {{ . }}
+  {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
   use_federated_token: {{ .useFederatedToken }}
@@ -330,6 +333,9 @@ azure:
   account_name: {{ .accountName }}
   {{- with .accountKey }}
   account_key: {{ . }}
+  {{- end }}
+  {{- with .connectionString }}
+  connection_string: {{ . }}
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}

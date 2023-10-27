@@ -31,9 +31,9 @@ Examples:
 
 - Logs are often unstructured data, it can be very difficult to extract reliable data from some unstructured formats, often requiring the use of complicated regular expressions.
 - Easy to abuse.  Easy to create a Label with high cardinality, even possibly by accident with a rogue regular expression.
-- Where do we extract metrics and labels at the client (Promtail or other?) or Loki? Extraction at the server (Loki) side has some pros/cons.  Can we do both? At least with labels we could define a set of expected labels and if loki doesn’t receive them they could be extracted.
+- Where do we extract metrics and labels at the client (Promtail or other?) or Loki? Extraction at the server (Loki) side has some pros/cons.  Can we do both? At least with labels we could define a set of expected labels and if Loki doesn’t receive them they could be extracted.
   - Server side extraction would improve interoperability at the expense of increase server workload and cost.
-  - Are there discoverability questions/concerns with metrics exposed via loki vs the agent? Maybe this is better/easier to manage?
+  - Are there discoverability questions/concerns with metrics exposed via Loki vs the agent? Maybe this is better/easier to manage?
   - Potentially more difficult to manage configuration with the server side having to match configs to incoming log streams
 
 ## Existing Solutions

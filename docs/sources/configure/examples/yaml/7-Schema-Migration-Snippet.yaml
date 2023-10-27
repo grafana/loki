@@ -1,0 +1,23 @@
+schema_config:
+  configs:
+    # Starting from 2018-04-15 Loki should store indexes on BoltDB with the v11 schema
+    # using daily periodic tables and chunks on filesystem.
+    # The index tables will be prefixed with "index_".
+  - from: "2018-04-15"
+    store: boltdb-shipper
+    object_store: filesystem
+    schema: v11
+    index:
+        period: 24h
+        prefix: index_
+
+  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v12 schema
+  # using daily periodic tables and chunks on AWS S3.
+  - from: "2023-06-15"
+    store: tsdb
+    object_store: s3
+    schema: v12
+    index:
+        period: 24h
+        prefix: index_
+        

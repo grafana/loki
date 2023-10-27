@@ -5,6 +5,7 @@ package queryrangebase;
 import "gogoproto/gogo.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 
@@ -14,8 +15,14 @@ option (gogoproto.unmarshaler_all) = true;
 
 message PrometheusRequest {
   string path = 1;
-  int64 start = 2;
-  int64 end = 3;
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
   int64 step = 4;
   google.protobuf.Duration timeout = 5 [
     (gogoproto.stdduration) = true,

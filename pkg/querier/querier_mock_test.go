@@ -127,9 +127,9 @@ func (c *querierClientMock) Close() error {
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
-	return func(addr string) (ring_client.PoolClient, error) {
+	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return c, nil
-	}
+	})
 }
 
 // mockIngesterClientConfig returns an ingester client config suitable for testing
@@ -319,7 +319,7 @@ func (s *storeMock) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return res.(iter.SampleIterator), args.Error(1)
 }
 
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
 	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*fetcher.Fetcher), args.Error(2)
 }

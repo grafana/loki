@@ -1,10 +1,11 @@
 ---
 {{- if .Values.monitoring.selfMonitoring.enabled }}
 {{- with .Values.monitoring.selfMonitoring.podLogs }}
-apiVersion: monitoring.grafana.com/v1alpha1
+apiVersion: {{ .apiVersion }}
 kind: PodLogs
 metadata:
   name: {{ include "loki.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
   {{- with .annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

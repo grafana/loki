@@ -1,8 +1,8 @@
 ---
 title: Log entry deletion
-menuTitle: "Log entry deletion"
-description: "Log entries from a specified stream may be deleted."
-weight: 60
+menuTitle: Log entry deletion
+description: Log entries from a specified stream may be deleted.
+weight: 700
 ---
 # Log entry deletion
 

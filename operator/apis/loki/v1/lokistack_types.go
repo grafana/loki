@@ -437,6 +437,16 @@ type MemberListSpec struct {
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:default","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
 	InstanceAddrType InstanceAddrType `json:"instanceAddrType,omitempty"`
+
+	// EnableIPv6 enables IPv6 support for the memberlist based hash ring.
+	//
+	// Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+	// for the memberlist.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable IPv6"
+	EnableIPv6 bool `json:"enableIPv6,omitempty"`
 }
 
 // HashRingSpec defines the hash ring configuration
@@ -990,8 +1000,10 @@ const (
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
 	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
-	// ReasonNoZoneAwareNodes when the cluster does not contain any nodes with the labels needed for zone-awareness.
-	ReasonNoZoneAwareNodes LokiStackConditionReason = "ReasonNoZoneAwareNodes"
+	// ReasonZoneAwareNodesMissing when the cluster does not contain any nodes with the labels needed for zone-awareness.
+	ReasonZoneAwareNodesMissing LokiStackConditionReason = "ReasonZoneAwareNodesMissing"
+	// ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.
+	ReasonZoneAwareEmptyLabel LokiStackConditionReason = "ReasonZoneAwareEmptyLabel"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.
