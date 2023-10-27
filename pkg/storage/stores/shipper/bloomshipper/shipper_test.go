@@ -116,20 +116,20 @@ func Test_Shipper_findBlocks(t *testing.T) {
 
 func TestGetPosition(t *testing.T) {
 	for i, tc := range []struct {
-		s   []int
-		v   int
+		s   []uint64
+		v   uint64
 		exp int
 	}{
-		{s: []int{}, v: 1, exp: 0},
-		{s: []int{1, 2, 3}, v: 0, exp: 0},
-		{s: []int{1, 2, 3}, v: 2, exp: 1},
-		{s: []int{1, 2, 3}, v: 4, exp: 3},
-		{s: []int{1, 2, 4, 5}, v: 3, exp: 2},
+		{s: []uint64{}, v: 1, exp: 0},
+		{s: []uint64{1, 2, 3}, v: 0, exp: 0},
+		{s: []uint64{1, 2, 3}, v: 2, exp: 1},
+		{s: []uint64{1, 2, 3}, v: 4, exp: 3},
+		{s: []uint64{1, 2, 4, 5}, v: 3, exp: 2},
 	} {
 		tc := tc
 		name := fmt.Sprintf("case-%d", i)
 		t.Run(name, func(t *testing.T) {
-			got := getPosition[[]int](tc.s, tc.v)
+			got := getPosition(tc.s, tc.v)
 			require.Equal(t, tc.exp, got)
 		})
 	}
