@@ -112,7 +112,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 		return &QuantileSketchResponse{Response: data.ToProto()}, nil
 	}
 
-	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
+	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
 }
 
 func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
@@ -254,7 +254,7 @@ func QueryRequestUnwrap(req *QueryRequest) (queryrangebase.Request, error) {
 			LabelRequest: *concrete.Labels,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported request type, got (%t)", req.Request)
+		return nil, fmt.Errorf("unsupported request type, got (%T)", req.Request)
 	}
 }
 
@@ -297,6 +297,6 @@ func QueryRequestWrap(r queryrangebase.Request) (*QueryRequest, error) {
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported request type, got (%t)", r)
+		return nil, fmt.Errorf("unsupported request type, got (%T)", r)
 	}
 }

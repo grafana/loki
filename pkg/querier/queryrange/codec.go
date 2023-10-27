@@ -289,11 +289,11 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		return &logproto.SeriesRequest{
-			Groups:   req.Groups,
-			Start: req.Start.UTC(),
-			End:   req.End.UTC(),
+			Groups: req.Groups,
+			Start:  req.Start.UTC(),
+			End:    req.End.UTC(),
 			//Path:    r.URL.Path,
-			Shards:  req.Shards,
+			Shards: req.Shards,
 		}, nil
 	case LabelNamesOp:
 		req, err := loghttp.ParseLabelQuery(r)
