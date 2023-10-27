@@ -416,7 +416,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		defer endReplay()
 
 		level.Info(i.logger).Log("msg", "recovering from checkpoint")
-		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
+		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir, i.logger)
 		if err != nil {
 			return err
 		}
