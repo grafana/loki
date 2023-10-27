@@ -120,6 +120,7 @@ const (
 	Write                    string = "write"
 	Backend                  string = "backend"
 	Analytics                string = "analytics"
+	InitCodec                string = "init-codec"
 )
 
 const (
@@ -329,10 +330,13 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
-	pushHandler := middleware.Merge(
+	httpPushHandlerMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
-	).Wrap(http.HandlerFunc(t.distributor.PushHandler))
+	)
+
+	lokiPushHandler := httpPushHandlerMiddleware.Wrap(http.HandlerFunc(t.distributor.PushHandler))
+	otlpPushHandler := httpPushHandlerMiddleware.Wrap(http.HandlerFunc(t.distributor.OTLPPushHandler))
 
 	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
@@ -340,9 +344,16 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 	}
 
-	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
-	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(pushHandler)
+	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(lokiPushHandler)
+	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(lokiPushHandler)
+	t.Server.HTTP.Path("/otlp/v1/logs").Methods("POST").Handler(otlpPushHandler)
 	return t.distributor, nil
+}
+
+// initCodec sets the codec used to encode and decode requests.
+func (t *Loki) initCodec() (services.Service, error) {
+	t.Codec = queryrange.DefaultCodec
+	return nil, nil
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
@@ -383,6 +394,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 		httpreq.ExtractQueryTagsMiddleware(),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
@@ -498,11 +510,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// on the external router.
 	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
 	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
-
-	// Default codec
-	if t.Codec == nil {
-		t.Codec = queryrange.DefaultCodec
-	}
 
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
@@ -777,10 +784,10 @@ type disabledShuffleShardingLimits struct{}
 
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) int { return 0 }
 
-func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
+func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	tripperware, stopper, err := queryrange.NewTripperware(
+	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
 		util_log.Logger,
@@ -793,7 +800,7 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 		return
 	}
 	t.stopper = stopper
-	t.QueryFrontEndTripperware = tripperware
+	t.QueryFrontEndMiddleware = middleware
 
 	return services.NewIdleService(nil, nil), nil
 }
@@ -860,13 +867,15 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		FrontendV2:    t.Cfg.Frontend.FrontendV2,
 		DownstreamURL: t.Cfg.Frontend.DownstreamURL,
 	}
-	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
+	frontendTripper, frontendV1, frontendV2, err := frontend.InitFrontend(
 		combinedCfg,
 		scheduler.SafeReadRing(t.Cfg.QueryScheduler, t.querySchedulerRingManager),
 		disabledShuffleShardingLimits{},
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
-		prometheus.DefaultRegisterer)
+		prometheus.DefaultRegisterer,
+		t.Codec,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -883,7 +892,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
 	}
 
-	roundTripper = t.QueryFrontEndTripperware(roundTripper)
+	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec)
 
 	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	if t.Cfg.Frontend.CompressResponses {
@@ -892,7 +901,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader),
+		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1149,7 +1158,8 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-
+	t.Cfg.BloomGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.BloomCompactor.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {
@@ -1395,7 +1405,7 @@ func (t *Loki) initBloomCompactorRing() (services.Service, error) {
 	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	// is LegacyMode needed?
-	//legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
+	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
 
 	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, 1, util_log.Logger, prometheus.DefaultRegisterer)
 
@@ -1469,15 +1479,6 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits interceptors")
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, querylimits.ServerQueryLimitsInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, querylimits.StreamServerQueryLimitsInterceptor)
-
-	return nil, nil
-}
-
-func (t *Loki) initQueryLimitsTripperware() (services.Service, error) {
-	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits tripperware")
-	t.QueryFrontEndTripperware = querylimits.WrapTripperware(
-		t.QueryFrontEndTripperware,
-	)
 
 	return nil, nil
 }

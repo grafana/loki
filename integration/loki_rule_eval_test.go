@@ -56,9 +56,9 @@ func testRuleEval(t *testing.T, mode string) {
 	cliWrite.Now = now
 
 	// 1. Ingest some logs
-	require.NoError(t, cliWrite.PushLogLineWithTimestamp("HEAD /", now, map[string]string{"method": "HEAD", "job": job}))
-	require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now, map[string]string{"method": "GET", "job": job}))
-	require.NoError(t, cliWrite.PushLogLineWithTimestamp("GET /", now.Add(time.Second), map[string]string{"method": "GET", "job": job}))
+	require.NoError(t, cliWrite.PushLogLine("HEAD /", now, nil, map[string]string{"method": "HEAD", "job": job}))
+	require.NoError(t, cliWrite.PushLogLine("GET /", now, nil, map[string]string{"method": "GET", "job": job}))
+	require.NoError(t, cliWrite.PushLogLine("GET /", now.Add(time.Second), nil, map[string]string{"method": "GET", "job": job}))
 
 	// advance time to after the last ingested log line so queries don't return empty results
 	now = now.Add(time.Second * 2)

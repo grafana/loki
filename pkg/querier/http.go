@@ -289,7 +289,7 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 	return resp, err
 }
 
-//TODO(trevorwhitney): add test for the handler split
+// TODO(trevorwhitney): add test for the handler split
 
 // VolumeHandler queries the index label volumes related to the passed matchers and given time range.
 // Returns either N values where N is the time range / step and a single value for a time range depending on the request.

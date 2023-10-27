@@ -1,9 +1,9 @@
 package v1
 
-// MergeDedupeIter is a deduplicating iterator that merges adjacent elements
+// DedupeIter is a deduplicating iterator that merges adjacent elements
 // It's intended to be used when merging multiple blocks,
 // each of which may contain the same fingerprints
-type MergeDedupeIter[T any] struct {
+type DedupeIter[T any] struct {
 	eq    func(T, T) bool
 	merge func(T, T) T
 	itr   PeekingIterator[T]
@@ -11,19 +11,19 @@ type MergeDedupeIter[T any] struct {
 	tmp []T
 }
 
-func NewMergeDedupingIter[T any](
+func NewDedupingIter[T any](
 	eq func(T, T) bool,
 	merge func(T, T) T,
 	itr PeekingIterator[T],
-) *MergeDedupeIter[T] {
-	return &MergeDedupeIter[T]{
+) *DedupeIter[T] {
+	return &DedupeIter[T]{
 		eq:    eq,
 		merge: merge,
 		itr:   itr,
 	}
 }
 
-func (it *MergeDedupeIter[T]) Next() bool {
+func (it *DedupeIter[T]) Next() bool {
 	it.tmp = it.tmp[:0]
 	if !it.itr.Next() {
 		return false
@@ -40,17 +40,16 @@ func (it *MergeDedupeIter[T]) Next() bool {
 	}
 
 	// merge all the elements in tmp
-	for len(it.tmp) > 1 {
-		it.tmp[len(it.tmp)-2] = it.merge(it.tmp[len(it.tmp)-2], it.tmp[len(it.tmp)-1])
-		it.tmp = it.tmp[:len(it.tmp)-1]
+	for i := len(it.tmp) - 1; i > 0; i-- {
+		it.tmp[i-1] = it.merge(it.tmp[i-1], it.tmp[i])
 	}
 	return true
 }
 
-func (it *MergeDedupeIter[T]) Err() error {
+func (it *DedupeIter[T]) Err() error {
 	return it.itr.Err()
 }
 
-func (it *MergeDedupeIter[T]) At() T {
+func (it *DedupeIter[T]) At() T {
 	return it.tmp[0]
 }

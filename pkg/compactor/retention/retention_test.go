@@ -22,7 +22,6 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	ingesterclient "github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -544,7 +543,7 @@ func TestChunkRewriter(t *testing.T) {
 				require.Equal(t, expectedChunks[i][len(expectedChunks[i])-1].End, chunks[i].Through)
 
 				lokiChunk := chunks[i].Data.(*chunkenc.Facade).LokiChunk()
-				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepStructuredMetadata())
+				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 
 				for _, interval := range expectedChunks[i] {

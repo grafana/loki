@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
-	cloud.google.com/go/pubsub v1.32.0
+	cloud.google.com/go/pubsub v1.33.0
 	cloud.google.com/go/storage v1.30.1
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.14.0
@@ -20,7 +20,7 @@ require (
 	github.com/baidubce/bce-sdk-go v0.9.141
 	github.com/bmatcuk/doublestar v1.3.4
 	github.com/buger/jsonparser v1.1.1
-	github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
+	github.com/c2h5oh/datasize v0.0.0-20220606134207-859f65c6625b
 	github.com/cespare/xxhash v1.1.0
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
@@ -51,7 +51,7 @@ require (
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 	github.com/grafana/dskit v0.0.0-20231017083947-7b512eb54d47
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20230914135007-70d78eaabfe1
+	github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -62,7 +62,7 @@ require (
 	github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
 	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
-	github.com/joncrlsn/dque v2.2.1-0.20200515025108-956d14155fa2+incompatible
+	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.16.7
 	github.com/klauspost/pgzip v1.2.5
@@ -104,7 +104,7 @@ require (
 	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.132.0
-	google.golang.org/grpc v1.56.3
+	google.golang.org/grpc v1.58.3
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -123,14 +123,16 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gogo/googleapis v1.4.0
-	github.com/grafana/loki/pkg/push v0.0.0-20231017172654-cfc4f0e84adc
+	github.com/grafana/loki/pkg/push v0.0.0-20231023154132-0a7737e7c7eb
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.86.0
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
 	github.com/thanos-io/objstore v0.0.0-20230829152104-1b257a36f9a3
 	github.com/willf/bloom v2.0.3+incompatible
+	go.opentelemetry.io/collector/pdata v1.0.0-rcv0015
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
 	golang.org/x/oauth2 v0.10.0
@@ -140,8 +142,8 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.110.4 // indirect
-	cloud.google.com/go/compute v1.22.0 // indirect
+	cloud.google.com/go v0.110.7 // indirect
+	cloud.google.com/go/compute v1.23.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	cloud.google.com/go/iam v1.1.1 // indirect
 	cloud.google.com/go/longrunning v0.5.1 // indirect
@@ -300,9 +302,9 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.4 // indirect
 	go.mongodb.org/mongo-driver v1.12.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.opentelemetry.io/collector/pdata v1.0.0-rcv0014 // indirect
+	go.opentelemetry.io/collector/featuregate v1.0.0-rcv0015 // indirect
 	go.opentelemetry.io/collector/semconv v0.81.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.42.0 // indirect
 	go.opentelemetry.io/otel v1.18.0 // indirect
 	go.opentelemetry.io/otel/metric v1.18.0 // indirect
 	go.opentelemetry.io/otel/trace v1.18.0 // indirect
@@ -313,9 +315,9 @@ require (
 	golang.org/x/tools v0.11.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230717213848-3f92550aa753 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230717213848-3f92550aa753 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230717213848-3f92550aa753 // indirect
+	google.golang.org/genproto v0.0.0-20230913181813-007df8e322eb // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230920204549-e6e6cdab5c13 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 func init() {
@@ -69,6 +70,19 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Interval:  10000, // interval is expected in ms
 			Direction: logproto.BACKWARD,
 			Path:      "/query_range",
+			StartTs:   start,
+			EndTs:     end,
+		}, false},
+		{"legacy query_range with refexp", func() (*http.Request, error) {
+			return http.NewRequest(http.MethodGet,
+				fmt.Sprintf(`/api/prom/query?start=%d&end=%d&query={foo="bar"}&interval=10&limit=200&direction=BACKWARD&regexp=foo`, start.UnixNano(), end.UnixNano()), nil)
+		}, &LokiRequest{
+			Query:     `{foo="bar"} |~ "foo"`,
+			Limit:     200,
+			Step:      14000, // step is expected in ms; calculated default if request param not present
+			Interval:  10000, // interval is expected in ms
+			Direction: logproto.BACKWARD,
+			Path:      "/api/prom/query",
 			StartTs:   start,
 			EndTs:     end,
 		}, false},
@@ -254,6 +268,36 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
+			"streams v1 with structured metadata", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsStringWithStructuredMetdata))},
+			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreamsWithStructuredMetadata,
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
+			"streams v1 with categorized labels", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsStringWithCategories))},
+			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreamsWithCategories,
 				},
 				Statistics: statsResult,
 			}, false,
@@ -755,13 +799,14 @@ func Test_codec_seriesVolume_DecodeRequest(t *testing.T) {
 
 func Test_codec_EncodeResponse(t *testing.T) {
 	tests := []struct {
-		name    string
-		path    string
-		res     queryrangebase.Response
-		body    string
-		wantErr bool
+		name        string
+		path        string
+		res         queryrangebase.Response
+		body        string
+		wantErr     bool
+		queryParams map[string]string
 	}{
-		{"error", "/loki/api/v1/query_range", &badResponse{}, "", true},
+		{"error", "/loki/api/v1/query_range", &badResponse{}, "", true, nil},
 		{
 			"prom", "/loki/api/v1/query_range",
 			&LokiPromResponse{
@@ -773,7 +818,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					},
 				},
 				Statistics: statsResult,
-			}, matrixString, false},
+			}, matrixString, false, nil},
 		{
 			"loki v1", "/loki/api/v1/query_range",
 			&LokiResponse{
@@ -786,7 +831,25 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, streamsString, false,
+			}, streamsString, false, nil,
+		},
+		{
+			"loki v1 with categories", "/loki/api/v1/query_range",
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreamsWithCategories,
+				},
+				Statistics: statsResult,
+			},
+			streamsStringWithCategories, false,
+			map[string]string{
+				httpreq.LokiEncodingFlagsHeader: string(httpreq.FlagCategorizeLabels),
+			},
 		},
 		{
 			"loki legacy", "/api/promt/query",
@@ -800,7 +863,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, streamsStringLegacy, false,
+			}, streamsStringLegacy, false, nil,
 		},
 		{
 			"loki series", "/loki/api/v1/series",
@@ -808,7 +871,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    seriesData,
-			}, seriesString, false,
+			}, seriesString, false, nil,
 		},
 		{
 			"loki labels", "/loki/api/v1/labels",
@@ -816,7 +879,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    labelsData,
-			}, labelsString, false,
+			}, labelsString, false, nil,
 		},
 		{
 			"loki labels legacy", "/api/prom/label",
@@ -824,7 +887,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
 				Data:    labelsData,
-			}, labelsLegacyString, false,
+			}, labelsLegacyString, false, nil,
 		},
 		{
 			"index stats", "/loki/api/v1/index/stats",
@@ -835,7 +898,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Bytes:   3,
 					Entries: 4,
 				},
-			}, indexStatsString, false,
+			}, indexStatsString, false, nil,
 		},
 		{
 			"volume", "/loki/api/v1/index/volume",
@@ -846,16 +909,21 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					},
 					Limit: 100,
 				},
-			}, seriesVolumeString, false,
+			}, seriesVolumeString, false, nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			u := &url.URL{Path: tt.path}
+			h := http.Header{}
+			for k, v := range tt.queryParams {
+				h.Set(k, v)
+			}
 			req := &http.Request{
 				Method:     "GET",
 				RequestURI: u.String(),
 				URL:        u,
+				Header:     h,
 			}
 			got, err := DefaultCodec.EncodeResponse(context.TODO(), req, tt.res)
 			if (err != nil) != tt.wantErr {
@@ -1546,17 +1614,132 @@ var (
 				},
 				{
 					"stream": {
-						"test": "test2"
+						"test": "test",
+                        "x": "a",
+                        "y": "b"
 					},
 					"values":[
-						[ "123456789012346", "super line2"]
+						[ "123456789012346", "super line2" ]
+					]
+				},
+				{
+					"stream": {
+						"test": "test",
+                        "x": "a",
+                        "y": "b",
+						"z": "text"
+					},
+					"values":[
+						[ "123456789012346", "super line3 z=text" ]
+					]
+				}
+			]
+		}
+	}`
+	streamsStringWithStructuredMetdata = `{
+		"status": "success",
+		"data": {
+			` + statsResultString + `
+			"resultType": "streams",
+			"result": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line"]
+					]
+				},
+				{
+					"stream": {
+						"test": "test",
+                        "x": "a",
+                        "y": "b"
+					},
+					"values":[
+						[ "123456789012346", "super line2", {"x": "a", "y": "b"} ]
+					]
+				},
+				{
+					"stream": {
+						"test": "test",
+                        "x": "a",
+                        "y": "b",
+						"z": "text"
+					},
+					"values":[
+						[ "123456789012346", "super line3 z=text", {"x": "a", "y": "b"}]
+					]
+				}
+			]
+		}
+	}`
+	streamsStringWithCategories = `{
+		"status": "success",
+		"data": {
+			` + statsResultString + `
+			"resultType": "streams",
+			"encodingFlags": ["` + string(httpreq.FlagCategorizeLabels) + `"],
+			"result": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line"],
+						[ "123456789012346", "super line2", {
+							"structuredMetadata": {
+								"x": "a",
+								"y": "b"
+							}
+						}],
+						[ "123456789012347", "super line3 z=text", {
+							"structuredMetadata": {
+								"x": "a",
+								"y": "b"
+							},
+							"parsed": {
+								"z": "text"
+							}
+						}]
 					]
 				}
 			]
 		}
 	}`
 	streamsStringLegacy = `{
-		` + statsResultString + `"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test2\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}]}`
+		` + statsResultString + `"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test\", x=\"a\", y=\"b\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}, {"labels":"{test=\"test\", x=\"a\", y=\"b\", z=\"text\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line3 z=text"}]}]}`
+	logStreamsWithStructuredMetadata = []logproto.Stream{
+		{
+			Labels: `{test="test"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:      "super line",
+					Timestamp: time.Unix(0, 123456789012345).UTC(),
+				},
+			},
+		},
+		{
+			Labels: `{test="test", x="a", y="b"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:               "super line2",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+				},
+			},
+		},
+		{
+			Labels: `{test="test", x="a", y="b", z="text"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:               "super line3 z=text",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+				},
+			},
+		},
+	}
 	logStreams = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
@@ -1568,11 +1751,42 @@ var (
 			},
 		},
 		{
-			Labels: `{test="test2"}`,
+			Labels: `{test="test", x="a", y="b"}`,
 			Entries: []logproto.Entry{
 				{
 					Line:      "super line2",
 					Timestamp: time.Unix(0, 123456789012346).UTC(),
+				},
+			},
+		},
+		{
+			Labels: `{test="test", x="a", y="b", z="text"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:      "super line3 z=text",
+					Timestamp: time.Unix(0, 123456789012346).UTC(),
+				},
+			},
+		},
+	}
+	logStreamsWithCategories = []logproto.Stream{
+		{
+			Labels: `{test="test"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:      "super line",
+					Timestamp: time.Unix(0, 123456789012345).UTC(),
+				},
+				{
+					Line:               "super line2",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+				},
+				{
+					Line:               "super line3 z=text",
+					Timestamp:          time.Unix(0, 123456789012347).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("z", "text")),
 				},
 			},
 		},

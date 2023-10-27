@@ -47,7 +47,7 @@ chunk_store_config:
   cache_lookups_older_than: 1h
   write_dedupe_cache_config: # DEPRECATED
     default_validity: 30m
-  max_look_back_period: 1m # DEPRECATED
+  max_look_back_period: 1m # DELETED
 
 ruler:
   flush_period: 1s
