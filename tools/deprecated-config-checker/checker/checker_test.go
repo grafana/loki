@@ -26,6 +26,7 @@ var (
 		"storage_config.boltdb_shipper.use_boltdb_shipper_as_backup",
 		"storage_config.aws.sse_encryption",
 		"storage_config.s3.sse_encryption",
+		"chunk_store_config.max_look_back_period",
 	}
 
 	expectedConfigDeprecates = []string{
@@ -38,7 +39,6 @@ var (
 		"storage_config.grpc_store",
 		"storage_config.aws.dynamodb",
 		"chunk_store_config.write_dedupe_cache_config",
-		"chunk_store_config.max_look_back_period",
 		"limits_config.unordered_writes",
 		"limits_config.ruler_evaluation_delay_duration",
 		"limits_config.ruler_remote_write_url",
