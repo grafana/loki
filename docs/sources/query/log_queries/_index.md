@@ -713,16 +713,15 @@ the result will be
 
 ## Pipeline Errors
 
-There are multiple reasons which cause pipeline processing errors, such as:
+There are many things which can cause pipeline processing errors, for example:
 
-- A numeric label filter may fail to turn a label value into a number
+- A numeric label filter may fail to turn a label value into a number.
 - A metric conversion for a label may fail.
-- A log line is not a valid json document.
-- etc...
+- A log line is not a valid JSON document.
 
-When those failures happen, Loki won't filter out those log lines. Instead they are passed into the next stage of the pipeline with a new system label named `__error__`. The only way to filter out errors is by using a label filter expressions. The `__error__` label can't be renamed via the language.
+When those failures happen, Loki won't filter out those log lines. Instead they are passed into the next stage of the pipeline with a new system label named `__error__`. The only way to filter out errors is by using a label filter expression. The `__error__` label cannot be renamed via LogQL.
 
-For example to remove json errors:
+For example to remove JSON errors:
 
 ```logql
   {cluster="ops-tools1",container="ingress-nginx"}
@@ -730,5 +729,5 @@ For example to remove json errors:
     | __error__ != "JSONParserErr"
 ```
 
-Alternatively you can remove all error using a catch all matcher such as `__error__ = ""` or even show only errors using `__error__ != ""`.
-Note that the filter should be placed after the stage that generated this error.
+Alternatively you can remove all errors using a catch all matcher such as `__error__ = ""` or even show only errors using `__error__ != ""`.
+Note that the filter should be placed **after** the stage that generated the error.
