@@ -149,9 +149,6 @@ func NewMiddleware(
 	}
 
 	var codec base.Codec = DefaultCodec
-	if cfg.RequiredQueryResponseFormat == "protobuf" {
-		codec = &RequestProtobufCodec{}
-	}
 
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
 		cacheGenNumLoader, retentionEnabled, metrics)

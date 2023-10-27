@@ -51,6 +51,9 @@ type Config struct {
 	// If set, address is not computed from interfaces.
 	Addr string `yaml:"address" doc:"hidden"`
 	Port int    `doc:"hidden"`
+
+	// Defines the encoding for requests to and responses from the scheduduler and querier.
+	Encoding string `yaml:"encoding"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -65,6 +68,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Port, "frontend.instance-port", 0, "Port to advertise to querier (via scheduler) (defaults to server.grpc-listen-port).")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)
+
+	f.StringVar(&cfg.Encoding, "frontend.encoding", "json", "Defines the encoding for requests to and responses from the scheduduler and querier. Can be 'json' or 'protobuf' (defaults to 'json').")
 }
 
 // Frontend implements GrpcRoundTripper. It queues HTTP requests,
@@ -276,25 +281,8 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// For backwards comaptibility we are sending both encodings
-	httpReq, err := f.codec.EncodeRequest(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
-	}
-
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-	httpgrpcReq, err := server.HTTPRequest(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("connot convert HTTP request to gRPC request: %w", err)
-	}
-
-	// TODO: check feature flag to set freq.queryRequest = QueryRequestWrap(req)
-
 	freq := &frontendRequest{
 		queryID:      f.lastQueryID.Inc(),
-		request:      httpgrpcReq,
 		tenantID:     tenantID,
 		actor:        httpreq.ExtractActorPath(ctx),
 		statsEnabled: stats.IsEnabled(ctx),
@@ -306,6 +294,31 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		enqueue:  make(chan enqueueResult, 1),
 		response: make(chan *frontendv2pb.QueryResultRequest, 1),
 	}
+
+	if f.cfg.Encoding == "protobuf" {
+		// TODO: add metadata
+		freq.queryRequest, err = queryrange.QueryRequestWrap(req)
+		if err != nil {
+			return nil, fmt.Errorf("cannot wrap request: %w", err)
+		}
+	} else {
+
+		// For backwards comaptibility we are sending both encodings
+		httpReq, err := f.codec.EncodeRequest(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
+		}
+
+		if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		freq.request, err = server.HTTPRequest(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("cannot convert HTTP request to gRPC request: %w", err)
+		}
+	}
+
 
 	cancelCh, err := f.enqueue(ctx, freq)
 	defer f.requests.delete(freq.queryID)
