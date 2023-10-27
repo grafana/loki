@@ -12,7 +12,7 @@ type Metrics struct {
 	querierWaitTime   *prometheus.HistogramVec // Per querier wait time
 }
 
-func NewMetrics(subsystem string, registerer prometheus.Registerer, metricsNamespace string) *Metrics {
+func NewMetrics(registerer prometheus.Registerer, metricsNamespace, subsystem string) *Metrics {
 	return &Metrics{
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,

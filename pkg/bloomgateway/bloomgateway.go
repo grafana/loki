@@ -195,7 +195,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 	}
 
-	g.queueMetrics = queue.NewMetrics("bloom_gateway", reg, "loki")
+	g.queueMetrics = queue.NewMetrics(reg, "loki", "bloom_gateway")
 	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 

@@ -123,7 +123,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 		}
 	}
 
-	queueMetrics := queue.NewMetrics("query_scheduler", registerer, metricsNamespace)
+	queueMetrics := queue.NewMetrics(registerer, metricsNamespace, "query_scheduler")
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
