@@ -94,7 +94,11 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 		return &queryrange.IndexStatsResponse{Response: result}, nil
 	case *logproto.VolumeRequest:
-		return h.api.VolumeHandler(ctx, concrete)
+		result, err := h.api.VolumeHandler(ctx, concrete)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.VolumeResponse{Response: result}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

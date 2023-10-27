@@ -31,8 +31,8 @@ var provStore = &store{
 // storeKey acts as the key to the map of providers maintained by the store. A
 // combination of provider name and configuration is used to uniquely identify
 // every provider instance in the store. Go maps need to be indexed by
-// comparable types, so the provider configuration is converted from
-// `interface{}` to string using the ParseConfig method while creating this key.
+// comparable types, so the provider configuration is converted from `any` to
+// `string` using the ParseConfig method while creating this key.
 type storeKey struct {
 	// name of the certificate provider.
 	name string
@@ -137,7 +137,7 @@ func (bc *BuildableConfig) String() string {
 // ParseConfig is a convenience function to create a BuildableConfig given a
 // provider name and configuration. Returns an error if there is no registered
 // builder for the given name or if the config parsing fails.
-func ParseConfig(name string, config interface{}) (*BuildableConfig, error) {
+func ParseConfig(name string, config any) (*BuildableConfig, error) {
 	parser := getBuilder(name)
 	if parser == nil {
 		return nil, fmt.Errorf("no certificate provider builder found for %q", name)
@@ -147,7 +147,7 @@ func ParseConfig(name string, config interface{}) (*BuildableConfig, error) {
 
 // GetProvider is a convenience function to create a provider given the name,
 // config and build options.
-func GetProvider(name string, config interface{}, opts BuildOptions) (Provider, error) {
+func GetProvider(name string, config any, opts BuildOptions) (Provider, error) {
 	bc, err := ParseConfig(name, config)
 	if err != nil {
 		return nil, err

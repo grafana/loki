@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [11038](https://github.com/grafana/loki/pull/11038) **kavirajk**: Remove already deprecated `store.max-look-back-period`.
 * [10906](https://github.com/grafana/loki/pull/10906) **kavirajk**: Support Loki ruler to notify WAL writes to remote storage.
 * [10613](https://github.com/grafana/loki/pull/10613) **ngc4579**: Helm: allow GrafanaAgent tolerations
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
@@ -28,6 +29,7 @@
 * [10793](https://github.com/grafana/loki/pull/10793) **ashwanthgoli** Config: Better configuration defaults to provide a better experience for users out of the box.
 * [10785](https://github.com/grafana/loki/pull/10785) **ashwanthgoli** Config: Removes `querier.worker-parallelism` and updates default value of `querier.max-concurrent` to 4.
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
+* [10727](https://github.com/grafana/loki/pull/10727) **sandeepsukhani** Native otlp ingestion support
 
 ##### Fixes
 
@@ -69,7 +71,11 @@
 
 #### Jsonnet
 
+* [11020](https://github.com/grafana/loki/pull/11020) **ashwanthgoli**: Loki ksonnet: Do not generate table-manager manifests if shipper store is in-use.
+
 * [10784](https://github.com/grafana/loki/pull/10894) **slim-bean** Update index gateway client to use a headless service.
+
+* [10542](https://github.com/grafana/loki/pull/10542) **chaudum**: Remove legacy deployment mode for ingester (Deployment, without WAL) and instead always run them as StatefulSet.
 
 ## 2.9.2 (2023-10-16)
 

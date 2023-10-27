@@ -89,7 +89,7 @@ type noopStreamPipeline struct {
 
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
-	n.builder.Add(structuredMetadata...)
+	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
 }
 
@@ -204,7 +204,7 @@ func (p *pipeline) Reset() {
 func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
-	p.builder.Add(structuredMetadata...)
+	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 
 	for _, s := range p.stages {
 		line, ok = s.Process(ts, line, p.builder)
