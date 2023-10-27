@@ -2185,6 +2185,40 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
+			// should return same results as `bytes_over_time({app="foo"}[30s]) > bool 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < bool bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 5.}, // 5 bytes
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+						{Timestamp: time.Unix(75, 0).UnixNano(), Hash: 3, Value: 0.},
+						{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 4, Value: 0.},
+						{Timestamp: time.Unix(105, 0).UnixNano(), Hash: 5, Value: 4.}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{
+						{T: 60000, F: 1},
+						{T: 75000, F: 0},
+						{T: 90000, F: 0},
+						{T: 105000, F: 1},
+						{T: 120000, F: 1},
+					},
+				},
+			},
+		},
+		{
 			// tests combining two streams + unwrap
 			`sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Series{
