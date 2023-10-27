@@ -207,7 +207,7 @@ func TestMetricsTripperware(t *testing.T) {
 	queryCount, queryHandler = counter()
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	require.ErrorContains(t, err, "query too large to execute on a single querie")
+	require.ErrorContains(t, err, "query too large to execute on a single querier")
 	require.Equal(t, 0, *queryCount)
 	require.Equal(t, 2, *statsCount)
 
