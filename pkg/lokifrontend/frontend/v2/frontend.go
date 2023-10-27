@@ -296,8 +296,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	}
 
 	if f.cfg.Encoding == "protobuf" {
-		// TODO: add metadata
-		freq.queryRequest, err = queryrange.QueryRequestWrap(req)
+		freq.queryRequest, err = queryrange.QueryRequestWrap(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("cannot wrap request: %w", err)
 		}
@@ -318,7 +317,6 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			return nil, fmt.Errorf("cannot convert HTTP request to gRPC request: %w", err)
 		}
 	}
-
 
 	cancelCh, err := f.enqueue(ctx, freq)
 	defer f.requests.delete(freq.queryID)

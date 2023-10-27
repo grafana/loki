@@ -176,7 +176,7 @@ func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Lo
 	}
 
 	// TODO: handle errors
-	r, _ := queryrange.QueryRequestUnwrap(request)
+	r, ctx, _ := queryrange.QueryRequestUnwrap(request, ctx)
 	resp, _ := sp.handler.Do(ctx, r)
 
 	response, _ := queryrange.QueryResponseWrap(resp)

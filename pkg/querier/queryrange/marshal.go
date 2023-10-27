@@ -10,6 +10,7 @@ import (
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/user"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -236,28 +237,64 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	return p, nil
 }
 
-func QueryRequestUnwrap(req *QueryRequest) (queryrangebase.Request, error) {
+func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {
 	if req == nil {
-		return nil, nil
+		return nil, ctx, nil
 	}
+
+	// Add query tags
+	if queryTags, ok := req.Metadata[string(httpreq.QueryTagsHTTPHeader)]; ok {
+		ctx = httpreq.InjectQueryTags(ctx, queryTags)
+	}
+
+	// Add actor path
+	if actor, ok := req.Metadata[httpreq.LokiActorPathHeader]; ok {
+		ctx = httpreq.InjectActorPath(ctx, actor)
+	}
+
+	// Add limits
+	if encodedLimits, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsKey]; ok {
+		limits, err := querylimits.UnmarshalQueryLimits([]byte(encodedLimits))
+		if err != nil {
+			return nil, ctx, err
+		}
+		ctx = querylimits.InjectQueryLimitsContext(ctx, *limits)
+	}
+
+	// Add org ID
+	if orgID, ok := req.Metadata[user.OrgIDHeaderName]; ok {
+		ctx = user.InjectOrgID(ctx, orgID)
+	}
+
+	// Tracing
+	/* TODO
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := opentracing.TextMapCarrier(result.Metadata)
+		err := tracer.Inject(span.Context(), opentracing.TextMap, carrier)
+		if err != nil {
+			return nil, err
+		}
+	}
+	*/
 
 	switch concrete := req.Request.(type) {
 	case *QueryRequest_Series:
-		return concrete.Series, nil
+		return concrete.Series, ctx, nil
 	case *QueryRequest_Instant:
-		return concrete.Instant, nil
+		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
-		return concrete.Stats, nil
+		return concrete.Stats, ctx, nil
 	case *QueryRequest_Volume:
-		return concrete.Volume, nil
+		return concrete.Volume, ctx, nil
 	case *QueryRequest_Streams:
-		return concrete.Streams, nil
+		return concrete.Streams, ctx, nil
 	case *QueryRequest_Labels:
 		return &LabelRequest{
 			LabelRequest: *concrete.Labels,
-		}, nil
+		}, ctx, nil
 	default:
-		return nil, fmt.Errorf("unsupported request type, got (%T)", req.Request)
+		return nil, ctx, fmt.Errorf("unsupported request type, got (%T)", req.Request)
 	}
 }
 
@@ -285,13 +322,13 @@ func QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequ
 	// Add query tags
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
-		result.Metadata = append(result.Metadata, &Header{Key: string(httpreq.QueryTagsHTTPHeader), Values: []string{queryTags}})
+		result.Metadata[string(httpreq.QueryTagsHTTPHeader)] = queryTags
 	}
 
 	// Add actor path
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
 	if actor != "" {
-		result.Metadata = append(result.Metadata, &Header{Key: httpreq.LokiActorPathHeader, Values: []string{actor}})
+		result.Metadata[httpreq.LokiActorPathHeader] = actor
 	}
 
 	// Add limits
@@ -301,7 +338,7 @@ func QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequ
 		if err != nil {
 			return nil, err
 		}
-		result.Metadata = append(result.Metadata, &Header{Key: querylimits.HTTPHeaderQueryLimitsKey, Values: []string{string(encodedLimits)}})
+		result.Metadata[querylimits.HTTPHeaderQueryLimitsKey] = string(encodedLimits)
 	}
 
 	// Add org ID
@@ -309,7 +346,17 @@ func QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequ
 	if err != nil {
 		return nil, err
 	}
-	result.Metadata = append(result.Metadata, &Header{Key: user.OrgIDHeaderName, Values: []string{orgID}})
+	result.Metadata[user.OrgIDHeaderName] = orgID
+
+	// Tracing
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := opentracing.TextMapCarrier(result.Metadata)
+		err := tracer.Inject(span.Context(), opentracing.TextMap, carrier)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return result, nil
 }
