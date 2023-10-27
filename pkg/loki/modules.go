@@ -120,6 +120,7 @@ const (
 	Write                    string = "write"
 	Backend                  string = "backend"
 	Analytics                string = "analytics"
+	InitCodec                string = "init-codec"
 )
 
 const (
@@ -350,6 +351,12 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	return t.distributor, nil
 }
 
+// initCodec sets the codec used to encode and decode requests.
+func (t *Loki) initCodec() (services.Service, error) {
+	t.Codec = queryrange.DefaultCodec
+	return nil, nil
+}
+
 func (t *Loki) initQuerier() (services.Service, error) {
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
@@ -504,11 +511,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// on the external router.
 	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
 	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
-
-	// Default codec
-	if t.Codec == nil {
-		t.Codec = queryrange.DefaultCodec
-	}
 
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
@@ -875,7 +877,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		util_log.Logger,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
-		queryrange.DefaultCodec,
+		t.Codec,
 	)
 	if err != nil {
 		return nil, err
