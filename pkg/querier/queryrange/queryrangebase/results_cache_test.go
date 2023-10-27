@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const (
@@ -755,7 +756,7 @@ func TestResultsCache(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "loki")
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 	require.NoError(t, err)
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
@@ -801,7 +802,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "loki")
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 	require.NoError(t, err)
 	rcm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
@@ -868,7 +869,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "loki")
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 			require.NoError(t, err)
 			fakeLimits := tc.fakeLimits
 			rcm, err := NewResultsCacheMiddleware(
@@ -912,7 +913,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "loki")
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 	require.NoError(t, err)
 	rm, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
@@ -1027,7 +1028,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, "loki")
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 			require.NoError(t, err)
 			rcm, err := NewResultsCacheMiddleware(
 				log.NewNopLogger(),

@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/queue"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const (
@@ -131,7 +132,7 @@ func TestFrontendCheckReady(t *testing.T) {
 		{"no url, no clients is not ready", 0, "not ready: number of queriers connected to query-frontend is 0", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			qm := queue.NewMetrics(nil, "loki", "query_frontend")
+			qm := queue.NewMetrics(nil, constants.Loki, "query_frontend")
 			f := &Frontend{
 				log:          log.NewNopLogger(),
 				requestQueue: queue.NewRequestQueue(5, 0, qm),
@@ -242,7 +243,7 @@ func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, t
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	v1, err := New(config, limits{}, logger, reg, "loki")
+	v1, err := New(config, limits{}, logger, reg, constants.Loki)
 	require.NoError(t, err)
 	require.NotNil(t, v1)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))

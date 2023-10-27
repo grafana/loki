@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -28,19 +29,19 @@ type MapperMetrics struct {
 func newMapperMetrics(registerer prometheus.Registerer, mapper string) *MapperMetrics {
 	return &MapperMetrics{
 		DownstreamQueries: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "query_frontend_shards_total",
 			Help:        "Number of downstream queries by expression type",
 			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}, []string{"type"}),
 		ParsedQueries: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "query_frontend_sharding_parsed_queries_total",
 			Help:        "Number of parsed queries by evaluation type",
 			ConstLabels: prometheus.Labels{"mapper": mapper},
 		}, []string{"type"}),
 		DownstreamFactor: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "query_frontend_shard_factor",
 			Help:        "Number of downstream queries per request",
 			Buckets:     prometheus.ExponentialBuckets(1, 4, 8),

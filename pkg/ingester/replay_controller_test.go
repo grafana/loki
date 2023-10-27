@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +25,7 @@ func (f *dumbFlusher) Flush() {
 	}
 }
 
-func nilMetrics() *ingesterMetrics { return newIngesterMetrics(nil, "loki") }
+func nilMetrics() *ingesterMetrics { return newIngesterMetrics(nil, constants.Loki) }
 
 func TestReplayController(t *testing.T) {
 	var ops []string

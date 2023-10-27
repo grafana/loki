@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sony/gobreaker"
 
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -127,14 +128,14 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		quit:        make(chan struct{}),
 
 		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "memcache_client_servers",
 			Help:        "The number of memcache servers discovered.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		skipped: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "memcache_client_set_skip_total",
 			Help:        "Total number of skipped set operations because of the value is larger than the max-item-size.",
 			ConstLabels: prometheus.Labels{"name": name},

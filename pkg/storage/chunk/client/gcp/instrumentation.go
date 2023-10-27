@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/loki/pkg/util/constants"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,7 +17,7 @@ import (
 
 var (
 	bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "bigtable_request_duration_seconds",
 		Help:      "Time spent doing Bigtable requests.",
 
@@ -26,7 +27,7 @@ var (
 	}, []string{"operation", "status_code"})
 
 	gcsRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "gcs_request_duration_seconds",
 		Help:      "Time spent doing GCS requests.",
 

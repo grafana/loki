@@ -1,6 +1,7 @@
 package generationnumber
 
 import (
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -21,7 +22,7 @@ func newGenLoaderMetrics(r prometheus.Registerer) *genLoaderMetrics {
 	}
 
 	cacheGenLoadFailures := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "delete_cache_gen_load_failures_total",
 		Help:      "Total number of failures while loading cache generation number using gen number loader",
 	}, []string{"source"})

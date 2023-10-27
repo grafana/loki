@@ -4,6 +4,7 @@ import (
 	"context"
 
 	instr "github.com/grafana/dskit/instrument"
+	"github.com/grafana/loki/pkg/util/constants"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -14,7 +15,7 @@ import (
 // Instrument returns an instrumented cache.
 func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 	valueSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "cache_value_size_bytes",
 		Help:      "Size of values in the cache.",
 		// Cached chunks are generally in the KBs, but cached index can
@@ -29,7 +30,7 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 		Cache: cache,
 
 		requestDuration: instr.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "cache_request_duration_seconds",
 			Help:      "Total time spent in seconds doing cache requests.",
 			// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
@@ -38,14 +39,14 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 		}, []string{"method", "status_code"})),
 
 		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "cache_fetched_keys",
 			Help:        "Total count of keys requested from cache.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "cache_hits",
 			Help:        "Total count of keys found in cache.",
 			ConstLabels: prometheus.Labels{"name": name},

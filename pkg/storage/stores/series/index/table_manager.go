@@ -20,6 +20,7 @@ import (
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -41,31 +42,31 @@ type tableManagerMetrics struct {
 func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m := tableManagerMetrics{}
 	m.syncTableDuration = promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "table_manager_sync_duration_seconds",
 		Help:      "Time spent syncing tables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 
 	m.tableCapacity = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "table_capacity_units",
 		Help:      "Per-table capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
 
 	m.createFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "table_manager_create_failures",
 		Help:      "Number of table creation failures during the last table-manager reconciliation",
 	})
 	m.deleteFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "table_manager_delete_failures",
 		Help:      "Number of table deletion failures during the last table-manager reconciliation",
 	})
 
 	m.lastSuccessfulSync = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "table_manager_sync_success_timestamp_seconds",
 		Help:      "Timestamp of the last successful table manager sync.",
 	})

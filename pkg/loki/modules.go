@@ -69,6 +69,7 @@ import (
 	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -131,7 +132,7 @@ const (
 )
 
 func (t *Loki) initServer() (services.Service, error) {
-	prometheus.MustRegister(version.NewCollector("loki"))
+	prometheus.MustRegister(version.NewCollector(constants.Loki))
 	// unregister default go collector
 	prometheus.Unregister(collectors.NewGoCollector())
 	// register collector with additional metrics
@@ -1139,7 +1140,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 func (t *Loki) initMemberlistKV() (services.Service, error) {
 	reg := prometheus.DefaultRegisterer
 
-	t.Cfg.MemberlistKV.MetricsNamespace = "loki"
+	t.Cfg.MemberlistKV.MetricsNamespace = constants.Loki
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 		analytics.JSONCodec,
