@@ -202,7 +202,7 @@ func (sp *schedulerProcessor) runHTTPRequest(ctx context.Context, logger log.Log
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response := handle(ctx, request, sp.handler, sp.codec)
+	response := handleHTTPRequest(ctx, request, sp.handler, sp.codec)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 

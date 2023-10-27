@@ -135,7 +135,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response := handle(ctx, request, fp.handler, fp.codec)
+	response := handleHTTPRequest(ctx, request, fp.handler, fp.codec)
 
 	// Ensure responses that are too big are not retried.
 	if len(response.Body) >= fp.maxMessageSize {
