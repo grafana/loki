@@ -5,8 +5,9 @@ import (
 	"strings"
 
 	"github.com/gocql/gocql"
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var requestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{

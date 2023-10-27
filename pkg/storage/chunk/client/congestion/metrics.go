@@ -2,6 +2,7 @@ package congestion
 
 import (
 	"github.com/grafana/loki/pkg/util/constants"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 

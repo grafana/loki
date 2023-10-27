@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const (

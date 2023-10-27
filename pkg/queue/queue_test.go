@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func BenchmarkGetNextRequest(b *testing.B) {

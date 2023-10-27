@@ -1,9 +1,10 @@
 package writefailures
 
 import (
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 type metrics struct {

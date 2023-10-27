@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/middleware"
-	"github.com/grafana/loki/pkg/util/constants"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (

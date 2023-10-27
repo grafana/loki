@@ -4,10 +4,11 @@ import (
 	"context"
 
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 type ServerInterceptors struct {

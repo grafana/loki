@@ -3,9 +3,10 @@ package log
 import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var experimentalFeaturesInUse = promauto.NewCounter(

@@ -4,12 +4,13 @@ import (
 	"context"
 
 	instr "github.com/grafana/dskit/instrument"
-	"github.com/grafana/loki/pkg/util/constants"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 // Instrument returns an instrumented cache.

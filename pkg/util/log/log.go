@@ -13,9 +13,10 @@ import (
 	"github.com/go-kit/log/level"
 	dslog "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/server"
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (

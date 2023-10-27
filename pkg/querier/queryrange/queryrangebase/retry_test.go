@@ -9,9 +9,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestRetry(t *testing.T) {
