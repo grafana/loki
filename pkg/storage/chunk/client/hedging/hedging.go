@@ -107,11 +107,11 @@ func (cfg *Config) RoundTripperWithRegisterer(next http.RoundTripper, reg promet
 		reg.MustRegister(totalRateLimitedHedgeRequests)
 		reg.MustRegister(requestsWon)
 	})
-	return hedgedhttp.NewRoundTripper(
-		cfg.At,
-		cfg.UpTo,
-		newWinnerTrackingRoundTripper(newLimitedHedgingRoundTripper(cfg.MaxPerSecond, next)),
-	)
+	return hedgedhttp.New(hedgedhttp.Config{
+		Delay:     cfg.At,
+		Upto:      cfg.UpTo,
+		Transport: newWinnerTrackingRoundTripper(newLimitedHedgingRoundTripper(cfg.MaxPerSecond, next)),
+	})
 }
 
 // RoundTripper returns a hedged roundtripper.
