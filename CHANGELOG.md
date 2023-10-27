@@ -32,6 +32,8 @@
 
 ##### Fixes
 
+* [https://github.com/grafana/loki/pull/10997] **kavirajk** Bug(LogQL): Fix mismatch results on scalar and vector binary ops
+
 ##### Changes
 
 * [10366](https://github.com/grafana/loki/pull/10366) **shantanualsi** Upgrade thanos objstore, dskit and other modules
