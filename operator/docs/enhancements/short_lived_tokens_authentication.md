@@ -18,9 +18,9 @@ toc: true
 
 ## Summary
 
-Usually LokiStack's object storage access on major cloud providers is secured using a static service account that comprises of a set of client id and client secret. Although static service accounts provide a simple way to control access to the provider's resources centrally (e.g. access to S3 only) they impose a certain security risks lack of automatic ability for rotation and usually unset expiry. In addition the identity of any third-party gaining to the static service account cannot be controlled or tracked upfront.
+Usually LokiStack's object storage access on major cloud providers is secured using a static service account that comprises of a set of client id and client secret. Although static service accounts provide a simple way to control access to the provider's resources centrally (e.g. access to S3 only) they impose certain security risks, lack of automatic ability for rotation, and usually unset expiry. In addition, the identity of any third-party gaining to the static service account cannot be controlled or tracked upfront.
 
-Therefore all major cloud providers offer an OpenID Connect (OIDC) based workflow which ensures that requesting entity (e.g. LokiStack) must be associated with an IAM role and further trust relationships (e.g. mapping to Kubernetes ServiceAccount resources) upfront before gaining access to any cloud resources (e.g. S3). In addition such a workflow ensures handing out only short-lived token instead of real credentials to the requesting entity which need to be refreshed periodically. In turn this minimizes the security risk vector by a lot however imposes a higher administration effort for running LokiStack with that workflow.
+Therefore all major cloud providers offer an OpenID Connect (OIDC) based workflow which ensures that the requesting entity (e.g. LokiStack) must be associated with an IAM role and further trust relationships (e.g. mapping to Kubernetes ServiceAccount resources) upfront before gaining access to any cloud resources (e.g. S3). In addition, such a workflow ensures handing out only short-lived tokens instead of real credentials to the requesting entity which need to be refreshed periodically. In turn, this minimizes the security risk vector by a lot however imposes a higher administration effort for running LokiStack with that workflow.
 
 __Note:__ Short Lived Token authentication is an arbitrary picked generic term that maps well enough to each cloud providers service offering:
 - Azure: [Workload Identity Federation](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation)
@@ -29,16 +29,16 @@ __Note:__ Short Lived Token authentication is an arbitrary picked generic term t
 
 ## Motivation
 
-Building upon the fact that short-lived token authentication is support by all three chunk storage clients in Loki (Azure, AWS, GAP), this proposal's main focus is to automate the administration effort to run LokiStack using such an authentication workflow for object storage access.
+Building upon the fact that short-lived token authentication is supported by all three chunk storage clients in Loki (Azure, AWS, GAP), this proposal's main focus is to automate the administration effort to run LokiStack using such an authentication workflow for object storage access.
 
 ### Goals
 
-- The LokiStack administrator provides only a minimal but valid object storage secrets that enable short-lived tokens authentication for all three major cloud providers.
+- The LokiStack administrator provides only minimal but valid object storage secrets that enable short-lived token authentication for all three major cloud providers.
 - The LokiStack administrator is not required to expose credentials/identity-tokens/etc. to the cloud provider when operating in that workflow.
 
 ### Non-Goals
 
-- Provide auxiliary and comprehensive tooling to automate preparing the cloud provider IAM resources for short-lived tokens authentication.
+- Provide auxiliary and comprehensive tooling to automate preparing the cloud provider IAM resources for short-lived token authentication.
 
 ## Proposal
 
