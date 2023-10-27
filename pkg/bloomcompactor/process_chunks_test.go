@@ -1,6 +1,7 @@
 package bloomcompactor
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"testing"
 	"time"
 
@@ -97,7 +98,12 @@ func Test_BuildAndQueryBloomsWithOneSeries(t *testing.T) {
 		}
 	}
 
-	fillBloom(bloomForChunks, chunks)
+	// create a tokenizer
+	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+
+	for _, c := range chunks {
+		bt.PopulateSBF(&bloomsForChunks[0], []chunk.Chunk{c})
+	}
 
 	blockDir := t.TempDir()
 	// Write the block to disk
@@ -155,9 +161,11 @@ func Test_BuildAndQueryBloomsWithNSeries(t *testing.T) {
 		}
 	}
 
-	// that's what we test
+	// create a tokenizer
+	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+
 	for i, c := range chunks {
-		fillBloom(bloomsForChunks[i], []chunk.Chunk{c})
+		bt.PopulateSBF(&bloomsForChunks[i], []chunk.Chunk{c})
 	}
 
 	blockDir := t.TempDir()
@@ -182,7 +190,12 @@ func Test_BuildAndQueryBloomsWithNSeries(t *testing.T) {
 	require.Equal(t, 3, len(matches))
 
 	// returns matched chunk + other chunks as results may be in the other unmatched 2 series
+	// CheckChunksForSeries only returns must check, but not the ones found in bloom. Is that desirable.
 	matches, err = querier.CheckChunksForSeries(fps[1], refs, [][]byte{[]byte("second")})
 	require.NoError(t, err)
-	require.Equal(t, 3, len(matches))
+	require.Equal(t, 2, len(matches))
+
+	matches, err = querier.CheckChunksForSeries(fps[0], refs, [][]byte{[]byte("chunk")})
+	require.NoError(t, err)
+	require.Equal(t, 2, len(matches))
 }
