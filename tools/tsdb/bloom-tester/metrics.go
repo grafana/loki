@@ -1,6 +1,7 @@
 package main
 
 import (
+	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -8,12 +9,12 @@ import (
 
 type Experiment struct {
 	name          string
-	tokenizer     Tokenizer
+	tokenizer     bt.Tokenizer
 	bloom         func() *filter.ScalableBloomFilter
 	encodeChunkID bool
 }
 
-func NewExperiment(name string, tokenizer Tokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
+func NewExperiment(name string, tokenizer bt.Tokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
 	return Experiment{
 		name:          name,
 		tokenizer:     tokenizer,

@@ -2,12 +2,14 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -16,6 +18,7 @@ import (
 	"github.com/grafana/loki/integration/cluster"
 
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
 )
 
@@ -837,6 +840,296 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 		}
 		require.Equal(t, 4, numLinesReceived)
 	})
+}
+
+func TestCategorizedLabels(t *testing.T) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
+
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	var (
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+			"-tsdb.enable-postings-cache=true",
+			"-store.index-cache-read.embedded-cache.enabled=true",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			"-target=ingester",
+			"-ingester.flush-on-shutdown=true",
+			"-ingester.wal-enabled=false",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-frontend.default-validity=0s",
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		_ = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	tenantID := randStringRunes()
+
+	now := time.Now()
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
+	cliIndexGateway.Now = now
+
+	now = time.Now()
+	require.NoError(t, cliDistributor.PushLogLine("lineA", now.Add(-1*time.Second), nil, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLine("lineB", now.Add(-2*time.Second), map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
+	require.NoError(t, tIngester.Restart())
+	require.NoError(t, cliDistributor.PushLogLine("lineC msg=foo", now.Add(-3*time.Second), map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLine("lineD msg=foo text=bar", now.Add(-4*time.Second), map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}))
+
+	type expectedStream struct {
+		Stream            map[string]string
+		Lines             []string
+		CategorizedLabels []map[string]map[string]string
+	}
+
+	for _, tc := range []struct {
+		name            string
+		query           string
+		encodingFlags   []string
+		expectedStreams []expectedStream
+	}{
+		{
+			name:  "no header - no parser ",
+			query: `{job="fake"}`,
+			expectedStreams: []expectedStream{
+				{
+					Stream: labels.FromStrings("job", "fake").Map(),
+					Lines:  []string{"lineA"},
+				},
+				{
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "123",
+						"user":    "a",
+					},
+					Lines: []string{"lineB"},
+				},
+				{
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "456",
+						"user":    "b",
+					},
+					Lines: []string{"lineC msg=foo"},
+				},
+				{
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "789",
+						"user":    "c",
+					},
+					Lines: []string{"lineD msg=foo text=bar"},
+				},
+			},
+		},
+		{
+			name:  "no header - with parser",
+			query: `{job="fake"} | logfmt`,
+			expectedStreams: []expectedStream{
+				{
+					Stream: map[string]string{
+						"job": "fake",
+					},
+					Lines: []string{"lineA"},
+				},
+				{
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "123",
+						"user":    "a",
+					},
+					Lines: []string{"lineB"},
+				},
+				{
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "456",
+						"user":    "b",
+						"msg":     "foo",
+					},
+					Lines: []string{"lineC msg=foo"},
+				},
+				{
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "789",
+						"user":    "c",
+						"msg":     "foo",
+						"text":    "bar",
+					},
+					Lines: []string{"lineD msg=foo text=bar"},
+				},
+			},
+		},
+		{
+			name:  "with header - no parser ",
+			query: `{job="fake"}`,
+			encodingFlags: []string{
+				string(httpreq.FlagCategorizeLabels),
+			},
+			expectedStreams: []expectedStream{
+				{
+					Stream: map[string]string{
+						"job": "fake",
+					},
+					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
+					CategorizedLabels: []map[string]map[string]string{
+						{
+							"structuredMetadata": {
+								"traceID": "123",
+								"user":    "a",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "456",
+								"user":    "b",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "789",
+								"user":    "c",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "with header - with parser",
+			query: `{job="fake"} | logfmt`,
+			encodingFlags: []string{
+				string(httpreq.FlagCategorizeLabels),
+			},
+			expectedStreams: []expectedStream{
+				{
+					Stream: map[string]string{
+						"job": "fake",
+					},
+					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
+					CategorizedLabels: []map[string]map[string]string{
+						{
+							"structuredMetadata": {
+								"traceID": "123",
+								"user":    "a",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "456",
+								"user":    "b",
+							},
+							"parsed": {
+								"msg": "foo",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "789",
+								"user":    "c",
+							},
+							"parsed": {
+								"msg":  "foo",
+								"text": "bar",
+							},
+						},
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Add header with encoding flags and expect them to be returned in the response.
+			var headers []client.Header
+			var expectedEncodingFlags []string
+			if len(tc.encodingFlags) > 0 {
+				headers = append(headers, client.Header{Name: httpreq.LokiEncodingFlagsHeader, Value: strings.Join(tc.encodingFlags, httpreq.EncodeFlagsDelimiter)})
+				expectedEncodingFlags = tc.encodingFlags
+			}
+
+			resp, err := cliQueryFrontend.RunQuery(context.Background(), tc.query, headers...)
+			require.NoError(t, err)
+			assert.Equal(t, "streams", resp.Data.ResultType)
+
+			var streams []expectedStream
+			for _, stream := range resp.Data.Stream {
+				var lines []string
+				var categorizedLabels []map[string]map[string]string
+
+				for _, val := range stream.Values {
+					lines = append(lines, val[1])
+
+					var catLabels map[string]map[string]string
+					if len(val) >= 3 && val[2] != "" {
+						err = json.Unmarshal([]byte(val[2]), &catLabels)
+						require.NoError(t, err)
+						categorizedLabels = append(categorizedLabels, catLabels)
+					}
+				}
+
+				streams = append(streams, expectedStream{
+					Stream:            stream.Stream,
+					Lines:             lines,
+					CategorizedLabels: categorizedLabels,
+				})
+			}
+
+			assert.ElementsMatch(t, tc.expectedStreams, streams)
+			assert.ElementsMatch(t, expectedEncodingFlags, resp.Data.EncodingFlags)
+		})
+	}
 }
 
 func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {

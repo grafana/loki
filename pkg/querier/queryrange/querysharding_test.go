@@ -85,10 +85,7 @@ var (
 )
 
 func Test_shardSplitter(t *testing.T) {
-	req := defaultReq().WithStartEnd(
-		util.TimeToMillis(start),
-		util.TimeToMillis(end),
-	)
+	req := defaultReq().WithStartEnd(start, end)
 
 	for _, tc := range []struct {
 		desc        string
@@ -812,7 +809,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 
 	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		// This is the actual check that we're testing.
-		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
 
 		return &IndexStatsResponse{
 			Response: &logproto.IndexStatsResponse{
