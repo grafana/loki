@@ -300,7 +300,9 @@ func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.
 
 func QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequest, error) {
 
-	result := &QueryRequest{}
+	result := &QueryRequest{
+		Metadata: make(map[string]string),
+	}
 
 	switch req := r.(type) {
 	case *LokiSeriesRequest:

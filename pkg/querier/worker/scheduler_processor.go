@@ -175,11 +175,7 @@ func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Lo
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	// TODO: handle errors
-	r, ctx, _ := queryrange.QueryRequestUnwrap(request, ctx)
-	resp, _ := sp.handler.Do(ctx, r)
-
-	response, _ := queryrange.QueryResponseWrap(resp)
+	response := handleQueryRequest(ctx, request, sp.handler)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 

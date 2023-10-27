@@ -9,8 +9,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	"go.uber.org/atomic"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/querier/queryrange"
 )
@@ -118,6 +120,33 @@ func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handl
 			}
 		}
 		return response
+	}
+
+	return response
+}
+
+// handleQueryRequest applies unwraps a request and applies it to the handler.
+func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, handler RequestHandler) *queryrange.QueryResponse {
+	r, ctx, err := queryrange.QueryRequestUnwrap(ctx, request)
+	if err != nil {
+		// TODO: set proper code
+		return &queryrange.QueryResponse{
+			Status: status.New(codes.Internal, err.Error()).Proto(),
+		}
+	}
+
+	resp, err := handler.Do(ctx, r)
+	if err != nil {
+		return &queryrange.QueryResponse{
+			Status: status.New(codes.Internal, err.Error()).Proto(),
+		}
+	}
+
+	response, _ := queryrange.QueryResponseWrap(resp)
+	if err != nil {
+		return &queryrange.QueryResponse{
+			Status: status.New(codes.Internal, err.Error()).Proto(),
+		}
 	}
 
 	return response
