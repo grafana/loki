@@ -82,8 +82,8 @@ func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx 
 	return
 }
 
-// handle converts the request and applies it to the handler.
-func handle(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler, codec GRPCCodec) *httpgrpc.HTTPResponse {
+// handleHTTPRequest converts the request and applies it to the handler.
+func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler, codec GRPCCodec) *httpgrpc.HTTPResponse {
 	req, ctx, err := codec.DecodeHTTPGrpcRequest(ctx, request)
 	if err != nil {
 		response, ok := httpgrpc.HTTPResponseFromError(err)

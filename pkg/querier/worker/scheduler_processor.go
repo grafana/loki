@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -153,7 +154,12 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			}
 			logger := util_log.WithContext(ctx, sp.log)
 
-			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.GetHttpRequest())
+			switch r := request.Request.(type) {
+			case *schedulerpb.SchedulerToQuerier_HttpRequest:
+				sp.runHTTPRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, r.HttpRequest)
+			case *schedulerpb.SchedulerToQuerier_QueryRequest:
+				sp.runQueryRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, r.QueryRequest)
+			}
 			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
@@ -163,7 +169,34 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
+func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *queryrange.QueryRequest) {
+	var stats *querier_stats.Stats
+	if statsEnabled {
+		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
+	}
+
+	// TODO: handle errors
+	r, _ := queryrange.QueryRequestUnwrap(request)
+	resp, _ := sp.handler.Do(ctx, r)
+
+	response, _ := queryrange.QueryResponseWrap(resp)
+
+	logger = log.With(logger, "frontend", frontendAddress)
+
+	// TODO: Ensure responses that are too big are not retried.
+
+	result := &frontendv2pb.QueryResultRequest{
+		QueryID: queryID,
+		Response: &frontendv2pb.QueryResultRequest_QueryResponse{
+			QueryResponse: response,
+		},
+		Stats: stats,
+	}
+
+	sp.reply(ctx, logger, frontendAddress, result)
+}
+
+func (sp *schedulerProcessor) runHTTPRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
@@ -184,6 +217,18 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		}
 	}
 
+	result := &frontendv2pb.QueryResultRequest{
+		QueryID: queryID,
+		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
+			HttpResponse: response,
+		},
+		Stats: stats,
+	}
+
+	sp.reply(ctx, logger, frontendAddress, result)
+}
+
+func (sp *schedulerProcessor) reply(ctx context.Context, logger log.Logger, frontendAddress string, result *frontendv2pb.QueryResultRequest) {
 	runPoolWithBackoff(
 		ctx,
 		logger,
@@ -191,13 +236,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		frontendAddress,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
-			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-				QueryID:      queryID,
-			        Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-					HttpResponse: response,
-				},
-				Stats:        stats,
-			})
+			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, result)
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)
 			}
