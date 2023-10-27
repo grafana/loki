@@ -3,11 +3,13 @@
 package queryrange
 
 import (
+	"context"
 	"fmt"
 	"io"
 
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -16,6 +18,8 @@ import (
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/pkg/util/querylimits"
 )
 
 const (
@@ -220,7 +224,6 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	case *LokiLabelNamesResponse:
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
-		// TODO: *queryrange.IndexStatsResponse
 		p.Response = &QueryResponse_Stats{response}
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
@@ -258,45 +261,55 @@ func QueryRequestUnwrap(req *QueryRequest) (queryrangebase.Request, error) {
 	}
 }
 
-func QueryRequestWrap(r queryrangebase.Request) (*QueryRequest, error) {
+func QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequest, error) {
+
+	result := &QueryRequest{}
+
 	switch req := r.(type) {
 	case *LokiSeriesRequest:
-		return &QueryRequest{
-			Request: &QueryRequest_Series{
-				Series: req,
-			},
-		}, nil
+		result.Request = &QueryRequest_Series{Series: req}
 	case *LabelRequest:
-		return &QueryRequest{
-			Request: &QueryRequest_Labels{
-				Labels: &req.LabelRequest,
-			},
-		}, nil
+		result.Request = &QueryRequest_Labels{Labels: &req.LabelRequest}
 	case *logproto.IndexStatsRequest:
-		return &QueryRequest{
-			Request: &QueryRequest_Stats{
-				Stats: req,
-			},
-		}, nil
+		result.Request = &QueryRequest_Stats{Stats: req}
 	case *logproto.VolumeRequest:
-		return &QueryRequest{
-			Request: &QueryRequest_Volume{
-				Volume: req,
-			},
-		}, nil
+		result.Request = &QueryRequest_Volume{Volume: req}
 	case *LokiInstantRequest:
-		return &QueryRequest{
-			Request: &QueryRequest_Instant{
-				Instant: req,
-			},
-		}, nil
+		result.Request = &QueryRequest_Instant{Instant: req}
 	case *LokiRequest:
-		return &QueryRequest{
-			Request: &QueryRequest_Streams{
-				Streams: req,
-			},
-		}, nil
+		result.Request = &QueryRequest_Streams{Streams: req}
 	default:
 		return nil, fmt.Errorf("unsupported request type, got (%T)", r)
 	}
+
+	// Add query tags
+	queryTags := getQueryTags(ctx)
+	if queryTags != "" {
+		result.Metadata = append(result.Metadata, &Header{Key: string(httpreq.QueryTagsHTTPHeader), Values: []string{queryTags}})
+	}
+
+	// Add actor path
+	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
+	if actor != "" {
+		result.Metadata = append(result.Metadata, &Header{Key: httpreq.LokiActorPathHeader, Values: []string{actor}})
+	}
+
+	// Add limits
+	limits := querylimits.ExtractQueryLimitsContext(ctx)
+	if limits != nil {
+		encodedLimits, err := querylimits.MarshalQueryLimits(limits)
+		if err != nil {
+			return nil, err
+		}
+		result.Metadata = append(result.Metadata, &Header{Key: querylimits.HTTPHeaderQueryLimitsKey, Values: []string{string(encodedLimits)}})
+	}
+
+	// Add org ID
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result.Metadata = append(result.Metadata, &Header{Key: user.OrgIDHeaderName, Values: []string{orgID}})
+
+	return result, nil
 }
