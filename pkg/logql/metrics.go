@@ -214,6 +214,7 @@ func RecordLabelQueryMetrics(
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"splits", stats.Summary.Splits,
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
@@ -265,6 +266,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"splits", stats.Summary.Splits,
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
