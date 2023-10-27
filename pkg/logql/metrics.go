@@ -359,10 +359,10 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"splits", stats.Summary.Splits,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		// cache is accumulated by middleware used by the frontend only; logs from the queriers will not show cache stats
-		"cache_result_req", stats.Caches.VolumeResult.EntriesRequested,
-		"cache_result_hit", stats.Caches.VolumeResult.EntriesFound,
-		"cache_result_stored", stats.Caches.VolumeResult.EntriesStored,
-		"cache_result_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
+		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
+		"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
+		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
