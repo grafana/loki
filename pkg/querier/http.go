@@ -146,6 +146,9 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	encodingFlags := httpreq.ExtractEncodingFlags(r)
+	version := loghttp.GetVersion(r.RequestURI)
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
@@ -164,7 +167,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	tailer, err := q.querier.Tail(r.Context(), req)
+	tailer, err := q.querier.Tail(r.Context(), req, encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
 			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
@@ -179,6 +182,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
+
+	connJsonWriter := marshal.NewWebsocketJSONWriter(conn)
 
 	var response *loghttp_legacy.TailResponse
 	responseChan := tailer.getResponseChan()
@@ -210,8 +215,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case response = <-responseChan:
 			var err error
-			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, conn)
+			if version == loghttp.VersionV1 {
+				err = marshal.WriteTailResponseJSON(*response, connJsonWriter, encodingFlags)
 			} else {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}

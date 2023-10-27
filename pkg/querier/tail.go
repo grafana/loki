@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
@@ -50,11 +52,12 @@ type Tailer struct {
 	querierTailClients    map[string]logproto.Querier_TailClient // addr -> grpc clients for tailing logs from ingesters
 	querierTailClientsMtx sync.RWMutex
 
-	stopped         bool
-	delayFor        time.Duration
-	responseChan    chan *loghttp.TailResponse
-	closeErrChan    chan error
-	tailMaxDuration time.Duration
+	stopped          bool
+	delayFor         time.Duration
+	responseChan     chan *loghttp.TailResponse
+	closeErrChan     chan error
+	tailMaxDuration  time.Duration
+	categorizeLabels bool
 
 	// if we are not seeing any response from ingester,
 	// how long do we want to wait by going into sleep
@@ -247,8 +250,31 @@ func (t *Tailer) next() bool {
 		return false
 	}
 
-	t.currEntry = t.openStreamIterator.Entry()
-	t.currLabels = t.openStreamIterator.Labels()
+	entry := t.openStreamIterator.Entry()
+	streamLabels := t.openStreamIterator.Labels()
+
+	// If categorizeLabels is true, We need to remove the structured metadata labels and parsed labels from the stream labels.
+	// TODO(salvacorts): If this is too slow, provided this is in the hot path, we can consider doing this in the iterator.
+	if t.categorizeLabels && (len(entry.StructuredMetadata) > 0 || len(entry.Parsed) > 0) {
+		lbls, err := syntax.ParseLabels(streamLabels)
+		if err != nil {
+			// TODO(salvacorts): Print log message here.
+			return false
+		}
+
+		builder := labels.NewBuilder(lbls)
+		for _, label := range entry.StructuredMetadata {
+			builder.Del(label.Name)
+		}
+		for _, label := range entry.Parsed {
+			builder.Del(label.Name)
+		}
+
+		streamLabels = builder.Labels().String()
+	}
+
+	t.currEntry = entry
+	t.currLabels = streamLabels
 	t.recordStream(t.openStreamIterator.StreamHash())
 
 	return true
@@ -305,6 +331,7 @@ func newTailer(
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error),
 	tailMaxDuration time.Duration,
 	waitEntryThrottle time.Duration,
+	categorizeLabels bool,
 	m *Metrics,
 ) *Tailer {
 	t := Tailer{
@@ -317,6 +344,7 @@ func newTailer(
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,
 		waitEntryThrottle:         waitEntryThrottle,
+		categorizeLabels:          categorizeLabels,
 		metrics:                   m,
 	}
 

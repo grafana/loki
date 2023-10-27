@@ -136,6 +136,8 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 
 func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
 	// Optimization: skip filtering entirely, if no filter is set
+	// Note: returns the stream regardless of structured metadata. This is fine,
+	// the querier will take care of properly returning the structured metadata.
 	if log.IsNoopPipeline(t.pipeline) {
 		return []*logproto.Stream{&stream}
 	}
@@ -151,7 +153,7 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata)...)
 		if !ok {
 			continue
 		}
@@ -163,8 +165,10 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 			streams[parsedLbs.Hash()] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: e.Timestamp,
-			Line:      newLine,
+			Timestamp:          e.Timestamp,
+			Line:               newLine,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+			Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
 		})
 	}
 	streamsResult := make([]*logproto.Stream, 0, len(streams))

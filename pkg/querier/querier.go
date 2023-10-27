@@ -88,7 +88,7 @@ type Querier interface {
 	logql.Querier
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
-	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
+	Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 }
@@ -434,7 +434,7 @@ func (*SingleTenantQuerier) Check(_ context.Context, _ *grpc_health_v1.HealthChe
 }
 
 // Tail keeps getting matching logs from all ingesters for given query
-func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error) {
 	err := q.checkTailRequestLimit(ctx)
 	if err != nil {
 		return nil, err
@@ -496,6 +496,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		},
 		q.cfg.TailMaxDuration,
 		tailerWaitEntryThrottle,
+		categorizedLabels,
 		q.metrics,
 	), nil
 }
