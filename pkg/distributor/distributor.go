@@ -92,7 +92,7 @@ type Distributor struct {
 	services.Service
 
 	cfg              Config
-	log              log.Logger
+	logger           log.Logger
 	clientCfg        client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
@@ -171,7 +171,7 @@ func New(
 
 	d := &Distributor{
 		cfg:                   cfg,
-		log:                   logger,
+		logger:                logger,
 		clientCfg:             clientCfg,
 		tenantConfigs:         configs,
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
@@ -476,7 +476,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The number of shards is limited by the number of entries.
 func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) ([]uint32, []streamTracker) {
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
-	logger := log.With(util_log.WithUserID(tenantID, d.log), "stream", stream.Labels)
+	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
@@ -505,7 +505,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 
 func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) ([]uint32, []streamTracker) {
 	var (
-		streamLabels   = labelTemplate(stream.Labels, d.log)
+		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
 		derivedKeys    = make([]uint32, 0, totalShards)
 		derivedStreams = make([]streamTracker, 0, totalShards)
@@ -514,7 +514,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 	)
 
 	if totalShards <= 0 {
-		level.Error(d.log).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
+		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
 		return derivedKeys, derivedStreams
 	}
 
@@ -528,7 +528,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
 		if shardStreamsCfg.LoggingEnabled {
-			level.Info(d.log).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
+			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
 	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+streamCount)

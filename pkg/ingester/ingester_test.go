@@ -1187,7 +1187,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	logproto.RegisterQuerierServer(server, ing)
 	go func() {
 		if err := server.Serve(listener); err != nil {
-			level.Error(ing.log).Log(err)
+			level.Error(ing.logger).Log(err)
 		}
 	}()
 	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
