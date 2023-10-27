@@ -328,7 +328,6 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	// information, since that is a long-running request.
 	tracer := opentracing.GlobalTracer()
 	// TODO(karsten): add to metadata
-	//lint:ignore SA1019 Need to keep deprecated package for compatibility.
 	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg.GetHttpRequest())
 	if err != nil {
 		return err
@@ -338,10 +337,9 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		frontendAddress: frontendAddr,
 		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
-		//lint:ignore SA1019 Need to keep deprecated package for compatibility.
-		request:      msg.GetHttpRequest(),
-		queryRequest: msg.GetQueryRequest(),
-		statsEnabled: msg.StatsEnabled,
+		request:         msg.GetHttpRequest(),
+		queryRequest:    msg.GetQueryRequest(),
+		statsEnabled:    msg.StatsEnabled,
 	}
 
 	now := time.Now()
