@@ -169,6 +169,11 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		case <-ctx.Done():
 			return
 		case data.ch <- &packedResp{resp, err}:
+			// The parent Process method will return on the first error. So stop
+			// processng.
+			if err != nil {
+				return
+			}
 		}
 	}
 }

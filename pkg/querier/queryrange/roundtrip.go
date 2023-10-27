@@ -687,8 +687,7 @@ func NewMetricTripperware(
 		if len(queryRangeMiddleware) > 0 {
 			rt := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 			return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
-				_, ok := r.(*LokiRequest)
-				if !ok {
+				if _, ok := r.(*LokiRequest); !ok {
 					return next.Do(ctx, r)
 				}
 				return rt.Do(ctx, r)
