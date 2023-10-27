@@ -173,7 +173,7 @@ type TableManager struct {
 
 // NewTableManager makes a new TableManager
 func NewTableManager(cfg TableManagerConfig, schemaCfg config.SchemaConfig, maxChunkAge time.Duration, tableClient TableClient,
-	objectClient BucketClient, extraTables []ExtraTables, registerer prometheus.Registerer, log log.Logger,
+	objectClient BucketClient, extraTables []ExtraTables, registerer prometheus.Registerer, logger log.Logger,
 ) (*TableManager, error) {
 	if cfg.RetentionPeriod != 0 {
 		// Assume the newest config is the one to use for validation of retention
@@ -185,7 +185,7 @@ func NewTableManager(cfg TableManagerConfig, schemaCfg config.SchemaConfig, maxC
 
 	tm := &TableManager{
 		cfg:          cfg,
-		log:          log,
+		log:          logger,
 		schemaCfg:    schemaCfg,
 		maxChunkAge:  maxChunkAge,
 		client:       tableClient,

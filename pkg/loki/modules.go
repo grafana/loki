@@ -373,7 +373,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -1555,7 +1555,7 @@ func (t *Loki) createRulerQueryEngine(logger log.Logger) (eng *logql.Engine, err
 		return nil, fmt.Errorf("could not create delete requests store: %w", err)
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil, util_log.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

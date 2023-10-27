@@ -48,7 +48,7 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 	case cfg.FrontendV2.SchedulerAddress != "" || ring != nil:
 		// If query-scheduler address is configured, use Frontend.
 		if cfg.FrontendV2.Addr == "" {
-			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames)
+			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames, log)
 			if err != nil {
 				return nil, nil, nil, errors.Wrap(err, "failed to get frontend address")
 			}

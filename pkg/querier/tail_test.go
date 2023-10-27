@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
@@ -162,7 +163,7 @@ func TestTailer(t *testing.T) {
 				tailClients["test"] = test.tailClient
 			}
 
-			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil))
+			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil),gokitlog.NewNopLogger())
 			defer tailer.close()
 
 			test.tester(t, tailer, test.tailClient)

@@ -171,13 +171,13 @@ func New(
 
 	d := &Distributor{
 		cfg:                   cfg,
-		log:                   log,
+		log:                   logger,
 		clientCfg:             clientCfg,
 		tenantConfigs:         configs,
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, log),
+		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, logger),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
@@ -202,7 +202,7 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
-		writeFailuresManager: writefailures.NewManager(log, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -235,7 +235,7 @@ func New(
 			clientCfg.PoolConfig,
 			ingestersRing,
 			ring_client.PoolAddrFunc(internalFactory),
-			log,
+			logger,
 		),
 		overrides,
 		registerer,
