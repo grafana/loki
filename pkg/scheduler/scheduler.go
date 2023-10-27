@@ -492,8 +492,8 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 		}
 		// Override HttpRequest if new request type is set.
 		if req.queryRequest != nil {
-			msg.Request = &schedulerpb.SchedulerToQuerier_HttpRequest{
-				HttpRequest: req.request,
+			msg.Request = &schedulerpb.SchedulerToQuerier_QueryRequest{
+				QueryRequest: req.queryRequest,
 			}
 		}
 		err := querier.Send(msg)

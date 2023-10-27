@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -159,6 +160,10 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				sp.runHTTPRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, r.HttpRequest)
 			case *schedulerpb.SchedulerToQuerier_QueryRequest:
 				sp.runQueryRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, r.QueryRequest)
+			default:
+				// todo: how should we handle the error here?
+				level.Error(logger).Log("msg", "error, unexpected request type from scheduler", "type", reflect.TypeOf(request))
+				return
 			}
 			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
