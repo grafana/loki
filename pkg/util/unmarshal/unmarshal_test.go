@@ -224,6 +224,7 @@ func (ws *websocket) ReadMessage() (int, []byte, error) {
 
 func Test_ReadTailResponse(t *testing.T) {
 	ws := &websocket{}
+	wsJson := marshal.NewWebsocketJSONWriter(ws)
 	require.NoError(t, marshal.WriteTailResponseJSON(legacy_loghttp.TailResponse{
 		Streams: []logproto.Stream{
 			{Labels: `{app="bar"}`, Entries: []logproto.Entry{{Timestamp: time.Unix(0, 2), Line: "2"}}},
@@ -231,7 +232,7 @@ func Test_ReadTailResponse(t *testing.T) {
 		DroppedEntries: []legacy_loghttp.DroppedEntry{
 			{Timestamp: time.Unix(0, 1), Labels: `{app="foo"}`},
 		},
-	}, ws))
+	}, wsJson, nil))
 	res := &loghttp.TailResponse{}
 	require.NoError(t, ReadTailResponseJSON(res, ws))
 
