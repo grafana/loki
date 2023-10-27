@@ -20,6 +20,10 @@ we strongly recommend migrating to TSDB.
 To begin the migration, add a new [period_config]({{< relref "../../../configure#period_config" >}}) entry in your [schema_config]({{< relref "../../../configure#schema_config" >}}).
 You can read more about schema config [here]({{< relref "../../../storage#schema-config" >}}).
 
+{{% admonition type="note" %}}
+It's important that you rollout the new `period_config` change to all loki components for it to take effect.
+{{% /admonition %}}
+
 ```
 schema_config:
   configs:
@@ -47,11 +51,7 @@ This example adds a new `period_config` which configures Loki to start using tsd
 
 ③  This setup uses filesystem as the storage in both the periods. But if you desire to store the `tsdb` index along with it's chunks in a differnt object store, you can update the `object_store` in the new period.
 
-④  Optionally update the schema to v12 which is the recommended verison at the time of writing. Please refer to [configure page]({{< relref "../../../configure#period_config" >}}) for the current recommend version.
-
-{{% admonition type="note" %}}
-It's important that you rollout the new `period_config` change to all loki components for it to take effect.
-{{% /admonition %}}
+④  Optionally update the schema to v12 which is the recommended version at the time of writing. Please refer to the [configure page]({{< relref "../../../configure#period_config" >}}) for the current recommend version.
 
 ### Configure TSDB shipper
 
@@ -60,14 +60,15 @@ It's also important that you configure the `tsdb_shipper` block in [storage_conf
 - `cache_location`: cache location for downloading index files from the storage for use in query path.
 
 ```
-tsdb_shipper:
-  active_index_directory: /data/tsdb-index
-  cache_location: /data/tsdb-cache
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /data/tsdb-index
+    cache_location: /data/tsdb-cache
 ```
 
 ### Run compactor
 
-It is strongly recommended that you run compactor when using TSDB index. It is responsible for running compaction and retention on TSDB index.
+We strongly recommended running the [compactor]({{< relref "../../../operations/storage/retention#compactor" >}}) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
 Not running index compaction would result in sub-optimal query performance.
 
 Please refer to the [compactor section]({{< relref "../../../operations/storage/retention#compactor" >}}) for more information and configuration examples.
