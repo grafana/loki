@@ -681,8 +681,7 @@ func NewMetricTripperware(
 		if len(queryRangeMiddleware) > 0 {
 			rt := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 			return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
-				_, ok := r.(*LokiRequest)
-				if !ok {
+				if _, ok := r.(*LokiRequest); !ok {
 					return next.Do(ctx, r)
 				}
 				return rt.Do(ctx, r)
@@ -808,6 +807,22 @@ func NewVolumeTripperware(
 	), nil
 }
 
+func statsTripperware(nextTW base.Middleware) base.Middleware {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+			cacheMiddlewares := []base.Middleware{
+				StatsCollectorMiddleware(),
+				nextTW,
+			}
+
+			// wrap nextRT with our new middleware
+			return base.MergeMiddlewares(
+				cacheMiddlewares...,
+			).Wrap(next).Do(ctx, r)
+		})
+	})
+}
+
 func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
@@ -889,7 +904,7 @@ func NewIndexStatsTripperware(
 		}
 	}
 
-	return sharedIndexTripperware(
+	tw, err := sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
@@ -898,6 +913,11 @@ func NewIndexStatsTripperware(
 		metrics,
 		schema,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return statsTripperware(tw), nil
 }
 
 func sharedIndexTripperware(

@@ -31,3 +31,6 @@ storage_config:
     use_boltdb_shipper_as_backup: "Since TSDB is now stable and the recommended index type, the setting has become irrelevant and therefore was removed. The previous default value false is applied."
   aws: *s3_deletes
   s3: *s3_deletes
+
+chunk_store_config:
+  max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."

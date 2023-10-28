@@ -2272,10 +2272,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration> | default = 0s]
-
-# This flag is deprecated. Use -querier.max-query-lookback instead.
-# CLI flag: -store.max-look-back-period
-[max_look_back_period: <duration> | default = 0s]
 ```
 
 ### schema_config

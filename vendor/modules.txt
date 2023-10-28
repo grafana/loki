@@ -900,7 +900,7 @@ github.com/grafana/dskit/user
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
-# github.com/grafana/gomemcache v0.0.0-20230914135007-70d78eaabfe1
+# github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
 # github.com/grafana/loki/pkg/push v0.0.0-20231023154132-0a7737e7c7eb => ./pkg/push

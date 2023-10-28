@@ -13,9 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 5.35.1
+## 5.36.1
 
 - [FEATURE] Skip tls verify for S3 bucket option on helm chart.
+
+## 5.36.0
+
+- [CHANGE] Changed version of Loki to 2.9.2
 
 
 ## 5.35.0
