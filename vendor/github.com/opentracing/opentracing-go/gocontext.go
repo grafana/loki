@@ -40,11 +40,11 @@ func SpanFromContext(ctx context.Context) Span {
 //
 // Example usage:
 //
-//	SomeFunction(ctx context.Context, ...) {
-//	    sp, ctx := opentracing.StartSpanFromContext(ctx, "SomeFunction")
-//	    defer sp.Finish()
-//	    ...
-//	}
+//    SomeFunction(ctx context.Context, ...) {
+//        sp, ctx := opentracing.StartSpanFromContext(ctx, "SomeFunction")
+//        defer sp.Finish()
+//        ...
+//    }
 func StartSpanFromContext(ctx context.Context, operationName string, opts ...StartSpanOption) (Span, context.Context) {
 	return StartSpanFromContextWithTracer(ctx, GlobalTracer(), operationName, opts...)
 }

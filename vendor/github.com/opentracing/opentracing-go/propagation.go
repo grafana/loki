@@ -144,16 +144,17 @@ func (c TextMapCarrier) Set(key, val string) {
 //
 // Example usage for server side:
 //
-//	carrier := opentracing.HTTPHeadersCarrier(httpReq.Header)
-//	clientContext, err := tracer.Extract(opentracing.HTTPHeaders, carrier)
+//     carrier := opentracing.HTTPHeadersCarrier(httpReq.Header)
+//     clientContext, err := tracer.Extract(opentracing.HTTPHeaders, carrier)
 //
 // Example usage for client side:
 //
-//	carrier := opentracing.HTTPHeadersCarrier(httpReq.Header)
-//	err := tracer.Inject(
-//	    span.Context(),
-//	    opentracing.HTTPHeaders,
-//	    carrier)
+//     carrier := opentracing.HTTPHeadersCarrier(httpReq.Header)
+//     err := tracer.Inject(
+//         span.Context(),
+//         opentracing.HTTPHeaders,
+//         carrier)
+//
 type HTTPHeadersCarrier http.Header
 
 // Set conforms to the TextMapWriter interface.
