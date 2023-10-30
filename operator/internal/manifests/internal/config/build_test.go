@@ -3682,6 +3682,25 @@ schema_config:
       object_store: s3
       schema: v11
       store: boltdb-shipper
+ruler:
+  enable_api: true
+  enable_sharding: true
+  evaluation_interval: 1m
+  poll_interval: 1m
+  wal:
+    dir: /tmp/wal
+    truncate_frequency: 60m
+    min_age: 5m
+    max_age: 4h
+  rule_path: /tmp/loki
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  ring:
+    kvstore:
+      store: memberlist
+    instance_enable_ipv6: true
 server:
   graceful_shutdown_timeout: 5s
   grpc_server_min_time_between_pings: '10s'
@@ -3765,6 +3784,12 @@ overrides:
 		IndexGateway: Address{
 			FQDN: "loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local",
 			Port: 9095,
+		},
+		Ruler: Ruler{
+			Enabled:               true,
+			RulesStorageDirectory: "/tmp/rules",
+			EvaluationInterval:    "1m",
+			PollInterval:          "1m",
 		},
 		StorageDirectory: "/tmp/loki",
 		MaxConcurrent: MaxConcurrent{

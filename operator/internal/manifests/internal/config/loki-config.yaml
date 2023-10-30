@@ -416,6 +416,9 @@ ruler:
   ring:
     kvstore:
       store: memberlist
+    {{- if .GossipRing.EnableIPv6 }}
+    instance_enable_ipv6: true
+    {{- end}}
 {{- if .Gates.GRPCEncryption }}
   ruler_client:
     tls_enabled: true
