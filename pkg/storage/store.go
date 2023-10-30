@@ -278,18 +278,13 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 		}
 
-		objectType := p.ObjectType
-		if s.cfg.TSDBShipperConfig.SharedStoreType != "" {
-			objectType = s.cfg.TSDBShipperConfig.SharedStoreType
-		}
-
-		objectClient, err := NewObjectClient(objectType, s.cfg, s.clientMetrics)
+		objectClient, err := NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
 		name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache)
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache)
 		if err != nil {
 			return nil, nil, nil, err
 		}

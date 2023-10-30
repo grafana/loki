@@ -816,6 +816,22 @@ func NewVolumeTripperware(
 	), nil
 }
 
+func statsTripperware(nextTW base.Middleware) base.Middleware {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+			cacheMiddlewares := []base.Middleware{
+				StatsCollectorMiddleware(),
+				nextTW,
+			}
+
+			// wrap nextRT with our new middleware
+			return base.MergeMiddlewares(
+				cacheMiddlewares...,
+			).Wrap(next).Do(ctx, r)
+		})
+	})
+}
+
 func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
@@ -898,7 +914,7 @@ func NewIndexStatsTripperware(
 		}
 	}
 
-	return sharedIndexTripperware(
+	tw, err := sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
@@ -908,6 +924,11 @@ func NewIndexStatsTripperware(
 		schema,
 		metricsNamespace,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return statsTripperware(tw), nil
 }
 
 func sharedIndexTripperware(

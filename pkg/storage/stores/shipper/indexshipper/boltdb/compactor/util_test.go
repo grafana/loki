@@ -49,10 +49,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -60,10 +62,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v10",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -71,10 +75,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -82,10 +88,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 		},
@@ -228,8 +236,6 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
 				ActiveIndexDirectory: indexDir,
-				SharedStoreType:      "filesystem",
-				SharedStoreKeyPrefix: "index",
 				ResyncInterval:       1 * time.Millisecond,
 				IngesterName:         "foo",
 				Mode:                 indexshipper.ModeReadWrite,

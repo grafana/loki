@@ -60,11 +60,11 @@ This Compactor configuration example activates retention.
 ```yaml
 compactor:
   working_directory: /data/retention
-  shared_store: gcs
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+  delete_request_store: gcs
 schema_config:
     configs:
       - from: "2020-07-31"
@@ -78,7 +78,6 @@ storage_config:
     tsdb_shipper:
         active_index_directory: /data/index
         cache_location: /data/index_cache
-        shared_store: gcs
     gcs:
         bucket_name: loki
 ```
@@ -88,6 +87,8 @@ Retention is only available if the index period is 24h. Single store TSDB and si
 {{% /admonition %}}
 
 `retention_enabled` should be set to true. Without this, the Compactor will only compact tables.
+
+`delete_request_store` should be set to configure the store for delete requests. This is required when retention is enabled.
 
 `working_directory` is the directory where marked chunks and temporary tables will be saved.
 
@@ -246,7 +247,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: gcs
   gcs:
     bucket_name: GCS_BUCKET_NAME
 
@@ -256,6 +256,6 @@ limits_config:
 
 compactor:
   working_directory: /data/retention
-  shared_store: gcs
+  delete_request_store: gcs
   retention_enabled: true
 ```
