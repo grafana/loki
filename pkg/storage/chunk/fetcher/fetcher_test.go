@@ -354,8 +354,11 @@ func makeChunksFromMap(m map[string][]byte) ([]chunk.Chunk, error) {
 }
 
 func sortChunks(chks []chunk.Chunk) {
-	slices.SortFunc[chunk.Chunk](chks, func(i, j chunk.Chunk) bool {
-		return i.From.Before(j.From)
+	slices.SortFunc(chks, func(i, j chunk.Chunk) int {
+		if i.From.Before(j.From) {
+			return -1
+		}
+		return 1
 	})
 }
 

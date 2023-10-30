@@ -2,13 +2,10 @@ package queryrange
 
 import (
 	"context"
-	"net/http"
 	"sort"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -21,26 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 )
-
-func VolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		request, err := codec.EncodeRequest(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		resp, err := nextRT.RoundTrip(request)
-		if err != nil {
-			return nil, err
-		}
-
-		return codec.DecodeResponse(ctx, resp, req)
-	})
-}
 
 func NewVolumeMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {

@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
@@ -249,6 +250,7 @@ func TestGatewayClient(t *testing.T) {
 	cfg.Mode = indexgateway.SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
+	cfg.PoolConfig = clientpool.PoolConfig{ClientCleanupPeriod: 500 * time.Millisecond}
 
 	overrides, _ := validation.NewOverrides(validation.Limits{}, nil)
 	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, logger)

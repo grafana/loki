@@ -19,20 +19,26 @@ package xdsresource
 
 import (
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
+const (
+	// RouteConfigTypeName represents the transport agnostic name for the
+	// route config resource.
+	RouteConfigTypeName = "RouteConfigResource"
+)
+
 var (
 	// Compile time interface checks.
-	_ Type         = routeConfigResourceType{}
-	_ ResourceData = &RouteConfigResourceData{}
+	_ Type = routeConfigResourceType{}
 
 	// Singleton instantiation of the resource type implementation.
 	routeConfigType = routeConfigResourceType{
 		resourceTypeState: resourceTypeState{
-			typeURL:                    "type.googleapis.com/envoy.config.route.v3.RouteConfiguration",
-			typeEnum:                   RouteConfigResource,
+			typeURL:                    version.V3RouteConfigURL,
+			typeName:                   "RouteConfigResource",
 			allResourcesRequiredInSotW: false,
 		},
 	}
@@ -49,7 +55,7 @@ type routeConfigResourceType struct {
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
 func (routeConfigResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
-	name, rc, err := unmarshalRouteConfigResource(resource, opts.Logger)
+	name, rc, err := unmarshalRouteConfigResource(resource)
 	switch {
 	case name == "":
 		// Name is unset only when protobuf deserialization fails.

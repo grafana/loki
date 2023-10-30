@@ -307,6 +307,11 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 		}
 	}
 
+	// Ensure the ID of each InstanceDesc is set based on the map of instances. This
+	// handles the case where some components are running older lifecyclers which do
+	// not set the instance ID when registering in the ring.
+	ringDesc.setInstanceIDs()
+
 	rc := prevRing.RingCompare(ringDesc)
 	if rc == Equal || rc == EqualButStatesAndTimestamps {
 		// No need to update tokens or zones. Only states and timestamps
@@ -518,9 +523,10 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 
 	return ReplicationSet{
-		Instances:           healthyInstances,
-		MaxErrors:           maxErrors,
-		MaxUnavailableZones: maxUnavailableZones,
+		Instances:            healthyInstances,
+		MaxErrors:            maxErrors,
+		MaxUnavailableZones:  maxUnavailableZones,
+		ZoneAwarenessEnabled: r.cfg.ZoneAwarenessEnabled,
 	}, nil
 }
 

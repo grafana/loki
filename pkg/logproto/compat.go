@@ -232,13 +232,13 @@ func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) 
 // Satisfy definitions.Request
 
 // GetStart returns the start timestamp of the request in milliseconds.
-func (m *IndexStatsRequest) GetStart() int64 {
-	return int64(m.From)
+func (m *IndexStatsRequest) GetStart() time.Time {
+	return time.Unix(0, m.From.UnixNano())
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
-func (m *IndexStatsRequest) GetEnd() int64 {
-	return int64(m.Through)
+func (m *IndexStatsRequest) GetEnd() time.Time {
+	return time.Unix(0, m.Through.UnixNano())
 }
 
 // GetStep returns the step of the request in milliseconds.
@@ -253,10 +253,10 @@ func (m *IndexStatsRequest) GetQuery() string {
 func (m *IndexStatsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
-func (m *IndexStatsRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
+func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
-	clone.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
-	clone.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
 	return &clone
 }
 
@@ -271,21 +271,25 @@ func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
 func (m *IndexStatsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", m.GetQuery()),
-		otlog.String("start", timestamp.Time(m.GetStart()).String()),
-		otlog.String("end", timestamp.Time(m.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(int64(m.From)).String()),
+		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
+}
+
+func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeader {
+	return nil
 }
 
 // Satisfy definitions.Request for Volume
 
 // GetStart returns the start timestamp of the request in milliseconds.
-func (m *VolumeRequest) GetStart() int64 {
-	return int64(m.From)
+func (m *VolumeRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
-func (m *VolumeRequest) GetEnd() int64 {
-	return int64(m.Through)
+func (m *VolumeRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
 }
 
 // GetQuery returns the query of the request.
@@ -297,10 +301,10 @@ func (m *VolumeRequest) GetQuery() string {
 func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
-func (m *VolumeRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
+func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
-	clone.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
-	clone.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
 	return &clone
 }
 
@@ -315,7 +319,7 @@ func (m *VolumeRequest) WithQuery(query string) definitions.Request {
 func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", m.GetQuery()),
-		otlog.String("start", timestamp.Time(m.GetStart()).String()),
-		otlog.String("end", timestamp.Time(m.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(int64(m.From)).String()),
+		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
 }

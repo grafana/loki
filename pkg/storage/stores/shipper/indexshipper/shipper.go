@@ -224,6 +224,7 @@ func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, ca
 func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 
 	g, ctx := errgroup.WithContext(ctx)
+	// E.Welch not setting a bound on the errgroup here because we set one inside the downloadsManager.ForEachConcurrent
 
 	if s.downloadsManager != nil {
 		g.Go(func() error {

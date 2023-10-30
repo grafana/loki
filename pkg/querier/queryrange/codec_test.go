@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	strings "strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -26,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 func init() {
@@ -70,6 +73,19 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			StartTs:   start,
 			EndTs:     end,
 		}, false},
+		{"legacy query_range with refexp", func() (*http.Request, error) {
+			return http.NewRequest(http.MethodGet,
+				fmt.Sprintf(`/api/prom/query?start=%d&end=%d&query={foo="bar"}&interval=10&limit=200&direction=BACKWARD&regexp=foo`, start.UnixNano(), end.UnixNano()), nil)
+		}, &LokiRequest{
+			Query:     `{foo="bar"} |~ "foo"`,
+			Limit:     200,
+			Step:      14000, // step is expected in ms; calculated default if request param not present
+			Interval:  10000, // interval is expected in ms
+			Direction: logproto.BACKWARD,
+			Path:      "/api/prom/query",
+			StartTs:   start,
+			EndTs:     end,
+		}, false},
 		{"series", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/series?start=%d&end=%d&match={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
@@ -82,20 +98,15 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		{"labels", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label?start=%d&end=%d`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LokiLabelNamesRequest{
-			Path:    "/label",
-			StartTs: start,
-			EndTs:   end,
-		}, false},
+		}, NewLabelRequest(start, end, "", "", "/label"),
+			false},
 		{"label_values", func() (*http.Request, error) {
-			return http.NewRequest(http.MethodGet,
+			req, err := http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
-		}, &LokiLabelNamesRequest{
-			Path:    "/label/test/values",
-			StartTs: start,
-			EndTs:   end,
-			Query:   `{foo="bar"}`,
-		}, false},
+			req = mux.SetURLVars(req, map[string]string{"name": "test"})
+			return req, err
+		}, NewLabelRequest(start, end, `{foo="bar"}`, "test", "/label/test/values"),
+			false},
 		{"index_stats", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
@@ -262,6 +273,36 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
+			"streams v1 with structured metadata", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsStringWithStructuredMetdata))},
+			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreamsWithStructuredMetadata,
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
+			"streams v1 with categorized labels", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsStringWithCategories))},
+			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreamsWithCategories,
+				},
+				Statistics: statsResult,
+			}, false,
+		},
+		{
 			"streams legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsString))},
 			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/api/prom/query_range"},
 			&LokiResponse{
@@ -287,7 +328,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"labels legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelsString))},
-			&LokiLabelNamesRequest{Path: "/api/prom/label"},
+			NewLabelRequest(time.Now(), time.Now(), "", "", "/api/prom/label"),
 			&LokiLabelNamesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
@@ -626,11 +667,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 
 func Test_codec_labels_EncodeRequest(t *testing.T) {
 	ctx := context.Background()
-	toEncode := &LokiLabelNamesRequest{
-		Path:    "/loki/api/v1/labels",
-		StartTs: start,
-		EndTs:   end,
-	}
+	toEncode := NewLabelRequest(start, end, "", "", "/loki/api/v1/labels")
 	got, err := DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
@@ -641,51 +678,48 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	// testing a full roundtrip
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
-	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, "/loki/api/v1/labels", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
+	require.Equal(t, toEncode.End, req.(*LabelRequest).End)
+	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
 	// Test labels values endpoint
-	toEncode = &LokiLabelNamesRequest{
-		Path:    "/loki/api/v1/labels/__name__/values",
-		StartTs: start,
-		EndTs:   end,
-		Query:   `{foo="bar"}`,
-	}
+	toEncode = NewLabelRequest(start, end, `{foo="bar"}`, "__name__", "/loki/api/v1/label/__name__/values")
 	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", got.URL.Path)
 	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 
 	// testing a full roundtrip
+	got = mux.SetURLVars(got, map[string]string{"name": "__name__"})
 	req, err = DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
-	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, toEncode.Query, req.(*LokiLabelNamesRequest).Query)
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, toEncode.Start, req.(*LabelRequest).Start)
+	require.Equal(t, toEncode.End, req.(*LabelRequest).End)
+	require.Equal(t, toEncode.Query, req.(*LabelRequest).Query)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", req.(*LabelRequest).Path())
 }
 
 func Test_codec_labels_DecodeRequest(t *testing.T) {
 	ctx := context.Background()
-	u, err := url.Parse(`/loki/api/v1/labels/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
+	u, err := url.Parse(`/loki/api/v1/label/__name__/values?start=1575285010000000010&end=1575288610000000010&query={foo="bar"}`)
 	require.NoError(t, err)
 
 	r := &http.Request{URL: u}
+	r = mux.SetURLVars(r, map[string]string{"name": "__name__"})
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
-	require.Equal(t, start, req.(*LokiLabelNamesRequest).StartTs)
-	require.Equal(t, end, req.(*LokiLabelNamesRequest).EndTs)
-	require.Equal(t, `{foo="bar"}`, req.(*LokiLabelNamesRequest).Query)
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
+	require.Equal(t, start, *req.(*LabelRequest).Start)
+	require.Equal(t, end, *req.(*LabelRequest).End)
+	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", req.(*LabelRequest).Path())
 
 	got, err := DefaultCodec.EncodeRequest(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
-	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
+	require.Equal(t, "/loki/api/v1/label/__name__/values", got.URL.Path)
 	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
@@ -725,15 +759,54 @@ func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	require.Equal(t, `foo,bar`, got.URL.Query().Get("targetLabels"))
 }
 
+func Test_codec_seriesVolume_DecodeRequest(t *testing.T) {
+	t.Run("instant queries set a step of 0", func(t *testing.T) {
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume"+
+			"?start=0"+
+			"&end=1"+
+			"&step=42"+
+			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		got, err := DefaultCodec.DecodeRequest(context.Background(), req, nil)
+		require.NoError(t, err)
+
+		require.Equal(t, int64(0), got.(*logproto.VolumeRequest).Step)
+	})
+
+	t.Run("range queries parse step from request", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume_range"+
+			"?start=0"+
+			"&end=1"+
+			"&step=42"+
+			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		got, err := DefaultCodec.DecodeRequest(context.Background(), req, nil)
+		require.NoError(t, err)
+
+		require.Equal(t, (42 * time.Second).Milliseconds(), got.(*logproto.VolumeRequest).Step)
+	})
+
+	t.Run("range queries provide default step when not provided", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume_range"+
+			"?start=0"+
+			"&end=1"+
+			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		got, err := DefaultCodec.DecodeRequest(context.Background(), req, nil)
+		require.NoError(t, err)
+
+		require.Equal(t, time.Second.Milliseconds(), got.(*logproto.VolumeRequest).Step)
+	})
+}
+
 func Test_codec_EncodeResponse(t *testing.T) {
 	tests := []struct {
-		name    string
-		path    string
-		res     queryrangebase.Response
-		body    string
-		wantErr bool
+		name        string
+		path        string
+		res         queryrangebase.Response
+		body        string
+		wantErr     bool
+		queryParams map[string]string
 	}{
-		{"error", "/loki/api/v1/query_range", &badResponse{}, "", true},
+		{"error", "/loki/api/v1/query_range", &badResponse{}, "", true, nil},
 		{
 			"prom", "/loki/api/v1/query_range",
 			&LokiPromResponse{
@@ -745,7 +818,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					},
 				},
 				Statistics: statsResult,
-			}, matrixString, false},
+			}, matrixString, false, nil},
 		{
 			"loki v1", "/loki/api/v1/query_range",
 			&LokiResponse{
@@ -758,7 +831,25 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, streamsString, false,
+			}, streamsString, false, nil,
+		},
+		{
+			"loki v1 with categories", "/loki/api/v1/query_range",
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionV1),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreamsWithCategories,
+				},
+				Statistics: statsResult,
+			},
+			streamsStringWithCategories, false,
+			map[string]string{
+				httpreq.LokiEncodingFlagsHeader: string(httpreq.FlagCategorizeLabels),
+			},
 		},
 		{
 			"loki legacy", "/api/promt/query",
@@ -772,7 +863,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Result:     logStreams,
 				},
 				Statistics: statsResult,
-			}, streamsStringLegacy, false,
+			}, streamsStringLegacy, false, nil,
 		},
 		{
 			"loki series", "/loki/api/v1/series",
@@ -780,7 +871,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    seriesData,
-			}, seriesString, false,
+			}, seriesString, false, nil,
 		},
 		{
 			"loki labels", "/loki/api/v1/labels",
@@ -788,7 +879,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
 				Data:    labelsData,
-			}, labelsString, false,
+			}, labelsString, false, nil,
 		},
 		{
 			"loki labels legacy", "/api/prom/label",
@@ -796,7 +887,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
 				Data:    labelsData,
-			}, labelsLegacyString, false,
+			}, labelsLegacyString, false, nil,
 		},
 		{
 			"index stats", "/loki/api/v1/index/stats",
@@ -807,7 +898,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Bytes:   3,
 					Entries: 4,
 				},
-			}, indexStatsString, false,
+			}, indexStatsString, false, nil,
 		},
 		{
 			"volume", "/loki/api/v1/index/volume",
@@ -818,16 +909,21 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					},
 					Limit: 100,
 				},
-			}, seriesVolumeString, false,
+			}, seriesVolumeString, false, nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			u := &url.URL{Path: tt.path}
+			h := http.Header{}
+			for k, v := range tt.queryParams {
+				h.Set(k, v)
+			}
 			req := &http.Request{
 				Method:     "GET",
 				RequestURI: u.String(),
 				URL:        u,
+				Header:     h,
 			}
 			got, err := DefaultCodec.EncodeResponse(context.TODO(), req, tt.res)
 			if (err != nil) != tt.wantErr {
@@ -1518,17 +1614,132 @@ var (
 				},
 				{
 					"stream": {
-						"test": "test2"
+						"test": "test",
+                        "x": "a",
+                        "y": "b"
 					},
 					"values":[
-						[ "123456789012346", "super line2"]
+						[ "123456789012346", "super line2" ]
+					]
+				},
+				{
+					"stream": {
+						"test": "test",
+                        "x": "a",
+                        "y": "b",
+						"z": "text"
+					},
+					"values":[
+						[ "123456789012346", "super line3 z=text" ]
+					]
+				}
+			]
+		}
+	}`
+	streamsStringWithStructuredMetdata = `{
+		"status": "success",
+		"data": {
+			` + statsResultString + `
+			"resultType": "streams",
+			"result": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line"]
+					]
+				},
+				{
+					"stream": {
+						"test": "test",
+                        "x": "a",
+                        "y": "b"
+					},
+					"values":[
+						[ "123456789012346", "super line2", {"x": "a", "y": "b"} ]
+					]
+				},
+				{
+					"stream": {
+						"test": "test",
+                        "x": "a",
+                        "y": "b",
+						"z": "text"
+					},
+					"values":[
+						[ "123456789012346", "super line3 z=text", {"x": "a", "y": "b"}]
+					]
+				}
+			]
+		}
+	}`
+	streamsStringWithCategories = `{
+		"status": "success",
+		"data": {
+			` + statsResultString + `
+			"resultType": "streams",
+			"encodingFlags": ["` + string(httpreq.FlagCategorizeLabels) + `"],
+			"result": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line"],
+						[ "123456789012346", "super line2", {
+							"structuredMetadata": {
+								"x": "a",
+								"y": "b"
+							}
+						}],
+						[ "123456789012347", "super line3 z=text", {
+							"structuredMetadata": {
+								"x": "a",
+								"y": "b"
+							},
+							"parsed": {
+								"z": "text"
+							}
+						}]
 					]
 				}
 			]
 		}
 	}`
 	streamsStringLegacy = `{
-		` + statsResultString + `"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test2\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}]}`
+		` + statsResultString + `"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test\", x=\"a\", y=\"b\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}, {"labels":"{test=\"test\", x=\"a\", y=\"b\", z=\"text\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line3 z=text"}]}]}`
+	logStreamsWithStructuredMetadata = []logproto.Stream{
+		{
+			Labels: `{test="test"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:      "super line",
+					Timestamp: time.Unix(0, 123456789012345).UTC(),
+				},
+			},
+		},
+		{
+			Labels: `{test="test", x="a", y="b"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:               "super line2",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+				},
+			},
+		},
+		{
+			Labels: `{test="test", x="a", y="b", z="text"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:               "super line3 z=text",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+				},
+			},
+		},
+	}
 	logStreams = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
@@ -1540,11 +1751,42 @@ var (
 			},
 		},
 		{
-			Labels: `{test="test2"}`,
+			Labels: `{test="test", x="a", y="b"}`,
 			Entries: []logproto.Entry{
 				{
 					Line:      "super line2",
 					Timestamp: time.Unix(0, 123456789012346).UTC(),
+				},
+			},
+		},
+		{
+			Labels: `{test="test", x="a", y="b", z="text"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:      "super line3 z=text",
+					Timestamp: time.Unix(0, 123456789012346).UTC(),
+				},
+			},
+		},
+	}
+	logStreamsWithCategories = []logproto.Stream{
+		{
+			Labels: `{test="test"}`,
+			Entries: []logproto.Entry{
+				{
+					Line:      "super line",
+					Timestamp: time.Unix(0, 123456789012345).UTC(),
+				},
+				{
+					Line:               "super line2",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+				},
+				{
+					Line:               "super line3 z=text",
+					Timestamp:          time.Unix(0, 123456789012347).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("z", "text")),
 				},
 			},
 		},

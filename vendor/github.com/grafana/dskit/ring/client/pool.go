@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/internal/slices"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 )
@@ -25,8 +26,27 @@ type PoolClient interface {
 	io.Closer
 }
 
-// PoolFactory defines the signature for a client factory.
-type PoolFactory func(addr string) (PoolClient, error)
+// PoolFactory is the interface for creating new clients based on
+// the description of an instance in the ring.
+type PoolFactory interface {
+	FromInstance(inst ring.InstanceDesc) (PoolClient, error)
+}
+
+// PoolInstFunc is an implementation of PoolFactory for functions that
+// accept ring instance metadata.
+type PoolInstFunc func(inst ring.InstanceDesc) (PoolClient, error)
+
+func (f PoolInstFunc) FromInstance(inst ring.InstanceDesc) (PoolClient, error) {
+	return f(inst)
+}
+
+// PoolAddrFunc is an implementation of PoolFactory for functions that
+// accept an instance address.
+type PoolAddrFunc func(addr string) (PoolClient, error)
+
+func (f PoolAddrFunc) FromInstance(inst ring.InstanceDesc) (PoolClient, error) {
+	return f(inst.Addr)
+}
 
 // PoolServiceDiscovery defines the signature of a function returning the list
 // of known service endpoints. This function is used to remove stale clients from
@@ -95,10 +115,16 @@ func (p *Pool) fromCache(addr string) (PoolClient, bool) {
 	return client, ok
 }
 
-// GetClientFor gets the client for the specified address. If it does not exist it will make a new client
-// at that address
+// GetClientFor gets the client for the specified address. If it does not exist
+// it will make a new client for that address.
 func (p *Pool) GetClientFor(addr string) (PoolClient, error) {
-	client, ok := p.fromCache(addr)
+	return p.GetClientForInstance(ring.InstanceDesc{Addr: addr})
+}
+
+// GetClientForInstance gets the client for the specified ring member. If it does not exist
+// it will make a new client for that instance.
+func (p *Pool) GetClientForInstance(inst ring.InstanceDesc) (PoolClient, error) {
+	client, ok := p.fromCache(inst.Addr)
 	if ok {
 		return client, nil
 	}
@@ -108,16 +134,16 @@ func (p *Pool) GetClientFor(addr string) (PoolClient, error) {
 	defer p.Unlock()
 
 	// Check if a client has been created just after checking the cache and before acquiring the lock.
-	client, ok = p.clients[addr]
+	client, ok = p.clients[inst.Addr]
 	if ok {
 		return client, nil
 	}
 
-	client, err := p.factory(addr)
+	client, err := p.factory.FromInstance(inst)
 	if err != nil {
 		return nil, err
 	}
-	p.clients[addr] = client
+	p.clients[inst.Addr] = client
 	if p.clientsMetric != nil {
 		p.clientsMetric.Add(1)
 	}

@@ -28,8 +28,8 @@ import (
 	"os"
 	"strings"
 
+	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/google"
@@ -39,17 +39,18 @@ import (
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
-
-	v2corepb "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 )
 
 const (
 	// The "server_features" field in the bootstrap file contains a list of
-	// features supported by the server. A value of "xds_v3" indicates that the
-	// server supports the v3 version of the xDS transport protocol.
-	serverFeaturesV3 = "xds_v3"
+	// features supported by the server:
+	// - A value of "xds_v3" indicates that the server supports the v3 version of
+	//   the xDS transport protocol.
+	// - A value of "ignore_resource_deletion" indicates that the client should
+	//   ignore deletion of Listener and Cluster resources in updates from the
+	//   server.
+	serverFeaturesV3                     = "xds_v3"
+	serverFeaturesIgnoreResourceDeletion = "ignore_resource_deletion"
 
 	gRPCUserAgentName               = "gRPC Go"
 	clientFeatureNoOverprovisioning = "envoy.lb.does_not_support_overprovisioning"
@@ -60,8 +61,6 @@ func init() {
 	bootstrap.RegisterCredentials(&insecureCredsBuilder{})
 	bootstrap.RegisterCredentials(&googleDefaultCredsBuilder{})
 }
-
-var gRPCVersion = fmt.Sprintf("%s %s", gRPCUserAgentName, grpc.Version)
 
 // For overriding in unit tests.
 var bootstrapFileReadFunc = os.ReadFile
@@ -90,30 +89,73 @@ func (d *googleDefaultCredsBuilder) Name() string {
 	return "google_default"
 }
 
+// ChannelCreds contains the credentials to be used while communicating with an
+// xDS server. It is also used to dedup servers with the same server URI.
+type ChannelCreds struct {
+	// Type contains a unique name identifying the credentials type. The only
+	// supported types currently are "google_default" and "insecure".
+	Type string
+	// Config contains the JSON configuration associated with the credentials.
+	Config json.RawMessage
+}
+
+// Equal reports whether cc and other are considered equal.
+func (cc ChannelCreds) Equal(other ChannelCreds) bool {
+	return cc.Type == other.Type && bytes.Equal(cc.Config, other.Config)
+}
+
+// String returns a string representation of the credentials. It contains the
+// type and the config (if non-nil) separated by a "-".
+func (cc ChannelCreds) String() string {
+	if cc.Config == nil {
+		return cc.Type
+	}
+
+	// We do not expect the Marshal call to fail since we wrote to cc.Config
+	// after a successful unmarshaling from JSON configuration. Therefore,
+	// it is safe to ignore the error here.
+	b, _ := json.Marshal(cc.Config)
+	return cc.Type + "-" + string(b)
+}
+
 // ServerConfig contains the configuration to connect to a server, including
 // URI, creds, and transport API version (e.g. v2 or v3).
+//
+// It contains unexported fields that are initialized when unmarshaled from JSON
+// using either the UnmarshalJSON() method or the ServerConfigFromJSON()
+// function. Hence users are strongly encouraged not to use a literal struct
+// initialization to create an instance of this type, but instead unmarshal from
+// JSON using one of the two available options.
 type ServerConfig struct {
 	// ServerURI is the management server to connect to.
 	//
 	// The bootstrap file contains an ordered list of xDS servers to contact for
 	// this authority. The first one is picked.
 	ServerURI string
-	// Creds contains the credentials to be used while talking to the xDS
-	// server, as a grpc.DialOption.
-	Creds grpc.DialOption
-	// CredsType is the type of the creds. It will be used to dedup servers.
-	CredsType string
-	// TransportAPI indicates the API version of xDS transport protocol to use.
-	// This describes the xDS gRPC endpoint and version of
-	// DiscoveryRequest/Response used on the wire.
-	TransportAPI version.TransportAPI
-	// NodeProto contains the Node proto to be used in xDS requests. The actual
-	// type depends on the transport protocol version used.
-	//
-	// Note that it's specified in the bootstrap globally for all the servers,
-	// but we keep it in each server config so that its type (e.g. *v2pb.Node or
-	// *v3pb.Node) is consistent with the transport API version.
-	NodeProto proto.Message
+	// Creds contains the credentials to be used while communicationg with this
+	// xDS server. It is also used to dedup servers with the same server URI.
+	Creds ChannelCreds
+	// ServerFeatures contains a list of features supported by this xDS server.
+	// It is also used to dedup servers with the same server URI and creds.
+	ServerFeatures []string
+
+	// As part of unmarshaling the JSON config into this struct, we ensure that
+	// the credentials config is valid by building an instance of the specified
+	// credentials and store it here as a grpc.DialOption for easy access when
+	// dialing this xDS server.
+	credsDialOption grpc.DialOption
+
+	// IgnoreResourceDeletion controls the behavior of the xDS client when the
+	// server deletes a previously sent Listener or Cluster resource. If set, the
+	// xDS client will not invoke the watchers' OnResourceDoesNotExist() method
+	// when a resource is deleted, nor will it remove the existing resource value
+	// from its cache.
+	IgnoreResourceDeletion bool
+}
+
+// CredsDialOption returns the configured credentials as a grpc dial option.
+func (sc *ServerConfig) CredsDialOption() grpc.DialOption {
+	return sc.credsDialOption
 }
 
 // String returns the string representation of the ServerConfig.
@@ -126,24 +168,20 @@ type ServerConfig struct {
 // content. It doesn't cover NodeProto because NodeProto isn't used by
 // federation.
 func (sc *ServerConfig) String() string {
-	var ver string
-	switch sc.TransportAPI {
-	case version.TransportV3:
-		ver = "xDSv3"
-	case version.TransportV2:
-		ver = "xDSv2"
-	}
-	return strings.Join([]string{sc.ServerURI, sc.CredsType, ver}, "-")
+	features := strings.Join(sc.ServerFeatures, "-")
+	return strings.Join([]string{sc.ServerURI, sc.Creds.String(), features}, "-")
 }
 
 // MarshalJSON marshals the ServerConfig to json.
 func (sc ServerConfig) MarshalJSON() ([]byte, error) {
 	server := xdsServer{
-		ServerURI:    sc.ServerURI,
-		ChannelCreds: []channelCreds{{Type: sc.CredsType, Config: nil}},
+		ServerURI:      sc.ServerURI,
+		ChannelCreds:   []channelCreds{{Type: sc.Creds.Type, Config: sc.Creds.Config}},
+		ServerFeatures: sc.ServerFeatures,
 	}
-	if sc.TransportAPI == version.TransportV3 {
-		server.ServerFeatures = []string{serverFeaturesV3}
+	server.ServerFeatures = []string{serverFeaturesV3}
+	if sc.IgnoreResourceDeletion {
+		server.ServerFeatures = append(server.ServerFeatures, serverFeaturesIgnoreResourceDeletion)
 	}
 	return json.Marshal(server)
 }
@@ -154,10 +192,16 @@ func (sc *ServerConfig) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &server); err != nil {
 		return fmt.Errorf("xds: json.Unmarshal(data) for field ServerConfig failed during bootstrap: %v", err)
 	}
+
 	sc.ServerURI = server.ServerURI
+	sc.ServerFeatures = server.ServerFeatures
+	for _, f := range server.ServerFeatures {
+		if f == serverFeaturesIgnoreResourceDeletion {
+			sc.IgnoreResourceDeletion = true
+		}
+	}
 	for _, cc := range server.ChannelCreds {
 		// We stop at the first credential type that we support.
-		sc.CredsType = cc.Type
 		c := bootstrap.GetCredentials(cc.Type)
 		if c == nil {
 			continue
@@ -166,15 +210,51 @@ func (sc *ServerConfig) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("failed to build credentials bundle from bootstrap for %q: %v", cc.Type, err)
 		}
-		sc.Creds = grpc.WithCredentialsBundle(bundle)
+		sc.Creds = ChannelCreds(cc)
+		sc.credsDialOption = grpc.WithCredentialsBundle(bundle)
 		break
 	}
-	for _, f := range server.ServerFeatures {
-		if f == serverFeaturesV3 {
-			sc.TransportAPI = version.TransportV3
+	return nil
+}
+
+// ServerConfigFromJSON creates a new ServerConfig from the given JSON
+// configuration. This is the preferred way of creating a ServerConfig when
+// hand-crafting the JSON configuration.
+func ServerConfigFromJSON(data []byte) (*ServerConfig, error) {
+	sc := new(ServerConfig)
+	if err := sc.UnmarshalJSON(data); err != nil {
+		return nil, err
+	}
+	return sc, nil
+}
+
+// Equal reports whether sc and other are considered equal.
+func (sc *ServerConfig) Equal(other *ServerConfig) bool {
+	switch {
+	case sc == nil && other == nil:
+		return true
+	case (sc != nil) != (other != nil):
+		return false
+	case sc.ServerURI != other.ServerURI:
+		return false
+	case !sc.Creds.Equal(other.Creds):
+		return false
+	case !equalStringSlice(sc.ServerFeatures, other.ServerFeatures):
+		return false
+	}
+	return true
+}
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
 		}
 	}
-	return nil
+	return true
 }
 
 // unmarshalJSONServerConfigSlice unmarshals JSON to a slice.
@@ -277,7 +357,6 @@ type Config struct {
 	//
 	// Defaults to "%s".
 	ClientDefaultListenerResourceNameTemplate string
-
 	// Authorities is a map of authority name to corresponding configuration.
 	//
 	// This is used in the following cases:
@@ -292,6 +371,9 @@ type Config struct {
 	// In any of those cases, it is an error if the specified authority is
 	// not present in this map.
 	Authorities map[string]*Authority
+	// NodeProto contains the Node proto to be used in xDS requests. This will be
+	// of type *v3corepb.Node.
+	NodeProto *v3corepb.Node
 }
 
 type channelCreds struct {
@@ -317,7 +399,7 @@ func bootstrapConfigFromEnvVariable() ([]byte, error) {
 		//
 		// Note that even if the content is invalid, we don't failover to the
 		// file content env variable.
-		logger.Debugf("xds: using bootstrap file with name %q", fName)
+		logger.Debugf("Using bootstrap file with name %q", fName)
 		return bootstrapFileReadFunc(fName)
 	}
 
@@ -349,7 +431,6 @@ func NewConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("xds: Failed to read bootstrap config: %v", err)
 	}
-	logger.Debugf("Bootstrap content: %s", data)
 	return newConfigFromContents(data)
 }
 
@@ -374,12 +455,6 @@ func newConfigFromContents(data []byte) (*Config, error) {
 	for k, v := range jsonData {
 		switch k {
 		case "node":
-			// We unconditionally convert the JSON into a v3.Node proto. The v3
-			// proto does not contain the deprecated field "build_version" from
-			// the v2 proto. We do not expect the bootstrap file to contain the
-			// "build_version" field. In any case, the unmarshal will succeed
-			// because we have set the `AllowUnknownFields` option on the
-			// unmarshaler.
 			node = &v3corepb.Node{}
 			if err := m.Unmarshal(bytes.NewReader(v), node); err != nil {
 				return nil, fmt.Errorf("xds: jsonpb.Unmarshal(%v) for field %q failed during bootstrap: %v", string(v), k, err)
@@ -425,7 +500,7 @@ func newConfigFromContents(data []byte) (*Config, error) {
 			}
 		case "client_default_listener_resource_name_template":
 			if !envconfig.XDSFederation {
-				logger.Warningf("xds: bootstrap field %v is not support when Federation is disabled", k)
+				logger.Warningf("Bootstrap field %v is not support when Federation is disabled", k)
 				continue
 			}
 			if err := json.Unmarshal(v, &config.ClientDefaultListenerResourceNameTemplate); err != nil {
@@ -433,7 +508,7 @@ func newConfigFromContents(data []byte) (*Config, error) {
 			}
 		case "authorities":
 			if !envconfig.XDSFederation {
-				logger.Warningf("xds: bootstrap field %v is not support when Federation is disabled", k)
+				logger.Warningf("Bootstrap field %v is not support when Federation is disabled", k)
 				continue
 			}
 			if err := json.Unmarshal(v, &config.Authorities); err != nil {
@@ -457,7 +532,7 @@ func newConfigFromContents(data []byte) (*Config, error) {
 	if config.XDSServer.ServerURI == "" {
 		return nil, fmt.Errorf("xds: required field %q not found in bootstrap %s", "xds_servers.server_uri", jsonData["xds_servers"])
 	}
-	if config.XDSServer.Creds == nil {
+	if config.XDSServer.CredsDialOption() == nil {
 		return nil, fmt.Errorf("xds: required field %q doesn't contain valid value in bootstrap %s", "xds_servers.channel_creds", jsonData["xds_servers"])
 	}
 	// Post-process the authorities' client listener resource template field:
@@ -474,66 +549,16 @@ func newConfigFromContents(data []byte) (*Config, error) {
 		}
 	}
 
-	if err := config.updateNodeProto(node); err != nil {
-		return nil, err
+	// Performing post-production on the node information. Some additional fields
+	// which are not expected to be set in the bootstrap file are populated here.
+	if node == nil {
+		node = &v3corepb.Node{}
 	}
-	logger.Infof("Bootstrap config for creating xds-client: %v", pretty.ToJSON(config))
+	node.UserAgentName = gRPCUserAgentName
+	node.UserAgentVersionType = &v3corepb.Node_UserAgentVersion{UserAgentVersion: grpc.Version}
+	node.ClientFeatures = append(node.ClientFeatures, clientFeatureNoOverprovisioning, clientFeatureResourceWrapper)
+	config.NodeProto = node
+
+	logger.Debugf("Bootstrap config for creating xds-client: %v", pretty.ToJSON(config))
 	return config, nil
-}
-
-// updateNodeProto updates the node proto read from the bootstrap file.
-//
-// The input node is a v3.Node protobuf message corresponding to the JSON
-// contents found in the bootstrap file. This method performs some post
-// processing on it:
-// 1. If the node is nil, we create an empty one here. That way, callers of this
-// function can always expect that the NodeProto field is non-nil.
-// 2. Some additional fields which are not expected to be set in the bootstrap
-// file are populated here.
-// 3. For each server config (both top level and in each authority), we set its
-// node field to the v3.Node, or a v2.Node with the same content, depending on
-// the server's transport API version.
-func (c *Config) updateNodeProto(node *v3corepb.Node) error {
-	v3 := node
-	if v3 == nil {
-		v3 = &v3corepb.Node{}
-	}
-	v3.UserAgentName = gRPCUserAgentName
-	v3.UserAgentVersionType = &v3corepb.Node_UserAgentVersion{UserAgentVersion: grpc.Version}
-	v3.ClientFeatures = append(v3.ClientFeatures, clientFeatureNoOverprovisioning, clientFeatureResourceWrapper)
-
-	v3bytes, err := proto.Marshal(v3)
-	if err != nil {
-		return fmt.Errorf("xds: proto.Marshal(%v): %v", v3, err)
-	}
-	v2 := &v2corepb.Node{}
-	if err := proto.Unmarshal(v3bytes, v2); err != nil {
-		return fmt.Errorf("xds: proto.Unmarshal(%v): %v", v3bytes, err)
-	}
-	// BuildVersion is deprecated, and is replaced by user_agent_name and
-	// user_agent_version. But the management servers are still using the old
-	// field, so we will keep both set.
-	v2.BuildVersion = gRPCVersion
-	v2.UserAgentVersionType = &v2corepb.Node_UserAgentVersion{UserAgentVersion: grpc.Version}
-
-	switch c.XDSServer.TransportAPI {
-	case version.TransportV2:
-		c.XDSServer.NodeProto = v2
-	case version.TransportV3:
-		c.XDSServer.NodeProto = v3
-	}
-
-	for _, a := range c.Authorities {
-		if a.XDSServer == nil {
-			continue
-		}
-		switch a.XDSServer.TransportAPI {
-		case version.TransportV2:
-			a.XDSServer.NodeProto = v2
-		case version.TransportV3:
-			a.XDSServer.NodeProto = v3
-		}
-	}
-
-	return nil
 }

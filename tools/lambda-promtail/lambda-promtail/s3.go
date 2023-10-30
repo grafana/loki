@@ -162,7 +162,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
 	}
 
-	ls = applyExtraLabels(ls)
+	ls = applyLabels(ls)
 
 	// extract the timestamp of the nested event and sends the rest as raw json
 	if labels["type"] == CLOUDTRAIL_LOG_TYPE {
@@ -341,13 +341,14 @@ func stringToRawEvent(body string) (map[string]interface{}, error) {
 // It also makes use of the fact that the log10 of a number in base 10 is its number of digits - 1.
 // It returns early if the fractional seconds is 0 because getting the log10 of 0 results in -Inf.
 // For example, given a string 1234567890123:
-//   iLog10 = 12  // the parsed int is 13 digits long
-//   multiplier = 0.001  // to get the seconds part it must be divided by 1000
-//   sec = 1234567890123 * 0.001 = 1234567890  // this is the seconds part of the Unix time
-//   fractionalSec = 123  // the rest of the parsed int
-//   fractionalSecLog10 = 2  // it is 3 digits long
-//   multiplier = 1000000  // nano is 10^-9, so the nanoseconds part is 9 digits long
-//   nsec = 123000000  // this is the nanoseconds part of the Unix time
+//
+//	iLog10 = 12  // the parsed int is 13 digits long
+//	multiplier = 0.001  // to get the seconds part it must be divided by 1000
+//	sec = 1234567890123 * 0.001 = 1234567890  // this is the seconds part of the Unix time
+//	fractionalSec = 123  // the rest of the parsed int
+//	fractionalSecLog10 = 2  // it is 3 digits long
+//	multiplier = 1000000  // nano is 10^-9, so the nanoseconds part is 9 digits long
+//	nsec = 123000000  // this is the nanoseconds part of the Unix time
 func getUnixSecNsec(s string) (sec int64, nsec int64, err error) {
 	const (
 		UNIX_SEC_LOG10     = 9

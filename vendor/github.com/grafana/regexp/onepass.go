@@ -5,12 +5,11 @@
 package regexp
 
 import (
+	"regexp/syntax"
 	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/grafana/regexp/syntax"
 )
 
 // "One-pass" regexp execution.
@@ -39,10 +38,10 @@ type onePassInst struct {
 // is the entire match. Pc is the index of the last rune instruction
 // in the string. The OnePassPrefix skips over the mandatory
 // EmptyBeginText
-func onePassPrefix(p *syntax.Prog) (prefix string, complete bool, foldCase bool, pc uint32) {
+func onePassPrefix(p *syntax.Prog) (prefix string, complete bool, pc uint32) {
 	i := &p.Inst[p.Start]
 	if i.Op != syntax.InstEmptyWidth || (syntax.EmptyOp(i.Arg))&syntax.EmptyBeginText == 0 {
-		return "", i.Op == syntax.InstMatch, false, uint32(p.Start)
+		return "", i.Op == syntax.InstMatch, uint32(p.Start)
 	}
 	pc = i.Out
 	i = &p.Inst[pc]
@@ -52,13 +51,12 @@ func onePassPrefix(p *syntax.Prog) (prefix string, complete bool, foldCase bool,
 	}
 	// Avoid allocation of buffer if prefix is empty.
 	if iop(i) != syntax.InstRune || len(i.Rune) != 1 {
-		return "", i.Op == syntax.InstMatch, false, uint32(p.Start)
+		return "", i.Op == syntax.InstMatch, uint32(p.Start)
 	}
 
-	foldCase = (syntax.Flags(i.Arg)&syntax.FoldCase != 0)
 	// Have prefix; gather characters.
 	var buf strings.Builder
-	for iop(i) == syntax.InstRune && len(i.Rune) == 1 && (syntax.Flags(i.Arg)&syntax.FoldCase != 0) == foldCase && i.Rune[0] != utf8.RuneError {
+	for iop(i) == syntax.InstRune && len(i.Rune) == 1 && syntax.Flags(i.Arg)&syntax.FoldCase == 0 && i.Rune[0] != utf8.RuneError {
 		buf.WriteRune(i.Rune[0])
 		pc, i = i.Out, &p.Inst[i.Out]
 	}
@@ -67,7 +65,7 @@ func onePassPrefix(p *syntax.Prog) (prefix string, complete bool, foldCase bool,
 		p.Inst[i.Out].Op == syntax.InstMatch {
 		complete = true
 	}
-	return buf.String(), complete, foldCase, pc
+	return buf.String(), complete, pc
 }
 
 // OnePassNext selects the next actionable state of the prog, based on the input character.
@@ -474,20 +472,12 @@ func compileOnePass(prog *syntax.Prog) (p *onePassProg) {
 		syntax.EmptyOp(prog.Inst[prog.Start].Arg)&syntax.EmptyBeginText != syntax.EmptyBeginText {
 		return nil
 	}
-	hasAlt := false
-	for _, inst := range prog.Inst {
-		if inst.Op == syntax.InstAlt || inst.Op == syntax.InstAltMatch {
-			hasAlt = true
-			break
-		}
-	}
-	// If we have alternates, every instruction leading to InstMatch must be EmptyEndText.
-	// Also, any match on empty text must be $.
+	// every instruction leading to InstMatch must be EmptyEndText
 	for _, inst := range prog.Inst {
 		opOut := prog.Inst[inst.Out].Op
 		switch inst.Op {
 		default:
-			if opOut == syntax.InstMatch && hasAlt {
+			if opOut == syntax.InstMatch {
 				return nil
 			}
 		case syntax.InstAlt, syntax.InstAltMatch:

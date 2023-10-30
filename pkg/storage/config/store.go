@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -28,10 +26,6 @@ type ChunkStoreConfig struct {
 
 	// When DisableIndexDeduplication is true and chunk is already there in cache, only index would be written to the store and not chunk.
 	DisableIndexDeduplication bool `yaml:"-"`
-
-	// Limits query start time to be greater than now() - MaxLookBackPeriod, if set.
-	// Will be deprecated in the next major release.
-	MaxLookBackPeriod model.Duration `yaml:"max_look_back_period"`
 }
 
 func (cfg *ChunkStoreConfig) ChunkCacheStubs() bool {
@@ -47,14 +41,8 @@ func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "", f)
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
-	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "This flag is deprecated. Use -querier.max-query-lookback instead.")
 }
 
 func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
-	if cfg.MaxLookBackPeriod > 0 {
-		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
-	}
-
 	return nil
 }
