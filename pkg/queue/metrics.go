@@ -12,28 +12,28 @@ type Metrics struct {
 	querierWaitTime   *prometheus.HistogramVec // Per querier wait time
 }
 
-func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
+func NewMetrics(registerer prometheus.Registerer, metricsNamespace, subsystem string) *Metrics {
 	return &Metrics{
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Subsystem: subsystem,
 			Name:      "queue_length",
 			Help:      "Number of queries in the queue.",
 		}, []string{"user"}),
 		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Subsystem: subsystem,
 			Name:      "discarded_requests_total",
 			Help:      "Total number of query requests discarded.",
 		}, []string{"user"}),
 		enqueueCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: metricsNamespace,
 			Subsystem: subsystem,
 			Name:      "enqueue_count",
 			Help:      "Total number of enqueued (sub-)queries.",
 		}, []string{"user", "level"}),
 		querierWaitTime: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: metricsNamespace,
 			Subsystem: subsystem,
 			Name:      "querier_wait_seconds",
 			Help:      "Time spend waiting for new requests.",

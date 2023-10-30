@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -242,7 +243,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		},
 	}
 
-	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger)
+	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger, constants.Loki)
 	require.NoError(t, err)
 	return &testStore{
 		indexDir:      indexDir,

@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -407,7 +408,7 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
@@ -467,7 +468,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			RowShards: 3,
 		},
 	},
-		queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+		queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
 			maxQueryParallelism: 10,
@@ -770,7 +771,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 			mware := NewSeriesQueryShardMiddleware(
 				log.NewNopLogger(),
 				confs,
-				queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+				queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 				nilShardingMetrics,
 				fakeLimits{
 					maxQueryParallelism: 10,

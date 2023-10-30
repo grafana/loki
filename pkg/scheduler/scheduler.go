@@ -114,7 +114,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer, metricsNamespace string) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
@@ -123,7 +123,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 		}
 	}
 
-	queueMetrics := queue.NewMetrics("query_scheduler", registerer)
+	queueMetrics := queue.NewMetrics(registerer, metricsNamespace, "query_scheduler")
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
@@ -137,24 +137,29 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 	}
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_query_scheduler_queue_duration_seconds",
-		Help:    "Time spend by requests in queue before getting picked up by a querier.",
-		Buckets: prometheus.DefBuckets,
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_queue_duration_seconds",
+		Help:      "Time spend by requests in queue before getting picked up by a querier.",
+		Buckets:   prometheus.DefBuckets,
 	})
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_querier_clients",
-		Help: "Number of querier worker clients currently connected to the query-scheduler.",
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_connected_querier_clients",
+		Help:      "Number of querier worker clients currently connected to the query-scheduler.",
 	}, s.requestQueue.GetConnectedConsumersMetric)
 	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_frontend_clients",
-		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_connected_frontend_clients",
+		Help:      "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
 	s.schedulerRunning = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_running",
-		Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_running",
+		Help:      "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
 	})
 	s.inflightRequests = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-		Name:       "cortex_query_scheduler_inflight_requests",
+		Namespace:  metricsNamespace,
+		Name:       "query_scheduler_inflight_requests",
 		Help:       "Number of inflight requests (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight requests over the last 60s.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
 		MaxAge:     time.Minute,

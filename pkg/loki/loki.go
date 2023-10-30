@@ -57,6 +57,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -110,11 +111,13 @@ type Config struct {
 	Common common.Config `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+
+	MetricsNamespace string `yaml:"metrics_namespace"`
 }
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Server.MetricsNamespace = "loki"
+	c.Server.MetricsNamespace = constants.Loki
 	c.Server.ExcludeRequestInLog = true
 
 	// Set the default module list to 'all'
@@ -145,6 +148,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The default will be flipped to false in the next Loki release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
+
+	f.StringVar(&c.MetricsNamespace, "metrics-namespace", "cortex", "Namespace of the metrics that in previous releases had cortex as namespace.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)

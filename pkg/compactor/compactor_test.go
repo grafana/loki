@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 	loki_net "github.com/grafana/loki/pkg/util/net"
 )
 
@@ -49,7 +50,7 @@ func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.Ob
 
 	c, err := NewCompactor(cfg, objectClients, nil, config.SchemaConfig{
 		Configs: periodConfigs,
-	}, nil, nil)
+	}, nil, nil, constants.Loki)
 	require.NoError(t, err)
 
 	c.RegisterIndexCompactor("dummy", testIndexCompactor{})

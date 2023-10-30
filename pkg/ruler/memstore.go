@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const (
@@ -45,15 +46,15 @@ type memstoreMetrics struct {
 func newMemstoreMetrics(r prometheus.Registerer) *memstoreMetrics {
 	return &memstoreMetrics{
 		evaluations: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "ruler_memory_for_state_evaluations_total",
 		}, []string{"status", "tenant"}),
 		samples: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "ruler_memory_samples",
 		}),
 		cacheHits: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "ruler_memory_for_state_cache_hits_total",
 		}, []string{"tenant"}),
 	}
