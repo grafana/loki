@@ -268,11 +268,7 @@ func Test_StructuredMetadata(t *testing.T) {
 			}, 30*time.Second, 1*time.Second, "stream was not received")
 
 			responses := server.GetResponses()
-			require.Equal(t, len(responses), len(tc.expectedResponses))
-			for i := range responses {
-				require.Equal(t, tc.expectedResponses[i].Stream, responses[i].Stream)
-				require.Equal(t, tc.expectedResponses[i].DroppedStreams, responses[i].DroppedStreams)
-			}
+			require.ElementsMatch(t, tc.expectedResponses, responses)
 
 			tail.close()
 			wg.Wait()
