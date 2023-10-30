@@ -146,7 +146,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			sp.metrics.inflightRequests.Inc()
 			tracer := opentracing.GlobalTracer()
 			// Ignore errors here. If we cannot get parent span, we just don't create new one.
-			parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request.GetHttpRequest())
+			parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request)
 			if parentSpanContext != nil {
 				queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "querier_processor_runRequest", opentracing.ChildOf(parentSpanContext))
 				defer queueSpan.Finish()

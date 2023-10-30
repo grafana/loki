@@ -262,21 +262,9 @@ func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.
 	}
 
 	// Add org ID
-	if orgID, ok := req.Metadata[user.OrgIDHeaderName]; ok {
-		ctx = user.InjectOrgID(ctx, orgID)
-	}
-
-	// Tracing
-	/* TODO
-	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
-	if tracer != nil && span != nil {
-		carrier := opentracing.TextMapCarrier(result.Metadata)
-		err := tracer.Inject(span.Context(), opentracing.TextMap, carrier)
-		if err != nil {
-			return nil, err
-		}
-	}
-	*/
+	//if orgID, ok := req.Metadata[user.OrgIDHeaderName]; ok {
+	//	ctx = user.InjectOrgID(ctx, orgID)
+	//}
 
 	switch concrete := req.Request.(type) {
 	case *QueryRequest_Series:

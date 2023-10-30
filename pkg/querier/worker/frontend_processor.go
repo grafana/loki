@@ -122,7 +122,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 
 	tracer := opentracing.GlobalTracer()
 	// Ignore errors here. If we cannot get parent span, we just don't create new one.
-	parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request)
+	parentSpanContext, _ := httpgrpcutil.GetParentSpanForHTTPRequest(tracer, request)
 	if parentSpanContext != nil {
 		queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "frontend_processor_runRequest", opentracing.ChildOf(parentSpanContext))
 		defer queueSpan.Finish()
