@@ -167,6 +167,19 @@ func (it *SliceIter[T]) At() T {
 	return it.xs[it.cur]
 }
 
+type MapIter[A any, B any] struct {
+	Iterator[A]
+	f func(A) B
+}
+
+func NewMapIter[A any, B any](src Iterator[A], f func(A) B) *MapIter[A, B] {
+	return &MapIter[A, B]{Iterator: src, f: f}
+}
+
+func (it *MapIter[A, B]) At() B {
+	return it.f(it.Iterator.At())
+}
+
 type EmptyIter[T any] struct {
 	zero T
 }

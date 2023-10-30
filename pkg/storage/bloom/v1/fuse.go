@@ -132,4 +132,5 @@ func (fq *FusedQuerier) Run() error {
 
 	}
 
+	return nil
 }

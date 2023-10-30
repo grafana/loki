@@ -5,7 +5,10 @@
 * Queueing system for bloom access
 * bloom hierarchies (bloom per block, etc). Test a tree of blooms down the to individual series/chunk
 * memoize hashing & bucket lookups during queries
-* encode bloom parameters in block
+* versioning
+  * so we can change implementations
+  * encode bloom parameters in block: sbf params, hashing strategy, tokenizer
+* caching
 
 
 # merge querier for different blocks
