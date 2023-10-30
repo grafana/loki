@@ -153,7 +153,7 @@ func Test_IsMatching(t *testing.T) {
 	}
 }
 
-func Test_CategorizeLabels(t *testing.T) {
+func Test_StructuredMetadata(t *testing.T) {
 	lbs := makeRandomLabels()
 
 	for _, tc := range []struct {
@@ -189,55 +189,6 @@ func Test_CategorizeLabels(t *testing.T) {
 								Timestamp: time.Unix(0, 1),
 								Line:      "foo=1",
 							},
-							{
-								Timestamp:          time.Unix(0, 2),
-								Line:               "foo=2",
-								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-							},
-						},
-					},
-					DroppedStreams: nil,
-				},
-			},
-		},
-		{
-			name:  "filter pipeline",
-			query: `{app="foo"} |= "foo"`,
-			sentStream: logproto.Stream{
-				Labels: lbs.String(),
-				Entries: []logproto.Entry{
-					{
-						Timestamp: time.Unix(0, 1),
-						Line:      "foo=1",
-					},
-					{
-						Timestamp:          time.Unix(0, 2),
-						Line:               "foo=2",
-						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-					},
-					{
-						Timestamp: time.Unix(0, 3),
-						Line:      "bar",
-					},
-				},
-			},
-			expectedResponses: []logproto.TailResponse{
-				{
-					Stream: &logproto.Stream{
-						Labels: lbs.String(),
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 1),
-								Line:      "foo=1",
-							},
-						},
-					},
-					DroppedStreams: nil,
-				},
-				{
-					Stream: &logproto.Stream{
-						Labels: labels.NewBuilder(lbs).Set("traceID", "123").Labels().String(),
-						Entries: []logproto.Entry{
 							{
 								Timestamp:          time.Unix(0, 2),
 								Line:               "foo=2",
