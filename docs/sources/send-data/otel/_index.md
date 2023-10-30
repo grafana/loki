@@ -24,6 +24,8 @@ To start ingesting logs in OpenTelemetry format, you need to enable `allow_struc
 
 ## Configure the OpenTelemetry Collector to write logs into Loki
 
+You need to do the following changes to the [OpenTelemetry Collector config](https://opentelemetry.io/docs/collector/configuration/) to write logs to Loki on its OTLP ingestion endpoint.
+
 ```yaml
 exporters:
   otlphttp:
@@ -70,23 +72,23 @@ service:
 Since the OpenTelemetry protocol  differs from the Loki storage model, here is how data in the OpenTelemetry format will be mapped to the Loki data model during ingestion:
 
 - Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. Because Loki has a limit of 30 index labels, we have selected the following resource attributes to be stored as index labels, while the remaining attributes are stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}) with each log entry:
-  - service.name
-  - service.namespace
-  - service.instance.id
-  - deployment.environment
-  - cloud.region
   - cloud.availability_zone
+  - cloud.region
+  - container.name
+  - deployment.environment
   - k8s.cluster.name
+  - k8s.container.name
+  - k8s.cronjob.name
+  - k8s.daemonset.name
+  - k8s.deployment.name
+  - k8s.job.name
   - k8s.namespace.name
   - k8s.pod.name
-  - k8s.container.name
-  - container.name
   - k8s.replicaset.name
-  - k8s.deployment.name
   - k8s.statefulset.name
-  - k8s.daemonset.name
-  - k8s.cronjob.name
-  - k8s.job.name
+  - service.instance.id
+  - service.name
+  - service.namespace
 
 - Timestamp: One of `LogRecord.TimeUnixNano` or `LogRecord.ObservedTimestamp`, based on which one is set. If both are not set, the ingestion timestamp will be used.
 
