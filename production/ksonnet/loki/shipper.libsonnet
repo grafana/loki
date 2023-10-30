@@ -13,8 +13,6 @@
     using_tsdb_shipper: false,
     using_shipper_store: $._config.using_boltdb_shipper || $._config.using_tsdb_shipper,
 
-    // run ingesters and queriers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
-    stateful_ingesters: if self.using_shipper_store then true else super.stateful_ingesters,
     stateful_queriers: if self.using_shipper_store && !self.use_index_gateway then true else super.stateful_queriers,
 
     compactor_pvc_size: '10Gi',

@@ -137,8 +137,19 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
 	}
-	if cfg.RetentionEnabled && cfg.ApplyRetentionInterval != 0 && cfg.ApplyRetentionInterval%cfg.CompactionInterval != 0 {
-		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
+
+	if cfg.RetentionEnabled {
+		if cfg.DeleteRequestStore == "" {
+			return fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled")
+		}
+
+		if cfg.ApplyRetentionInterval != 0 && cfg.ApplyRetentionInterval%cfg.CompactionInterval != 0 {
+			return fmt.Errorf("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
+		}
+
+		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
+			return fmt.Errorf("validate delete store path prefix: %w", err)
+		}
 	}
 
 	if cfg.DeletionMode != "" {
@@ -579,7 +590,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 
 	sc, ok := c.storeContainers[schemaCfg.From]
 	if !ok {
-		return fmt.Errorf("index store client not found for period starting at %s", &schemaCfg.From)
+		return fmt.Errorf("index store client not found for period starting at %s", schemaCfg.From.String())
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,

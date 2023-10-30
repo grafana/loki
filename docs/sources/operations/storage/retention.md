@@ -64,7 +64,7 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
-  delete_requests_store: gcs
+  delete_request_store: gcs
 schema_config:
     configs:
       - from: "2020-07-31"
@@ -256,6 +256,6 @@ limits_config:
 
 compactor:
   working_directory: /data/retention
-  delete_requests_store: gcs
+  delete_request_store: gcs
   retention_enabled: true
 ```

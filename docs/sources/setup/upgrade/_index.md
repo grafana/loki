@@ -57,11 +57,11 @@ different from `object_store` in `period_config`.
 
 - If you have not configured `-boltdb.shipper.shared-store`,`-tsdb.shipper.shared-store` or their corresponding YAML setting before, no changes are required as part of the upgrade.
 - If you have configured `-boltdb.shipper.shared-store` or its YAML setting:
-  - If it matches the value of `object_store` for all the periods that use `boltdb-shipper` as index type, no changes are required.
+  - If it matches the value of `object_store` for all the periods that use `boltdb-shipper` as index type, no additional changes are required besides removing the usage of the deleted configuration option.
   - If there is a mismatch, you lose access to the index for periods where `-boltdb.shipper.shared-store` does not match `object_store`.
     - To make these indexes queryable, index tables need to moved or copied to the store configured in `object_store`.
 - If you have configured `-tsdb.shipper.shared-store` or its YAML setting:
-  - If it matches the value of `object_store` for all the periods that use `tsdb` as index type, no changes are required.
+  - If it matches the value of `object_store` for all the periods that use `tsdb` as index type, no additional changes are required besides removing the usage of the deleted configuration option.
   - If there is a mismatch, you lose access to the index for periods where `-tsdb.shipper.shared-store` does not match `object_store`.
     - To make these indexes queryable, index tables need to moved or copied to the store configured in `object_store`.
 
