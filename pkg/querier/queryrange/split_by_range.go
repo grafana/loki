@@ -80,7 +80,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 	queryStatsCtx := stats.FromContext(ctx)
 	queryStatsCtx.AddSplitQueries(int64(mapperStats.GetSplitQueries()))
 
-	params, err := paramsFromRequest(request)
+	params, err := ParamsFromRequest(request)
 	if err != nil {
 		return nil, err
 	}

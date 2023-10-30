@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -44,6 +45,7 @@ type table struct {
 	storageClient     storage.Client
 	openIndexFileFunc index.OpenIndexFileFunc
 	metrics           *metrics
+	maxConcurrent     int
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 
@@ -55,6 +57,11 @@ type table struct {
 // NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
 func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
+	maxConcurrent := runtime.GOMAXPROCS(0) / 2
+	if maxConcurrent == 0 {
+		maxConcurrent = 1
+	}
+
 	table := table{
 		name:               name,
 		cacheLocation:      cacheLocation,
@@ -64,6 +71,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		logger:             log.With(util_log.Logger, "table-name", name),
 		openIndexFileFunc:  openIndexFileFunc,
 		metrics:            metrics,
+		maxConcurrent:      maxConcurrent,
 		indexSets:          map[string]IndexSet{},
 	}
 
@@ -83,6 +91,11 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
+	maxConcurrent := runtime.GOMAXPROCS(0) / 2
+	if maxConcurrent == 0 {
+		maxConcurrent = 1
+	}
+
 	table := table{
 		name:               name,
 		cacheLocation:      cacheLocation,
@@ -93,6 +106,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		indexSets:          map[string]IndexSet{},
 		openIndexFileFunc:  openIndexFileFunc,
 		metrics:            metrics,
+		maxConcurrent:      maxConcurrent,
 	}
 
 	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(dirEntries))
@@ -148,6 +162,10 @@ func (t *table) Close() {
 
 func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	g, ctx := errgroup.WithContext(ctx)
+	if t.maxConcurrent == 0 {
+		panic("maxConcurrent cannot be 0, downloads.table is being initialized without setting maxConcurrent")
+	}
+	g.SetLimit(t.maxConcurrent)
 
 	// iterate through both user and common index
 	users := []string{userID, ""}

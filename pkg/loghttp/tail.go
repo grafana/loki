@@ -8,6 +8,8 @@ import (
 
 	json "github.com/json-iterator/go"
 
+	"github.com/grafana/dskit/httpgrpc"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -67,6 +69,11 @@ func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 	var err error
 	req := logproto.TailRequest{
 		Query: query(r),
+	}
+
+	req.Query, err = parseRegexQuery(r)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	req.Limit, err = limit(r)

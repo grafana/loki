@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"math"
+	"runtime"
 	"sync"
 
 	"github.com/prometheus/common/model"
@@ -14,8 +15,9 @@ import (
 )
 
 type MultiIndex struct {
-	iter     IndexIter
-	filterer chunk.RequestChunkFilterer
+	iter        IndexIter
+	filterer    chunk.RequestChunkFilterer
+	maxParallel int
 }
 
 type IndexIter interface {
@@ -26,13 +28,18 @@ type IndexIter interface {
 	// Lazy iteration may touch different index files within the same index query.
 	// `For` e.g, Bounds and GetChunkRefs might go through different index files
 	// if a sync happened between the calls.
-	For(context.Context, func(context.Context, Index) error) error
+	// The second parameter sets a limit on the number of indexes iterated concurrently.
+	For(context.Context, int, func(context.Context, Index) error) error
 }
 
 type IndexSlice []Index
 
-func (xs IndexSlice) For(ctx context.Context, fn func(context.Context, Index) error) error {
+func (xs IndexSlice) For(ctx context.Context, maxConcurrent int, fn func(context.Context, Index) error) error {
 	g, ctx := errgroup.WithContext(ctx)
+	if maxConcurrent == 0 {
+		panic("maxConcurrent cannot be 0, IndexIter is being called with a maxConcurrent of 0")
+	}
+	g.SetLimit(maxConcurrent)
 	for i := range xs {
 		x := xs[i]
 		g.Go(func() error {
@@ -43,7 +50,14 @@ func (xs IndexSlice) For(ctx context.Context, fn func(context.Context, Index) er
 }
 
 func NewMultiIndex(i IndexIter) *MultiIndex {
-	return &MultiIndex{iter: i}
+	maxConcurrent := runtime.GOMAXPROCS(0) / 2
+	if maxConcurrent == 0 {
+		maxConcurrent = 1
+	}
+	return &MultiIndex{
+		iter:        i,
+		maxParallel: maxConcurrent,
+	}
 }
 
 func (i *MultiIndex) Bounds() (model.Time, model.Time) {
@@ -90,7 +104,7 @@ func (i *MultiIndex) Close() error {
 func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model.Time, f func(context.Context, Index) error) error {
 	queryBounds := newBounds(from, through)
 
-	return i.iter.For(ctx, func(ctx context.Context, idx Index) error {
+	return i.iter.For(ctx, i.maxParallel, func(ctx context.Context, idx Index) error {
 		if Overlap(queryBounds, idx) {
 
 			if i.filterer != nil {

@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	querier_limits "github.com/grafana/loki/pkg/querier/limits"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/pkg/util"
@@ -67,7 +68,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries allowed.")
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
 	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
@@ -92,14 +93,7 @@ type Querier interface {
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 }
 
-type Limits interface {
-	logql.Limits
-	timeRangeLimits
-	QueryTimeout(context.Context, string) time.Duration
-	MaxStreamsMatchersPerQuery(context.Context, string) int
-	MaxConcurrentTailRequests(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) int
-}
+type Limits querier_limits.Limits
 
 // Store is the store interface we need on the querier.
 type Store interface {
@@ -667,12 +661,9 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 	return validateQueryTimeRangeLimits(ctx, userID, q.limits, req.GetStart(), req.GetEnd())
 }
 
-type timeRangeLimits interface {
-	MaxQueryLookback(context.Context, string) time.Duration
-	MaxQueryLength(context.Context, string) time.Duration
-}
+type TimeRangeLimits querier_limits.TimeRangeLimits
 
-func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
+func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
 	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)

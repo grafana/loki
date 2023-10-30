@@ -7,15 +7,14 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
-
-	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -34,6 +33,7 @@ const (
 	queryTypeMetric = "metric"
 	queryTypeSeries = "series"
 	queryTypeLabel  = "label"
+	queryTypeStats  = "stats"
 	queryTypeVolume = "volume"
 )
 
@@ -55,9 +55,11 @@ func recordQueryMetrics(data *queryData) {
 	case queryTypeLabel:
 		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.Query(), data.status, *data.statistics)
 	case queryTypeSeries:
-		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
+		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, []string{}, *data.statistics)
+	case queryTypeStats:
+		logql.RecordStatsQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.Query(), data.status, *data.statistics)
 	case queryTypeVolume:
-		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.Query(), data.status, *data.statistics)
+		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.params.Query(), data.params.Limit(), data.params.Step(), data.status, *data.statistics)
 	default:
 		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got %s", data.queryType))
 	}
@@ -80,7 +82,7 @@ type queryData struct {
 	result     promql_parser.Value
 	status     string
 	queryType  string
-	match      []string // used in `series` query.
+	match      []string // used in `series` query
 	label      string   // used in `labels` query
 
 	recorded bool
@@ -154,6 +156,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &r.Statistics // TODO: this is always nil. See codec.DecodeResponse
 					totalEntries = len(r.Data)
 					queryType = queryTypeLabel
+				case *IndexStatsResponse:
+					responseStats = &stats.Result{} // TODO: support stats in proto
+					totalEntries = 1
+					queryType = queryTypeStats
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
@@ -174,7 +180,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				data.statistics = responseStats
 				data.result = res
 				data.queryType = queryType
-				p, errReq := paramsFromRequest(req)
+				p, errReq := ParamsFromRequest(req)
 				if errReq != nil {
 					return nil, errReq
 				}
@@ -182,8 +188,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 
 				// Record information for metadata queries.
 				switch r := req.(type) {
-				case *LokiLabelNamesRequest:
-					data.label = getLabelNameFromLabelsQuery(r.Path)
+				case *LabelRequest:
+					data.label = r.Name
 				case *LokiSeriesRequest:
 					data.match = r.Match
 				}
@@ -191,25 +197,6 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			return resp, nil
 		})
 	})
-}
-
-func getLabelNameFromLabelsQuery(path string) string {
-	if strings.HasSuffix(path, "/values") {
-
-		toks := strings.FieldsFunc(path, func(r rune) bool {
-			return r == '/'
-		})
-
-		// now assuming path has suffix `/values` label name should be second last to the suffix
-		// **if** there exists the second last.
-		length := len(toks)
-		if length >= 2 {
-			return toks[length-2]
-		}
-
-	}
-
-	return ""
 }
 
 // interceptor implements WriteHeader to intercept status codes. WriteHeader

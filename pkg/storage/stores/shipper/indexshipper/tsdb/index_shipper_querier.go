@@ -33,7 +33,7 @@ func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.Tabl
 
 type indexIterFunc func(func(context.Context, Index) error) error
 
-func (i indexIterFunc) For(_ context.Context, f func(context.Context, Index) error) error {
+func (i indexIterFunc) For(_ context.Context, _ int, f func(context.Context, Index) error) error {
 	return i(f)
 }
 

@@ -116,7 +116,7 @@ func TestVolumeCache(t *testing.T) {
 
 		// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
 		*calls = 0
-		req := volReq.WithStartEnd(volReq.GetStart()+(15*time.Minute).Milliseconds(), volReq.GetEnd()+(15*time.Minute).Milliseconds())
+		req := volReq.WithStartEnd(volReq.GetStart().Add(15*time.Minute), volReq.GetEnd().Add(15*time.Minute))
 		vol := float64(0.75)
 		expectedVol := &VolumeResponse{
 			Response: &logproto.VolumeResponse{

@@ -27,18 +27,16 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/tls/certprovider"
+	"google.golang.org/grpc/internal/balancer/nop"
 	"google.golang.org/grpc/internal/buffer"
 	xdsinternal "google.golang.org/grpc/internal/credentials/xds"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
-	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 	"google.golang.org/grpc/xds/internal/balancer/clusterresolver"
-	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
@@ -48,7 +46,7 @@ const (
 )
 
 var (
-	errBalancerClosed = errors.New("cdsBalancer is closed")
+	errBalancerClosed = errors.New("cds_experimental LB policy is closed")
 
 	// newChildBalancer is a helper function to build a new cluster_resolver
 	// balancer and will be overridden in unittests.
@@ -76,11 +74,25 @@ type bb struct{}
 
 // Build creates a new CDS balancer with the ClientConn.
 func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
+	builder := balancer.Get(clusterresolver.Name)
+	if builder == nil {
+		// Shouldn't happen, registered through imported Cluster Resolver,
+		// defensive programming.
+		logger.Errorf("%q LB policy is needed but not registered", clusterresolver.Name)
+		return nop.NewBalancer(cc, fmt.Errorf("%q LB policy is needed but not registered", clusterresolver.Name))
+	}
+	crParser, ok := builder.(balancer.ConfigParser)
+	if !ok {
+		// Shouldn't happen, imported Cluster Resolver builder has this method.
+		logger.Errorf("%q LB policy does not implement a config parser", clusterresolver.Name)
+		return nop.NewBalancer(cc, fmt.Errorf("%q LB policy does not implement a config parser", clusterresolver.Name))
+	}
 	b := &cdsBalancer{
 		bOpts:    opts,
 		updateCh: buffer.NewUnbounded(),
 		closed:   grpcsync.NewEvent(),
 		done:     grpcsync.NewEvent(),
+		crParser: crParser,
 		xdsHI:    xdsinternal.NewHandshakeInfo(nil, nil),
 	}
 	b.logger = prefixLogger((b))
@@ -137,13 +149,6 @@ type ccUpdate struct {
 	err         error
 }
 
-// scUpdate wraps a subConn update received from gRPC. This is directly passed
-// on to the cluster_resolver balancer.
-type scUpdate struct {
-	subConn balancer.SubConn
-	state   balancer.SubConnState
-}
-
 type exitIdle struct{}
 
 // cdsBalancer implements a CDS based LB policy. It instantiates a
@@ -161,6 +166,7 @@ type cdsBalancer struct {
 	logger         *grpclog.PrefixLogger
 	closed         *grpcsync.Event
 	done           *grpcsync.Event
+	crParser       balancer.ConfigParser
 
 	// The certificate providers are cached here to that they can be closed when
 	// a new provider is to be created.
@@ -272,52 +278,6 @@ func buildProviderFunc(configs map[string]*certprovider.BuildableConfig, instanc
 	return provider, nil
 }
 
-func outlierDetectionToConfig(od *xdsresource.OutlierDetection) outlierdetection.LBConfig { // Already validated - no need to return error
-	if od == nil {
-		// "If the outlier_detection field is not set in the Cluster message, a
-		// "no-op" outlier_detection config will be generated, with interval set
-		// to the maximum possible value and all other fields unset." - A50
-		return outlierdetection.LBConfig{
-			Interval: 1<<63 - 1,
-		}
-	}
-
-	// "if the enforcing_success_rate field is set to 0, the config
-	// success_rate_ejection field will be null and all success_rate_* fields
-	// will be ignored." - A50
-	var sre *outlierdetection.SuccessRateEjection
-	if od.EnforcingSuccessRate != 0 {
-		sre = &outlierdetection.SuccessRateEjection{
-			StdevFactor:           od.SuccessRateStdevFactor,
-			EnforcementPercentage: od.EnforcingSuccessRate,
-			MinimumHosts:          od.SuccessRateMinimumHosts,
-			RequestVolume:         od.SuccessRateRequestVolume,
-		}
-	}
-
-	// "If the enforcing_failure_percent field is set to 0 or null, the config
-	// failure_percent_ejection field will be null and all failure_percent_*
-	// fields will be ignored." - A50
-	var fpe *outlierdetection.FailurePercentageEjection
-	if od.EnforcingFailurePercentage != 0 {
-		fpe = &outlierdetection.FailurePercentageEjection{
-			Threshold:             od.FailurePercentageThreshold,
-			EnforcementPercentage: od.EnforcingFailurePercentage,
-			MinimumHosts:          od.FailurePercentageMinimumHosts,
-			RequestVolume:         od.FailurePercentageRequestVolume,
-		}
-	}
-
-	return outlierdetection.LBConfig{
-		Interval:                  od.Interval,
-		BaseEjectionTime:          od.BaseEjectionTime,
-		MaxEjectionTime:           od.MaxEjectionTime,
-		MaxEjectionPercent:        od.MaxEjectionPercent,
-		SuccessRateEjection:       sre,
-		FailurePercentageEjection: fpe,
-	}
-}
-
 // handleWatchUpdate handles a watch update from the xDS Client. Good updates
 // lead to clientConn updates being invoked on the underlying cluster_resolver balancer.
 func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
@@ -327,7 +287,7 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 		return
 	}
 
-	b.logger.Infof("Watch update from xds-client %p, content: %+v, security config: %v", b.xdsClient, pretty.ToJSON(update.updates), pretty.ToJSON(update.securityCfg))
+	b.logger.Infof("Received Cluster resource contains content: %s, security config: %s", pretty.ToJSON(update.updates), pretty.ToJSON(update.securityCfg))
 
 	// Process the security config from the received update before building the
 	// child policy or forwarding the update to it. We do this because the child
@@ -338,7 +298,7 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 		// If the security config is invalid, for example, if the provider
 		// instance is not found in the bootstrap config, we need to put the
 		// channel in transient failure.
-		b.logger.Warningf("Invalid security config update from xds-client %p: %v", b.xdsClient, err)
+		b.logger.Warningf("Received Cluster resource contains invalid security config: %v", err)
 		b.handleErrorFromUpdate(err, false)
 		return
 	}
@@ -388,35 +348,49 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 				DNSHostname: cu.DNSHostName,
 			}
 		default:
-			b.logger.Infof("unexpected cluster type %v when handling update from cluster handler", cu.ClusterType)
+			b.logger.Infof("Unexpected cluster type %v when handling update from cluster handler", cu.ClusterType)
 		}
 		if envconfig.XDSOutlierDetection {
-			dms[i].OutlierDetection = outlierDetectionToConfig(cu.OutlierDetection)
+			odJSON := cu.OutlierDetection
+			// "In the cds LB policy, if the outlier_detection field is not set in
+			// the Cluster resource, a "no-op" outlier_detection config will be
+			// generated in the corresponding DiscoveryMechanism config, with all
+			// fields unset." - A50
+			if odJSON == nil {
+				// This will pick up top level defaults in Cluster Resolver
+				// ParseConfig, but sre and fpe will be nil still so still a
+				// "no-op" config.
+				odJSON = json.RawMessage(`{}`)
+			}
+			dms[i].OutlierDetection = odJSON
 		}
-	}
-	lbCfg := &clusterresolver.LBConfig{
-		DiscoveryMechanisms: dms,
 	}
 
-	// lbPolicy is set only when the policy is ringhash. The default (when it's
-	// not set) is roundrobin. And similarly, we only need to set XDSLBPolicy
-	// for ringhash (it also defaults to roundrobin).
-	if lbp := update.lbPolicy; lbp != nil {
-		lbCfg.XDSLBPolicy = &internalserviceconfig.BalancerConfig{
-			Name: ringhash.Name,
-			Config: &ringhash.LBConfig{
-				MinRingSize: lbp.MinimumRingSize,
-				MaxRingSize: lbp.MaximumRingSize,
-			},
-		}
+	// Prepare Cluster Resolver config, marshal into JSON, and then Parse it to
+	// get configuration to send downward to Cluster Resolver.
+	lbCfg := &clusterresolver.LBConfig{
+		DiscoveryMechanisms: dms,
+		XDSLBPolicy:         update.lbPolicy,
+	}
+	crLBCfgJSON, err := json.Marshal(lbCfg)
+	if err != nil {
+		// Shouldn't happen, since we just prepared struct.
+		b.logger.Errorf("cds_balancer: error marshalling prepared config: %v", lbCfg)
+		return
+	}
+
+	var sc serviceconfig.LoadBalancingConfig
+	if sc, err = b.crParser.ParseConfig(crLBCfgJSON); err != nil {
+		b.logger.Errorf("cds_balancer: cluster_resolver config generated %v is invalid: %v", string(crLBCfgJSON), err)
+		return
 	}
 
 	ccState := balancer.ClientConnState{
 		ResolverState:  xdsclient.SetClient(resolver.State{}, b.xdsClient),
-		BalancerConfig: lbCfg,
+		BalancerConfig: sc,
 	}
 	if err := b.childLB.UpdateClientConnState(ccState); err != nil {
-		b.logger.Errorf("xds: cluster_resolver balancer.UpdateClientConnState(%+v) returned error: %v", ccState, err)
+		b.logger.Errorf("Encountered error when sending config {%+v} to child policy: %v", ccState, err)
 	}
 }
 
@@ -426,22 +400,17 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 func (b *cdsBalancer) run() {
 	for {
 		select {
-		case u := <-b.updateCh.Get():
+		case u, ok := <-b.updateCh.Get():
+			if !ok {
+				return
+			}
 			b.updateCh.Load()
 			switch update := u.(type) {
 			case *ccUpdate:
 				b.handleClientConnUpdate(update)
-			case *scUpdate:
-				// SubConn updates are passthrough and are simply handed over to
-				// the underlying cluster_resolver balancer.
-				if b.childLB == nil {
-					b.logger.Errorf("xds: received scUpdate {%+v} with no cluster_resolver balancer", update)
-					break
-				}
-				b.childLB.UpdateSubConnState(update.subConn, update.state)
 			case exitIdle:
 				if b.childLB == nil {
-					b.logger.Errorf("xds: received ExitIdle with no child balancer")
+					b.logger.Errorf("Received ExitIdle with no child policy")
 					break
 				}
 				// This implementation assumes the child balancer supports
@@ -466,6 +435,7 @@ func (b *cdsBalancer) run() {
 			if b.cachedIdentity != nil {
 				b.cachedIdentity.Close()
 			}
+			b.updateCh.Close()
 			b.logger.Infof("Shutdown")
 			b.done.Fire()
 			return
@@ -515,7 +485,7 @@ func (b *cdsBalancer) handleErrorFromUpdate(err error, fromParent bool) {
 // xdsResolver.
 func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) error {
 	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received ClientConnState {%+v} after cdsBalancer was closed", state)
+		b.logger.Errorf("Received balancer config after close")
 		return errBalancerClosed
 	}
 
@@ -526,18 +496,18 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 		}
 		b.xdsClient = c
 	}
+	b.logger.Infof("Received balancer config update: %s", pretty.ToJSON(state.BalancerConfig))
 
-	b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(state.BalancerConfig))
 	// The errors checked here should ideally never happen because the
 	// ServiceConfig in this case is prepared by the xdsResolver and is not
 	// something that is received on the wire.
 	lbCfg, ok := state.BalancerConfig.(*lbConfig)
 	if !ok {
-		b.logger.Warningf("xds: unexpected LoadBalancingConfig type: %T", state.BalancerConfig)
+		b.logger.Warningf("Received unexpected balancer config type: %T", state.BalancerConfig)
 		return balancer.ErrBadResolverState
 	}
 	if lbCfg.ClusterName == "" {
-		b.logger.Warningf("xds: no clusterName found in LoadBalancingConfig: %+v", lbCfg)
+		b.logger.Warningf("Received balancer config with no cluster name")
 		return balancer.ErrBadResolverState
 	}
 	b.updateCh.Put(&ccUpdate{clusterName: lbCfg.ClusterName})
@@ -547,7 +517,7 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 // ResolverError handles errors reported by the xdsResolver.
 func (b *cdsBalancer) ResolverError(err error) {
 	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received resolver error {%v} after cdsBalancer was closed", err)
+		b.logger.Warningf("Received resolver error after close: %v", err)
 		return
 	}
 	b.updateCh.Put(&ccUpdate{err: err})
@@ -555,11 +525,7 @@ func (b *cdsBalancer) ResolverError(err error) {
 
 // UpdateSubConnState handles subConn updates from gRPC.
 func (b *cdsBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received subConn update {%v, %v} after cdsBalancer was closed", sc, state)
-		return
-	}
-	b.updateCh.Put(&scUpdate{subConn: sc, state: state})
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 // Close cancels the CDS watch, closes the child policy and closes the
@@ -595,6 +561,8 @@ func (ccw *ccWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubC
 	for i, addr := range addrs {
 		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHI)
 	}
+	// No need to override opts.StateListener; just forward all calls to the
+	// child that created the SubConn.
 	return ccw.ClientConn.NewSubConn(newAddrs, opts)
 }
 
