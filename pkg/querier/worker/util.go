@@ -142,12 +142,13 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 		}
 	}
 
-	response, _ := queryrange.QueryResponseWrap(resp)
+	response, err := queryrange.QueryResponseWrap(resp)
 	if err != nil {
 		return &queryrange.QueryResponse{
 			Status: status.New(codes.Internal, err.Error()).Proto(),
 		}
 	}
+	response.Status = status.New(codes.OK, "").Proto()
 
 	return response
 }
