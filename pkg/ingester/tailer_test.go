@@ -114,7 +114,7 @@ func (f *fakeTailServer) Reset() {
 }
 
 func Test_TailerSendRace(t *testing.T) {
-	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, 10, nil)
+	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, 10)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -299,7 +299,7 @@ func Test_CategorizeLabels(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var server fakeTailServer
-			tail, err := newTailer("foo", tc.query, &server, 10, nil)
+			tail, err := newTailer("foo", tc.query, &server, 10)
 			require.NoError(t, err)
 
 			var wg sync.WaitGroup

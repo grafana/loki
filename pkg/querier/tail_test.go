@@ -171,121 +171,119 @@ func TestTailer(t *testing.T) {
 }
 
 func TestCategorizedLabels(t *testing.T) {
+	t.Parallel()
+
 	lbs := labels.FromStrings("app", "foo")
-	historicalEntries := iter.NewStreamIterator(logproto.Stream{
-		Labels: lbs.String(),
-		Entries: []logproto.Entry{
-			{
-				Timestamp: time.Unix(1, 0),
-				Line:      "foo=1",
-			},
-			{
-				Timestamp:          time.Unix(2, 0),
-				Line:               "foo=2",
-				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-			},
-		},
-	})
-	tailClients := map[string]*tailClientMock{
-		"test1": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
+	createHistoricalEntries := func() iter.EntryIterator {
+		return iter.NewStreamIterator(logproto.Stream{
 			Labels: lbs.String(),
 			Entries: []logproto.Entry{
 				{
-					Timestamp: time.Unix(3, 0),
-					Line:      "foo=3",
+					Timestamp: time.Unix(1, 0),
+					Line:      "foo=1",
 				},
-			},
-		})),
-		"test2": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
-			Labels: labels.NewBuilder(lbs).Set("traceID", "123").Labels().String(),
-			Entries: []logproto.Entry{
 				{
-					Timestamp:          time.Unix(4, 0),
-					Line:               "foo=4",
+					Timestamp:          time.Unix(2, 0),
+					Line:               "foo=2",
 					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
 				},
 			},
-		})),
-		"test3": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
-			Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "5").Labels().String(),
-			Entries: []logproto.Entry{
-				{
-					Timestamp:          time.Unix(5, 0),
-					Line:               "foo=5",
-					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
+		})
+	}
+	createTailClients := func() map[string]*tailClientMock {
+		return map[string]*tailClientMock{
+			"test1": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
+				Labels: lbs.String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(3, 0),
+						Line:      "foo=3",
+					},
 				},
-			},
-		})),
+			})),
+			"test2": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
+				Labels: labels.NewBuilder(lbs).Set("traceID", "123").Labels().String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp:          time.Unix(4, 0),
+						Line:               "foo=4",
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+					},
+				},
+			})),
+			"test3": newTailClientMock().mockRecvWithTrigger(mockTailResponse(logproto.Stream{
+				Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "5").Labels().String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp:          time.Unix(5, 0),
+						Line:               "foo=5",
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
+					},
+				},
+			})),
+		}
 	}
 
 	for _, tc := range []struct {
-		name              string
-		categorizeLabels  bool
-		historicEntries   iter.EntryIterator
-		tailClients       map[string]*tailClientMock
-		expectedResponses []*loghttp.TailResponse
+		name             string
+		categorizeLabels bool
+		historicEntries  iter.EntryIterator
+		tailClients      map[string]*tailClientMock
+		expectedStreams  []logproto.Stream
 	}{
 		{
 			name:             "without categorize",
 			categorizeLabels: false,
-			historicEntries:  historicalEntries,
-			tailClients:      tailClients,
-			expectedResponses: []*loghttp.TailResponse{
+			historicEntries:  createHistoricalEntries(),
+			tailClients:      createTailClients(),
+			expectedStreams: []logproto.Stream{
 				{
-					Streams: logproto.Streams{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp: time.Unix(1, 0),
-									Line:      "foo=1",
-								},
-							},
-						},
-						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp:          time.Unix(2, 0),
-									Line:               "foo=2",
-									StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-								},
-							},
+							Timestamp: time.Unix(1, 0),
+							Line:      "foo=1",
 						},
 					},
 				},
 				{
-					Streams: logproto.Streams{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp: time.Unix(3, 0),
-									Line:      "foo=3",
-								},
-							},
+							Timestamp:          time.Unix(2, 0),
+							Line:               "foo=2",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
 						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: labels.NewBuilder(lbs).Set("traceID", "123").Labels().String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp:          time.Unix(4, 0),
-									Line:               "foo=4",
-									StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-								},
-							},
+							Timestamp: time.Unix(3, 0),
+							Line:      "foo=3",
 						},
+					},
+				},
+				{
+					Labels: labels.NewBuilder(lbs).Set("traceID", "123").Labels().String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "5").Labels().String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp:          time.Unix(5, 0),
-									Line:               "foo=5",
-									StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-									Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
-								},
-							},
+							Timestamp:          time.Unix(4, 0),
+							Line:               "foo=4",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						},
+					},
+				},
+				{
+					Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "5").Labels().String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(5, 0),
+							Line:               "foo=5",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+							Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
 						},
 					},
 				},
@@ -294,63 +292,55 @@ func TestCategorizedLabels(t *testing.T) {
 		{
 			name:             "categorize",
 			categorizeLabels: true,
-			historicEntries:  historicalEntries,
-			tailClients:      tailClients,
-			expectedResponses: []*loghttp.TailResponse{
+			historicEntries:  createHistoricalEntries(),
+			tailClients:      createTailClients(),
+			expectedStreams: []logproto.Stream{
 				{
-					Streams: logproto.Streams{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp: time.Unix(1, 0),
-									Line:      "foo=1",
-								},
-							},
-						},
-						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp:          time.Unix(2, 0),
-									Line:               "foo=2",
-									StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-								},
-							},
+							Timestamp: time.Unix(1, 0),
+							Line:      "foo=1",
 						},
 					},
 				},
 				{
-					Streams: logproto.Streams{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp: time.Unix(3, 0),
-									Line:      "foo=3",
-								},
-							},
+							Timestamp:          time.Unix(2, 0),
+							Line:               "foo=2",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
 						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp:          time.Unix(4, 0),
-									Line:               "foo=4",
-									StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-								},
-							},
+							Timestamp: time.Unix(3, 0),
+							Line:      "foo=3",
 						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
 						{
-							Labels: lbs.String(),
-							Entries: []logproto.Entry{
-								{
-									Timestamp:          time.Unix(5, 0),
-									Line:               "foo=5",
-									StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-									Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
-								},
-							},
+							Timestamp:          time.Unix(4, 0),
+							Line:               "foo=4",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+						},
+					},
+				},
+				{
+					Labels: lbs.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp:          time.Unix(5, 0),
+							Line:               "foo=5",
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+							Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "5")),
 						},
 					},
 				},
@@ -378,10 +368,12 @@ func TestCategorizedLabels(t *testing.T) {
 			err := waitUntilTailerOpenStreamsHaveBeenConsumed(tailer)
 			require.NoError(t, err)
 
-			responses, err := readFromTailer(tailer, maxEntriesPerTailResponse*maxBufferedTailResponses)
+			maxEntries := countEntriesInStreams(tc.expectedStreams)
+			responses, err := readFromTailer(tailer, maxEntries)
 			require.NoError(t, err)
 
-			require.Equal(t, tc.expectedResponses, responses)
+			streams := flattenStreamsFromResponses(responses)
+			require.ElementsMatch(t, tc.expectedStreams, streams)
 		})
 	}
 }
@@ -421,7 +413,7 @@ func waitUntilTailerOpenStreamsHaveBeenConsumed(tailer *Tailer) error {
 
 		select {
 		case <-timeoutTicker.C:
-			return errors.New("timeout expired while reading responses from Tailer")
+			return errors.New("timeout expired while waiting for Tailer to consume open streams")
 		default:
 			time.Sleep(throttle)
 		}

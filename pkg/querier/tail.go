@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
@@ -237,7 +235,12 @@ func (t *Tailer) pushTailResponseFromIngester(resp *logproto.TailResponse) {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	t.openStreamIterator.Push(iter.NewStreamIterator(*resp.Stream))
+	itr := iter.NewStreamIterator(*resp.Stream)
+	if t.categorizeLabels {
+		itr = iter.NewCategorizeLabelsIterator(itr)
+	}
+
+	t.openStreamIterator.Push(itr)
 }
 
 // finds oldest entry by peeking at open stream iterator.
@@ -250,31 +253,8 @@ func (t *Tailer) next() bool {
 		return false
 	}
 
-	entry := t.openStreamIterator.Entry()
-	streamLabels := t.openStreamIterator.Labels()
-
-	// If categorizeLabels is true, We need to remove the structured metadata labels and parsed labels from the stream labels.
-	// TODO(salvacorts): If this is too slow, provided this is in the hot path, we can consider doing this in the iterator.
-	if t.categorizeLabels && (len(entry.StructuredMetadata) > 0 || len(entry.Parsed) > 0) {
-		lbls, err := syntax.ParseLabels(streamLabels)
-		if err != nil {
-			// TODO(salvacorts): Print log message here.
-			return false
-		}
-
-		builder := labels.NewBuilder(lbls)
-		for _, label := range entry.StructuredMetadata {
-			builder.Del(label.Name)
-		}
-		for _, label := range entry.Parsed {
-			builder.Del(label.Name)
-		}
-
-		streamLabels = builder.Labels().String()
-	}
-
-	t.currEntry = entry
-	t.currLabels = streamLabels
+	t.currEntry = t.openStreamIterator.Entry()
+	t.currLabels = t.openStreamIterator.Labels()
 	t.recordStream(t.openStreamIterator.StreamHash())
 
 	return true
@@ -334,8 +314,13 @@ func newTailer(
 	categorizeLabels bool,
 	m *Metrics,
 ) *Tailer {
+	historicEntriesIter := historicEntries
+	if categorizeLabels {
+		historicEntriesIter = iter.NewCategorizeLabelsIterator(historicEntries)
+	}
+
 	t := Tailer{
-		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
+		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntriesIter}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),
