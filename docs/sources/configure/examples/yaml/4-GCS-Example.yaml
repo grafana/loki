@@ -28,7 +28,5 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: gcs
   gcs:
     bucket_name: replace_by_your_bucked_name
-    

@@ -28,6 +28,5 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
-    shared_store: filesystem
   filesystem:
     directory: /tmp/loki/chunks
