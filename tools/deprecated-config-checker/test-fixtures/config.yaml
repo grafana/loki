@@ -41,6 +41,8 @@ index_gateway:
 
 compactor:
   working_directory: /tmp/loki/boltdb-shipper-active
+  shared_store: gcs # DELETED
+  shared_store_key_prefix: /index # DELETED
   deletion_mode: "delete" # DEPRECATED
 
 chunk_store_config:
@@ -68,8 +70,13 @@ storage_config:
   grpc_store: # DEPRECATED
     server_address: "grpc.123abc.net"
   boltdb_shipper:
+    shared_store: gcs # DELETED
+    shared_store_key_prefix: /index # DELETED
     active_index_directory: /tmp/loki/boltdb-shipper-active
     use_boltdb_shipper_as_backup: true # DELETED
+  tsdb_shipper:
+    shared_store: gcs # DELETED
+    shared_store_key_prefix: /index # DELETED
   aws:
     s3: "bucket.123abc.net"
     sse_encryption: true # DELETED

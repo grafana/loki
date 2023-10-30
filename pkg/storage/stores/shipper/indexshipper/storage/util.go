@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -105,20 +103,4 @@ func IsCompressedFile(filename string) bool {
 
 func LoggerWithFilename(logger log.Logger, filename string) log.Logger {
 	return log.With(logger, "file-name", filename)
-}
-
-func ValidateSharedStoreKeyPrefix(prefix string) error {
-	if prefix == "" {
-		return errors.New("shared store key prefix must be set")
-	} else if strings.Contains(prefix, "\\") {
-		// When using windows filesystem as object store the implementation of ObjectClient in Cortex takes care of conversion of separator.
-		// We just need to always use `/` as a path separator.
-		return fmt.Errorf("shared store key prefix should only have '%s' as a path separator", delimiter)
-	} else if strings.HasPrefix(prefix, delimiter) {
-		return errors.New("shared store key prefix should never start with a path separator i.e '/'")
-	} else if !strings.HasSuffix(prefix, delimiter) {
-		return errors.New("shared store key prefix should end with a path separator i.e '/'")
-	}
-
-	return nil
 }

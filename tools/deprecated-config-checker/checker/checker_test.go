@@ -27,6 +27,12 @@ var (
 		"storage_config.aws.sse_encryption",
 		"storage_config.s3.sse_encryption",
 		"chunk_store_config.max_look_back_period",
+		"storage_config.boltdb_shipper.shared_store",
+		"storage_config.boltdb_shipper.shared_store_key_prefix",
+		"storage_config.tsdb_shipper.shared_store",
+		"storage_config.tsdb_shipper.shared_store_key_prefix",
+		"compactor.shared_store",
+		"compactor.shared_store_key_prefix",
 	}
 
 	expectedConfigDeprecates = []string{

@@ -131,16 +131,18 @@ func TestTableManager(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: baseTableName,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: baseTableName,
+					}},
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
@@ -149,10 +151,11 @@ func TestTableManager(t *testing.T) {
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTable2Start.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: table2Prefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: table2Prefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTable2Prefix,
@@ -336,16 +339,18 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: baseTableName,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: baseTableName,
+					}},
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
@@ -430,16 +435,18 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: baseTableName,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: baseTableName,
+					}},
 			},
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(weeklyTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
@@ -555,7 +562,8 @@ func TestTableManagerTags(t *testing.T) {
 	{
 		cfg := config.SchemaConfig{
 			Configs: []config.PeriodConfig{{
-				IndexTables: config.PeriodicTableConfig{},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{}},
 			}},
 		}
 		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
@@ -577,9 +585,10 @@ func TestTableManagerTags(t *testing.T) {
 	{
 		cfg := config.SchemaConfig{
 			Configs: []config.PeriodConfig{{
-				IndexTables: config.PeriodicTableConfig{
-					Tags: config.Tags{"foo": "bar"},
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Tags: config.Tags{"foo": "bar"},
+					}},
 			}},
 		}
 		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
@@ -605,10 +614,11 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 		Configs: []config.PeriodConfig{
 			{
 				From: config.DayTime{Time: model.TimeFromUnix(baseTableStart.Unix())},
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: tablePrefix,
-					Period: tablePeriod,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: tablePrefix,
+						Period: tablePeriod,
+					}},
 
 				ChunkTables: config.PeriodicTableConfig{
 					Prefix: chunkTablePrefix,
