@@ -66,6 +66,8 @@
 
 #### Mixins
 
+* [11087](https://github.com/grafana/loki/pull/11087) **JoaoBraveCoding**: Adds structured metadata panels for ingested data
+
 #### Fixes
 
 #### FluentD
