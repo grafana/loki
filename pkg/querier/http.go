@@ -183,7 +183,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
 
-	connJsonWriter := marshal.NewWebsocketJSONWriter(conn)
+	connWriter := marshal.NewWebsocketJSONWriter(conn)
 
 	var response *loghttp_legacy.TailResponse
 	responseChan := tailer.getResponseChan()
@@ -216,7 +216,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		case response = <-responseChan:
 			var err error
 			if version == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, connJsonWriter, encodingFlags)
+				err = marshal.WriteTailResponseJSON(*response, connWriter, encodingFlags)
 			} else {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}

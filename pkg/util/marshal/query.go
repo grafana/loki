@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"unsafe"
 
-	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -14,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"

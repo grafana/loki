@@ -3,9 +3,10 @@ package iter
 import (
 	"fmt"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 type categorizeLabelsIterator struct {

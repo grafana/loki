@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestNewCategorizeLabelsIterator(t *testing.T) {

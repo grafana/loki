@@ -136,8 +136,6 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 
 func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
 	// Optimization: skip filtering entirely, if no filter is set
-	// Note: returns the stream regardless of structured metadata. This is fine,
-	// the querier will take care of properly returning the structured metadata.
 	if log.IsNoopPipeline(t.pipeline) {
 		return []*logproto.Stream{&stream}
 	}
