@@ -303,12 +303,9 @@ func CompactNewChunks(ctx context.Context, from model.Time, through model.Time, 
 						return
 					}
 
-					// Fill the bloom with chunk data
-					err = fillBloom(bloomForChks, chks)
-					if err != nil {
-						level.Info(util_log.Logger).Log("filling blooms", err)
-						return
-					}
+					// create a tokenizer
+					bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+					bt.PopulateSBF(&bloomForChks, chks)
 
 					// Build and upload bloomBlock to storage
 					blocks, err := buildBloomBlock(dst, bloomForChks, tenant, tableName, fp, from, through)
