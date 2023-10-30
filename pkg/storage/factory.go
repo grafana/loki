@@ -769,3 +769,21 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeAlibabaCloud, config.StorageTypeSwift, config.StorageTypeBOS, config.StorageTypeCOS, config.StorageTypeFileSystem)
 	}
 }
+
+// NewIndexObjectClient makes a new StorageClient based on the SharedStoreType storage config.
+func NewIndexObjectClient(periodCfg config.PeriodConfig, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	objectType := periodCfg.ObjectType
+
+	switch periodCfg.IndexType {
+	case config.BoltDBShipperType:
+		if cfg.BoltDBShipperConfig.SharedStoreType != "" {
+			objectType = cfg.BoltDBShipperConfig.SharedStoreType
+		}
+	case config.TSDBType:
+		if cfg.TSDBShipperConfig.SharedStoreType != "" {
+			objectType = cfg.TSDBShipperConfig.SharedStoreType
+		}
+	}
+
+	return NewObjectClient(objectType, cfg, clientMetrics)
+}
