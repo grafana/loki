@@ -24,7 +24,7 @@ Lastly, Promtail works well if you want to extract metrics from logs such as cou
 
 ## OpenTelemetry Collector
 
-Loki now natively supports ingesting OpenTelemetry logs over HTTP.
+Loki natively supports ingesting OpenTelemetry logs over HTTP.
 See [Ingesting logs to Loki using OpenTelemetry Collector]({{< relref "./otel" >}}) for more details.
 
 ## Third-party clients
