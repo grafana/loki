@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 type ServerInterceptors struct {
@@ -16,7 +18,7 @@ type ServerInterceptors struct {
 
 func NewServerInterceptors(r prometheus.Registerer) *ServerInterceptors {
 	requestCount := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "index_gateway",
 		Name:      "requests_total",
 		Help:      "Total amount of requests served by the index gateway",

@@ -224,6 +224,10 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # will report 503 Service Unavailable status via /ready endpoint.
 # CLI flag: -shutdown-delay
 [shutdown_delay: <duration> | default = 0s]
+
+# Namespace of the metrics that in previous releases had cortex as namespace.
+# CLI flag: -metrics-namespace
+[metrics_namespace: <string> | default = "cortex"]
 ```
 
 ### server
