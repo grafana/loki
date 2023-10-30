@@ -347,7 +347,10 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 
 			return f.codec.DecodeHTTPGrpcResponse(concrete.HttpResponse, req)
 		case *frontendv2pb.QueryResultRequest_QueryResponse:
-			// TODO: check if it should be tracked
+			if stats.ShouldTrackQueryResponse(concrete.QueryResponse.Status) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 
 			return queryrange.QueryResponseUnwrap(concrete.QueryResponse)
 		default:
