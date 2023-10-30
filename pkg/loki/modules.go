@@ -515,7 +515,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	internalHandler := queryrangebase.MergeMiddlewares(
 		serverutil.RecoveryMiddleware,
-		queryrange.Instrument{},
+		queryrange.Instrument{
+			QueryHandlerMetrics: queryrange.NewQueryHandlerMetrics(
+				prometheus.DefaultRegisterer,
+				t.Cfg.MetricsNamespace,
+			),
+		},
 	).Wrap(handler)
 
 	svc, err := querier.InitWorkerService(
