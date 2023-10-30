@@ -129,7 +129,6 @@ func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handl
 func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, handler RequestHandler) *queryrange.QueryResponse {
 	r, ctx, err := queryrange.QueryRequestUnwrap(ctx, request)
 	if err != nil {
-		// TODO: set proper code
 		return &queryrange.QueryResponse{
 			Status: status.New(codes.Internal, err.Error()).Proto(),
 		}
@@ -137,6 +136,7 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 
 	resp, err := handler.Do(ctx, r)
 	if err != nil {
+		// TODO: set proper code
 		return &queryrange.QueryResponse{
 			Status: status.New(codes.Internal, err.Error()).Proto(),
 		}
