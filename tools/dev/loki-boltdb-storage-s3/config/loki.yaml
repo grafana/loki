@@ -123,7 +123,6 @@ storage_config:
         cache_location: /data/boltdb-cache
         index_gateway_client:
             server_address: index-gateway:9008
-        shared_store: s3
     aws:
       s3: s3://loki:supersecret@minio:9000/loki
       s3forcepathstyle: true
