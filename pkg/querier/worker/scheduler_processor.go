@@ -23,6 +23,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
@@ -93,7 +94,8 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 
 	backoff := backoff.New(execCtx, processorBackoffConfig)
 	for backoff.Ongoing() {
-		c, err := schedulerClient.QuerierLoop(execCtx)
+		//c, err := schedulerClient.QuerierLoop(execCtx) max call send msg should already be set
+		c, err := schedulerClient.QuerierLoop(execCtx, grpc.MaxCallSendMsgSize(sp.maxMessageSize))
 		if err == nil {
 			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: sp.querierID})
 		}
@@ -230,6 +232,9 @@ func (sp *schedulerProcessor) runHTTPRequest(ctx context.Context, logger log.Log
 }
 
 func (sp *schedulerProcessor) reply(ctx context.Context, logger log.Logger, frontendAddress string, result *frontendv2pb.QueryResultRequest) {
+	// Capture the result
+	r := result
+
 	runPoolWithBackoff(
 		ctx,
 		logger,
@@ -237,7 +242,19 @@ func (sp *schedulerProcessor) reply(ctx context.Context, logger log.Logger, fron
 		frontendAddress,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
-			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, result)
+			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, r)
+			if status, ok := status.FromError(err); ok {
+				if status.Code() == codes.ResourceExhausted {
+					level.Error(logger).Log("msg", "response larger than max message size", "maxMessageSize", sp.maxMessageSize, "prev", r.Response)
+					r.Response = &frontendv2pb.QueryResultRequest_HttpResponse{
+						HttpResponse: &httpgrpc.HTTPResponse{
+							Code: http.StatusRequestEntityTooLarge,
+							Body: []byte(err.Error()),
+						},
+					}
+
+				}
+			}
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)
 			}
