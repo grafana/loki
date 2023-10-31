@@ -254,9 +254,8 @@ type Ruler struct {
 
 	allowedTenants *util.AllowedTenants
 
-	registry         prometheus.Registerer
-	logger           log.Logger
-	metricsNamespace string
+	registry prometheus.Registerer
+	logger   log.Logger
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
@@ -330,12 +329,12 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
 	rulerRingName := "ruler"
-	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ringKey, ringStore, delegate, r.logger, prometheus.WrapRegistererWithPrefix(r.metricsNamespace+"_", r.registry))
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ringKey, ringStore, delegate, r.logger, r.registry)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix(r.metricsNamespace+"_", r.registry), r.logger)
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), r.registry, r.logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}
