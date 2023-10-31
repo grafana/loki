@@ -504,10 +504,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		t.Codec = queryrange.DefaultCodec
 	}
 
+	internalHandler := queryrangebase.MergeMiddlewares(
+		queryrange.Instrument{
+			QueryHandlerMetrics: queryrange.NewQueryHandlerMetrics(
+				prometheus.DefaultRegisterer,
+				t.Cfg.MetricsNamespace,
+			),
+		},
+	).Wrap(handler)
+
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
 		prometheus.DefaultRegisterer,
-		handler,
+		internalHandler,
 		t.Codec,
 	)
 	if err != nil {
