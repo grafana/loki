@@ -106,10 +106,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -190,8 +191,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -358,10 +358,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -447,8 +448,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -562,8 +562,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					// making it nil so that the template is not generated and error is returned
 					QueryLimits: nil,
@@ -719,10 +718,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -857,8 +857,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -1072,10 +1071,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1210,8 +1210,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -1426,10 +1425,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1577,8 +1577,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -1818,10 +1817,11 @@ limits_config:
     priority: 1
     period: 3d
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1912,8 +1912,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -2139,10 +2138,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 2m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -2303,8 +2303,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -2574,10 +2573,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -2695,8 +2695,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -2894,10 +2893,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 2m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -3086,8 +3086,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -3386,10 +3385,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_addr: ${HASH_RING_INSTANCE_ADDR}
@@ -3471,8 +3471,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -3642,10 +3641,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_addr: ${HASH_RING_INSTANCE_ADDR}
@@ -3727,8 +3727,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -3899,10 +3898,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -3983,8 +3983,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -4157,10 +4156,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4246,8 +4246,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -4446,10 +4445,11 @@ limits_config:
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  shard_streams:
+    enabled: true
+    desired_rate: 3145728
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4535,8 +4535,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
-						PerStreamRateLimit:        3,
-						PerStreamRateLimitBurst:   15,
+						DesiredRate:               3145728,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
