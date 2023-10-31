@@ -118,7 +118,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Tail(ctx, &request)
+	_, err = q.Tail(ctx, &request, false)
 	require.NoError(t, err)
 
 	calls := ingesterClient.GetMockedCallsByMethod("Query")
@@ -512,7 +512,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
-			_, err = q.Tail(ctx, &request)
+			_, err = q.Tail(ctx, &request, false)
 			assert.Equal(t, testData.expectedError, err)
 		})
 	}
