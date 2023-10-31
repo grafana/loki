@@ -200,17 +200,17 @@ limits_config:
 {{- end }}
 {{- end }}{{- end }}
   max_cache_freshness_per_query: 10m
-{{- if .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}
-  per_stream_rate_limit: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}MB
+{{- with .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}
+  per_stream_rate_limit: {{ . }}MB
 {{- end }}
-{{- if .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}
-  per_stream_rate_limit_burst: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}MB
+{{- with .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}
+  per_stream_rate_limit_burst: {{ . }}MB
 {{- end }}
   split_queries_by_interval: 30m
-{{- if .Stack.Limits.Global.IngestionLimits.DesiredRate }}
+{{- with .Stack.Limits.Global.IngestionLimits.DesiredRate }}
   shard_streams:
     enabled: true
-    desired_rate: {{ .Stack.Limits.Global.IngestionLimits.DesiredRate }}
+    desired_rate: {{ . }}
 {{- end }}
 {{- with .GossipRing }}
 memberlist:

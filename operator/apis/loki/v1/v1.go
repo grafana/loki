@@ -83,7 +83,7 @@ var (
 	ErrReplicationSpecConflict = errors.New("replicationSpec and replicationFactor (deprecated) cannot be used at the same time")
 	// ErrIPv6InstanceAddrTypeNotAllowed when the default InstanceAddrType is used with enableIPv6.
 	ErrIPv6InstanceAddrTypeNotAllowed = errors.New(`instanceAddrType "default" cannot be used with enableIPv6 at the same time`)
-	// ErrDesiredRateAndPerStreamRateNotAllowed when both fields are set.
+	// ErrDesiredRateAndPerStreamRateNotAllowed when there's a conflict in the rate limiting configuration because both desiredRate and perStreamRateLimit are set.
 	ErrDesiredRateAndPerStreamRateNotAllowed = errors.New("fields desiredRate and perStreamRateLimit cannot be used together")
 
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
