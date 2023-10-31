@@ -431,6 +431,13 @@ overrides:
     ingestion_burst_size_mb: 5
     max_global_streams_per_user: 1
     max_chunks_per_query: 1000000
+    blocked_queries:
+    - hash: 12345
+      types: metric,limited
+    - pattern: '.*prod.*'
+      regex: true
+    - types: metric
+    - pattern: 'sum(rate({env="prod"}[1m]))'
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
@@ -469,6 +476,22 @@ overrides:
 							QueryLimitSpec: lokiv1.QueryLimitSpec{
 								MaxChunksPerQuery: 1000000,
 							},
+							BlockedQueries: []lokiv1.BlockedQuerySpec{
+								{
+									Hash:  12345,
+									Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},
+								},
+								{
+									Pattern: ".*prod.*",
+									Regex:   true,
+								},
+								{
+									Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric},
+								},
+								{
+									Pattern: `sum(rate({env="prod"}[1m]))`,
+								},
+							},
 						},
 					},
 				},
@@ -485,6 +508,22 @@ overrides:
 					QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
 						QueryLimitSpec: lokiv1.QueryLimitSpec{
 							MaxChunksPerQuery: 1000000,
+						},
+						BlockedQueries: []lokiv1.BlockedQuerySpec{
+							{
+								Hash:  12345,
+								Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},
+							},
+							{
+								Pattern: ".*prod.*",
+								Regex:   true,
+							},
+							{
+								Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric},
+							},
+							{
+								Pattern: `sum(rate({env="prod"}[1m]))`,
+							},
 						},
 					},
 				},

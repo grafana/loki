@@ -49,6 +49,23 @@ overrides:
     {{- if $spec.QueryLimits.CardinalityLimit }}
     cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
+    {{- with $l.BlockedQueries}}
+    blocked_queries:
+    {{- range $blockedQuery := . }}
+    - {{- if $blockedQuery.Pattern }}
+      pattern: '{{ $blockedQuery.Pattern }}'
+      {{- end }}
+      {{- if $blockedQuery.Regex }}
+      regex: {{ $blockedQuery.Regex }}
+      {{- end }}
+      {{- if $blockedQuery.Types }}
+      types: {{ $blockedQuery.TypesString }}
+      {{- end }}
+      {{- if $blockedQuery.Hash }}
+      hash: {{ $blockedQuery.Hash }}
+      {{- end }}
+    {{- end }}
+    {{- end}}
   {{- end -}}
   {{- with $spec.Retention }}
     retention_period: {{ .Days }}d
