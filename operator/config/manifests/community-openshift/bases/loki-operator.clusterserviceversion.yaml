@@ -208,8 +208,8 @@ spec:
         displayName: Global Limits
         path: limits.global
       - description: DesiredRate defines the desired ingestion rate per second that
-          LokiStack should target applyfing automatic stream sharding. Units Bytes.
-        displayName: Desired Ingestion Rate (in Bytes)
+          LokiStack should target applyfing automatic stream sharding. Unit MB.
+        displayName: Desired Ingestion Rate (in MB)
         path: limits.global.ingestion.desiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
@@ -298,8 +298,8 @@ spec:
         displayName: Limits per Tenant
         path: limits.tenants
       - description: DesiredRate defines the desired ingestion rate per second that
-          LokiStack should target applyfing automatic stream sharding. Units Bytes.
-        displayName: Desired Ingestion Rate (in Bytes)
+          LokiStack should target applyfing automatic stream sharding. Unit MB.
+        displayName: Desired Ingestion Rate (in MB)
         path: limits.tenants.ingestion.desiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number

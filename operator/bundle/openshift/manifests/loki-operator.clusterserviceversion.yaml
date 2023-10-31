@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2023-10-31T08:47:54Z"
+    createdAt: "2023-10-31T18:11:10Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -308,8 +308,8 @@ spec:
         displayName: Global Limits
         path: limits.global
       - description: DesiredRate defines the desired ingestion rate per second that
-          LokiStack should target applyfing automatic stream sharding. Units Bytes.
-        displayName: Desired Ingestion Rate (in Bytes)
+          LokiStack should target applyfing automatic stream sharding. Unit MB.
+        displayName: Desired Ingestion Rate (in MB)
         path: limits.global.ingestion.desiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
@@ -398,8 +398,8 @@ spec:
         displayName: Limits per Tenant
         path: limits.tenants
       - description: DesiredRate defines the desired ingestion rate per second that
-          LokiStack should target applyfing automatic stream sharding. Units Bytes.
-        displayName: Desired Ingestion Rate (in Bytes)
+          LokiStack should target applyfing automatic stream sharding. Unit MB.
+        displayName: Desired Ingestion Rate (in MB)
         path: limits.tenants.ingestion.desiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number

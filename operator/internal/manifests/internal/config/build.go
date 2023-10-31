@@ -25,7 +25,9 @@ var (
 	//go:embed loki-runtime-config.yaml
 	lokiRuntimeConfigYAMLTmplFile embed.FS
 
-	lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
+	lokiConfigYAMLTmpl = template.Must(template.New("loki-config.yaml").Funcs(template.FuncMap{
+		"toBytes": toBytes,
+	}).ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
 
 	lokiRuntimeConfigYAMLTmpl = template.Must(template.ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
 )
@@ -53,4 +55,8 @@ func Build(opts Options) ([]byte, []byte, error) {
 		return nil, nil, kverrors.Wrap(err, "failed to read configuration from buffer")
 	}
 	return cfg, rcfg, nil
+}
+
+func toBytes(s int32) int32 {
+	return int32(float32(s) * (1 << 20))
 }

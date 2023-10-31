@@ -210,7 +210,7 @@ limits_config:
 {{- with .Stack.Limits.Global.IngestionLimits.DesiredRate }}
   shard_streams:
     enabled: true
-    desired_rate: {{ . }}
+    desired_rate: {{ toBytes . }}
 {{- end }}
 {{- with .GossipRing }}
 memberlist:
