@@ -59,7 +59,7 @@ overrides:
       regex: {{ $blockedQuery.Regex }}
       {{- end }}
       {{- if $blockedQuery.Types }}
-      types: {{ $blockedQuery.TypesString }}
+      types: {{ blockedQueryTypesToString $blockedQuery.Types }}
       {{- end }}
       {{- if $blockedQuery.Hash }}
       hash: {{ $blockedQuery.Hash }}

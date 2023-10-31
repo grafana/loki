@@ -1,8 +1,6 @@
 package v1
 
 import (
-	"strings"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -642,7 +640,7 @@ const (
 	BlockedQueryFilter = "filter"
 	// BlockedQueryLimited defines the blocking type for queries without a filter or a metric aggregation.
 	BlockedQueryLimited = "limited"
-	// BlockedQueryMetric findes the blocking type for queries with an aggregation.
+	// BlockedQueryMetric defines the blocking type for queries with an aggregation.
 	BlockedQueryMetric = "metric"
 )
 
@@ -672,14 +670,6 @@ type BlockedQuerySpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Types"
 	Types []BlockedQueryType `json:"types,omitempty"`
-}
-
-func (b BlockedQuerySpec) TypesString() string {
-	var s []string
-	for _, queryType := range b.Types {
-		s = append(s, string(queryType))
-	}
-	return strings.Join(s, ",")
 }
 
 // PerTenantQueryLimitSpec defines the limits applied to per tenant query path.
