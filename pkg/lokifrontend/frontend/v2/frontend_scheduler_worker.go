@@ -326,6 +326,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			case schedulerpb.ERROR:
 				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- &frontendv2pb.QueryResultRequest{
+					// TODO: return with QueryResponse if feature flag is active
 					Response: &frontendv2pb.QueryResultRequest_HttpResponse{
 						HttpResponse: &httpgrpc.HTTPResponse{
 							Code: http.StatusInternalServerError,

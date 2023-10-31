@@ -182,5 +182,5 @@ message QueryRequest {
     LokiRequest streams = 5;
     logproto.VolumeRequest volume = 6;
   }
-  map<string, string> metadata = 7;
+  map<string, string> metadata = 7 [(gogoproto.nullable) = false];
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
@@ -262,6 +263,14 @@ func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.
 			return nil, ctx, err
 		}
 		ctx = querylimits.InjectQueryLimitsContext(ctx, *limits)
+	}
+
+	// Add query time
+	if queueTimeHeader, ok := req.Metadata[string(httpreq.QueryQueueTimeHTTPHeader)]; ok {
+		queueTime, err := time.ParseDuration(queueTimeHeader)
+		if err == nil {
+			ctx = context.WithValue(ctx, httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		}
 	}
 
 	// Add org ID

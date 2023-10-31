@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	//"net/textproto"
+	"net/textproto"
 	"strings"
 	"sync"
 	"time"
@@ -434,13 +434,15 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		r.queueSpan.Finish()
 
 		// Add HTTP header to the request containing the query queue time
-		// TODO:
-		/*
+		if r.request != nil {
 			r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
 				Key:    textproto.CanonicalMIMEHeaderKey(string(lokihttpreq.QueryQueueTimeHTTPHeader)),
 				Values: []string{reqQueueTime.String()},
 			})
-		*/
+		}
+		if r.queryRequest != nil {
+			r.queryRequest.Metadata[string(lokihttpreq.QueryQueueTimeHTTPHeader)] = reqQueueTime.String()
+		}
 
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
