@@ -789,6 +789,8 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) int { return 0
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer)
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
@@ -796,8 +798,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 		t.Overrides,
 		t.Cfg.SchemaConfig,
 		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
-		prometheus.DefaultRegisterer,
-		t.Cfg.MetricsNamespace,
+		reg,
 	)
 	if err != nil {
 		return
