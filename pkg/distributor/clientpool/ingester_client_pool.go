@@ -38,6 +38,6 @@ func NewPool(name string, cfg PoolConfig, ring ring.ReadRing, factory ring_clien
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
 
-	// TODO(chaudum): Allow cofiguration of metric name by the caller.
+	// TODO(chaudum): Allow configuration of metric name by the caller.
 	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, clients, logger)
 }

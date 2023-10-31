@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -117,7 +118,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Tail(ctx, &request)
+	_, err = q.Tail(ctx, &request, false)
 	require.NoError(t, err)
 
 	calls := ingesterClient.GetMockedCallsByMethod("Query")
@@ -511,7 +512,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
-			_, err = q.Tail(ctx, &request)
+			_, err = q.Tail(ctx, &request, false)
 			assert.Equal(t, testData.expectedError, err)
 		})
 	}
@@ -1285,7 +1286,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 }
 
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {
-	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory)
+	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory, constants.Loki)
 	if err != nil {
 		return nil, err
 	}

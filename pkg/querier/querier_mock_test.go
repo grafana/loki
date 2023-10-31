@@ -530,7 +530,7 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 }
 
-func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest) (*Tailer, error) {
+func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest, _ bool) (*Tailer, error) {
 	return nil, errors.New("querierMock.Tail() has not been mocked")
 }
 

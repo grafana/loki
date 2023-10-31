@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 )
@@ -57,7 +58,7 @@ func Test_seriesLimiter(t *testing.T) {
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
 	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
-	}, nil, false, nil)
+	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -227,7 +228,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
 		Configs: testSchemas,
-	}, nil, false, nil)
+	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
