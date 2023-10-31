@@ -633,7 +633,7 @@ type QueryLimitSpec struct {
 // IngestionLimitSpec defines the limits applied at the ingestion path.
 type IngestionLimitSpec struct {
 	// DesiredRate defines the desired ingestion rate per second that LokiStack should
-	// target applyfing automatic stream sharding. Unit MB.
+	// target applying automatic stream sharding. Unit MB.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional

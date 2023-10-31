@@ -82,7 +82,7 @@ spec:
                         properties:
                           desiredRate:
                             description: DesiredRate defines the desired ingestion
-                              rate per second that LokiStack should target applyfing
+                              rate per second that LokiStack should target applying
                               automatic stream sharding. Unit MB.
                             format: int32
                             type: integer
@@ -213,7 +213,7 @@ spec:
                           properties:
                             desiredRate:
                               description: DesiredRate defines the desired ingestion
-                                rate per second that LokiStack should target applyfing
+                                rate per second that LokiStack should target applying
                                 automatic stream sharding. Unit MB.
                               format: int32
                               type: integer

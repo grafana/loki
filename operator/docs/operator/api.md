@@ -1090,7 +1090,7 @@ int32
 <td>
 <em>(Optional)</em>
 <p>DesiredRate defines the desired ingestion rate per second that LokiStack should
-target applyfing automatic stream sharding. Units Bytes.</p>
+target applying automatic stream sharding. Unit MB.</p>
 </td>
 </tr>
 <tr>
