@@ -902,6 +902,83 @@ OPASpec
 </tbody>
 </table>
 
+## BlockedQuerySpec { #loki-grafana-com-v1-BlockedQuerySpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
+</p>
+<div>
+<p>BlockedQuerySpec defines the rule spec for queries to be blocked.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>hash</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Hash is a 32-bit FNV-1 hash of the query string.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>pattern</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Pattern defines the pattern matching the queries to be blocked.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Regex defines if the pattern is a regular expression. If false the pattern will be used only for exact matches.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>types</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-BlockedQueryType">
+[]BlockedQueryType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Types defines the list of query types that should be considered for blocking.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## BlockedQueryType { #loki-grafana-com-v1-BlockedQueryType }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-BlockedQuerySpec">BlockedQuerySpec</a>)
+</p>
+<div>
+<p>BlockedQueryType defines the query limits type for blocked queries.</p>
+</div>
+
 ## CASpec { #loki-grafana-com-v1-CASpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-MTLSSpec">MTLSSpec</a>, <a href="#loki-grafana-com-v1-OIDCSpec">OIDCSpec</a>, <a href="#loki-grafana-com-v1-ObjectStorageTLSSpec">ObjectStorageTLSSpec</a>)
@@ -1067,7 +1144,7 @@ MemberListSpec
 
 ## IngestionLimitSpec { #loki-grafana-com-v1-IngestionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
 <p>IngestionLimitSpec defines the limits applied at the ingestion path.</p>
@@ -1255,8 +1332,8 @@ LimitsTemplateSpec
 <td>
 <code>tenants</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-LimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.LimitsTemplateSpec
+<a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">
+map[string]github.com/grafana/loki/operator/apis/loki/v1.PerTenantLimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -2702,6 +2779,110 @@ Setting this to an empty array disables admin groups.</p>
 </tbody>
 </table>
 
+## PerTenantLimitsTemplateSpec { #loki-grafana-com-v1-PerTenantLimitsTemplateSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsSpec">LimitsSpec</a>)
+</p>
+<div>
+<p>LimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ingestion</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-IngestionLimitSpec">
+IngestionLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IngestionLimits defines the limits applied on ingested log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>queries</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">
+PerTenantQueryLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>retention</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RetentionLimitSpec">
+RetentionLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Retention defines how long logs are kept in storage.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## PerTenantQueryLimitSpec { #loki-grafana-com-v1-PerTenantQueryLimitSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
+</p>
+<div>
+<p>PerTenantQueryLimitSpec defines the limits applied to per tenant query path.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>QueryLimitSpec</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-QueryLimitSpec">
+QueryLimitSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>blockedQueries</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-BlockedQuerySpec">
+[]BlockedQuerySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>BlockedQueries defines the list of rules to block matching queries.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## PermissionType { #loki-grafana-com-v1-PermissionType }
 (<code>string</code> alias)
 <p>
@@ -2746,7 +2927,7 @@ Setting this to an empty array disables admin groups.</p>
 
 ## QueryLimitSpec { #loki-grafana-com-v1-QueryLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
 </p>
 <div>
 <p>QueryLimitSpec defines the limits applies at the query path.</p>
@@ -3572,7 +3753,7 @@ IMPORTANT: Make sure that the replication factor defined is less than or equal t
 
 ## RetentionLimitSpec { #loki-grafana-com-v1-RetentionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
 <p>RetentionLimitSpec controls how long logs will be kept in storage.</p>
