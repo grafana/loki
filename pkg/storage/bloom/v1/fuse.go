@@ -91,17 +91,33 @@ func (fq *FusedQuerier) Run() error {
 
 		bloom := fq.bq.blooms.At()
 		// test every input against this chunk
+	inputLoop:
 		for _, input := range nextBatch {
 			mustCheck, inBlooms := input.chks.Compare(series.Chunks, true)
 
-		outer:
+			// First, see if the search passes the series level bloom before checking for chunks individually
+			for _, search := range input.searches {
+				if !bloom.Test(search) {
+					// the entire series bloom didn't pass one of the searches,
+					// so we can skip checking chunks individually.
+					// We still return all chunks that are not included in the bloom
+					// as they may still have the data
+					input.response <- output{
+						fp:   fp,
+						chks: mustCheck,
+					}
+					continue inputLoop
+				}
+			}
+
+		chunkLoop:
 			for _, chk := range inBlooms {
 				for _, search := range input.searches {
 					// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
 					var combined = search
 
 					if !bloom.ScalableBloomFilter.Test(combined) {
-						continue outer
+						continue chunkLoop
 					}
 				}
 				// chunk passed all searches, add to the list of chunks to download
