@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -201,6 +202,24 @@ func (it *EmptyIter[T]) Reset() {}
 
 func NewEmptyIter[T any](zero T) *EmptyIter[T] {
 	return &EmptyIter[T]{zero: zero}
+}
+
+type CancellableIter[T any] struct {
+	ctx context.Context
+	Iterator[T]
+}
+
+func (cii *CancellableIter[T]) Next() bool {
+	select {
+	case <-cii.ctx.Done():
+		return false
+	default:
+		return cii.Iterator.Next()
+	}
+}
+
+func NewCancelableIter[T any](ctx context.Context, itr Iterator[T]) *CancellableIter[T] {
+	return &CancellableIter[T]{ctx: ctx, Iterator: itr}
 }
 
 type NoopCloser struct {

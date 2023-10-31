@@ -1,8 +1,6 @@
 package v1
 
 import (
-	"context"
-
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
 )
@@ -11,21 +9,7 @@ type request struct {
 	fp       model.Fingerprint
 	chks     ChunkRefs
 	searches [][]byte
-	response chan<- output
-}
-
-type CancellableInputsIter struct {
-	ctx context.Context
-	Iterator[request]
-}
-
-func (cii *CancellableInputsIter) Next() bool {
-	select {
-	case <-cii.ctx.Done():
-		return false
-	default:
-		return cii.Iterator.Next()
-	}
+	response chan output
 }
 
 // output represents a chunk that failed to pass all searches
@@ -37,6 +21,7 @@ type output struct {
 
 // Fuse combines multiple requests into a single loop iteration
 // over the data set and returns the corresponding outputs
+// TODO(owen-d): better async control
 func (bq *BlockQuerier) Fuse(inputs []PeekingIterator[request]) *FusedQuerier {
 	return NewFusedQuerier(bq, inputs)
 }
