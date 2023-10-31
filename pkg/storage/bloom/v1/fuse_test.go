@@ -91,3 +91,100 @@ func TestFusedQuerier(t *testing.T) {
 		}
 	}
 }
+
+func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]request) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+	numSeries := 10000
+	numKeysPerSeries := 100
+	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffffff, 0, 10000)
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			schema: Schema{
+				version:  DefaultSchemaVersion,
+				encoding: chunkenc.EncSnappy,
+			},
+			SeriesPageSize: 256 << 10, // 256k
+			BloomPageSize:  1 << 20,   // 1MB
+		},
+		writer,
+	)
+	require.Nil(b, err)
+	itr := NewSliceIter[SeriesWithBloom](data)
+	require.Nil(b, builder.BuildFrom(itr))
+	block := NewBlock(reader)
+	querier := NewBlockQuerier(block)
+
+	numRequestChains := 100
+	seriesPerRequest := 100
+	var requestChains [][]request
+	for i := 0; i < numRequestChains; i++ {
+		var reqs []request
+		// ensure they use the same channel
+		ch := make(chan output)
+		// evenly spread out the series queried within a single request chain
+		// to mimic series distribution across keyspace
+		for j := 0; j < seriesPerRequest; j++ {
+			// add the chain index (i) for a little jitter
+			idx := numSeries*j/seriesPerRequest + i
+			if idx >= numSeries {
+				idx = numSeries - 1
+			}
+			reqs = append(reqs, request{
+				fp:       data[idx].Series.Fingerprint,
+				chks:     data[idx].Series.Chunks,
+				response: ch,
+			})
+		}
+		requestChains = append(requestChains, reqs)
+	}
+
+	return querier, requestChains
+}
+
+func BenchmarkBlockQuerying(b *testing.B) {
+	b.StopTimer()
+	querier, requestChains := setupBlockForBenchmark(b)
+	// benchmark
+	b.StartTimer()
+
+	b.Run("single-pass", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, chain := range requestChains {
+				for _, req := range chain {
+					_, _ = querier.CheckChunksForSeries(req.fp, req.chks, nil)
+				}
+			}
+		}
+
+	})
+	b.Run("fused", func(b *testing.B) {
+		// spin up some goroutines to consume the responses so they don't block
+		go func() {
+			concurrency.ForEachJob(
+				context.Background(),
+				len(requestChains), len(requestChains),
+				func(_ context.Context, idx int) error {
+					for range requestChains[idx][0].response {
+					}
+					return nil
+				},
+			)
+		}()
+
+		var itrs []PeekingIterator[request]
+
+		for i := 0; i < b.N; i++ {
+			itrs = itrs[:0]
+			for _, reqs := range requestChains {
+				itrs = append(itrs, NewPeekingIter[request](NewSliceIter[request](reqs)))
+			}
+			fused := querier.Fuse(itrs)
+			_ = fused.Run()
+		}
+	})
+
+}
