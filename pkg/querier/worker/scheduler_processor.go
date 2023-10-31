@@ -186,8 +186,6 @@ func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Lo
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
-	// TODO: Ensure responses that are too big are not retried.
-
 	result := &frontendv2pb.QueryResultRequest{
 		QueryID: queryID,
 		Response: &frontendv2pb.QueryResultRequest_QueryResponse{
