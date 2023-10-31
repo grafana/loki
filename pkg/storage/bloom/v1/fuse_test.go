@@ -6,8 +6,9 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 func TestFusedQuerier(t *testing.T) {
