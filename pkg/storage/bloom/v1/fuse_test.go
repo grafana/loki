@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/grafana/dskit/concurrency"
@@ -61,6 +62,8 @@ func TestFusedQuerier(t *testing.T) {
 	}
 
 	resps := make([][]output, nReqs)
+	var g sync.WaitGroup
+	g.Add(1)
 	go func() {
 		require.Nil(t, concurrency.ForEachJob(
 			context.Background(),
@@ -73,10 +76,16 @@ func TestFusedQuerier(t *testing.T) {
 				return nil
 			},
 		))
+		g.Done()
 	}()
 
 	fused := querier.Fuse(itrs)
+
 	require.Nil(t, fused.Run())
+	for _, input := range inputs {
+		close(input[0].response)
+	}
+	g.Wait()
 
 	for i, input := range inputs {
 		for j, req := range input {
