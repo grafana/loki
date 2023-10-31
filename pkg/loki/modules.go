@@ -307,14 +307,14 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 
 func (t *Loki) initDistributor() (services.Service, error) {
 	var err error
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer)
 	t.distributor, err = distributor.New(
 		t.Cfg.Distributor,
 		t.Cfg.IngesterClient,
 		t.tenantConfigs,
 		t.ring,
 		t.Overrides,
-		prometheus.DefaultRegisterer,
-		t.Cfg.MetricsNamespace,
+		reg,
 	)
 	if err != nil {
 		return nil, err

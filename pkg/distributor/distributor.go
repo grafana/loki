@@ -134,7 +134,6 @@ func New(
 	ingestersRing ring.ReadRing,
 	overrides Limits,
 	registerer prometheus.Registerer,
-	metricsNamespace string,
 ) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
@@ -205,7 +204,7 @@ func New(
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
-		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer, metricsNamespace)
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -733,7 +732,7 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 }
 
 // newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates
-func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer, metricsNamespace string) (*ring.Ring, *ring.BasicLifecycler, error) {
+func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer) (*ring.Ring, *ring.BasicLifecycler, error) {
 	kvStore, err := kv.NewClient(cfg.KVStore, ring.GetCodec(), kv.RegistererWithKVName(reg, "distributor-lifecycler"), logger)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' KV store")
@@ -750,12 +749,12 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
 	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.HeartbeatTimeout, delegate, logger)
 
-	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg))
+	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, reg)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' lifecycler")
 	}
 
-	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg))
+	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, reg)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' ring client")
 	}

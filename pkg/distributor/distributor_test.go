@@ -33,7 +33,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/util/constants"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -1160,7 +1159,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki)
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
