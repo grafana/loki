@@ -513,10 +513,20 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
 	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
 
+	internalHandler := queryrangebase.MergeMiddlewares(
+		serverutil.RecoveryMiddleware,
+		queryrange.Instrument{
+			QueryHandlerMetrics: queryrange.NewQueryHandlerMetrics(
+				prometheus.DefaultRegisterer,
+				t.Cfg.MetricsNamespace,
+			),
+		},
+	).Wrap(handler)
+
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
 		prometheus.DefaultRegisterer,
-		serverutil.RecoveryMiddleware.Wrap(handler),
+		internalHandler,
 		t.Codec,
 	)
 	if err != nil {
