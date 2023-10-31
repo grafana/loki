@@ -41,11 +41,11 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 ## Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Promtail](/grafana/loki/blob/main/docs/sources/send-data/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/send-data/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/send-data/cmd/fluent-bit), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
+Loki has several client options: [Promtail]({{< relref "../../send-data/promtail" >}}) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd]({{< relref "../../send-data/fluentd" >}}), [Fluent Bit]({{< relref "../../send-data/fluentbit" >}}), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.
-Series information can be queried through the [Series API](/docs/loki/latest/api/#series), or you can use [logcli](/docs/loki/latest/getting-started/logcli/).
+Series information can be queried through the [Series API]({{< relref "../../reference/api" >}}), or you can use [logcli]({{< relref "../../query" >}}).
 
 In Loki 1.6.0 and newer the logcli series command added the `--analyze-labels` flag specifically for debugging high cardinality labels:
 

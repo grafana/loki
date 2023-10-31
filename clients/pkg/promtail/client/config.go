@@ -23,6 +23,10 @@ const (
 
 // Config describes configuration for an HTTP pusher client.
 type Config struct {
+	// Note even though the command line flag arguments which use this config
+	// are deprecated, this struct is still the primary way to configure
+	// a promtail client
+
 	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
 	BatchWait time.Duration `yaml:"batchwait"`
