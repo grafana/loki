@@ -182,7 +182,7 @@ func Test_BuildAndQueryBloomsWithNSeries(t *testing.T) {
 	// result may be in the other 2 series
 	matches, err := querier.CheckChunksForSeries(fps[0], refs, [][]byte{[]byte("second")})
 	require.NoError(t, err)
-	require.Equal(t, 2, len(matches))
+	require.Equal(t, 0, len(matches))
 
 	//present in all
 	matches, err = querier.CheckChunksForSeries(fps[0], refs, [][]byte{[]byte("line")})

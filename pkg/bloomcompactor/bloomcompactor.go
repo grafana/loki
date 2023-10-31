@@ -25,13 +25,13 @@ bloomCompactor.Compactor
 package bloomcompactor
 
 import (
-	"bytes"
 	"context"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"path/filepath"
+	"strconv"
+	"strings"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -53,7 +53,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
-	logql "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage"
 
 	//"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -139,6 +138,14 @@ func (c *Compactor) stopping(_ error) error {
 	return nil
 }
 
+type Series struct { // TODO this can be replaced with Job struct based on Salva's ring work.
+	TableName, Tenant string
+	Labels            labels.Labels
+	FingerPrint       model.Fingerprint
+	Chunks            []chunk.Chunk
+	from, through     model.Time
+}
+
 // TODO this logic is used in multiple places, better to move to a common place.
 // copied from storage/store.go
 func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
@@ -156,46 +163,6 @@ func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodC
 		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
 	}
 	return ranges
-}
-
-func NoopGetFingerprintRange() (uint64, uint64) { return 0, 0 }
-
-// TODO List Users from TSDB and add logic to owned user via ring
-func NoopGetUserID() string { return "" }
-
-func fillBloom(b v1.SeriesWithBloom, chks []chunk.Chunk) error {
-	// TODO remove/replace once https://github.com/grafana/loki/pull/10957 is merged
-	tokenizer := func(e logproto.Entry) [][]byte {
-		return bytes.Split([]byte(e.Line), []byte(` `))
-	}
-
-	for _, c := range chks {
-		itr, err := c.Data.(*chunkenc.Facade).LokiChunk().Iterator(
-			context.Background(),
-			time.Unix(0, 0),
-			time.Unix(0, math.MaxInt64),
-			logproto.FORWARD,
-			logql.NewNoopPipeline().ForStream(c.Metric),
-		)
-		if err != nil {
-			return err
-		}
-		defer itr.Close()
-		for itr.Next() {
-			for _, t := range tokenizer(itr.Entry()) {
-				b.Bloom.Add(t)
-			}
-		}
-		if err := itr.Error(); err != nil {
-			return err
-		}
-		b.Series.Chunks = append(b.Series.Chunks, v1.ChunkRef{
-			Start:    c.From,
-			End:      c.Through,
-			Checksum: c.Checksum,
-		})
-	}
-	return nil
 }
 
 func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fingerprint) []chunk.Chunk {
@@ -232,7 +199,6 @@ func buildBloomBlock(dst string, bloomForChks v1.SeriesWithBloom,
 	}
 
 	// meta + upload to storage
-	// TODO - Which one is better to read the block via BlockReader or file pointer?
 	//blockFile := v1.NewBlock(v1.NewDirectoryBlockReader(dst))
 	//err = blockFile.LoadHeaders()
 
@@ -259,143 +225,160 @@ func buildBloomBlock(dst string, bloomForChks v1.SeriesWithBloom,
 	}
 
 	return blocks, nil
+}
 
+func listSeries(ctx context.Context, objectClient client.ObjectClient) ([]Series, error) {
+	// Returns all the TSDB files, including subdirectories
+	prefix := "index/"
+	indices, _, err := objectClient.List(ctx, prefix, "")
+
+	if err != nil {
+		return nil, err
+	}
+
+	var result []Series
+
+	for _, index := range indices {
+		s := strings.Split(index.Key, "/")
+
+		if len(s) > 3 {
+			tableName := s[1]
+
+			if !strings.HasPrefix(tableName, "loki_") || strings.Contains(tableName, "backup") {
+				continue
+			}
+
+			userID := s[2]
+			_, err := strconv.Atoi(userID)
+			if err != nil {
+				continue
+			}
+
+			result = append(result, Series{TableName: tableName, Tenant: userID})
+		}
+	}
+	return result, nil
 }
 
 // part1: Create a compact method that assumes no block/meta files exists (eg first compaction)
 // part2: Write logic to check first for existing block/meta files and does above.
-func CompactNewChunks(ctx context.Context, from model.Time, through model.Time, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient, dst string) (err error) {
-	tenant := "123"     //FIXME all somehow and loop over
-	tableName := "1234" //FIXME get proper tables
+func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client, dst string) (err error) {
+	fp := series.FingerPrint
+	tenant := series.Tenant
+	tableName := series.TableName
+	from := series.from
+	through := series.through
 
-	err = indexShipper.ForEach(
-		context.Background(),
-		tableName,
-		tenant,
-		func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+	// Create a bloom for this series
+	bloomForChks := v1.SeriesWithBloom{
+		Series: &v1.Series{
+			Fingerprint: fp,
+		},
+		Bloom: &v1.Bloom{
+			*filter.NewDefaultScalableBloomFilter(0.01),
+		},
+	}
+
+	// create a tokenizer
+	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt.PopulateSBF(&bloomForChks, series.Chunks)
+
+	// Build and upload bloomBlock to storage
+	blocks, err := buildBloomBlock(dst, bloomForChks, tenant, tableName, fp, from, through)
+	if err != nil {
+		level.Info(util_log.Logger).Log("building bloomBlocks", err)
+		return
+	}
+
+	//FIXME zip (archive) blocks before uploading to storage
+	_, err = bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
+	if err != nil {
+		level.Info(util_log.Logger).Log("putting blocks to storage", err)
+		return
+	}
+
+	// Build and upload meta.json to storage
+	meta := bloomshipper.Meta{
+		// After successful compaction there should be no tombstones
+		Tombstones: make([]bloomshipper.BlockRef, 0),
+		Blocks:     []bloomshipper.BlockRef{blocks.BlockRef},
+	}
+
+	err = bloomShipperClient.PutMeta(ctx, meta)
+	if err != nil {
+		level.Info(util_log.Logger).Log("putting meta.json to storage", err)
+		return
+	}
+
+	return nil
+}
+
+func (c *Compactor) runCompact(ctx context.Context, limits downloads.Limits, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient) error {
+
+	series, err := listSeries(ctx, objectClient)
+
+	if err != nil {
+		return err
+	}
+
+	for _, s := range series {
+		indexShipper.ForEach(ctx, s.TableName, s.Tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 			if isMultiTenantIndex {
 				return nil
 			}
 
 			_ = idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
-				context.Background(),
-				nil,           // TODO no shards for now, revisit with ring work
-				from, through, // get all timestamps
+				ctx,
+				nil,              // TODO no shards for now, revisit with ring work
+				0, math.MaxInt64, // get all timestamps
 				// Get chunks for a series label and a fp
 				func(ls labels.Labels, fp model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-					// Create a bloom for this series
-					bloomForChks := v1.SeriesWithBloom{
-						Series: &v1.Series{
-							Fingerprint: fp,
-						},
-						Bloom: &v1.Bloom{
-							*filter.NewDefaultScalableBloomFilter(0.01),
-						},
-					}
+					// TODO call bloomShipperClient.GetMetas to get existing meta.json
+					var metas []bloomshipper.Meta
 
-					// Get chunks data from list of chunkRefs
-					chks, err := chunkClient.GetChunks(
-						context.Background(),
-						makeChunkRefs(chksMetas, tenant, fp),
-					)
-					if err != nil {
-						level.Info(util_log.Logger).Log("getting chunks", err)
-						return
-					}
+					if len(metas) == 0 {
+						// run compaction from scratch
+						tempDst := os.TempDir()
 
-					// create a tokenizer
-					bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
-					bt.PopulateSBF(&bloomForChks, chks)
+						// Get chunks data from list of chunkRefs
+						chks, err := chunkClient.GetChunks(
+							ctx,
+							makeChunkRefs(chksMetas, s.Tenant, fp),
+						)
+						if err != nil {
+							level.Info(util_log.Logger).Log("getting chunks", err)
+							return
+						}
+						series := Series{
+							TableName:   s.TableName,
+							Tenant:      s.Tenant,
+							Labels:      ls,
+							FingerPrint: fp,
+							Chunks:      chks,
+							from:        model.Earliest, // FIXME
+							through:     model.Latest,   // FIXME
+						}
+						err = CompactNewChunks(ctx, series, bloomShipperClient, tempDst)
+						if err != nil {
+							return
+						}
+					} else {
+						// TODO complete part 2 - periodic compaction for delta from previous period
+						// When already compacted metas exists
+						// Deduplicate index paths
+						uniqueIndexPaths := make(map[string]struct{})
 
-					// Build and upload bloomBlock to storage
-					blocks, err := buildBloomBlock(dst, bloomForChks, tenant, tableName, fp, from, through)
-					if err != nil {
-						level.Info(util_log.Logger).Log("building bloomBlocks", err)
-						return
-					}
+						for _, meta := range metas {
+							for _, blockRef := range meta.Blocks {
+								uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
+								//...
+							}
+						}
 
-					_, err = bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
-					if err != nil {
-						level.Info(util_log.Logger).Log("putting blocks to storage", err)
-						return
 					}
-
-					// Build and upload meta.json to storage
-					meta := bloomshipper.Meta{
-						// After successful compaction there should be no tombstones
-						Tombstones: make([]bloomshipper.BlockRef, 0),
-						Blocks:     []bloomshipper.BlockRef{blocks.BlockRef},
-					}
-
-					err = bloomShipperClient.PutMeta(ctx, meta)
-					if err != nil {
-						level.Info(util_log.Logger).Log("putting meta.json to storage", err)
-						return
-					}
-				},
-				labels.MustNewMatcher(labels.MatchEqual, "", ""),
-			)
+				})
 			return nil
-		},
-	)
-
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *Compactor) runCompact(ctx context.Context, limits downloads.Limits, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient) error {
-	maxCompactBloomPeriod := time.Duration(limits.DefaultLimits().RejectOldSamplesMaxAge)
-
-	stFp, endFp := NoopGetFingerprintRange()
-	tenantID := NoopGetUserID()
-
-	through := time.Now().UnixMilli()
-	from := through - maxCompactBloomPeriod.Milliseconds()
-
-	metaSearchParams := bloomshipper.MetaSearchParams{
-		TenantID:       tenantID,
-		MinFingerprint: stFp,
-		MaxFingerprint: endFp,
-		StartTimestamp: from,
-		EndTimestamp:   through,
-	}
-
-	metas, err := bloomShipperClient.GetMetas(ctx, metaSearchParams)
-	if err != nil {
-		return err
-	}
-
-	if len(metas) == 0 {
-		// run compaction from scratch
-		tempDst := os.TempDir()
-		err = CompactNewChunks(ctx, model.Time(from), model.Time(through), bloomShipperClient, chunkClient, indexShipper, objectClient, tempDst)
-		if err != nil {
-			return err
-		}
-	} else {
-		// part 2
-		// When already compacted metas exists
-		// Deduplicate index paths
-		uniqueIndexPaths := make(map[string]struct{})
-
-		for _, meta := range metas {
-			for _, blockRef := range meta.Blocks {
-				uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
-			}
-		}
-
-		// TODO complete part 2 - add part to compare chunks and blocks.
-		// 1. for each period at hand, get TSDB table indexes for given fp range
-		// 2. Check blocks for given uniqueIndexPaths and TSDBindexes
-		//	if bloomBlock refs are a superset (covers TSDBIndexes plus more outside of range)
-		//	create a new meta.json file, tombstone unused index/block paths.
-
-		// else if: there are TSDBindexes that are not covered in bloomBlocks (a subset)
-		// then call compactNewChunks on them and create a new meta.json
-
-		// else: all good, no compaction
+		})
 	}
 	return nil
 }
