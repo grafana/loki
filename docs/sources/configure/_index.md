@@ -2100,8 +2100,8 @@ congestion_control:
     # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
-# Sets a constant prefix for all keys inserted into object storage. Example:
-# loki/
+# Experimental. Sets a constant prefix for all keys inserted into object
+# storage. Example: loki/
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
