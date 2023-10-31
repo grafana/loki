@@ -1159,8 +1159,8 @@ func (in *PerTenantLimitsTemplateSpec) DeepCopy() *PerTenantLimitsTemplateSpec {
 func (in *PerTenantQueryLimitSpec) DeepCopyInto(out *PerTenantQueryLimitSpec) {
 	*out = *in
 	out.QueryLimitSpec = in.QueryLimitSpec
-	if in.BlockedQueries != nil {
-		in, out := &in.BlockedQueries, &out.BlockedQueries
+	if in.Blocked != nil {
+		in, out := &in.Blocked, &out.Blocked
 		*out = make([]BlockedQuerySpec, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])

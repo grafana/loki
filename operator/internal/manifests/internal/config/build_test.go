@@ -476,7 +476,7 @@ overrides:
 							QueryLimitSpec: lokiv1.QueryLimitSpec{
 								MaxChunksPerQuery: 1000000,
 							},
-							BlockedQueries: []lokiv1.BlockedQuerySpec{
+							Blocked: []lokiv1.BlockedQuerySpec{
 								{
 									Hash:  12345,
 									Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},
@@ -509,7 +509,7 @@ overrides:
 						QueryLimitSpec: lokiv1.QueryLimitSpec{
 							MaxChunksPerQuery: 1000000,
 						},
-						BlockedQueries: []lokiv1.BlockedQuerySpec{
+						Blocked: []lokiv1.BlockedQuerySpec{
 							{
 								Hash:  12345,
 								Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},

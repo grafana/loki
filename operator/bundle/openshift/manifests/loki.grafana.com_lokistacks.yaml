@@ -277,9 +277,9 @@ spec:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
-                            blockedQueries:
-                              description: BlockedQueries defines the list of rules
-                                to block matching queries.
+                            blocked:
+                              description: Blocked defines the list of rules to block
+                                matching queries.
                               items:
                                 description: BlockedQuerySpec defines the rule spec
                                   for queries to be blocked.

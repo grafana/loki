@@ -4,7 +4,35 @@ metadata:
   name: lokistack-dev
   namespace: openshift-logging
 spec:
-  size: 1x.demo
+  limits:
+    tenants:
+      application:
+        queries:
+          blocked:
+          - pattern: '.*log-test.*'
+            regex: true
+            types:
+            - metric
+          - pattern: '.*log-test-0.*'
+            regex: true
+            types:
+            - filter
+      audit:
+        queries:
+          blocked:
+          - pattern: '.*audit.*'
+            regex: true
+            types:
+            - limited
+      infrastructure:
+        queries:
+          blocked:
+            - pattern: '.*api-server.*'
+              regex: true
+              types:
+              - filter
+              - limited
+  size: 1x.extra-small
   storage:
     schemas:
     - version: v12

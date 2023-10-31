@@ -676,12 +676,12 @@ type BlockedQuerySpec struct {
 type PerTenantQueryLimitSpec struct {
 	QueryLimitSpec `json:",omitempty"`
 
-	// BlockedQueries defines the list of rules to block matching queries.
+	// Blocked defines the list of rules to block matching queries.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Blocked Queries"
-	BlockedQueries []BlockedQuerySpec `json:"blockedQueries,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Blocked"
+	Blocked []BlockedQuerySpec `json:"blocked,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
