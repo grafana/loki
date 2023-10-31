@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -207,7 +208,9 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 }
 
 func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
-	p := &QueryResponse{}
+	p := &QueryResponse{
+		Status: status.New(codes.OK, "").Proto(),
+	}
 
 	switch response := res.(type) {
 	case *LokiPromResponse:
