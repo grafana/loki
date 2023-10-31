@@ -391,6 +391,172 @@ var ltt = []struct {
 			},
 		),
 	},
+	{
+		desc: "both global desiredRate and perStreamRateLimit set",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						IngestionLimits: &lokiv1.IngestionLimitSpec{
+							DesiredRate:        10,
+							PerStreamRateLimit: 30,
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "global", "ingestion", "desiredRate"),
+					10,
+					lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "both tenant desiredRate and perStreamRateLimit set",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.LimitsTemplateSpec{
+						"tenant-a": {
+							IngestionLimits: &lokiv1.IngestionLimitSpec{
+								DesiredRate:        10,
+								PerStreamRateLimit: 30,
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "tenants", "tenant-a", "ingestion", "desiredRate"),
+					10,
+					lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "both global desiredRate and tenant perStreamRateLimit set",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						IngestionLimits: &lokiv1.IngestionLimitSpec{
+							DesiredRate: 10,
+						},
+					},
+					Tenants: map[string]lokiv1.LimitsTemplateSpec{
+						"tenant-a": {
+							IngestionLimits: &lokiv1.IngestionLimitSpec{
+								PerStreamRateLimit: 30,
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "tenants", "tenant-a", "ingestion", "perStreamRateLimit"),
+					30,
+					lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "both tenant desiredRate and global perStreamRateLimit set",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						IngestionLimits: &lokiv1.IngestionLimitSpec{
+							PerStreamRateLimit: 30,
+						},
+					},
+					Tenants: map[string]lokiv1.LimitsTemplateSpec{
+						"tenant-a": {
+							IngestionLimits: &lokiv1.IngestionLimitSpec{
+								DesiredRate: 10,
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV11,
+							EffectiveDate: "2020-10-11",
+						},
+						{
+							Version:       lokiv1.ObjectStorageSchemaV12,
+							EffectiveDate: "2020-10-13",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "global", "ingestion", "perStreamRateLimit"),
+					30,
+					lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
