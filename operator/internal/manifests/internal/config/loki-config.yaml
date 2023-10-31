@@ -489,15 +489,6 @@ storage_config:
     active_index_directory: {{ $.StorageDirectory }}/tsdb-index
     cache_location: {{ $.StorageDirectory }}/tsdb-cache
 {{- end }}
-{{template "commonStorageConfig" $ }}
-{{- end }}
-tracing:
-  enabled: false
-analytics:
-  reporting_enabled: {{ .EnableRemoteReporting }}
-
-
-{{define "commonStorageConfig" }}
     cache_ttl: 24h
     resync_interval: 5m
     shared_store: {{ .ObjectStorage.SharedStore }}
@@ -514,3 +505,7 @@ analytics:
         tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
 {{- end }}
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: {{ .EnableRemoteReporting }}
