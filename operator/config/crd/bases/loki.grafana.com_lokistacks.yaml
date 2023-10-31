@@ -80,6 +80,12 @@ spec:
                         description: IngestionLimits defines the limits applied on
                           ingested log streams.
                         properties:
+                          desiredRate:
+                            description: DesiredRate defines the desired ingestion
+                              rate per second that LokiStack should target applyfing
+                              automatic stream sharding. Units Bytes.
+                            format: int32
+                            type: integer
                           ingestionBurstSize:
                             description: IngestionBurstSize defines the local rate-limited
                               sample size per distributor replica. It should be set
@@ -205,6 +211,12 @@ spec:
                           description: IngestionLimits defines the limits applied
                             on ingested log streams.
                           properties:
+                            desiredRate:
+                              description: DesiredRate defines the desired ingestion
+                                rate per second that LokiStack should target applyfing
+                                automatic stream sharding. Units Bytes.
+                              format: int32
+                              type: integer
                             ingestionBurstSize:
                               description: IngestionBurstSize defines the local rate-limited
                                 sample size per distributor replica. It should be

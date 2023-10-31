@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2023-10-23T07:39:06Z"
+    createdAt: "2023-10-31T08:47:54Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -307,6 +307,12 @@ spec:
       - description: Global defines the limits applied globally across the cluster.
         displayName: Global Limits
         path: limits.global
+      - description: DesiredRate defines the desired ingestion rate per second that
+          LokiStack should target applyfing automatic stream sharding. Units Bytes.
+        displayName: Desired Ingestion Rate (in Bytes)
+        path: limits.global.ingestion.desiredRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: IngestionBurstSize defines the local rate-limited sample size
           per distributor replica. It should be set to the set at least to the maximum
           logs size expected in a single push request.
@@ -391,6 +397,12 @@ spec:
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
+      - description: DesiredRate defines the desired ingestion rate per second that
+          LokiStack should target applyfing automatic stream sharding. Units Bytes.
+        displayName: Desired Ingestion Rate (in Bytes)
+        path: limits.tenants.ingestion.desiredRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: IngestionBurstSize defines the local rate-limited sample size
           per distributor replica. It should be set to the set at least to the maximum
           logs size expected in a single push request.

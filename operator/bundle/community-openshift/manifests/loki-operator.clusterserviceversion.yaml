@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.5.0
-    createdAt: "2023-10-23T07:39:01Z"
+    createdAt: "2023-10-31T08:47:51Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -294,6 +294,12 @@ spec:
       - description: Global defines the limits applied globally across the cluster.
         displayName: Global Limits
         path: limits.global
+      - description: DesiredRate defines the desired ingestion rate per second that
+          LokiStack should target applyfing automatic stream sharding. Units Bytes.
+        displayName: Desired Ingestion Rate (in Bytes)
+        path: limits.global.ingestion.desiredRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: IngestionBurstSize defines the local rate-limited sample size
           per distributor replica. It should be set to the set at least to the maximum
           logs size expected in a single push request.
@@ -378,6 +384,12 @@ spec:
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
+      - description: DesiredRate defines the desired ingestion rate per second that
+          LokiStack should target applyfing automatic stream sharding. Units Bytes.
+        displayName: Desired Ingestion Rate (in Bytes)
+        path: limits.tenants.ingestion.desiredRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: IngestionBurstSize defines the local rate-limited sample size
           per distributor replica. It should be set to the set at least to the maximum
           logs size expected in a single push request.
