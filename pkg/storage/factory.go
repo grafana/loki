@@ -328,7 +328,7 @@ type Config struct {
 	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
 	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
 	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
-	ObjectPrefix           string                    `yaml:"object_prefix" doc:"description=Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
+	ObjectPrefix           string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
