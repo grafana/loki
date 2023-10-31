@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -36,12 +37,12 @@ var (
 		Help: "Total number of chunks asynchronously dequeued from a buffer and written back to the chunk cache.",
 	})
 	cacheCorrupt = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "cache_corrupt_chunks_total",
 		Help:      "Total count of corrupt chunks found in cache.",
 	})
 	chunkFetchedSize = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "chunk_fetcher",
 		Name:      "fetched_size_bytes",
 		Help:      "Compressed chunk size distribution fetched from storage.",

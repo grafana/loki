@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -84,7 +85,7 @@ func (e *ErrStreamRateLimit) Error() string {
 // MutatedSamples is a metric of the total number of lines mutated, by reason.
 var MutatedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "mutated_samples_total",
 		Help:      "The total number of samples that have been mutated.",
 	},
@@ -94,7 +95,7 @@ var MutatedSamples = promauto.NewCounterVec(
 // MutatedBytes is a metric of the total mutated bytes, by reason.
 var MutatedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "mutated_bytes_total",
 		Help:      "The total number of bytes that have been mutated.",
 	},
@@ -104,7 +105,7 @@ var MutatedBytes = promauto.NewCounterVec(
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
 var DiscardedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
@@ -114,7 +115,7 @@ var DiscardedBytes = promauto.NewCounterVec(
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
@@ -122,7 +123,7 @@ var DiscardedSamples = promauto.NewCounterVec(
 )
 
 var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "bytes_per_line",
 	Help:      "The total number of bytes per line.",
 	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB

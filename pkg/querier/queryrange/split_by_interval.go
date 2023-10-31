@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/dskit/tenant"
@@ -41,7 +42,7 @@ type SplitByMetrics struct {
 func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 	return &SplitByMetrics{
 		splits: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_partitions",
 			Help:      "Number of time-based partitions (sub-requests) per request",
 			Buckets:   prometheus.ExponentialBuckets(1, 4, 5), // 1 -> 1024
