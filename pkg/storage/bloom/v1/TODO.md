@@ -9,6 +9,7 @@
   * so we can change implementations
   * encode bloom parameters in block: sbf params, hashing strategy, tokenizer
 * caching
+* ability to download indices without chunks
 
 
 # merge querier for different blocks

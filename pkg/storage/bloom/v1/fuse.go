@@ -86,7 +86,14 @@ func (fq *FusedQuerier) Run() error {
 		// Now that we've found the series, we need to find the unpack the bloom
 		fq.bq.blooms.Seek(series.Offset)
 		if !fq.bq.blooms.Next() {
-			// TODO(owen-d): fingerprint not found, can't remove chunks
+			// fingerprint not found, can't remove chunks
+			for _, input := range nextBatch {
+				input.response <- output{
+					fp:   fp,
+					chks: input.chks,
+				}
+			}
+			continue
 		}
 
 		bloom := fq.bq.blooms.At()

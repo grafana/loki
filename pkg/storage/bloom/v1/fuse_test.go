@@ -61,7 +61,7 @@ func TestFusedQuerier(t *testing.T) {
 
 	resps := make([][]output, nReqs)
 	go func() {
-		concurrency.ForEachJob(
+		require.Nil(t, concurrency.ForEachJob(
 			context.Background(),
 			len(resps),
 			len(resps),
@@ -71,7 +71,7 @@ func TestFusedQuerier(t *testing.T) {
 				}
 				return nil
 			},
-		)
+		))
 	}()
 
 	fused := querier.Fuse(itrs)
@@ -164,7 +164,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 	b.Run("fused", func(b *testing.B) {
 		// spin up some goroutines to consume the responses so they don't block
 		go func() {
-			concurrency.ForEachJob(
+			require.Nil(b, concurrency.ForEachJob(
 				context.Background(),
 				len(requestChains), len(requestChains),
 				func(_ context.Context, idx int) error {
@@ -172,7 +172,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 					}
 					return nil
 				},
-			)
+			))
 		}()
 
 		var itrs []PeekingIterator[request]
