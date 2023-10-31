@@ -1082,6 +1082,19 @@ MemberListSpec
 <tbody>
 <tr>
 <td>
+<code>desiredRate</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DesiredRate defines the desired ingestion rate per second that LokiStack should
+target applyfing automatic stream sharding. Units Bytes.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>ingestionRate</code><br/>
 <em>
 int32
