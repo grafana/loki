@@ -49,7 +49,7 @@ type DefaultMultiTenantManager struct {
 	metricsNamespace              string
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits, metricsNamespace string) (*DefaultMultiTenantManager, error) {
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, limits RulesLimits) (*DefaultMultiTenantManager, error) {
 	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel, func(k, v string) string {
 		// When "by-rule" sharding is enabled, each rule group is assigned a unique name to work around some of Prometheus'
 		// assumptions, and metrics are exported based on these rule group names. If we kept these unique rule group names
@@ -74,26 +74,21 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]RulesManager{},
 		userManagerMetrics: userManagerMetrics,
-		metricsNamespace:   metricsNamespace,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Name:      "ruler_managers_total",
-			Help:      "Total number of managers registered and running in the ruler",
+			Name: "ruler_managers_total",
+			Help: "Total number of managers registered and running in the ruler",
 		}),
 		lastReloadSuccessful: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Name:      "ruler_config_last_reload_successful",
-			Help:      "Boolean set to 1 whenever the last configuration reload attempt was successful.",
+			Name: "ruler_config_last_reload_successful",
+			Help: "Boolean set to 1 whenever the last configuration reload attempt was successful.",
 		}, []string{"user"}),
 		lastReloadSuccessfulTimestamp: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Name:      "ruler_config_last_reload_successful_seconds",
-			Help:      "Timestamp of the last successful configuration reload.",
+			Name: "ruler_config_last_reload_successful_seconds",
+			Help: "Timestamp of the last successful configuration reload.",
 		}, []string{"user"}),
 		configUpdatesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "ruler_config_updates_total",
-			Help:      "Total number of config updates triggered by a user",
+			Name: "ruler_config_updates_total",
+			Help: "Total number of config updates triggered by a user",
 		}, []string{"user"}),
 		registry: reg,
 		logger:   logger,

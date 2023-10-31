@@ -41,7 +41,7 @@ func NewManagerMetrics(disableRuleGroupLabel bool, tf util.MetricLabelTransformF
 		metricLabelTransformer: tf,
 
 		EvalDuration: prometheus.NewDesc(
-			"cortex_prometheus_rule_evaluation_duration_seconds",
+			"cortex_prometheus_rule_evaluation_duration_seconds", // TODO: change
 			"The duration for a rule to execute.",
 			[]string{"user"},
 			nil,

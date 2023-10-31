@@ -33,7 +33,7 @@ func (p *rulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
 	return c.(RulerClient), nil
 }
 
-func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer, metricsNamespace string) ClientsPool {
+func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) ClientsPool {
 	// We prefer sane defaults instead of exposing further config options.
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,
@@ -42,9 +42,8 @@ func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prom
 	}
 
 	clientsCount := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Namespace: metricsNamespace,
-		Name:      "ruler_clients",
-		Help:      "The current number of ruler clients in the pool.",
+		Name: "ruler_clients",
+		Help: "The current number of ruler clients in the pool.",
 	})
 
 	return &rulerClientsPool{
@@ -54,7 +53,7 @@ func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prom
 
 func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "cortex_ruler_client_request_duration_seconds",
+		Name:    "ruler_client_request_duration_seconds",
 		Help:    "Time spent executing requests to the ruler.",
 		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
 	}, []string{"operation", "status_code"})
@@ -66,7 +65,7 @@ func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registere
 
 func newRulerPoolClient(clientCfg grpcclient.Config, reg prometheus.Registerer) func(addr string) (client.PoolClient, error) {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "cortex_ruler_client_request_duration_seconds",
+		Name:    "ruler_client_request_duration_seconds",
 		Help:    "Time spent executing requests to the ruler.",
 		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
 	}, []string{"operation", "status_code"})

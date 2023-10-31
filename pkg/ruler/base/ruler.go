@@ -260,36 +260,33 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, metricsNamespace string) (*Ruler, error) {
-	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg, metricsNamespace), metricsNamespace)
+func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
+	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg))
 }
 
-func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool, metricsNamespace string) (*Ruler, error) {
+func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
 	if err := cfg.Validate(logger); err != nil {
 		return nil, fmt.Errorf("invalid ruler config: %w", err)
 	}
 
 	ruler := &Ruler{
-		cfg:              cfg,
-		store:            ruleStore,
-		manager:          manager,
-		registry:         reg,
-		logger:           logger,
-		limits:           limits,
-		clientsPool:      clientPool,
-		allowedTenants:   util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
-		metricsNamespace: metricsNamespace,
+		cfg:            cfg,
+		store:          ruleStore,
+		manager:        manager,
+		registry:       reg,
+		logger:         logger,
+		limits:         limits,
+		clientsPool:    clientPool,
+		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "ruler_ring_check_errors_total",
-			Help:      "Number of errors that have occurred when checking the ring for ownership",
+			Name: "ruler_ring_check_errors_total",
+			Help: "Number of errors that have occurred when checking the ring for ownership",
 		}),
 
 		rulerSync: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "ruler_sync_rules_total",
-			Help:      "Total number of times the ruler sync operation triggered.",
+			Name: "ruler_sync_rules_total",
+			Help: "Total number of times the ruler sync operation triggered.",
 		}, []string{"reason"}),
 	}
 
@@ -304,7 +301,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		ringStore, err := kv.NewClient(
 			cfg.Ring.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg), "ruler"),
+			kv.RegistererWithKVName(reg, "ruler"),
 			logger,
 		)
 		if err != nil {

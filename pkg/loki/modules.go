@@ -1039,14 +1039,14 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer)
 	t.ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
 		t.ruleEvaluator,
-		prometheus.DefaultRegisterer,
+		reg,
 		util_log.Logger,
 		t.RulerStorage,
 		t.Overrides,
-		t.Cfg.MetricsNamespace,
 	)
 
 	if err != nil {

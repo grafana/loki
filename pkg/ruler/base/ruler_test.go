@@ -149,7 +149,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides, constants.Loki)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides)
 	require.NoError(t, err)
 
 	return manager
@@ -161,7 +161,7 @@ func newMultiTenantManager(t *testing.T, cfg Config, q storage.Querier, amConf m
 	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
 	overrides.alertManagerConfig = amConf
 
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides, constants.Loki)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides)
 	require.NoError(t, err)
 
 	return manager
@@ -197,9 +197,9 @@ func (p *mockRulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
 	return nil, fmt.Errorf("unable to find ruler for add %s", addr)
 }
 
-func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, metricsNamespace string, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
+func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
 	return &mockRulerClientsPool{
-		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg, metricsNamespace),
+		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
 		cfg:          cfg,
 		rulerAddrMap: rulerAddrMap,
 	}
@@ -214,7 +214,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg, constants.Loki)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides, constants.Loki)
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides)
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -224,8 +224,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 		logger,
 		storage,
 		overrides,
-		newMockClientsPool(rulerConfig, logger, reg, constants.Loki, rulerAddrMap),
-		constants.Loki,
+		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
 	)
 	require.NoError(t, err)
 	return ruler
@@ -1517,7 +1516,7 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 	obj, rs := setupRuleGroupsStore(t, ruleGroups)
 	require.Equal(t, 3, obj.GetObjectCount())
 
-	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil, constants.Loki)
+	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil)
 	require.NoError(t, err)
 
 	{
