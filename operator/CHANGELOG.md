@@ -1,5 +1,7 @@
 ## Main
 
+- [11091](https://github.com/grafana/loki/pull/11091) **periklis**: Add automatic stream sharding support
+
 ## 0.5.0 (2023-10-24)
 
 - [10924](https://github.com/grafana/loki/pull/10924) **periklis**: Update Loki operand to v2.9.2
