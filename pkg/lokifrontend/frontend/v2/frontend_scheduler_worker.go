@@ -15,7 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
@@ -325,26 +324,10 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 
 			case schedulerpb.ERROR:
 				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- &frontendv2pb.QueryResultRequest{
-					// TODO: return with QueryResponse if feature flag is active
-					Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-						HttpResponse: &httpgrpc.HTTPResponse{
-							Code: http.StatusInternalServerError,
-							Body: []byte(resp.Error),
-						},
-					},
-				}
-
+				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusInternalServerError, resp.Error)}
 			case schedulerpb.TOO_MANY_REQUESTS_PER_TENANT:
 				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- &frontendv2pb.QueryResultRequest{
-					Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-						HttpResponse: &httpgrpc.HTTPResponse{
-							Code: http.StatusTooManyRequests,
-							Body: []byte("too many outstanding requests"),
-						},
-					},
-				}
+				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")}
 			default:
 				level.Error(w.log).Log("msg", "unknown response status from the scheduler", "status", resp.Status, "queryID", req.queryID)
 				req.enqueue <- enqueueResult{status: failed}

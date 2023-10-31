@@ -94,6 +94,11 @@ type Frontend struct {
 var _ queryrangebase.Handler = &Frontend{}
 var _ transport.GrpcRoundTripper = &Frontend{}
 
+type ResponseTuple = struct {
+	*frontendv2pb.QueryResultRequest
+	error
+}
+
 type frontendRequest struct {
 	queryID      uint64
 	request      *httpgrpc.HTTPRequest
@@ -105,7 +110,7 @@ type frontendRequest struct {
 	cancel context.CancelFunc
 
 	enqueue  chan enqueueResult
-	response chan *frontendv2pb.QueryResultRequest
+	response chan ResponseTuple
 }
 
 type enqueueStatus int
@@ -235,7 +240,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		// Buffer of 1 to ensure response or error can be written to the channel
 		// even if this goroutine goes away due to client context cancellation.
 		enqueue:  make(chan enqueueResult, 1),
-		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+		response: make(chan ResponseTuple, 1),
 	}
 
 	cancelCh, err := f.enqueue(ctx, freq)
@@ -294,7 +299,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		// Buffer of 1 to ensure response or error can be written to the channel
 		// even if this goroutine goes away due to client context cancellation.
 		enqueue:  make(chan enqueueResult, 1),
-		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+		response: make(chan ResponseTuple, 1),
 	}
 
 	if f.cfg.Encoding == "protobuf" {
@@ -303,8 +308,6 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			return nil, fmt.Errorf("cannot wrap request: %w", err)
 		}
 	} else {
-
-		// For backwards comaptibility we are sending both encodings
 		httpReq, err := f.codec.EncodeRequest(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
@@ -340,6 +343,9 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
+		if resp.error != nil {
+			return nil, resp.error
+		}
 		switch concrete := resp.Response.(type) {
 		case *frontendv2pb.QueryResultRequest_HttpResponse:
 			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
@@ -405,7 +411,7 @@ func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryRes
 	// To avoid mixing results from different queries, we randomize queryID counter on start.
 	if req != nil && req.tenantID == userID {
 		select {
-		case req.response <- qrReq:
+		case req.response <- ResponseTuple{qrReq, nil}:
 			// Should always be possible, unless QueryResult is called multiple times with the same queryID.
 		default:
 			level.Warn(f.log).Log("msg", "failed to write query result to the response channel", "queryID", qrReq.QueryID, "user", userID)
