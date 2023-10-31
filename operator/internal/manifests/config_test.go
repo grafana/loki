@@ -84,7 +84,7 @@ func randomConfigOptions() Options {
 						MaxQuerySeries:          rand.Int31(),
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					uuid.New().String(): {
 						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             rand.Int31(),
@@ -97,10 +97,12 @@ func randomConfigOptions() Options {
 							PerStreamRateLimit:        rand.Int31(),
 							PerStreamRateLimitBurst:   rand.Int31(),
 						},
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							MaxEntriesLimitPerQuery: rand.Int31(),
-							MaxChunksPerQuery:       rand.Int31(),
-							MaxQuerySeries:          rand.Int31(),
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								MaxEntriesLimitPerQuery: rand.Int31(),
+								MaxChunksPerQuery:       rand.Int31(),
+								MaxQuerySeries:          rand.Int31(),
+							},
 						},
 					},
 				},
@@ -375,7 +377,7 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 							Days: 14,
 						},
 					},
-					Tenants: map[string]lokiv1.LimitsTemplateSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"development": {
 							Retention: &lokiv1.RetentionLimitSpec{
 								Days: 3,
@@ -394,7 +396,7 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 			spec: lokiv1.LokiStackSpec{
 				Size: lokiv1.SizeOneXExtraSmall,
 				Limits: &lokiv1.LimitsSpec{
-					Tenants: map[string]lokiv1.LimitsTemplateSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"development": {
 							Retention: &lokiv1.RetentionLimitSpec{
 								Days: 3,
@@ -1092,10 +1094,12 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 						Enabled: true,
 					},
 					Limits: &lokiv1.LimitsSpec{
-						Tenants: map[string]lokiv1.LimitsTemplateSpec{
+						Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 							"application": {
-								QueryLimits: &lokiv1.QueryLimitSpec{
-									QueryTimeout: "5m",
+								QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+									QueryLimitSpec: lokiv1.QueryLimitSpec{
+										QueryTimeout: "5m",
+									},
 								},
 							},
 						},
@@ -1132,9 +1136,11 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 			},
 			wantOverridesOptions: map[string]config.LokiOverrides{
 				"application": {
-					Limits: lokiv1.LimitsTemplateSpec{
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							QueryTimeout: "5m",
+					Limits: lokiv1.PerTenantLimitsTemplateSpec{
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "5m",
+							},
 						},
 					},
 					Ruler: config.RulerOverrides{

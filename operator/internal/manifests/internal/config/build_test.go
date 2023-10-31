@@ -458,15 +458,17 @@ overrides:
 						CardinalityLimit:        100000,
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					"test-a": {
 						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             2,
 							IngestionBurstSize:        5,
 							MaxGlobalStreamsPerTenant: 1,
 						},
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							MaxChunksPerQuery: 1000000,
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								MaxChunksPerQuery: 1000000,
+							},
 						},
 					},
 				},
@@ -474,14 +476,16 @@ overrides:
 		},
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
-				Limits: lokiv1.LimitsTemplateSpec{
+				Limits: lokiv1.PerTenantLimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             2,
 						MaxGlobalStreamsPerTenant: 1,
 						IngestionBurstSize:        5,
 					},
-					QueryLimits: &lokiv1.QueryLimitSpec{
-						MaxChunksPerQuery: 1000000,
+					QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+						QueryLimitSpec: lokiv1.QueryLimitSpec{
+							MaxChunksPerQuery: 1000000,
+						},
 					},
 				},
 			},
@@ -1933,15 +1937,17 @@ overrides:
 						},
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					"test-a": {
 						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             2,
 							IngestionBurstSize:        5,
 							MaxGlobalStreamsPerTenant: 1,
 						},
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							MaxChunksPerQuery: 1000000,
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								MaxChunksPerQuery: 1000000,
+							},
 						},
 						Retention: &lokiv1.RetentionLimitSpec{
 							Days: 7,
@@ -1959,14 +1965,16 @@ overrides:
 		},
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
-				Limits: lokiv1.LimitsTemplateSpec{
+				Limits: lokiv1.PerTenantLimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             2,
 						IngestionBurstSize:        5,
 						MaxGlobalStreamsPerTenant: 1,
 					},
-					QueryLimits: &lokiv1.QueryLimitSpec{
-						MaxChunksPerQuery: 1000000,
+					QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+						QueryLimitSpec: lokiv1.QueryLimitSpec{
+							MaxChunksPerQuery: 1000000,
+						},
 					},
 					Retention: &lokiv1.RetentionLimitSpec{
 						Days: 7,
@@ -4257,15 +4265,17 @@ overrides:
 						CardinalityLimit:        100000,
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					"test-a": {
 						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             2,
 							IngestionBurstSize:        5,
 							MaxGlobalStreamsPerTenant: 1,
 						},
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							MaxChunksPerQuery: 1000000,
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								MaxChunksPerQuery: 1000000,
+							},
 						},
 					},
 				},
@@ -4273,14 +4283,16 @@ overrides:
 		},
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
-				Limits: lokiv1.LimitsTemplateSpec{
+				Limits: lokiv1.PerTenantLimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             2,
 						MaxGlobalStreamsPerTenant: 1,
 						IngestionBurstSize:        5,
 					},
-					QueryLimits: &lokiv1.QueryLimitSpec{
-						MaxChunksPerQuery: 1000000,
+					QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+						QueryLimitSpec: lokiv1.QueryLimitSpec{
+							MaxChunksPerQuery: 1000000,
+						},
 					},
 				},
 			},
@@ -4546,15 +4558,17 @@ overrides:
 						CardinalityLimit:        100000,
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					"test-a": {
 						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             2,
 							IngestionBurstSize:        5,
 							MaxGlobalStreamsPerTenant: 1,
 						},
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							MaxChunksPerQuery: 1000000,
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								MaxChunksPerQuery: 1000000,
+							},
 						},
 					},
 				},
@@ -4562,14 +4576,16 @@ overrides:
 		},
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
-				Limits: lokiv1.LimitsTemplateSpec{
+				Limits: lokiv1.PerTenantLimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
 						IngestionRate:             2,
 						MaxGlobalStreamsPerTenant: 1,
 						IngestionBurstSize:        5,
 					},
-					QueryLimits: &lokiv1.QueryLimitSpec{
-						MaxChunksPerQuery: 1000000,
+					QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+						QueryLimitSpec: lokiv1.QueryLimitSpec{
+							MaxChunksPerQuery: 1000000,
+						},
 					},
 				},
 			},
