@@ -27,7 +27,7 @@ func NewRuler(cfg Config, evaluator Evaluator, reg prometheus.Registerer, logger
 
 	mgr, err := ruler.NewDefaultMultiTenantManager(
 		cfg.Config,
-		MultiTenantRuleManager(cfg, evaluator, limits, logger, reg),
+		MultiTenantRuleManager(cfg, evaluator, limits, logger, prometheus.DefaultRegisterer), // This registerer adds the prefix itself
 		reg,
 		logger,
 		limits,

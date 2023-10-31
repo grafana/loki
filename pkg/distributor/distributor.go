@@ -43,7 +43,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
@@ -179,24 +178,20 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_appends_total",
-			Help:      "The total number of batch appends sent to ingesters.",
+			Name: "distributor_ingester_appends_total",
+			Help: "The total number of batch appends sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_append_timeouts_total",
-			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
+			Name: "distributor_ingester_append_timeouts_total",
+			Help: "The total number of failed batch appends sent to ingesters due to timeouts.",
 		}, []string{"ingester"}),
 		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_replication_factor",
-			Help:      "The configured replication factor.",
+			Name: "distributor_replication_factor",
+			Help: "The configured replication factor.",
 		}),
 		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "stream_sharding_count",
-			Help:      "Total number of times the distributor has sharded streams",
+			Name: "stream_sharding_count",
+			Help: "Total number of times the distributor has sharded streams",
 		}),
 		writeFailuresManager: writefailures.NewManager(util_log.Logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 	}
@@ -234,7 +229,7 @@ func New(
 			util_log.Logger,
 		),
 		overrides,
-		registerer,
+		prometheus.DefaultRegisterer, // The metrics here already have a loki_ prefix and should stay that way
 	)
 	d.rateStore = rs
 
