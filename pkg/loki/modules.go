@@ -1392,11 +1392,16 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
-	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor,
-		t.ring,
+
+	shuffleSharding := bloomcompactor.NewShuffleShardingStrategy(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides)
+
+	compactor, err := bloomcompactor.New(
+		t.Cfg.BloomCompactor,
+		t.Overrides,
 		t.Cfg.StorageConfig,
-		t.Cfg.SchemaConfig.Configs,
+		t.Cfg.SchemaConfig,
 		logger,
+		shuffleSharding,
 		t.clientMetrics,
 		prometheus.DefaultRegisterer)
 

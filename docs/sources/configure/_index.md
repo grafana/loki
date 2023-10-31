@@ -2539,6 +2539,16 @@ ring:
 [working_directory: <string> | default = ""]
 
 [max_look_back_period: <duration>]
+
+[compaction_interval: <duration>]
+
+[compaction_retries: <int>]
+
+[tables_to_compact: <int>]
+
+[skip_latest_n_tables: <int>]
+
+[max_compaction_parallelism: <int>]
 ```
 
 ### limits_config
@@ -2933,6 +2943,8 @@ shard_streams:
 # querying.
 # CLI flag: -bloom-gateway.shard-size
 [bloom_gateway_shard_size: <int> | default = 1]
+
+[bloom_compactor_shard_size: <int>]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata

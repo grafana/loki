@@ -181,8 +181,9 @@ type Limits struct {
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 
-	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
-	BloomGatewayShardSize int `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size"`
+	IndexGatewayShardSize   int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
+	BloomGatewayShardSize   int `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size"`
+	BloomCompactorShardSize int `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
 
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
@@ -785,6 +786,10 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 
 func (o *Overrides) BloomGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomGatewayShardSize
+}
+
+func (o *Overrides) BloomCompactorShardSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorShardSize
 }
 
 func (o *Overrides) AllowStructuredMetadata(userID string) bool {
