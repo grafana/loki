@@ -96,7 +96,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
+func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
 		selector = DefaultMemcachedJumpHashSelector()
@@ -108,10 +108,11 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	client.Timeout = cfg.Timeout
 	client.MaxIdleConns = cfg.MaxIdleConns
 
-	dnsProviderRegisterer := prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", prometheus.WrapRegistererWith(prometheus.Labels{
+	dnsProviderRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{
 		"name": name,
-	}, r))
+	}, r)
 
+	reg := prometheus.DefaultRegisterer
 	newClient := &memcachedClient{
 		name:        name,
 		Client:      client,
@@ -127,14 +128,14 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		maxItemSize: cfg.MaxItemSize,
 		quit:        make(chan struct{}),
 
-		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		numServers: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace:   constants.Loki,
 			Name:        "memcache_client_servers",
 			Help:        "The number of memcache servers discovered.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
-		skipped: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		skipped: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace:   constants.Loki,
 			Name:        "memcache_client_set_skip_total",
 			Help:        "Total number of skipped set operations because of the value is larger than the max-item-size.",

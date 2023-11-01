@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -57,7 +56,7 @@ var defaultPeriodConfigs = []config.PeriodConfig{
 	},
 }
 
-var NilMetrics = newIngesterMetrics(nil, constants.Loki)
+var NilMetrics = newIngesterMetrics(nil)
 
 func TestLabelsCollisions(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)

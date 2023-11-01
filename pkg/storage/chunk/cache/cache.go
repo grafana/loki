@@ -92,7 +92,7 @@ func IsCacheConfigured(cfg Config) bool {
 }
 
 // New creates a new Cache using Config.
-func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType, metricsNamespace string) (Cache, error) {
+func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (Cache, error) {
 
 	// Have additional check for embeddedcache with distributed mode, because those cache will already be initialized in modules
 	// but still need stats collector wrapper for it.
@@ -106,8 +106,8 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			cfg.EmbeddedCache.TTL = cfg.DefaultValidity
 		}
 
-		if cache := NewEmbeddedCache(cfg.Prefix+"embedded-cache", cfg.EmbeddedCache, reg, logger, cacheType); cache != nil {
-			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, reg)))
+		if cache := NewEmbeddedCache(cfg.Prefix+"embedded-cache", cfg.EmbeddedCache, prometheus.DefaultRegisterer, logger, cacheType); cache != nil {
+			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, prometheus.DefaultRegisterer)))
 		}
 	}
 
@@ -120,11 +120,11 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			cfg.Memcache.Expiration = cfg.DefaultValidity
 		}
 
-		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger, metricsNamespace)
-		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
+		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
+		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, prometheus.DefaultRegisterer, logger, cacheType)
 
 		cacheName := cfg.Prefix + "memcache"
-		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, prometheus.DefaultRegisterer), prometheus.DefaultRegisterer)))
 	}
 
 	if IsRedisSet(cfg) {
@@ -137,7 +137,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			return nil, fmt.Errorf("redis client setup failed: %w", err)
 		}
 		cache := NewRedisCache(cacheName, client, logger, cacheType)
-		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
+		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, prometheus.DefaultRegisterer), prometheus.DefaultRegisterer)))
 	}
 
 	cache := NewTiered(caches)

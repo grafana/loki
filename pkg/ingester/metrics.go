@@ -83,7 +83,7 @@ const (
 	duplicateReason = "duplicate"
 )
 
-func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer) *ingesterMetrics {
 	return &ingesterMetrics{
 		walDiskFullFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_disk_full_failures_total",
@@ -282,7 +282,7 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 		}),
 
 		flushQueueLength: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "ingester",
 			Name:      "flush_queue_length",
 			Help:      "The total number of series pending in the flush queue.",

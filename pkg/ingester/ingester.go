@@ -231,7 +231,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -241,7 +241,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if cfg.WAL.Enabled {
 		walStats.Set("enabled")
 	}
-	metrics := newIngesterMetrics(registerer, metricsNamespace)
+	metrics := newIngesterMetrics(prometheus.DefaultRegisterer) // This adds the Loki namespace to metrics already
 
 	i := &Ingester{
 		cfg:                   cfg,
@@ -257,7 +257,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(util_log.Logger, registerer, writeFailuresCfg, configs, "ingester"),
+		writeLogManager:       writefailures.NewManager(util_log.Logger, prometheus.DefaultRegisterer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -273,13 +273,13 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		}
 	}
 
-	wal, err := newWAL(cfg.WAL, registerer, metrics, newIngesterSeriesIter(i))
+	wal, err := newWAL(cfg.WAL, prometheus.DefaultRegisterer, metrics, newIngesterSeriesIter(i))
 	if err != nil {
 		return nil, err
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, registerer)
 	if err != nil {
 		return nil, err
 	}
