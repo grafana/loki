@@ -28,14 +28,15 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/go-kit/log/level"
-	"github.com/prometheus/common/model"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -219,7 +220,7 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 	// Reset back to beginning
 	blockFile.Seek(0, 0)
 
-	objectStoreDst := createObjStorageFileName(series, string(binary.BigEndian.Uint32(checksum)))
+	objectStoreDst := createObjStorageFileName(series, fmt.Sprint(binary.BigEndian.Uint32(checksum)))
 
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{

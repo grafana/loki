@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"flag"
+
 	"github.com/grafana/loki/pkg/util/ring"
 )
 
