@@ -87,8 +87,16 @@ func New(cfg Config,
 		bloomCompactorRing: readRing,
 	}
 
+	var periodConfig config.PeriodConfig
+	for _, periodCfg := range schemaConfig.Configs {
+		if periodCfg.IndexType == config.TSDBType {
+			periodConfig = periodCfg
+			break
+		}
+	}
+
 	//Configure ObjectClient and IndexShipper for series and chunk management
-	objectClient, err := storage.NewObjectClient(storageCfg.TSDBShipperConfig.SharedStoreType, storageCfg, clientMetrics)
+	objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +109,7 @@ func New(cfg Config,
 		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
 	}
 	indexShipper, err := indexshipper.NewIndexShipper(
+		periodConfig.IndexTables.PathPrefix,
 		storageCfg.TSDBShipperConfig.Config,
 		objectClient,
 		limits,
