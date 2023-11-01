@@ -33,7 +33,7 @@
 * [10785](https://github.com/grafana/loki/pull/10785) **ashwanthgoli** Config: Removes `querier.worker-parallelism` and updates default value of `querier.max-concurrent` to 4.
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
 * [10727](https://github.com/grafana/loki/pull/10727) **sandeepsukhani** Native otlp ingestion support
-
+* [11051](https://github.com/grafana/loki/pull/11051) Refactor to not use global logger in modules
 ##### Fixes
 
 ##### Changes

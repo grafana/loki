@@ -40,7 +40,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -457,7 +456,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		}
 
 	case util.StringsContain(deprecatedIndexTypes, periodCfg.IndexType):
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
+		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
 
 		switch periodCfg.IndexType {
 		case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
@@ -466,7 +465,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			}
 			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 			if len(path) > 0 {
-				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 
@@ -495,7 +494,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics) (client.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var storeType = name
 
 	// lookup storeType for named stores
@@ -545,7 +544,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		}
 
 	case util.StringsContain(deprecatedStorageTypes, storeType):
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(supportedStorageTypes, ", ")))
+		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(supportedStorageTypes, ", ")))
 
 		switch storeType {
 		case config.StorageTypeAWSDynamo:
@@ -554,7 +553,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			}
 			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 			if len(path) > 0 {
-				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 
@@ -573,7 +572,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer) (index.TableClient, error) {
+func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
 	switch true {
 	case util.StringsContain(testingStorageTypes, name):
 		switch name {
@@ -596,7 +595,7 @@ func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm C
 			}
 			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 			if len(path) > 0 {
-				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
 		case config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:

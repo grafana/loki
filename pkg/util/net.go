@@ -5,27 +5,26 @@ import (
 	"net"
 	"strings"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // GetFirstAddressOf returns the first IPv4 address of the supplied interface names, omitting any 169.254.x.x automatic private IPs if possible.
-func GetFirstAddressOf(names []string) (string, error) {
+func GetFirstAddressOf(names []string, logger log.Logger) (string, error) {
 	var ipAddr string
 	for _, name := range names {
 		inf, err := net.InterfaceByName(name)
 		if err != nil {
-			level.Warn(util_log.Logger).Log("msg", "error getting interface", "inf", name, "err", err)
+			level.Warn(logger).Log("msg", "error getting interface", "inf", name, "err", err)
 			continue
 		}
 		addrs, err := inf.Addrs()
 		if err != nil {
-			level.Warn(util_log.Logger).Log("msg", "error getting addresses for interface", "inf", name, "err", err)
+			level.Warn(logger).Log("msg", "error getting addresses for interface", "inf", name, "err", err)
 			continue
 		}
 		if len(addrs) <= 0 {
-			level.Warn(util_log.Logger).Log("msg", "no addresses found for interface", "inf", name, "err", err)
+			level.Warn(logger).Log("msg", "no addresses found for interface", "inf", name, "err", err)
 			continue
 		}
 		if ip := filterIPs(addrs); ip != "" {
@@ -40,7 +39,7 @@ func GetFirstAddressOf(names []string) (string, error) {
 		return "", fmt.Errorf("no address found for %s", names)
 	}
 	if strings.HasPrefix(ipAddr, `169.254.`) {
-		level.Warn(util_log.Logger).Log("msg", "using automatic private ip", "address", ipAddr)
+		level.Warn(logger).Log("msg", "using automatic private ip", "address", ipAddr)
 	}
 	return ipAddr, nil
 }
