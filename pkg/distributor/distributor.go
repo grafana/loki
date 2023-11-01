@@ -229,7 +229,7 @@ func New(
 			util_log.Logger,
 		),
 		overrides,
-		prometheus.DefaultRegisterer, // The metrics here already have a loki_ prefix and should stay that way
+		registerer, // The metrics here already have a loki_ prefix and should stay that way
 	)
 	d.rateStore = rs
 
