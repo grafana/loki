@@ -800,6 +800,8 @@ write:
   dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for write pods
+  topologySpreadConstraints: []
   # -- Tolerations for write pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -976,6 +978,8 @@ read:
   dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for read pods
+  topologySpreadConstraints: []
   # -- Tolerations for read pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1077,6 +1081,8 @@ backend:
   dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for backend pods
+  topologySpreadConstraints: []
   # -- Tolerations for backend pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1333,6 +1339,8 @@ gateway:
   dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway pods
   tolerations: []
   # Gateway service configuration

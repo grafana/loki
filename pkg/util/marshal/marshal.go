@@ -81,18 +81,38 @@ type WebsocketWriter interface {
 	WriteMessage(int, []byte) error
 }
 
+type websocketJSONWriter struct {
+	WebsocketWriter
+}
+
+func (w *websocketJSONWriter) Write(p []byte) (n int, err error) {
+	err = w.WriteMessage(websocket.TextMessage, p)
+	if err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func NewWebsocketJSONWriter(ws WebsocketWriter) io.Writer {
+	return &websocketJSONWriter{ws}
+}
+
 // WriteTailResponseJSON marshals the legacy.TailResponse to v1 loghttp JSON and
-// then writes it to the provided connection.
-func WriteTailResponseJSON(r legacy.TailResponse, c WebsocketWriter) error {
-	v1Response, err := NewTailResponse(r)
+// then writes it to the provided writer.
+func WriteTailResponseJSON(r legacy.TailResponse, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
+	// TODO(salvacorts): I think we can dismiss the new TailResponse and be an alias of legacy.TailResponse
+	// v1Response, err := NewTailResponse(r)
+	// if err != nil {
+	// 	return err
+	// }
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+
+	err := EncodeTailResult(r, s, encodeFlags)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not write JSON tail response: %w", err)
 	}
-	data, err := jsoniter.Marshal(v1Response)
-	if err != nil {
-		return err
-	}
-	return c.WriteMessage(websocket.TextMessage, data)
+	return s.Flush()
 }
 
 // WriteSeriesResponseJSON marshals a logproto.SeriesResponse to v1 loghttp JSON and then

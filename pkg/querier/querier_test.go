@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
@@ -118,7 +119,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Tail(ctx, &request)
+	_, err = q.Tail(ctx, &request, false)
 	require.NoError(t, err)
 
 	calls := ingesterClient.GetMockedCallsByMethod("Query")
@@ -512,7 +513,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
-			_, err = q.Tail(ctx, &request)
+			_, err = q.Tail(ctx, &request, false)
 			assert.Equal(t, testData.expectedError, err)
 		})
 	}
@@ -1291,7 +1292,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, nil)
+	return New(cfg, store, iq, limits, dg, nil, log.NewNopLogger())
 }
 
 type mockDeleteGettter struct {
