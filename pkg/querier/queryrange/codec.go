@@ -6,12 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	io "io"
 	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
-	"strings"
+	strings "strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
@@ -1314,7 +1314,7 @@ func toProtoScalar(v loghttp.Scalar) []queryrangebase.SampleStream {
 	res = append(res, queryrangebase.SampleStream{
 		Samples: []logproto.LegacySample{{
 			Value:       float64(v.Value),
-			TimestampMs: v.Timestamp.Unix(),
+			TimestampMs: v.Timestamp.UnixNano() / 1e6,
 		}},
 		Labels: nil,
 	})
