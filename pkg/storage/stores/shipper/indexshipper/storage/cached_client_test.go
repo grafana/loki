@@ -57,6 +57,14 @@ func (m *mockObjectClient) List(ctx context.Context, prefix, delimiter string) (
 }
 
 func TestCachedObjectClient_List(t *testing.T) {
+	objectKeys := func(items []client.StorageObject) []string {
+		keys := make([]string, 0, len(items))
+		for _, item := range items {
+			keys = append(keys, item.Key)
+		}
+		return keys
+	}
+
 	t.Run("refresh table name cache if requested table is not in cache", func(t *testing.T) {
 		ctx := context.Background()
 
@@ -81,14 +89,6 @@ func TestCachedObjectClient_List(t *testing.T) {
 		// replace mock object client with one that returns more tables
 		cachedObjectClient.ObjectClient = newMockObjectClient(t, newObjectsInStorage)
 
-		objectKeys := func(items []client.StorageObject) []string {
-			keys := make([]string, 0, len(items))
-			for _, item := range items {
-				keys = append(keys, item.Key)
-			}
-			return keys
-		}
-
 		// list contents of a table that is in table name cache
 		objects, _, err = cachedObjectClient.listTable(ctx, "table1")
 		require.Nil(t, err)
@@ -109,6 +109,24 @@ func TestCachedObjectClient_List(t *testing.T) {
 		require.Equal(t, []string{}, objectKeys(objects))
 		objectsFromListCall, _, _ = cachedObjectClient.List(ctx, "table3/", "/", false)
 		require.Equal(t, objectsFromListCall, objects)
+	})
+
+	t.Run("supports prefixed clients", func(t *testing.T) {
+		ctx := context.Background()
+
+		prefix := "my/amazing/prefix/"
+		objectsInStorage := []string{
+			prefix + "table1/db.gz",
+			prefix + "table2/db.gz",
+			prefix + "table2/db2.gz",
+		}
+		objectClient := newMockObjectClient(t, objectsInStorage)
+		prefixedClient := client.NewPrefixedObjectClient(objectClient, prefix)
+		cachedObjectClient := newCachedObjectClient(prefixedClient)
+
+		objects, _, err := cachedObjectClient.List(ctx, "table2/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"table2/db.gz", "table2/db2.gz"}, objectKeys(objects))
 	})
 }
 
