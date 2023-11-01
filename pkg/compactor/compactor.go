@@ -28,6 +28,7 @@ import (
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
@@ -202,7 +203,7 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
-func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.ObjectClient, deleteStoreClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer, metricsNamespace string) (*Compactor, error) {
+func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.ObjectClient, deleteStoreClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
 		retentionEnabledStats.Set("true")
@@ -221,7 +222,7 @@ func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.Objec
 	ringStore, err := kv.NewClient(
 		cfg.CompactorRing.KVStore,
 		ring.GetCodec(),
-		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("loki_", r), "compactor"),
+		kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix(constants.Loki+"_", prometheus.DefaultRegisterer), "compactor"),
 		util_log.Logger,
 	)
 	if err != nil {
@@ -245,7 +246,7 @@ func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.Objec
 	}
 
 	ringCfg := cfg.CompactorRing.ToRingConfig(ringReplicationFactor)
-	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", r), util_log.Logger)
+	compactor.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), r, util_log.Logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ring client")
 	}
