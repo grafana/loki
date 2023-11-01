@@ -43,9 +43,6 @@ type RulesLimits interface {
 	RulerRemoteWriteQueueCapacity(userID string) int
 	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
 	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
-	RulerRemoteWriteQueueMinBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
 	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
 
 	RulerRemoteEvaluationTimeout(userID string) time.Duration

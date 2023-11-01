@@ -75,9 +75,7 @@ loki_overrides_defaults{limit_name="ruler_max_rule_groups_per_tenant"} 0
 loki_overrides_defaults{limit_name="ruler_max_rules_per_rule_group"} 0
 loki_overrides_defaults{limit_name="ruler_remote_write_queue_batch_send_deadline"} 0
 loki_overrides_defaults{limit_name="ruler_remote_write_queue_capacity"} 0
-loki_overrides_defaults{limit_name="ruler_remote_write_queue_max_backoff"} 0
 loki_overrides_defaults{limit_name="ruler_remote_write_queue_max_samples_per_send"} 0
-loki_overrides_defaults{limit_name="ruler_remote_write_queue_min_backoff"} 0
 loki_overrides_defaults{limit_name="split_queries_by_interval"} 0
 ```
 

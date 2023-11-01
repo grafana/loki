@@ -138,12 +138,6 @@ type Limits struct {
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteQueueBatchSendDeadline time.Duration `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum time a sample will wait in buffer."`
 	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMinBackoff time.Duration `yaml:"ruler_remote_write_queue_min_backoff" json:"ruler_remote_write_queue_min_backoff" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Initial retry delay. Gets doubled for every retry."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMaxBackoff time.Duration `yaml:"ruler_remote_write_queue_max_backoff" json:"ruler_remote_write_queue_max_backoff" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum retry delay."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueRetryOnRateLimit bool `yaml:"ruler_remote_write_queue_retry_on_ratelimit" json:"ruler_remote_write_queue_retry_on_ratelimit" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Retry upon receiving a 429 status code from the remote-write storage. This is experimental and might change in the future."`
-	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteSigV4Config *sigv4.SigV4Config `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Configures AWS's Signature Verification 4 signing process to sign every remote write request."`
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
@@ -637,24 +631,6 @@ func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
 // RulerRemoteWriteQueueBatchSendDeadline returns the maximum time a sample will be buffered before being discarded for a given user.
 func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMinBackoff returns the minimum time for an exponential backoff for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMinBackoff(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinBackoff
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMaxBackoff returns the maximum time for an exponential backoff for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxBackoff
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueRetryOnRateLimit returns whether to retry failed remote-write requests (429 response) for a given user.
-func (o *Overrides) RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueRetryOnRateLimit
 }
 
 // Deprecated: use RulerRemoteWriteConfig instead

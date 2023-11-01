@@ -2805,18 +2805,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # will wait in buffer.
 [ruler_remote_write_queue_batch_send_deadline: <duration>]
 
-# Deprecated: Use 'ruler_remote_write_config' instead. Initial retry delay. Gets
-# doubled for every retry.
-[ruler_remote_write_queue_min_backoff: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum retry delay.
-[ruler_remote_write_queue_max_backoff: <duration>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Retry upon receiving a
-# 429 status code from the remote-write storage. This is experimental and might
-# change in the future.
-[ruler_remote_write_queue_retry_on_ratelimit: <boolean>]
-
 # Deprecated: Use 'ruler_remote_write_config' instead. Configures AWS's
 # Signature Verification 4 signing process to sign every remote write request.
 ruler_remote_write_sigv4_config:

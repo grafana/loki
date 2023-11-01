@@ -123,9 +123,6 @@ limits_config:
   ruler_remote_write_queue_capacity: 10 # DEPRECATED
   ruler_remote_write_queue_max_samples_per_send: 50 # DEPRECATED
   ruler_remote_write_queue_batch_send_deadline: 10m # DEPRECATED
-  ruler_remote_write_queue_min_backoff: 1m # DEPRECATED
-  ruler_remote_write_queue_max_backoff: 5m # DEPRECATED
-  ruler_remote_write_queue_retry_on_ratelimit: true # DEPRECATED
   ruler_remote_write_sigv4_config: # DEPRECATED
     region: "wherever"
   per_tenant_override_config: ./overrides.yaml # DEPRECATED

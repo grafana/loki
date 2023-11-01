@@ -262,20 +262,8 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 			clt.QueueConfig.MaxSamplesPerSend = v
 		}
 
-		if v := r.overrides.RulerRemoteWriteQueueMinBackoff(tenant); v > 0 {
-			clt.QueueConfig.MinBackoff = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant); v > 0 {
-			clt.QueueConfig.MaxBackoff = model.Duration(v)
-		}
-
 		if v := r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant); v > 0 {
 			clt.QueueConfig.BatchSendDeadline = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant); v {
-			clt.QueueConfig.RetryOnRateLimit = v
 		}
 
 		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
