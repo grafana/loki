@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	loki_util "github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -244,7 +243,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		refs = append(refs, r)
 	}
 
-	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger, stats.ChunkCache, constants.Loki)
+	cache, err := cache.New(cache.Config{Prefix: "chunks"}, nil, util_log.Logger, stats.ChunkCache)
 	if err != nil {
 		panic(err)
 	}

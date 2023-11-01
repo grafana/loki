@@ -24,7 +24,6 @@ import (
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/constants"
 	logutil "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -82,7 +81,7 @@ func newResultsCacheFromConfig(cfg base.ResultsCacheConfig, registerer prometheu
 		return nil, errors.Errorf("%s cache is not configured", cacheType)
 	}
 
-	c, err := cache.New(cfg.CacheConfig, registerer, log, cacheType, constants.Loki)
+	c, err := cache.New(cfg.CacheConfig, registerer, log, cacheType)
 	if err != nil {
 		return nil, err
 	}

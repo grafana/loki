@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestVolumeCache(t *testing.T) {
@@ -26,7 +25,7 @@ func TestVolumeCache(t *testing.T) {
 				Cache: cache.NewMockCache(),
 			},
 		}
-		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
+		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 		require.NoError(t, err)
 		cacheMiddleware, err := NewVolumeCacheMiddleware(
 			log.NewNopLogger(),
@@ -285,7 +284,7 @@ func TestVolumeCache_RecentData(t *testing.T) {
 					Cache: cache.NewMockCache(),
 				},
 			}
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 			defer c.Stop()
 			require.NoError(t, err)
 

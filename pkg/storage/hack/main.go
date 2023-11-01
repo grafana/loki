@@ -65,7 +65,8 @@ func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, er
 		},
 	}
 
-	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger, "cortex")
+	reg := prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer)
+	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, reg, util_log.Logger)
 	return store, &schemaCfg, err
 }
 

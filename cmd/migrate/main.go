@@ -127,8 +127,9 @@ func main() {
 	}
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+	reg := prometheus.WrapRegistererWithPrefix(*metricsNamespace+"_", prometheus.DefaultRegisterer)
 	clientMetrics := storage.NewClientMetrics()
-	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, *metricsNamespace)
+	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, reg, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
@@ -137,7 +138,7 @@ func main() {
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
-	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, *metricsNamespace)
+	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits, clientMetrics, reg, util_log.Logger)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
 		os.Exit(1)

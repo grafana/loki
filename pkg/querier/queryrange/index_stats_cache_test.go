@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestIndexStatsCache(t *testing.T) {
@@ -25,7 +24,7 @@ func TestIndexStatsCache(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 	require.NoError(t, err)
 	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
 		log.NewNopLogger(),
@@ -162,7 +161,7 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 					Cache: cache.NewMockCache(),
 				},
 			}
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
 			defer c.Stop()
 			require.NoError(t, err)
 
