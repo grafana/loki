@@ -26,11 +26,15 @@ package bloomcompactor
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
+	"math"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -41,12 +45,6 @@ import (
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 
-	//"github.com/grafana/loki/pkg/validation"
-	//"github.com/grafana/loki/tools/tsdb/helpers"
-	"math"
-	"os"
-	"time"
-
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -54,8 +52,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage"
-
-	//"github.com/grafana/loki/pkg/storage/chunk/client"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -349,16 +345,32 @@ func (c *Compactor) runCompact(ctx context.Context, limits downloads.Limits, blo
 							level.Info(util_log.Logger).Log("getting chunks", err)
 							return
 						}
+
+						// effectively get min and max of timestamps of the list of chunks in a series
+						// There must be a better way to get this, ordering chunkRefs by timestamp doesn't fully solve it
+						// chunk files name have this info in ObjectStore, but it's not really exposed
+						minFrom := model.Latest
+						maxThrough := model.Earliest
+
+						for _, c := range chks {
+							if minFrom > c.From {
+								minFrom = c.From
+							}
+							if maxThrough < c.From {
+								maxThrough = c.Through
+							}
+						}
+
 						series := Series{
 							TableName:   s.TableName,
 							Tenant:      s.Tenant,
 							Labels:      ls,
 							FingerPrint: fp,
 							Chunks:      chks,
-							from:        model.Earliest, // FIXME
-							through:     model.Latest,   // FIXME
+							from:        minFrom,
+							through:     maxThrough,
 						}
-						err = CompactNewChunks(ctx, series, bloomShipperClient, tempDst)
+						err = CompactNewChunks(ctx, series, bloomShipperClient)
 						if err != nil {
 							return
 						}
