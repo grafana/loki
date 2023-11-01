@@ -14,13 +14,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const maxStacksize = 8 * 1024
 
 var (
 	panicTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "panic_total",
 		Help:      "The total number of panic triggered",
 	})

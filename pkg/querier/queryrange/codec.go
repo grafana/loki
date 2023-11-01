@@ -497,6 +497,10 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 // DecodeHTTPGrpcResponse decodes an httpgrp.HTTPResponse to queryrangebase.Response.
 func (Codec) DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase.Request) (queryrangebase.Response, error) {
+	if r.Code/100 != 2 {
+		return nil, httpgrpc.Errorf(int(r.Code), string(r.Body))
+	}
+
 	headers := make(http.Header)
 	for _, header := range r.Headers {
 		headers[header.Key] = header.Values
@@ -700,6 +704,25 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
+}
+
+func (c Codec) Path(r queryrangebase.Request) string {
+	switch request := r.(type) {
+	case *LokiRequest:
+		return "loki/api/v1/query_range"
+	case *LokiSeriesRequest:
+		return "loki/api/v1/series"
+	case *LabelRequest:
+		return request.Path() // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
+	case *LokiInstantRequest:
+		return "/loki/api/v1/query"
+	case *logproto.IndexStatsRequest:
+		return "/loki/api/v1/index/stats"
+	case *logproto.VolumeRequest:
+		return "/loki/api/v1/index/volume_range"
+	}
+
+	return "other"
 }
 
 func (p RequestProtobufCodec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
@@ -1357,6 +1380,10 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsLabelWrapper{
 			LabelRequest: r,
 		}, nil
+	case *logproto.IndexStatsRequest:
+		return &paramsStatsWrapper{
+			IndexStatsRequest: r,
+		}, nil
 	default:
 		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got (%T)", r)
 	}
@@ -1473,6 +1500,34 @@ func (p paramsLabelWrapper) Direction() logproto.Direction {
 }
 func (p paramsLabelWrapper) Limit() uint32 { return 0 }
 func (p paramsLabelWrapper) Shards() []string {
+	return make([]string, 0)
+}
+
+type paramsStatsWrapper struct {
+	*logproto.IndexStatsRequest
+}
+
+func (p paramsStatsWrapper) Query() string {
+	return p.GetQuery()
+}
+
+func (p paramsStatsWrapper) Start() time.Time {
+	return p.From.Time()
+}
+
+func (p paramsStatsWrapper) End() time.Time {
+	return p.Through.Time()
+}
+
+func (p paramsStatsWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+func (p paramsStatsWrapper) Interval() time.Duration { return 0 }
+func (p paramsStatsWrapper) Direction() logproto.Direction {
+	return logproto.FORWARD
+}
+func (p paramsStatsWrapper) Limit() uint32 { return 0 }
+func (p paramsStatsWrapper) Shards() []string {
 	return make([]string, 0)
 }
 

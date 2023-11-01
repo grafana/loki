@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	mathutil "github.com/grafana/loki/pkg/util/math"
@@ -56,22 +57,22 @@ const (
 
 var (
 	memoryStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_memory_streams",
 		Help:      "The total number of streams in memory per tenant.",
 	}, []string{"tenant"})
 	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_memory_streams_labels_bytes",
 		Help:      "Total bytes of labels of the streams in memory.",
 	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_streams_created_total",
 		Help:      "The total number of streams created per tenant.",
 	}, []string{"tenant"})
 	streamsRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_streams_removed_total",
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})

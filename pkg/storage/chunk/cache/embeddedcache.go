@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const (
@@ -131,7 +132,7 @@ func NewTypedEmbeddedCache[K comparable, V any](
 		done: make(chan struct{}),
 
 		entriesAddedNew: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Subsystem:   "embeddedcache",
 			Name:        "added_new_total",
 			Help:        "The total number of new entries added to the cache",
@@ -139,7 +140,7 @@ func NewTypedEmbeddedCache[K comparable, V any](
 		}),
 
 		entriesEvicted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Subsystem:   "embeddedcache",
 			Name:        "evicted_total",
 			Help:        "The total number of evicted entries",
@@ -147,7 +148,7 @@ func NewTypedEmbeddedCache[K comparable, V any](
 		}, []string{"reason"}),
 
 		entriesCurrent: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Subsystem:   "embeddedcache",
 			Name:        "entries",
 			Help:        "Current number of entries in the cache",
@@ -155,7 +156,7 @@ func NewTypedEmbeddedCache[K comparable, V any](
 		}),
 
 		memoryBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Subsystem:   "embeddedcache",
 			Name:        "memory_bytes",
 			Help:        "The current cache size in bytes",

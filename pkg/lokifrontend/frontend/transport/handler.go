@@ -68,7 +68,7 @@ type Handler struct {
 }
 
 // NewHandler creates a new frontend handler.
-func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
+func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer, metricsNamespace string) http.Handler {
 	h := &Handler{
 		cfg:          cfg,
 		log:          log,
@@ -77,18 +77,21 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 
 	if cfg.QueryStatsEnabled {
 		h.querySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_seconds_total",
-			Help: "Total amount of wall clock time spend processing queries.",
+			Namespace: metricsNamespace,
+			Name:      "query_seconds_total",
+			Help:      "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
 
 		h.querySeries = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_fetched_series_total",
-			Help: "Number of series fetched to execute a query.",
+			Namespace: metricsNamespace,
+			Name:      "query_fetched_series_total",
+			Help:      "Number of series fetched to execute a query.",
 		}, []string{"user"})
 
 		h.queryBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_fetched_chunks_bytes_total",
-			Help: "Size of all chunks fetched to execute a query in bytes.",
+			Namespace: metricsNamespace,
+			Name:      "query_fetched_chunks_bytes_total",
+			Help:      "Size of all chunks fetched to execute a query in bytes.",
 		}, []string{"user"})
 
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
