@@ -151,7 +151,7 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata)...)
 		if !ok {
 			continue
 		}
@@ -163,8 +163,10 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 			streams[parsedLbs.Hash()] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: e.Timestamp,
-			Line:      newLine,
+			Timestamp:          e.Timestamp,
+			Line:               newLine,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+			Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
 		})
 	}
 	streamsResult := make([]*logproto.Stream, 0, len(streams))

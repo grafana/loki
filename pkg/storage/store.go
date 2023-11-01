@@ -85,11 +85,14 @@ type LokiStore struct {
 
 	chunkFilterer               chunk.RequestChunkFilterer
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
+
+	metricsNamespace string
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
 	limits StoreLimits, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger,
+	metricsNamespace string,
 ) (*LokiStore, error) {
 	if len(schemaCfg.Configs) != 0 {
 		if index := config.ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
@@ -99,7 +102,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		}
 	}
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache)
+	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -108,14 +111,14 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		level.Warn(logger).Log("msg", "write dedupe cache is deprecated along with legacy index types. Consider using TSDB index which does not require a write dedupe cache.")
 	}
 
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache)
+	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
-	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache)
+	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +126,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	chunkCacheCfgL2 := storeCfg.ChunkCacheConfigL2
 	chunkCacheCfgL2.Prefix = "chunksl2"
 	// TODO(E.Welch) would we want to disambiguate this cache in the stats? I think not but we'd need to change stats.ChunkCache to do so.
-	chunksCacheL2, err := cache.New(chunkCacheCfgL2, registerer, logger, stats.ChunkCache)
+	chunksCacheL2, err := cache.New(chunkCacheCfgL2, registerer, logger, stats.ChunkCache, metricsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +170,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 		logger: logger,
 		limits: limits,
+
+		metricsNamespace: metricsNamespace,
 	}
 	if err := s.init(); err != nil {
 		return nil, err
@@ -225,7 +230,7 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 		)
 	}
 
-	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics)
+	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics, s.logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating object client")
 	}
@@ -261,7 +266,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	if p.IndexType == config.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig.Config) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger)
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -273,18 +278,13 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 		}
 
-		objectType := p.ObjectType
-		if s.cfg.TSDBShipperConfig.SharedStoreType != "" {
-			objectType = s.cfg.TSDBShipperConfig.SharedStoreType
-		}
-
-		objectClient, err := NewObjectClient(objectType, s.cfg, s.clientMetrics)
+		objectClient, err := NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
 		name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache)
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -301,7 +301,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 	}
 
-	idx, err := NewIndexClient(p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger)
+	idx, err := NewIndexClient(p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger, s.metricsNamespace)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}

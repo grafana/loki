@@ -36,7 +36,7 @@ func main() {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collectors.NewGoCollector())
 
-	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry)
+	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry, util_log.Logger)
 	if err := i.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
 		os.Exit(1)

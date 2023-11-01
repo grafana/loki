@@ -69,7 +69,7 @@ func clearCache(cache map[string]interface{}) {
 	}
 }
 
-func (bt *BloomTokenizer) PopulateSBF(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
 	clearCache(bt.cache)
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
@@ -83,6 +83,12 @@ func (bt *BloomTokenizer) PopulateSBF(seriesWithBloom *SeriesWithBloom, chunks [
 			logproto.FORWARD,
 			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
 		)
+		if err != nil {
+			level.Info(util_log.Logger).Log("chunk iterator cannot be created")
+			return
+		}
+
+		defer itr.Close()
 
 		if err != nil {
 			return
