@@ -102,7 +102,7 @@ func Test_BuildAndQueryBloomsWithOneSeries(t *testing.T) {
 	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
 
 	for _, c := range chunks {
-		bt.PopulateSBF(&bloomsForChunks[0], []chunk.Chunk{c})
+		bt.PopulateSeriesWithBloom(&bloomsForChunks[0], []chunk.Chunk{c})
 	}
 
 	blockDir := t.TempDir()
@@ -165,7 +165,7 @@ func Test_BuildAndQueryBloomsWithNSeries(t *testing.T) {
 	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
 
 	for i, c := range chunks {
-		bt.PopulateSBF(&bloomsForChunks[i], []chunk.Chunk{c})
+		bt.PopulateSeriesWithBloom(&bloomsForChunks[i], []chunk.Chunk{c})
 	}
 
 	blockDir := t.TempDir()

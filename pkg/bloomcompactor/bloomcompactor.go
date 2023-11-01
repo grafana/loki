@@ -289,7 +289,7 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 
 	// create a tokenizer
 	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
-	bt.PopulateSBF(&bloomForChks, series.chunks)
+	bt.PopulateSeriesWithBloom(&bloomForChks, series.chunks)
 
 	// Build and upload bloomBlock to storage
 	blocks, err := buildBloomBlock(bloomForChks, series)
