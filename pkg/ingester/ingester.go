@@ -234,7 +234,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, log log.Logger) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -248,7 +248,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 
 	i := &Ingester{
 		cfg:                   cfg,
-		logger:                log,
+		logger:                logger,
 		clientConfig:          clientConfig,
 		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
@@ -261,7 +261,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(log, registerer, writeFailuresCfg, configs, "ingester"),
+		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -283,7 +283,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, log, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
 	if err != nil {
 		return nil, err
 	}

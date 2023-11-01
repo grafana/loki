@@ -136,7 +136,7 @@ func New(
 	overrides Limits,
 	registerer prometheus.Registerer,
 	metricsNamespace string,
-	log log.Logger,
+	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
@@ -208,7 +208,7 @@ func New(
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
-		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, log, registerer, metricsNamespace)
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, logger, registerer, metricsNamespace)
 		if err != nil {
 			return nil, err
 		}
@@ -545,10 +545,10 @@ func streamCount(totalShards int, stream logproto.Stream) int {
 
 // labelTemplate returns a label set that includes the dummy label to be replaced
 // To avoid allocations, this slice is reused when we know the stream value
-func labelTemplate(lbls string, log log.Logger) labels.Labels {
+func labelTemplate(lbls string, logger log.Logger) labels.Labels {
 	baseLbls, err := syntax.ParseLabels(lbls)
 	if err != nil {
-		level.Error(log).Log("msg", "couldn't extract labels from stream", "stream", lbls)
+		level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
 		return nil
 	}
 
