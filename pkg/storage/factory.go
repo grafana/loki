@@ -328,6 +328,7 @@ type Config struct {
 	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
 	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
 	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
+	ObjectPrefix           string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
@@ -362,6 +363,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
+	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 	cfg.BoltDBShipperConfig.RegisterFlags(f)
@@ -634,8 +636,23 @@ func (c *ClientMetrics) Unregister() {
 	c.AzureMetrics.Unregister()
 }
 
-// NewObjectClient makes a new StorageClient of the desired types.
+// NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.ObjectPrefix == "" {
+		return actual, nil
+	} else {
+		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
+		return client.NewPrefixedObjectClient(actual, prefix), nil
+	}
+}
+
+// internalNewObjectClient makes the underlying StorageClient of the desired types.
+func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
 		storeType  = name
