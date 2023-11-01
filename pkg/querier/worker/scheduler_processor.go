@@ -23,7 +23,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
@@ -94,7 +93,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 
 	backoff := backoff.New(execCtx, processorBackoffConfig)
 	for backoff.Ongoing() {
-		c, err := schedulerClient.QuerierLoop(execCtx, grpc.MaxCallSendMsgSize(sp.maxMessageSize))
+		c, err := schedulerClient.QuerierLoop(execCtx)
 		if err == nil {
 			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: sp.querierID})
 		}
@@ -185,6 +184,16 @@ func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Lo
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
+	// Ensure responses that are too big are not retried.
+	if response.Size() >= sp.maxMessageSize {
+		level.Error(logger).Log("msg", "response larger than max message size", "size", response.Size(), "maxMessageSize", sp.maxMessageSize)
+
+		errMsg := fmt.Sprintf("response larger than the max message size (%d vs %d)", response.Size(), sp.maxMessageSize)
+		response = &queryrange.QueryResponse{
+			Status: status.New(http.StatusRequestEntityTooLarge, errMsg).Proto(),
+		}
+	}
+
 	result := &frontendv2pb.QueryResultRequest{
 		QueryID: queryID,
 		Response: &frontendv2pb.QueryResultRequest_QueryResponse{
@@ -237,18 +246,6 @@ func (sp *schedulerProcessor) reply(ctx context.Context, logger log.Logger, fron
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
 			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, result)
-			if status, ok := status.FromError(err); ok {
-				if status.Code() == codes.ResourceExhausted {
-					level.Error(logger).Log("msg", "response larger than max message size", "maxMessageSize", sp.maxMessageSize)
-					result.Response = &frontendv2pb.QueryResultRequest_HttpResponse{
-						HttpResponse: &httpgrpc.HTTPResponse{
-							Code: http.StatusRequestEntityTooLarge,
-							Body: []byte(err.Error()),
-						},
-					}
-
-				}
-			}
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)
 			}
