@@ -591,7 +591,7 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 				}
 			}
 
-			i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki,  gokit_log.NewNopLogger())
+			i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger())
 			require.NoError(t, err)
 			require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
