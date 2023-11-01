@@ -71,11 +71,7 @@ func AddEncodingFlagsToContext(ctx context.Context, flags EncodingFlags) context
 
 func ExtractEncodingFlags(req *http.Request) EncodingFlags {
 	rawValue := req.Header.Get(LokiEncodingFlagsHeader)
-	if rawValue == "" {
-		return nil
-	}
-
-	return parseEncodingFlags(rawValue)
+	return ParseEncodingFlags(rawValue)
 }
 
 func ExtractEncodingFlagsFromProto(req *httpgrpc.HTTPRequest) EncodingFlags {
@@ -83,11 +79,7 @@ func ExtractEncodingFlagsFromProto(req *httpgrpc.HTTPRequest) EncodingFlags {
 	for _, header := range req.GetHeaders() {
 		if header.GetKey() == LokiEncodingFlagsHeader {
 			rawValue = header.GetValues()[0]
-			if rawValue == "" {
-				return nil
-			}
-
-			return parseEncodingFlags(rawValue)
+			return ParseEncodingFlags(rawValue)
 		}
 	}
 
@@ -100,10 +92,14 @@ func ExtractEncodingFlagsFromCtx(ctx context.Context) EncodingFlags {
 		return nil
 	}
 
-	return parseEncodingFlags(rawValue)
+	return ParseEncodingFlags(rawValue)
 }
 
-func parseEncodingFlags(rawFlags string) EncodingFlags {
+func ParseEncodingFlags(rawFlags string) EncodingFlags {
+	if rawFlags == "" {
+		return nil
+	}
+
 	split := strings.Split(rawFlags, EncodeFlagsDelimiter)
 	flags := make(EncodingFlags, len(split))
 	for _, rawFlag := range split {

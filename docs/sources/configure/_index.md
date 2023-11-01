@@ -2100,6 +2100,11 @@ congestion_control:
     # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
+# Experimental. Sets a constant prefix for all keys inserted into object
+# storage. Example: loki/
+# CLI flag: -store.object-prefix
+[object_prefix: <string> | default = ""]
+
 # The cache block configures the cache backend.
 # The CLI flags prefix for this block configuration is: store.index-cache-read
 [index_queries_cache_config: <cache_config>]
