@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [11086](https://github.com/grafana/loki/pull/11086) **kandrew5**: Helm: Allow topologySpreadConstraints
 * [11003](https://github.com/grafana/loki/pull/11003) **MichelHollands**: Add the `metrics-namespace` flag to change the namespace of metrics currently using cortex as namespace.
 * [10096](https://github.com/grafana/loki/pull/10096) **aschleck**: Storage: Allow setting a constant prefix for all created keys
 * [11038](https://github.com/grafana/loki/pull/11038) **kavirajk**: Remove already deprecated `store.max-look-back-period`.
