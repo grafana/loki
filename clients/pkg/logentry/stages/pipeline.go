@@ -27,6 +27,7 @@ type Pipeline struct {
 	logger    log.Logger
 	stages    []Stage
 	jobName   *string
+	mtx       sync.Mutex
 	dropCount *prometheus.CounterVec
 }
 
@@ -113,6 +114,8 @@ func RunWithSkipOrSendMany(input chan Entry, process func(e Entry) ([]Entry, boo
 // Run implements Stage
 func (p *Pipeline) Run(in chan Entry) chan Entry {
 	in = RunWith(in, func(e Entry) Entry {
+		p.mtx.Lock()
+		defer p.mtx.Unlock()
 		// Initialize the extracted map with the initial labels (ie. "filename"),
 		// so that stages can operate on initial labels too
 		for labelName, labelValue := range e.Labels {
