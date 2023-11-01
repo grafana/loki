@@ -49,7 +49,6 @@ chunk_store_config:
 limits_config:
   unordered_writes: "Will be eventually removed."
   ruler_evaluation_delay_duration: "Will be eventually removed."
-  ruler_remote_write_timeout: "Use ruler_remote_write_config instead."
   ruler_remote_write_headers: "Use ruler_remote_write_config instead."
   ruler_remote_write_relabel_configs: "Use ruler_remote_write_config instead."
   ruler_remote_write_queue_capacity: "Use ruler_remote_write_config instead."

@@ -3,7 +3,6 @@ overrides:
     ingestion_rate_mb: 100
     unordered_writes: true # DEPRECATED
     ruler_evaluation_delay_duration: 1m # DEPRECATED
-    ruler_remote_write_timeout: 1m # DEPRECATED
     ruler_remote_write_headers: [ "foo", "bar" ] # DEPRECATED
     ruler_remote_write_relabel_configs: "foo" # DEPRECATED
     ruler_remote_write_queue_capacity: 10 # DEPRECATED

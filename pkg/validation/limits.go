@@ -128,8 +128,6 @@ type Limits struct {
 	RulerRemoteWriteDisabled bool `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled" doc:"description=Disable recording rules remote-write."`
 
 	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteTimeout time.Duration `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Timeout for requests to the remote write endpoint."`
-	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteHeaders OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Custom HTTP headers to be sent along with each remote write request. Be aware that headers that are set by Loki itself can't be overwritten."`
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteRelabelConfigs []*util.RelabelConfig `yaml:"ruler_remote_write_relabel_configs,omitempty" json:"ruler_remote_write_relabel_configs,omitempty" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. List of remote write relabel configurations."`
@@ -613,12 +611,6 @@ func (o *Overrides) RulerAlertManagerConfig(userID string) *ruler_config.AlertMa
 // RulerRemoteWriteDisabled returns whether remote-write is disabled for a given user or not.
 func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteTimeout returns the duration after which to timeout a remote-write request for a given user.
-func (o *Overrides) RulerRemoteWriteTimeout(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteTimeout
 }
 
 // Deprecated: use RulerRemoteWriteConfig instead
