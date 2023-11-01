@@ -22,6 +22,7 @@
 
 struct flb_api {
     char *(*output_get_property) (char *, void *);
+    char *_;
 };
 
 struct flb_plugin_proxy_context {
