@@ -235,9 +235,8 @@ type perTenantIndexConfig struct {
 func TestCompactor_Compact(t *testing.T) {
 	now := model.Now()
 	periodConfig := config.PeriodConfig{
-		IndexTables: config.IndexPeriodicTableConfig{
-			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
-		Schema: "v12",
+		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		Schema:      "v12",
 	}
 	indexBkts := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 
@@ -866,9 +865,8 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 	now := model.Now()
 	periodConfig := config.PeriodConfig{
-		IndexTables: config.IndexPeriodicTableConfig{
-			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
-		Schema: "v12",
+		IndexTables: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		Schema:      "v12",
 	}
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{periodConfig},

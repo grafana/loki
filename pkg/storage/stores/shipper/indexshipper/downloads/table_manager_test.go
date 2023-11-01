@@ -51,11 +51,10 @@ func buildTestTableManager(t *testing.T, path string, tableRangeToHandle *config
 			Start: 0,
 			End:   math.MaxInt64,
 			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.IndexPeriodicTableConfig{
-					PeriodicTableConfig: config.PeriodicTableConfig{
-						Prefix: indexTablePrefix,
-						Period: indexTablePeriod,
-					}},
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: indexTablePeriod,
+				},
 			},
 		}
 	}
@@ -279,11 +278,10 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				End:   buildTableNumber(5),
 				Start: buildTableNumber(9),
 				PeriodConfig: &config.PeriodConfig{
-					IndexTables: config.IndexPeriodicTableConfig{
-						PeriodicTableConfig: config.PeriodicTableConfig{
-							Prefix: indexTablePrefix,
-							Period: indexTablePeriod,
-						}},
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: indexTablePrefix,
+						Period: indexTablePeriod,
+					},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
@@ -304,11 +302,10 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 				End:   buildTableNumber(2),
 				Start: buildTableNumber(4),
 				PeriodConfig: &config.PeriodConfig{
-					IndexTables: config.IndexPeriodicTableConfig{
-						PeriodicTableConfig: config.PeriodicTableConfig{
-							Prefix: indexTablePrefix,
-							Period: indexTablePeriod,
-						}},
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: indexTablePrefix,
+						Period: indexTablePeriod,
+					},
 				},
 			},
 			expectedQueryReadinessDoneForUsers: map[string][]string{
@@ -326,11 +323,10 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 			if tc.tableRangeToHandle == nil {
 				tableManager.tableRangeToHandle = config.TableRange{
 					Start: 0, End: math.MaxInt64, PeriodConfig: &config.PeriodConfig{
-						IndexTables: config.IndexPeriodicTableConfig{
-							PeriodicTableConfig: config.PeriodicTableConfig{
-								Prefix: indexTablePrefix,
-								Period: indexTablePeriod,
-							}},
+						IndexTables: config.PeriodicTableConfig{
+							Prefix: indexTablePrefix,
+							Period: indexTablePeriod,
+						},
 					},
 				}
 			} else {
@@ -386,11 +382,10 @@ func TestTableManager_loadTables(t *testing.T) {
 		End:   buildTableNumber(4),
 		Start: buildTableNumber(8),
 		PeriodConfig: &config.PeriodConfig{
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Prefix: indexTablePrefix,
-					Period: indexTablePeriod,
-				}},
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: indexTablePeriod,
+			},
 		},
 	},
 	)

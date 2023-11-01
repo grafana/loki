@@ -56,11 +56,10 @@ func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, er
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v13",
-				IndexTables: config.IndexPeriodicTableConfig{
-					PeriodicTableConfig: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 168,
-					}},
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 168,
+				},
 			},
 		},
 	}

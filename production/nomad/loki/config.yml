@@ -40,6 +40,7 @@ storage_config:
     # it will try to preserve /alloc/data between job updates
     active_index_directory: {{ env "NOMAD_ALLOC_DIR" }}/data/index
     cache_location: {{ env "NOMAD_ALLOC_DIR" }}/data/index-cache
+    shared_store: s3
 
   aws:
     endpoint: https://s3.endpoint.com
@@ -56,8 +57,8 @@ limits_config:
 
 compactor:
   working_directory: {{ env "NOMAD_ALLOC_DIR" }}/compactor
+  shared_store: s3
   compaction_interval: 5m
-  delete_request_store: s3
   retention_enabled: true
 
 ruler:

@@ -948,14 +948,12 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 func TestMigrateMarkers(t *testing.T) {
 	t.Run("nothing to migrate", func(t *testing.T) {
 		workDir := t.TempDir()
-		dst := path.Join(workDir, "store-1_2023-10-19")
-		require.NoError(t, CopyMarkers(workDir, dst))
-		require.NoDirExists(t, path.Join(workDir, dst, MarkersFolder))
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
 	})
 
 	t.Run("migrate markers dir", func(t *testing.T) {
 		workDir := t.TempDir()
-		dst := path.Join(workDir, "store-1_2023-10-19")
 		require.NoError(t, os.Mkdir(path.Join(workDir, MarkersFolder), 0755))
 
 		markers := []string{"foo", "bar", "buzz"}
@@ -964,8 +962,8 @@ func TestMigrateMarkers(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		require.NoError(t, CopyMarkers(workDir, dst))
-		targetDir := path.Join(dst, MarkersFolder)
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		targetDir := path.Join(workDir, "store-1", MarkersFolder)
 		require.DirExists(t, targetDir)
 		for _, marker := range markers {
 			require.FileExists(t, path.Join(targetDir, marker))
@@ -977,12 +975,11 @@ func TestMigrateMarkers(t *testing.T) {
 
 	t.Run("file named markers should not be migrated", func(t *testing.T) {
 		workDir := t.TempDir()
-		dst := path.Join(workDir, "store-1_2023-10-19")
 		f, err := os.Create(path.Join(workDir, MarkersFolder))
 		require.NoError(t, err)
 		defer f.Close()
 
-		require.NoError(t, CopyMarkers(workDir, dst))
-		require.NoDirExists(t, path.Join(dst, MarkersFolder))
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
 	})
 }

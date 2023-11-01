@@ -120,11 +120,10 @@ func SchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,
 			},
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Prefix: "cortex_chunks",
-					Period: 7 * 24 * time.Hour,
-				}},
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: "cortex_chunks",
+				Period: 7 * 24 * time.Hour,
+			},
 		}},
 	}
 	if err := s.Validate(); err != nil {

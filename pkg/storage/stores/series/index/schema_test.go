@@ -23,8 +23,7 @@ func TestDailyBuckets(t *testing.T) {
 		tableName  = "table"
 	)
 	cfg := config.PeriodConfig{
-		IndexTables: config.IndexPeriodicTableConfig{
-			PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableName}},
+		IndexTables: config.PeriodicTableConfig{Prefix: tableName},
 	}
 
 	type args struct {
@@ -134,9 +133,8 @@ const table = "table"
 
 func mustMakeSchema(schemaName string) SeriesStoreSchema {
 	s, err := CreateSchema(config.PeriodConfig{
-		Schema: schemaName,
-		IndexTables: config.IndexPeriodicTableConfig{
-			PeriodicTableConfig: config.PeriodicTableConfig{Prefix: table}},
+		Schema:      schemaName,
+		IndexTables: config.PeriodicTableConfig{Prefix: table},
 	})
 	if err != nil {
 		panic(err)

@@ -286,6 +286,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
+		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -308,6 +309,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
+		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -330,6 +332,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		})
 		cfg.SchemaConfig.Configs[0].IndexType = config.BoltDBShipperType
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
+		cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -365,6 +368,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 		FSConfig: local.FSConfig{Directory: dir},
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
+				SharedStoreType:      config.StorageTypeFileSystem,
 				ActiveIndexDirectory: path.Join(dir, "index"),
 				CacheLocation:        path.Join(dir, "cache"),
 				Mode:                 indexshipper.ModeWriteOnly,
@@ -378,10 +382,9 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 			{
 				IndexType:  config.BoltDBShipperType,
 				ObjectType: config.StorageTypeFileSystem,
-				IndexTables: config.IndexPeriodicTableConfig{
-					PeriodicTableConfig: config.PeriodicTableConfig{
-						Period: time.Hour * 24,
-					}},
+				IndexTables: config.PeriodicTableConfig{
+					Period: time.Hour * 24,
+				},
 				RowShards: 16,
 				Schema:    "v11",
 				From: config.DayTime{
@@ -397,6 +400,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
+	cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost

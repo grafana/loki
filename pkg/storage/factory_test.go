@@ -97,6 +97,7 @@ func TestNamedStores(t *testing.T) {
 	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	boltdbShipperConfig.SharedStoreType = "named-store"
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 
@@ -120,11 +121,10 @@ func TestNamedStores(t *testing.T) {
 				IndexType:  "boltdb-shipper",
 				ObjectType: "named-store",
 				Schema:     "v9",
-				IndexTables: config.IndexPeriodicTableConfig{
-					PeriodicTableConfig: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 168,
-					}},
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 168,
+				},
 			},
 		},
 	}
@@ -237,11 +237,10 @@ func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaCon
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,
 			},
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Prefix: "cortex_chunks",
-					Period: 7 * 24 * time.Hour,
-				}},
+			IndexTables: config.PeriodicTableConfig{
+				Prefix: "cortex_chunks",
+				Period: 7 * 24 * time.Hour,
+			},
 		}},
 	}
 	if err := s.Validate(); err != nil {

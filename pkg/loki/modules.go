@@ -591,7 +591,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, *lastConfig, t.Cfg.StorageConfig, t.clientMetrics, reg)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.StorageConfig, t.clientMetrics, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -1179,36 +1179,44 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		level.Info(util_log.Logger).Log("msg", "schema does not contain tsdb or boltdb-shipper index types, not starting compactor")
+		level.Info(util_log.Logger).Log("msg", "Not using object storage index, not starting compactor")
 		return nil, nil
 	}
 
-	objectClients := make(map[config.DayTime]client.ObjectClient)
-	for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
-		if !config.IsObjectStorageIndex(periodConfig.IndexType) {
-			continue
-		}
-
-		objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics)
+	objectClients := make(map[string]client.ObjectClient)
+	if sharedStoreType := t.Cfg.CompactorConfig.SharedStoreType; sharedStoreType != "" {
+		objectClient, err := storage.NewObjectClient(sharedStoreType, t.Cfg.StorageConfig, t.clientMetrics)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create object client: %w", err)
 		}
 
-		objectClients[periodConfig.From] = objectClient
-	}
-
-	var deleteRequestStoreClient client.ObjectClient
-	if t.Cfg.CompactorConfig.RetentionEnabled {
-		if deleteStore := t.Cfg.CompactorConfig.DeleteRequestStore; deleteStore != "" {
-			if deleteRequestStoreClient, err = storage.NewObjectClient(deleteStore, t.Cfg.StorageConfig, t.clientMetrics); err != nil {
-				return nil, fmt.Errorf("failed to create delete request store object client: %w", err)
+		objectClients[sharedStoreType] = objectClient
+	} else {
+		for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
+			if !config.IsObjectStorageIndex(periodConfig.IndexType) {
+				continue
 			}
-		} else {
-			return nil, fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled")
+
+			if objectClients[periodConfig.ObjectType] != nil {
+				continue
+			}
+
+			objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.clientMetrics)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create object client: %w", err)
+			}
+
+			objectClients[periodConfig.ObjectType] = objectClient
 		}
+
+		stores := make([]string, 0, len(objectClients))
+		for store := range objectClients {
+			stores = append(stores, store)
+		}
+		level.Info(util_log.Logger).Log("msg", "-boltdb.shipper.compactor.shared-store not specified, initializing compactor to operator on the following object stores", "stores", strings.Join(stores, ", "))
 	}
 
-	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, deleteRequestStoreClient, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer)
+	t.compactor, err = compactor.NewCompactor(t.Cfg.CompactorConfig, objectClients, t.Cfg.SchemaConfig, t.Overrides, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

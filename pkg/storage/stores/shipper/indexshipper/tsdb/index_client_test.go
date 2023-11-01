@@ -42,10 +42,9 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		Start: 0,
 		End:   math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Period: config.ObjectStorageIndexRequiredPeriod,
-				}},
+			IndexTables: config.PeriodicTableConfig{
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			},
 		},
 	}
 
@@ -97,10 +96,9 @@ func TestIndexClient_Stats(t *testing.T) {
 		Start: 0,
 		End:   math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Period: config.ObjectStorageIndexRequiredPeriod,
-				}},
+			IndexTables: config.PeriodicTableConfig{
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			},
 		},
 	}
 
@@ -226,10 +224,9 @@ func TestIndexClient_Volume(t *testing.T) {
 		Start: 0,
 		End:   math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Period: config.ObjectStorageIndexRequiredPeriod,
-				}},
+			IndexTables: config.PeriodicTableConfig{
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			},
 		},
 	}
 

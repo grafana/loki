@@ -41,6 +41,7 @@ storage_config:
 
   boltdb_shipper:
     active_index_directory: /loki/index
+    shared_store: gcs
     cache_location: /loki/boltdb-cache
 ```
 
@@ -143,6 +144,7 @@ The compactor is an optional but suggested component that combines and deduplica
 ```yaml
 compactor:
   working_directory: /loki/compactor
+  shared_store: gcs
 
 storage_config:
   gcs:

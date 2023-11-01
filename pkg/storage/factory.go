@@ -432,7 +432,12 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 				return client, nil
 			}
 
-			objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
+			objectType := periodCfg.ObjectType
+			if cfg.BoltDBShipperConfig.SharedStoreType != "" {
+				objectType = cfg.BoltDBShipperConfig.SharedStoreType
+			}
+
+			objectClient, err := NewObjectClient(objectType, cfg, cm)
 			if err != nil {
 				return nil, err
 			}
@@ -441,7 +446,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			if shardingStrategy != nil {
 				filterFn = shardingStrategy.FilterTenants
 			}
-			indexClient, err := boltdb.NewIndexClient(periodCfg.IndexTables.PathPrefix, cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
+			indexClient, err := boltdb.NewIndexClient(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
 			if err != nil {
 				return nil, err
 			}
@@ -571,8 +576,10 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer) (index.TableClient, error) {
+func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer prometheus.Registerer) (index.TableClient, error) {
+
 	switch true {
+
 	case util.StringsContain(testingStorageTypes, name):
 		switch name {
 		case config.StorageTypeInMemory:
@@ -580,11 +587,21 @@ func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm C
 		}
 
 	case util.StringsContain(supportedIndexTypes, name):
-		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
+		var sharedStoreKeyPrefix string
+		var objectType string
+		switch name {
+		case config.BoltDBShipperType:
+			objectType = cfg.BoltDBShipperConfig.SharedStoreType
+			sharedStoreKeyPrefix = cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
+		case config.TSDBType:
+			objectType = cfg.TSDBShipperConfig.SharedStoreType
+			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
+		}
+		objectClient, err := NewObjectClient(objectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
-		return indexshipper.NewTableClient(objectClient, periodCfg.IndexTables.PathPrefix), nil
+		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 
 	case util.StringsContain(deprecatedIndexTypes, name):
 		switch name {
