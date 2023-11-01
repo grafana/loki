@@ -26,6 +26,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -135,11 +136,12 @@ func (c *Compactor) stopping(_ error) error {
 }
 
 type Series struct { // TODO this can be replaced with Job struct based on Salva's ring work.
-	TableName, Tenant string
-	Labels            labels.Labels
-	FingerPrint       model.Fingerprint
-	Chunks            []chunk.Chunk
+	tableName, tenant string
+	labels            labels.Labels
+	fingerPrint       model.Fingerprint
+	chunks            []chunk.Chunk
 	from, through     model.Time
+	indexPath         string
 }
 
 // TODO this logic is used in multiple places, better to move to a common place.
@@ -174,48 +176,55 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 			},
 		})
 	}
+
 	return chunkRefs
 }
 
-func buildBloomBlock(dst string, bloomForChks v1.SeriesWithBloom,
-	tenant string, tableName string, fp model.Fingerprint, from, through model.Time) (bloomshipper.Block, error) {
-	// TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-	writer := v1.NewDirectoryBlockWriter(dst)
-	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), writer)
+// TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
+func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipper.Block, error) {
+	localDst := createLocalFileName(series)
+
+	//write bloom to a local dir
+	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
 	if err != nil {
 		level.Info(util_log.Logger).Log("creating builder", err)
 		return bloomshipper.Block{}, err
 	}
 
-	//write bloom to a local dir
 	err = builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChks}))
 	if err != nil {
 		level.Info(util_log.Logger).Log("writing bloom", err)
 		return bloomshipper.Block{}, err
 	}
 
-	// meta + upload to storage
-	//blockFile := v1.NewBlock(v1.NewDirectoryBlockReader(dst))
-	//err = blockFile.LoadHeaders()
-
-	blockFile, err := os.OpenFile(filepath.Join(dst, "bloom"), os.O_RDONLY, 0700)
+	blockFile, err := os.Open(filepath.Join(localDst, "bloom"))
 	if err != nil {
 		level.Info(util_log.Logger).Log("reading bloomBlock", err)
 	}
 
+	// read the checksum
+	blockFile.Seek(-4, 2)
+	checksum := make([]byte, 4)
+	blockFile.Read(checksum)
+
+	// Reset back to beginning
+	blockFile.Seek(0, 0)
+
+	objectStoreDst := createObjStorageFileName(series, string(binary.BigEndian.Uint32(checksum)))
+
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
-				TenantID:       tenant,
-				TableName:      tableName,
-				MinFingerprint: uint64(fp),
-				MaxFingerprint: uint64(fp),
-				StartTimestamp: from.Unix(),
-				EndTimestamp:   through.Unix(),
-				Checksum:       1, // FIXME get checksum.
+				TenantID:       series.tenant,
+				TableName:      series.tableName,
+				MinFingerprint: uint64(series.fingerPrint), //TODO will change once we compact multiple blooms into a block
+				MaxFingerprint: uint64(series.fingerPrint),
+				StartTimestamp: series.from.Unix(),
+				EndTimestamp:   series.through.Unix(),
+				Checksum:       binary.BigEndian.Uint32(checksum),
 			},
-			IndexPath: filepath.Join(dst, "series"),
-			BlockPath: filepath.Join(dst, "bloom"),
+			IndexPath: series.indexPath, // For reviewer, this is the same filepath with the original TSDBindex for this series?
+			BlockPath: objectStoreDst,
 		},
 		Data: blockFile,
 	}
@@ -250,25 +259,28 @@ func listSeries(ctx context.Context, objectClient client.ObjectClient) ([]Series
 				continue
 			}
 
-			result = append(result, Series{TableName: tableName, Tenant: userID})
+			result = append(result, Series{tableName: tableName, tenant: userID, indexPath: index.Key})
 		}
 	}
 	return result, nil
 }
 
-// part1: Create a compact method that assumes no block/meta files exists (eg first compaction)
-// part2: Write logic to check first for existing block/meta files and does above.
-func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client, dst string) (err error) {
-	fp := series.FingerPrint
-	tenant := series.Tenant
-	tableName := series.TableName
-	from := series.from
-	through := series.through
+func createLocalFileName(series Series) string {
+	return fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", series.tableName, series.tenant, series.fingerPrint, series.fingerPrint, series.from, series.through)
+}
+func createObjStorageFileName(series Series, checksum string) string {
+	// TODO fix series_fp repeating when creating multi-series bloom blocks
+	// From design doc, naming should be something like
+	//`bloom/<period>/<tenant>/blooms/<start_fp>-<end_fp>/<start_ts>-<end_ts>-<checksum>`
+	fileName := fmt.Sprintf("blooms/%s-%s/%s-%s-%s", series.fingerPrint, series.fingerPrint, series.from, series.through, checksum)
+	return strings.Join([]string{"bloom", series.tableName, series.tenant, fileName}, "/")
+}
 
+func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client) (err error) {
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
-			Fingerprint: fp,
+			Fingerprint: series.fingerPrint,
 		},
 		Bloom: &v1.Bloom{
 			*filter.NewDefaultScalableBloomFilter(0.01),
@@ -277,16 +289,15 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 
 	// create a tokenizer
 	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
-	bt.PopulateSBF(&bloomForChks, series.Chunks)
+	bt.PopulateSBF(&bloomForChks, series.chunks)
 
 	// Build and upload bloomBlock to storage
-	blocks, err := buildBloomBlock(dst, bloomForChks, tenant, tableName, fp, from, through)
+	blocks, err := buildBloomBlock(bloomForChks, series)
 	if err != nil {
 		level.Info(util_log.Logger).Log("building bloomBlocks", err)
 		return
 	}
 
-	//FIXME zip (archive) blocks before uploading to storage
 	_, err = bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
 	if err != nil {
 		level.Info(util_log.Logger).Log("putting blocks to storage", err)
@@ -309,7 +320,7 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 	return nil
 }
 
-func (c *Compactor) runCompact(ctx context.Context, limits downloads.Limits, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient) error {
+func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient) error {
 
 	series, err := listSeries(ctx, objectClient)
 
@@ -318,7 +329,7 @@ func (c *Compactor) runCompact(ctx context.Context, limits downloads.Limits, blo
 	}
 
 	for _, s := range series {
-		indexShipper.ForEach(ctx, s.TableName, s.Tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+		indexShipper.ForEach(ctx, s.tableName, s.tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 			if isMultiTenantIndex {
 				return nil
 			}
@@ -326,20 +337,19 @@ func (c *Compactor) runCompact(ctx context.Context, limits downloads.Limits, blo
 			_ = idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
 				ctx,
 				nil,              // TODO no shards for now, revisit with ring work
-				0, math.MaxInt64, // get all timestamps
+				0, math.MaxInt64, // Replace with MaxLookBackPeriod
+
 				// Get chunks for a series label and a fp
 				func(ls labels.Labels, fp model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
+
 					// TODO call bloomShipperClient.GetMetas to get existing meta.json
 					var metas []bloomshipper.Meta
 
 					if len(metas) == 0 {
-						// run compaction from scratch
-						tempDst := os.TempDir()
-
 						// Get chunks data from list of chunkRefs
 						chks, err := chunkClient.GetChunks(
 							ctx,
-							makeChunkRefs(chksMetas, s.Tenant, fp),
+							makeChunkRefs(chksMetas, s.tenant, fp),
 						)
 						if err != nil {
 							level.Info(util_log.Logger).Log("getting chunks", err)
@@ -362,13 +372,14 @@ func (c *Compactor) runCompact(ctx context.Context, limits downloads.Limits, blo
 						}
 
 						series := Series{
-							TableName:   s.TableName,
-							Tenant:      s.Tenant,
-							Labels:      ls,
-							FingerPrint: fp,
-							Chunks:      chks,
+							tableName:   s.tableName,
+							tenant:      s.tenant,
+							labels:      ls,
+							fingerPrint: fp,
+							chunks:      chks,
 							from:        minFrom,
 							through:     maxThrough,
+							indexPath:   s.indexPath,
 						}
 						err = CompactNewChunks(ctx, series, bloomShipperClient)
 						if err != nil {
