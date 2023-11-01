@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -239,14 +237,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		// metadata is only used by prometheus scrape configs
 		clt.MetadataConfig = config.MetadataConfig{Send: false}
 
-		// Keeping these blocks for backward compatibility
-		if v := r.overrides.RulerRemoteWriteURL(tenant); v != "" {
-			u, err := url.Parse(v)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
-			}
-			clt.URL = &promConfig.URL{u}
-		}
 		if v := r.overrides.RulerRemoteWriteTimeout(tenant); v > 0 {
 			clt.RemoteTimeout = model.Duration(v)
 		}

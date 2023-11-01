@@ -2782,10 +2782,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
 
-# Deprecated: Use 'ruler_remote_write_config' instead. The URL of the endpoint
-# to send samples to.
-[ruler_remote_write_url: <string> | default = ""]
-
 # Deprecated: Use 'ruler_remote_write_config' instead. Timeout for requests to
 # the remote write endpoint.
 [ruler_remote_write_timeout: <duration>]

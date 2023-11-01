@@ -127,8 +127,6 @@ type Limits struct {
 	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
 	RulerRemoteWriteDisabled bool `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled" doc:"description=Disable recording rules remote-write."`
 
-	// deprecated use RulerRemoteWriteConfig instead.
-	RulerRemoteWriteURL string `yaml:"ruler_remote_write_url" json:"ruler_remote_write_url" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. The URL of the endpoint to send samples to."`
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteTimeout time.Duration `yaml:"ruler_remote_write_timeout" json:"ruler_remote_write_timeout" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Timeout for requests to the remote write endpoint."`
 	// deprecated use RulerRemoteWriteConfig instead
@@ -615,12 +613,6 @@ func (o *Overrides) RulerAlertManagerConfig(userID string) *ruler_config.AlertMa
 // RulerRemoteWriteDisabled returns whether remote-write is disabled for a given user or not.
 func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteURL returns the remote-write URL to use for a given user.
-func (o *Overrides) RulerRemoteWriteURL(userID string) string {
-	return o.getOverridesForUser(userID).RulerRemoteWriteURL
 }
 
 // Deprecated: use RulerRemoteWriteConfig instead

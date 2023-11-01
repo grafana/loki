@@ -47,7 +47,6 @@ var (
 		"chunk_store_config.write_dedupe_cache_config",
 		"limits_config.unordered_writes",
 		"limits_config.ruler_evaluation_delay_duration",
-		"limits_config.ruler_remote_write_url",
 		"limits_config.ruler_remote_write_timeout",
 		"limits_config.ruler_remote_write_headers",
 		"limits_config.ruler_remote_write_relabel_configs",
@@ -86,7 +85,6 @@ var (
 	expectedRuntimeConfigDeprecates = []string{
 		"overrides.foo.unordered_writes",
 		"overrides.foo.ruler_evaluation_delay_duration",
-		"overrides.foo.ruler_remote_write_url",
 		"overrides.foo.ruler_remote_write_timeout",
 		"overrides.foo.ruler_remote_write_headers",
 		"overrides.foo.ruler_remote_write_relabel_configs",
@@ -104,7 +102,6 @@ var (
 		"overrides.foo.allow_deletes",
 		"overrides.bar.unordered_writes",
 		"overrides.bar.ruler_evaluation_delay_duration",
-		"overrides.bar.ruler_remote_write_url",
 		"overrides.bar.ruler_remote_write_timeout",
 		"overrides.bar.ruler_remote_write_headers",
 		"overrides.bar.ruler_remote_write_relabel_configs",
