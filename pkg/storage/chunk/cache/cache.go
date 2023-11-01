@@ -92,7 +92,7 @@ func IsCacheConfigured(cfg Config) bool {
 }
 
 // New creates a new Cache using Config.
-func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) (Cache, error) {
+func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType, metricsNamespace string) (Cache, error) {
 
 	// Have additional check for embeddedcache with distributed mode, because those cache will already be initialized in modules
 	// but still need stats collector wrapper for it.
@@ -120,7 +120,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			cfg.Memcache.Expiration = cfg.DefaultValidity
 		}
 
-		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
+		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger, metricsNamespace)
 		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
 
 		cacheName := cfg.Prefix + "memcache"

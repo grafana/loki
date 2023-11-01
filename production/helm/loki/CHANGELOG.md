@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Add support to run dnsmasq
 
+## 5.36.0
+
+- [CHANGE] Changed version of Loki to 2.9.2
+
 ## 5.35.0
 
 - [FEATURE] Add support for configuring distributor.

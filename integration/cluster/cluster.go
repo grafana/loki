@@ -78,6 +78,7 @@ storage_config:
 compactor:
   working_directory: {{.dataPath}}/retention
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false

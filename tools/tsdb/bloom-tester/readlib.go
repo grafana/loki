@@ -9,9 +9,9 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	"math"
@@ -62,30 +62,32 @@ func executeRead() {
 
 	flag.Parse()
 
-	objectClient, err := storage.NewObjectClient(conf.StorageConfig.TSDBShipperConfig.SharedStoreType, conf.StorageConfig, clientMetrics)
+	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
+	helpers.ExitErr("find period config for bucket", err)
+
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
-
-	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
 
 	openFn := func(p string) (shipperindex.Index, error) {
 		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
+		periodCfg.IndexTables.PathPrefix,
 		conf.StorageConfig.TSDBShipperConfig.Config,
 		objectClient,
 		overrides,
 		nil,
 		openFn,
-		tableRanges[len(tableRanges)-1],
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,
 	)
 	helpers.ExitErr("creating index shipper", err)
 
-	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
+	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
 	level.Info(util_log.Logger).Log("tenants", strings.Join(tenants, ","), "table", tableName)
 	helpers.ExitErr("resolving tenants", err)
 
@@ -198,15 +200,15 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 											objectClient)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
-												if len(queryExperiment.searchString) >= experiment.tokenizer.getMin()+experiment.tokenizer.getSkip() {
+												if len(queryExperiment.searchString) >= experiment.tokenizer.GetMin()+experiment.tokenizer.GetSkip() {
 
 													foundInChunk := false
 													foundInSbf := false
 
-													chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
+													chunkTokenizer := bt.ChunkIDTokenizer(experiment.tokenizer)
 
-													chunkTokenizer.reinit(got[gotIdx].ChunkRef)
-													var tokenizer Tokenizer = chunkTokenizer
+													chunkTokenizer.Reinit(got[gotIdx].ChunkRef)
+													var tokenizer bt.Tokenizer = chunkTokenizer
 													if !experiment.encodeChunkID {
 														tokenizer = experiment.tokenizer
 													}
@@ -309,10 +311,10 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 	return sbf
 }
 
-func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer Tokenizer, searchString string) bool {
-	for i := 0; i <= tokenizer.getSkip(); i++ {
+func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.Tokenizer, searchString string) bool {
+	for i := 0; i <= tokenizer.GetSkip(); i++ {
 		numMatches := 0
-		if (len(searchString) - i) >= tokenizer.getMin() {
+		if (len(searchString) - i) >= tokenizer.GetMin() {
 			tokens := tokenizer.Tokens(searchString[i:])
 
 			for _, token := range tokens {

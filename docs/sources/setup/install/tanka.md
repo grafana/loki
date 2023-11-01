@@ -48,7 +48,6 @@ Revise the YAML contents of `environments/loki/main.jsonnet`, updating these var
 - Update the `username`, `password`, and the relevant `htpasswd` variable values.
 - Update the S3 or GCS variable values, depending on your object storage type. See [storage_config](/docs/loki/latest/configuration/#storage_config) for more configuration details.
 - Remove from the configuration the S3 or GCS object storage variables that are not part of your setup.
-- Update the value of `boltdb_shipper_shared_store` or `tsdb_shipper_shared_store` to the type of object storage you are using. Options are `gcs`, `s3`, `azure`, `cos` or `filesystem`. Update the `object_store` variable under the `schema_config` section to the same value. 
 - Update the Promtail configuration `container_root_path` variable's value to reflect your root path for the Docker daemon. Run `docker info | grep "Root Dir"` to acquire your root path.
 - Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-01`. This recommendation is based on Loki's default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
 
@@ -76,9 +75,6 @@ loki + promtail + gateway {
     bigtable_instance: 'instance',
     bigtable_project: 'project',
     gcs_bucket_name: 'bucket',
-
-    //Set this variable based on the type of object storage you're using.
-    boltdb_shipper_shared_store: 'my-object-storage-backend-type',
 
     //Update the object_store and from fields
     loki+: {
