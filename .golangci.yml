@@ -79,6 +79,7 @@ linters:
     - goimports
     - gosimple
     - staticcheck
+    - gochecksumtype
   disable:
     - unused
     - unparam

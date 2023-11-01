@@ -22,6 +22,8 @@ import (
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
+//
+//sumtype:decl
 type Expr interface {
 	logQLExpr()      // ensure it's not implemented accidentally
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
@@ -2106,7 +2108,7 @@ func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.er
 func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
-	e.Walk(func(e interface{}) {
+	e.Walk(func(e Expr) {
 		switch expr := e.(type) {
 		case *RangeAggregationExpr:
 			if groupingReducesLabels(expr.Grouping) {

@@ -112,7 +112,7 @@ func Sortable(q Params) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)
 		if !ok {
 			return
