@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -16,7 +15,7 @@ import (
 )
 
 const (
-	gRPC = "gRPC"
+	method = "GET"
 )
 
 type Instrument struct {
@@ -30,7 +29,7 @@ func (i Instrument) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		route := DefaultCodec.Path(r)
 		route = middleware.MakeLabelValue(route)
-		inflight := i.InflightRequests.WithLabelValues(gRPC, route)
+		inflight := i.InflightRequests.WithLabelValues(method, route)
 		inflight.Inc()
 		defer inflight.Dec()
 
@@ -42,16 +41,14 @@ func (i Instrument) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	})
 }
 
-func (i Instrument) observe(ctx context.Context, method string, err error, duration time.Duration) {
-	respStatus := "success"
+func (i Instrument) observe(ctx context.Context, route string, err error, duration time.Duration) {
+	respStatus := "200"
 	if err != nil {
 		if errResp, ok := httpgrpc.HTTPResponseFromError(err); ok {
 			respStatus = strconv.Itoa(int(errResp.Code))
-		} else if grpcutil.IsCanceled(err) {
-			respStatus = "cancel"
 		} else {
-			respStatus = "error"
+			respStatus = "500"
 		}
 	}
-	instrument.ObserveWithExemplar(ctx, i.RequestDuration.WithLabelValues(gRPC, method, respStatus, "false"), duration.Seconds())
+	instrument.ObserveWithExemplar(ctx, i.RequestDuration.WithLabelValues(method, route, respStatus, "false"), duration.Seconds())
 }
