@@ -94,7 +94,6 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 
 	backoff := backoff.New(execCtx, processorBackoffConfig)
 	for backoff.Ongoing() {
-		//c, err := schedulerClient.QuerierLoop(execCtx) max call send msg should already be set
 		c, err := schedulerClient.QuerierLoop(execCtx, grpc.MaxCallSendMsgSize(sp.maxMessageSize))
 		if err == nil {
 			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: sp.querierID})
@@ -230,9 +229,6 @@ func (sp *schedulerProcessor) runHTTPRequest(ctx context.Context, logger log.Log
 }
 
 func (sp *schedulerProcessor) reply(ctx context.Context, logger log.Logger, frontendAddress string, result *frontendv2pb.QueryResultRequest) {
-	// Capture the result
-	r := result
-
 	runPoolWithBackoff(
 		ctx,
 		logger,
@@ -240,11 +236,11 @@ func (sp *schedulerProcessor) reply(ctx context.Context, logger log.Logger, fron
 		frontendAddress,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
-			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, r)
+			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, result)
 			if status, ok := status.FromError(err); ok {
 				if status.Code() == codes.ResourceExhausted {
-					level.Error(logger).Log("msg", "response larger than max message size", "maxMessageSize", sp.maxMessageSize, "prev", r.Response)
-					r.Response = &frontendv2pb.QueryResultRequest_HttpResponse{
+					level.Error(logger).Log("msg", "response larger than max message size", "maxMessageSize", sp.maxMessageSize)
+					result.Response = &frontendv2pb.QueryResultRequest_HttpResponse{
 						HttpResponse: &httpgrpc.HTTPResponse{
 							Code: http.StatusRequestEntityTooLarge,
 							Body: []byte(err.Error()),
