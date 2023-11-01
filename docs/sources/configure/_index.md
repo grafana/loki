@@ -2797,14 +2797,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # to keep throughput up while processing occasional slow remote requests.
 [ruler_remote_write_queue_capacity: <int>]
 
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum number of samples
-# per send.
-[ruler_remote_write_queue_max_samples_per_send: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum time a sample
-# will wait in buffer.
-[ruler_remote_write_queue_batch_send_deadline: <duration>]
-
 # Deprecated: Use 'ruler_remote_write_config' instead. Configures AWS's
 # Signature Verification 4 signing process to sign every remote write request.
 ruler_remote_write_sigv4_config:

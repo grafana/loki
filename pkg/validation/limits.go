@@ -134,10 +134,6 @@ type Limits struct {
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteQueueCapacity int `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Number of samples to buffer per shard before we block reading of more samples from the WAL. It is recommended to have enough capacity in each shard to buffer several requests to keep throughput up while processing occasional slow remote requests."`
 	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMaxSamplesPerSend int `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum number of samples per send."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueBatchSendDeadline time.Duration `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum time a sample will wait in buffer."`
-	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteSigV4Config *sigv4.SigV4Config `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Configures AWS's Signature Verification 4 signing process to sign every remote write request."`
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
@@ -619,18 +615,6 @@ func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*util.Relabe
 // RulerRemoteWriteQueueCapacity returns the queue capacity to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMaxSamplesPerSend returns the max samples to send in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxSamplesPerSend
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueBatchSendDeadline returns the maximum time a sample will be buffered before being discarded for a given user.
-func (o *Overrides) RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueBatchSendDeadline
 }
 
 // Deprecated: use RulerRemoteWriteConfig instead

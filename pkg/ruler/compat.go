@@ -41,8 +41,6 @@ type RulesLimits interface {
 	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
 	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
 	RulerRemoteWriteQueueCapacity(userID string) int
-	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
-	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
 	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
 
 	RulerRemoteEvaluationTimeout(userID string) time.Duration

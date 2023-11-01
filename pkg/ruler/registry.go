@@ -12,7 +12,6 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -256,14 +255,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 
 		if v := r.overrides.RulerRemoteWriteQueueCapacity(tenant); v > 0 {
 			clt.QueueConfig.Capacity = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant); v > 0 {
-			clt.QueueConfig.MaxSamplesPerSend = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant); v > 0 {
-			clt.QueueConfig.BatchSendDeadline = model.Duration(v)
 		}
 
 		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
