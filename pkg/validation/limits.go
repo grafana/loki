@@ -134,10 +134,6 @@ type Limits struct {
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteQueueCapacity int `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Number of samples to buffer per shard before we block reading of more samples from the WAL. It is recommended to have enough capacity in each shard to buffer several requests to keep throughput up while processing occasional slow remote requests."`
 	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMinShards int `yaml:"ruler_remote_write_queue_min_shards" json:"ruler_remote_write_queue_min_shards" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Minimum number of shards, i.e. amount of concurrency."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueMaxShards int `yaml:"ruler_remote_write_queue_max_shards" json:"ruler_remote_write_queue_max_shards" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum number of shards, i.e. amount of concurrency."`
-	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteQueueMaxSamplesPerSend int `yaml:"ruler_remote_write_queue_max_samples_per_send" json:"ruler_remote_write_queue_max_samples_per_send" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum number of samples per send."`
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteQueueBatchSendDeadline time.Duration `yaml:"ruler_remote_write_queue_batch_send_deadline" json:"ruler_remote_write_queue_batch_send_deadline" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Maximum time a sample will wait in buffer."`
@@ -629,18 +625,6 @@ func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*util.Relabe
 // RulerRemoteWriteQueueCapacity returns the queue capacity to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
 	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMinShards returns the minimum shards to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMinShards(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMinShards
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueMaxShards returns the maximum shards to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueMaxShards(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueMaxShards
 }
 
 // Deprecated: use RulerRemoteWriteConfig instead

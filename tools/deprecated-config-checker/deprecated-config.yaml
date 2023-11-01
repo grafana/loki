@@ -52,8 +52,6 @@ limits_config:
   ruler_remote_write_headers: "Use ruler_remote_write_config instead."
   ruler_remote_write_relabel_configs: "Use ruler_remote_write_config instead."
   ruler_remote_write_queue_capacity: "Use ruler_remote_write_config instead."
-  ruler_remote_write_queue_min_shards: "Use ruler_remote_write_config instead."
-  ruler_remote_write_queue_max_shards: "Use ruler_remote_write_config instead."
   ruler_remote_write_queue_max_samples_per_send: "Use ruler_remote_write_config instead."
   ruler_remote_write_queue_batch_send_deadline: "Use ruler_remote_write_config instead."
   ruler_remote_write_queue_min_backoff: "Use ruler_remote_write_config instead."

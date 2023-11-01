@@ -41,8 +41,6 @@ type RulesLimits interface {
 	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
 	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
 	RulerRemoteWriteQueueCapacity(userID string) int
-	RulerRemoteWriteQueueMinShards(userID string) int
-	RulerRemoteWriteQueueMaxShards(userID string) int
 	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
 	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
 	RulerRemoteWriteQueueMinBackoff(userID string) time.Duration

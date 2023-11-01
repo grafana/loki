@@ -121,8 +121,6 @@ limits_config:
   ruler_remote_write_headers: ["foo", "bar"] # DEPRECATED
   ruler_remote_write_relabel_configs: "foo" # DEPRECATED
   ruler_remote_write_queue_capacity: 10 # DEPRECATED
-  ruler_remote_write_queue_min_shards: 10 # DEPRECATED
-  ruler_remote_write_queue_max_shards: 100 # DEPRECATED
   ruler_remote_write_queue_max_samples_per_send: 50 # DEPRECATED
   ruler_remote_write_queue_batch_send_deadline: 10m # DEPRECATED
   ruler_remote_write_queue_min_backoff: 1m # DEPRECATED

@@ -2797,14 +2797,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # to keep throughput up while processing occasional slow remote requests.
 [ruler_remote_write_queue_capacity: <int>]
 
-# Deprecated: Use 'ruler_remote_write_config' instead. Minimum number of shards,
-# i.e. amount of concurrency.
-[ruler_remote_write_queue_min_shards: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Maximum number of shards,
-# i.e. amount of concurrency.
-[ruler_remote_write_queue_max_shards: <int>]
-
 # Deprecated: Use 'ruler_remote_write_config' instead. Maximum number of samples
 # per send.
 [ruler_remote_write_queue_max_samples_per_send: <int>]

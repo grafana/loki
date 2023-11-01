@@ -258,14 +258,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 			clt.QueueConfig.Capacity = v
 		}
 
-		if v := r.overrides.RulerRemoteWriteQueueMinShards(tenant); v > 0 {
-			clt.QueueConfig.MinShards = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxShards(tenant); v > 0 {
-			clt.QueueConfig.MaxShards = v
-		}
-
 		if v := r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant); v > 0 {
 			clt.QueueConfig.MaxSamplesPerSend = v
 		}
