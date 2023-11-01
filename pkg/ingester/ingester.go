@@ -241,7 +241,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if cfg.WAL.Enabled {
 		walStats.Set("enabled")
 	}
-	metrics := newIngesterMetrics(prometheus.DefaultRegisterer) // This adds the Loki namespace to metrics already
+	metrics := newIngesterMetrics(registerer)
 
 	i := &Ingester{
 		cfg:                   cfg,
@@ -257,7 +257,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(util_log.Logger, prometheus.DefaultRegisterer, writeFailuresCfg, configs, "ingester"),
+		writeLogManager:       writefailures.NewManager(util_log.Logger, registerer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -273,7 +273,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		}
 	}
 
-	wal, err := newWAL(cfg.WAL, prometheus.DefaultRegisterer, metrics, newIngesterSeriesIter(i))
+	wal, err := newWAL(cfg.WAL, registerer, metrics, newIngesterSeriesIter(i))
 	if err != nil {
 		return nil, err
 	}

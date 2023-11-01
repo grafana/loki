@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,7 +69,7 @@ func TestIngesterWAL(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), prom.NewPedanticRegistry(), writefailures.Cfg{})
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -111,7 +112,7 @@ func TestIngesterWAL(t *testing.T) {
 	expectCheckpoint(t, walDir, false, time.Second)
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), prom.NewPedanticRegistry(), writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -125,7 +126,7 @@ func TestIngesterWAL(t *testing.T) {
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), prom.NewPedanticRegistry(), writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
