@@ -21,8 +21,10 @@ To begin the migration, add a new [period_config]({{< relref "../../../configure
 You can read more about schema config [here]({{< relref "../../../storage#schema-config" >}}).
 
 {{% admonition type="note" %}}
-It's important that you rollout the new `period_config` change to all loki components for it to take effect.
+You must roll out the new `period_config` change to all Loki components in order for it to take effect.
 {{% /admonition %}}
+
+This example adds a new `period_config` which configures Loki to start using the TSDB index for the data ingested starting from `2023-10-20`.
 
 ```
 schema_config:
@@ -43,20 +45,18 @@ schema_config:
         period: 24h
 ```
 
-This example adds a new `period_config` which configures Loki to start using tsdb index for the data ingested from `2023-10-20`.
+①  You must set the new period `from` to a date in the future.
 
-①  Make sure you are setting the new period `from` to a date in the future.
+②  Update the new period to use TSDB as the index type by setting `store: tsdb`.
 
-②  Update the new period to use **tsdb** as the index type.
+③  This sample configuration uses filesystem as the storage in both the periods. If you want to use a different storage for the TSDB index and chunks, you can specify a different `object_store` in the new period.
 
-③  This setup uses filesystem as the storage in both the periods. But if you desire to store the `tsdb` index along with it's chunks in a differnt object store, you can update the `object_store` in the new period.
-
-④  Optionally update the schema to v12 which is the recommended version at the time of writing. Please refer to the [configure page]({{< relref "../../../configure#period_config" >}}) for the current recommend version.
+④  Update the schema to v12 which is the recommended version at the time of writing. Please refer to the [configure page]({{< relref "../../../configure#period_config" >}}) for the current recommend version.
 
 ### Configure TSDB shipper
 
-It's also important that you configure the `tsdb_shipper` block in [storage_config]({{< relref "../../../configure#storage_config" >}}). Mainly the following options:
-- `active_index_directory`: directory where ingesters would write index files which would then be uploaded by shipper to configured storage.
+It's also important that you configure the `tsdb_shipper` block in [storage_config]({{< relref "../../../configure#storage_config" >}}). Specifically the following options:
+- `active_index_directory`: directory where ingesters would write index files which will then be uploaded by shipper to configured storage.
 - `cache_location`: cache location for downloading index files from the storage for use in query path.
 
 ```
@@ -69,6 +69,6 @@ storage_config:
 ### Run compactor
 
 We strongly recommended running the [compactor]({{< relref "../../../operations/storage/retention#compactor" >}}) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
-Not running index compaction would result in sub-optimal query performance.
+Not running index compaction will result in sub-optimal query performance.
 
 Please refer to the [compactor section]({{< relref "../../../operations/storage/retention#compactor" >}}) for more information and configuration examples.
