@@ -668,6 +668,25 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	}
 }
 
+func (c Codec) Path(r queryrangebase.Request) string {
+	switch request := r.(type) {
+	case *LokiRequest:
+		return "loki/api/v1/query_range"
+	case *LokiSeriesRequest:
+		return "loki/api/v1/series"
+	case *LabelRequest:
+		return request.Path() // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
+	case *LokiInstantRequest:
+		return "/loki/api/v1/query"
+	case *logproto.IndexStatsRequest:
+		return "/loki/api/v1/index/stats" // nolint:goconst
+	case *logproto.VolumeRequest:
+		return "/loki/api/v1/index/volume_range" // nolint:goconst
+	}
+
+	return "other"
+}
+
 func (p RequestProtobufCodec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	req, err := p.Codec.EncodeRequest(ctx, r)
 	if err != nil {

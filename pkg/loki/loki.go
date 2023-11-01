@@ -325,7 +325,8 @@ type Loki struct {
 
 	HTTPAuthMiddleware middleware.Interface
 
-	Codec worker.GRPCCodec
+	Codec   worker.GRPCCodec
+	Metrics *server.Metrics
 }
 
 // New makes a new Loki.

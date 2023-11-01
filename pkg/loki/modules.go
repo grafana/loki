@@ -140,7 +140,9 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	// Loki handles signals on its own.
 	DisableSignalHandling(&t.Cfg.Server)
-	serv, err := server.New(t.Cfg.Server)
+
+	t.Metrics = server.NewServerMetrics(t.Cfg.Server)
+	serv, err := server.NewWithMetrics(t.Cfg.Server, t.Metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -506,11 +508,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	internalHandler := queryrangebase.MergeMiddlewares(
 		serverutil.RecoveryMiddleware,
-		queryrange.Instrument{
-			QueryHandlerMetrics: queryrange.NewQueryHandlerMetrics(
-				prometheus.DefaultRegisterer,
-			),
-		},
+		queryrange.Instrument{Metrics: t.Metrics},
 	).Wrap(handler)
 
 	svc, err := querier.InitWorkerService(

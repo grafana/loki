@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
 
 type Experiment struct {
@@ -35,7 +36,7 @@ func NewQueryExperiment(name string, searchString string) QueryExperiment {
 const ExperimentLabel = "experiment"
 const QueryExperimentLabel = "query_experiment"
 const LookupResultType = "lookup_result_type"
-const FalsePositive = "false_postive"
+const FalsePositive = "false_positive"
 const FalseNegative = "false_negative"
 const TruePositive = "true_positive"
 const TrueNegative = "true_negative"
