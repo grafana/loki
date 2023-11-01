@@ -65,7 +65,8 @@ func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registere
 
 func newRulerPoolClient(clientCfg grpcclient.Config, reg prometheus.Registerer) func(addr string) (client.PoolClient, error) {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "ruler_client_request_duration_seconds",
+		// This is only used in test code so leave the hardcoded cortex
+		Name:    "cortex_ruler_client_request_duration_seconds",
 		Help:    "Time spent executing requests to the ruler.",
 		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
 	}, []string{"operation", "status_code"})
