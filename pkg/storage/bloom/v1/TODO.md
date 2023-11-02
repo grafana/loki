@@ -1,10 +1,16 @@
-* Should be able to read bloom as a []byte without copying it during decoding
-  * It's immutable + partition offsets are calculable, etc
 * Less copying! I've taken some shortcuts we'll need to refactor to avoid copying []byte around in a few places
 * more sophisticated querying methods
 * queue access to blooms
 * multiplex reads across blooms
 * Queueing system for bloom access
+* bloom hierarchies (bloom per block, etc). Test a tree of blooms down the to individual series/chunk
+* memoize hashing & bucket lookups during queries
+* versioning
+  * so we can change implementations
+  * encode bloom parameters in block: sbf params, hashing strategy, tokenizer
+* caching
+* ability to download indices without chunks
+
 
 # merge querier for different blocks
 * how to merge two block queriers with the same fp
