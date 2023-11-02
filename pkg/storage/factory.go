@@ -420,7 +420,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 					return indexGatewayClient, nil
 				}
 
-				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger, metricsNamespace)
+				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
 				if err != nil {
 					return nil, err
 				}

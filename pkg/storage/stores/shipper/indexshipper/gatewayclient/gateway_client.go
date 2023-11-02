@@ -109,7 +109,7 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
-func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
