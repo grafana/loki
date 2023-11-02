@@ -298,7 +298,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		}
 
 		defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
-		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval(), true)
+		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
@@ -508,7 +508,7 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 // If categorizeLabels is true, the stream labels contains just the stream labels and entries inside each stream have their
 // structuredMetadata and parsed fields populated with structured metadata labels plus the parsed labels respectively.
 // Otherwise, the stream labels are the whole series labels including the stream labels, structured metadata labels and parsed labels.
-func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration, categorizeLabels bool) (logqlmodel.Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative

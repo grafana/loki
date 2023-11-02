@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/dskit/services"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
