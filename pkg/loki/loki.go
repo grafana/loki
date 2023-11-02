@@ -250,7 +250,7 @@ func (c *Config) Validate() error {
 	if err := c.CompactorConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.ChunkStoreConfig.Validate(util_log.Logger); err != nil {
+	if err := c.ChunkStoreConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
 	if err := c.QueryRange.Validate(); err != nil {
