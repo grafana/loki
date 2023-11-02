@@ -136,17 +136,11 @@ func (v *LokiStackValidator) validateLimitsSpec(s *lokiv1.LimitsSpec) field.Erro
 	}
 
 	for id, tenant := range s.Tenants {
-		if tenant.IngestionLimits == nil {
-			continue
+		var gl *lokiv1.IngestionLimitSpec
+		if s.Global != nil {
+			gl = s.Global.IngestionLimits
 		}
-
-		fp := field.NewPath("spec", "limits", "tenants", id, "ingestion", "desiredRate")
-
-		if s.Global == nil {
-			errors = append(errors, validateIngestionLimits(tenant.IngestionLimits, fp)...)
-		} else {
-			errors = append(errors, validateTenantIngestionLimits(s.Global.IngestionLimits, tenant.IngestionLimits, id, fp)...)
-		}
+		errors = append(errors, validateTenantIngestionLimits(id, gl, tenant.IngestionLimits)...)
 	}
 
 	return errors
@@ -171,31 +165,33 @@ func validateIngestionLimits(spec *lokiv1.IngestionLimitSpec, invalidFieldPath *
 // - Tenant fields `desiredRate` and `perStreamRateLimit` not both set at a time.
 // - Global field `desiredRate` and tenant field `perStreamRateLimit` not both set at a time.
 // - Tenant field `desiredRate` and global field `perStreamRateLimit` not both set at a time.
-func validateTenantIngestionLimits(global, tenants *lokiv1.IngestionLimitSpec, id string, fp *field.Path) (errs field.ErrorList) {
-	if tenants == nil {
+func validateTenantIngestionLimits(id string, gs, ts *lokiv1.IngestionLimitSpec) (errs field.ErrorList) {
+	if ts == nil {
 		return nil
 	}
 
-	errs = append(errs, validateIngestionLimits(tenants, fp)...)
+	fp := field.NewPath("spec", "limits", "tenants", id, "ingestion", "desiredRate")
 
-	if global == nil {
+	errs = append(errs, validateIngestionLimits(ts, fp)...)
+
+	if gs == nil {
 		return errs
 	}
 
 	// Check if both global desired rate and tenant per stream rate limit set
-	if global.DesiredRate > 0 && tenants.PerStreamRateLimit > 0 {
+	if gs.DesiredRate > 0 && ts.PerStreamRateLimit > 0 {
 		errs = append(errs, field.Invalid(
 			field.NewPath("spec", "limits", "tenants", id, "ingestion", "perStreamRateLimit"),
-			tenants.PerStreamRateLimit,
+			ts.PerStreamRateLimit,
 			lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
 		))
 	}
 
 	// Check if both tenant desired rate and global per stream rate limit set
-	if tenants.DesiredRate > 0 && global.PerStreamRateLimit > 0 {
+	if ts.DesiredRate > 0 && gs.PerStreamRateLimit > 0 {
 		errs = append(errs, field.Invalid(
 			field.NewPath("spec", "limits", "global", "ingestion", "perStreamRateLimit"),
-			global.PerStreamRateLimit,
+			gs.PerStreamRateLimit,
 			lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
 		))
 	}
