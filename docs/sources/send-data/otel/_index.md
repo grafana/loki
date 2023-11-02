@@ -103,13 +103,14 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 
 - Dots (.) are converted to underscores (_).
 
-  Loki does not support `.` or any other special characters other than `_` in label names. The unsupported characters are replace with an `_`.
+  Loki does not support `.` or any other special characters other than `_` in label names. The unsupported characters are replaced with an `_` while converting Attributes to Index Labels or Structured Metadata.
+  Also, please note that while writing the queries, you must use the normalized format, i.e. use `_` instead of special characters while querying data using OTEL Attributes.
 
   For example, `service.name` in OTLP would become `service_name` in Loki.
 
 - Flattening of nested Attributes
 
-  While converting Attributes in OTLP to Index labels or Structured Metadata, any nested attribute values are flattened out using `_` as separator.
+  While converting Attributes in OTLP to Index labels or Structured Metadata, any nested attribute values are flattened out using `_` as a separator.
   It is done in a similar way as to how it is done in the [LogQL json parser](/docs/loki/latest/query/log_queries/#json).
 
 - Stringification of non-string Attribute values
