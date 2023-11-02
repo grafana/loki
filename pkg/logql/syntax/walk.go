@@ -1,5 +1,7 @@
 package syntax
 
+import "fmt"
+
 type WalkFn = func(e Expr)
 
 func walkAll(f WalkFn, xs ...Walkable) {
@@ -12,10 +14,9 @@ type Walkable interface {
 	Walk(f WalkFn)
 }
 
-type Visitor interface {
-	SampleExprVisitor
-	LogSelectorExprVisitor
-	StageExprVisitor
+type RootVisitor interface {
+	VisitSample(SampleExpr)
+	VisitLogSelector(LogSelectorExpr)
 }
 
 type SampleExprVisitor interface {
@@ -48,40 +49,20 @@ type StageExprVisitor interface {
 	VisitLogfmtParser(*LogfmtParserExpr)
 }
 
-func Dispatch(expr Expr, v Visitor) {
-	switch e := expr.(type) {
+func Dispatch(root Expr, v RootVisitor) error {
+	switch e := root.(type) {
 	case SampleExpr:
-		dispatchSampleExpr(e, v)
+		v.VisitSample(e)
 	case LogSelectorExpr:
-		dispatchLogSelectorExpr(e, v)
-	case StageExpr:
-		dispatchStageExpr(e, v)
-		/*
-				case *LogRange
-			case *DecolorizeExpr:
-				v.VisitDecolorize(e)
-			case *DropLabelsExpr:
-				v.VisitDropLabels(e)
-			case *JSONExpressionParser:
-				v.VisitJSONParser(e)
-			case *KeepLabelsExpr:
-				v.VisitKeepLabels(e)
-			case *LabelFilterExpr:
-				v.VisitLabelFilter(e)
-			case *LabelFmtExpr:
-				v.VisitLabelFmt(e)
-			case *LabelParserExpr:
-				v.VisitLabelParser(e)
-			case *LabelReplaceExpr:
-				v.VisitLabelReplace(e)
-			case *LineFilterExpr:
-				v.VisitLineFilter()
-			//LineFmtExpr, LiteralExpr, StageExpr
-		*/
+		v.VisitLogSelector(e)
+	default:
+		return fmt.Errorf("unpexpected root expression type: got (%T)", e)
 	}
+
+	return nil
 }
 
-func dispatchSampleExpr(expr SampleExpr, v SampleExprVisitor) {
+func DispatchSampleExpr(expr SampleExpr, v SampleExprVisitor) {
 	switch e := expr.(type) {
 	case *BinOpExpr:
 		v.VisitBinOp(e)
@@ -98,7 +79,7 @@ func dispatchSampleExpr(expr SampleExpr, v SampleExprVisitor) {
 	}
 }
 
-func dispatchLogSelectorExpr(expr LogSelectorExpr, v LogSelectorExprVisitor) {
+func DispatchLogSelectorExpr(expr LogSelectorExpr, v LogSelectorExprVisitor) {
 	switch e := expr.(type) {
 	case *PipelineExpr:
 		v.VisitPipeline(e)
@@ -111,7 +92,7 @@ func dispatchLogSelectorExpr(expr LogSelectorExpr, v LogSelectorExprVisitor) {
 	}
 }
 
-func dispatchStageExpr(expr StageExpr, v StageExprVisitor) {
+func DispatchStageExpr(expr StageExpr, v StageExprVisitor) {
 	switch e := expr.(type) {
 	case *DecolorizeExpr:
 		v.VisitDecolorize(e)
