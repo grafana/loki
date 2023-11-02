@@ -36,7 +36,7 @@ func (f *PartFile) Exists() (bool, error) {
 	} else if errors.Is(err, os.ErrNotExist) {
 		// File does not exist.
 		return false, nil
-	} else {
+	} else { // nolint:revive
 		// Unclear if file exists or not, we cannot stat it.
 		return false, fmt.Errorf("failed to check if part file exists: %s: %s", f.finalName, err)
 	}

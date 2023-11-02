@@ -324,6 +324,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// nolint:goconst
 func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h := make(http.Header)
 

@@ -439,6 +439,6 @@ func TestAttributesToLabels(t *testing.T) {
 
 type fakeRetention struct{}
 
-func (f fakeRetention) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {
+func (f fakeRetention) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
 	return time.Hour
 }

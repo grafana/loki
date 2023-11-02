@@ -178,6 +178,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 				context.Background(),
 				len(requestChains), len(requestChains),
 				func(_ context.Context, idx int) error {
+					// nolint:revive
 					for range requestChains[idx][0].response {
 					}
 					return nil
