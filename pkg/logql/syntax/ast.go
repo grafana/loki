@@ -53,11 +53,15 @@ type implicit struct{}
 func (implicit) logQLExpr() {}
 
 // LogSelectorExpr is a LogQL expression filtering and returning logs.
+//
+//sumtype:decl
 type LogSelectorExpr interface {
 	Matchers() []*labels.Matcher
-	LogPipelineExpr
+	Pipeline() (Pipeline, error)
 	HasFilter() bool
 	Expr
+
+	isLogSelectorExpr()
 }
 
 // Type alias for backward compatibility
@@ -66,19 +70,17 @@ type (
 	SampleExtractor = log.SampleExtractor
 )
 
-// LogPipelineExpr is an expression defining a log pipeline.
-type LogPipelineExpr interface {
-	Pipeline() (Pipeline, error)
-	Expr
-}
-
 // StageExpr is an expression defining a single step into a log pipeline
+//
+//sumtype:decl
 type StageExpr interface {
 	Stage() (log.Stage, error)
 	Expr
+
+	isStageExpr()
 }
 
-// MultiStageExpr is multiple stages which implement a PipelineExpr.
+// MultiStageExpr is multiple stages which implements a LogSelectorExpr.
 type MultiStageExpr []StageExpr
 
 func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
@@ -196,6 +198,8 @@ func newMatcherExpr(matchers []*labels.Matcher) *MatchersExpr {
 	return &MatchersExpr{Mts: matchers}
 }
 
+func (e *MatchersExpr) isLogSelectorExpr() {}
+
 func (e *MatchersExpr) Matchers() []*labels.Matcher {
 	return e.Mts
 }
@@ -241,6 +245,8 @@ func newPipelineExpr(left *MatchersExpr, pipeline MultiStageExpr) LogSelectorExp
 		MultiStages: pipeline,
 	}
 }
+
+func (e *PipelineExpr) isLogSelectorExpr() {}
 
 func (e *PipelineExpr) Shardable() bool {
 	for _, p := range e.MultiStages {
@@ -332,6 +338,8 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 		Op:    right.Op,
 	}
 }
+
+func (*LineFilterExpr) isStageExpr() {}
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
 	f(e)
@@ -471,6 +479,8 @@ func newLogfmtParserExpr(flags []string) *LogfmtParserExpr {
 	return &e
 }
 
+func (*LogfmtParserExpr) isStageExpr() {}
+
 func (e *LogfmtParserExpr) Shardable() bool { return true }
 
 func (e *LogfmtParserExpr) Walk(f WalkFn) { f(e) }
@@ -524,6 +534,8 @@ func newLabelParserExpr(op, param string) *LabelParserExpr {
 	}
 }
 
+func (*LabelParserExpr) isStageExpr() {}
+
 func (e *LabelParserExpr) Shardable() bool { return true }
 
 func (e *LabelParserExpr) Walk(f WalkFn) { f(e) }
@@ -569,6 +581,8 @@ func newLabelFilterExpr(filterer log.LabelFilterer) *LabelFilterExpr {
 	}
 }
 
+func (*LabelFilterExpr) isStageExpr() {}
+
 func (e *LabelFilterExpr) Shardable() bool { return true }
 
 func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
@@ -606,6 +620,8 @@ func newDecolorizeExpr() *DecolorizeExpr {
 	return &DecolorizeExpr{}
 }
 
+func (*DecolorizeExpr) isStageExpr() {}
+
 func (e *DecolorizeExpr) Shardable() bool { return true }
 
 func (e *DecolorizeExpr) Stage() (log.Stage, error) {
@@ -624,6 +640,8 @@ type DropLabelsExpr struct {
 func newDropLabelsExpr(dropLabels []log.DropLabel) *DropLabelsExpr {
 	return &DropLabelsExpr{dropLabels: dropLabels}
 }
+
+func (*DropLabelsExpr) isStageExpr() {}
 
 func (e *DropLabelsExpr) Shardable() bool { return true }
 
@@ -663,6 +681,8 @@ func newKeepLabelsExpr(keepLabels []log.KeepLabel) *KeepLabelsExpr {
 	return &KeepLabelsExpr{keepLabels: keepLabels}
 }
 
+func (*KeepLabelsExpr) isStageExpr() {}
+
 func (e *KeepLabelsExpr) Shardable() bool { return true }
 
 func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
@@ -694,6 +714,8 @@ func (e *KeepLabelsExpr) String() string {
 
 func (e *KeepLabelsExpr) Walk(f WalkFn) { f(e) }
 
+func (*LineFmtExpr) isStageExpr() {}
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -716,6 +738,8 @@ func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 		Formats: fmts,
 	}
 }
+
+func (*LabelFmtExpr) isStageExpr() {}
 
 func (e *LabelFmtExpr) Shardable() bool {
 	// While LabelFmt is shardable in certain cases, it is not always,
@@ -760,6 +784,8 @@ func newJSONExpressionParser(expressions []log.LabelExtractionExpr) *JSONExpress
 		Expressions: expressions,
 	}
 }
+
+func (*JSONExpressionParser) isStageExpr() {}
 
 func (j *JSONExpressionParser) Shardable() bool { return true }
 
@@ -812,6 +838,8 @@ func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr, flags []st
 
 	return &e
 }
+
+func (*LogfmtExpressionParser) isStageExpr() {}
 
 func (l *LogfmtExpressionParser) Shardable() bool { return true }
 
@@ -1101,12 +1129,15 @@ func IsLogicalBinOp(op string) bool {
 }
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
+//
+//sumtype:decl
 type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() (LogSelectorExpr, error)
 	Extractor() (SampleExtractor, error)
 	MatcherGroups() ([]MatcherRange, error)
 	Expr
+	isSampleExpr()
 }
 
 // RangeAggregationExpr not all range vector aggregation expressions support grouping by/without label(s),
@@ -1150,6 +1181,7 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, str
 	}
 	return e
 }
+func (e *RangeAggregationExpr) isSampleExpr() {}
 
 func (e *RangeAggregationExpr) Selector() (LogSelectorExpr, error) {
 	if e.err != nil {
@@ -1318,6 +1350,8 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		Params:    p,
 	}
 }
+
+func (e *VectorAggregationExpr) isSampleExpr() {}
 
 func (e *VectorAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 	if e.err != nil {
@@ -1880,6 +1914,8 @@ func (e *LiteralExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
+func (e *LiteralExpr) isSampleExpr()                           {}
+func (e *LiteralExpr) isLogSelectorExpr()                      {}
 func (e *LiteralExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *LiteralExpr) HasFilter() bool                         { return false }
 func (e *LiteralExpr) Shardable() bool                         { return true }
@@ -1944,6 +1980,8 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 		Regex:       regex,
 	}
 }
+
+func (e *LabelReplaceExpr) isSampleExpr() {}
 
 func (e *LabelReplaceExpr) Selector() (LogSelectorExpr, error) {
 	if e.err != nil {
@@ -2077,6 +2115,9 @@ func NewVectorExpr(scalar string) *VectorExpr {
 		err: err,
 	}
 }
+
+func (e *VectorExpr) isSampleExpr()      {}
+func (e *VectorExpr) isLogSelectorExpr() {}
 
 func (e *VectorExpr) Err() error {
 	return e.err
