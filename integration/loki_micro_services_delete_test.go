@@ -26,13 +26,11 @@ type pushRequest struct {
 }
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	storage.ResetBoltDBIndexClientsWithShipper()
 	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientsWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
@@ -40,11 +38,12 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-only",
+			"-compactor.delete-max-interval=0",
 			"-limits.per-user-override-period=1s",
 		)
 		tDistributor = clu.AddComponent(
@@ -235,7 +234,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// ingest some log lines
 		for _, pr := range pushRequests {
 			for _, entry := range pr.entries {
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata(
+				require.NoError(t, cliDistributor.PushLogLine(
 					entry.Line,
 					entry.Timestamp,
 					logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata).Map(),
@@ -409,7 +408,7 @@ func getMetricValue(t *testing.T, metricName, metrics string) float64 {
 }
 
 func pushRequestToClientStreamValues(t *testing.T, p pushRequest) []client.StreamValues {
-	logsByStream := map[string][][]string{}
+	logsByStream := map[string][]client.Entry{}
 	for _, entry := range p.entries {
 		lb := labels.NewBuilder(labels.FromMap(p.stream))
 		for _, l := range entry.StructuredMetadata {

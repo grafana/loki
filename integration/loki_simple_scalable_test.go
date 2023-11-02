@@ -51,11 +51,11 @@ func TestSimpleScalable_IngestQuery(t *testing.T) {
 
 	t.Run("ingest logs", func(t *testing.T) {
 		// ingest some log lines
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("lineA", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("lineB", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
+		require.NoError(t, cliWrite.PushLogLine("lineA", now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliWrite.PushLogLine("lineB", now.Add(-45*time.Minute), nil, map[string]string{"job": "fake"}))
 
-		require.NoError(t, cliWrite.PushLogLine("lineC", map[string]string{"job": "fake"}))
-		require.NoError(t, cliWrite.PushLogLine("lineD", map[string]string{"job": "fake"}))
+		require.NoError(t, cliWrite.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
+		require.NoError(t, cliWrite.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
 	})
 
 	t.Run("query", func(t *testing.T) {

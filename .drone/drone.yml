@@ -149,14 +149,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: check-generated-files
 - commands:
   - cd ..
@@ -166,7 +166,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: clone-target-branch
   when:
     event:
@@ -177,14 +177,14 @@ steps:
   - clone-target-branch
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: test
 - commands:
   - cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test
   depends_on:
   - clone-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: test-target-branch
   when:
     event:
@@ -197,7 +197,7 @@ steps:
   - test
   - test-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: compare-coverage
   when:
     event:
@@ -215,7 +215,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: report-coverage
   when:
     event:
@@ -225,7 +225,7 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -233,7 +233,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -244,21 +244,21 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false check-doc
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: check-doc
 - commands:
   - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: check-format
   when:
     event:
@@ -268,14 +268,14 @@ steps:
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: check-example-config-doc
 - commands:
   - mkdir -p /hugo/content/docs/loki/latest
@@ -308,7 +308,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: loki-mixin-check
   when:
     event:
@@ -333,7 +333,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1739,7 +1739,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1747,7 +1747,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1773,7 +1773,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: publish
   when:
     event:
@@ -1808,7 +1808,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.31.1
+  image: grafana/loki-build-image:0.30.1
   name: build and push
   privileged: true
   volumes:
@@ -2073,6 +2073,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 03d0f5d57ca5c8270c5f95801c8c131bbdffd9edb05e807f11a25a141237e012
+hmac: 7238d0440ed5f92d69a33eda8e2accdabaec9913e28f87edab3dcf64bbe2c4d5
 
 ...

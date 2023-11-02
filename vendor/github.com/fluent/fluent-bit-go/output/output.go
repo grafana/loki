@@ -24,6 +24,7 @@ package output
 */
 import "C"
 import (
+	"sync"
 	"unsafe"
 )
 
@@ -64,18 +65,29 @@ func FLBPluginUnregister(def unsafe.Pointer) {
 
 func FLBPluginConfigKey(plugin unsafe.Pointer, key string) string {
 	_key := C.CString(key)
-	return C.GoString(C.output_get_property(_key, plugin))
+	value := C.GoString(C.output_get_property(_key, plugin))
+	C.free(unsafe.Pointer(_key))
+	return value
 }
 
-var contexts []interface{}
+var contexts sync.Map
 
+// FLBPluginSetContext sets the context for plugin to ctx.
+//
+// Limit FLBPluginSetContext calls to once per plugin instance for best performance.
 func FLBPluginSetContext(plugin unsafe.Pointer, ctx interface{}) {
-	i := len(contexts)
-	contexts = append(contexts, ctx)
+	// Allocate a byte of memory in the C heap and fill it with '\0',
+	// then convert its pointer into the C type void*, represented by unsafe.Pointer.
+	// The C string is not managed by Go GC, so it will not be freed automatically.
+	i := unsafe.Pointer(C.CString(""))
+	// uintptr(i) returns the memory address of i, which is unique in the heap.
+	contexts.Store(uintptr(i), ctx)
 	p := (*FLBOutPlugin)(plugin)
-	p.context.remote_context = unsafe.Pointer(uintptr(i))
+	p.context.remote_context = i
 }
 
-func FLBPluginGetContext(i unsafe.Pointer) interface{} {
-	return contexts[int(uintptr(i))]
+// FLBPluginGetContext reads the context associated with proxyCtx.
+func FLBPluginGetContext(proxyCtx unsafe.Pointer) interface{} {
+	v, _ := contexts.Load(uintptr(proxyCtx))
+	return v
 }

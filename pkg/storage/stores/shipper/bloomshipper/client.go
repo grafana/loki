@@ -68,7 +68,7 @@ type MetaClient interface {
 	// Returns all metas that are within MinFingerprint-MaxFingerprint fingerprint range
 	// and intersect time period from StartTimestamp to EndTimestamp.
 	GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
-	PutMeta(ctx context.Context, meta Meta) (Meta, error)
+	PutMeta(ctx context.Context, meta Meta) error
 	DeleteMeta(ctx context.Context, meta Meta) error
 }
 

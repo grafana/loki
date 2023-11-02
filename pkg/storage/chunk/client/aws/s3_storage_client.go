@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
 
@@ -45,7 +46,7 @@ var (
 )
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "s3_request_duration_seconds",
 	Help:      "Time spent doing S3 requests.",
 	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},

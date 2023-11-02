@@ -80,7 +80,7 @@ type Client struct {
 }
 
 // ParseURL deals with direct:// style URLs, as well as kubernetes:// urls.
-// For backwards compatibility it treats URLs without schems as kubernetes://.
+// For backwards compatibility it treats URLs without schemes as kubernetes://.
 func ParseURL(unparsed string) (string, error) {
 	// if it has :///, this is the kuberesolver v2 URL. Return it as it is.
 	if strings.Contains(unparsed, ":///") {
@@ -115,7 +115,7 @@ func ParseURL(unparsed string) (string, error) {
 		if len(parts) > 2 {
 			domain = domain + "." + parts[2]
 		}
-		address := fmt.Sprintf("kubernetes:///%s%s:%s", service, domain, port)
+		address := fmt.Sprintf("kubernetes:///%s", net.JoinHostPort(service+domain, port))
 		return address, nil
 
 	default:

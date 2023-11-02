@@ -19,8 +19,10 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/test"
 )
 
@@ -46,7 +48,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 	cfg.Port = grpcPort
 
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, nil, logger, nil)
+	f, err := NewFrontend(cfg, nil, logger, nil, queryrange.DefaultCodec, constants.Loki)
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)

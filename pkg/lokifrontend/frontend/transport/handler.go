@@ -16,11 +16,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/httpgrpc/server"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -66,7 +68,7 @@ type Handler struct {
 }
 
 // NewHandler creates a new frontend handler.
-func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
+func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer, metricsNamespace string) http.Handler {
 	h := &Handler{
 		cfg:          cfg,
 		log:          log,
@@ -75,18 +77,21 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 
 	if cfg.QueryStatsEnabled {
 		h.querySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_seconds_total",
-			Help: "Total amount of wall clock time spend processing queries.",
+			Namespace: metricsNamespace,
+			Name:      "query_seconds_total",
+			Help:      "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
 
 		h.querySeries = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_fetched_series_total",
-			Help: "Number of series fetched to execute a query.",
+			Namespace: metricsNamespace,
+			Name:      "query_fetched_series_total",
+			Help:      "Number of series fetched to execute a query.",
 		}, []string{"user"})
 
 		h.queryBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_fetched_chunks_bytes_total",
-			Help: "Size of all chunks fetched to execute a query in bytes.",
+			Namespace: metricsNamespace,
+			Name:      "query_fetched_chunks_bytes_total",
+			Help:      "Size of all chunks fetched to execute a query in bytes.",
 		}, []string{"user"})
 
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
@@ -251,4 +256,36 @@ func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Head
 func statsValue(name string, d time.Duration) string {
 	durationInMs := strconv.FormatFloat(float64(d)/float64(time.Millisecond), 'f', -1, 64)
 	return name + ";dur=" + durationInMs
+}
+
+func AdaptGrpcRoundTripperToHandler(r GrpcRoundTripper, codec Codec) queryrangebase.Handler {
+	return &grpcRoundTripperToHandlerAdapter{roundTripper: r, codec: codec}
+}
+
+// This adapter wraps GrpcRoundTripper and converts it into a queryrangebase.Handler
+type grpcRoundTripperToHandlerAdapter struct {
+	roundTripper GrpcRoundTripper
+	codec        Codec
+}
+
+func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	httpReq, err := a.codec.EncodeRequest(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
+	}
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
+		return nil, err
+	}
+
+	grpcReq, err := server.HTTPRequest(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("cannot convert HTTP request to gRPC request: %w", err)
+	}
+
+	grpcResp, err := a.roundTripper.RoundTripGRPC(ctx, grpcReq)
+	if err != nil {
+		return nil, err
+	}
+
+	return a.codec.DecodeHTTPGrpcResponse(grpcResp, req)
 }

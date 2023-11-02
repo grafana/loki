@@ -235,6 +235,11 @@ loki:
     frontend_worker:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    {{- with .Values.loki.distributor }}
+    distributor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -338,11 +343,13 @@ loki:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   frontend_worker:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
+  # -- Optional distributor configuration
+  distributor: {}
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.8.1
+  version: v1.8.4
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -635,6 +642,8 @@ monitoring:
       tolerations: []
     # PodLogs configuration
     podLogs:
+      # -- PodLogs version
+      apiVersion: monitoring.grafana.com/v1alpha1
       # -- PodLogs annotations
       annotations: {}
       # -- Additional PodLogs labels
@@ -791,6 +800,8 @@ write:
   dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for write pods
+  topologySpreadConstraints: []
   # -- Tolerations for write pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -967,6 +978,8 @@ read:
   dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for read pods
+  topologySpreadConstraints: []
   # -- Tolerations for read pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1068,6 +1081,8 @@ backend:
   dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for backend pods
+  topologySpreadConstraints: []
   # -- Tolerations for backend pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1324,6 +1339,8 @@ gateway:
   dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway pods
   tolerations: []
   # Gateway service configuration
@@ -1379,10 +1396,8 @@ gateway:
     htpasswd: >-
       {{ if .Values.loki.tenants }}
 
-
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
-
 
         {{- end }}
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
