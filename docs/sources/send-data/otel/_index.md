@@ -10,7 +10,7 @@ weight:  250
 # Ingesting logs to Loki using OpenTelemetry Collector
 
 {{% admonition type="warning" %}}
-OpenTelemetry logs ingestions is an experimental feature and is subject to change in future releases of Grafana Loki.
+OpenTelemetry logs ingestion is an experimental feature and is subject to change in future releases of Grafana Loki.
 {{% /admonition %}}
 
 Loki natively supports ingesting OpenTelemetry logs over HTTP.
@@ -18,13 +18,13 @@ For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [
 
 ## Loki configuration
 
-When logs are ingested to Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}).
-Since Structured Metadata is still an experimental feature, Loki by defaults rejects any writes using that feature.
+When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}).
+Since Structured Metadata is still an experimental feature, Loki by default rejects any writes using that feature.
 To start ingesting logs in OpenTelemetry format, you need to enable `allow_structured_metadata` per tenant configuration (in the `limits_config`).
 
 ## Configure the OpenTelemetry Collector to write logs into Loki
 
-You need to do the following changes to the [OpenTelemetry Collector config](https://opentelemetry.io/docs/collector/configuration/) to write logs to Loki on its OTLP ingestion endpoint.
+You need to make the following changes to the [OpenTelemetry Collector config](https://opentelemetry.io/docs/collector/configuration/) to write logs to Loki on its OTLP ingestion endpoint.
 
 ```yaml
 exporters:
@@ -101,7 +101,7 @@ Since the OpenTelemetry protocol  differs from the Loki storage model, here is h
 
 Things to note before ingesting OpenTelemetry logs to Loki:
 
-- Dots (.) are converted to \_
+- Dots (.) are converted to underscores (_).
 
   Loki does not support `.` or any other special characters other than `_` in label names. The unsupported characters are replace with an `_`.
 
