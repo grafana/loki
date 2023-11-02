@@ -144,7 +144,7 @@ spec:
 
 ### Grafana
 
-Once you've deployed these, point your Grafana datasource to the new frontend service. The service is available within the cluster at `http://query-frontend.<namespace>.svc.cluster.local:3100`.
+Once you've deployed these, point your Grafana data source to the new frontend service. The service is available within the cluster at `http://query-frontend.<namespace>.svc.cluster.local:3100`.
 
 ### GRPC Mode (Pull model)
 
