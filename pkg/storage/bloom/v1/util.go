@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -167,6 +168,19 @@ func (it *SliceIter[T]) At() T {
 	return it.xs[it.cur]
 }
 
+type MapIter[A any, B any] struct {
+	Iterator[A]
+	f func(A) B
+}
+
+func NewMapIter[A any, B any](src Iterator[A], f func(A) B) *MapIter[A, B] {
+	return &MapIter[A, B]{Iterator: src, f: f}
+}
+
+func (it *MapIter[A, B]) At() B {
+	return it.f(it.Iterator.At())
+}
+
 type EmptyIter[T any] struct {
 	zero T
 }
@@ -188,6 +202,24 @@ func (it *EmptyIter[T]) Reset() {}
 
 func NewEmptyIter[T any](zero T) *EmptyIter[T] {
 	return &EmptyIter[T]{zero: zero}
+}
+
+type CancellableIter[T any] struct {
+	ctx context.Context
+	Iterator[T]
+}
+
+func (cii *CancellableIter[T]) Next() bool {
+	select {
+	case <-cii.ctx.Done():
+		return false
+	default:
+		return cii.Iterator.Next()
+	}
+}
+
+func NewCancelableIter[T any](ctx context.Context, itr Iterator[T]) *CancellableIter[T] {
+	return &CancellableIter[T]{ctx: ctx, Iterator: itr}
 }
 
 type NoopCloser struct {
