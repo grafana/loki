@@ -498,7 +498,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image-amd64') {
-    local build_image_tag = '0.32.0-test-amd64',
+    local build_image_tag = '0.32.0-amd64',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -519,7 +519,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           password: { from_secret: docker_password_secret.name },
           tags: [build_image_tag],
           dry_run: false,
-          platform: 'linux/amd64',
         },
       },
     ],
