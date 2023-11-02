@@ -227,7 +227,7 @@ func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (
 // replaceMatchers traverses the passed expression and replaces all matchers.
 func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) syntax.Expr {
 	expr, _ = syntax.Clone(expr)
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.MatchersExpr:
 			concrete.Mts = matchers
