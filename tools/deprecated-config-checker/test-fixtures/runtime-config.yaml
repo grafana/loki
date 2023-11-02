@@ -4,10 +4,6 @@ overrides:
     unordered_writes: true # DEPRECATED
     ruler_evaluation_delay_duration: 1m # DEPRECATED
     ruler_remote_write_headers: [ "foo", "bar" ] # DEPRECATED
-    ruler_remote_write_relabel_configs: "foo" # DEPRECATED
-    ruler_remote_write_queue_capacity: 10 # DEPRECATED
-    ruler_remote_write_sigv4_config: # DEPRECATED
-      region: "wherever"
     per_tenant_override_config: ./overrides.yaml # DEPRECATED
     per_tenant_override_period: 5s # DEPRECATED
     allow_deletes: true # DEPRECATED

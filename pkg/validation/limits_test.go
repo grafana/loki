@@ -66,8 +66,6 @@ split_queries_by_interval: 190s
 ruler_evaluation_delay_duration: 200s
 ruler_max_rules_per_rule_group: 210
 ruler_max_rule_groups_per_tenant: 220
-ruler_remote_write_sigv4_config:
-  region: us-east-1
 per_tenant_override_config: ""
 per_tenant_override_period: 230s
 query_timeout: 5m
@@ -111,9 +109,6 @@ volume_max_series: 10001
   "ruler_evaluation_delay_duration": "200s",
   "ruler_max_rules_per_rule_group": 210,
   "ruler_max_rule_groups_per_tenant":220,
-  "ruler_remote_write_sigv4_config": {
-    "region": "us-east-1"
-  },
   "per_tenant_override_config": "",
   "per_tenant_override_period": "230s",
   "query_timeout": "5m",

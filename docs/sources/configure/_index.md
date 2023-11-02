@@ -2787,29 +2787,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # by Loki itself can't be overwritten.
 [ruler_remote_write_headers: <headers>]
 
-# Deprecated: Use 'ruler_remote_write_config' instead. List of remote write
-# relabel configurations.
-[ruler_remote_write_relabel_configs: <relabel_config...>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Number of samples to
-# buffer per shard before we block reading of more samples from the WAL. It is
-# recommended to have enough capacity in each shard to buffer several requests
-# to keep throughput up while processing occasional slow remote requests.
-[ruler_remote_write_queue_capacity: <int>]
-
-# Deprecated: Use 'ruler_remote_write_config' instead. Configures AWS's
-# Signature Verification 4 signing process to sign every remote write request.
-ruler_remote_write_sigv4_config:
-  [region: <string> | default = ""]
-
-  [access_key: <string> | default = ""]
-
-  [secret_key: <string> | default = ""]
-
-  [profile: <string> | default = ""]
-
-  [role_arn: <string> | default = ""]
-
 # Configures global and per-tenant limits for remote write clients. A map with
 # remote client id as key.
 [ruler_remote_write_config: <map of string to RemoteWriteConfig>]

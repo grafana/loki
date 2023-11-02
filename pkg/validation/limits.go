@@ -13,7 +13,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
@@ -23,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
-	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -129,12 +127,6 @@ type Limits struct {
 
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteHeaders OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Custom HTTP headers to be sent along with each remote write request. Be aware that headers that are set by Loki itself can't be overwritten."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteRelabelConfigs []*util.RelabelConfig `yaml:"ruler_remote_write_relabel_configs,omitempty" json:"ruler_remote_write_relabel_configs,omitempty" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. List of remote write relabel configurations."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteQueueCapacity int `yaml:"ruler_remote_write_queue_capacity" json:"ruler_remote_write_queue_capacity" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Number of samples to buffer per shard before we block reading of more samples from the WAL. It is recommended to have enough capacity in each shard to buffer several requests to keep throughput up while processing occasional slow remote requests."`
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteSigV4Config *sigv4.SigV4Config `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Configures AWS's Signature Verification 4 signing process to sign every remote write request."`
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
@@ -603,23 +595,6 @@ func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 // RulerRemoteWriteHeaders returns the headers to use in a remote-write for a given user.
 func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
 	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders.Map()
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteRelabelConfigs returns the write relabel configs to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig {
-	return o.getOverridesForUser(userID).RulerRemoteWriteRelabelConfigs
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteQueueCapacity returns the queue capacity to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteQueueCapacity(userID string) int {
-	return o.getOverridesForUser(userID).RulerRemoteWriteQueueCapacity
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-func (o *Overrides) RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config {
-	return o.getOverridesForUser(userID).RulerRemoteWriteSigV4Config
 }
 
 // RulerRemoteWriteConfig returns the remote-write configurations to use for a given user and a given remote client.

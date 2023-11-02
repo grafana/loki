@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -28,7 +27,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -38,10 +36,7 @@ type RulesLimits interface {
 
 	RulerRemoteWriteDisabled(userID string) bool
 	RulerRemoteWriteHeaders(userID string) map[string]string
-	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
 	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
-	RulerRemoteWriteQueueCapacity(userID string) int
-	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
 
 	RulerRemoteEvaluationTimeout(userID string) time.Duration
 	RulerRemoteEvaluationMaxResponseSize(userID string) int64
