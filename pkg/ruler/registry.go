@@ -9,9 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +18,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
+	"github.com/grafana/loki/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/pkg/ruler/storage/wal"
 )
 
 type walRegistry struct {
