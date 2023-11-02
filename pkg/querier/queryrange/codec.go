@@ -706,6 +706,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	}
 }
 
+// nolint:goconst
 func (c Codec) Path(r queryrangebase.Request) string {
 	switch request := r.(type) {
 	case *LokiRequest:

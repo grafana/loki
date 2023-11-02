@@ -58,7 +58,7 @@ func (bt *BloomTokenizer) SetLineTokenizer(t Tokenizer) {
 }
 
 // TODO: Something real here with metrics
-func newMetrics(r prometheus.Registerer) *metrics {
+func newMetrics(_ prometheus.Registerer) *metrics {
 	return &metrics{}
 }
 

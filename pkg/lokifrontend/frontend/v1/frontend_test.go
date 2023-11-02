@@ -228,7 +228,7 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 	}
 }
 
-func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, test func(addr string, frontend *Frontend), matchMaxConcurrency bool, reg prometheus.Registerer) {
+func testFrontend(t *testing.T, config Config, handler queryrangebase.Handler, test func(addr string, frontend *Frontend), _ bool, reg prometheus.Registerer) {
 	logger := log.NewNopLogger()
 
 	var workerConfig querier_worker.Config
