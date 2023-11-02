@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -45,6 +46,8 @@ type backgroundCache struct {
 	droppedWriteBackBytes prometheus.Counter
 	queueLength           prometheus.Gauge
 	queueBytes            prometheus.Gauge
+	enqueuedBytes         prometheus.Counter
+	dequeuedBytes         prometheus.Counter
 }
 
 type backgroundWrite struct {
@@ -72,29 +75,43 @@ func NewBackground(name string, cfg BackgroundConfig, cache Cache, reg prometheu
 		sizeLimit: cfg.WriteBackSizeLimit.Val(),
 
 		droppedWriteBack: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "cache_dropped_background_writes_total",
 			Help:        "Total count of dropped write backs to cache.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 		droppedWriteBackBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "cache_dropped_background_writes_bytes_total",
 			Help:        "Amount of data dropped in write backs to cache.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		queueLength: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "cache_background_queue_length",
 			Help:        "Length of the cache background writeback queue.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		queueBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "cache_background_queue_bytes",
 			Help:        "Amount of data in the background writeback queue.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+
+		enqueuedBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   constants.Loki,
+			Name:        "cache_background_enqueued_bytes_total",
+			Help:        "Counter of bytes enqueued over time to the background writeback queue.",
+			ConstLabels: prometheus.Labels{"name": name},
+		}),
+
+		dequeuedBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Namespace:   constants.Loki,
+			Name:        "cache_background_dequeued_bytes_total",
+			Help:        "Counter of bytes dequeued over time from the background writeback queue.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 	}
@@ -142,6 +159,7 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 			c.size.Add(int64(size))
 			c.queueBytes.Set(float64(c.size.Load()))
 			c.queueLength.Add(float64(num))
+			c.enqueuedBytes.Add(float64(size))
 		default:
 			c.failStore(ctx, size, num, "queue at full capacity")
 			return nil // queue is full; give up
@@ -174,6 +192,7 @@ func (c *backgroundCache) writeBackLoop() {
 
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
 			c.queueBytes.Set(float64(c.size.Load()))
+			c.dequeuedBytes.Add(float64(bgWrite.size()))
 			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
 			if err != nil {
 				level.Warn(util_log.Logger).Log("msg", "backgroundCache writeBackLoop Cache.Store fail", "err", err)

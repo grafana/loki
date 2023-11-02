@@ -4,12 +4,13 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 // AlertManagerSVCExists returns true if the Openshift AlertManager is present in the cluster.
@@ -36,7 +37,7 @@ func UserWorkloadAlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiSta
 	}
 
 	var svc corev1.Service
-	key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringUserwWrkloadNS}
+	key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringUserWorkloadNS}
 
 	err := k.Get(ctx, key, &svc)
 	if err != nil && !apierrors.IsNotFound(err) {

@@ -460,7 +460,7 @@ func TestMetricStage_Process(t *testing.T) {
 		"expression": "(?P<get>\"GET).*HTTP/1.1\" (?P<status>\\d*) (?P<time>\\d*ms)",
 	}
 	timeSource := "time"
-	true := "true"
+	tru := "true"
 	metricsConfig := MetricsConfig{
 		"total_keys": MetricConfig{
 			MetricType:  "Counter",
@@ -501,7 +501,7 @@ func TestMetricStage_Process(t *testing.T) {
 			MetricType:  "Counter",
 			Description: "contains_warn",
 			Config: metric.CounterConfig{
-				Value:  &true,
+				Value:  &tru,
 				Action: metric.CounterInc,
 			},
 		},
@@ -509,7 +509,7 @@ func TestMetricStage_Process(t *testing.T) {
 			MetricType:  "Counter",
 			Description: "contains_false",
 			Config: metric.CounterConfig{
-				Value:  &true,
+				Value:  &tru,
 				Action: metric.CounterAdd,
 			},
 		},

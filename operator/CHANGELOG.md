@@ -1,5 +1,40 @@
 ## Main
 
+## 0.5.0 (2023-10-24)
+
+- [10924](https://github.com/grafana/loki/pull/10924) **periklis**: Update Loki operand to v2.9.2
+- [10874](https://github.com/grafana/loki/pull/10874) **periklis**: Bump deps to address CVE-2023-39325 and CVE-2023-44487
+- [10854](https://github.com/grafana/loki/pull/10854) **periklis**: Add missing marker/sweeper panels in retention dashboard
+- [10717](https://github.com/grafana/loki/pull/10717) **periklis**: Allow SSE settings in AWS S3 object storage secret
+- [10715](https://github.com/grafana/loki/pull/10715) **periklis**: Allow endpoint_suffix in azure object storage secret
+- [10562](https://github.com/grafana/loki/pull/10562) **periklis**: Add memberlist IPv6 support
+- [10720](https://github.com/grafana/loki/pull/10720) **JoaoBraveCoding**: Change default replication factor of 1x.medium to 2
+- [10600](https://github.com/grafana/loki/pull/10600) **periklis**: Update Loki operand to v2.9.1
+- [10545](https://github.com/grafana/loki/pull/10545) **xperimental**: Update gateway arguments to enable namespace extraction
+- [10558](https://github.com/grafana/loki/pull/10558) **periklis**: Upgrade dashboards for for Loki v2.9.0
+- [10539](https://github.com/grafana/loki/pull/10539) **periklis**: Update Loki operand to v2.9.0
+- [10418](https://github.com/grafana/loki/pull/10418) **btaani**: Use a condition to warn when labels for zone-awareness are empty
+- [9468](https://github.com/grafana/loki/pull/9468) **periklis**: Add support for reconciling loki-mixin dashboards on OpenShift Console
+- [9942](https://github.com/grafana/loki/pull/9942) **btaani**: Use a condition to warn when there are no nodes with matching labels for zone-awareness
+
+## 0.4.0 (2023-07-27)
+
+- [10019](https://github.com/grafana/loki/pull/10019) **periklis**: Update Loki operand to v2.8.3
+- [9972](https://github.com/grafana/loki/pull/9972) **JoaoBraveCoding**: Fix OIDC.IssuerCAPath by updating it to type CASpec
+- [9931](https://github.com/grafana/loki/pull/9931) **aminesnow**: Custom configuration for LokiStack admin groups
+- [9971](https://github.com/grafana/loki/pull/9971) **aminesnow**: Add namespace and tenantId labels to RecordingRules
+- [9906](https://github.com/grafana/loki/pull/9906) **JoaoBraveCoding**: Add mTLS authentication to tenants
+- [9963](https://github.com/grafana/loki/pull/9963) **xperimental**: Fix application tenant alertmanager configuration
+- [9795](https://github.com/grafana/loki/pull/9795) **JoaoBraveCoding**: Add initContainer to zone aware components to gatekeep them from starting without the AZ annotation
+- [9503](https://github.com/grafana/loki/pull/9503) **shwetaap**: Add Pod annotations with node topology labels to support zone aware scheduling
+- [9930](https://github.com/grafana/loki/pull/9930) **periklis**: Use PodAntiAffinity for all components
+- [9860](https://github.com/grafana/loki/pull/9860) **xperimental**: Fix update of labels and annotations of PodTemplates
+- [9830](https://github.com/grafana/loki/pull/9830) **periklis**: Expose limits config setting cardinality_limit
+- [9600](https://github.com/grafana/loki/pull/9600) **periklis**: Add rules labels filters for openshift-logging application tenant
+- [9735](https://github.com/grafana/loki/pull/9735) **JoaoBraveCoding** Adjust 1x.extra-small resources according to findings
+- [9689](https://github.com/grafana/loki/pull/9689) **xperimental**: Fix availability of demo LokiStack size
+- [9630](https://github.com/grafana/loki/pull/9630) **jpinsonneau**: Expose per_stream_rate_limit & burst
+- [9623](https://github.com/grafana/loki/pull/9623) **periklis**: Fix timeout config constructor when only tenants limits
 - [9457](https://github.com/grafana/loki/pull/9457) **Red-GV**: Set seccomp profile to runtime default
 - [9448](https://github.com/grafana/loki/pull/9448) **btaani**: Include runtime-config in compiling the SHA1 checksum
 - [9511](https://github.com/grafana/loki/pull/9511) **xperimental**: Do not update status after setting degraded condition
@@ -21,7 +56,7 @@
 - [9188](https://github.com/grafana/loki/pull/9188) **aminesnow**: Add PodDisruptionBudgets to the query path
 - [9162](https://github.com/grafana/loki/pull/9162) **aminesnow**: Add a PodDisruptionBudget to lokistack-gateway
 
-# 0.3.0 (2023-04-20)
+## 0.3.0 (2023-04-20)
 
 - [9049](https://github.com/grafana/loki/pull/9049) **alanconway**: Revert 1x.extra-small changes, add 1x.demo
 - [8661](https://github.com/grafana/loki/pull/8661) **xuanyunhui**: Add a new Object Storage Type for AlibabaCloud OSS

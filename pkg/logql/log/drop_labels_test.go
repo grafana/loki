@@ -135,12 +135,14 @@ func Test_DropLabels(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		dropLabels := NewDropLabels(tt.dropLabels)
-		lbls := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
-		lbls.Reset()
-		lbls.SetErr(tt.err)
-		lbls.SetErrorDetails(tt.errDetails)
-		dropLabels.Process(0, []byte(""), lbls)
-		require.Equal(t, tt.want, lbls.LabelsResult().Labels())
+		t.Run(tt.Name, func(t *testing.T) {
+			dropLabels := NewDropLabels(tt.dropLabels)
+			lbls := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			lbls.Reset()
+			lbls.SetErr(tt.err)
+			lbls.SetErrorDetails(tt.errDetails)
+			dropLabels.Process(0, []byte(""), lbls)
+			require.Equal(t, tt.want, lbls.LabelsResult().Labels())
+		})
 	}
 }

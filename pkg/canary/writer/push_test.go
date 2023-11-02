@@ -45,9 +45,7 @@ func Test_Push(t *testing.T) {
 	push, err := NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", false, nil, "", "", "", "", "", &backoff, log.NewNopLogger())
 	require.NoError(t, err)
 	ts, payload := testPayload()
-	n, err := push.Write([]byte(payload))
-	require.NoError(t, err)
-	assert.Equal(t, len(payload), n)
+	push.WriteEntry(ts, payload)
 	resp := <-responses
 	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload)
 
@@ -55,9 +53,7 @@ func Test_Push(t *testing.T) {
 	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "stream", "stdout", false, nil, "", "", "", testUsername, testPassword, &backoff, log.NewNopLogger())
 	require.NoError(t, err)
 	ts, payload = testPayload()
-	n, err = push.Write([]byte(payload))
-	require.NoError(t, err)
-	assert.Equal(t, len(payload), n)
+	push.WriteEntry(ts, payload)
 	resp = <-responses
 	assertResponse(t, resp, true, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload)
 
@@ -65,9 +61,7 @@ func Test_Push(t *testing.T) {
 	push, err = NewPush(mock.Listener.Addr().String(), "test1", 2*time.Second, config.DefaultHTTPClientConfig, "name", "loki-canary", "pod", "abc", false, nil, "", "", "", testUsername, testPassword, &backoff, log.NewNopLogger())
 	require.NoError(t, err)
 	ts, payload = testPayload()
-	n, err = push.Write([]byte(payload))
-	require.NoError(t, err)
-	assert.Equal(t, len(payload), n)
+	push.WriteEntry(ts, payload)
 	resp = <-responses
 	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload)
 }

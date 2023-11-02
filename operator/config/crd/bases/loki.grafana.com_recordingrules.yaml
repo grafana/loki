@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.3
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: recordingrules.loki.grafana.com
 spec:
   group: loki.grafana.com
@@ -67,6 +66,11 @@ spec:
                               cycle this is evaluated at the current time, and all
                               resultant time series become pending/firing alerts.
                             type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: Labels to add to each recording rule.
+                            type: object
                           record:
                             description: The name of the time series to output to.
                               Must be a valid metric name.

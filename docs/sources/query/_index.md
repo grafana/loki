@@ -3,9 +3,8 @@ title: "LogQL: Log query language"
 menuTItle: Query
 description: LogQL, Loki's query language for logs.
 aliases: 
-- /docs/loki/latest/logql
-- /docs/loki/latest/query
-weight: 700 
+- ./logql
+weight: 600
 ---
 
 # LogQL: Log query language
@@ -16,8 +15,8 @@ LogQL uses labels and operators for filtering.
 
 There are two types of LogQL queries:
 
-- [Log queries]({{<relref "log_queries">}}) return the contents of log lines.
-- [Metric queries]({{<relref "metric_queries">}}) extend log queries to calculate values
+- [Log queries]({{< relref "./log_queries" >}}) return the contents of log lines.
+- [Metric queries]({{< relref "./metric_queries" >}}) extend log queries to calculate values
 based on query results.
 
 ## Binary operators
@@ -53,7 +52,7 @@ Implement a health check with a simple query:
 1 + 1
 ```
 
-Double the rate of a a log stream's entries:
+Double the rate of a log stream's entries:
 
 ```logql
 sum(rate({app="foo"}[1m])) * 2

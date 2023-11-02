@@ -24,8 +24,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-
-	"github.com/grafana/loki/pkg/prom1/storage/metric"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.
@@ -61,7 +60,7 @@ func (c *ConcreteSeriesSet) Err() error {
 }
 
 // Warnings implements storage.SeriesSet.
-func (c *ConcreteSeriesSet) Warnings() storage.Warnings {
+func (c *ConcreteSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }
 
@@ -183,45 +182,6 @@ func (errIterator) AtT() (t int64) {
 
 func (e errIterator) Err() error {
 	return e.err
-}
-
-// MatrixToSeriesSet creates a storage.SeriesSet from a model.Matrix
-// Series will be sorted by labels.
-func MatrixToSeriesSet(m model.Matrix) storage.SeriesSet {
-	series := make([]storage.Series, 0, len(m))
-	for _, ss := range m {
-		series = append(series, &ConcreteSeries{
-			labels:  MetricToLabels(ss.Metric),
-			samples: ss.Values,
-		})
-	}
-	return NewConcreteSeriesSet(series)
-}
-
-// MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
-func MetricsToSeriesSet(ms []metric.Metric) storage.SeriesSet {
-	series := make([]storage.Series, 0, len(ms))
-	for _, m := range ms {
-		series = append(series, &ConcreteSeries{
-			labels:  MetricToLabels(m.Metric),
-			samples: nil,
-		})
-	}
-	return NewConcreteSeriesSet(series)
-}
-
-func MetricToLabels(m model.Metric) labels.Labels {
-	ls := make(labels.Labels, 0, len(m))
-	for k, v := range m {
-		ls = append(ls, labels.Label{
-			Name:  string(k),
-			Value: string(v),
-		})
-	}
-	// PromQL expects all labels to be sorted! In general, anyone constructing
-	// a labels.Labels list is responsible for sorting it during construction time.
-	sort.Sort(ls)
-	return ls
 }
 
 type byLabels []storage.Series
@@ -360,7 +320,7 @@ func NewEmptySeriesIterator() chunkenc.Iterator {
 	return emptySeriesIterator{}
 }
 
-func (emptySeriesIterator) Seek(t int64) chunkenc.ValueType {
+func (emptySeriesIterator) Seek(_ int64) chunkenc.ValueType {
 	return chunkenc.ValNone
 }
 
@@ -386,32 +346,4 @@ func (emptySeriesIterator) Next() chunkenc.ValueType {
 
 func (emptySeriesIterator) Err() error {
 	return nil
-}
-
-type seriesSetWithWarnings struct {
-	wrapped  storage.SeriesSet
-	warnings storage.Warnings
-}
-
-func NewSeriesSetWithWarnings(wrapped storage.SeriesSet, warnings storage.Warnings) storage.SeriesSet {
-	return seriesSetWithWarnings{
-		wrapped:  wrapped,
-		warnings: warnings,
-	}
-}
-
-func (s seriesSetWithWarnings) Next() bool {
-	return s.wrapped.Next()
-}
-
-func (s seriesSetWithWarnings) At() storage.Series {
-	return s.wrapped.At()
-}
-
-func (s seriesSetWithWarnings) Err() error {
-	return s.wrapped.Err()
-}
-
-func (s seriesSetWithWarnings) Warnings() storage.Warnings {
-	return append(s.wrapped.Warnings(), s.warnings...)
 }

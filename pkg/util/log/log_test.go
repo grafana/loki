@@ -3,28 +3,23 @@ package log
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/go-kit/log"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/stretchr/testify/assert"
-	"github.com/weaveworks/common/logging"
 )
 
 func TestLevelHandler(t *testing.T) {
-	var lvl logging.Level
+	var lvl dslog.Level
 	err := lvl.Set("info")
 	assert.NoError(t, err)
 	plogger = &prometheusLogger{
 		baseLogger: log.NewLogfmtLogger(io.Discard),
 	}
-
-	// Start test http server
-	go func() {
-		err := http.ListenAndServe(":8080", LevelHandler(&lvl))
-		assert.NoError(t, err)
-	}()
 
 	testCases := []struct {
 		testName           string
@@ -42,22 +37,25 @@ func TestLevelHandler(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.testName, func(t *testing.T) {
 			var (
-				resp *http.Response
-				err  error
+				req *http.Request
+				err error
 			)
 
 			if strings.HasPrefix(testCase.testName, "Get") {
-				resp, err = http.Get("http://localhost:8080/")
+				req, err = http.NewRequest("GET", "/", nil)
 			} else if strings.HasPrefix(testCase.testName, "Post") {
-				resp, err = http.PostForm("http://localhost:8080/", url.Values{"log_level": {testCase.targetLogLevel}})
+				form := url.Values{"log_level": {testCase.targetLogLevel}}
+				req, err = http.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+				req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 			}
 			assert.NoError(t, err)
-			defer resp.Body.Close()
 
-			body, err := io.ReadAll(resp.Body)
-			assert.NoError(t, err)
-			assert.JSONEq(t, testCase.expectedResponse, string(body))
-			assert.Equal(t, testCase.expectedStatusCode, resp.StatusCode)
+			rr := httptest.NewRecorder()
+			handler := LevelHandler(&lvl)
+			handler.ServeHTTP(rr, req)
+
+			assert.JSONEq(t, testCase.expectedResponse, rr.Body.String())
+			assert.Equal(t, testCase.expectedStatusCode, rr.Code)
 			assert.Equal(t, testCase.expectedLogLevel, lvl.String())
 		})
 	}

@@ -666,6 +666,24 @@ func (db *RedisDB) ZScore(k, member string) (float64, error) {
 	return db.ssetScore(k, member), nil
 }
 
+// ZScore gives scores of a list of members in a sorted set.
+func (m *Miniredis) ZMScore(k string, members ...string) ([]float64, error) {
+	return m.DB(m.selectedDB).ZMScore(k, members)
+}
+
+func (db *RedisDB) ZMScore(k string, members []string) ([]float64, error) {
+	db.master.Lock()
+	defer db.master.Unlock()
+
+	if !db.exists(k) {
+		return nil, ErrKeyNotFound
+	}
+	if db.t(k) != "zset" {
+		return nil, ErrWrongType
+	}
+	return db.ssetMScore(k, members), nil
+}
+
 // XAdd adds an entry to a stream. `id` can be left empty or be '*'.
 // If a value is given normal XADD rules apply. Values should be an even
 // length.

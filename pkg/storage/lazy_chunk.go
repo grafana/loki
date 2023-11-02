@@ -235,8 +235,8 @@ func (l *lazyChunks) pop(count int) []*LazyChunk {
 	// split slices into two new ones and copy parts to each so we don't keep old reference
 	res := make([]*LazyChunk, count)
 	copy(res, l.chunks[0:count])
-	new := make([]*LazyChunk, len(l.chunks)-count)
-	copy(new, l.chunks[count:len(l.chunks)])
-	l.chunks = new
+	newChks := make([]*LazyChunk, len(l.chunks)-count)
+	copy(newChks, l.chunks[count:len(l.chunks)])
+	l.chunks = newChks
 	return res
 }

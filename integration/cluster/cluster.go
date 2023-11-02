@@ -24,8 +24,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/integration/util"
-
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -33,8 +33,6 @@ import (
 )
 
 var (
-	wrapRegistryOnce sync.Once
-
 	configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
@@ -63,6 +61,7 @@ limits_config:
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 50
   reject_old_samples: false
+  allow_structured_metadata: true
 
 storage_config:
   named_stores:
@@ -79,6 +78,7 @@ storage_config:
 compactor:
   working_directory: {{.dataPath}}/retention
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false
@@ -108,18 +108,18 @@ ruler:
 `))
 )
 
-func wrapRegistry() {
-	wrapRegistryOnce.Do(func() {
-		prometheus.DefaultRegisterer = &wrappedRegisterer{Registerer: prometheus.DefaultRegisterer}
-	})
+func resetMetricRegistry() {
+	registry := &wrappedRegisterer{Registry: prometheus.NewRegistry()}
+	prometheus.DefaultRegisterer = registry
+	prometheus.DefaultGatherer = registry
 }
 
 type wrappedRegisterer struct {
-	prometheus.Registerer
+	*prometheus.Registry
 }
 
 func (w *wrappedRegisterer) Register(collector prometheus.Collector) error {
-	if err := w.Registerer.Register(collector); err != nil {
+	if err := w.Registry.Register(collector); err != nil {
 		var aErr prometheus.AlreadyRegisteredError
 		if errors.As(err, &aErr) {
 			return nil
@@ -144,6 +144,7 @@ type Cluster struct {
 	initedAt      model.Time
 	periodCfgs    []string
 	overridesFile string
+	schemaVer     string
 }
 
 func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
@@ -151,7 +152,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
 	}
 
-	wrapRegistry()
+	resetMetricRegistry()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
 	if err != nil {
 		panic(err.Error())
@@ -168,6 +169,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 		sharedPath:    sharedPath,
 		initedAt:      model.Now(),
 		overridesFile: overridesFile,
+		schemaVer:     "v11",
 	}
 
 	for _, opt := range opts {
@@ -175,6 +177,11 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	return cluster
+}
+
+// SetSchemaVer sets a schema version for all the schemas
+func (c *Cluster) SetSchemaVer(schemaVer string) {
+	c.schemaVer = schemaVer
 }
 
 func (c *Cluster) Run() error {
@@ -190,6 +197,10 @@ func (c *Cluster) Run() error {
 	return nil
 }
 
+func (c *Cluster) ResetSchemaConfig() {
+	c.periodCfgs = nil
+}
+
 func (c *Cluster) Restart() error {
 	if err := c.stop(false); err != nil {
 		return err
@@ -199,6 +210,8 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
+	// cleanup singleton boltdb shipper client instances
+	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 
@@ -358,6 +371,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 			Execute(&buf, map[string]interface{}{
 				"curPeriodStart":        periodStart.String(),
 				"additionalPeriodStart": additionalPeriodStart.String(),
+				"schemaVer":             c.cluster.schemaVer,
 			}); err != nil {
 			return nil, errors.New("error building schema_config")
 		}

@@ -378,6 +378,7 @@ func TestMetricsArePerUser(t *testing.T) {
 	defer func() {
 		// drain the channel, so that collecting gouroutine can stop.
 		// This is useful if test fails.
+		//nolint:revive
 		for range ch {
 		}
 	}()
@@ -442,6 +443,7 @@ func TestMetricLabelTransformer(t *testing.T) {
 	defer func() {
 		// drain the channel, so that collecting gouroutine can stop.
 		// This is useful if test fails.
+		//nolint:revive
 		for range ch {
 		}
 	}()

@@ -120,19 +120,19 @@ func (t *Transport) lrsRunner(ctx context.Context) {
 			defer cancel()
 			stream, err := v3lrsgrpc.NewLoadReportingServiceClient(t.cc).StreamLoadStats(streamCtx)
 			if err != nil {
-				t.logger.Warningf("Failed to create LRS stream: %v", err)
+				t.logger.Warningf("Creating LRS stream to server %q failed: %v", t.serverURI, err)
 				return false
 			}
-			t.logger.Infof("Created LRS stream to server: %s", t.serverURI)
+			t.logger.Infof("Created LRS stream to server %q", t.serverURI)
 
 			if err := t.sendFirstLoadStatsRequest(stream, node); err != nil {
-				t.logger.Warningf("Failed to send first LRS request: %v", err)
+				t.logger.Warningf("Sending first LRS request failed: %v", err)
 				return false
 			}
 
 			clusters, interval, err := t.recvFirstLoadStatsResponse(stream)
 			if err != nil {
-				t.logger.Warningf("Failed to read from LRS stream: %v", err)
+				t.logger.Warningf("Reading from LRS stream failed: %v", err)
 				return false
 			}
 
@@ -160,7 +160,7 @@ func (t *Transport) sendLoads(ctx context.Context, stream lrsStream, clusterName
 			return
 		}
 		if err := t.sendLoadStatsRequest(stream, t.lrsStore.Stats(clusterNames)); err != nil {
-			t.logger.Warningf("Failed to write to LRS stream: %v", err)
+			t.logger.Warningf("Writing to LRS stream failed: %v", err)
 			return
 		}
 	}
@@ -168,7 +168,9 @@ func (t *Transport) sendLoads(ctx context.Context, stream lrsStream, clusterName
 
 func (t *Transport) sendFirstLoadStatsRequest(stream lrsStream, node *v3corepb.Node) error {
 	req := &v3lrspb.LoadStatsRequest{Node: node}
-	t.logger.Debugf("Sending initial LoadStatsRequest: %s", pretty.ToJSON(req))
+	if t.logger.V(perRPCVerbosityLevel) {
+		t.logger.Infof("Sending initial LoadStatsRequest: %s", pretty.ToJSON(req))
+	}
 	err := stream.Send(req)
 	if err == io.EOF {
 		return getStreamError(stream)
@@ -181,7 +183,9 @@ func (t *Transport) recvFirstLoadStatsResponse(stream lrsStream) ([]string, time
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to receive first LoadStatsResponse: %v", err)
 	}
-	t.logger.Debugf("Received first LoadStatsResponse: %s", pretty.ToJSON(resp))
+	if t.logger.V(perRPCVerbosityLevel) {
+		t.logger.Infof("Received first LoadStatsResponse: %s", pretty.ToJSON(resp))
+	}
 
 	interval, err := ptypes.Duration(resp.GetLoadReportingInterval())
 	if err != nil {
@@ -251,7 +255,9 @@ func (t *Transport) sendLoadStatsRequest(stream lrsStream, loads []*load.Data) e
 	}
 
 	req := &v3lrspb.LoadStatsRequest{ClusterStats: clusterStats}
-	t.logger.Debugf("Sending LRS loads: %s", pretty.ToJSON(req))
+	if t.logger.V(perRPCVerbosityLevel) {
+		t.logger.Infof("Sending LRS loads: %s", pretty.ToJSON(req))
+	}
 	err := stream.Send(req)
 	if err == io.EOF {
 		return getStreamError(stream)

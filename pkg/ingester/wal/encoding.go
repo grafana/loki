@@ -25,11 +25,14 @@ const (
 	// WALRecordEntriesV2 is the type for the WAL record for samples with an
 	// additional counter value for use in replaying without the ordering constraint.
 	WALRecordEntriesV2
+	// WALRecordEntriesV3 is the type for the WAL record for samples with structured metadata.
+	WALRecordEntriesV3
 )
 
 // The current type of Entries that this distribution writes.
 // Loki can read in a backwards compatible manner, but will write the newest variant.
-const CurrentEntriesRec = WALRecordEntriesV2
+// TODO: Change to WALRecordEntriesV3?
+const CurrentEntriesRec = WALRecordEntriesV3
 
 // Record is a struct combining the series and samples record.
 type Record struct {
@@ -128,6 +131,17 @@ outer:
 			buf.PutVarint64(s.Timestamp.UnixNano() - first)
 			buf.PutUvarint(len(s.Line))
 			buf.PutString(s.Line)
+
+			if version >= WALRecordEntriesV3 {
+				// structured metadata
+				buf.PutUvarint(len(s.StructuredMetadata))
+				for _, l := range s.StructuredMetadata {
+					buf.PutUvarint(len(l.Name))
+					buf.PutString(l.Name)
+					buf.PutUvarint(len(l.Value))
+					buf.PutString(l.Value)
+				}
+			}
 		}
 	}
 	return buf.Get()
@@ -158,9 +172,28 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 			lineLength := dec.Uvarint()
 			line := dec.Bytes(lineLength)
 
+			var structuredMetadata []logproto.LabelAdapter
+			if version >= WALRecordEntriesV3 {
+				nStructuredMetadata := dec.Uvarint()
+				if nStructuredMetadata > 0 {
+					structuredMetadata = make([]logproto.LabelAdapter, 0, nStructuredMetadata)
+					for i := 0; dec.Err() == nil && i < nStructuredMetadata; i++ {
+						nameLength := dec.Uvarint()
+						name := dec.Bytes(nameLength)
+						valueLength := dec.Uvarint()
+						value := dec.Bytes(valueLength)
+						structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
+							Name:  string(name),
+							Value: string(value),
+						})
+					}
+				}
+			}
+
 			refEntries.Entries = append(refEntries.Entries, logproto.Entry{
-				Timestamp: time.Unix(0, baseTime+timeOffset),
-				Line:      string(line),
+				Timestamp:          time.Unix(0, baseTime+timeOffset),
+				Line:               string(line),
+				StructuredMetadata: structuredMetadata,
 			})
 		}
 
@@ -195,7 +228,7 @@ func DecodeRecord(b []byte, walRec *Record) (err error) {
 	case WALRecordSeries:
 		userID = decbuf.UvarintStr()
 		rSeries, err = dec.Series(decbuf.B, walRec.Series)
-	case WALRecordEntriesV1, WALRecordEntriesV2:
+	case WALRecordEntriesV1, WALRecordEntriesV2, WALRecordEntriesV3:
 		userID = decbuf.UvarintStr()
 		err = DecodeEntries(decbuf.B, t, walRec)
 	default:

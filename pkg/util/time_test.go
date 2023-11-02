@@ -228,6 +228,27 @@ func TestForInterval(t *testing.T) {
 	}
 }
 
+func TestForInterval_OfZero(t *testing.T) {
+	var actualIntervals []timeInterval
+
+	from := time.Unix(5, 0)
+	through := time.Unix(8, 0)
+	endTimeInclusive := true
+	ForInterval(0, from, through, endTimeInclusive, func(start, end time.Time) {
+		actualIntervals = append(actualIntervals, timeInterval{
+			from:    start,
+			through: end,
+		})
+	})
+
+	require.Equal(t, []timeInterval{
+		{
+			from:    time.Unix(5, 0),
+			through: time.Unix(8, 0),
+		},
+	}, actualIntervals)
+}
+
 func TestGetFactorOfTime(t *testing.T) {
 	for _, tc := range []struct {
 		desc                                string
@@ -269,6 +290,12 @@ func TestGetFactorOfTime(t *testing.T) {
 			from: 10, through: 20,
 			extentMin: 20, extentMax: 35,
 			exp: 0,
+		},
+		{
+			desc: "factor would be NaN",
+			from: 1685655637000000000, through: 1685656237000000000,
+			extentMin: 1685656107442496000, extentMax: 1685656107442496000,
+			exp: 1,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

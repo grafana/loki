@@ -26,6 +26,12 @@ overrides:
     {{- if $l.MaxGlobalStreamsPerTenant }}
     max_global_streams_per_user: {{ $l.MaxGlobalStreamsPerTenant }}
     {{- end }}
+    {{- if $l.PerStreamRateLimit }}
+    per_stream_rate_limit: {{ $l.PerStreamRateLimit }}MB
+    {{- end }}
+    {{- if $l.PerStreamRateLimitBurst }}
+    per_stream_rate_limit_burst: {{ $l.PerStreamRateLimitBurst }}MB
+    {{- end }}
   {{- end -}}
   {{- if $l := $spec.QueryLimits -}}
     {{- if $l.MaxEntriesLimitPerQuery }}
@@ -39,6 +45,9 @@ overrides:
     {{- end }}
     {{- if $spec.QueryLimits.QueryTimeout }}
     query_timeout: {{ $spec.QueryLimits.QueryTimeout }}
+    {{- end }}
+    {{- if $spec.QueryLimits.CardinalityLimit }}
+    cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
   {{- end -}}
   {{- with $spec.Retention }}

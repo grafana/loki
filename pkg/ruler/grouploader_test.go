@@ -351,7 +351,7 @@ func (gl *fakeGroupLoader) Load(identifier string) (*rulefmt.RuleGroups, []error
 	return gl.ruleGroups[identifier], gl.loadErrs
 }
 
-func (gl *fakeGroupLoader) Parse(query string) (parser.Expr, error) {
+func (gl *fakeGroupLoader) Parse(_ string) (parser.Expr, error) {
 	return gl.expr, gl.parseErr
 }
 

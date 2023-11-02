@@ -14,6 +14,9 @@ common:
       container_name: {{ .Container }}
       account_name: {{ .AccountName }}
       account_key: {{ .AccountKey }}
+      {{- with .EndpointSuffix }}
+      endpoint_suffix: {{ . }}
+      {{- end }}
     {{- end }}
     {{- with .ObjectStorage.GCS }}
     gcs:
@@ -26,6 +29,19 @@ common:
       region: {{ .Region }}
       access_key_id: {{ .AccessKeyID }}
       secret_access_key: {{ .AccessKeySecret }}
+      {{- with .SSE }}
+      {{- if .Type }}
+      sse:
+        type: {{ .Type }}
+        {{- if eq .Type "SSE-KMS" }}
+        kms_key_id: {{ .KMSKeyID }}
+        {{- with .KMSEncryptionContext }}
+        kms_encryption_context: |
+          {{ . }}
+        {{- end }}
+        {{- end}}
+      {{- end }}
+      {{- end }}
       s3forcepathstyle: true
     {{- end }}
     {{- with .ObjectStorage.Swift }}
@@ -63,6 +79,10 @@ common:
     instance_addr: {{ . }}
     {{- end }}
     instance_port: {{ .InstancePort }}
+    {{- if .EnableInstanceAvailabilityZone }}
+    zone_awareness_enabled: true
+    instance_availability_zone: ${INSTANCE_AVAILABILITY_ZONE}
+    {{- end }}
   {{- end }}
 compactor:
   compaction_interval: 2h
@@ -112,6 +132,9 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    {{- if .GossipRing.EnableIPv6 }}
+    enable_inet6: true
+    {{- end}}
     ring:
       replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
@@ -162,7 +185,7 @@ limits_config:
   max_query_length: 721h
   max_query_parallelism: 32
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
-  cardinality_limit: 100000
+  cardinality_limit: {{ .Stack.Limits.Global.QueryLimits.CardinalityLimit }}
   max_streams_matchers_per_query: 1000
   query_timeout: {{ .Stack.Limits.Global.QueryLimits.QueryTimeout }}
 {{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
@@ -177,8 +200,8 @@ limits_config:
 {{- end }}
 {{- end }}{{- end }}
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
+  per_stream_rate_limit: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}MB
+  per_stream_rate_limit_burst: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}MB
   split_queries_by_interval: 30m
 {{- with .GossipRing }}
 memberlist:

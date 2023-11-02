@@ -63,7 +63,9 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLifecyclerConfig, error) {
 	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger, cfg.EnableIPv6)
 	if err != nil {
-		return ring.BasicLifecyclerConfig{}, err
+		return ring.BasicLifecyclerConfig{
+			RingTokenGenerator: ring.NewRandomTokenGenerator(),
+		}, err
 	}
 
 	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
@@ -76,6 +78,7 @@ func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLif
 		TokensObservePeriod:             0,
 		NumTokens:                       1,
 		KeepInstanceInTheRingOnShutdown: false,
+		RingTokenGenerator:              ring.NewRandomTokenGenerator(),
 	}, nil
 }
 

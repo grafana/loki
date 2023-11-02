@@ -227,7 +227,7 @@ func listRoleNames(client *http.Client, u *url.URL, token string) ([]string, err
 	return credsList, nil
 }
 
-func getEcsTaskCredentials(client *http.Client, endpoint string, token string) (ec2RoleCredRespBody, error) {
+func getEcsTaskCredentials(client *http.Client, endpoint, token string) (ec2RoleCredRespBody, error) {
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return ec2RoleCredRespBody{}, err

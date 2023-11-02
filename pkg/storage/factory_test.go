@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -47,7 +47,7 @@ func TestFactoryStop(t *testing.T) {
 
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
-	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	store.Stop()
@@ -86,7 +86,7 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger())
+	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	store.Stop()
@@ -96,16 +96,15 @@ func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := shipper.Config{}
+	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = "named-store"
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 
 	cfg := Config{
 		NamedStores: NamedStores{
-			Filesystem: map[string]local.FSConfig{
+			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
 			},
 		},
@@ -114,7 +113,7 @@ func TestNamedStores(t *testing.T) {
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
 	}
-	require.NoError(t, cfg.NamedStores.validate())
+	require.NoError(t, cfg.NamedStores.Validate())
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -123,10 +122,11 @@ func TestNamedStores(t *testing.T) {
 				IndexType:  "boltdb-shipper",
 				ObjectType: "named-store",
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					}},
 			},
 		},
 	}
@@ -145,7 +145,7 @@ func TestNamedStores(t *testing.T) {
 			require.True(t, os.IsNotExist(err))
 		}
 
-		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 		require.NoError(t, err)
 		defer store.Stop()
 
@@ -162,20 +162,20 @@ func TestNamedStores(t *testing.T) {
 	t.Run("period config referring to unrecognized store", func(t *testing.T) {
 		schemaConfig := schemaConfig
 		schemaConfig.Configs[0].ObjectType = "not-found"
-		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "Unrecognized storage client not-found, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store")
+		require.Contains(t, err.Error(), "unrecognized chunk client type not-found, choose one of:")
 	})
 }
 
 func TestNamedStores_populateStoreType(t *testing.T) {
 	t.Run("found duplicates", func(t *testing.T) {
 		ns := NamedStores{
-			AWS: map[string]aws.StorageConfig{
+			AWS: map[string]NamedAWSStorageConfig{
 				"store-1": {},
 				"store-2": {},
 			},
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"store-1": {},
 			},
 		}
@@ -187,7 +187,7 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 	t.Run("illegal store name", func(t *testing.T) {
 		ns := NamedStores{
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"aws": {},
 			},
 		}
@@ -199,11 +199,11 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 	t.Run("lookup populated entries", func(t *testing.T) {
 		ns := NamedStores{
-			AWS: map[string]aws.StorageConfig{
+			AWS: map[string]NamedAWSStorageConfig{
 				"store-1": {},
 				"store-2": {},
 			},
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"store-3": {},
 			},
 		}
@@ -228,6 +228,58 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 	})
 }
 
+func TestNewObjectClient_prefixing(t *testing.T) {
+	t.Run("no prefix", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		_, ok := objectClient.(client.PrefixedObjectClient)
+		assert.False(t, ok)
+	})
+
+	t.Run("prefix with trailing /", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.ObjectPrefix = "my/prefix/"
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		prefixed, ok := objectClient.(client.PrefixedObjectClient)
+		assert.True(t, ok)
+		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
+	})
+
+	t.Run("prefix without trailing /", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.ObjectPrefix = "my/prefix"
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		prefixed, ok := objectClient.(client.PrefixedObjectClient)
+		assert.True(t, ok)
+		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
+	})
+
+	t.Run("prefix with starting and trailing /", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.ObjectPrefix = "/my/prefix/"
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		prefixed, ok := objectClient.(client.PrefixedObjectClient)
+		assert.True(t, ok)
+		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
+	})
+}
+
 // DefaultSchemaConfig creates a simple schema config for testing
 func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
 	s := config.SchemaConfig{
@@ -239,10 +291,11 @@ func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaCon
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,
 			},
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: "cortex_chunks",
-				Period: 7 * 24 * time.Hour,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: "cortex_chunks",
+					Period: 7 * 24 * time.Hour,
+				}},
 		}},
 	}
 	if err := s.Validate(); err != nil {

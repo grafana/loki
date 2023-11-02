@@ -109,10 +109,10 @@ func TestLoadRules(t *testing.T) {
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.RuleNode{{
 				For:    model.Duration(5 * time.Minute),
 				Labels: map[string]string{"label1": "value1"},
-			}}}},
-			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup", Interval: model.Duration(2 * time.Minute)}},
-			{user: "user1", namespace: "world", ruleGroup: rulefmt.RuleGroup{Name: "another namespace testGroup", Interval: model.Duration(1 * time.Hour)}},
-			{user: "user2", namespace: "+-!@#$%. ", ruleGroup: rulefmt.RuleGroup{Name: "different user", Interval: model.Duration(5 * time.Minute)}},
+			}}, Limit: 10}},
+			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup", Interval: model.Duration(2 * time.Minute), Limit: 0}},
+			{user: "user1", namespace: "world", ruleGroup: rulefmt.RuleGroup{Name: "another namespace testGroup", Interval: model.Duration(1 * time.Hour), Limit: 1}},
+			{user: "user2", namespace: "+-!@#$%. ", ruleGroup: rulefmt.RuleGroup{Name: "different user", Interval: model.Duration(5 * time.Minute), Limit: -1}},
 		}
 
 		for _, g := range groups {
@@ -150,13 +150,13 @@ func TestLoadRules(t *testing.T) {
 						For:    5 * time.Minute,
 						Labels: []logproto.LabelAdapter{{Name: "label1", Value: "value1"}},
 					},
-				}},
-				{User: "user1", Namespace: "hello", Name: "second testGroup", Interval: 2 * time.Minute},
-				{User: "user1", Namespace: "world", Name: "another namespace testGroup", Interval: 1 * time.Hour},
+				}, Limit: 10},
+				{User: "user1", Namespace: "hello", Name: "second testGroup", Interval: 2 * time.Minute, Limit: 0},
+				{User: "user1", Namespace: "world", Name: "another namespace testGroup", Interval: 1 * time.Hour, Limit: 1},
 			}, allGroupsMap["user1"])
 
 			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
-				{User: "user2", Namespace: "+-!@#$%. ", Name: "different user", Interval: 5 * time.Minute},
+				{User: "user2", Namespace: "+-!@#$%. ", Name: "different user", Interval: 5 * time.Minute, Limit: -1},
 			}, allGroupsMap["user2"])
 		}
 
@@ -421,7 +421,7 @@ type mockBucket struct {
 	names []string
 }
 
-func (mb mockBucket) Iter(_ context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (mb mockBucket) Iter(_ context.Context, _ string, f func(string) error, _ ...objstore.IterOption) error {
 	for _, n := range mb.names {
 		if err := f(n); err != nil {
 			return err

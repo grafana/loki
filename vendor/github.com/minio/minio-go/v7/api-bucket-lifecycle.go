@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
@@ -102,29 +103,36 @@ func (c *Client) removeBucketLifecycle(ctx context.Context, bucketName string) e
 
 // GetBucketLifecycle fetch bucket lifecycle configuration
 func (c *Client) GetBucketLifecycle(ctx context.Context, bucketName string) (*lifecycle.Configuration, error) {
+	lc, _, err := c.GetBucketLifecycleWithInfo(ctx, bucketName)
+	return lc, err
+}
+
+// GetBucketLifecycleWithInfo fetch bucket lifecycle configuration along with when it was last updated
+func (c *Client) GetBucketLifecycleWithInfo(ctx context.Context, bucketName string) (*lifecycle.Configuration, time.Time, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 
-	bucketLifecycle, err := c.getBucketLifecycle(ctx, bucketName)
+	bucketLifecycle, updatedAt, err := c.getBucketLifecycle(ctx, bucketName)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 
 	config := lifecycle.NewConfiguration()
 	if err = xml.Unmarshal(bucketLifecycle, config); err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
-	return config, nil
+	return config, updatedAt, nil
 }
 
 // Request server for current bucket lifecycle.
-func (c *Client) getBucketLifecycle(ctx context.Context, bucketName string) ([]byte, error) {
+func (c *Client) getBucketLifecycle(ctx context.Context, bucketName string) ([]byte, time.Time, error) {
 	// Get resources properly escaped and lined up before
 	// using them in http request.
 	urlValues := make(url.Values)
 	urlValues.Set("lifecycle", "")
+	urlValues.Set("withUpdatedAt", "true")
 
 	// Execute GET on bucket to get lifecycle.
 	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
@@ -134,14 +142,28 @@ func (c *Client) getBucketLifecycle(ctx context.Context, bucketName string) ([]b
 
 	defer closeResponse(resp)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 
 	if resp != nil {
 		if resp.StatusCode != http.StatusOK {
-			return nil, httpRespToErrorResponse(resp, bucketName, "")
+			return nil, time.Time{}, httpRespToErrorResponse(resp, bucketName, "")
 		}
 	}
 
-	return io.ReadAll(resp.Body)
+	lcBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+
+	const minIOLifecycleCfgUpdatedAt = "X-Minio-LifecycleConfig-UpdatedAt"
+	var updatedAt time.Time
+	if timeStr := resp.Header.Get(minIOLifecycleCfgUpdatedAt); timeStr != "" {
+		updatedAt, err = time.Parse(iso8601DateFormat, timeStr)
+		if err != nil {
+			return nil, time.Time{}, err
+		}
+	}
+
+	return lcBytes, updatedAt, nil
 }

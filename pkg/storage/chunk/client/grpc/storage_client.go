@@ -66,7 +66,7 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 	return nil
 }
 
-func (s *StorageClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+func (s *StorageClient) DeleteChunk(ctx context.Context, _, chunkID string) error {
 	chunkInfo := &ChunkID{ChunkID: chunkID}
 	_, err := s.client.DeleteChunks(ctx, chunkInfo)
 	if err != nil {
@@ -76,6 +76,10 @@ func (s *StorageClient) DeleteChunk(ctx context.Context, userID, chunkID string)
 }
 
 func (s *StorageClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
+func (s *StorageClient) IsRetryableErr(_ error) bool {
 	return false
 }
 

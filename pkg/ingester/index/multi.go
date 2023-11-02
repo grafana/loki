@@ -105,20 +105,20 @@ func (m *Multi) indexFor(t time.Time) Interface {
 
 type noopInvertedIndex struct{}
 
-func (noopInvertedIndex) Add(labels []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels {
+func (noopInvertedIndex) Add(_ []logproto.LabelAdapter, _ model.Fingerprint) labels.Labels {
 	return nil
 }
 
-func (noopInvertedIndex) Delete(labels labels.Labels, fp model.Fingerprint) {}
+func (noopInvertedIndex) Delete(_ labels.Labels, _ model.Fingerprint) {}
 
-func (noopInvertedIndex) Lookup(matchers []*labels.Matcher, shard *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
+func (noopInvertedIndex) Lookup(_ []*labels.Matcher, _ *astmapper.ShardAnnotation) ([]model.Fingerprint, error) {
 	return nil, nil
 }
 
-func (noopInvertedIndex) LabelNames(shard *astmapper.ShardAnnotation) ([]string, error) {
+func (noopInvertedIndex) LabelNames(_ *astmapper.ShardAnnotation) ([]string, error) {
 	return nil, nil
 }
 
-func (noopInvertedIndex) LabelValues(name string, shard *astmapper.ShardAnnotation) ([]string, error) {
+func (noopInvertedIndex) LabelValues(_ string, _ *astmapper.ShardAnnotation) ([]string, error) {
 	return nil, nil
 }

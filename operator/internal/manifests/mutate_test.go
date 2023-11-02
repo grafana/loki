@@ -488,7 +488,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 	require.Exactly(t, got.Subjects, want.Subjects)
 }
 
-func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
+func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.Deployment
@@ -591,6 +591,39 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tst := range table {
 		tst := tst
@@ -615,7 +648,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 	}
 }
 
-func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
+func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.StatefulSet
@@ -742,6 +775,39 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 									corev1.ReadWriteOnce,
 									corev1.ReadWriteMany,
 								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
 							},
 						},
 					},

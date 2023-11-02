@@ -84,29 +84,6 @@ func TestFromLabelAdaptersToLabels(t *testing.T) {
 	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
 }
 
-func TestFromLabelAdaptersToLabelsWithCopy(t *testing.T) {
-	input := []LabelAdapter{{Name: "hello", Value: "world"}}
-	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
-	actual := FromLabelAdaptersToLabelsWithCopy(input)
-
-	assert.Equal(t, expected, actual)
-
-	// All strings must be copied.
-	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
-	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
-}
-
-func BenchmarkFromLabelAdaptersToLabelsWithCopy(b *testing.B) {
-	input := []LabelAdapter{
-		{Name: "hello", Value: "world"},
-		{Name: "some label", Value: "and its value"},
-		{Name: "long long long long long label name", Value: "perhaps even longer label value, but who's counting anyway?"}}
-
-	for i := 0; i < b.N; i++ {
-		FromLabelAdaptersToLabelsWithCopy(input)
-	}
-}
-
 func TestLegacySampleCompatibilityMarshalling(t *testing.T) {
 	ts := int64(1232132123)
 	val := 12345.12345

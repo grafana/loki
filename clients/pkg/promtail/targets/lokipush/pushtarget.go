@@ -11,12 +11,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -79,7 +79,14 @@ func (t *PushTarget) run() error {
 
 	// The logger registers a metric which will cause a duplicate registry panic unless we provide an empty registry
 	// The metric created is for counting log lines and isn't likely to be missed.
-	util_log.InitLogger(&t.config.Server, prometheus.NewRegistry(), true, false)
+	serverCfg := &t.config.Server
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.NewRegistry(), true, false)
+
+	// Set new registry for upcoming metric server
+	// If not, it'll likely panic when the tool gets reloaded.
+	if t.config.Server.Registerer == nil {
+		t.config.Server.Registerer = prometheus.NewRegistry()
+	}
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {
@@ -104,7 +111,7 @@ func (t *PushTarget) run() error {
 func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	userID, _ := tenant.TenantID(r.Context())
-	req, err := push.ParseRequest(logger, userID, r, nil)
+	req, err := push.ParseRequest(logger, userID, r, nil, push.ParseLokiRequest)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -237,7 +244,7 @@ func (t *PushTarget) Stop() error {
 }
 
 // ready function serves the ready endpoint
-func (t *PushTarget) ready(w http.ResponseWriter, r *http.Request) {
+func (t *PushTarget) ready(w http.ResponseWriter, _ *http.Request) {
 	resp := "ready"
 	if _, err := w.Write([]byte(resp)); err != nil {
 		level.Error(t.logger).Log("msg", "failed to respond to ready endoint", "err", err)

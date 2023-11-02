@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	ww "github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ww "github.com/weaveworks/common/server"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -23,7 +23,7 @@ pipeline_stages:
       app:
       msg:
 - drop:
-    sources:
+    source:
       - src
     expression: ".*test.*"
     older_than: 24h
@@ -31,7 +31,7 @@ pipeline_stages:
 - drop:
     expression: ".*app1.*"
 - drop:
-    sources:
+    source:
       - app
     expression: loki
 - drop:

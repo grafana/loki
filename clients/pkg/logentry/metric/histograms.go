@@ -13,7 +13,7 @@ type HistogramConfig struct {
 	Buckets []float64 `mapstructure:"buckets"`
 }
 
-func validateHistogramConfig(config *HistogramConfig) error {
+func validateHistogramConfig(_ *HistogramConfig) error {
 	return nil
 }
 

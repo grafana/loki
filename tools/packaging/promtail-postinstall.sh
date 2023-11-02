@@ -5,7 +5,7 @@
 if ! command -V systemctl >/dev/null 2>&1; then
   echo "Could not find systemd. Skipping system installation." && exit 0
 else
-    systemd_version=$(systemctl --version | head -1 | sed 's/systemd //g')
+    systemd_version=$(systemctl --version | head -1 | sed 's/systemd \([0-9]\+\).*/\1/')
 fi
 
 cleanInstall() {
@@ -13,7 +13,7 @@ cleanInstall() {
 
     # Create the user
     if ! id promtail > /dev/null 2>&1 ; then
-        adduser --system --shell /bin/false "promtail"
+        adduser --no-create-home --system --shell /bin/false "promtail"
     fi
 
     # rhel/centos7 cannot use ExecStartPre=+ to specify the pre start should be run as root

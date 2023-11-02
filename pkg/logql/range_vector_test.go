@@ -413,7 +413,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 			for it.Next() {
 			}
 			_, value := it.At()
-			require.Equal(t, tt.expectedValue, value[0].F)
+			require.Equal(t, tt.expectedValue, value.SampleVector()[0].F)
 		})
 	}
 }

@@ -498,3 +498,117 @@ var _ interface {
 } = HttpResponseTrailerMatchInputValidationError{}
 
 var _HttpResponseTrailerMatchInput_HeaderName_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
+
+// Validate checks the field values on HttpRequestQueryParamMatchInput with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *HttpRequestQueryParamMatchInput) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on HttpRequestQueryParamMatchInput with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// HttpRequestQueryParamMatchInputMultiError, or nil if none found.
+func (m *HttpRequestQueryParamMatchInput) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *HttpRequestQueryParamMatchInput) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetQueryParam()) < 1 {
+		err := HttpRequestQueryParamMatchInputValidationError{
+			field:  "QueryParam",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return HttpRequestQueryParamMatchInputMultiError(errors)
+	}
+
+	return nil
+}
+
+// HttpRequestQueryParamMatchInputMultiError is an error wrapping multiple
+// validation errors returned by HttpRequestQueryParamMatchInput.ValidateAll()
+// if the designated constraints aren't met.
+type HttpRequestQueryParamMatchInputMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m HttpRequestQueryParamMatchInputMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m HttpRequestQueryParamMatchInputMultiError) AllErrors() []error { return m }
+
+// HttpRequestQueryParamMatchInputValidationError is the validation error
+// returned by HttpRequestQueryParamMatchInput.Validate if the designated
+// constraints aren't met.
+type HttpRequestQueryParamMatchInputValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e HttpRequestQueryParamMatchInputValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e HttpRequestQueryParamMatchInputValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e HttpRequestQueryParamMatchInputValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e HttpRequestQueryParamMatchInputValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e HttpRequestQueryParamMatchInputValidationError) ErrorName() string {
+	return "HttpRequestQueryParamMatchInputValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e HttpRequestQueryParamMatchInputValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sHttpRequestQueryParamMatchInput.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = HttpRequestQueryParamMatchInputValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = HttpRequestQueryParamMatchInputValidationError{}

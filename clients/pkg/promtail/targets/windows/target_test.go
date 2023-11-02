@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/server"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/server"
 	"golang.org/x/sys/windows/svc/eventlog"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"

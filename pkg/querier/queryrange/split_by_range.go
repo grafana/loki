@@ -7,12 +7,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -57,7 +58,8 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return s.next.Do(ctx, request)
 	}
 
-	mapper, err := logql.NewRangeMapper(interval, s.metrics)
+	mapperStats := logql.NewMapperStats()
+	mapper, err := logql.NewRangeMapper(interval, s.metrics, mapperStats)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,11 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return s.next.Do(ctx, request)
 	}
 
-	params, err := paramsFromRequest(request)
+	// Update middleware stats
+	queryStatsCtx := stats.FromContext(ctx)
+	queryStatsCtx.AddSplitQueries(int64(mapperStats.GetSplitQueries()))
+
+	params, err := ParamsFromRequest(request)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +115,6 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		}, nil
 	case parser.ValueTypeVector:
 		return &LokiPromResponse{
-			Statistics: res.Statistics,
 			Response: &queryrangebase.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Data: queryrangebase.PrometheusData{
@@ -117,6 +122,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 					Result:     toProtoVector(value.(loghttp.Vector)),
 				},
 			},
+			Statistics: res.Statistics,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data.Type())

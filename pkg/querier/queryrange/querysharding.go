@@ -9,15 +9,16 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -35,7 +36,6 @@ func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
 	engineOpts logql.EngineOpts,
-	codec queryrangebase.Codec,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
@@ -149,7 +149,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd()).Add(-maxOffset)))
+	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
@@ -161,12 +161,19 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
+	// The shard resolver uses index stats to determine the number of shards.
+	// We want to store the cache stats for the requests to get the index stats.
+	// Later on, the query engine overwrites the stats context with other stats,
+	// so we create a separate stats context here for the resolver that we
+	// will merge with the stats returned from the engine.
+	resolverStats, ctx := stats.NewContext(ctx)
+
 	resolver, ok := shardResolverForConf(
 		ctx,
 		conf,
 		ast.ng.Opts().MaxLookBackPeriod,
 		ast.logger,
-		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart()), model.Time(r.GetEnd())),
+		MinWeightedParallelism(ctx, tenants, ast.confs, ast.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli())),
 		ast.maxShards,
 		r,
 		ast.statsHandler,
@@ -196,7 +203,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	params, err := paramsFromRequest(r)
+	params, err := ParamsFromRequest(r)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +223,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
+
+	// Merge index and volume stats result cache stats from shard resolver into the query stats.
+	res.Statistics.Caches.StatsResult.Merge(resolverStats.Caches().StatsResult)
+	res.Statistics.Caches.VolumeResult.Merge(resolverStats.Caches().VolumeResult)
 
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {
@@ -292,7 +303,7 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 	cutoff := splitter.now().Add(-minShardingLookback)
 	// Only attempt to shard queries which are older than the sharding lookback
 	// (the period for which ingesters are also queried) or when the lookback is disabled.
-	if minShardingLookback == 0 || util.TimeFromMillis(r.GetEnd()).Before(cutoff) {
+	if minShardingLookback == 0 || util.TimeFromMillis(r.GetEnd().UnixMilli()).Before(cutoff) {
 		return splitter.shardingware.Do(ctx, r)
 	}
 	return splitter.next.Do(ctx, r)
@@ -389,7 +400,7 @@ type seriesShardingHandler struct {
 }
 
 func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	conf, err := ss.confs.GetConf(r.GetStart(), r.GetEnd())
+	conf, err := ss.confs.GetConf(r.GetStart().UnixMilli(), r.GetEnd().UnixMilli())
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
@@ -422,7 +433,7 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 		ctx,
 		ss.next,
 		requests,
-		MinWeightedParallelism(ctx, tenantIDs, ss.confs, ss.limits, model.Time(req.GetStart()), model.Time(req.GetEnd())),
+		MinWeightedParallelism(ctx, tenantIDs, ss.confs, ss.limits, model.Time(req.GetStart().UnixMilli()), model.Time(req.GetEnd().UnixMilli())),
 	)
 	if err != nil {
 		return nil, err

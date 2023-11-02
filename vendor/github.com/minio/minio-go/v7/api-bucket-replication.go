@@ -219,7 +219,7 @@ func (c *Client) ResetBucketReplicationOnTarget(ctx context.Context, bucketName 
 
 // ResetBucketReplication kicks off replication of previously replicated objects if ExistingObjectReplication
 // is enabled in the replication config
-func (c *Client) resetBucketReplicationOnTarget(ctx context.Context, bucketName string, olderThan time.Duration, tgtArn string, resetID string) (rinfo replication.ResyncTargetsInfo, err error) {
+func (c *Client) resetBucketReplicationOnTarget(ctx context.Context, bucketName string, olderThan time.Duration, tgtArn, resetID string) (rinfo replication.ResyncTargetsInfo, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
 		return
@@ -288,4 +288,68 @@ func (c *Client) GetBucketReplicationResyncStatus(ctx context.Context, bucketNam
 		return rinfo, err
 	}
 	return rinfo, nil
+}
+
+// GetBucketReplicationMetricsV2 fetches bucket replication status metrics
+func (c *Client) GetBucketReplicationMetricsV2(ctx context.Context, bucketName string) (s replication.MetricsV2, err error) {
+	// Input validation.
+	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
+		return s, err
+	}
+	// Get resources properly escaped and lined up before
+	// using them in http request.
+	urlValues := make(url.Values)
+	urlValues.Set("replication-metrics", "2")
+
+	// Execute GET on bucket to get replication metrics.
+	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
+		bucketName:  bucketName,
+		queryValues: urlValues,
+	})
+
+	defer closeResponse(resp)
+	if err != nil {
+		return s, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return s, httpRespToErrorResponse(resp, bucketName, "")
+	}
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s, err
+	}
+
+	if err := json.Unmarshal(respBytes, &s); err != nil {
+		return s, err
+	}
+	return s, nil
+}
+
+// CheckBucketReplication validates if replication is set up properly for a bucket
+func (c *Client) CheckBucketReplication(ctx context.Context, bucketName string) (err error) {
+	// Input validation.
+	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
+		return err
+	}
+	// Get resources properly escaped and lined up before
+	// using them in http request.
+	urlValues := make(url.Values)
+	urlValues.Set("replication-check", "")
+
+	// Execute GET on bucket to get replication config.
+	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
+		bucketName:  bucketName,
+		queryValues: urlValues,
+	})
+
+	defer closeResponse(resp)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return httpRespToErrorResponse(resp, bucketName, "")
+	}
+	return nil
 }

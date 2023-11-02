@@ -5,13 +5,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/pkg/util/math"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -40,7 +42,7 @@ type SplitByMetrics struct {
 func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 	return &SplitByMetrics{
 		splits: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_partitions",
 			Help:      "Number of time-based partitions (sub-requests) per request",
 			Buckets:   prometheus.ExponentialBuckets(1, 4, 5), // 1 -> 1024
@@ -167,6 +169,11 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		case <-ctx.Done():
 			return
 		case data.ch <- &packedResp{resp, err}:
+			// The parent Process method will return on the first error. So stop
+			// processng.
+			if err != nil {
+				return
+			}
 		}
 	}
 }
@@ -212,7 +219,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest:
+	case *LokiSeriesRequest, *LabelRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest:
 		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:
@@ -229,7 +236,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
+	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err
@@ -267,26 +274,34 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Shards:  r.Shards,
 			})
 		})
-	case *LokiLabelNamesRequest:
+	case *LabelRequest:
 		// metadata queries have end time inclusive.
 		// Set endTimeInclusive to true so that ForInterval keeps a gap of 1ms between splits to
 		// avoid querying duplicate data in adjacent queries.
-		util.ForInterval(interval, r.StartTs, r.EndTs, true, func(start, end time.Time) {
-			reqs = append(reqs, &LokiLabelNamesRequest{
-				Path:    r.Path,
-				StartTs: start,
-				EndTs:   end,
-				Query:   r.Query,
-			})
+		util.ForInterval(interval, *r.Start, *r.End, true, func(start, end time.Time) {
+			reqs = append(reqs, NewLabelRequest(start, end, r.Query, r.Name, r.Path()))
 		})
 	case *logproto.IndexStatsRequest:
-		startTS := model.Time(r.GetStart()).Time()
-		endTS := model.Time(r.GetEnd()).Time()
+		startTS := r.GetStart()
+		endTS := r.GetEnd()
 		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
 			reqs = append(reqs, &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnix(start.Unix()),
 				Through:  model.TimeFromUnix(end.Unix()),
 				Matchers: r.GetMatchers(),
+			})
+		})
+	case *logproto.VolumeRequest:
+		startTS := r.GetStart()
+		endTS := r.GetEnd()
+		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
+			reqs = append(reqs, &logproto.VolumeRequest{
+				From:         model.TimeFromUnix(start.Unix()),
+				Through:      model.TimeFromUnix(end.Unix()),
+				Matchers:     r.GetMatchers(),
+				Limit:        r.Limit,
+				TargetLabels: r.TargetLabels,
+				AggregateBy:  r.AggregateBy,
 			})
 		})
 	default:
@@ -354,7 +369,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 	}
 	end := time.Unix(0, endNs)
 
-	lokiReq = lokiReq.WithStartEnd(util.TimeToMillis(start), util.TimeToMillis(end)).(*LokiRequest)
+	lokiReq = lokiReq.WithStartEnd(start, end).(*LokiRequest)
 
 	// step is >= configured split interval, let us just split the query interval by step
 	if lokiReq.Step >= interval.Milliseconds() {

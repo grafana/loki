@@ -2,9 +2,8 @@
 title: Loki Improvement Documents (LIDs)
 description: Loki Improvement Documents (LIDs)
 aliases: 
-- /docs/loki/latest/lids
-- /docs/loki/latest/community/lids
-weight: 1400
+- ../lids/
+weight: 500
 ---
 
 # Loki Improvement Documents (LIDs)
@@ -21,7 +20,7 @@ LIDs are **not** required for:
 
 ## Creating a LID
 
-Start by opening a PR against this repository, using [this template](https://github.com/grafana/loki/blob/main/docs/sources/lids/template.md).
+Start by opening a PR against this repository, using [this template](https://github.com/grafana/loki/blob/main/docs/sources/community/lids/template.md).
 
 All LIDs require a "sponsor". A sponsor is a Grafana Loki maintainer who is willing to shepherd the improvement proposal throughout its development process from draft through to completion. A sponsor can be found by starting a thread in our [mailing list](https://groups.google.com/forum/#!forum/lokiproject), which one or more maintainers will respond to and volunteer. If a LID is generated internally by a Grafana Labs employee who is also a maintainer, the sponsor will be the author. Thread topics should be prefixed with "LID: ".
 

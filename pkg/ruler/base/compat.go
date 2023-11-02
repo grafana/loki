@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -18,8 +20,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/ruler/config"
@@ -234,29 +234,34 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer, metricsNamespace string) ManagerFactory {
 	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_total",
-		Help: "Number of write requests to ingesters.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_write_requests_total",
+		Help:      "Number of write requests to ingesters.",
 	})
 	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_failed_total",
-		Help: "Number of failed write requests to ingesters.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_write_requests_failed_total",
+		Help:      "Number of failed write requests to ingesters.",
 	})
 
 	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_total",
-		Help: "Number of queries executed by ruler.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_queries_total",
+		Help:      "Number of queries executed by ruler.",
 	})
 	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_failed_total",
-		Help: "Number of failed queries by ruler.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_queries_failed_total",
+		Help:      "Number of failed queries by ruler.",
 	})
 	var rulerQuerySeconds *prometheus.CounterVec
 	if cfg.EnableQueryStats {
 		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ruler_query_seconds_total",
-			Help: "Total amount of wall clock time spent processing queries by the ruler.",
+			Namespace: metricsNamespace,
+			Name:      "ruler_query_seconds_total",
+			Help:      "Total amount of wall clock time spent processing queries by the ruler.",
 		}, []string{"user"})
 	}
 

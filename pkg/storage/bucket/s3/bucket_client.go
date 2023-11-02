@@ -59,7 +59,5 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 			Transport:             cfg.HTTP.Transport,
 		},
-		// Enforce signature version 2 if CLI flag is set
-		SignatureV2: cfg.SignatureVersion == SignatureVersionV2,
 	}, nil
 }

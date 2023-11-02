@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,7 +22,6 @@ import (
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
@@ -202,7 +202,7 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
 			for k := range clt.Headers {
-				if strings.ToLower(user.OrgIDHeaderName) == strings.ToLower(strings.TrimSpace(k)) {
+				if strings.EqualFold(user.OrgIDHeaderName, strings.TrimSpace(k)) {
 					delete(clt.Headers, k)
 				}
 			}
@@ -362,16 +362,16 @@ var errNotReady = errors.New("appender not ready")
 
 type notReadyAppender struct{}
 
-func (n notReadyAppender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+func (n notReadyAppender) Append(_ storage.SeriesRef, _ labels.Labels, _ int64, _ float64) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
-func (n notReadyAppender) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
+func (n notReadyAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
-func (n notReadyAppender) UpdateMetadata(ref storage.SeriesRef, l labels.Labels, m metadata.Metadata) (storage.SeriesRef, error) {
+func (n notReadyAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
-func (n notReadyAppender) AppendHistogram(ref storage.SeriesRef, l labels.Labels, t int64, h *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+func (n notReadyAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
 func (n notReadyAppender) Commit() error   { return errNotReady }
@@ -379,16 +379,16 @@ func (n notReadyAppender) Rollback() error { return errNotReady }
 
 type discardingAppender struct{}
 
-func (n discardingAppender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+func (n discardingAppender) Append(_ storage.SeriesRef, _ labels.Labels, _ int64, _ float64) (storage.SeriesRef, error) {
 	return 0, nil
 }
-func (n discardingAppender) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
+func (n discardingAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
 	return 0, nil
 }
-func (n discardingAppender) UpdateMetadata(ref storage.SeriesRef, l labels.Labels, m metadata.Metadata) (storage.SeriesRef, error) {
+func (n discardingAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
 	return 0, nil
 }
-func (n discardingAppender) AppendHistogram(ref storage.SeriesRef, l labels.Labels, t int64, h *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+func (n discardingAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, nil
 }
 func (n discardingAppender) Commit() error   { return nil }
@@ -438,7 +438,7 @@ func newStorageRegistryMetrics(reg prometheus.Registerer) *storageRegistryMetric
 
 type nullRegistry struct{}
 
-func (n nullRegistry) Appender(ctx context.Context) storage.Appender { return discardingAppender{} }
-func (n nullRegistry) isReady(tenant string) bool                    { return true }
-func (n nullRegistry) stop()                                         {}
-func (n nullRegistry) configureTenantStorage(tenant string)          {}
+func (n nullRegistry) Appender(_ context.Context) storage.Appender { return discardingAppender{} }
+func (n nullRegistry) isReady(_ string) bool                       { return true }
+func (n nullRegistry) stop()                                       {}
+func (n nullRegistry) configureTenantStorage(_ string)             {}

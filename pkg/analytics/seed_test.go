@@ -22,7 +22,7 @@ type dnsProviderMock struct {
 	resolved []string
 }
 
-func (p *dnsProviderMock) Resolve(ctx context.Context, addrs []string) error {
+func (p *dnsProviderMock) Resolve(_ context.Context, addrs []string) error {
 	p.resolved = addrs
 	return nil
 }
@@ -36,7 +36,7 @@ func createMemberlist(t *testing.T, port, memberID int) *memberlist.KV {
 	var cfg memberlist.KVConfig
 	flagext.DefaultValues(&cfg)
 	cfg.TCPTransport = memberlist.TCPTransportConfig{
-		BindAddrs: []string{"localhost"},
+		BindAddrs: []string{"0.0.0.0"},
 		BindPort:  0,
 	}
 	cfg.GossipInterval = 100 * time.Millisecond

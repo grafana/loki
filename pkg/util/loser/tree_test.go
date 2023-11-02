@@ -95,6 +95,31 @@ var testCases = []struct {
 		want: NewList(1, 2, 3, 4, 5),
 	},
 	{
+		name: "two lists, largest value in first list equal to maximum",
+		args: []*List{NewList(1, math.MaxUint64), NewList(2, 3)},
+		want: NewList(1, 2, 3, math.MaxUint64),
+	},
+	{
+		name: "two lists, first straddles second and has maxval",
+		args: []*List{NewList(1, 3, math.MaxUint64), NewList(2)},
+		want: NewList(1, 2, 3, math.MaxUint64),
+	},
+	{
+		name: "two lists, largest value in second list equal to maximum",
+		args: []*List{NewList(1, 3), NewList(2, math.MaxUint64)},
+		want: NewList(1, 2, 3, math.MaxUint64),
+	},
+	{
+		name: "two lists, second straddles first and has maxval",
+		args: []*List{NewList(2), NewList(1, 3, math.MaxUint64)},
+		want: NewList(1, 2, 3, math.MaxUint64),
+	},
+	{
+		name: "two lists, largest value in both lists equal to maximum",
+		args: []*List{NewList(1, math.MaxUint64), NewList(2, math.MaxUint64)},
+		want: NewList(1, 2, math.MaxUint64, math.MaxUint64),
+	},
+	{
 		name: "three lists",
 		args: []*List{NewList(1, 3), NewList(2, 4), NewList(5)},
 		want: NewList(1, 2, 3, 4, 5),
@@ -108,10 +133,10 @@ func TestMerge(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			numCloses := 0
-			close := func(s *List) {
+			closeFn := func(_ *List) {
 				numCloses++
 			}
-			lt := loser.New(tt.args, math.MaxUint64, at, less, close)
+			lt := loser.New(tt.args, math.MaxUint64, at, less, closeFn)
 			checkIterablesEqual(t, tt.want, lt, at, at2, less)
 			if numCloses != len(tt.args) {
 				t.Errorf("Expected %d closes, got %d", len(tt.args), numCloses)
@@ -127,10 +152,10 @@ func TestPush(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			numCloses := 0
-			close := func(s *List) {
+			closeFn := func(_ *List) {
 				numCloses++
 			}
-			lt := loser.New(nil, math.MaxUint64, at, less, close)
+			lt := loser.New(nil, math.MaxUint64, at, less, closeFn)
 			for _, s := range tt.args {
 				lt.Push(s)
 			}

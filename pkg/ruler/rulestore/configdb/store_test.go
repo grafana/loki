@@ -19,11 +19,11 @@ type MockClient struct {
 	err  error
 }
 
-func (c *MockClient) GetRules(ctx context.Context, since userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error) {
+func (c *MockClient) GetRules(_ context.Context, _ userconfig.ID) (map[string]userconfig.VersionedRulesConfig, error) {
 	return c.cfgs, c.err
 }
 
-func (c *MockClient) GetAlerts(ctx context.Context, since userconfig.ID) (*client.ConfigsResponse, error) {
+func (c *MockClient) GetAlerts(_ context.Context, _ userconfig.ID) (*client.ConfigsResponse, error) {
 	return nil, nil
 }
 

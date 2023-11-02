@@ -9,10 +9,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
@@ -68,7 +68,7 @@ func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.R
 	return f, nil
 }
 
-func (f *frontendSchedulerWorkers) starting(ctx context.Context) error {
+func (f *frontendSchedulerWorkers) starting(_ context.Context) error {
 	// Instead of re-using `ctx` from the frontendSchedulerWorkers service,
 	// `watcher` needs to use their own service context, because we want to
 	// control the stopping process in the `stopping` function of the

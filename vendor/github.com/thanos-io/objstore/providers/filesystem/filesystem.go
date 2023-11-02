@@ -258,6 +258,11 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	return os.IsNotExist(errors.Cause(err))
 }
 
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *Bucket) IsAccessDeniedErr(_ error) bool {
+	return false
+}
+
 func (b *Bucket) Close() error { return nil }
 
 // Name returns the bucket name.

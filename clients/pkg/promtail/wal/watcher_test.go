@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
@@ -26,7 +27,7 @@ type testWriteTo struct {
 	ReceivedSeriesReset []int
 }
 
-func (t *testWriteTo) StoreSeries(series []record.RefSeries, i int) {
+func (t *testWriteTo) StoreSeries(series []record.RefSeries, _ int) {
 	for _, seriesRec := range series {
 		t.series[uint64(seriesRec.Ref)] = util.MapToModelLabelSet(seriesRec.Labels.Map())
 	}

@@ -240,7 +240,7 @@ func newEntryWriter() *entryWriter {
 
 // WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same Record object for every
 // write, it first has to be reset, and then overwritten accordingly. Therefore, WriteEntry is not thread-safe.
-func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) error {
+func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, _ log.Logger) error {
 	// Reset wal record slices
 	ew.reusableWALRecord.RefEntries = ew.reusableWALRecord.RefEntries[:0]
 	ew.reusableWALRecord.Series = ew.reusableWALRecord.Series[:0]

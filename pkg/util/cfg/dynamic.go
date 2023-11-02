@@ -23,6 +23,8 @@ func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) err
 		// section of the config file by taking advantage of the code in ConfigFileLoader which will load
 		// and process the config file.
 		ConfigFileLoader(args, "config.file", true),
+		// Now load the flags again, this will supersede anything set from config file with flags from the command line.
+		Flags(args, fs),
 		// Apply any dynamic logic to set other defaults in the config. This function is called after parsing the
 		// config files so that values from a common, or shared, section can be used in
 		// the dynamic evaluation

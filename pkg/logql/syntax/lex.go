@@ -70,12 +70,19 @@ var tokens = map[string]int{
 	OpFmtLine:  LINE_FMT,
 
 	// filter functions
-	OpFilterIP:       IP,
-	OpDecolorize:     DECOLORIZE,
-	OpFilterDistinct: DISTINCT,
+	OpFilterIP:   IP,
+	OpDecolorize: DECOLORIZE,
 
 	// drop labels
 	OpDrop: DROP,
+
+	// keep labels
+	OpKeep: KEEP,
+}
+
+var parserFlags = map[string]struct{}{
+	OpStrict:    {},
+	OpKeepEmpty: {},
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
@@ -133,6 +140,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	switch r {
 	case '#':
 		// Scan until a newline or EOF is encountered
+		//nolint:revive
 		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
 		}
 
@@ -158,7 +166,14 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 		lval.str = numberText
 		return NUMBER
-	case '-': // handle negative durations
+	case '-': // handle flags and negative durations
+		if l.Peek() == '-' {
+			if flag, ok := tryScanFlag(&l.Scanner); ok {
+				lval.str = flag
+				return PARSER_FLAG
+			}
+		}
+
 		tokenText := l.TokenText()
 		if duration, ok := tryScanDuration(tokenText, &l.Scanner); ok {
 			lval.duration = duration
@@ -200,7 +215,9 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	}
 
 	tokenText := l.TokenText()
-	tokenNext := tokenText + string(l.Peek())
+	tokenTextLower := strings.ToLower(l.TokenText())
+	tokenNext := strings.ToLower(tokenText + string(l.Peek()))
+
 	if tok, ok := functionTokens[tokenNext]; ok {
 		// create a copy to advance to the entire token for testing suffix
 		sc := l.Scanner
@@ -211,7 +228,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 	}
 
-	if tok, ok := functionTokens[tokenText]; ok {
+	if tok, ok := functionTokens[tokenTextLower]; ok {
 		if !isFunction(l.Scanner) {
 			lval.str = tokenText
 			return IDENTIFIER
@@ -224,7 +241,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return tok
 	}
 
-	if tok, ok := tokens[tokenText]; ok {
+	if tok, ok := tokens[tokenTextLower]; ok {
 		return tok
 	}
 
@@ -234,6 +251,35 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 func (l *lexer) Error(msg string) {
 	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
+}
+
+// tryScanFlag scans for a parser flag and returns it on success
+// it advances the scanner only if a valid flag is found
+func tryScanFlag(l *Scanner) (string, bool) {
+	var sb strings.Builder
+	sb.WriteString(l.TokenText())
+
+	// copy the scanner to avoid advancing it in case it's not a flag
+	s := *l
+	consumed := 0
+	for r := s.Peek(); unicode.IsLetter(r) || r == '-'; r = s.Peek() {
+		_, _ = sb.WriteRune(r)
+		_ = s.Next()
+
+		consumed++
+	}
+
+	flag := sb.String()
+	if _, ok := parserFlags[flag]; !ok {
+		return "", false
+	}
+
+	// consume the scanner
+	for i := 0; i < consumed; i++ {
+		_ = l.Next()
+	}
+
+	return flag, true
 }
 
 func tryScanDuration(number string, l *Scanner) (time.Duration, bool) {
@@ -346,7 +392,7 @@ func isFunction(sc Scanner) bool {
 	sc = trimSpace(sc)
 	for r := sc.Next(); r != scanner.EOF; r = sc.Next() {
 		sb.WriteRune(r)
-		switch sb.String() {
+		switch strings.ToLower(sb.String()) {
 		case "(":
 			return true
 		case "by", "without":

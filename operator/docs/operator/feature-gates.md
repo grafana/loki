@@ -231,14 +231,14 @@ More details: <a href="https://grafana.com/docs/loki/latest/release-notes/v2-5/#
 </tr>
 <tr>
 <td>
-<code>runtimeSeccompProfile</code><br/>
+<code>restrictedPodSecurityStandard</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
-<p>RuntimeSeccompProfile enables the restricted seccomp profile on all
-Lokistack components.</p>
+<p>RestrictedPodSecurityStandard enables compliance with the restrictive pod security standard.
+More details: <a href="https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted">https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted</a></p>
 </td>
 </tr>
 <tr>
@@ -399,6 +399,17 @@ bool
 <td>
 <p>ClusterProxy enables usage of the proxy variables set in the proxy resource.
 More details: <a href="https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy">https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy</a></p>
+</td>
+</tr>
+<tr>
+<td>
+<code>dashboards</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Dashboards enables the loki-mixin dashboards into the OpenShift Console</p>
 </td>
 </tr>
 </tbody>

@@ -71,6 +71,13 @@ type RecordingRuleGroupSpec struct {
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="LogQL Expression"
 	Expr string `json:"expr"`
+
+	// Labels to add to each recording rule.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Labels"
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // RecordingRuleStatus defines the observed state of RecordingRule

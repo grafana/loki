@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -25,6 +26,7 @@ import (
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -34,9 +36,9 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
@@ -53,6 +55,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
@@ -110,12 +113,12 @@ func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManage
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 	if q != nil {
-		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return func(mint, maxt int64) (storage.Querier, error) {
 			return q, nil
 		}
 	}
 
-	return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return func(mint, maxt int64) (storage.Querier, error) {
 		return storage.NoopQuerier(), nil
 	}
 }
@@ -146,7 +149,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides, constants.Loki)
 	require.NoError(t, err)
 
 	return manager
@@ -158,7 +161,7 @@ func newMultiTenantManager(t *testing.T, cfg Config, q storage.Querier, amConf m
 	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
 	overrides.alertManagerConfig = amConf
 
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides, constants.Loki)
 	require.NoError(t, err)
 
 	return manager
@@ -194,9 +197,9 @@ func (p *mockRulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
 	return nil, fmt.Errorf("unable to find ruler for add %s", addr)
 }
 
-func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
+func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, metricsNamespace string, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
 	return &mockRulerClientsPool{
-		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
+		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg, metricsNamespace),
 		cfg:          cfg,
 		rulerAddrMap: rulerAddrMap,
 	}
@@ -210,8 +213,8 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
-	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides)
+	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg, constants.Loki)
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides, constants.Loki)
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -221,7 +224,8 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 		logger,
 		storage,
 		overrides,
-		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
+		newMockClientsPool(rulerConfig, logger, reg, constants.Loki, rulerAddrMap),
+		constants.Loki,
 	)
 	require.NoError(t, err)
 	return ruler
@@ -277,10 +281,10 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	// Ensure we have metrics in the notifier.
 	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
-		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
-		# TYPE cortex_prometheus_notifications_dropped_total counter
-		cortex_prometheus_notifications_dropped_total{user="1"} 0
-	`), "cortex_prometheus_notifications_dropped_total"))
+		# HELP loki_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
+		# TYPE loki_prometheus_notifications_dropped_total counter
+		loki_prometheus_notifications_dropped_total{user="1"} 0
+	`), "loki_prometheus_notifications_dropped_total"))
 }
 
 func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
@@ -349,11 +353,11 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 
 	// Ensure we have metrics in the notifier.
 	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
-		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
-		# TYPE cortex_prometheus_notifications_dropped_total counter
-		cortex_prometheus_notifications_dropped_total{user="tenant1"} 0
-		cortex_prometheus_notifications_dropped_total{user="tenant2"} 0
-	`), "cortex_prometheus_notifications_dropped_total"))
+		# HELP loki_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
+		# TYPE loki_prometheus_notifications_dropped_total counter
+		loki_prometheus_notifications_dropped_total{user="tenant1"} 0
+		loki_prometheus_notifications_dropped_total{user="tenant2"} 0
+	`), "loki_prometheus_notifications_dropped_total"))
 }
 
 func TestRuler_Rules(t *testing.T) {
@@ -405,29 +409,29 @@ func TestGetRules(t *testing.T) {
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler2": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 	}
@@ -1513,7 +1517,7 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 	obj, rs := setupRuleGroupsStore(t, ruleGroups)
 	require.Equal(t, 3, obj.GetObjectCount())
 
-	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil)
+	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil, constants.Loki)
 	require.NoError(t, err)
 
 	{
@@ -1714,15 +1718,15 @@ type fakeQuerier struct {
 	fn func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet
 }
 
-func (f *fakeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (f *fakeQuerier) Select(_ context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	return f.fn(sortSeries, hints, matchers...)
 }
 
-func (f *fakeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (f *fakeQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 func (f *fakeQuerier) Close() error { return nil }
@@ -1749,6 +1753,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -1831,4 +1836,141 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, firedAtTime, currentTime)
 
 	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+}
+
+func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
+
+	currentTime := time.Now().UTC()
+	seriesStartTime := currentTime.Add(time.Minute * -10)
+	sampleTimeDiff := 5 * time.Minute
+
+	testCases := []struct {
+		name               string
+		rule               *rulespb.RuleDesc
+		limit              int64
+		expectedRuleHealth promRules.RuleHealth
+		expectedError      error
+	}{
+		{
+			name:               "AlertingRule alerts within limit",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              2,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "AlertingRule alerts with limit 0",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              0,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "AlertingRule alerts exceeding limit",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              1,
+			expectedRuleHealth: promRules.HealthBad,
+			expectedError:      errors.New("exceeded limit of 1 with 2 alerts"),
+		},
+		{
+			name:               "RecordingRule series within limit",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              2,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "RecordingRule series with limit 0",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              0,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "RecordingRule series exceeding limit",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              1,
+			expectedRuleHealth: promRules.HealthBad,
+			expectedError:      errors.New("exceeded limit of 1 with 2 series"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(tt *testing.T) {
+
+			mockRuleGroupList := map[string]rulespb.RuleGroupList{
+				"user1": {
+					&rulespb.RuleGroupDesc{
+						Name:      "group1",
+						Namespace: "namespace1",
+						User:      "user1",
+						Interval:  interval,
+						Limit:     tc.limit,
+						Rules:     []*rulespb.RuleDesc{tc.rule},
+					},
+				},
+			}
+
+			rulerCfg := defaultRulerConfig(t, newMockRuleStore(mockRuleGroupList))
+			m := loki_storage.NewClientMetrics()
+			defer m.Unregister()
+
+			r := buildRuler(tt, rulerCfg, &fakeQuerier{
+				fn: func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+					return series.NewConcreteSeriesSet([]storage.Series{
+						series.NewConcreteSeries(
+							labels.Labels{
+								{Name: labels.MetricName, Value: "http_requests"},
+								{Name: labels.InstanceName, Value: "server1"},
+							},
+							[]model.SamplePair{
+								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
+								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
+							},
+						),
+						series.NewConcreteSeries(
+							labels.Labels{
+								{Name: labels.MetricName, Value: "http_requests"},
+								{Name: labels.InstanceName, Value: "server2"},
+							},
+							[]model.SamplePair{
+								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
+								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
+							},
+						),
+					})
+				},
+			}, m, nil)
+
+			r.syncRules(context.Background(), rulerSyncReasonInitial)
+
+			// assert initial state of rule group
+			ruleGroup := r.manager.GetRules("user1")[0]
+			require.Equal(tt, time.Time{}, ruleGroup.GetLastEvaluation())
+			require.Equal(tt, "group1", ruleGroup.Name())
+			require.Equal(tt, 1, len(ruleGroup.Rules()))
+
+			// assert initial state of rule within rule group
+			rule := ruleGroup.Rules()[0]
+			require.Equal(tt, time.Time{}, rule.GetEvaluationTimestamp())
+			require.Equal(tt, promRules.HealthUnknown, rule.Health())
+
+			// evaluate the rule group the first time and assert
+			ctx := user.InjectOrgID(context.Background(), "user1")
+			ruleGroup.Eval(ctx, currentTime)
+
+			require.Equal(tt, tc.expectedRuleHealth, rule.Health())
+			require.Equal(tt, tc.expectedError, rule.LastError())
+		})
+
+	}
+}
+
+func getMockRule(alert, expr, record string, forDuration time.Duration) *rulespb.RuleDesc {
+	return &rulespb.RuleDesc{
+		Alert:  alert,
+		Expr:   expr,
+		For:    forDuration,
+		Record: record,
+	}
 }

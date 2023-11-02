@@ -2,7 +2,7 @@
 title: Shuffle sharding
 menuTitle: Shuffle sharding
 description: Shuffle sharding can isolate a tenant workload from other tenant workloads, providing a better sharing of resources.
-weight: 100
+weight: 
 ---
 
 # Shuffle sharding

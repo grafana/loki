@@ -53,6 +53,10 @@ func removeLineformat(expr syntax.SampleExpr) {
 			// in which case it could be useful for further processing.
 			var found bool
 			for j := i; j < len(pipelineExpr.MultiStages); j++ {
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LogfmtParserExpr); ok {
+					found = true
+					break
+				}
 				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LabelParserExpr); ok {
 					found = true
 					break

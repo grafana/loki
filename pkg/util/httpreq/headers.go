@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/weaveworks/common/middleware"
+	"github.com/grafana/dskit/middleware"
 )
 
 type headerContextKey string

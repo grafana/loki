@@ -13,7 +13,7 @@ type mockKafkaClient struct {
 	err    error
 }
 
-func (m *mockKafkaClient) RefreshMetadata(topics ...string) error {
+func (m *mockKafkaClient) RefreshMetadata(_ ...string) error {
 	return nil
 }
 

@@ -99,7 +99,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params, _ = paramsFromRequest(&LokiRequest{
+				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -119,7 +119,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params, _ = paramsFromRequest(&LokiRequest{
+				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -140,7 +140,7 @@ func Test_StatsHTTP(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
-				data.params, _ = paramsFromRequest(&LokiRequest{
+				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
 					Direction: logproto.BACKWARD,
 					Limit:     100,
@@ -153,6 +153,27 @@ func Test_StatsHTTP(t *testing.T) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
 				require.Equal(t, "foo", data.params.Query())
 				require.Equal(t, logproto.BACKWARD, data.params.Direction())
+				require.Equal(t, uint32(100), data.params.Limit())
+				require.Equal(t, statsResult, *data.statistics)
+				require.Equal(t, streams, data.result)
+			},
+		},
+		{
+			"volume request",
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				data := r.Context().Value(ctxKey).(*queryData)
+				data.recorded = true
+				data.params, _ = ParamsFromRequest(&logproto.VolumeRequest{
+					Matchers: "foo",
+					Limit:    100,
+				})
+				data.statistics = &statsResult
+				data.result = streams
+				w.WriteHeader(http.StatusTeapot)
+			}),
+			func(t *testing.T, data *queryData) {
+				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
+				require.Equal(t, "foo", data.params.Query())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, statsResult, *data.statistics)
 				require.Equal(t, streams, data.result)

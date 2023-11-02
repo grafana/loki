@@ -892,7 +892,8 @@ func (h *httpAPI) Alerts(ctx context.Context) (AlertsResult, error) {
 	}
 
 	var res AlertsResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) AlertManagers(ctx context.Context) (AlertManagersResult, error) {
@@ -909,7 +910,8 @@ func (h *httpAPI) AlertManagers(ctx context.Context) (AlertManagersResult, error
 	}
 
 	var res AlertManagersResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) CleanTombstones(ctx context.Context) error {
@@ -938,7 +940,8 @@ func (h *httpAPI) Config(ctx context.Context) (ConfigResult, error) {
 	}
 
 	var res ConfigResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) DeleteSeries(ctx context.Context, matches []string, startTime, endTime time.Time) error {
@@ -981,7 +984,8 @@ func (h *httpAPI) Flags(ctx context.Context) (FlagsResult, error) {
 	}
 
 	var res FlagsResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) Buildinfo(ctx context.Context) (BuildinfoResult, error) {
@@ -998,7 +1002,8 @@ func (h *httpAPI) Buildinfo(ctx context.Context) (BuildinfoResult, error) {
 	}
 
 	var res BuildinfoResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error) {
@@ -1015,7 +1020,8 @@ func (h *httpAPI) Runtimeinfo(ctx context.Context) (RuntimeinfoResult, error) {
 	}
 
 	var res RuntimeinfoResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) LabelNames(ctx context.Context, matches []string, startTime, endTime time.Time) ([]string, Warnings, error) {
@@ -1031,18 +1037,13 @@ func (h *httpAPI) LabelNames(ctx context.Context, matches []string, startTime, e
 		q.Add("match[]", m)
 	}
 
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	_, body, w, err := h.client.Do(ctx, req)
+	_, body, w, err := h.client.DoGetFallback(ctx, u, q)
 	if err != nil {
 		return nil, w, err
 	}
 	var labelNames []string
-	return labelNames, w, json.Unmarshal(body, &labelNames)
+	err = json.Unmarshal(body, &labelNames)
+	return labelNames, w, err
 }
 
 func (h *httpAPI) LabelValues(ctx context.Context, label string, matches []string, startTime, endTime time.Time) (model.LabelValues, Warnings, error) {
@@ -1069,7 +1070,8 @@ func (h *httpAPI) LabelValues(ctx context.Context, label string, matches []strin
 		return nil, w, err
 	}
 	var labelValues model.LabelValues
-	return labelValues, w, json.Unmarshal(body, &labelValues)
+	err = json.Unmarshal(body, &labelValues)
+	return labelValues, w, err
 }
 
 type apiOptions struct {
@@ -1158,20 +1160,14 @@ func (h *httpAPI) Series(ctx context.Context, matches []string, startTime, endTi
 		q.Set("end", formatTime(endTime))
 	}
 
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	_, body, warnings, err := h.client.Do(ctx, req)
+	_, body, warnings, err := h.client.DoGetFallback(ctx, u, q)
 	if err != nil {
 		return nil, warnings, err
 	}
 
 	var mset []model.LabelSet
-	return mset, warnings, json.Unmarshal(body, &mset)
+	err = json.Unmarshal(body, &mset)
+	return mset, warnings, err
 }
 
 func (h *httpAPI) Snapshot(ctx context.Context, skipHead bool) (SnapshotResult, error) {
@@ -1193,7 +1189,8 @@ func (h *httpAPI) Snapshot(ctx context.Context, skipHead bool) (SnapshotResult, 
 	}
 
 	var res SnapshotResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) Rules(ctx context.Context) (RulesResult, error) {
@@ -1210,7 +1207,8 @@ func (h *httpAPI) Rules(ctx context.Context) (RulesResult, error) {
 	}
 
 	var res RulesResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) Targets(ctx context.Context) (TargetsResult, error) {
@@ -1227,7 +1225,8 @@ func (h *httpAPI) Targets(ctx context.Context) (TargetsResult, error) {
 	}
 
 	var res TargetsResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) TargetsMetadata(ctx context.Context, matchTarget, metric, limit string) ([]MetricMetadata, error) {
@@ -1251,7 +1250,8 @@ func (h *httpAPI) TargetsMetadata(ctx context.Context, matchTarget, metric, limi
 	}
 
 	var res []MetricMetadata
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) Metadata(ctx context.Context, metric, limit string) (map[string][]Metadata, error) {
@@ -1274,7 +1274,8 @@ func (h *httpAPI) Metadata(ctx context.Context, metric, limit string) (map[strin
 	}
 
 	var res map[string][]Metadata
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) TSDB(ctx context.Context) (TSDBResult, error) {
@@ -1291,7 +1292,8 @@ func (h *httpAPI) TSDB(ctx context.Context) (TSDBResult, error) {
 	}
 
 	var res TSDBResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) WalReplay(ctx context.Context) (WalReplayStatus, error) {
@@ -1308,7 +1310,8 @@ func (h *httpAPI) WalReplay(ctx context.Context) (WalReplayStatus, error) {
 	}
 
 	var res WalReplayStatus
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 func (h *httpAPI) QueryExemplars(ctx context.Context, query string, startTime, endTime time.Time) ([]ExemplarQueryResult, error) {
@@ -1322,20 +1325,15 @@ func (h *httpAPI) QueryExemplars(ctx context.Context, query string, startTime, e
 	if !endTime.IsZero() {
 		q.Set("end", formatTime(endTime))
 	}
-	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	_, body, _, err := h.client.Do(ctx, req)
+	_, body, _, err := h.client.DoGetFallback(ctx, u, q)
 	if err != nil {
 		return nil, err
 	}
 
 	var res []ExemplarQueryResult
-	return res, json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	return res, err
 }
 
 // Warnings is an array of non critical errors

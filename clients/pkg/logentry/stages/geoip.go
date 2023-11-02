@@ -123,7 +123,7 @@ func (g *geoIPStage) Name() string {
 	return StageTypeGeoIP
 }
 
-func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
 	var ip net.IP
 	if g.cfgs.Source != nil {
 		if _, ok := extracted[*g.cfgs.Source]; !ok {

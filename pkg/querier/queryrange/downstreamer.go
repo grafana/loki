@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -216,47 +215,6 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	return xs
 }
 
-func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
-	switch r := resp.(type) {
-	case *LokiResponse:
-		if r.Error != "" {
-			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.ErrorType, r.Error)
-		}
-
-		streams := make(logqlmodel.Streams, 0, len(r.Data.Result))
-
-		for _, stream := range r.Data.Result {
-			streams = append(streams, stream)
-		}
-
-		return logqlmodel.Result{
-			Statistics: r.Statistics,
-			Data:       streams,
-			Headers:    resp.GetHeaders(),
-		}, nil
-
-	case *LokiPromResponse:
-		if r.Response.Error != "" {
-			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.Response.ErrorType, r.Response.Error)
-		}
-		if r.Response.Data.ResultType == loghttp.ResultTypeVector {
-			return logqlmodel.Result{
-				Statistics: r.Statistics,
-				Data:       sampleStreamToVector(r.Response.Data.Result),
-				Headers:    resp.GetHeaders(),
-			}, nil
-		}
-		return logqlmodel.Result{
-			Statistics: r.Statistics,
-			Data:       sampleStreamToMatrix(r.Response.Data.Result),
-			Headers:    resp.GetHeaders(),
-		}, nil
-
-	default:
-		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
-	}
-}
-
 // downstreamAccumulator is one of two variants:
 // a logsAccumulator or a bufferedAccumulator.
 // Which variant is detected on the first call to Accumulate.
@@ -302,7 +260,7 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 	}
 }
 
-func (a *downstreamAccumulator) Accumulate(ctx context.Context, index int, acc logqlmodel.Result) error {
+func (a *downstreamAccumulator) Accumulate(_ context.Context, index int, acc logqlmodel.Result) error {
 	// on first pass, determine which accumulator to use
 	if a.acc == nil {
 		a.build(acc)

@@ -15,13 +15,13 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -581,7 +581,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				{T: 60 * 1000, F: 1.2, Metric: labels.FromStrings("app", "fuzz")},
 			},
 		},
-		//sort and sort_desc
+		// sort and sort_desc
 		{
 			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]logproto.Series{
@@ -662,6 +662,25 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 		},
 		{
 			`count_over_time({app="foo"}[1m]) > 1`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Series{
+				{newSeries(testSize, identity, `{app="foo"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}},
+			},
+			promql.Vector{
+				{T: 60 * 1000, F: 60, Metric: labels.FromStrings("app", "foo")},
+			},
+		},
+		{
+			// should return same results as `count_over_time({app="foo"}[1m]) > 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < count_over_time({app="foo"}[1m])`,
 			time.Unix(60, 0),
 			logproto.FORWARD,
 			0,
@@ -1575,7 +1594,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 			promql.Matrix{
 				promql.Series{
-					//vector result
+					// vector result
 					Metric: labels.Labels(nil),
 					Floats: []promql.FPoint{{T: 60000, F: 0}, {T: 80000, F: 0}, {T: 100000, F: 0}, {T: 120000, F: 0}, {T: 140000, F: 0}, {T: 160000, F: 0}, {T: 180000, F: 0}}},
 				promql.Series{
@@ -2108,7 +2127,69 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
+			// should return same results as `bytes_over_time({app="foo"}[30s]) > 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 5.}, // 5 bytes
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+						{Timestamp: time.Unix(75, 0).UnixNano(), Hash: 3, Value: 0.},
+						{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 4, Value: 0.},
+						{Timestamp: time.Unix(105, 0).UnixNano(), Hash: 5, Value: 4.}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{{T: 60 * 1000, F: 5.}, {T: 105 * 1000, F: 4.}, {T: 120 * 1000, F: 4.}},
+				},
+			},
+		},
+		{
 			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 5.}, // 5 bytes
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+						{Timestamp: time.Unix(75, 0).UnixNano(), Hash: 3, Value: 0.},
+						{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 4, Value: 0.},
+						{Timestamp: time.Unix(105, 0).UnixNano(), Hash: 5, Value: 4.}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{
+						{T: 60000, F: 1},
+						{T: 75000, F: 0},
+						{T: 90000, F: 0},
+						{T: 105000, F: 1},
+						{T: 120000, F: 1},
+					},
+				},
+			},
+		},
+		{
+			// should return same results as `bytes_over_time({app="foo"}[30s]) > bool 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < bool bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2205,13 +2286,13 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 type statsQuerier struct{}
 
-func (statsQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (statsQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
 	return iter.NoopIterator, nil
 }
 
-func (statsQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
 	return iter.NoopIterator, nil
@@ -2237,7 +2318,7 @@ func TestEngine_Stats(t *testing.T) {
 
 type metaQuerier struct{}
 
-func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (metaQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{
 			Name:   "Header",
@@ -2247,7 +2328,7 @@ func (metaQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.Entr
 	return iter.NoopIterator, nil
 }
 
-func (metaQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{Name: "Header", Values: []string{"value"}},
 	})
@@ -2337,11 +2418,11 @@ type errorIteratorQuerier struct {
 	entries []iter.EntryIterator
 }
 
-func (e errorIteratorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	return iter.NewSortEntryIterator(e.entries, p.Direction), nil
 }
 
-func (e errorIteratorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	return iter.NewSortSampleIterator(e.samples), nil
 }
 
@@ -2672,7 +2753,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	}
 }
 
-func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (q *querierRecorder) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
 	if !q.match {
 		for _, s := range q.streams {
 			return iter.NewStreamsIterator(s, p.Direction), nil
@@ -2686,7 +2767,7 @@ func (q *querierRecorder) SelectLogs(ctx context.Context, p SelectLogParams) (it
 	return iter.NewStreamsIterator(streams, p.Direction), nil
 }
 
-func (q *querierRecorder) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (q *querierRecorder) SelectSamples(_ context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
 			return iter.NewMultiSeriesIterator(s), nil

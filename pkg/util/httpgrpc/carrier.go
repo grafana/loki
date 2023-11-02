@@ -1,8 +1,8 @@
 package httpgrpc
 
 import (
+	weaveworks_httpgrpc "github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
-	weaveworks_httpgrpc "github.com/weaveworks/common/httpgrpc"
 )
 
 // Used to transfer trace information from/to HTTP request.

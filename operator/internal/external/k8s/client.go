@@ -5,7 +5,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -42,7 +41,7 @@ type StatusWriter interface {
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error
 }
 
-// StatusWriter is a kubernetes status writer interface used internally. It copies functions from
+// SubResourceClient is a kubernetes status writer interface used internally. It copies functions from
 // sigs.k8s.io/controller-runtime/pkg/client
 //
 //counterfeiter:generate . SubResourceClient

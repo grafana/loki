@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -60,7 +59,8 @@ func ResetMockStorage() {
 	singleton = nil
 }
 
-// NewMockStorage creates a new MockStorage.
+// NewMockStorage creates a mock storage singleton
+// MockStorage implements the interfaces client.ObjectClient, index.Client, index.TableClient, and storage.SchemaConfigProvider
 func NewMockStorage() *MockStorage {
 	if singleton == nil {
 		singleton = &MockStorage{
@@ -78,6 +78,10 @@ func NewMockStorage() *MockStorage {
 		}
 	}
 	return singleton
+}
+
+func (m *MockStorage) GetSchemaConfigs() []config.PeriodConfig {
+	return m.schemaCfg.Configs
 }
 
 func (m *MockStorage) GetSortedObjectKeys() []string {
@@ -366,62 +370,23 @@ func (m *MockStorage) query(ctx context.Context, query index.Query, callback fun
 	return nil
 }
 
-// PutChunks implements StorageClient.
-func (m *MockStorage) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if m.mode == MockStorageModeReadOnly {
-		return errPermissionDenied
-	}
-
-	m.numChunkWrites += len(chunks)
-
-	for i := range chunks {
-		buf, err := chunks[i].Encoded()
-		if err != nil {
-			return err
-		}
-		m.objects[m.schemaCfg.ExternalKey(chunks[i].ChunkRef)] = buf
-	}
-	return nil
-}
-
-// GetChunks implements StorageClient.
-func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []chunk.Chunk) ([]chunk.Chunk, error) {
+func (m *MockStorage) ObjectExists(_ context.Context, objectKey string) (bool, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	if m.mode == MockStorageModeWriteOnly {
-		return nil, errPermissionDenied
+		return false, errPermissionDenied
 	}
 
-	decodeContext := chunk.NewDecodeContext()
-	result := []chunk.Chunk{}
-	for _, chunk := range chunkSet {
-		key := m.schemaCfg.ExternalKey(chunk.ChunkRef)
-		buf, ok := m.objects[key]
-		if !ok {
-			return nil, errStorageObjectNotFound
-		}
-		if err := chunk.Decode(decodeContext, buf); err != nil {
-			return nil, err
-		}
-		result = append(result, chunk)
+	_, ok := m.objects[objectKey]
+	if !ok {
+		return false, nil
 	}
-	return result, nil
+
+	return true, nil
 }
 
-// DeleteChunk implements StorageClient.
-func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	if m.mode == MockStorageModeReadOnly {
-		return errPermissionDenied
-	}
-
-	return m.DeleteObject(ctx, chunkID)
-}
-
-func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
+func (m *MockStorage) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -437,7 +402,7 @@ func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 	return io.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
 }
 
-func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (m *MockStorage) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
 	buf, err := io.ReadAll(object)
 	if err != nil {
 		return err
@@ -462,7 +427,9 @@ func (m *MockStorage) IsChunkNotFoundErr(err error) bool {
 	return m.IsObjectNotFoundErr(err)
 }
 
-func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error {
+func (m *MockStorage) IsRetryableErr(error) bool { return false }
+
+func (m *MockStorage) DeleteObject(_ context.Context, objectKey string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -479,7 +446,7 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 }
 
 // List implements chunk.ObjectClient.
-func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (m *MockStorage) List(_ context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

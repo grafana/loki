@@ -509,7 +509,7 @@ type mockReader struct {
 	queryRange    string
 }
 
-func (r *mockReader) Query(start time.Time, end time.Time) ([]time.Time, error) {
+func (r *mockReader) Query(_ time.Time, _ time.Time) ([]time.Time, error) {
 	return r.resp, nil
 }
 

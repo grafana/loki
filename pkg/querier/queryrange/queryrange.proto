@@ -2,14 +2,17 @@ syntax = "proto3";
 
 package queryrange;
 
+import "github.com/gogo/googleapis/google/rpc/status.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logproto/sketch.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
+option go_package = "github.com/grafana/loki/pkg/querier/queryrange";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -95,19 +98,6 @@ message LokiSeriesResponse {
   ];
 }
 
-message LokiLabelNamesRequest {
-  google.protobuf.Timestamp startTs = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  google.protobuf.Timestamp endTs = 2 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  string path = 3;
-  string query = 4;
-}
-
 message LokiLabelNamesResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
   repeated string Data = 2 [(gogoproto.jsontag) = "data,omitempty"];
@@ -143,4 +133,41 @@ message IndexStatsResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+}
+
+message VolumeResponse {
+  logproto.VolumeResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.VolumeResponse"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
+
+message TopKSketchesResponse {
+  logproto.TopKMatrix response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.TopKMatrix"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
+
+message QuantileSketchResponse {
+  logproto.QuantileSketchMatrix response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.QuantileSketchMatrix"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
+
+message QueryResponse {
+  oneof response {
+    LokiSeriesResponse series = 1;
+    LokiLabelNamesResponse labels = 2;
+    IndexStatsResponse stats = 3;
+    LokiPromResponse prom = 4;
+    LokiResponse streams = 5;
+    VolumeResponse volume = 6;
+    TopKSketchesResponse topkSketches = 7;
+    QuantileSketchResponse quantileSketches = 8;
+  }
 }

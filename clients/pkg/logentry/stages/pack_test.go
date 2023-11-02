@@ -4,12 +4,12 @@ import (
 	"testing"
 	"time"
 
+	ww "github.com/grafana/dskit/server"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 

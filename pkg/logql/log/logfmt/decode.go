@@ -32,6 +32,10 @@ func (dec *Decoder) Reset(line []byte) {
 	dec.err = nil
 }
 
+func (dec *Decoder) EOL() bool {
+	return dec.pos >= len(dec.line)
+}
+
 // ScanKeyval advances the Decoder to the next key/value pair of the current
 // record, which can then be retrieved with the Key and Value methods. It
 // returns false when decoding stops, either by reaching the end of the
@@ -40,6 +44,7 @@ func (dec *Decoder) ScanKeyval() bool {
 	dec.key, dec.value = nil, nil
 
 	line := dec.line
+
 	// garbage
 	for p, c := range line[dec.pos:] {
 		if c > ' ' {
@@ -62,18 +67,18 @@ key:
 				dec.key = line[start:dec.pos]
 				if multibyte && bytes.ContainsRune(dec.key, utf8.RuneError) {
 					dec.syntaxError(invalidKeyError)
-					return false
+					goto skip_value
 				}
 			}
 			if dec.key == nil {
 				dec.unexpectedByte(c)
-				return false
+				goto skip_value
 			}
 			goto equal
 		case c == '"':
 			dec.pos += p
 			dec.unexpectedByte(c)
-			return false
+			goto skip_value
 		case c <= ' ':
 			dec.pos += p
 			if dec.pos > start {
@@ -117,7 +122,7 @@ equal:
 		case c == '=' || c == '"':
 			dec.pos += p
 			dec.unexpectedByte(c)
-			return false
+			goto skip_value
 		case c <= ' ':
 			dec.pos += p
 			if dec.pos > start {
@@ -131,6 +136,17 @@ equal:
 		dec.value = line[start:dec.pos]
 	}
 	return true
+
+skip_value:
+	for p, c := range line[dec.pos:] {
+		if c <= ' ' {
+			dec.pos += p
+			return false
+		}
+	}
+
+	dec.pos = len(line)
+	return false
 
 qvalue:
 	const (

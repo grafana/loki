@@ -95,6 +95,45 @@ func TestNewTimeoutConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenan
 	require.Equal(t, want, got)
 }
 
+func TestNewTimeoutConfig_ReturnsCustomConfig_WhenTenantLimitsSpecOnly_ReturnsUseMaxTenantQueryTimeout(t *testing.T) {
+	s := lokiv1.LokiStack{
+		Spec: lokiv1.LokiStackSpec{
+			Limits: &lokiv1.LimitsSpec{
+				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+					"tenant-a": {
+						QueryLimits: &lokiv1.QueryLimitSpec{
+							QueryTimeout: "10m",
+						},
+					},
+					"tenant-b": {
+						QueryLimits: &lokiv1.QueryLimitSpec{
+							QueryTimeout: "20m",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := NewTimeoutConfig(s.Spec.Limits)
+	require.NoError(t, err)
+
+	want := TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  2 * time.Minute,
+			WriteTimeout: 21 * time.Minute,
+		},
+		Gateway: GatewayTimeoutConfig{
+			ReadTimeout:          2*time.Minute + gatewayReadDuration,
+			WriteTimeout:         21*time.Minute + gatewayWriteDuration,
+			UpstreamWriteTimeout: 21 * time.Minute,
+		},
+	}
+
+	require.Equal(t, want, got)
+}
+
 func TestNewTimeoutConfig_ReturnsDefaults_WhenGlobalQueryTimeoutParseError(t *testing.T) {
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
