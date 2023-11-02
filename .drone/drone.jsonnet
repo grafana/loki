@@ -510,6 +510,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         when: onPRs + onPath('loki-build-image/**'),
         environment: {
           DOCKER_BUILDKIT: 1,
+          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
+          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
         },
         settings: {
           repo: 'grafana/loki-build-image',

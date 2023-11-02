@@ -7,6 +7,10 @@ platform:
 steps:
 - environment:
     DOCKER_BUILDKIT: 1
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
   image: plugins/docker
   name: push-image
   settings:
@@ -44,6 +48,10 @@ platform:
 steps:
 - environment:
     DOCKER_BUILDKIT: 1
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+    DOCKER_USERNAME:
+      from_secret: docker_username
   image: plugins/docker
   name: push-image
   settings:
@@ -2073,6 +2081,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 7238d0440ed5f92d69a33eda8e2accdabaec9913e28f87edab3dcf64bbe2c4d5
+hmac: eae306e5317e71e5853261c857c81890d6a1a775be9630663a9d0f8789042c88
 
 ...
