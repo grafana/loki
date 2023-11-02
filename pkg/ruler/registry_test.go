@@ -19,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/util/test"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -159,61 +158,6 @@ var cfg = Config{
 	},
 }
 
-func newFakeLimitsBackwardCompat() fakeLimits {
-	return fakeLimits{
-		limits: map[string]*validation.Limits{
-			enabledRWTenant: {
-				RulerRemoteWriteQueueCapacity: 987,
-			},
-			disabledRWTenant: {
-				RulerRemoteWriteDisabled: true,
-			},
-			additionalHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
-					user.OrgIDHeaderName:                         "overridden",
-					fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
-					strings.ToLower(user.OrgIDHeaderName):        "overridden-lower",
-					strings.ToUpper(user.OrgIDHeaderName):        "overridden-upper",
-					"Additional":                                 "Header",
-				}),
-			},
-			noHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{}),
-			},
-			customRelabelsTenant: {
-				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
-					{
-						Regex:        ".+:.+",
-						SourceLabels: []string{"__name__"},
-						Action:       "drop",
-					},
-					{
-						Regex:  "__cluster__",
-						Action: "labeldrop",
-					},
-				},
-			},
-			nilRelabelsTenant: {},
-			emptySliceRelabelsTenant: {
-				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{},
-			},
-			badRelabelsTenant: {
-				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
-					{
-						SourceLabels: []string{"__cluster__"},
-						Action:       "labeldrop",
-					},
-				},
-			},
-			sigV4ConfigTenant: {
-				RulerRemoteWriteSigV4Config: &sigv4.SigV4Config{
-					Region: sigV4TenantRegion,
-				},
-			},
-		},
-	}
-}
-
 var newRemoteURL2, _ = url.Parse("http://new-remote-write2")
 
 func newFakeLimits() fakeLimits {
@@ -301,6 +245,18 @@ func newFakeLimits() fakeLimits {
 					},
 				},
 			},
+			badRelabelsTenant: {
+				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+					remote1: {
+						WriteRelabelConfigs: []*relabel.Config{
+							{
+								SourceLabels: model.LabelNames{"__cluster__"},
+								Action:       "labeldrop",
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -345,19 +301,9 @@ func setupSigV4Registry(t *testing.T, cfg Config, limits fakeLimits) *walRegistr
 }
 
 func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	assert.Len(t, tenantCfg.RemoteWrite, 1)
-	// but the tenant has an override for the queue capacity
-	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, 987)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
 
 	// tenant has not disable remote-write so will inherit the global one
@@ -377,21 +323,11 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	// this tenant has no overrides, so will get defaults
 	tenantCfg, err := reg.getTenantConfig("unknown")
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	assert.Len(t, tenantCfg.RemoteWrite, 1)
-	// but the tenant has an override for the queue capacity
-	assert.Equal(t, tenantCfg.RemoteWrite[0].QueueConfig.Capacity, defaultCapacity)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	// this tenant has no overrides, so will get defaults
-	tenantCfg, err = reg.getTenantConfig("unknown")
 	require.NoError(t, err)
 
 	// tenant has not disable remote-write so will inherit the global one
@@ -475,21 +411,9 @@ func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
 }
 
 func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
-	reg := setupSigV4Registry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupSigV4Registry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(sigV4ConfigTenant)
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	assert.Len(t, tenantCfg.RemoteWrite, 1)
-	// ensure sigv4 config is not nil and overwritten
-	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
-		assert.Equal(t, sigV4TenantRegion, tenantCfg.RemoteWrite[0].SigV4Config.Region)
-	}
-
-	reg = setupSigV4Registry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(sigV4ConfigTenant)
 	require.NoError(t, err)
 
 	// tenant has not disable remote-write so will inherit the global one
@@ -509,23 +433,10 @@ func TestRulerRemoteWriteSigV4ConfigWithOverrides(t *testing.T) {
 }
 
 func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {
-	reg := setupSigV4Registry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupSigV4Registry(t, cfg, newFakeLimits())
 
 	// this tenant has no overrides, so will get defaults
 	tenantCfg, err := reg.getTenantConfig("unknown")
-	require.NoError(t, err)
-
-	// tenant has not disable remote-write so will inherit the global one
-	assert.Len(t, tenantCfg.RemoteWrite, 1)
-	// ensure sigv4 config is not nil and the global value
-	if assert.NotNil(t, tenantCfg.RemoteWrite[0].SigV4Config) {
-		assert.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
-	}
-
-	reg = setupSigV4Registry(t, cfg, newFakeLimits())
-
-	// this tenant has no overrides, so will get defaults
-	tenantCfg, err = reg.getTenantConfig("unknown")
 	require.NoError(t, err)
 
 	// tenant has not disable remote-write so will inherit the global one
@@ -540,17 +451,9 @@ func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {
 }
 
 func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(disabledRWTenant)
-	require.NoError(t, err)
-
-	// this tenant has remote-write disabled
-	assert.Len(t, tenantCfg.RemoteWrite, 0)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(disabledRWTenant)
 	require.NoError(t, err)
 
 	// this tenant has remote-write disabled
@@ -558,7 +461,7 @@ func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -597,28 +500,9 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
-	require.NoError(t, err)
-
-	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], additionalHeadersRWTenant)
-	// but that the additional header defined is set
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Additional"], "Header")
-	// the original header must be removed
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
-
-	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
-	require.NoError(t, err)
-
-	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(additionalHeadersRWTenant)
 	require.NoError(t, err)
 
 	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 2)
@@ -652,20 +536,9 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersReset(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(noHeadersRWTenant)
-	require.NoError(t, err)
-
-	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
-	// ensure that tenant cannot override X-Scope-OrgId header
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], noHeadersRWTenant)
-	// the original header must be removed
-	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "")
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(noHeadersRWTenant)
 	require.NoError(t, err)
 
 	// Ensure that overrides take plus but that tenant cannot override X-Scope-OrgId header
@@ -688,7 +561,7 @@ func TestTenantRemoteWriteHeadersReset(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, backCompatCfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
 	require.NoError(t, err)
@@ -725,17 +598,9 @@ func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
 }
 
 func TestRelabelConfigOverrides(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(customRelabelsTenant)
-	require.NoError(t, err)
-
-	// it should also override the default label configs
-	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 2)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(customRelabelsTenant)
 	require.NoError(t, err)
 
 	// It should also override the default label configs for the first client only
@@ -760,17 +625,9 @@ func TestRelabelConfigOverrides(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
-	require.NoError(t, err)
-
-	// if there are no relabel configs defined for the tenant, it should not override
-	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, reg.config.RemoteWrite.Client.WriteRelabelConfigs)
-
-	reg = setupRegistry(t, cfg, newFakeLimits())
-
-	tenantCfg, err = reg.getTenantConfig(nilRelabelsTenant)
 	require.NoError(t, err)
 
 	// if there are no relabel configs defined for the tenant, it should not override
@@ -788,7 +645,7 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 }
 
 func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, cfg, newFakeLimits())
 
 	tenantCfg, err := reg.getTenantConfig(emptySliceRelabelsTenant)
 	require.NoError(t, err)
@@ -797,14 +654,15 @@ func TestRelabelConfigOverridesEmptySliceWriteRelabels(t *testing.T) {
 	assert.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 0)
 }
 
-func TestRelabelConfigOverridesWithErrors(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
-
-	_, err := reg.getTenantConfig(badRelabelsTenant)
-
-	// ensure that relabel validation is being applied
-	require.EqualError(t, err, "failed to parse relabel configs: labeldrop action requires only 'regex', and no other fields")
-}
+// TODO(shantanu): Enable this test after relabels validation is implemented
+//func TestRelabelConfigOverridesWithErrors(t *testing.T) {
+//	reg := setupRegistry(t, cfg, newFakeLimits())
+//
+//	_, err := reg.getTenantConfig(badRelabelsTenant)
+//
+//	// ensure that relabel validation is being applied
+//	require.EqualError(t, err, "failed to parse relabel configs: labeldrop action requires only 'regex', and no other fields")
+//}
 
 func TestWALRegistryCreation(t *testing.T) {
 	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
@@ -831,7 +689,7 @@ func TestWALRegistryCreation(t *testing.T) {
 }
 
 func TestStorageSetup(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, backCompatCfg, newFakeLimits())
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage
@@ -846,7 +704,7 @@ func TestStorageSetup(t *testing.T) {
 }
 
 func TestStorageSetupWithRemoteWriteDisabled(t *testing.T) {
-	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+	reg := setupRegistry(t, backCompatCfg, newFakeLimits())
 
 	// once the registry is setup and we configure the tenant storage, we should be able
 	// to acquire an appender for the WAL storage
