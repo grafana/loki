@@ -189,7 +189,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware, metricsNamespace)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -704,7 +704,6 @@ func NewInstantMetricTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	merger base.Merger,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
 	metricsNamespace string,

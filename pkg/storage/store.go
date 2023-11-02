@@ -230,7 +230,7 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 		)
 	}
 
-	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics)
+	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics, s.logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating object client")
 	}
@@ -266,7 +266,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	if p.IndexType == config.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig.Config) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger)
 			if err != nil {
 				return nil, nil, nil, err
 			}

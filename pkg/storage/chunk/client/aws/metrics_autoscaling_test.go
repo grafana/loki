@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/mtime"
 	"github.com/pkg/errors"
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -176,7 +177,7 @@ func TestTableManagerMetricsAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureProvisionConfig(2, chunkWriteScale, inactiveWriteScale),
 	}
 
-	tableManager, err := index.NewTableManager(tbm, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := index.NewTableManager(tbm, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +339,7 @@ func TestTableManagerMetricsReadAutoScaling(t *testing.T) {
 		ChunkTables:         fixtureReadProvisionConfig(chunkReadScale, inactiveReadScale),
 	}
 
-	tableManager, err := index.NewTableManager(tbm, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := index.NewTableManager(tbm, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
