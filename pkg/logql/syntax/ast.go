@@ -2137,6 +2137,8 @@ func ReducesLabels(e Expr) (conflict bool) {
 					break
 				}
 			}
+		default:
+			return
 		}
 	})
 	return
