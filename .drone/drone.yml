@@ -1,16 +1,9 @@
 ---
 kind: pipeline
 name: loki-build-image-amd64
-platform:
-  arch: amd64
-  os: linux
 steps:
 - environment:
     DOCKER_BUILDKIT: 1
-    DOCKER_PASSWORD:
-      from_secret: docker_password
-    DOCKER_USERNAME:
-      from_secret: docker_username
   image: plugins/docker
   name: push-image
   settings:
@@ -40,50 +33,8 @@ workspace:
   base: /src
   path: loki
 ---
-kind: pipeline
-name: loki-build-image-arm64
-platform:
-  arch: arm64
-  os: linux
-steps:
-- environment:
-    DOCKER_BUILDKIT: 1
-    DOCKER_PASSWORD:
-      from_secret: docker_password
-    DOCKER_USERNAME:
-      from_secret: docker_username
-  image: plugins/docker
-  name: push-image
-  settings:
-    context: loki-build-image
-    dockerfile: loki-build-image/Dockerfile
-    dry_run: false
-    password:
-      from_secret: docker_password
-    platform: linux/arm64
-    repo: grafana/loki-build-image
-    tags:
-    - 0.32.0-test-arm64
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-    paths:
-    - loki-build-image/**
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
-workspace:
-  base: /src
-  path: loki
----
 depends_on:
 - loki-build-image-amd64
-- loki-build-image-arm64
 kind: pipeline
 name: loki-build-image-publish
 steps:
@@ -2081,6 +2032,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 9c833e1ba6302c7cf22cea24431a1e3f51b14ee8ed1c54304e9399180fb6a2b3
+hmac: 9097319cafbbf7698786246ce96d225216dfa14d16f52fbfb98d7795d77e07dc
 
 ...

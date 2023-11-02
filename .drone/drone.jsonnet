@@ -497,8 +497,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 };
 
 [
-  pipeline('loki-build-image-' + arch) + arch_image(arch) {
-    local build_image_tag = '0.32.0-test-' + arch,
+  pipeline('loki-build-image-amd64') {
+    local build_image_tag = '0.32.0-test-amd64',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -510,8 +510,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         when: onPRs + onPath('loki-build-image/**'),
         environment: {
           DOCKER_BUILDKIT: 1,
-          DOCKER_USERNAME: { from_secret: docker_username_secret.name },
-          DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
         },
         settings: {
           repo: 'grafana/loki-build-image',
@@ -521,13 +519,11 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           password: { from_secret: docker_password_secret.name },
           tags: [build_image_tag],
           dry_run: false,
-          platform: 'linux/' + arch,
+          platform: 'linux/amd64',
         },
       },
     ],
-  }
-  for arch in ['amd64', 'arm64']
-] + [
+  },
   pipeline('loki-build-image-publish') {
     local build_image_tag = '0.32.0-test',
     steps: [
@@ -549,7 +545,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
     depends_on: [
       'loki-build-image-%s' % arch
-      for arch in ['amd64', 'arm64']
+      for arch in ['amd64']
     ],
   },
   pipeline('helm-test-image') {
