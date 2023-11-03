@@ -8,9 +8,9 @@ steps:
   image: plugins/docker
   name: push-image
   settings:
-    args:
-      TARGETARCH: amd64
-      TARGETOS: linux
+    build_args:
+    - TARGETARCH=amd64
+    - TARGETOS=linux
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
     dry_run: false
@@ -2037,6 +2037,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: eea8e84d988ba0db2912e6795b4c46ba085c36a5d1fd819b8c596f23884706ea
+hmac: 1e7b7223543fd793cd1bfba3c2c1b130f950964f4a59166dddf029b0250607c0
 
 ...
