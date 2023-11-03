@@ -149,4 +149,11 @@ To get a local preview of the documentation:
 3. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
 4. Open http://localhost:3002/docs/loki/latest/ to review your changes.
 
+**Remember:** If running `make docs` command gave you the following error.
+
+   - `path /tmp/make-docs.Dcq is not shared from the host and is not known to Docker.`
+   - `You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing.`
+
+Then you can go to Docker Desktop settings and open the resources, add the path `/tmp` or the specific path `/tmp/make-docs.Dcq` and click **Apply** for the changes to take effect.
+
 > Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
