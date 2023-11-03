@@ -229,7 +229,6 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 	if _, err := blockFile.Read(checksum); err != nil {
 		return bloomshipper.Block{}, errors.Wrap(err, "reading bloom checksum")
 	}
-	blockFile.Read(checksum)
 
 	// Reset back to beginning
 	if _, err := blockFile.Seek(0, 0); err != nil {
@@ -304,15 +303,13 @@ func createObjStorageFileName(series Series, checksum string) string {
 
 func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client) (err error) {
 	// Create a bloom for this series
-	bloom := &v1.Bloom{
-		*filter.NewDefaultScalableBloomFilter(0.01),
-	}
-
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
 			Fingerprint: series.fingerPrint,
 		},
-		Bloom: bloom,
+		Bloom: &v1.Bloom{
+			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(0.01),
+		},
 	}
 
 	// create a tokenizer
@@ -357,7 +354,7 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 	}
 
 	for _, s := range series {
-		storeClient.indexShipper.ForEach(ctx, s.tableName, s.tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+		err := storeClient.indexShipper.ForEach(ctx, s.tableName, s.tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 			if isMultiTenantIndex {
 				return nil
 			}
