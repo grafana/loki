@@ -11,11 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-var clients = promauto.NewGauge(prometheus.GaugeOpts{
-	Namespace: "cortex",
-	Name:      "distributor_ingester_clients",
-	Help:      "The current number of ingester clients.",
-})
+var clients prometheus.Gauge
 
 // PoolConfig is config for creating a Pool.
 type PoolConfig struct {
@@ -31,13 +27,20 @@ func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, prefix+"remote-timeout", 1*time.Second, "Timeout for the health check.")
 }
 
-func NewPool(name string, cfg PoolConfig, ring ring.ReadRing, factory ring_client.PoolFactory, logger log.Logger) *ring_client.Pool {
+func NewPool(name string, cfg PoolConfig, ring ring.ReadRing, factory ring_client.PoolFactory, logger log.Logger, metricsNamespace string) *ring_client.Pool {
 	poolCfg := ring_client.PoolConfig{
 		CheckInterval:      cfg.ClientCleanupPeriod,
 		HealthCheckEnabled: cfg.HealthCheckIngesters,
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
 
+	if clients == nil {
+		clients = promauto.NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Name:      "distributor_ingester_clients",
+			Help:      "The current number of ingester clients.",
+		})
+	}
 	// TODO(chaudum): Allow configuration of metric name by the caller.
 	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, clients, logger)
 }

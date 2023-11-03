@@ -544,14 +544,14 @@ func TestSchedulerRing(t *testing.T) {
 			// Check metrics to see if query scheduler is connected with query-frontend
 			metrics, err := cliQueryScheduler.Metrics()
 			require.NoError(t, err)
-			return getMetricValue(t, "cortex_query_scheduler_connected_frontend_clients", metrics) == 5
+			return getMetricValue(t, "loki_query_scheduler_connected_frontend_clients", metrics) == 5
 		}, 5*time.Second, 500*time.Millisecond)
 
 		require.Eventually(t, func() bool {
 			// Check metrics to see if query scheduler is connected with query-frontend
 			metrics, err := cliQueryScheduler.Metrics()
 			require.NoError(t, err)
-			return getMetricValue(t, "cortex_query_scheduler_connected_querier_clients", metrics) == 4
+			return getMetricValue(t, "loki_query_scheduler_connected_querier_clients", metrics) == 4
 		}, 5*time.Second, 500*time.Millisecond)
 	})
 

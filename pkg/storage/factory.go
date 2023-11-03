@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -420,7 +421,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 					return indexGatewayClient, nil
 				}
 
-				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
+				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger, constants.Loki)
 				if err != nil {
 					return nil, err
 				}
