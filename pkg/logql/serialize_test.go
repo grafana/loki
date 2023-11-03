@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"testing"
 
-	jsoniter "github.com/json-iterator/go"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -18,10 +16,11 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	visitor := NewJSONSerializer(jsoniter.NewStream(jsoniter.ConfigDefault, &buf, 1024))
-
-	err = syntax.Dispatch(root, visitor)
+	err = EncodeJSON(root, &buf)
 	require.NoError(t, err)
 
-	require.JSONEq(t, `{}`, buf.String())
+	actual, err := DecodeJSON(buf.String())
+	require.NoError(t, err)
+
+	require.Equal(t, query, actual.String())
 }

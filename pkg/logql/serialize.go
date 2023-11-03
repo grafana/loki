@@ -1,6 +1,10 @@
 package logql
 
 import (
+	"fmt"
+	"io"
+	"regexp"
+
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -16,17 +20,53 @@ func NewJSONSerializer(s *jsoniter.Stream) *JSONSerializer {
 	}
 }
 
+func EncodeJSON(e syntax.Expr, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	v := NewJSONSerializer(s)
+	err := syntax.Dispatch(e, v)
+	s.Flush()
+
+	return err
+}
+
+func DecodeJSON(raw string) (syntax.Expr, error) {
+	iter := jsoniter.ParseString(jsoniter.ConfigFastest, raw)
+
+	key := iter.ReadObject()
+	switch key {
+	case "bin":
+		return decodeBinOp(iter)
+	case "vector_agg":
+		return decodeVectorAgg(iter)
+	case "range_agg":
+		return decodeRangeAgg(iter)
+	case "literal":
+		return decodeLiteral(iter)
+	case "vector":
+		return decodeVector(iter)
+	case "label_replace":
+		return decodeLabelReplace(iter)
+	case "log_selector":
+		return decodeLogSelector(iter)
+	default:
+		return nil, fmt.Errorf("unknown expression type: %s", key)
+	}
+}
+
 var _ syntax.RootVisitor = &JSONSerializer{}
 
 func (v *JSONSerializer) VisitBinOp(e *syntax.BinOpExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("type")
-	v.WriteString("bin")
+	v.WriteObjectField("bin")
+	v.WriteObjectStart()
 
 	v.WriteMore()
 	v.WriteObjectField("op")
 	v.WriteString(e.Op)
+
+	// TODO: encode options
 
 	v.WriteMore()
 	v.WriteObjectField("lhs")
@@ -37,16 +77,16 @@ func (v *JSONSerializer) VisitBinOp(e *syntax.BinOpExpr) {
 	syntax.DispatchSampleExpr(e.RHS, v)
 
 	v.WriteObjectEnd()
+	v.WriteObjectEnd()
 	v.Flush()
 }
 
 func (v *JSONSerializer) VisitVectorAggregation(e *syntax.VectorAggregationExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("type")
-	v.WriteString("vector_aggr")
+	v.WriteObjectField("vector_agg")
+	v.WriteObjectStart()
 
-	v.WriteMore()
 	v.WriteObjectField("params")
 	v.WriteInt(e.Params)
 
@@ -59,16 +99,16 @@ func (v *JSONSerializer) VisitVectorAggregation(e *syntax.VectorAggregationExpr)
 	syntax.DispatchSampleExpr(e.Left, v)
 
 	v.WriteObjectEnd()
+	v.WriteObjectEnd()
 	v.Flush()
 }
 
 func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("type")
-	v.WriteString("range_aggr")
+	v.WriteObjectField("range_agg")
+	v.WriteObjectStart()
 
-	v.WriteMore()
 	v.WriteObjectField("op")
 	v.WriteString(e.Operation)
 
@@ -92,7 +132,6 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 
 	// Serialize log selector pipeline as string.
 	v.WriteMore()
-	v.WriteObjectField("log_selector")
 	encodeLogSelector(v.Stream, e.Left.Left)
 
 	v.WriteMore()
@@ -101,14 +140,15 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 	v.WriteObjectEnd()
 
 	v.WriteObjectEnd()
+	v.WriteObjectEnd()
 	v.Flush()
 }
 
 func (v *JSONSerializer) VisitLabelReplace(e *syntax.LabelReplaceExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("type")
-	v.WriteString("label_replace")
+	v.WriteObjectField("label_replace")
+	v.WriteObjectStart()
 
 	v.WriteMore()
 	v.WriteObjectField("inner")
@@ -131,19 +171,21 @@ func (v *JSONSerializer) VisitLabelReplace(e *syntax.LabelReplaceExpr) {
 	v.WriteString(e.Regex)
 
 	v.WriteObjectEnd()
+	v.WriteObjectEnd()
 	v.Flush()
 }
 
 func (v *JSONSerializer) VisitLiteral(e *syntax.LiteralExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("type")
-	v.WriteString("literal")
+	v.WriteObjectField("literal")
+	v.WriteObjectStart()
 
 	v.WriteMore()
 	v.WriteObjectField("val")
 	v.WriteFloat64(e.Val)
 
+	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
 }
@@ -151,13 +193,14 @@ func (v *JSONSerializer) VisitLiteral(e *syntax.LiteralExpr) {
 func (v *JSONSerializer) VisitVector(e *syntax.VectorExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("type")
-	v.WriteString("vector")
+	v.WriteObjectField("vector")
+	v.WriteObjectStart()
 
 	v.WriteMore()
 	v.WriteObjectField("val")
 	v.WriteFloat64(e.Val)
 
+	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
 }
@@ -201,15 +244,187 @@ func encodeGrouping(s *jsoniter.Stream, g *syntax.Grouping) {
 	s.WriteObjectEnd()
 }
 
+func decodeGrouping(iter *jsoniter.Iterator) (*syntax.Grouping, error) {
+	g := &syntax.Grouping{}
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "without":
+			g.Without = iter.ReadBool()
+		case "groups":
+			iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
+				g.Groups = append(g.Groups, iter.ReadString())
+				return true
+			})
+		}
+	}
+
+	return g, nil
+}
+
 func encodeLogSelector(s *jsoniter.Stream, e syntax.LogSelectorExpr) {
 	s.WriteObjectStart()
-	s.WriteObjectField("type")
-	s.WriteString("log_selector")
+	s.WriteObjectField("log_selector")
 
-	s.WriteMore()
-	s.WriteObjectField("raw")
 	s.WriteString(e.String())
 
 	s.WriteObjectEnd()
 	s.Flush()
+}
+
+func decodeLogSelector(iter *jsoniter.Iterator) (syntax.LogSelectorExpr, error) {
+
+	raw := iter.ReadString()
+	expr, err := syntax.ParseExpr(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	if e, ok := expr.(syntax.LogSelectorExpr); ok {
+		return e, nil
+	}
+
+	return nil, fmt.Errorf("unexpected expression type: want(LogSelectorExpr), got(%T)", expr)
+}
+
+func decodeSample(iter *jsoniter.Iterator) (syntax.SampleExpr, error) {
+	key := iter.ReadObject()
+	switch key {
+	case "bin":
+		return decodeBinOp(iter)
+	case "vector_agg":
+		return decodeVectorAgg(iter)
+	case "range_agg":
+		return decodeRangeAgg(iter)
+	case "literal":
+		return decodeLiteral(iter)
+	case "vector":
+		return decodeVector(iter)
+	case "label_replace":
+		return decodeLabelReplace(iter)
+	default:
+		return nil, fmt.Errorf("unknown sample expression type: %s", key)
+	}
+}
+
+func decodeBinOp(iter *jsoniter.Iterator) (*syntax.BinOpExpr, error) {
+	expr := &syntax.BinOpExpr{}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "op":
+			expr.Op = iter.ReadString()
+		case "rhs":
+			expr.RHS, err = decodeSample(iter)
+		case "lhs":
+			expr.SampleExpr, err = decodeSample(iter)
+		}
+	}
+
+	return expr, err
+}
+
+func decodeVectorAgg(iter *jsoniter.Iterator) (*syntax.VectorAggregationExpr, error) {
+	expr := &syntax.VectorAggregationExpr{}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "params":
+			expr.Params = iter.ReadInt()
+		case "grouping":
+			expr.Grouping, err = decodeGrouping(iter)
+		case "inner":
+			expr.Left, err = decodeSample(iter)
+		}
+	}
+
+	return expr, err
+}
+
+func decodeRangeAgg(iter *jsoniter.Iterator) (*syntax.RangeAggregationExpr, error) {
+	expr := &syntax.RangeAggregationExpr{
+		Left: &syntax.LogRange{},
+	}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "op":
+			expr.Operation = iter.ReadString()
+		case "params":
+			tmp := iter.ReadFloat64()
+			expr.Params = &tmp
+		case "range":
+			// TODO
+			iter.Skip()
+		case "grouping":
+			expr.Grouping, err = decodeGrouping(iter)
+		case "log_selector":
+			expr.Left.Left, err = decodeLogSelector(iter)
+		case "unwrap":
+			// TODO:
+		}
+	}
+
+	return expr, err
+}
+
+func decodeLabelReplace(iter *jsoniter.Iterator) (*syntax.LabelReplaceExpr, error) {
+	expr := &syntax.LabelReplaceExpr{}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "inner":
+			expr.Left, err = decodeSample(iter)
+		case "dst":
+			expr.Dst = iter.ReadString()
+		case "src":
+			expr.Src = iter.ReadString()
+		case "replacement":
+			expr.Replacement = iter.ReadString()
+		case "regexp":
+			expr.Regex = iter.ReadString()
+			if expr.Regex != "" {
+				expr.Re, err = regexp.Compile(expr.Regex)
+			}
+		}
+	}
+
+	return expr, err
+}
+
+func decodeLiteral(iter *jsoniter.Iterator) (*syntax.LiteralExpr, error) {
+	expr := &syntax.LiteralExpr{}
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "val":
+			expr.Val = iter.ReadFloat64()
+		}
+	}
+
+	return expr, nil
+}
+
+func decodeVector(iter *jsoniter.Iterator) (*syntax.VectorExpr, error) {
+	expr := &syntax.VectorExpr{}
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "val":
+			expr.Val = iter.ReadFloat64()
+		}
+	}
+
+	return expr, nil
+}
+
+func decodeMatchers(iter *jsoniter.Iterator) (syntax.LogSelectorExpr, error) {
+	return decodeLogSelector(iter)
+}
+
+func decodePipeline(iter *jsoniter.Iterator) (syntax.LogSelectorExpr, error) {
+	return decodeLogSelector(iter)
 }
