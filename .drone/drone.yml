@@ -63,6 +63,7 @@ workspace:
 ---
 depends_on:
 - loki-build-image-amd64
+- loki-build-image-arm64
 kind: pipeline
 name: loki-build-image-publish
 steps:
@@ -73,6 +74,8 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
+    tags:
+    - 0.32.0
     target: loki-build-image
     username:
       from_secret: docker_username
@@ -2055,6 +2058,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 57e3eeb227d03732c4c292daa75897d893fcd0170d5b5cb63d64c77075ea088b
+hmac: 16bdc2b47759af984f3002c9c888070572d2dc88722af325385364f4f63bf9df
 
 ...

@@ -544,12 +544,13 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           ignore_missing: false,
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
+          tags: [build_image_tag],
         },
       },
     ],
     depends_on: [
       'loki-build-image-%s' % arch
-      for arch in ['amd64']
+      for arch in ['amd64', 'arm64']
     ],
   },
   pipeline('helm-test-image') {
