@@ -2789,7 +2789,43 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Configures global and per-tenant limits for remote write clients. A map with
 # remote client id as key.
-[ruler_remote_write_config: <map of string to RemoteWriteConfig>]
+ruler_remote_write_config:
+  # Tenant ID configuration  
+  tenant_id:
+    # The URL of the endpoint to send samples to
+    [url: <url>]
+    # Timeout for requests to the remote write endpoint
+    [remote_timeout: <duration>]
+    # Custom HTTP headers to be sent along with each remote write request. 
+    # Be aware that headers that are set by Loki itself can't be overwritten.
+    [headers: <map of string to string>]
+    # List of remote write relabel configurations    
+    [write_relabel_configs: <relabel_config...>]
+    # Queue 
+    queue_config:
+      # Number of samples to buffer per shard before we block reading of more samples
+      # from the WAL. It is recommended to have enough capacity in each shard to buffer 
+      # several requests to keep throughput up while processing occasional slow remote requests.     
+      [capacity: <int>]
+      # Maximum number of shards, i.e. amount of concurrency.
+      [max_shards: <int>]
+      # Minimum number of shards, i.e. amount of concurrency
+      [min_shards: <int>]
+      # Maximum number of samples per send
+      [max_samples_per_send: <int>]
+      #  Maximum time sample will wait in buffer.
+      [batch_send_deadline: <duration>]
+      # Initial retry delay. Gets doubled for every retry.
+      [min_backoff: <duration>]
+      # Maximum retry delay.
+      [max_backoff: <duration>]
+      # Retry upon receiving a 429 status code from the remote-write storage. 
+      # This is experimental and might change in the future.
+      [retry_on_http_429: <boolean>]
+    
+    
+    
+    
 
 # Timeout for a remote rule evaluation. Defaults to the value of
 # 'querier.query-timeout'.
