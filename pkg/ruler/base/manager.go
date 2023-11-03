@@ -60,7 +60,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 
 		return v
 
-	})
+	}, metricsNamespace)
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
 	}

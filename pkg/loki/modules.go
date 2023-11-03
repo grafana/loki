@@ -142,7 +142,9 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	// Loki handles signals on its own.
 	DisableSignalHandling(&t.Cfg.Server)
-	serv, err := server.New(t.Cfg.Server)
+
+	t.Metrics = server.NewServerMetrics(t.Cfg.Server)
+	serv, err := server.NewWithMetrics(t.Cfg.Server, t.Metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -307,6 +309,7 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 
 func (t *Loki) initDistributor() (services.Service, error) {
 	var err error
+	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
 		t.Cfg.Distributor,
 		t.Cfg.IngesterClient,
@@ -315,6 +318,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Overrides,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
+		logger,
 	)
 	if err != nil {
 		return nil, err
@@ -359,18 +363,18 @@ func (t *Loki) initCodec() (services.Service, error) {
 }
 
 func (t *Loki) initQuerier() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "querier")
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
 		t.Cfg.Querier.IngesterQueryStoreMaxLookback = t.Cfg.Ingester.QueryStoreMaxLookBackPeriod
 	}
 	// Querier worker's max concurrent must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrent = t.Cfg.Querier.MaxConcurrent
-
 	deleteStore, err := t.deleteRequestsClient("querier", t.Overrides)
 	if err != nil {
 		return nil, err
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +407,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	logger := log.With(util_log.Logger, "component", "querier")
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
@@ -515,12 +518,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	internalHandler := queryrangebase.MergeMiddlewares(
 		serverutil.RecoveryMiddleware,
-		queryrange.Instrument{
-			QueryHandlerMetrics: queryrange.NewQueryHandlerMetrics(
-				prometheus.DefaultRegisterer,
-				t.Cfg.MetricsNamespace,
-			),
-		},
+		queryrange.Instrument{Metrics: t.Metrics},
 	).Wrap(handler)
 
 	svc, err := querier.InitWorkerService(
@@ -540,6 +538,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 }
 
 func (t *Loki) initIngester() (_ services.Service, err error) {
+	logger := log.With(util_log.Logger, "component", "ingester")
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	if t.Cfg.Ingester.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
@@ -549,7 +548,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger)
 	if err != nil {
 		return
 	}
@@ -603,7 +602,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
 
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, *lastConfig, t.Cfg.StorageConfig, t.clientMetrics, reg)
+	tableClient, err := storage.NewTableClient(lastConfig.IndexType, *lastConfig, t.Cfg.StorageConfig, t.clientMetrics, reg, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -611,7 +610,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig)
 	util_log.CheckFatal("initializing bucket client", err, util_log.Logger)
 
-	t.tableManager, err = index.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer)
+	t.tableManager, err = index.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -1327,7 +1326,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var bloomQuerier indexgateway.BloomQuerier
 	if t.Cfg.BloomGateway.Enabled {
-		bloomGatewayClient, err := bloomgateway.NewGatewayClient(t.Cfg.BloomGateway.Client, t.Overrides, prometheus.DefaultRegisterer, logger)
+		bloomGatewayClient, err := bloomgateway.NewGatewayClient(t.Cfg.BloomGateway.Client, t.Overrides, prometheus.DefaultRegisterer, logger, t.Cfg.MetricsNamespace)
 		if err != nil {
 			return nil, err
 		}
@@ -1557,7 +1556,7 @@ func (t *Loki) createRulerQueryEngine(logger log.Logger) (eng *logql.Engine, err
 		return nil, fmt.Errorf("could not create delete requests store: %w", err)
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil, logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

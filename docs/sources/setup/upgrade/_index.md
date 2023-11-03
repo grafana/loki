@@ -182,6 +182,85 @@ If you using a [legacy index type]({{< relref "../../storage#index-storage" >}})
 
 - Already deprecated metric `querier_cache_stale_gets_total` is now removed.
 
+#### Metrics namespace
+
+Some Loki metrics started with the prefix `cortex_`. In this release they will be changed so they start with `loki_`. To keep them at `cortex_` change the `metrics_namespace` from the default `loki` to `cortex`. These metrics will be changed:
+
+ - `cortex_distributor_ingester_clients`
+ - `cortex_dns_failures_total`
+ - `cortex_dns_lookups_total`
+ - `cortex_dns_provider_results`
+ - `cortex_frontend_query_range_duration_seconds_bucket`
+ - `cortex_frontend_query_range_duration_seconds_count`
+ - `cortex_frontend_query_range_duration_seconds_sum`
+ - `cortex_ingester_flush_queue_length`
+ - `cortex_kv_request_duration_seconds_bucket`
+ - `cortex_kv_request_duration_seconds_count`
+ - `cortex_kv_request_duration_seconds_sum`
+ - `cortex_member_consul_heartbeats_total`
+ - `cortex_prometheus_last_evaluation_samples`
+ - `cortex_prometheus_notifications_alertmanagers_discovered`
+ - `cortex_prometheus_notifications_dropped_total`
+ - `cortex_prometheus_notifications_errors_total`
+ - `cortex_prometheus_notifications_latency_seconds`
+ - `cortex_prometheus_notifications_latency_seconds_count`
+ - `cortex_prometheus_notifications_latency_seconds_sum`
+ - `cortex_prometheus_notifications_queue_capacity`
+ - `cortex_prometheus_notifications_queue_length`
+ - `cortex_prometheus_notifications_sent_total`
+ - `cortex_prometheus_rule_evaluation_duration_seconds`
+ - `cortex_prometheus_rule_evaluation_duration_seconds_count`
+ - `cortex_prometheus_rule_evaluation_duration_seconds_sum`
+ - `cortex_prometheus_rule_evaluation_failures_total`
+ - `cortex_prometheus_rule_evaluations_total`
+ - `cortex_prometheus_rule_group_duration_seconds`
+ - `cortex_prometheus_rule_group_duration_seconds_count`
+ - `cortex_prometheus_rule_group_duration_seconds_sum`
+ - `cortex_prometheus_rule_group_interval_seconds`
+ - `cortex_prometheus_rule_group_iterations_missed_total`
+ - `cortex_prometheus_rule_group_iterations_total`
+ - `cortex_prometheus_rule_group_last_duration_seconds`
+ - `cortex_prometheus_rule_group_last_evaluation_timestamp_seconds`
+ - `cortex_prometheus_rule_group_rules`
+ - `cortex_query_frontend_connected_schedulers`
+ - `cortex_query_frontend_queries_in_progress`
+ - `cortex_query_frontend_retries_bucket`
+ - `cortex_query_frontend_retries_count`
+ - `cortex_query_frontend_retries_sum`
+ - `cortex_query_scheduler_connected_frontend_clients`
+ - `cortex_query_scheduler_connected_querier_clients`
+ - `cortex_query_scheduler_inflight_requests`
+ - `cortex_query_scheduler_inflight_requests_count`
+ - `cortex_query_scheduler_inflight_requests_sum`
+ - `cortex_query_scheduler_queue_duration_seconds_bucket`
+ - `cortex_query_scheduler_queue_duration_seconds_count`
+ - `cortex_query_scheduler_queue_duration_seconds_sum`
+ - `cortex_query_scheduler_queue_length`
+ - `cortex_query_scheduler_running`
+ - `cortex_quota_cgroup_cpu_max`
+ - `cortex_quota_cgroup_cpu_period`
+ - `cortex_quota_cpu_count`
+ - `cortex_quota_gomaxprocs`
+ - `cortex_ring_member_heartbeats_total`
+ - `cortex_ring_member_tokens_owned`
+ - `cortex_ring_member_tokens_to_own`
+ - `cortex_ring_members`
+ - `cortex_ring_oldest_member_timestamp`
+ - `cortex_ring_tokens_total`
+ - `cortex_ruler_client_request_duration_seconds_bucket`
+ - `cortex_ruler_client_request_duration_seconds_count`
+ - `cortex_ruler_client_request_duration_seconds_sum`
+ - `cortex_ruler_clients`
+ - `cortex_ruler_config_last_reload_successful`
+ - `cortex_ruler_config_last_reload_successful_seconds`
+ - `cortex_ruler_config_updates_total`
+ - `cortex_ruler_managers_total`
+ - `cortex_ruler_ring_check_errors_total`
+ - `cortex_ruler_sync_rules_total`
+
+
+The `metrics_namespace` setting is deprecated already. It will be removed in the next minor release. The default prefix will be `loki` then.
+
 ### LogCLI
 
 #### Store for retrieving remote schema
