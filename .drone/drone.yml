@@ -16,8 +16,7 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/loki-build-image
-    tags:
-    - 0.31.2-amd64
+    tag: 0.31.2-amd64
     username:
       from_secret: docker_username
 trigger:
@@ -47,8 +46,7 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/loki-build-image
-    tags:
-    - 0.31.2-arm64
+    tag: 0.31.2-arm64
     username:
       from_secret: docker_username
 trigger:
@@ -2058,6 +2056,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 16bdc2b47759af984f3002c9c888070572d2dc88722af325385364f4f63bf9df
+hmac: 2a0f1183b76510c0e20c8e93acb247df1b9dd53f3e0758791ea787321033ae82
 
 ...

@@ -521,7 +521,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
+          tag: build_image_tag,
           dry_run: false,
         },
       },
