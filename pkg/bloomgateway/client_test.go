@@ -24,7 +24,7 @@ func TestBloomGatewayClient(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 
 	t.Run("", func(t *testing.T) {
-		_, err := NewGatewayClient(cfg, l, reg, logger, "metricsNamespace")
+		_, err := NewGatewayClient(cfg, l, reg, logger, "loki")
 		require.NoError(t, err)
 	})
 }
@@ -40,7 +40,7 @@ func TestBloomGatewayClient_GroupStreamsByAddresses(t *testing.T) {
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
-	c, err := NewGatewayClient(cfg, l, reg, logger, "metricsNamespace")
+	c, err := NewGatewayClient(cfg, l, reg, logger, "loki")
 	require.NoError(t, err)
 
 	testCases := []struct {
