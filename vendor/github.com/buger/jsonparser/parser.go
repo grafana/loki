@@ -662,6 +662,7 @@ func calcAllocateSpace(keys []string, setValue []byte, comma, object bool) int {
 		}
 	}
 
+
 	lk += len(setValue)
 	for i := 1; i < len(keys); i++ {
 		if string(keys[i][0]) == "[" {
@@ -687,10 +688,12 @@ func WriteToBuffer(buffer []byte, str string) int {
 }
 
 /*
+
 Del - Receives existing data structure, path to delete.
 
 Returns:
 `data` - return modified data
+
 */
 func Delete(data []byte, keys ...string) []byte {
 	lk := len(keys)
@@ -771,11 +774,13 @@ func Delete(data []byte, keys ...string) []byte {
 }
 
 /*
+
 Set - Receives existing data structure, path to set, and data to set at that key.
 
 Returns:
 `value` - modified byte array
 `err` - On any parsing error
+
 */
 func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error) {
 	// ensure keys are set

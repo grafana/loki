@@ -1,5 +1,4 @@
-//go:build !jsoniter_sloppy
-// +build !jsoniter_sloppy
+//+build !jsoniter_sloppy
 
 package jsoniter
 
