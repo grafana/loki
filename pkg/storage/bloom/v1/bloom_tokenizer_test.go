@@ -2,16 +2,20 @@ package v1
 
 import (
 	"fmt"
+	"time"
+
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/prometheus/prometheus/model/labels"
-	"time"
 
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"testing"
+
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
