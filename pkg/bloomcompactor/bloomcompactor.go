@@ -36,13 +36,15 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
+	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
+	index_storage "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -68,10 +70,18 @@ type Compactor struct {
 	logger             log.Logger
 	bloomCompactorRing ring.ReadRing
 
+	// Client used to run operations on the bucket storing bloom blocks.
+	storeClients map[config.DayTime]storeClient
+
 	// temporary workaround until store has implemented read/write shipper interface
 	bloomShipperClient bloomshipper.Client
-	indexShipper       indexshipper.IndexShipper
-	chunkClient        client.Client
+}
+
+type storeClient struct {
+	object       chunk_client.ObjectClient
+	index        index_storage.Client
+	chunk        chunk_client.Client
+	indexShipper indexshipper.IndexShipper
 }
 
 func New(cfg Config,
@@ -88,48 +98,66 @@ func New(cfg Config,
 		bloomCompactorRing: readRing,
 	}
 
-	var periodConfig config.PeriodConfig
-	for _, periodCfg := range schemaConfig.Configs {
-		if periodCfg.IndexType == config.TSDBType {
-			periodConfig = periodCfg
-			break
-		}
-	}
-
-	//Configure ObjectClient and IndexShipper for series and chunk management
-	objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, storageCfg, clientMetrics)
-	if err != nil {
-		return nil, err
-	}
-
-	chunkClient := client.NewClient(objectClient, nil, schemaConfig)
-
-	tableRanges := GetIndexStoreTableRanges(config.TSDBType, schemaConfig.Configs)
-
-	openFn := func(p string) (shipperindex.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
-	}
-	indexShipper, err := indexshipper.NewIndexShipper(
-		periodConfig.IndexTables.PathPrefix,
-		storageCfg.TSDBShipperConfig.Config,
-		objectClient,
-		limits,
-		nil, // No need for tenant filter
-		openFn,
-		tableRanges[len(tableRanges)-1],
-		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
-		util_log.Logger,
-	)
 	//Configure BloomClient for meta.json management
 	bloomClient, err := bloomshipper.NewBloomClient(schemaConfig.Configs, storageCfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
+	c.storeClients = make(map[config.DayTime]storeClient)
+
+	for i, periodicConfig := range schemaConfig.Configs {
+		var indexStorageCfg indexshipper.Config
+		switch periodicConfig.IndexType {
+		case config.TSDBType:
+			indexStorageCfg = storageCfg.TSDBShipperConfig.Config
+		case config.BoltDBShipperType:
+			indexStorageCfg = storageCfg.BoltDBShipperConfig.Config
+		default:
+			level.Warn(util_log.Logger).Log("msg", "skipping period because index type is unsupported")
+			continue
+		}
+
+		//Configure ObjectClient and IndexShipper for series and chunk management
+		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageCfg, clientMetrics)
+		if err != nil {
+			return nil, fmt.Errorf("error creating object client '%s': %w", periodicConfig.ObjectType, err)
+		}
+
+		periodEndTime := config.DayTime{Time: math.MaxInt64}
+		if i < len(schemaConfig.Configs)-1 {
+			periodEndTime = config.DayTime{Time: schemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+
+		indexShipper, err := indexshipper.NewIndexShipper(
+			periodicConfig.IndexTables.PathPrefix,
+			indexStorageCfg,
+			objectClient,
+			limits,
+			nil,
+			func(p string) (shipperindex.Index, error) {
+				return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+			},
+			periodicConfig.GetIndexTableNumberRange(periodEndTime),
+			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
+			logger,
+		)
+
+		if err != nil {
+			return nil, errors.Wrap(err, "create index shipper")
+		}
+
+		c.storeClients[periodicConfig.From] = storeClient{
+			object:       objectClient,
+			index:        index_storage.NewIndexStorageClient(objectClient, periodicConfig.IndexTables.PathPrefix),
+			chunk:        chunk_client.NewClient(objectClient, nil, schemaConfig),
+			indexShipper: indexShipper,
+		}
+
+	}
+
 	// temporary workaround until store has implemented read/write shipper interface
 	c.bloomShipperClient = bloomClient
-	c.indexShipper = indexShipper
-	c.chunkClient = chunkClient
 
 	// TODO use a new service with a loop
 	c.Service = services.NewIdleService(c.starting, c.stopping)
@@ -152,25 +180,6 @@ type Series struct { // TODO this can be replaced with Job struct based on Salva
 	chunks            []chunk.Chunk
 	from, through     model.Time
 	indexPath         string
-}
-
-// TODO this logic is used in multiple places, better to move to a common place.
-// copied from storage/store.go
-func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
-	var ranges config.TableRanges
-	for i := range periodicConfigs {
-		if periodicConfigs[i].IndexType != indexType {
-			continue
-		}
-
-		periodEndTime := config.DayTime{Time: math.MaxInt64}
-		if i < len(periodicConfigs)-1 {
-			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
-		}
-
-		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
-	}
-	return ranges
 }
 
 func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fingerprint) []chunk.Chunk {
@@ -242,10 +251,10 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 	return blocks, nil
 }
 
-func listSeries(ctx context.Context, objectClient client.ObjectClient) ([]Series, error) {
+func listSeries(ctx context.Context, objectClient storeClient) ([]Series, error) {
 	// Returns all the TSDB files, including subdirectories
 	prefix := "index/"
-	indices, _, err := objectClient.List(ctx, prefix, "")
+	indices, _, err := objectClient.object.List(ctx, prefix, "")
 
 	if err != nil {
 		return nil, err
@@ -330,16 +339,16 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 	return nil
 }
 
-func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, chunkClient client.Client, indexShipper indexshipper.IndexShipper, objectClient client.ObjectClient) error {
+func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, storeClient storeClient) error {
 
-	series, err := listSeries(ctx, objectClient)
+	series, err := listSeries(ctx, storeClient)
 
 	if err != nil {
 		return err
 	}
 
 	for _, s := range series {
-		indexShipper.ForEach(ctx, s.tableName, s.tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+		storeClient.indexShipper.ForEach(ctx, s.tableName, s.tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 			if isMultiTenantIndex {
 				return nil
 			}
@@ -357,7 +366,7 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 
 					if len(metas) == 0 {
 						// Get chunks data from list of chunkRefs
-						chks, err := chunkClient.GetChunks(
+						chks, err := storeClient.chunk.GetChunks(
 							ctx,
 							makeChunkRefs(chksMetas, s.tenant, fp),
 						)

@@ -176,6 +176,6 @@ outer:
 		// chunk passed all searches, add to the list of chunks to download
 		mustCheck = append(mustCheck, chk)
 
-	} // again is this desired behaviour. only returns must check, not in bloom?
+	}
 	return mustCheck, nil
 }
