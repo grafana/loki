@@ -1,4 +1,4 @@
-image: grafana/{{config.target}}:0.32.0
+image: grafana/{{config.target}}
 tags:
 {{#if build.tags}}
 {{#each build.tags}}
@@ -6,11 +6,11 @@ tags:
 {{/each}}
 {{/if}}
 manifests:
-  - image: grafana/{{config.target}}:0.32.0-amd64
+  - image: grafana/{{config.target}}-amd64
     platform:
       architecture: amd64
       os: linux
-  - image: grafana/{{config.target}}:0.32.0-arm64
+  - image: grafana/{{config.target}}-arm64
     platform:
       architecture: arm64
       os: linux

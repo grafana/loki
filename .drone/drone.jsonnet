@@ -496,9 +496,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
+local build_image_tag = '0.32.0';
 [
   pipeline('loki-build-image-' + arch) {
-    local build_image_tag = '0.32.0-' + arch,
     workspace: {
       base: '/src',
       path: 'loki',
@@ -521,7 +521,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
+          tags: [build_image_tag + '-' + arch],
           dry_run: false,
         },
       },
@@ -530,16 +530,14 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   for arch in ['amd64', 'arm64']
 ] + [
   pipeline('loki-build-image-publish') {
-    local build_image_tag = '0.32.0',
     steps: [
       {
         name: 'manifest',
         //   when: onTagOrMain + onPath('loki-build-image/**'),
         image: 'plugins/manifest:1.4.0',
         settings: {
-          // the target parameter is abused for the app's name,
-          // as it is unused in spec mode. See docker-manifest-operator.tmpl
-          target: 'loki-build-image',
+          // the target parameter is abused for the app's name, as it is unused in spec mode.
+          target: 'loki-build-image:' + build_image_tag,
           spec: '.drone/docker-manifest-build-image.tmpl',
           ignore_missing: false,
           username: { from_secret: docker_username_secret.name },

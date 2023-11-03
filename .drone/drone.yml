@@ -74,7 +74,7 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image
+    target: loki-build-image:0.32.0
     username:
       from_secret: docker_username
 trigger:
@@ -2056,6 +2056,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 821ab10bcf9cf1e0f94fe847582a463fe7931acd42f1e7445b288ba40a568eba
+hmac: c320acb9e27dcd7309afc301de6b89d9e94f407fe862e14412167003e18a30a8
 
 ...
