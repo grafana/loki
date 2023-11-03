@@ -507,7 +507,7 @@ func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
 	return err
 }
 
-func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+func writeSBFToObjectStorage(_ *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
 	// Probably a better way to do this than to reopen the file, but it's late
 	file, err := os.Open(localFilename)
 	if err != nil {
