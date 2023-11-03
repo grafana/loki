@@ -72,8 +72,7 @@ func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker,
 			return nil, errNotReady
 		}
 
-		adjusted := t.Add(-overrides.EvaluationDelay(userID))
-		res, err := evaluator.Eval(ctx, qs, adjusted)
+		res, err := evaluator.Eval(ctx, qs, t)
 
 		if err != nil {
 			level.Error(detailLog).Log("msg", "rule evaluation failed", "err", err)

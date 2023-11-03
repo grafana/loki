@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
-	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -35,30 +34,17 @@ type PusherAppender struct {
 	failedWrites prometheus.Counter
 	totalWrites  prometheus.Counter
 
-	ctx             context.Context
-	pusher          Pusher
-	labels          []labels.Labels
-	samples         []logproto.LegacySample
-	userID          string
-	evaluationDelay time.Duration
+	ctx     context.Context
+	pusher  Pusher
+	labels  []labels.Labels
+	samples []logproto.LegacySample
+	userID  string
 }
 
 var _ storage.Appender = (*PusherAppender)(nil)
 
 func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
 	a.labels = append(a.labels, l)
-
-	// Adapt staleness markers for ruler evaluation delay. As the upstream code
-	// is using the actual time, when there is a no longer available series.
-	// This then causes 'out of order' append failures once the series is
-	// becoming available again.
-	// see https://github.com/prometheus/prometheus/blob/6c56a1faaaad07317ff585bda75b99bdba0517ad/rules/manager.go#L647-L660
-	// Similar to staleness markers, the rule manager also appends actual time to the ALERTS and ALERTS_FOR_STATE series.
-	// See: https://github.com/prometheus/prometheus/blob/ae086c73cb4d6db9e8b67d5038d3704fea6aec4a/rules/alerting.go#L414-L417
-	metricName := l.Get(labels.MetricName)
-	if a.evaluationDelay > 0 && (value.IsStaleNaN(v) || metricName == "ALERTS" || metricName == "ALERTS_FOR_STATE") {
-		t -= a.evaluationDelay.Milliseconds()
-	}
 
 	a.samples = append(a.samples, logproto.LegacySample{
 		TimestampMs: t,
@@ -129,16 +115,14 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 		failedWrites: t.failedWrites,
 		totalWrites:  t.totalWrites,
 
-		ctx:             ctx,
-		pusher:          t.pusher,
-		userID:          t.userID,
-		evaluationDelay: t.rulesLimits.EvaluationDelay(t.userID),
+		ctx:    ctx,
+		pusher: t.pusher,
+		userID: t.userID,
 	}
 }
 
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
-	EvaluationDelay(userID string) time.Duration
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
@@ -150,10 +134,7 @@ type RulesLimits interface {
 func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		orig := rules.EngineQueryFunc(engine, q)
-		// Delay the evaluation of all rules by a set interval to give a buffer
-		// to metric that haven't been forwarded to cortex yet.
-		evaluationDelay := overrides.EvaluationDelay(userID)
-		return orig(ctx, qs, t.Add(-evaluationDelay))
+		return orig(ctx, qs, t)
 	}
 }
 
