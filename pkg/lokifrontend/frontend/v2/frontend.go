@@ -52,7 +52,7 @@ type Config struct {
 	Addr string `yaml:"address" doc:"hidden"`
 	Port int    `doc:"hidden"`
 
-	// Defines the encoding for requests to and responses from the scheduduler and querier.
+	// Defines the encoding for requests to and responses from the scheduler and querier.
 	Encoding string `yaml:"encoding"`
 }
 
