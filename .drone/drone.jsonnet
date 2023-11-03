@@ -497,11 +497,15 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 };
 
 [
-  pipeline('loki-build-image') {
-    local build_image_tag = '0.31.2-amd64',
+  pipeline('loki-build-image-' + arch) {
+    local build_image_tag = '0.31.2-' + arch,
     workspace: {
       base: '/src',
       path: 'loki',
+    },
+    platform: {
+      os: 'linux',
+      arch: arch,
     },
     steps: [
       {
@@ -523,7 +527,8 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
     ],
   },
-  pipeline('helm-test-image') {
+  for arch in [ 'amd64', 'arm64' ]
+] + [ pipeline('helm-test-image') {
     workspace: {
       base: '/src',
       path: 'loki',
