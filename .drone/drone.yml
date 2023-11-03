@@ -1,6 +1,6 @@
 ---
 kind: pipeline
-name: loki-build-image-amd64
+name: loki-build-image
 steps:
 - image: plugins/docker
   name: push-image
@@ -15,14 +15,9 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-amd64
+    - 0.31.2-amd64
     username:
       from_secret: docker_username
-  when:
-    event:
-    - pull_request
-    paths:
-    - loki-build-image/**
 trigger:
   ref:
   - refs/heads/main
@@ -32,33 +27,6 @@ trigger:
 workspace:
   base: /src
   path: loki
----
-depends_on:
-- loki-build-image-amd64
-kind: pipeline
-name: loki-build-image-publish
-steps:
-- image: plugins/manifest:1.4.0
-  name: manifest
-  settings:
-    ignore_missing: false
-    password:
-      from_secret: docker_password
-    spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image
-    username:
-      from_secret: docker_username
-  when:
-    event:
-    - pull_request
-    paths:
-    - loki-build-image/**
-trigger:
-  ref:
-  - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
-  - refs/pull/*/head
 ---
 kind: pipeline
 name: helm-test-image
@@ -1996,12 +1964,6 @@ kind: secret
 name: docker_password
 ---
 get:
-  name: config.json
-  path: infra/data/ci/docker_hub
-kind: secret
-name: docker_hub_config
----
-get:
   name: access_key_id
   path: infra/data/ci/loki/aws-credentials
 kind: secret
@@ -2038,6 +2000,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 0a90a3fd52f69ee0dc0c0e3065b1cfdf4bdd8d36d91cb1b805a50c405f5d1a63
+hmac: efafca1c5bbc909076218039a1941afb94699b7055b440040f19d3306b5a2a5e
 
 ...
