@@ -430,7 +430,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
 	var err error
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch e := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			if e.Left == nil || e.Left.Interval <= limit {
