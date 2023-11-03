@@ -33,6 +33,8 @@ type BloomTokenizer struct {
 }
 
 const CacheSize = 150000
+const DefaultNGramLength = 4
+const DefaultNGramSkip = 0
 
 // NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
 // Warning: the tokens returned use the same byte slice to reduce allocations. This has two consequences:
@@ -44,7 +46,7 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	t.lineTokenizer = NewNGramTokenizer(4, 5, 0) // default to 4-grams, no skip
+	t.lineTokenizer = NewNGramTokenizer(DefaultNGramLength, DefaultNGramLength+1, DefaultNGramSkip) // default to 4-grams, no skip
 	t.chunkIDTokenizer = ChunkIDTokenizer(t.lineTokenizer)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
@@ -101,7 +103,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 
 						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok.Key)
 
-						if len(bt.cache) > 150000 { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
 						}
 					}
