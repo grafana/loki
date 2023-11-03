@@ -121,18 +121,18 @@ steps:
     target: loki-build-image:0.32.0
     username:
       from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
 trigger:
   ref:
   - refs/heads/main
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
-when:
-  event:
-  - push
-  - tag
-  paths:
-  - loki-build-image/**
 ---
 kind: pipeline
 name: helm-test-image
@@ -2106,6 +2106,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: cac76702db65e10e1f0b8c81042aacb2ab3cdc66fe1a1c0844c68eff5958fc9c
+hmac: caf375427f92f78711f801f56341357b67737330e906346ee908a796c61dd314
 
 ...
