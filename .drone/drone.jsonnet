@@ -511,7 +511,7 @@ local build_image_tag = '0.32.0';
       {
         name: 'test',
         image: 'plugins/docker',
-	when: onPRs + onPath('loki-build-image/**'),
+        when: onPRs + onPath('loki-build-image/**'),
         environment: {
           DOCKER_BUILDKIT: 1,
         },
