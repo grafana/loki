@@ -222,12 +222,19 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 	}
 
 	// read the checksum
-	blockFile.Seek(-4, 2)
+	if _, err := blockFile.Seek(-4, 2); err != nil {
+		return bloomshipper.Block{}, errors.Wrap(err, "seeking to bloom checksum")
+	}
 	checksum := make([]byte, 4)
+	if _, err := blockFile.Read(checksum); err != nil {
+		return bloomshipper.Block{}, errors.Wrap(err, "reading bloom checksum")
+	}
 	blockFile.Read(checksum)
 
 	// Reset back to beginning
-	blockFile.Seek(0, 0)
+	if _, err := blockFile.Seek(0, 0); err != nil {
+		return bloomshipper.Block{}, errors.Wrap(err, "seeking to back to beginning of the file")
+	}
 
 	objectStoreDst := createObjStorageFileName(series, fmt.Sprint(binary.BigEndian.Uint32(checksum)))
 
@@ -297,13 +304,15 @@ func createObjStorageFileName(series Series, checksum string) string {
 
 func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client) (err error) {
 	// Create a bloom for this series
+	bloom := &v1.Bloom{
+		*filter.NewDefaultScalableBloomFilter(0.01),
+	}
+
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
 			Fingerprint: series.fingerPrint,
 		},
-		Bloom: &v1.Bloom{
-			*filter.NewDefaultScalableBloomFilter(0.01),
-		},
+		Bloom: bloom,
 	}
 
 	// create a tokenizer
@@ -421,6 +430,9 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 				})
 			return nil
 		})
+		if err != nil {
+			return errors.Wrap(err, "getting each series")
+		}
 	}
 	return nil
 }

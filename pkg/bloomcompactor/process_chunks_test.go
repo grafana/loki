@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
+// This test suite will be replaced with a proper one in a follow up PR. This one is just handy during development.
 var (
 	userID            = "userID"
 	from   model.Time = model.TimeFromUnixNano(0)
@@ -32,13 +33,14 @@ func createSeriesWithBloom(lbs []labels.Labels) ([]v1.SeriesWithBloom, []model.F
 
 	for i, lb := range lbs {
 		fps = append(fps, model.Fingerprint(lb.Hash()))
+		bloom := &v1.Bloom{
+			*filter.NewDefaultScalableBloomFilter(0.01),
+		}
 		bloomsForChunks = append(bloomsForChunks, v1.SeriesWithBloom{
 			Series: &v1.Series{
 				Fingerprint: fps[i],
 			},
-			Bloom: &v1.Bloom{
-				*filter.NewDefaultScalableBloomFilter(0.01),
-			},
+			Bloom: bloom,
 		})
 	}
 	return bloomsForChunks, fps
@@ -48,22 +50,28 @@ func createMemchunks() []*chunkenc.MemChunk {
 	var memChunks []*chunkenc.MemChunk = make([]*chunkenc.MemChunk, 0)
 
 	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk0.Append(&push.Entry{
+	if err := memChunk0.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      "this is a log line",
-	})
+	}); err != nil {
+		panic(err)
+	}
 
 	memChunk1 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk1.Append(&push.Entry{
+	if err := memChunk1.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      "this is a log line for second chunk",
-	})
+	}); err != nil {
+		panic(err)
+	}
 
 	memChunk2 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), testBlockSize, testTargetSize)
-	memChunk2.Append(&push.Entry{
+	if err := memChunk2.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      "this is a log line for third chunk",
-	})
+	}); err != nil {
+		panic(err)
+	}
 
 	memChunks = append(memChunks, memChunk0, memChunk1, memChunk2)
 
