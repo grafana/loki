@@ -498,7 +498,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image-' + arch) {
-    local build_image_tag = '0.31.2-' + arch,
+    local build_image_tag = '0.32.0-' + arch,
     workspace: {
       base: '/src',
       path: 'loki',
@@ -521,7 +521,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tag: build_image_tag,
+          tags: [build_image_tag],
           dry_run: false,
         },
       },
@@ -544,7 +544,6 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           ignore_missing: false,
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
         },
       },
     ],
