@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -52,7 +53,7 @@ func Setup(fixture Fixture, tableName string) (index.Client, chunkclient.Client,
 		return nil, nil, nil, err
 	}
 
-	tableManager, err := index.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil)
+	tableManager, err := index.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -120,10 +121,11 @@ func SchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,
 			},
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: "cortex_chunks",
-				Period: 7 * 24 * time.Hour,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: "cortex_chunks",
+					Period: 7 * 24 * time.Hour,
+				}},
 		}},
 	}
 	if err := s.Validate(); err != nil {

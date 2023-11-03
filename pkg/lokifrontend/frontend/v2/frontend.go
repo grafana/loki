@@ -118,7 +118,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer, codec transport.Codec) (*Frontend, error) {
+func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer, codec transport.Codec, metricsNamespace string) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), ring, requestsCh, log)
@@ -140,15 +140,17 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	f.lastQueryID.Store(rand.Uint64())
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_frontend_queries_in_progress",
-		Help: "Number of queries in progress handled by this frontend.",
+		Namespace: metricsNamespace,
+		Name:      "query_frontend_queries_in_progress",
+		Help:      "Number of queries in progress handled by this frontend.",
 	}, func() float64 {
 		return float64(f.requests.count())
 	})
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_frontend_connected_schedulers",
-		Help: "Number of schedulers this frontend is connected to.",
+		Namespace: metricsNamespace,
+		Name:      "query_frontend_connected_schedulers",
+		Help:      "Number of schedulers this frontend is connected to.",
 	}, func() float64 {
 		return float64(f.schedulerWorkers.getWorkersCount())
 	})

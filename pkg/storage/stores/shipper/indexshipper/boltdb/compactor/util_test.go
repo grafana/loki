@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -48,10 +49,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -59,10 +62,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v10",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -70,10 +75,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 			{
@@ -81,10 +88,12 @@ var (
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 16,
 			},
 		},
@@ -227,8 +236,6 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
 				ActiveIndexDirectory: indexDir,
-				SharedStoreType:      "filesystem",
-				SharedStoreKeyPrefix: "index",
 				ResyncInterval:       1 * time.Millisecond,
 				IngesterName:         "foo",
 				Mode:                 indexshipper.ModeReadWrite,
@@ -236,7 +243,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		},
 	}
 
-	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger)
+	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger, constants.Loki)
 	require.NoError(t, err)
 	return &testStore{
 		indexDir:      indexDir,
