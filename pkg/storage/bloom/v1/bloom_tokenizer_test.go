@@ -39,7 +39,7 @@ func TestSetLineTokenizer(t *testing.T) {
 	require.Equal(t, bt.chunkIDTokenizer.GetSkip(), 2)
 }
 
-func TestTokenizeLine(t *testing.T) {
+func TestDefaultTokenizeLine(t *testing.T) {
 	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
 
 	for _, tc := range []struct {
@@ -79,6 +79,53 @@ func TestTokenizeLine(t *testing.T) {
 				{Key: []byte("36a2")},
 				{Key: []byte("6a2-")},
 				{Key: []byte("a2-4")},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, bt.TokenizeLine(tc.input))
+		})
+	}
+}
+
+func TestTokenizeLineWithSkips(t *testing.T) {
+	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt.SetLineTokenizer(NewNGramTokenizer(DefaultNGramLength, DefaultNGramLength+1, 2))
+
+	for _, tc := range []struct {
+		desc  string
+		input string
+		exp   []Token
+	}{
+		{
+			desc:  "empty",
+			input: "",
+			exp:   []Token{},
+		},
+		{
+			desc:  "single char",
+			input: "a",
+			exp:   []Token{},
+		},
+		{
+			desc:  "four chars",
+			input: "abcd",
+			exp: []Token{
+				{Key: []byte("abcd")}},
+		},
+		{
+			desc:  "longer string",
+			input: "abcdefghijkl",
+			exp: []Token{
+				{Key: []byte("abcd")},
+				{Key: []byte("defg")},
+				{Key: []byte("ghij")},
+				{Key: []byte("bcde")},
+				{Key: []byte("efgh")},
+				{Key: []byte("hijk")},
+				{Key: []byte("cdef")},
+				{Key: []byte("fghi")},
+				{Key: []byte("ijkl")},
 			},
 		},
 	} {
