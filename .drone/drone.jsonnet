@@ -509,16 +509,16 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         name: 'push-image',
         image: 'plugins/docker',
         when: onPRs + onPath('loki-build-image/**'),
-        environment: {
+        //environment: {
           //DOCKER_BUILDKIT: 1,
-	  DOCKER_PLUGIN_CONFIG: { from_secret: docker_config.name },
-        },
+	  //DOCKER_PLUGIN_CONFIG: { from_secret: docker_config.name },
+        //},
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
-          //username: { from_secret: docker_username_secret.name },
-          //password: { from_secret: docker_password_secret.name },
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
           tags: [build_image_tag],
           dry_run: false,
 	  build_args: [

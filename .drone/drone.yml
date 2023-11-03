@@ -2,10 +2,7 @@
 kind: pipeline
 name: loki-build-image-amd64
 steps:
-- environment:
-    DOCKER_PLUGIN_CONFIG:
-      from_secret: docker_hub_config
-  image: plugins/docker
+- image: plugins/docker
   name: push-image
   settings:
     build_args:
@@ -14,9 +11,13 @@ steps:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
     dry_run: false
+    password:
+      from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
     - 0.32.0-amd64
+    username:
+      from_secret: docker_username
   when:
     event:
     - pull_request
@@ -2037,6 +2038,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 1e7b7223543fd793cd1bfba3c2c1b130f950964f4a59166dddf029b0250607c0
+hmac: 0a90a3fd52f69ee0dc0c0e3065b1cfdf4bdd8d36d91cb1b805a50c405f5d1a63
 
 ...
