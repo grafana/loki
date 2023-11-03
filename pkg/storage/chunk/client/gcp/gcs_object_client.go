@@ -19,6 +19,7 @@ import (
 	google_http "google.golang.org/api/transport/http"
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
+	"github.com/grafana/loki/pkg/storage/bucket"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
@@ -35,6 +36,7 @@ type GCSObjectClient struct {
 
 // GCSConfig is config for the GCS Chunk Client.
 type GCSConfig struct {
+	bCfg             bucket.Config  `yaml:"bucket_config"`
 	BucketName       string         `yaml:"bucket_name"`
 	ServiceAccount   flagext.Secret `yaml:"service_account"`
 	ChunkBufferSize  int            `yaml:"chunk_buffer_size"`
