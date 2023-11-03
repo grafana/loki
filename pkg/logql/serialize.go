@@ -90,9 +90,11 @@ func (v *JSONSerializer) VisitVectorAggregation(e *syntax.VectorAggregationExpr)
 	v.WriteObjectField("params")
 	v.WriteInt(e.Params)
 
-	v.WriteMore()
-	v.WriteObjectField("grouping")
-	encodeGrouping(v.Stream, e.Grouping)
+	if e.Grouping != nil {
+		v.WriteMore()
+		v.WriteObjectField("grouping")
+		encodeGrouping(v.Stream, e.Grouping)
+	}
 
 	v.WriteMore()
 	v.WriteObjectField("inner")
@@ -112,13 +114,17 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 	v.WriteObjectField("op")
 	v.WriteString(e.Operation)
 
-	v.WriteMore()
-	v.WriteObjectField("grouping")
-	encodeGrouping(v.Stream, e.Grouping)
+	if e.Grouping != nil {
+		v.WriteMore()
+		v.WriteObjectField("grouping")
+		encodeGrouping(v.Stream, e.Grouping)
+	}
 
-	v.WriteMore()
-	v.WriteObjectField("params")
-	v.WriteFloat64(*e.Params)
+	if e.Params != nil {
+		v.WriteMore()
+		v.WriteObjectField("params")
+		v.WriteFloat64(*e.Params)
+	}
 
 	v.WriteMore()
 	v.WriteObjectField("range")
@@ -134,10 +140,12 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 	v.WriteMore()
 	encodeLogSelector(v.Stream, e.Left.Left)
 
-	v.WriteMore()
-	v.WriteObjectField("unwrap")
-	v.WriteString(e.Left.Unwrap.String())
-	v.WriteObjectEnd()
+	if e.Left.Unwrap != nil {
+		v.WriteMore()
+		v.WriteObjectField("unwrap")
+		v.WriteString(e.Left.Unwrap.String())
+		v.WriteObjectEnd()
+	}
 
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
