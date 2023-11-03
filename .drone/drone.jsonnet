@@ -545,10 +545,10 @@ local build_image_tag = '0.32.0';
   for arch in ['amd64', 'arm64']
 ] + [
   pipeline('loki-build-image-publish') {
+    when: onTagOrMain + onPath('loki-build-image/**'),
     steps: [
       {
         name: 'manifest',
-        when: onTagOrMain + onPath('loki-build-image/**'),
         image: 'plugins/manifest:1.4.0',
         settings: {
           // the target parameter is abused for the app's name, as it is unused in spec mode.
