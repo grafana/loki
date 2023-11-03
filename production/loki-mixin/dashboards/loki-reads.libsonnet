@@ -28,14 +28,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
           },
         ],
         fieldConfig+: {
-          custom+: {
-            fillOpacity: 50,
-            showPoints: 'never',
-            stacking: {
-              group: 'A',
-              mode: 'normal',
+          defaults+: {
+            custom+: {
+              fillOpacity: 50,
+              showPoints: 'never',
+              stacking: {
+                group: 'A',
+                mode: 'normal',
+              },
             },
           },
+          unit: 'ms',
         },
       },
 
