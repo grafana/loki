@@ -8,7 +8,23 @@ steps:
 - environment:
     DOCKER_BUILDKIT: 1
   image: plugins/docker
-  name: push-image
+  name: test
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.0-amd64
+  when:
+    event:
+    - pull_request
+    paths:
+    - loki-build-image/**
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: push
   settings:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
@@ -20,6 +36,12 @@ steps:
     - 0.32.0-amd64
     username:
       from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
 trigger:
   ref:
   - refs/heads/main
@@ -39,7 +61,23 @@ steps:
 - environment:
     DOCKER_BUILDKIT: 1
   image: plugins/docker
-  name: push-image
+  name: test
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.0-arm64
+  when:
+    event:
+    - pull_request
+    paths:
+    - loki-build-image/**
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: push
   settings:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
@@ -51,6 +89,12 @@ steps:
     - 0.32.0-arm64
     username:
       from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
 trigger:
   ref:
   - refs/heads/main
@@ -77,6 +121,12 @@ steps:
     target: loki-build-image:0.32.0
     username:
       from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
 trigger:
   ref:
   - refs/heads/main
@@ -2056,6 +2106,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: c320acb9e27dcd7309afc301de6b89d9e94f407fe862e14412167003e18a30a8
+hmac: caf375427f92f78711f801f56341357b67737330e906346ee908a796c61dd314
 
 ...
