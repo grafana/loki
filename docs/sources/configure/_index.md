@@ -183,8 +183,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [schema_config: <schema_config>]
 
 # The compactor block configures the compactor component, which compacts index
-# shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated,
-# please use `-compactor.` instead.
+# shards for performance.
 [compactor: <compactor>]
 
 # The limits_config block configures global and per-tenant limits in Loki.
@@ -2272,7 +2271,7 @@ Configures the chunk index schema and where it is stored.
 
 ### compactor
 
-The `compactor` block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.
+The `compactor` block configures the compactor component, which compacts index shards for performance.
 
 ```yaml
 # Directory where files can be downloaded for compaction.
@@ -2593,10 +2592,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # won't accept sample from before this time.
 # CLI flag: -validation.create-grace-period
 [creation_grace_period: <duration> | default = 10m]
-
-# Enforce every sample has a metric name.
-# CLI flag: -validation.enforce-metric-name
-[enforce_metric_name: <boolean> | default = true]
 
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
