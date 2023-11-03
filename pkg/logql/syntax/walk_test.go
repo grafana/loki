@@ -32,7 +32,7 @@ func Test_Walkable(t *testing.T) {
 			require.Nil(t, err)
 
 			var cnt int
-			expr.Walk(func(_ interface{}) { cnt++ })
+			expr.Walk(func(_ Expr) { cnt++ })
 			require.Equal(t, test.want, cnt)
 		})
 	}
@@ -77,7 +77,7 @@ func Test_AppendMatchers(t *testing.T) {
 			expr, err := ParseExpr(test.expr)
 			require.NoError(t, err)
 
-			expr.Walk(func(e interface{}) {
+			expr.Walk(func(e Expr) {
 				switch me := e.(type) {
 				case *MatchersExpr:
 					me.AppendMatchers(test.matchers)
