@@ -15,8 +15,9 @@ type Walkable interface {
 }
 
 type RootVisitor interface {
-	VisitSample(SampleExpr)
-	VisitLogSelector(LogSelectorExpr)
+	SampleExprVisitor
+	LogSelectorExprVisitor
+	StageExprVisitor
 }
 
 type SampleExprVisitor interface {
@@ -52,9 +53,11 @@ type StageExprVisitor interface {
 func Dispatch(root Expr, v RootVisitor) error {
 	switch e := root.(type) {
 	case SampleExpr:
-		v.VisitSample(e)
+		DispatchSampleExpr(e, v)
 	case LogSelectorExpr:
-		v.VisitLogSelector(e)
+		DispatchLogSelectorExpr(e, v)
+	case StageExpr:
+		DispatchStageExpr(e, v)
 	default:
 		return fmt.Errorf("unpexpected root expression type: got (%T)", e)
 	}
