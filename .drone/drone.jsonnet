@@ -528,7 +528,31 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
   },
   for arch in [ 'amd64', 'arm64' ]
-] + [ pipeline('helm-test-image') {
+] + [
+  pipeline('loki-build-image-publish') {
+    local build_image_tag = '0.32.0',
+    steps: [
+      {
+        name: 'manifest',
+     //   when: onTagOrMain + onPath('loki-build-image/**'),
+        image: 'plugins/manifest:1.4.0',
+        settings: {
+          // the target parameter is abused for the app's name,
+          // as it is unused in spec mode. See docker-manifest-operator.tmpl
+          target: 'loki-build-image',
+          spec: '.drone/docker-manifest-build-image.tmpl',
+          ignore_missing: false,
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+        },
+      },
+    ],
+    depends_on: [
+      'loki-build-image-%s' % arch
+      for arch in ['amd64']
+    ],
+  },
+  pipeline('helm-test-image') {
     workspace: {
       base: '/src',
       path: 'loki',

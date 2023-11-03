@@ -61,6 +61,28 @@ workspace:
   base: /src
   path: loki
 ---
+depends_on:
+- loki-build-image-amd64
+kind: pipeline
+name: loki-build-image-publish
+steps:
+- image: plugins/manifest:1.4.0
+  name: manifest
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest-build-image.tmpl
+    target: loki-build-image
+    username:
+      from_secret: docker_username
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
 kind: pipeline
 name: helm-test-image
 steps:
@@ -2033,6 +2055,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 62d3220e0bbf6d00664e13132919164102779af55ddd1f7000e790e28cef1eac
+hmac: 57e3eeb227d03732c4c292daa75897d893fcd0170d5b5cb63d64c77075ea088b
 
 ...
