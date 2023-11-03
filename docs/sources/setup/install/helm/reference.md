@@ -369,6 +369,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>clusterLabelOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's cluster label</td>
@@ -847,7 +856,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.8.1"
+"v1.8.4"
 </pre>
 </td>
 		</tr>
@@ -964,7 +973,7 @@ null
 			<td>string</td>
 			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1116,7 +1125,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.23-alpine"
+"1.24-alpine"
 </pre>
 </td>
 		</tr>
@@ -1442,6 +1451,15 @@ null
 			<td>gateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1854,6 +1872,15 @@ See values.yaml
   },
   "readOnlyRootFilesystem": true
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.distributor</td>
+			<td>object</td>
+			<td>Optional distributor configuration</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2750,6 +2777,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.podLogs.apiVersion</td>
+			<td>string</td>
+			<td>PodLogs version</td>
+			<td><pre lang="json">
+"monitoring.grafana.com/v1alpha1"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.podLogs.labels</td>
 			<td>object</td>
 			<td>Additional PodLogs labels</td>
@@ -3427,6 +3463,15 @@ null
 			<td>read.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for read pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for read pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4727,6 +4772,15 @@ null
 			<td>write.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for write pods</td>
 			<td><pre lang="json">
 []
 </pre>

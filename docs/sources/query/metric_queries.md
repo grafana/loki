@@ -57,6 +57,15 @@ Examples:
     sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
     ```
 
+#### Offset modifier
+The offset modifier allows changing the time offset for individual range vectors in a query.
+
+For example, the following expression counts all the logs within the last ten minutes to five minutes rather than last five minutes for the MySQL job. Note that the `offset` modifier always needs to follow the range vector selector immediately.
+```logql
+count_over_time({job="mysql"}[5m] offset 5m) // GOOD
+count_over_time({job="mysql"}[5m]) offset 5m // INVALID
+```
+
 ### Unwrapped range aggregations
 
 Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors]({{< relref ".#pipeline-errors" >}}).

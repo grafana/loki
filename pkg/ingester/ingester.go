@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
@@ -22,7 +23,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -62,10 +62,6 @@ const (
 var (
 	ErrReadOnly = errors.New("Ingester is shutting down")
 
-	flushQueueLength = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ingester_flush_queue_length",
-		Help: "The total number of series pending in the flush queue.",
-	})
 	compressionStats   = analytics.NewString("ingester_compression")
 	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
 	walStats           = analytics.NewString("ingester_wal")
@@ -126,8 +122,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
-	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 0, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
-	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0, "Minimum utilization of chunk when doing synchronization.")
+	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
+	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper/tsdb index and filesystem object store. -1 for infinite.")
@@ -187,7 +183,9 @@ type Interface interface {
 type Ingester struct {
 	services.Service
 
-	cfg           Config
+	cfg    Config
+	logger log.Logger
+
 	clientConfig  client.Config
 	tenantConfigs *runtime.TenantConfigs
 
@@ -236,7 +234,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -246,10 +244,11 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if cfg.WAL.Enabled {
 		walStats.Set("enabled")
 	}
-	metrics := newIngesterMetrics(registerer)
+	metrics := newIngesterMetrics(registerer, metricsNamespace)
 
 	i := &Ingester{
 		cfg:                   cfg,
+		logger:                logger,
 		clientConfig:          clientConfig,
 		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
@@ -262,7 +261,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(util_log.Logger, registerer, writeFailuresCfg, configs, "ingester"),
+		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -284,7 +283,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	}
 	i.wal = wal
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WAL.Enabled || cfg.WAL.FlushOnShutdown, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -322,11 +321,11 @@ func (i *Ingester) setupAutoForget() {
 		ctx := context.Background()
 		err := i.Service.AwaitRunning(ctx)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
+			level.Error(i.logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return
 		}
 
-		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+		level.Info(i.logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 
 		ticker := time.NewTicker(i.cfg.LifecyclerConfig.HeartbeatPeriod)
 		defer ticker.Stop()
@@ -341,14 +340,14 @@ func (i *Ingester) setupAutoForget() {
 
 				ringDesc, ok := in.(*ring.Desc)
 				if !ok {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
+					level.Warn(i.logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
 					return nil, false, nil
 				}
 
 				for id, ingester := range ringDesc.Ingesters {
 					if !ingester.IsHealthy(ring.Reporting, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout, time.Now()) {
 						if i.lifecycler.ID == id {
-							level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
+							level.Warn(i.logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgeting ingesters this round", id))
 							return nil, false, nil
 						}
 						forgetList = append(forgetList, id)
@@ -356,7 +355,7 @@ func (i *Ingester) setupAutoForget() {
 				}
 
 				if len(forgetList) == len(ringDesc.Ingesters)-1 {
-					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
+					level.Warn(i.logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy ingesters out of %d, network may be partioned, skip forgeting ingesters this round", len(forgetList), len(ringDesc.Ingesters)))
 					forgetList = forgetList[:0]
 					return nil, false, nil
 				}
@@ -370,12 +369,12 @@ func (i *Ingester) setupAutoForget() {
 				return nil, false, nil
 			})
 			if err != nil {
-				level.Warn(util_log.Logger).Log("msg", err)
+				level.Warn(i.logger).Log("msg", err)
 				continue
 			}
 
 			for _, id := range forgetList {
-				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
+				level.Info(i.logger).Log("msg", fmt.Sprintf("autoforget removed ingester %v from the ring because it was not healthy after %v", id, i.cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout))
 			}
 			i.metrics.autoForgetUnhealthyIngestersTotal.Add(float64(len(forgetList)))
 		}
@@ -402,7 +401,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 			var once sync.Once
 			return func() {
 				once.Do(func() {
-					level.Info(util_log.Logger).Log("msg", "closing recoverer")
+					level.Info(i.logger).Log("msg", "closing recoverer")
 					recoverer.Close()
 
 					elapsed := time.Since(start)
@@ -410,14 +409,14 @@ func (i *Ingester) starting(ctx context.Context) error {
 					i.metrics.walReplayActive.Set(0)
 					i.metrics.walReplayDuration.Set(elapsed.Seconds())
 					i.cfg.RetainPeriod = oldRetain
-					level.Info(util_log.Logger).Log("msg", "WAL recovery finished", "time", elapsed.String())
+					level.Info(i.logger).Log("msg", "WAL recovery finished", "time", elapsed.String())
 				})
 			}
 		}()
 		defer endReplay()
 
-		level.Info(util_log.Logger).Log("msg", "recovering from checkpoint")
-		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir)
+		level.Info(i.logger).Log("msg", "recovering from checkpoint")
+		checkpointReader, checkpointCloser, err := newCheckpointReader(i.cfg.WAL.Dir, i.logger)
 		if err != nil {
 			return err
 		}
@@ -426,19 +425,19 @@ func (i *Ingester) starting(ctx context.Context) error {
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(util_log.Logger).Log(
+			level.Error(i.logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		level.Info(i.logger).Log(
 			"msg", "recovered WAL checkpoint recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", checkpointRecoveryErr != nil,
 		)
 
-		level.Info(util_log.Logger).Log("msg", "recovering from WAL")
+		level.Info(i.logger).Log("msg", "recovering from WAL")
 		segmentReader, segmentCloser, err := wal.NewWalReader(i.cfg.WAL.Dir, -1)
 		if err != nil {
 			return err
@@ -448,13 +447,13 @@ func (i *Ingester) starting(ctx context.Context) error {
 		segmentRecoveryErr := RecoverWAL(segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(util_log.Logger).Log(
+			level.Error(i.logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
 			)
 		}
-		level.Info(util_log.Logger).Log(
+		level.Info(i.logger).Log(
 			"msg", "WAL segment recovery finished",
 			"elapsed", time.Since(start).String(),
 			"errors", segmentRecoveryErr != nil,
@@ -485,7 +484,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	}
 
 	if shutdownMarker {
-		level.Info(util_log.Logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
+		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
 		i.setPrepareShutdown()
 	}
 
@@ -562,12 +561,12 @@ func (i *Ingester) removeShutdownMarkerFile() {
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 	exists, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
+		level.Error(i.logger).Log("msg", "error checking shutdown marker file exists", "err", err)
 	}
 	if exists {
 		err = removeShutdownMarker(shutdownMarkerPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
+			level.Error(i.logger).Log("msg", "error removing shutdown marker file", "err", err)
 		}
 	}
 }
@@ -584,7 +583,7 @@ func (i *Ingester) loop() {
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
-	level.Info(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+	level.Info(i.logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
 
 	select {
 	case <-initialDelay.C:
@@ -633,7 +632,7 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		exists, err := shutdownMarkerExists(shutdownMarkerPath)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to check for prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			level.Error(i.logger).Log("msg", "unable to check for prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -645,24 +644,24 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 		}
 	case http.MethodPost:
 		if err := createShutdownMarker(shutdownMarkerPath); err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to create prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			level.Error(i.logger).Log("msg", "unable to create prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
 		i.setPrepareShutdown()
-		level.Info(util_log.Logger).Log("msg", "created prepare-shutdown marker file", "path", shutdownMarkerPath)
+		level.Info(i.logger).Log("msg", "created prepare-shutdown marker file", "path", shutdownMarkerPath)
 
 		w.WriteHeader(http.StatusNoContent)
 	case http.MethodDelete:
 		if err := removeShutdownMarker(shutdownMarkerPath); err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to remove prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			level.Error(i.logger).Log("msg", "unable to remove prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
 		i.unsetPrepareShutdown()
-		level.Info(util_log.Logger).Log("msg", "removed prepare-shutdown marker file", "path", shutdownMarkerPath)
+		level.Info(i.logger).Log("msg", "removed prepare-shutdown marker file", "path", shutdownMarkerPath)
 
 		w.WriteHeader(http.StatusNoContent)
 	default:
@@ -672,7 +671,7 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 
 // setPrepareShutdown toggles ingester lifecycler config to prepare for shutdown
 func (i *Ingester) setPrepareShutdown() {
-	level.Info(util_log.Logger).Log("msg", "preparing full ingester shutdown, resources will be released on SIGTERM")
+	level.Info(i.logger).Log("msg", "preparing full ingester shutdown, resources will be released on SIGTERM")
 	i.lifecycler.SetFlushOnShutdown(true)
 	i.lifecycler.SetUnregisterOnShutdown(true)
 	i.terminateOnShutdown = true
@@ -680,7 +679,7 @@ func (i *Ingester) setPrepareShutdown() {
 }
 
 func (i *Ingester) unsetPrepareShutdown() {
-	level.Info(util_log.Logger).Log("msg", "undoing preparation for full ingester shutdown")
+	level.Info(i.logger).Log("msg", "undoing preparation for full ingester shutdown")
 	i.lifecycler.SetFlushOnShutdown(!i.cfg.WAL.Enabled || i.cfg.WAL.FlushOnShutdown)
 	i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
 	i.terminateOnShutdown = false

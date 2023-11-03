@@ -15,6 +15,8 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -120,17 +122,17 @@ func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer
 	)
 
 	logMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "log_messages_total",
 		Help:      "DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself.",
 	}, []string{"level"})
 	internalLogMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "internal_log_messages_total",
 		Help:      "Total number of log messages created by Loki itself.",
 	}, []string{"level"})
 	logFlushes := promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "log_flushes",
 		Help:      "Histogram of log flushes using the line-buffered logger.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logEntries)))+1),

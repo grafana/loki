@@ -112,7 +112,7 @@ func Sortable(q Params) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)
 		if !ok {
 			return
@@ -739,9 +739,9 @@ func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 		return sample.Metric.Hash()
 	} else if opts.VectorMatching.On {
 		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
-	} else {
-		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	}
+
+	return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 }
 
 func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
@@ -809,7 +809,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				ls, rs = rs, ls
 			}
 		}
-		merged, err := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op))
+		merged, err := syntax.MergeBinOp(op, ls, rs, false, filter, syntax.IsComparisonOperator(op))
 		if err != nil {
 			return nil, err
 		}
@@ -973,6 +973,7 @@ func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 			e.op,
 			left,
 			right,
+			!e.inverted,
 			!e.returnBool,
 			syntax.IsComparisonOperator(e.op),
 		)

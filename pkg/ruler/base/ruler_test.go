@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -54,6 +55,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
@@ -111,12 +113,12 @@ func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManage
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 	if q != nil {
-		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return func(mint, maxt int64) (storage.Querier, error) {
 			return q, nil
 		}
 	}
 
-	return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return func(mint, maxt int64) (storage.Querier, error) {
 		return storage.NoopQuerier(), nil
 	}
 }
@@ -147,7 +149,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides, constants.Loki)
 	require.NoError(t, err)
 
 	return manager
@@ -159,7 +161,7 @@ func newMultiTenantManager(t *testing.T, cfg Config, q storage.Querier, amConf m
 	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
 	overrides.alertManagerConfig = amConf
 
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides, constants.Loki)
 	require.NoError(t, err)
 
 	return manager
@@ -195,9 +197,9 @@ func (p *mockRulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
 	return nil, fmt.Errorf("unable to find ruler for add %s", addr)
 }
 
-func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
+func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer, metricsNamespace string, rulerAddrMap map[string]*Ruler) *mockRulerClientsPool {
 	return &mockRulerClientsPool{
-		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
+		ClientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg, metricsNamespace),
 		cfg:          cfg,
 		rulerAddrMap: rulerAddrMap,
 	}
@@ -211,8 +213,8 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
-	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides)
+	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg, constants.Loki)
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides, constants.Loki)
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -222,7 +224,8 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 		logger,
 		storage,
 		overrides,
-		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
+		newMockClientsPool(rulerConfig, logger, reg, constants.Loki, rulerAddrMap),
+		constants.Loki,
 	)
 	require.NoError(t, err)
 	return ruler
@@ -278,10 +281,10 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	// Ensure we have metrics in the notifier.
 	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
-		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
-		# TYPE cortex_prometheus_notifications_dropped_total counter
-		cortex_prometheus_notifications_dropped_total{user="1"} 0
-	`), "cortex_prometheus_notifications_dropped_total"))
+		# HELP loki_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
+		# TYPE loki_prometheus_notifications_dropped_total counter
+		loki_prometheus_notifications_dropped_total{user="1"} 0
+	`), "loki_prometheus_notifications_dropped_total"))
 }
 
 func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
@@ -350,11 +353,11 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 
 	// Ensure we have metrics in the notifier.
 	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
-		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
-		# TYPE cortex_prometheus_notifications_dropped_total counter
-		cortex_prometheus_notifications_dropped_total{user="tenant1"} 0
-		cortex_prometheus_notifications_dropped_total{user="tenant2"} 0
-	`), "cortex_prometheus_notifications_dropped_total"))
+		# HELP loki_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
+		# TYPE loki_prometheus_notifications_dropped_total counter
+		loki_prometheus_notifications_dropped_total{user="tenant1"} 0
+		loki_prometheus_notifications_dropped_total{user="tenant2"} 0
+	`), "loki_prometheus_notifications_dropped_total"))
 }
 
 func TestRuler_Rules(t *testing.T) {
@@ -1514,7 +1517,7 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 	obj, rs := setupRuleGroupsStore(t, ruleGroups)
 	require.Equal(t, 3, obj.GetObjectCount())
 
-	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil)
+	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil, constants.Loki)
 	require.NoError(t, err)
 
 	{
@@ -1715,15 +1718,15 @@ type fakeQuerier struct {
 	fn func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet
 }
 
-func (f *fakeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (f *fakeQuerier) Select(_ context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	return f.fn(sortSeries, hints, matchers...)
 }
 
-func (f *fakeQuerier) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (f *fakeQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 func (f *fakeQuerier) Close() error { return nil }

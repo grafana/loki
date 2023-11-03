@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	bloomshipperconfig "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
@@ -39,7 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -287,7 +288,7 @@ func (ns *NamedStores) populateStoreType() error {
 	return nil
 }
 
-func (ns *NamedStores) validate() error {
+func (ns *NamedStores) Validate() error {
 	for name, awsCfg := range ns.AWS {
 		if err := awsCfg.Validate(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("invalid AWS Storage config with name %s", name))
@@ -327,14 +328,16 @@ type Config struct {
 	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
 	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
 	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
+	ObjectPrefix           string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	MaxChunkBatchSize   int             `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig boltdb.IndexCfg `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
-	TSDBShipperConfig   tsdb.IndexCfg   `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
+	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
+	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
+	TSDBShipperConfig   tsdb.IndexCfg             `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
+	BloomShipperConfig  bloomshipperconfig.Config `yaml:"bloom_shipper" doc:"description=Configures Bloom Shipper."`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
@@ -360,11 +363,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
+	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 	cfg.BoltDBShipperConfig.RegisterFlags(f)
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
 	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
+	cfg.BloomShipperConfig.RegisterFlagsWithPrefix("bloom.", f)
 }
 
 // Validate config and returns error on failure
@@ -390,12 +395,15 @@ func (cfg *Config) Validate() error {
 	if err := cfg.TSDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tsdb config")
 	}
+	if err := cfg.BloomShipperConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid bloom shipper config")
+	}
 
-	return cfg.NamedStores.validate()
+	return cfg.NamedStores.Validate()
 }
 
 // NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
-func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger) (index.Client, error) {
+func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
 
 	switch true {
 	case util.StringsContain(testingStorageTypes, periodCfg.IndexType):
@@ -413,7 +421,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 					return indexGatewayClient, nil
 				}
 
-				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
+				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger, constants.Loki)
 				if err != nil {
 					return nil, err
 				}
@@ -426,12 +434,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 				return client, nil
 			}
 
-			objectType := periodCfg.ObjectType
-			if cfg.BoltDBShipperConfig.SharedStoreType != "" {
-				objectType = cfg.BoltDBShipperConfig.SharedStoreType
-			}
-
-			objectClient, err := NewObjectClient(objectType, cfg, cm)
+			objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
 			if err != nil {
 				return nil, err
 			}
@@ -440,7 +443,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			if shardingStrategy != nil {
 				filterFn = shardingStrategy.FilterTenants
 			}
-			indexClient, err := boltdb.NewIndexClient(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
+			indexClient, err := boltdb.NewIndexClient(periodCfg.IndexTables.PathPrefix, cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
 			if err != nil {
 				return nil, err
 			}
@@ -454,7 +457,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		}
 
 	case util.StringsContain(deprecatedIndexTypes, periodCfg.IndexType):
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
+		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
 
 		switch periodCfg.IndexType {
 		case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
@@ -463,7 +466,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			}
 			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 			if len(path) > 0 {
-				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 
@@ -492,7 +495,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics) (client.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var storeType = name
 
 	// lookup storeType for named stores
@@ -542,7 +545,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		}
 
 	case util.StringsContain(deprecatedStorageTypes, storeType):
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(supportedStorageTypes, ", ")))
+		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(supportedStorageTypes, ", ")))
 
 		switch storeType {
 		case config.StorageTypeAWSDynamo:
@@ -551,7 +554,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			}
 			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 			if len(path) > 0 {
-				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 
@@ -570,10 +573,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer prometheus.Registerer) (index.TableClient, error) {
-
+func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
 	switch true {
-
 	case util.StringsContain(testingStorageTypes, name):
 		switch name {
 		case config.StorageTypeInMemory:
@@ -581,21 +582,11 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		}
 
 	case util.StringsContain(supportedIndexTypes, name):
-		var sharedStoreKeyPrefix string
-		var objectType string
-		switch name {
-		case config.BoltDBShipperType:
-			objectType = cfg.BoltDBShipperConfig.SharedStoreType
-			sharedStoreKeyPrefix = cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
-		case config.TSDBType:
-			objectType = cfg.TSDBShipperConfig.SharedStoreType
-			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
-		}
-		objectClient, err := NewObjectClient(objectType, cfg, cm)
+		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
-		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
+		return indexshipper.NewTableClient(objectClient, periodCfg.IndexTables.PathPrefix), nil
 
 	case util.StringsContain(deprecatedIndexTypes, name):
 		switch name {
@@ -605,7 +596,7 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 			}
 			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
 			if len(path) > 0 {
-				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
 		case config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
@@ -645,8 +636,23 @@ func (c *ClientMetrics) Unregister() {
 	c.AzureMetrics.Unregister()
 }
 
-// NewObjectClient makes a new StorageClient of the desired types.
+// NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.ObjectPrefix == "" {
+		return actual, nil
+	} else {
+		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
+		return client.NewPrefixedObjectClient(actual, prefix), nil
+	}
+}
+
+// internalNewObjectClient makes the underlying StorageClient of the desired types.
+func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
 		storeType  = name

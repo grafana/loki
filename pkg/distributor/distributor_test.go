@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/util/constants"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -1148,17 +1149,18 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		distributorConfig.DistributorRing.KVStore.Mock = kvStore
 		distributorConfig.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
-		distributorConfig.factory = factory
-		if factory == nil {
-			distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
+		factoryWrap := ring_client.PoolAddrFunc(factory)
+		distributorConfig.factory = factoryWrap
+		if factoryWrap == nil {
+			distributorConfig.factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 				return ingesterByAddr[addr], nil
-			}
+			})
 		}
 
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d

@@ -39,5 +39,6 @@ to publish a new [Grafana Loki](https://github.com/grafana/loki) release.
 1. [Backport commits]({{< relref "./backport-commits" >}})
 1. [Prepare release notes]({{< relref "./prepare-release-notes" >}})
 1. [Prepare changelog]({{< relref "./prepare-changelog" >}})
+1. [Update version numbers]({{< relref "./update-version-numbers" >}})
 1. [Tag release]({{< relref "./tag-release" >}})
 1. [Publish release]({{< relref "./publish-release" >}})

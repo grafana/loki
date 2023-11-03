@@ -127,9 +127,9 @@ func (c *querierClientMock) Close() error {
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
-	return func(addr string) (ring_client.PoolClient, error) {
+	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return c, nil
-	}
+	})
 }
 
 // mockIngesterClientConfig returns an ingester client config suitable for testing
@@ -530,7 +530,7 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 }
 
-func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest) (*Tailer, error) {
+func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest, _ bool) (*Tailer, error) {
 	return nil, errors.New("querierMock.Tail() has not been mocked")
 }
 

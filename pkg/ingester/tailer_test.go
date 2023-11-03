@@ -93,10 +93,25 @@ func Test_dropstream(t *testing.T) {
 	}
 }
 
-type fakeTailServer struct{}
+type fakeTailServer struct {
+	responses []logproto.TailResponse
+}
 
-func (f *fakeTailServer) Send(*logproto.TailResponse) error { return nil }
-func (f *fakeTailServer) Context() context.Context          { return context.Background() }
+func (f *fakeTailServer) Send(response *logproto.TailResponse) error {
+	f.responses = append(f.responses, *response)
+	return nil
+
+}
+
+func (f *fakeTailServer) Context() context.Context { return context.Background() }
+
+func (f *fakeTailServer) GetResponses() []logproto.TailResponse {
+	return f.responses
+}
+
+func (f *fakeTailServer) Reset() {
+	f.responses = f.responses[:0]
+}
 
 func Test_TailerSendRace(t *testing.T) {
 	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, 10)
@@ -134,6 +149,129 @@ func Test_IsMatching(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.matches, isMatching(tt.lbs, tt.matchers))
+		})
+	}
+}
+
+func Test_StructuredMetadata(t *testing.T) {
+	lbs := makeRandomLabels()
+
+	for _, tc := range []struct {
+		name              string
+		query             string
+		sentStream        logproto.Stream
+		expectedResponses []logproto.TailResponse
+	}{
+		{
+			// Optimization will make the same stream to be returned regardless of structured metadata.
+			name:  "noop pipeline",
+			query: `{app="foo"}`,
+			sentStream: logproto.Stream{
+				Labels: lbs.String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 1),
+						Line:      "foo=1",
+					},
+					{
+						Timestamp:          time.Unix(0, 2),
+						Line:               "foo=2",
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+					},
+				},
+			},
+			expectedResponses: []logproto.TailResponse{
+				{
+					Stream: &logproto.Stream{
+						Labels: lbs.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 1),
+								Line:      "foo=1",
+							},
+							{
+								Timestamp:          time.Unix(0, 2),
+								Line:               "foo=2",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+							},
+						},
+					},
+					DroppedStreams: nil,
+				},
+			},
+		},
+		{
+			name:  "parse pipeline labels",
+			query: `{app="foo"} | logfmt`,
+			sentStream: logproto.Stream{
+				Labels: lbs.String(),
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 1),
+						Line:      "foo=1",
+					},
+					{
+						Timestamp:          time.Unix(0, 2),
+						Line:               "foo=2",
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+					},
+				},
+			},
+			expectedResponses: []logproto.TailResponse{
+				{
+					Stream: &logproto.Stream{
+						Labels: labels.NewBuilder(lbs).Set("foo", "1").Labels().String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 1),
+								Line:      "foo=1",
+								Parsed:    logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1")),
+							},
+						},
+					},
+					DroppedStreams: nil,
+				},
+				{
+					Stream: &logproto.Stream{
+						Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "2").Labels().String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp:          time.Unix(0, 2),
+								Line:               "foo=2",
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
+								Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "2")),
+							},
+						},
+					},
+					DroppedStreams: nil,
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var server fakeTailServer
+			tail, err := newTailer("foo", tc.query, &server, 10)
+			require.NoError(t, err)
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				tail.loop()
+				wg.Done()
+			}()
+
+			tail.send(tc.sentStream, lbs)
+
+			// Wait for the stream to be received by the server.
+			require.Eventually(t, func() bool {
+				return len(server.GetResponses()) > 0
+			}, 30*time.Second, 1*time.Second, "stream was not received")
+
+			responses := server.GetResponses()
+			require.ElementsMatch(t, tc.expectedResponses, responses)
+
+			tail.close()
+			wg.Wait()
 		})
 	}
 }

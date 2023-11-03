@@ -102,7 +102,7 @@ func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMe
 		return err
 	}
 
-	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, storageCfg.TSDBShipperConfig.SharedStoreKeyPrefix)
+	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, pCfg.IndexTables.PathPrefix)
 
 	tableNames, err := indexStorageClient.ListTables(context.Background())
 	if err != nil {
