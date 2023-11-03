@@ -41,6 +41,7 @@ local secret(name, vault_path, vault_key) = {
 };
 local docker_username_secret = secret('docker_username', 'infra/data/ci/docker_hub', 'username');
 local docker_password_secret = secret('docker_password', 'infra/data/ci/docker_hub', 'password');
+local docker_config = secret('docker_hub_config', 'infra/data/ci/docker_hub', 'config.json');
 local ecr_key = secret('ecr_key', 'infra/data/ci/loki/aws-credentials', 'access_key_id');
 local ecr_secret_key = secret('ecr_secret_key', 'infra/data/ci/loki/aws-credentials', 'secret_access_key');
 local pull_secret = secret('dockerconfigjson', 'secret/data/common/gcr', '.dockerconfigjson');
@@ -510,13 +511,14 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         when: onPRs + onPath('loki-build-image/**'),
         environment: {
           DOCKER_BUILDKIT: 1,
+	  DOCKER_PLUGIN_CONFIG: { from_secret: docker_config.name },
         },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
-          username: { from_secret: docker_username_secret.name },
-          password: { from_secret: docker_password_secret.name },
+          //username: { from_secret: docker_username_secret.name },
+          //password: { from_secret: docker_password_secret.name },
           tags: [build_image_tag],
           dry_run: false,
         },
@@ -965,6 +967,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   pull_secret,
   docker_username_secret,
   docker_password_secret,
+  docker_config,
   ecr_key,
   ecr_secret_key,
   updater_config_template,

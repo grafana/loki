@@ -4,19 +4,17 @@ name: loki-build-image-amd64
 steps:
 - environment:
     DOCKER_BUILDKIT: 1
+    DOCKER_PLUGIN_CONFIG:
+      from_secret: docker_hub_config
   image: plugins/docker
   name: push-image
   settings:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
     dry_run: false
-    password:
-      from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
     - 0.32.0-amd64
-    username:
-      from_secret: docker_username
   when:
     event:
     - pull_request
@@ -1995,6 +1993,12 @@ kind: secret
 name: docker_password
 ---
 get:
+  name: config.json
+  path: infra/data/ci/docker_hub
+kind: secret
+name: docker_hub_config
+---
+get:
   name: access_key_id
   path: infra/data/ci/loki/aws-credentials
 kind: secret
@@ -2031,6 +2035,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 81c70fa3ad42daa824e0f5cd16b870797fd96bfad30869f20cb2474c930fe08a
+hmac: a2f591f88e808b6057e73034eef7ca0179beb60583b3e71a400eb754bc4dbeab
 
 ...
