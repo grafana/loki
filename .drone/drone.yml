@@ -3,12 +3,14 @@ kind: pipeline
 name: loki-build-image-amd64
 steps:
 - environment:
-    DOCKER_BUILDKIT: 1
     DOCKER_PLUGIN_CONFIG:
       from_secret: docker_hub_config
   image: plugins/docker
   name: push-image
   settings:
+    build_args:
+      TARGETARCH: amd64
+      TARGETOS: linux
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
     dry_run: false
@@ -2035,6 +2037,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: a2f591f88e808b6057e73034eef7ca0179beb60583b3e71a400eb754bc4dbeab
+hmac: b1e84cc270de718a2af63601c58bc6517781b719b9f6768af7a0a6292c6cd16e
 
 ...
