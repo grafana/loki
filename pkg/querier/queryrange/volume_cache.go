@@ -91,7 +91,7 @@ func shouldCacheVolume(ctx context.Context, req queryrangebase.Request, lim Limi
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 
 	now := volumeCacheMiddlewareNowTimeFunc()
-	return maxCacheFreshness == 0 || model.Time(req.GetEnd()).Before(now.Add(-maxCacheFreshness)), nil
+	return maxCacheFreshness == 0 || model.Time(req.GetEnd().UnixMilli()).Before(now.Add(-maxCacheFreshness)), nil
 }
 
 func NewVolumeCacheMiddleware(

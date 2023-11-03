@@ -19,18 +19,6 @@ type EntryIterator interface {
 	Entry() logproto.Entry
 }
 
-type EntryIteratorOptions struct {
-	KeepStructuredMetdata bool
-}
-
-type EntryIteratorOption func(*EntryIteratorOptions)
-
-func WithKeepStructuredMetadata() EntryIteratorOption {
-	return func(o *EntryIteratorOptions) {
-		o.KeepStructuredMetdata = true
-	}
-}
-
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i      int

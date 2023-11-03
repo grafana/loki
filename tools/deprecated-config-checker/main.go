@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
+
 	"github.com/grafana/loki/tools/deprecated-config-checker/checker"
 )
 

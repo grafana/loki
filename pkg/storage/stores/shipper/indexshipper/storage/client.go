@@ -50,7 +50,7 @@ type IndexFile struct {
 }
 
 func NewIndexStorageClient(origObjectClient client.ObjectClient, storagePrefix string) Client {
-	objectClient := newCachedObjectClient(newPrefixedObjectClient(origObjectClient, storagePrefix))
+	objectClient := newCachedObjectClient(client.NewPrefixedObjectClient(origObjectClient, storagePrefix))
 	return &indexStorageClient{objectClient: objectClient}
 }
 

@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 // GRPCPool represents a pool of gRPC connections to different bloom gateway instances.
@@ -92,9 +93,9 @@ type GatewayClient struct {
 	ring   ring.ReadRing
 }
 
-func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "bloom_gateway",
 		Name:      "request_duration_seconds",
 		Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
@@ -118,7 +119,7 @@ func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Reg
 		cfg:    cfg,
 		logger: logger,
 		limits: limits,
-		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger),
+		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
 	}
 
 	return c, nil

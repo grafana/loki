@@ -40,6 +40,7 @@ import (
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -56,6 +57,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -109,11 +111,13 @@ type Config struct {
 	Common common.Config `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+
+	MetricsNamespace string `yaml:"metrics_namespace"`
 }
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Server.MetricsNamespace = "loki"
+	c.Server.MetricsNamespace = constants.Loki
 	c.Server.ExcludeRequestInLog = true
 
 	// Set the default module list to 'all'
@@ -144,6 +148,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"The default will be flipped to false in the next Loki release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
+
+	f.StringVar(&c.MetricsNamespace, "metrics-namespace", constants.Loki, "Namespace of the metrics that in previous releases had cortex as namespace. This setting is deprecated and will be removed in the next minor release.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -244,14 +250,9 @@ func (c *Config) Validate() error {
 	if err := c.CompactorConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.ChunkStoreConfig.Validate(util_log.Logger); err != nil {
+	if err := c.ChunkStoreConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
-	// TODO(cyriltovena): remove when MaxLookBackPeriod in the storage will be fully deprecated.
-	if c.ChunkStoreConfig.MaxLookBackPeriod > 0 {
-		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
-	}
-
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
@@ -277,6 +278,12 @@ func (c *Config) isModuleEnabled(m string) bool {
 type Frontend interface {
 	services.Service
 	CheckReady(_ context.Context) error
+}
+
+// Codec defines methods to encode and decode requests from HTTP, httpgrpc and Protobuf.
+type Codec interface {
+	transport.Codec
+	worker.GRPCCodec
 }
 
 // Loki is the root datastructure for Loki.
@@ -325,7 +332,8 @@ type Loki struct {
 
 	HTTPAuthMiddleware middleware.Interface
 
-	Codec worker.GRPCCodec
+	Codec   Codec
+	Metrics *server.Metrics
 }
 
 // New makes a new Loki.
@@ -334,6 +342,7 @@ func New(cfg Config) (*Loki, error) {
 		Cfg:                 cfg,
 		clientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
+		Codec:               queryrange.DefaultCodec,
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()

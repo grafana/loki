@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -36,11 +37,11 @@ type LogResultCacheMetrics struct {
 func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheMetrics {
 	return &LogResultCacheMetrics{
 		CacheHit: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_hit_total",
 		}),
 		CacheMiss: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_miss_total",
 		}),
 	}
@@ -95,7 +96,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	cacheFreshnessCapture := func(id string) time.Duration { return l.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	if req.GetEnd() > maxCacheTime {
+	if req.GetEnd().UnixMilli() > maxCacheTime {
 		return l.next.Do(ctx, req)
 	}
 
