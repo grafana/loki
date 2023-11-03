@@ -2437,9 +2437,6 @@ compactor_ring:
 # -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
-
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[deletion_mode: <string> | default = ""]
 ```
 
 ### bloom_compactor

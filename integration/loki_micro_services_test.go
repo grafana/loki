@@ -33,10 +33,10 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
@@ -161,7 +161,7 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-compactor.compaction-interval=1s",
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
@@ -354,7 +354,7 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 				tCompactor = clu.AddComponent(
 					"compactor",
 					"-target=compactor",
-					"-boltdb.shipper.compactor.compaction-interval=1s",
+					"-compactor.compaction-interval=1s",
 				)
 				tDistributor = clu.AddComponent(
 					"distributor",
@@ -472,10 +472,10 @@ func TestSchedulerRing(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
@@ -616,7 +616,7 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-compactor.compaction-interval=1s",
 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 	)
@@ -728,10 +728,10 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
@@ -882,7 +882,7 @@ func TestCategorizedLabels(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-compactor.compaction-interval=1s",
 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 	)
