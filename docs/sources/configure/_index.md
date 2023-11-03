@@ -226,8 +226,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [shutdown_delay: <duration> | default = 0s]
 
 # Namespace of the metrics that in previous releases had cortex as namespace.
+# This setting is deprecated and will be removed in the next minor release.
 # CLI flag: -metrics-namespace
-[metrics_namespace: <string> | default = "cortex"]
+[metrics_namespace: <string> | default = "loki"]
 ```
 
 ### server
