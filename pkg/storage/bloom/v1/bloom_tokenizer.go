@@ -128,7 +128,7 @@ func (bt *BloomTokenizer) TokenizeLine(line string) []Token {
 			tmp := bt.lineTokenizer.Tokens(line[i:])
 			for _, token := range tmp {
 				tmpToken := Token{}
-				tmpToken.Key = make([]byte, len(token.Key), len(token.Key))
+				tmpToken.Key = make([]byte, len(token.Key))
 				copy(tmpToken.Key, token.Key)
 				tokens = append(tokens, tmpToken)
 			}

@@ -150,7 +150,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 
 	var memChunks = make([]*chunkenc.MemChunk, 0)
 	memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	memChunk0.Append(&push.Entry{
+	_ = memChunk0.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
