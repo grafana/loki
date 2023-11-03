@@ -184,7 +184,7 @@ If you using a [legacy index type]({{< relref "../../storage#index-storage" >}})
 
 #### Metrics namespace
 
-Some Loki metrics started with the prefix `cortex_`. In this release they will be changed so they start with `loki_`. To keep them at `cortex_` change the `metrics_namespace` from the defailt `loki` to `cortex`. These metrics will be changed:
+Some Loki metrics started with the prefix `cortex_`. In this release they will be changed so they start with `loki_`. To keep them at `cortex_` change the `metrics_namespace` from the default `loki` to `cortex`. These metrics will be changed:
 
  - `cortex_distributor_ingester_clients`
  - `cortex_dns_failures_total`
