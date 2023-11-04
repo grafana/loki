@@ -35,6 +35,8 @@
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
 * [10727](https://github.com/grafana/loki/pull/10727) **sandeepsukhani** Native otlp ingestion support
 * [11051](https://github.com/grafana/loki/pull/11051) Refactor to not use global logger in modules
+* [11137](https://github.com/grafana/loki/pull/11137/files) **hainenber** Add support for Redis cluster v7.0 by bumping `redis/go-redis` to v9.
+
 ##### Fixes
 
 ##### Changes
