@@ -37,7 +37,6 @@ require (
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.0
-	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
 	github.com/gogo/status v1.1.1
@@ -129,6 +128,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.86.0
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
+	github.com/redis/go-redis/v9 v9.3.0
 	github.com/richardartoul/molecule v1.0.0
 	github.com/thanos-io/objstore v0.0.0-20230829152104-1b257a36f9a3
 	github.com/willf/bloom v2.0.3+incompatible

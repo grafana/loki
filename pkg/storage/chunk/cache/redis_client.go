@@ -12,7 +12,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 // RedisConfig defines how a RedisCache should be constructed.
@@ -206,7 +206,7 @@ func (c *RedisClient) Close() error {
 	return c.rdb.Close()
 }
 
-// StringToBytes converts string to byte slice. (copied from vendor/github.com/go-redis/redis/v8/internal/util/unsafe.go)
+// StringToBytes converts string to byte slice. (copied from vendor/github.com/redis/go-redis/v9/internal/util/unsafe.go)
 func StringToBytes(s string) []byte {
 	return *(*[]byte)(unsafe.Pointer(
 		&struct {
