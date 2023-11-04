@@ -121,18 +121,23 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 // TokenizeLine returns a slice of tokens for the given line, based on the current value of the tokenizer
 // If the tokenizer has a skip value, then the line will be tokenized multiple times,
 // starting at the beginning of the line, with "skip" number of iterations, offset by one each time
-func (bt *BloomTokenizer) TokenizeLine(line string) []Token {
-	tokens := make([]Token, 0, 100)
+// Each offset is kept as a separate slice of tokens, and all are returned in a slice of slices
+func (bt *BloomTokenizer) TokenizeLine(line string) [][]Token {
+	allTokens := make([][]Token, 0, 10)
 	if len(line) >= bt.lineTokenizer.GetMin() && len(line) >= bt.lineTokenizer.GetSkip() {
 		for i := 0; i <= bt.lineTokenizer.GetSkip(); i++ {
-			tmp := bt.lineTokenizer.Tokens(line[i:])
-			for _, token := range tmp {
+			tmpTokens := make([]Token, 0, 100)
+			tokens := bt.lineTokenizer.Tokens(line[i:])
+			for _, token := range tokens {
 				tmpToken := Token{}
 				tmpToken.Key = make([]byte, len(token.Key))
 				copy(tmpToken.Key, token.Key)
-				tokens = append(tokens, tmpToken)
+				tmpTokens = append(tmpTokens, tmpToken)
+			}
+			if len(tokens) > 0 {
+				allTokens = append(allTokens, tmpTokens)
 			}
 		}
 	}
-	return tokens
+	return allTokens
 }

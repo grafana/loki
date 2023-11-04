@@ -49,28 +49,28 @@ func TestDefaultTokenizeLine(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		input string
-		exp   []Token
+		exp   [][]Token
 	}{
 		{
 			desc:  "empty",
 			input: "",
-			exp:   []Token{},
+			exp:   [][]Token{},
 		},
 		{
 			desc:  "single char",
 			input: "a",
-			exp:   []Token{},
+			exp:   [][]Token{},
 		},
 		{
 			desc:  "four chars",
 			input: "abcd",
-			exp: []Token{
-				{Key: []byte("abcd")}},
+			exp: [][]Token{
+				{{Key: []byte("abcd")}}},
 		},
 		{
 			desc:  "uuid partial",
 			input: "2b1a5e46-36a2-4",
-			exp: []Token{
+			exp: [][]Token{{
 				{Key: []byte("2b1a")},
 				{Key: []byte("b1a5")},
 				{Key: []byte("1a5e")},
@@ -82,7 +82,7 @@ func TestDefaultTokenizeLine(t *testing.T) {
 				{Key: []byte("-36a")},
 				{Key: []byte("36a2")},
 				{Key: []byte("6a2-")},
-				{Key: []byte("a2-4")},
+				{Key: []byte("a2-4")}},
 			},
 		},
 	} {
@@ -99,37 +99,37 @@ func TestTokenizeLineWithSkips(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		input string
-		exp   []Token
+		exp   [][]Token
 	}{
 		{
 			desc:  "empty",
 			input: "",
-			exp:   []Token{},
+			exp:   [][]Token{},
 		},
 		{
 			desc:  "single char",
 			input: "a",
-			exp:   []Token{},
+			exp:   [][]Token{},
 		},
 		{
 			desc:  "four chars",
 			input: "abcd",
-			exp: []Token{
-				{Key: []byte("abcd")}},
+			exp: [][]Token{{
+				{Key: []byte("abcd")}}},
 		},
 		{
 			desc:  "longer string",
 			input: "abcdefghijkl",
-			exp: []Token{
-				{Key: []byte("abcd")},
-				{Key: []byte("defg")},
-				{Key: []byte("ghij")},
-				{Key: []byte("bcde")},
-				{Key: []byte("efgh")},
-				{Key: []byte("hijk")},
-				{Key: []byte("cdef")},
-				{Key: []byte("fghi")},
-				{Key: []byte("ijkl")},
+			exp: [][]Token{
+				{{Key: []byte("abcd")},
+					{Key: []byte("defg")},
+					{Key: []byte("ghij")}},
+				{{Key: []byte("bcde")},
+					{Key: []byte("efgh")},
+					{Key: []byte("hijk")}},
+				{{Key: []byte("cdef")},
+					{Key: []byte("fghi")},
+					{Key: []byte("ijkl")}},
 			},
 		},
 	} {
@@ -178,7 +178,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 
 	bt.PopulateSeriesWithBloom(&swb, chunks)
 	tokens := bt.TokenizeLine(testLine)
-	for _, token := range tokens {
+	for _, token := range tokens[0] {
 		require.True(t, swb.Bloom.Test(token.Key))
 	}
 }
