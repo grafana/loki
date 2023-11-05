@@ -59,6 +59,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -79,14 +80,14 @@ type metrics struct {
 func newMetrics(subsystem string, registerer prometheus.Registerer) *metrics {
 	return &metrics{
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Subsystem: subsystem,
 			Name:      "queue_duration_seconds",
 			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
 			Buckets:   prometheus.DefBuckets,
 		}),
 		inflightRequests: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Namespace:  "loki",
+			Namespace:  constants.Loki,
 			Subsystem:  subsystem,
 			Name:       "inflight_tasks",
 			Help:       "Number of inflight tasks (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight tasks over the last 60s.",
@@ -195,7 +196,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 	}
 
-	g.queueMetrics = queue.NewMetrics("bloom_gateway", reg)
+	g.queueMetrics = queue.NewMetrics(reg, constants.Loki, "bloom_gateway")
 	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 

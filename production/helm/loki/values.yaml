@@ -800,6 +800,8 @@ write:
   dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for write pods
+  topologySpreadConstraints: []
   # -- Tolerations for write pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -976,6 +978,8 @@ read:
   dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for read pods
+  topologySpreadConstraints: []
   # -- Tolerations for read pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1077,6 +1081,8 @@ backend:
   dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for backend pods
+  topologySpreadConstraints: []
   # -- Tolerations for backend pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1318,6 +1324,8 @@ gateway:
     allowPrivilegeEscalation: false
   # -- Resource requests and limits for the gateway
   resources: {}
+  # -- Containers to add to the gateway pods
+  extraContainers: []
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string
@@ -1333,6 +1341,8 @@ gateway:
   dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway pods
   tolerations: []
   # Gateway service configuration
@@ -1419,6 +1429,8 @@ gateway:
     customWriteUrl: null
     # -- Override Backend URL
     customBackendUrl: null
+    # -- Allows overriding the DNS resolver address nginx will use.
+    resolver: ""
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
