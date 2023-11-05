@@ -94,7 +94,7 @@ Refer to [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Loki can be run in a single host, no-dependencies mode using the following commands.
 
-You need `go`, we recommend using the version found in [our build Dockerfile](https://github.com/grafana/loki/blob/main/loki-build-image/Dockerfile)
+You need to install `go`, and make sure to use the `go` version found in [our build Dockerfile](https://github.com/grafana/loki/blob/main/loki-build-image/Dockerfile) otherwise it may give you an error.
 
 ```bash
 
