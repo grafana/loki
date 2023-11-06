@@ -2,8 +2,9 @@ package v1
 
 import (
 	"fmt"
-	"github.com/grafana/loki/pkg/logproto"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/prometheus/prometheus/model/labels"
 
