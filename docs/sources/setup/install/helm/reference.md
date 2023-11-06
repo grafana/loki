@@ -1049,6 +1049,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>gateway.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the gateway pods</td>
@@ -1259,6 +1268,15 @@ See values.yaml
 			<td>NGINX log format</td>
 			<td><pre lang="json">
 "main '$remote_addr - $remote_user [$time_local]  $status '\n        '\"$request\" $body_bytes_sent \"$http_referer\" '\n        '\"$http_user_agent\" \"$http_x_forwarded_for\"';"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.resolver</td>
+			<td>string</td>
+			<td>Allows overriding the DNS resolver address nginx will use.</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>

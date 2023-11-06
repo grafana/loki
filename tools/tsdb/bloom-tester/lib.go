@@ -350,7 +350,17 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										bloomTokenizer.PopulateSBF(sbf, got)
+										bloom := bt.Bloom{
+											ScalableBloomFilter: *sbf,
+										}
+										series := bt.Series{
+											Fingerprint: fp,
+										}
+										swb := bt.SeriesWithBloom{
+											Bloom:  &bloom,
+											Series: &series,
+										}
+										bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
 
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
@@ -361,7 +371,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 											)
 
-											writeSBF(sbf,
+											writeSBF(&swb.Bloom.ScalableBloomFilter,
 												os.Getenv("DIR"),
 												fmt.Sprint(bucketPrefix, experiment.name),
 												os.Getenv("BUCKET"),
@@ -497,7 +507,7 @@ func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
 	return err
 }
 
-func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+func writeSBFToObjectStorage(_ *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
 	// Probably a better way to do this than to reopen the file, but it's late
 	file, err := os.Open(localFilename)
 	if err != nil {

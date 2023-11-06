@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/storage/stores/index"
@@ -110,6 +111,7 @@ type SingleTenantQuerier struct {
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
+	logger          log.Logger
 }
 
 type deleteGetter interface {
@@ -117,7 +119,7 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer, logger log.Logger) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -125,6 +127,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limit
 		limits:          limits,
 		deleteGetter:    d,
 		metrics:         NewMetrics(r),
+		logger:          logger,
 	}, nil
 }
 
@@ -498,6 +501,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		tailerWaitEntryThrottle,
 		categorizedLabels,
 		q.metrics,
+		q.logger,
 	), nil
 }
 
