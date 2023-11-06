@@ -3,16 +3,13 @@ package main
 import (
 	"github.com/grafana/loki/pkg/logproto"
 	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/prometheus/client_golang/prometheus"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestSearchSbf(t *testing.T) {
-	/*tokenizer := four
-
-	searchString := "trace"
-	*/
 	experiment := NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
 		four,
@@ -71,7 +68,7 @@ func TestSearchSbf(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			chunk := logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1}
-			bloomtokenizer, _ := bt.NewBloomTokenizer(nil)
+			bloomtokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer)
 			sbf := experiment.bloom()
 			tokens := bloomtokenizer.TokenizeLineWithChunkPrefix(tc.inputLine, chunk)
 			for _, tokenSet := range tokens {
