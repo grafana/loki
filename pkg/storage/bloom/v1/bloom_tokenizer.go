@@ -141,3 +141,31 @@ func (bt *BloomTokenizer) TokenizeLine(line string) [][]Token {
 	}
 	return allTokens
 }
+
+// TokenizeLineWithChunkPrefix returns a slice of tokens for the given line, based on the current value of the tokenizer,
+// and prepends the chunk ID to the tokens
+// If the tokenizer has a skip value, then the line will be tokenized multiple times,
+// starting at the beginning of the line, with "skip" number of iterations, offset by one each time
+// Each offset is kept as a separate slice of tokens, and all are returned in a slice of slices
+func (bt *BloomTokenizer) TokenizeLineWithChunkPrefix(line string, chk logproto.ChunkRef) [][]Token {
+	allTokens := make([][]Token, 0, 10)
+
+	if len(line) >= bt.chunkIDTokenizer.GetMin() && len(line) >= bt.chunkIDTokenizer.GetSkip() {
+		for i := 0; i <= bt.chunkIDTokenizer.GetSkip(); i++ {
+			bt.chunkIDTokenizer.Reinit(chk)
+
+			tmpTokens := make([]Token, 0, 100)
+			tokens := bt.chunkIDTokenizer.Tokens(line[i:])
+			for _, token := range tokens {
+				tmpToken := Token{}
+				tmpToken.Key = make([]byte, len(token.Key))
+				copy(tmpToken.Key, token.Key)
+				tmpTokens = append(tmpTokens, tmpToken)
+			}
+			if len(tokens) > 0 {
+				allTokens = append(allTokens, tmpTokens)
+			}
+		}
+	}
+	return allTokens
+}

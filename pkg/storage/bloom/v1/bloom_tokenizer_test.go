@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"github.com/grafana/loki/pkg/logproto"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -135,6 +136,127 @@ func TestTokenizeLineWithSkips(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			require.Equal(t, tc.exp, bt.TokenizeLine(tc.input))
+		})
+	}
+}
+
+func TestDefaultTokenizeLineWithChunkPrefix(t *testing.T) {
+	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	chk := logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1}
+
+	for _, tc := range []struct {
+		desc  string
+		input string
+		exp   [][]Token
+	}{
+		{
+			desc:  "empty",
+			input: "",
+			exp:   [][]Token{},
+		},
+		{
+			desc:  "single char",
+			input: "a",
+			exp:   [][]Token{},
+		},
+		{
+			desc:  "four chars",
+			input: "abcd",
+			exp: [][]Token{{
+				{Key: append(makeBuf(0, 999999, 1), []byte("abcd")...)},
+				{Key: []byte("abcd")}}},
+		},
+		{
+			desc:  "uuid partial",
+			input: "2b1a5e46-36a2-4",
+			exp: [][]Token{{
+				{Key: append(makeBuf(0, 999999, 1), []byte("2b1a")...)},
+				{Key: []byte("2b1a")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("b1a5")...)},
+				{Key: []byte("b1a5")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("1a5e")...)},
+				{Key: []byte("1a5e")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("a5e4")...)},
+				{Key: []byte("a5e4")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("5e46")...)},
+				{Key: []byte("5e46")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("e46-")...)},
+				{Key: []byte("e46-")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("46-3")...)},
+				{Key: []byte("46-3")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("6-36")...)},
+				{Key: []byte("6-36")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("-36a")...)},
+				{Key: []byte("-36a")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("36a2")...)},
+				{Key: []byte("36a2")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("6a2-")...)},
+				{Key: []byte("6a2-")},
+				{Key: append(makeBuf(0, 999999, 1), []byte("a2-4")...)},
+				{Key: []byte("a2-4")}},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, bt.TokenizeLineWithChunkPrefix(tc.input, chk))
+		})
+	}
+}
+
+func TestTokenizeLineWithSkipsWithChunkPrefix(t *testing.T) {
+	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	chk := logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1}
+	bt.SetLineTokenizer(NewNGramTokenizer(DefaultNGramLength, DefaultNGramLength+1, 2))
+
+	for _, tc := range []struct {
+		desc  string
+		input string
+		exp   [][]Token
+	}{
+		{
+			desc:  "empty",
+			input: "",
+			exp:   [][]Token{},
+		},
+		{
+			desc:  "single char",
+			input: "a",
+			exp:   [][]Token{},
+		},
+		{
+			desc:  "four chars",
+			input: "abcd",
+			exp: [][]Token{{
+				{Key: append(makeBuf(0, 999999, 1), []byte("abcd")...)},
+				{Key: []byte("abcd")}}},
+		},
+		{
+			desc:  "longer string",
+			input: "abcdefghijkl",
+			exp: [][]Token{
+				{{Key: append(makeBuf(0, 999999, 1), []byte("abcd")...)},
+					{Key: []byte("abcd")},
+					{Key: append(makeBuf(0, 999999, 1), []byte("defg")...)},
+					{Key: []byte("defg")},
+					{Key: append(makeBuf(0, 999999, 1), []byte("ghij")...)},
+					{Key: []byte("ghij")}},
+				{{Key: append(makeBuf(0, 999999, 1), []byte("bcde")...)},
+					{Key: []byte("bcde")},
+					{Key: append(makeBuf(0, 999999, 1), []byte("efgh")...)},
+					{Key: []byte("efgh")},
+					{Key: append(makeBuf(0, 999999, 1), []byte("hijk")...)},
+					{Key: []byte("hijk")}},
+				{{Key: append(makeBuf(0, 999999, 1), []byte("cdef")...)},
+					{Key: []byte("cdef")},
+					{Key: append(makeBuf(0, 999999, 1), []byte("fghi")...)},
+					{Key: []byte("fghi")},
+					{Key: append(makeBuf(0, 999999, 1), []byte("ijkl")...)},
+					{Key: []byte("ijkl")}},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			require.Equal(t, tc.exp, bt.TokenizeLineWithChunkPrefix(tc.input, chk))
 		})
 	}
 }

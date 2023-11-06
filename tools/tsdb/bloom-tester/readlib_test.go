@@ -1,19 +1,21 @@
 package main
 
 import (
+	"github.com/grafana/loki/pkg/logproto"
+	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestSearchSbf(t *testing.T) {
-	tokenizer := four
+	/*tokenizer := four
 
 	searchString := "trace"
-
+	*/
 	experiment := NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		tokenizer,
+		four,
 		true,
 		onePctError,
 	)
@@ -68,12 +70,16 @@ func TestSearchSbf(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
+			chunk := logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1}
+			bloomtokenizer, _ := bt.NewBloomTokenizer(nil)
 			sbf := experiment.bloom()
-			tokens := tokenizer.Tokens(tc.inputLine)
-			for _, token := range tokens {
-				sbf.Add(token.Key)
+			tokens := bloomtokenizer.TokenizeLineWithChunkPrefix(tc.inputLine, chunk)
+			for _, tokenSet := range tokens {
+				for _, token := range tokenSet {
+					sbf.Add(token.Key)
+				}
 			}
-			require.Equal(t, tc.exp, searchSbf(sbf, tokenizer, searchString))
+			require.Equal(t, tc.exp, searchSbf(sbf, bloomtokenizer, tc.inputSearch, chunk))
 		})
 	}
 }
