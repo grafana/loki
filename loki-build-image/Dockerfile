@@ -7,7 +7,7 @@
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
 FROM golang:1.21.3-bullseye as helm
-ARG TARGETARCH="amd64"
+ARG TARGETARCH
 ARG HELM_VER="v3.2.3"
 RUN curl -L "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" | tar zx && \
     install -t /usr/local/bin "linux-$TARGETARCH/helm"
@@ -16,7 +16,7 @@ RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "h
     install -t /usr/local/bin helm-docs
 
 FROM alpine:3.18.4 as lychee
-ARG TARGETARCH="amd64"
+ARG TARGETARCH
 ARG LYCHEE_VER="0.7.0"
 RUN apk add --no-cache curl && \
     curl -L -o /tmp/lychee-$LYCHEE_VER.tgz https://github.com/lycheeverse/lychee/releases/download/${LYCHEE_VER}/lychee-${LYCHEE_VER}-x86_64-unknown-linux-gnu.tar.gz && \
@@ -39,7 +39,7 @@ FROM alpine:3.18.4 as docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
 FROM golang:1.21.3-bullseye as drone
-ARG TARGETARCH="amd64"
+ARG TARGETARCH
 RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_$TARGETARCH".tar.gz | tar zx && \
     install -t /usr/local/bin drone
 
