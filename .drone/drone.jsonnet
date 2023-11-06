@@ -496,40 +496,73 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
+local build_image_tag = '0.32.0';
 [
-  pipeline('loki-build-image') {
-    local build_image_tag = '0.31.2',
+  pipeline('loki-build-image-' + arch) {
     workspace: {
       base: '/src',
       path: 'loki',
     },
+    platform: {
+      os: 'linux',
+      arch: arch,
+    },
     steps: [
       {
-        name: 'test-image',
+        name: 'test',
         image: 'plugins/docker',
         when: onPRs + onPath('loki-build-image/**'),
+        environment: {
+          DOCKER_BUILDKIT: 1,
+        },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_tag],
+          tags: [build_image_tag + '-' + arch],
           dry_run: true,
         },
       },
       {
-        name: 'push-image',
+        name: 'push',
         image: 'plugins/docker',
         when: onTagOrMain + onPath('loki-build-image/**'),
+        environment: {
+          DOCKER_BUILDKIT: 1,
+        },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
+          tags: [build_image_tag + '-' + arch],
           dry_run: false,
         },
       },
+    ],
+  }
+  for arch in ['amd64', 'arm64']
+] + [
+  pipeline('loki-build-image-publish') {
+    steps: [
+      {
+        name: 'manifest',
+        image: 'plugins/manifest:1.4.0',
+        when: onTagOrMain + onPath('loki-build-image/**'),
+        settings: {
+          // the target parameter is abused for the app's name, as it is unused in spec mode.
+          target: 'loki-build-image:' + build_image_tag,
+          spec: '.drone/docker-manifest-build-image.tmpl',
+          ignore_missing: false,
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+        },
+      },
+    ],
+    depends_on: [
+      'loki-build-image-%s' % arch
+      for arch in ['amd64', 'arm64']
     ],
   },
   pipeline('helm-test-image') {
