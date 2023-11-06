@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"strconv"
 	"time"
 
@@ -187,6 +188,7 @@ type Limits struct {
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
+	OTLPConfig                        push.OTLPConfig  `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 }
 
 type StreamRetention struct {
@@ -307,7 +309,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
-
+	l.OTLPConfig = push.DefaultOTLPConfig
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -352,6 +354,10 @@ func (l *Limits) Validate() error {
 
 	if l.CompactorDeletionEnabled {
 		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
+	}
+
+	if err := l.OTLPConfig.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -797,6 +803,10 @@ func (o *Overrides) MaxStructuredMetadataSize(userID string) int {
 
 func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 	return o.getOverridesForUser(userID).MaxStructuredMetadataEntriesCount
+}
+
+func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
+	return o.getOverridesForUser(userID).OTLPConfig
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
