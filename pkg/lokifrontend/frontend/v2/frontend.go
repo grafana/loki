@@ -52,7 +52,7 @@ type Config struct {
 	Addr string `yaml:"address" doc:"hidden"`
 	Port int    `doc:"hidden"`
 
-	// Defines the encoding for requests to and responses from the scheduduler and querier.
+	// Defines the encoding for requests to and responses from the scheduler and querier.
 	Encoding string `yaml:"encoding"`
 }
 
@@ -69,7 +69,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)
 
-	f.StringVar(&cfg.Encoding, "frontend.encoding", "json", "Defines the encoding for requests to and responses from the scheduduler and querier. Can be 'json' or 'protobuf' (defaults to 'json').")
+	f.StringVar(&cfg.Encoding, "frontend.encoding", "json", "Defines the encoding for requests to and responses from the scheduler and querier. Can be 'json' or 'protobuf' (defaults to 'json').")
 }
 
 // Frontend implements GrpcRoundTripper. It queues HTTP requests,
