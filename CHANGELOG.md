@@ -8,6 +8,10 @@
 
 * [10375](https://github.com/grafana/loki/pull/10375) **trevorwhitney**: Fix ingester query when getting label values by passing matchers
 
+##### Changes
+
+* [11121](https://github.com/grafana/loki/pull/11121) **periklis** Ensure all lifecycler cfgs ref a valid IPv6 addr and port combination
+
 ## 2.9.2 (2023-10-16)
 
 ### All Changes
