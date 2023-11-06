@@ -314,6 +314,19 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 }
 
+type RequestPool struct {
+	sync.Pool
+}
+
+func (p *RequestPool) Get() []v1.Request {
+	r := p.Pool.Get().([]v1.Request)
+	return r[:0]
+}
+
+func (p *RequestPool) Put(r []v1.Request) {
+	p.Pool.Put(r)
+}
+
 // Worker is a datastructure that consumes tasks from the request queue,
 // processes them and returns the result/error back to the response channels of
 // the tasks.
@@ -327,6 +340,8 @@ type worker struct {
 	store  bloomshipper.Store
 	tasks  *pendingTasks
 	logger log.Logger
+
+	rp RequestPool
 }
 
 func newWorker(i int, queue *queue.RequestQueue, store bloomshipper.Store, tasks *pendingTasks, logger log.Logger) *worker {
@@ -339,6 +354,13 @@ func newWorker(i int, queue *queue.RequestQueue, store bloomshipper.Store, tasks
 		logger: log.With(logger, "worker", id),
 	}
 	w.Service = services.NewBasicService(w.starting, w.running, w.stopping)
+	w.rp = RequestPool{
+		Pool: sync.Pool{
+			New: func() any {
+				return make([]v1.Request, 0, 1024)
+			},
+		},
+	}
 	return w
 }
 
@@ -404,7 +426,13 @@ func (w *worker) running(ctx context.Context) error {
 			// TODO(chaudum): Use pool
 			fingerprints := make([]uint64, 0, 1024)
 			for it.Next() {
-				fingerprints = append(fingerprints, uint64(it.At().Fp))
+				// fingerprints are already sorted. we can skip duplicates by checking
+				// if the next is greater than the previous
+				fp := uint64(it.At().Fp)
+				if len(fingerprints) > 0 && fp <= fingerprints[len(fingerprints)-1] {
+					continue
+				}
+				fingerprints = append(fingerprints, fp)
 			}
 
 			it.Reset()
@@ -431,9 +459,9 @@ func (w *worker) running(ctx context.Context) error {
 				continue
 			}
 
+			requests := w.rp.Get()
 			for _, bq := range bqs {
-				// TODO(chaudum): Use pool
-				requests := make([]v1.Request, 0)
+				requests = requests[:0]
 				for it.Next(); it.At().Fp <= bq.MaxFp; {
 					requests = append(requests, it.At().Request)
 				}
@@ -443,9 +471,11 @@ func (w *worker) running(ctx context.Context) error {
 					for _, t := range tasks {
 						t.ErrCh <- err
 					}
+					w.rp.Put(requests)
 					continue
 				}
 			}
+			w.rp.Put(requests)
 
 		}
 	}
