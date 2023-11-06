@@ -14,6 +14,9 @@ LogCLI is the command-line interface to Grafana Loki.
 It facilitates running [LogQL]({{< relref "../query/_index.md" >}})
 queries against a Loki instance.
 
+LogCLI is also installed in Loki's Docker image for quick interaction 
+in containerized environment.
+
 ## Installation
 
 ### Binary (Recommended)
