@@ -22,7 +22,7 @@ func TestMergeBlockQuerier_NonOverlapping(t *testing.T) {
 		queriers = append(queriers, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](ptrs)))
 	}
 
-	mbq := NewMergeBlockQuerier(queriers...)
+	mbq := NewHeapIterForSeriesWithBloom(queriers...)
 
 	for i := 0; i < numSeries; i++ {
 		require.True(t, mbq.Next())
@@ -49,7 +49,7 @@ func TestMergeBlockQuerier_Overlapping(t *testing.T) {
 		queriers = append(queriers, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](slices[i])))
 	}
 
-	mbq := NewMergeBlockQuerier(queriers...)
+	mbq := NewHeapIterForSeriesWithBloom(queriers...)
 
 	for i := 0; i < numSeries; i++ {
 		require.True(t, mbq.Next())
