@@ -53,11 +53,11 @@ func execute() {
 	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
 
 	openFn := func(p string) (shipperindex.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+		return tsdb.OpenShippableTSDB(p)
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,
