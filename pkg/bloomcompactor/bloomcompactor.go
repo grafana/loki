@@ -148,7 +148,7 @@ func (c *Compactor) compactNewChunks(ctx context.Context, dst string) (err error
 		return err
 	}
 	// BuildFrom closes itself
-	err = builder.BuildFrom(v1.NewSliceIter[v1.SeriesWithBloom](seriesList))
+	_, err = builder.BuildFrom(v1.NewSliceIter[v1.SeriesWithBloom](seriesList))
 	if err != nil {
 		return err
 	}

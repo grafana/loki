@@ -89,7 +89,8 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 
 			require.Nil(t, err)
 			itr := NewSliceIter[SeriesWithBloom](data)
-			require.Nil(t, builder.BuildFrom(itr))
+			_, err = builder.BuildFrom(itr)
+			require.Nil(t, err)
 			block := NewBlock(tc.reader)
 			querier := NewBlockQuerier(block)
 
