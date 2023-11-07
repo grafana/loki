@@ -33,6 +33,7 @@ var (
 		"storage_config.tsdb_shipper.shared_store_key_prefix",
 		"compactor.shared_store",
 		"compactor.shared_store_key_prefix",
+		"limits_config.unordered_writes",
 	}
 
 	expectedConfigDeprecates = []string{
@@ -45,7 +46,6 @@ var (
 		"storage_config.grpc_store",
 		"storage_config.aws.dynamodb",
 		"chunk_store_config.write_dedupe_cache_config",
-		"limits_config.unordered_writes",
 		"limits_config.ruler_evaluation_delay_duration",
 		"limits_config.ruler_remote_write_url",
 		"limits_config.ruler_remote_write_timeout",
@@ -81,10 +81,12 @@ var (
 		"schema_config.configs.[8].object_store",
 	}
 
-	expectedRuntimeConfigDeletes = []string{}
+	expectedRuntimeConfigDeletes = []string{
+		"overrides.foo.unordered_writes",
+		"overrides.bar.unordered_writes",
+	}
 
 	expectedRuntimeConfigDeprecates = []string{
-		"overrides.foo.unordered_writes",
 		"overrides.foo.ruler_evaluation_delay_duration",
 		"overrides.foo.ruler_remote_write_url",
 		"overrides.foo.ruler_remote_write_timeout",
@@ -102,7 +104,6 @@ var (
 		"overrides.foo.per_tenant_override_config",
 		"overrides.foo.per_tenant_override_period",
 		"overrides.foo.allow_deletes",
-		"overrides.bar.unordered_writes",
 		"overrides.bar.ruler_evaluation_delay_duration",
 		"overrides.bar.ruler_remote_write_url",
 		"overrides.bar.ruler_remote_write_timeout",

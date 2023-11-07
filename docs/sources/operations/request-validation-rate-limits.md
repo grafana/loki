@@ -125,13 +125,13 @@ This validation error is returned when a stream is submitted without any labels.
 | Sample discarded        | **Yes**       |
 | Configurable per tenant | No            |
 
-## `too_far_behind` and `out_of_order`
+## `too_far_behind`
 
-The `too_far_behind` and `out_of_order` reasons are identical. Loki clusters with `unordered_writes=true` (the default value as of Loki v2.4) use `reason=too_far_behind`. Loki clusters with `unordered_writes=false` use `reason=out_of_order`.
+Loki enforces a validity window on the earliest timestamp for entries in a given log stream.
+Log entries older than `highest_timestamp_of_entries_in_stream - (max_chunk_age/2)` will be rejected with `too_far_behind` error.
 
-This validation error is returned when a stream is submitted out of order. More details can be found [here](/docs/loki/latest/configuration/#accept-out-of-order-writes) about Loki's ordering constraints.
-
-The `unordered_writes` config value can be modified globally in the [`limits_config`](/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](/docs/loki/latest/configuration/#runtime-configuration-file) file, whereas `max_chunk_age` is a global configuration.
+For example, if `max_chunk_age` is 2 hours and the stream `{foo="bar"}` has one entry at `8:00`, Loki will accept data for that stream as far back in time as `7:00`.
+If another log line is written at `10:00`, Loki will accept data for that stream as far back in time as `9:00`.
 
 This problem can be solved by ensuring that log delivery is configured correctly, or by increasing the `max_chunk_age` value.
 
