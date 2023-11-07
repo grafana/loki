@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
@@ -28,16 +27,12 @@ func main() {
 
 	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
 
-	openFn := func(p string) (index.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
-	}
-
 	shipper, err := indexshipper.NewIndexShipper(
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,
-		openFn,
+		tsdb.OpenShippableTSDB,
 		tableRanges[len(tableRanges)-1],
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,

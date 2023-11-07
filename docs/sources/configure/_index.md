@@ -2241,11 +2241,6 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-  # Experimental. Whether TSDB should cache postings or not. The
-  # index-read-cache will be used as the backend.
-  # CLI flag: -tsdb.enable-postings-cache
-  [enable_postings_cache: <boolean> | default = false]
-
 # Configures Bloom Shipper.
 bloom_shipper:
   # Working directory to store downloaded Bloom Blocks.
