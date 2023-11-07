@@ -2,11 +2,11 @@ package logql
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -241,20 +241,10 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(spLogger))
 
-	status := "200"
-	if err != nil {
-		status = "500"
-		if errors.Is(err, logqlmodel.ErrParse) ||
-			errors.Is(err, logqlmodel.ErrPipeline) ||
-			errors.Is(err, logqlmodel.ErrLimit) ||
-			errors.Is(err, logqlmodel.ErrBlocked) ||
-			errors.Is(err, context.Canceled) {
-			status = "400"
-		}
-	}
+	status := logqlmodel.MapStatusCode(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
 	}
 
 	return logqlmodel.Result{
