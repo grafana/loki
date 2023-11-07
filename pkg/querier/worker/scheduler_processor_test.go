@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
@@ -82,7 +83,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			workerCancel()
 
 			// Ensure the execution context hasn't been canceled yet.
-			require.Nil(t, loopClient.Context().Err())
+			require.NoError(t, loopClient.Context().Err())
 
 			// Intentionally slow down the query execution, to double check the worker waits until done.
 			time.Sleep(time.Second)
@@ -99,6 +100,45 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 		// and then to send the query result.
 		loopClient.AssertNumberOfCalls(t, "Send", 2)
 		loopClient.AssertCalled(t, "Send", &schedulerpb.QuerierToScheduler{QuerierID: "test-querier-id"})
+	})
+
+	t.Run("should pass the query tags from the request in the context", func(t *testing.T) {
+		sp, loopClient, requestHandler := prepareSchedulerProcessor()
+
+		recvCount := atomic.NewInt64(0)
+
+		loopClient.On("Recv").Return(func() (*schedulerpb.SchedulerToQuerier, error) {
+			switch recvCount.Inc() {
+			case 1:
+				return &schedulerpb.SchedulerToQuerier{
+					QueryID: 1,
+					HttpRequest: &httpgrpc.HTTPRequest{
+						Method:  "GET",
+						Url:     `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
+						Headers: []*httpgrpc.Header{{Key: string(httpreq.QueryTagsHTTPHeader), Values: []string{"foobar"}}},
+					},
+					FrontendAddress: "127.0.0.2",
+					UserID:          "user-1",
+				}, nil
+			default:
+				// No more messages to process, so waiting until terminated.
+				<-loopClient.Context().Done()
+				return nil, loopClient.Context().Err()
+			}
+		})
+
+		workerCtx, workerCancel := context.WithCancel(context.Background())
+
+		requestHandler.On("Do", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+			workerCancel()
+
+			ctx := args[0].(context.Context)
+
+			queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
+			require.Equal(t, "foobar", queryTags)
+		}).Return(&queryrange.LokiResponse{}, nil)
+
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
 	})
 
 	t.Run("should not log an error when the query-scheduler is terminates while waiting for the next query to run", func(t *testing.T) {
