@@ -206,7 +206,7 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
 func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir string) (bloomshipper.Block, error) {
-	localDst := createLocalFileName(workingDir, series)
+	localDst := createLocalDirName(workingDir, series)
 
 	//write bloom to a local dir
 	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
@@ -252,7 +252,6 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir 
 				Checksum:       binary.BigEndian.Uint32(checksum),
 			},
 			IndexPath: series.indexPath,
-			BlockPath: "", //will be set in PutBlock method.
 		},
 		Data: blockFile,
 	}
@@ -260,6 +259,7 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir 
 	return blocks, nil
 }
 
+// TODO Will be replaced with ring implementation in https://github.com/grafana/loki/pull/11154/
 func listSeriesForBlooms(ctx context.Context, objectClient storeClient) ([]Series, error) {
 	// Returns all the TSDB files, including subdirectories
 	prefix := "index/"
@@ -293,10 +293,9 @@ func listSeriesForBlooms(ctx context.Context, objectClient storeClient) ([]Serie
 	return result, nil
 }
 
-func createLocalFileName(workingDir string, series Series) string {
-	fileName := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", series.tableName, series.tenant, series.fingerPrint, series.fingerPrint, series.from, series.through)
-	return filepath.Join(workingDir, fileName)
-
+func createLocalDirName(workingDir string, series Series) string {
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", series.tableName, series.tenant, series.fingerPrint, series.fingerPrint, series.from, series.through)
+	return filepath.Join(workingDir, dir)
 }
 
 func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client, dst string) (err error) {
