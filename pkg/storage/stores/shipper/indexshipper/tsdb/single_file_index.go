@@ -364,7 +364,7 @@ func (i *TSDBIndex) Volume(
 		for p.Next() {
 			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
 			if err != nil {
-				return err
+				return fmt.Errorf("series volume: %w", err)
 			}
 
 			// skip series that belong to different shards
