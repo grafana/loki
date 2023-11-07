@@ -63,6 +63,11 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 )
 
+const (
+	fpRate        = 0.01
+	bloomFileName = "bloom"
+)
+
 type Compactor struct {
 	services.Service
 
@@ -200,8 +205,8 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipper.Block, error) {
-	localDst := createLocalFileName(series)
+func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir string) (bloomshipper.Block, error) {
+	localDst := createLocalFileName(workingDir, series)
 
 	//write bloom to a local dir
 	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
@@ -216,7 +221,7 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 		return bloomshipper.Block{}, err
 	}
 
-	blockFile, err := os.Open(filepath.Join(localDst, "bloom"))
+	blockFile, err := os.Open(filepath.Join(localDst, bloomFileName))
 	if err != nil {
 		level.Info(util_log.Logger).Log("reading bloomBlock", err)
 	}
@@ -235,8 +240,6 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 		return bloomshipper.Block{}, errors.Wrap(err, "seeking to back to beginning of the file")
 	}
 
-	objectStoreDst := createObjStorageFileName(series, fmt.Sprint(binary.BigEndian.Uint32(checksum)))
-
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
@@ -248,8 +251,8 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 				EndTimestamp:   series.through.Unix(),
 				Checksum:       binary.BigEndian.Uint32(checksum),
 			},
-			IndexPath: series.indexPath, // For reviewer, this is the same filepath with the original TSDBindex for this series?
-			BlockPath: objectStoreDst,
+			IndexPath: series.indexPath,
+			BlockPath: "", //will be set in PutBlock method.
 		},
 		Data: blockFile,
 	}
@@ -257,7 +260,7 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series) (bloomshipp
 	return blocks, nil
 }
 
-func listSeries(ctx context.Context, objectClient storeClient) ([]Series, error) {
+func listSeriesForBlooms(ctx context.Context, objectClient storeClient) ([]Series, error) {
 	// Returns all the TSDB files, including subdirectories
 	prefix := "index/"
 	indices, _, err := objectClient.object.List(ctx, prefix, "")
@@ -290,25 +293,20 @@ func listSeries(ctx context.Context, objectClient storeClient) ([]Series, error)
 	return result, nil
 }
 
-func createLocalFileName(series Series) string {
-	return fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", series.tableName, series.tenant, series.fingerPrint, series.fingerPrint, series.from, series.through)
-}
-func createObjStorageFileName(series Series, checksum string) string {
-	// TODO fix series_fp repeating when creating multi-series bloom blocks
-	// From design doc, naming should be something like
-	//`bloom/<period>/<tenant>/blooms/<start_fp>-<end_fp>/<start_ts>-<end_ts>-<checksum>`
-	fileName := fmt.Sprintf("blooms/%s-%s/%s-%s-%s", series.fingerPrint, series.fingerPrint, series.from, series.through, checksum)
-	return strings.Join([]string{"bloom", series.tableName, series.tenant, fileName}, "/")
+func createLocalFileName(workingDir string, series Series) string {
+	fileName := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", series.tableName, series.tenant, series.fingerPrint, series.fingerPrint, series.from, series.through)
+	return filepath.Join(workingDir, fileName)
+
 }
 
-func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client) (err error) {
+func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client, dst string) (err error) {
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
 			Fingerprint: series.fingerPrint,
 		},
 		Bloom: &v1.Bloom{
-			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(0.01),
+			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
 		},
 	}
 
@@ -317,25 +315,27 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 	bt.PopulateSeriesWithBloom(&bloomForChks, series.chunks)
 
 	// Build and upload bloomBlock to storage
-	blocks, err := buildBloomBlock(bloomForChks, series)
+	blocks, err := buildBloomBlock(bloomForChks, series, dst)
 	if err != nil {
 		level.Info(util_log.Logger).Log("building bloomBlocks", err)
 		return
 	}
 
-	_, err = bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
+	storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
 	if err != nil {
 		level.Info(util_log.Logger).Log("putting blocks to storage", err)
 		return
 	}
 
+	storedBlockRefs := make([]bloomshipper.BlockRef, len(storedBlocks))
 	// Build and upload meta.json to storage
 	meta := bloomshipper.Meta{
 		// After successful compaction there should be no tombstones
 		Tombstones: make([]bloomshipper.BlockRef, 0),
-		Blocks:     []bloomshipper.BlockRef{blocks.BlockRef},
+		Blocks:     storedBlockRefs,
 	}
 
+	//TODO move this to an outer layer, otherwise creates a meta per block
 	err = bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Info(util_log.Logger).Log("putting meta.json to storage", err)
@@ -347,7 +347,7 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 
 func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, storeClient storeClient) error {
 
-	series, err := listSeries(ctx, storeClient)
+	series, err := listSeriesForBlooms(ctx, storeClient)
 
 	if err != nil {
 		return err
@@ -359,9 +359,10 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 				return nil
 			}
 
+			// TODO make this casting safe
 			_ = idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
 				ctx,
-				nil,              // TODO no shards for now, revisit with ring work
+				nil,              // Process all shards
 				0, math.MaxInt64, // Replace with MaxLookBackPeriod
 
 				// Get chunks for a series label and a fp
@@ -406,7 +407,8 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 							through:     maxThrough,
 							indexPath:   s.indexPath,
 						}
-						err = CompactNewChunks(ctx, series, bloomShipperClient)
+
+						err = CompactNewChunks(ctx, series, bloomShipperClient, c.cfg.WorkingDirectory)
 						if err != nil {
 							return
 						}

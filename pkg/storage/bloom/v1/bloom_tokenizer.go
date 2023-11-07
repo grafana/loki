@@ -91,11 +91,6 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 
 		defer itr.Close()
 
-		if err != nil {
-			return
-		}
-		defer itr.Close()
-
 		for itr.Next() && itr.Error() == nil {
 			toks := bt.chunkIDTokenizer.Tokens(itr.Entry().Line)
 
