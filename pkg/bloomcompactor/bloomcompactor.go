@@ -115,7 +115,7 @@ func New(cfg Config,
 		var indexStorageCfg indexshipper.Config
 		switch periodicConfig.IndexType {
 		case config.TSDBType:
-			indexStorageCfg = storageCfg.TSDBShipperConfig.Config
+			indexStorageCfg = storageCfg.TSDBShipperConfig
 		case config.BoltDBShipperType:
 			indexStorageCfg = storageCfg.BoltDBShipperConfig.Config
 		default:
@@ -141,7 +141,7 @@ func New(cfg Config,
 			limits,
 			nil,
 			func(p string) (shipperindex.Index, error) {
-				return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+				return tsdb.OpenShippableTSDB(p)
 			},
 			periodicConfig.GetIndexTableNumberRange(periodEndTime),
 			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
