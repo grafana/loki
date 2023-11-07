@@ -91,19 +91,17 @@ func (a *PusherAppender) Rollback() error {
 
 // PusherAppendable fulfills the storage.Appendable interface for prometheus manager
 type PusherAppendable struct {
-	pusher      Pusher
-	userID      string
-	rulesLimits RulesLimits
+	pusher Pusher
+	userID string
 
 	totalWrites  prometheus.Counter
 	failedWrites prometheus.Counter
 }
 
-func NewPusherAppendable(pusher Pusher, userID string, limits RulesLimits, totalWrites, failedWrites prometheus.Counter) *PusherAppendable {
+func NewPusherAppendable(pusher Pusher, userID string, totalWrites, failedWrites prometheus.Counter) *PusherAppendable {
 	return &PusherAppendable{
 		pusher:       pusher,
 		userID:       userID,
-		rulesLimits:  limits,
 		totalWrites:  totalWrites,
 		failedWrites: failedWrites,
 	}
@@ -127,15 +125,6 @@ type RulesLimits interface {
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerAlertManagerConfig(userID string) *config.AlertManagerConfig
-}
-
-// EngineQueryFunc returns a new query function using the rules.EngineQueryFunc function
-// and passing an altered timestamp.
-func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
-	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		orig := rules.EngineQueryFunc(engine, q)
-		return orig(ctx, qs, t)
-	}
 }
 
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
@@ -258,9 +247,9 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		}
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
+			Appendable:      NewPusherAppendable(p, userID, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
+			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(rules.EngineQueryFunc(engine, q), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),

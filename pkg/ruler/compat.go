@@ -58,7 +58,7 @@ type RulesLimits interface {
 
 // queryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
+func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		hash := logql.HashedQuery(qs)
 		detail := rules.FromOriginContext(ctx)
@@ -144,7 +144,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFn := queryFunc(evaluator, overrides, registry, userID, logger)
+		queryFn := queryFunc(evaluator, registry, userID, logger)
 		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the

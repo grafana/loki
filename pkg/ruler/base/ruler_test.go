@@ -84,15 +84,10 @@ func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) Config {
 }
 
 type ruleLimits struct {
-	evalDelay            time.Duration
 	tenantShard          int
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	alertManagerConfig   map[string]*config.AlertManagerConfig
-}
-
-func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
-	return r.evalDelay
 }
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
@@ -144,7 +139,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(q)
 
-	return engine, queryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
+	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
 }
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
@@ -158,7 +153,7 @@ func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenant
 func newMultiTenantManager(t *testing.T, cfg Config, q storage.Querier, amConf map[string]*config.AlertManagerConfig) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, _, reg := testSetup(t, q)
 
-	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
+	overrides := ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
 	overrides.alertManagerConfig = amConf
 
 	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil, constants.Loki), reg, logger, overrides, constants.Loki)
@@ -476,7 +471,7 @@ func TestGetRules(t *testing.T) {
 				m := loki_storage.NewClientMetrics()
 				defer m.Unregister()
 				r := buildRuler(t, cfg, nil, m, rulerAddrMap)
-				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
+				r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
 				rulerAddrMap[id] = r
 				if r.ring != nil {
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
@@ -1420,7 +1415,7 @@ func TestSharding(t *testing.T) {
 				m := loki_storage.NewClientMetrics()
 				defer m.Unregister()
 				r := buildRuler(t, cfg, nil, m, nil)
-				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
+				r.limits = ruleLimits{tenantShard: tc.shuffleShardSize}
 
 				if forceRing != nil {
 					r.ring = forceRing
