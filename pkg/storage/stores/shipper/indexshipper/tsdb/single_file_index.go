@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"path/filepath"
