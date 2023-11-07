@@ -32,6 +32,11 @@ const (
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
+	// OutOfOrder is a reason for discarding lines when Loki doesn't accept out
+	// of order log lines (parameter `-ingester.unordered-writes` is set to
+	// `false`) and the lines in question are older than the newest line in the
+	// stream.
+	OutOfOrder = "out_of_order"
 	// TooFarBehind is a reason for discarding lines when Loki accepts
 	// unordered ingest  (parameter `-ingester.unordered-writes` is set to
 	// `true`, which is the default) and the lines in question are older than

@@ -64,6 +64,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				labels.Labels{
 					{Name: "foo", Value: "bar"},
 				},
+				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
 				nil,
@@ -115,6 +116,7 @@ func TestPushDeduplication(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -149,6 +151,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -254,6 +257,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -288,6 +292,7 @@ func TestUnorderedPush(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -389,6 +394,7 @@ func TestPushRateLimit(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -426,6 +432,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -462,6 +469,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		labels.Labels{
 			{Name: "foo", Value: "bar"},
 		},
+		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -515,7 +523,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 	chunkfmt, headfmt := defaultChunkFormat(b)
 
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 

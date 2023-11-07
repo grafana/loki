@@ -202,6 +202,26 @@ func (r *ingesterRecoverer) Close() {
 				return nil
 			}
 
+			// If we've replayed a WAL with unordered writes, but the new
+			// configuration disables them, convert all streams/head blocks
+			// to ensure unordered writes are disabled after the replay,
+			// but without dropping any previously accepted data.
+			isAllowed := r.ing.limiter.UnorderedWrites(s.tenant)
+			old := s.unorderedWrites
+			s.unorderedWrites = isAllowed
+
+			if !isAllowed && old {
+				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(s.chunkFormat, isAllowed))
+				if err != nil {
+					level.Warn(r.logger).Log(
+						"msg", "error converting headblock",
+						"err", err.Error(),
+						"stream", s.labels.String(),
+						"component", "ingesterRecoverer",
+					)
+				}
+			}
+
 			return nil
 		})
 	}
