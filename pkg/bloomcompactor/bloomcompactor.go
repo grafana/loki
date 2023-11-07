@@ -298,7 +298,7 @@ func createLocalDirName(workingDir string, series Series) string {
 	return filepath.Join(workingDir, dir)
 }
 
-func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient bloomshipper.Client, dst string) (err error) {
+func CompactNewChunks(ctx context.Context, series Series, bt *v1.BloomTokenizer, bloomShipperClient bloomshipper.Client, dst string) (err error) {
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
@@ -309,8 +309,7 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 		},
 	}
 
-	// create a tokenizer
-	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	// Tokenize data into n-grams
 	bt.PopulateSeriesWithBloom(&bloomForChks, series.chunks)
 
 	// Build and upload bloomBlock to storage
@@ -347,6 +346,11 @@ func CompactNewChunks(ctx context.Context, series Series, bloomShipperClient blo
 func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, storeClient storeClient) error {
 
 	series, err := listSeriesForBlooms(ctx, storeClient)
+
+	// TODO tokenizer is not thread-safe
+	// consider moving to Job/worker level with https://github.com/grafana/loki/pull/11154/
+	// create a tokenizer
+	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
 
 	if err != nil {
 		return err
@@ -407,7 +411,7 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 							indexPath:   s.indexPath,
 						}
 
-						err = CompactNewChunks(ctx, series, bloomShipperClient, c.cfg.WorkingDirectory)
+						err = CompactNewChunks(ctx, series, bt, bloomShipperClient, c.cfg.WorkingDirectory)
 						if err != nil {
 							return
 						}
