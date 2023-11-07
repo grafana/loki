@@ -122,8 +122,8 @@ The previous default value `false` is applied.
 1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed as it does not offer additional value to already existing `querier.max-concurrent`.
     We recommend configuring `querier.max-concurrent` to limit the max concurrent requests processed by the queriers.
 1. `ruler.evaluation-delay-duration` CLI flag and the corresponding YAML setting are removed.
-1. `-validation.enforce-metric-name` CLI flag and the corresponding YAML setting are removed.
-1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure `compactor.deletion-mode` or its corresponding YAML setting in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. `validation.enforce-metric-name` CLI flag and the corresponding YAML setting are removed.
+1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 1. Compactor CLI flags that use prefix `boltdb.shipper.compactor.` are removed. You can instead use CLI flags with `compactor.` prefix.
 
 #### Legacy ingester shutdown handler is removed
