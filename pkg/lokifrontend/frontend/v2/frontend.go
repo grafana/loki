@@ -37,6 +37,11 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+const (
+	EncodingJson     = "json"
+	EncodingProtobuf = "protobuf"
+)
+
 // Config for a Frontend.
 type Config struct {
 	SchedulerAddress        string            `yaml:"scheduler_address"`
@@ -302,7 +307,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		response: make(chan ResponseTuple, 1),
 	}
 
-	if f.cfg.Encoding == "protobuf" {
+	if f.cfg.Encoding == EncodingProtobuf {
 		freq.queryRequest, err = f.codec.QueryRequestWrap(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("cannot wrap request: %w", err)
