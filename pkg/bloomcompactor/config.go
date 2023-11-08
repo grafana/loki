@@ -17,7 +17,6 @@ type Config struct {
 	// Enabled configures whether bloom-compactors should be used to compact index values into bloomfilters
 	Enabled            bool          `yaml:"enabled"`
 	WorkingDirectory   string        `yaml:"working_directory"`
-	MaxLookBackPeriod  time.Duration `yaml:"max_look_back_period"`
 	CompactionInterval time.Duration `yaml:"compaction_interval"`
 
 	// No need to add options to customize the retry backoff,

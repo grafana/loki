@@ -1397,9 +1397,9 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 
 	compactor, err := bloomcompactor.New(
 		t.Cfg.BloomCompactor,
-		t.Overrides,
 		t.Cfg.StorageConfig,
 		t.Cfg.SchemaConfig,
+		t.Overrides,
 		logger,
 		shuffleSharding,
 		t.clientMetrics,

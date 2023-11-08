@@ -72,12 +72,12 @@ func executeRead() {
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
 
 	openFn := func(p string) (shipperindex.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+		return tsdb.OpenShippableTSDB(p)
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
 		periodCfg.IndexTables.PathPrefix,
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,

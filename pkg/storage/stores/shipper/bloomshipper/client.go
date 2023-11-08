@@ -225,6 +225,7 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 	return blocksChannel, errChannel
 }
 
+// TODO zip (archive) blocks before uploading to storage
 func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
 	results := make([]Block, len(blocks))
 	//todo move concurrency to the config
