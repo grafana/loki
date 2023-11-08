@@ -225,20 +225,6 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir 
 		level.Info(util_log.Logger).Log("reading bloomBlock", err)
 	}
 
-	//// read the checksum
-	//if _, err := blockFile.Seek(-4, 2); err != nil {
-	//	return bloomshipper.Block{}, errors.Wrap(err, "seeking to bloom checksum")
-	//}
-	//checksum := make([]byte, 4)
-	//if _, err := blockFile.Read(checksum); err != nil {
-	//	return bloomshipper.Block{}, errors.Wrap(err, "reading bloom checksum")
-	//}
-	//
-	//// Reset back to beginning
-	//if _, err := blockFile.Seek(0, 0); err != nil {
-	//	return bloomshipper.Block{}, errors.Wrap(err, "seeking to back to beginning of the file")
-	//}
-
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
