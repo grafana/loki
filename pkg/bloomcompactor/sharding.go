@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"github.com/grafana/dskit/ring"
+
 	util_ring "github.com/grafana/loki/pkg/util/ring"
 )
 

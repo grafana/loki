@@ -70,13 +70,11 @@ func TestShuffleSharding(t *testing.T) {
 	var ownedTenants, ownedJobs int
 	for i := 0; i < tenants; i++ {
 		tenant := fmt.Sprintf("tenant-%d", i)
-		ownsTenant, err := shard.OwnsTenant(tenant)
-		require.NoError(t, err)
+		ownsTenant := shard.OwnsTenant(tenant)
 
 		var tenantOwnedByOther int
 		for _, other := range otherShards {
-			otherOwns, err := other.OwnsTenant(tenant)
-			require.NoError(t, err)
+			otherOwns := other.OwnsTenant(tenant)
 			if otherOwns {
 				tenantOwnedByOther++
 			}
