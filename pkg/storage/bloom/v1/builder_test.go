@@ -176,7 +176,8 @@ func TestMergeBuilder(t *testing.T) {
 
 		require.Nil(t, err)
 		itr := NewSliceIter[SeriesWithBloom](data[min:max])
-		require.Nil(t, builder.BuildFrom(itr))
+		_, err = builder.BuildFrom(itr)
+		require.Nil(t, err)
 		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(NewBlock(reader))))
 	}
 

@@ -35,7 +35,8 @@ func TestFusedQuerier(t *testing.T) {
 	)
 	require.Nil(t, err)
 	itr := NewSliceIter[SeriesWithBloom](data)
-	require.Nil(t, builder.BuildFrom(itr))
+	_, err = builder.BuildFrom(itr)
+	require.Nil(t, err)
 	block := NewBlock(reader)
 	querier := NewBlockQuerier(block)
 
@@ -124,7 +125,8 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]request) {
 	)
 	require.Nil(b, err)
 	itr := NewSliceIter[SeriesWithBloom](data)
-	require.Nil(b, builder.BuildFrom(itr))
+	_, err = builder.BuildFrom(itr)
+	require.Nil(b, err)
 	block := NewBlock(reader)
 	querier := NewBlockQuerier(block)
 
