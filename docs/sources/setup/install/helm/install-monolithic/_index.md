@@ -59,8 +59,8 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
           s3:
             endpoint: foo.aws.com
             bucketnames: loki-chunks
-            secret_access_key: supersecret
-            access_key_id: secret
+            secretAccessKey: supersecret
+            accessKeyId: secret
       singleBinary:
         replicas: 3
       ```
