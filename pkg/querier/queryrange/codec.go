@@ -519,17 +519,27 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 
 	encodingFlags := httpreq.ExtractEncodingFlagsFromProto(req)
 
+	var grpcHeaders []*httpgrpc.Header
+	hdrs := res.GetHeaders()
+	if hdrs != nil {
+		grpcHeaders = make([]*httpgrpc.Header, 0, len(hdrs)+1)
+		grpcHeaders = append(grpcHeaders, &httpgrpc.Header{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}})
+		for _, v := range hdrs {
+			grpcHeaders = append(grpcHeaders, &httpgrpc.Header{Key: v.Name, Values: v.Values})
+		}
+	} else {
+		grpcHeaders = []*httpgrpc.Header{{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}}}
+	}
+
 	err := encodeResponseJSONTo(version, res, &buf, encodingFlags)
 	if err != nil {
 		return nil, err
 	}
 
 	return &httpgrpc.HTTPResponse{
-		Code: int32(http.StatusOK),
-		Body: buf.Bytes(),
-		Headers: []*httpgrpc.Header{
-			{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}},
-		},
+		Code:    int32(http.StatusOK),
+		Body:    buf.Bytes(),
+		Headers: grpcHeaders,
 	}, nil
 }
 
