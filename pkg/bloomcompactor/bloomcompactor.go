@@ -29,7 +29,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -215,13 +214,7 @@ func (c *Compactor) stopping(_ error) error {
 }
 
 func (c *Compactor) runCompaction(ctx context.Context) error {
-	var (
-		tables []string
-		// it possible for two periods to use the same storage bucket and path prefix (different indexType or schema version)
-		// so more than one index storage client may end up listing the same set of buckets
-		// avoid including the same table twice in the compact tables list.
-		seen = make(map[string]struct{})
-	)
+	var tables []string
 	for _, sc := range c.storeClients {
 		// refresh index list cache since previous compaction would have changed the index files in the object store
 		sc.index.RefreshIndexTableNamesCache(ctx)
@@ -229,24 +222,13 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to list tables: %w", err)
 		}
-
-		for _, table := range tbls {
-			if _, ok := seen[table]; ok {
-				continue
-			}
-
-			tables = append(tables, table)
-			seen[table] = struct{}{}
-		}
+		tables = append(tables, tbls...)
 	}
 
 	// process most recent tables first
-	sortTablesByRange(tables)
+	tables = filterAndSortTablesByRange(tables, c.cfg.MaxTableAge)
 
-	// apply passed in compaction limits
-	if c.cfg.SkipLatestNTables <= len(tables) {
-		tables = tables[c.cfg.SkipLatestNTables:]
-	}
+	// Filter most-recent TablesToCompact tables
 	if c.cfg.TablesToCompact > 0 && c.cfg.TablesToCompact < len(tables) {
 		tables = tables[:c.cfg.TablesToCompact]
 	}
@@ -296,13 +278,6 @@ func (c *Compactor) compactTable(ctx context.Context, tableName string) error {
 
 // See: https://github.com/grafana/mimir/blob/34852137c332d4050e53128481f4f6417daee91e/pkg/compactor/compactor.go#L566-L689
 func (c *Compactor) compactUsers(ctx context.Context, sc storeClient, tableName string, tenants []string) error {
-	// When starting multiple compactor replicas nearly at the same time, running in a cluster with
-	// a large number of tenants, we may end up in a situation where the 1st user is compacted by
-	// multiple replicas at the same time. Shuffling users helps reduce the likelihood this will happen.
-	rand.Shuffle(len(tenants), func(i, j int) {
-		tenants[i], tenants[j] = tenants[j], tenants[i]
-	})
-
 	// Keep track of tenants owned by this shard, so that we can delete the local files for all other users.
 	errs := multierror.New()
 	ownedTenants := make(map[string]struct{}, len(tenants))
@@ -315,13 +290,7 @@ func (c *Compactor) compactUsers(ctx context.Context, sc storeClient, tableName 
 		}
 
 		// Ensure the tenant ID belongs to our shard.
-		owned, err := c.sharding.OwnsTenant(tenant)
-		if err != nil {
-			c.metrics.compactionRunSkippedTenants.Inc()
-			level.Warn(logger).Log("msg", "unable to check if tenant is owned by this shard", "err", err)
-			continue
-		}
-		if !owned {
+		if !c.sharding.OwnsTenant(tenant) {
 			c.metrics.compactionRunSkippedTenants.Inc()
 			level.Debug(logger).Log("msg", "skipping tenant because it is not owned by this shard")
 			continue
@@ -641,18 +610,27 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 	return nil
 }
 
-// TODO: comes from pkg/compactor/compactor.go
-func sortTablesByRange(tables []string) {
-	tableRanges := make(map[string]model.Interval)
+// filterAndSortTablesByRange returns most-recent first sorted list of tables that are within the max age.
+func filterAndSortTablesByRange(tables []string, maxAge time.Duration) []string {
+	tableRanges := make(map[string]model.Interval, len(tables))
+	tablesToSort := make([]string, 0, len(tables))
+	maxAgeTime := model.Now().Add(-maxAge)
 	for _, table := range tables {
+		interval := retention.ExtractIntervalFromTableName(table)
+		if maxAge > 0 && interval.Start.Before(maxAgeTime) {
+			continue
+		}
+
 		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
+		tablesToSort = append(tablesToSort, table)
 	}
 
-	sort.Slice(tables, func(i, j int) bool {
+	sort.Slice(tablesToSort, func(i, j int) bool {
 		// less than if start time is after produces a most recent first sort order
 		return tableRanges[tables[i]].Start.After(tableRanges[tables[j]].Start)
 	})
 
+	return tablesToSort
 }
 
 // TODO: comes from pkg/compactor/compactor.go
