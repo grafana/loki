@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	EncodingJson     = "json"
+	EncodingJSON     = "json"
 	EncodingProtobuf = "protobuf"
 )
 
