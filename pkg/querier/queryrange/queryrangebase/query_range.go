@@ -88,6 +88,24 @@ func (resp *PrometheusResponse) minTime() int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
+func convertPrometheusResponseHeadersToPointers(h []PrometheusResponseHeader) []*PrometheusResponseHeader {
+	if h == nil {
+		return nil
+	}
+
+	resp := make([]*PrometheusResponseHeader, len(h))
+	for i := range h {
+		resp[i] = &h[i]
+	}
+
+	return resp
+}
+
+func (m *PrometheusResponse) WithHeaders(h []PrometheusResponseHeader) Response {
+	m.Headers = convertPrometheusResponseHeadersToPointers(h)
+	return m
+}
+
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
 func NewEmptyPrometheusResponse() *PrometheusResponse {
 	return &PrometheusResponse{
