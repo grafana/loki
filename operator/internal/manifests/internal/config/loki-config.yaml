@@ -7,67 +7,6 @@ chunk_store_config:
       enabled: true
       max_size_mb: 500
 common:
-  storage:
-    {{- with .ObjectStorage.Azure }}
-    azure:
-      environment: {{ .Env }}
-      container_name: {{ .Container }}
-      account_name: {{ .AccountName }}
-      account_key: {{ .AccountKey }}
-      {{- with .EndpointSuffix }}
-      endpoint_suffix: {{ . }}
-      {{- end }}
-    {{- end }}
-    {{- with .ObjectStorage.GCS }}
-    gcs:
-      bucket_name: {{ .Bucket }}
-    {{- end }}
-    {{- with .ObjectStorage.S3 }}
-    s3:
-      s3: {{ .Endpoint }}
-      bucketnames: {{ .Buckets }}
-      region: {{ .Region }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .AccessKeySecret }}
-      {{- with .SSE }}
-      {{- if .Type }}
-      sse:
-        type: {{ .Type }}
-        {{- if eq .Type "SSE-KMS" }}
-        kms_key_id: {{ .KMSKeyID }}
-        {{- with .KMSEncryptionContext }}
-        kms_encryption_context: |
-          {{ . }}
-        {{- end }}
-        {{- end}}
-      {{- end }}
-      {{- end }}
-      s3forcepathstyle: true
-    {{- end }}
-    {{- with .ObjectStorage.Swift }}
-    swift:
-      auth_url: {{ .AuthURL }}
-      username: {{ .Username }}
-      user_domain_name: {{ .UserDomainName }}
-      user_domain_id: {{ .UserDomainID }}
-      user_id: {{ .UserID }}
-      password: {{ .Password }}
-      domain_id: {{ .DomainID }}
-      domain_name: {{ .DomainName }}
-      project_id: {{ .ProjectID }}
-      project_name: {{ .ProjectName }}
-      project_domain_id: {{ .ProjectDomainID }}
-      project_domain_name: {{ .ProjectDomainName }}
-      region_name: {{ .Region }}
-      container_name: {{ .Container }}
-    {{- end }}
-    {{- with .ObjectStorage.AlibabaCloud}}
-    alibabacloud:
-      bucket: {{ .Bucket }}
-      endpoint: {{ .Endpoint }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .SecretAccessKey }}
-    {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
   {{- with .GossipRing }}
   ring:
