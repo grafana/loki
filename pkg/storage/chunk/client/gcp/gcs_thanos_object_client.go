@@ -5,8 +5,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 
-	"cloud.google.com/go/storage"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,21 +20,20 @@ import (
 )
 
 type GCSThanosObjectClient struct {
-	cfg    GCSConfig
 	client objstore.Bucket
 }
 
-func NewGCSThanosObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config) (*GCSThanosObjectClient, error) {
-	return newGCSThanosObjectClient(ctx, cfg, hedgingCfg, storage.NewClient)
+func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, logger log.Logger, hedgingCfg hedging.Config) (*GCSThanosObjectClient, error) {
+	return newGCSThanosObjectClient(ctx, cfg, logger)
 }
 
-func newGCSThanosObjectClient(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Config, clientFactory ClientFactory) (*GCSThanosObjectClient, error) {
-	bucket, err := bucket.NewClient(ctx, cfg.bCfg, cfg.BucketName, log.NewNopLogger(), prometheus.DefaultRegisterer)
+func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, logger log.Logger) (*GCSThanosObjectClient, error) {
+	// TODO (JoaoBraveCoding) accessing cfg.GCS directly
+	bucket, err := bucket.NewClient(ctx, cfg, cfg.GCS.BucketName, logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 	return &GCSThanosObjectClient{
-		cfg:    cfg,
 		client: bucket,
 	}, nil
 }
@@ -65,36 +64,30 @@ func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string)
 func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
-	q := &storage.Query{Prefix: prefix, Delimiter: delimiter}
+	iterParams := objstore.IterOption(func(params *objstore.IterParams) {})
 
-	// Using delimiter and selected attributes doesn't work well together -- it returns nothing.
-	// Reason is that Go's API only sets "fields=items(name,updated)" parameter in the request,
-	// but what we really need is "fields=prefixes,items(name,updated)". Unfortunately we cannot set that,
-	// so instead we don't use attributes selection when using delimiter.
 	if delimiter == "" {
-		err := q.SetAttrSelection([]string{"Name", "Updated"})
-		if err != nil {
-			return nil, nil, err
-		}
+		iterParams = objstore.WithRecursiveIter
 	}
 
 	s.client.Iter(ctx, prefix, func(objectKey string) error {
+		if delimiter != "" && strings.HasSuffix(objectKey, delimiter) {
+			commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(objectKey))
+			return nil
+		}
+		attr, err := s.client.Attributes(ctx, objectKey)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
+		}
 
-		// // When doing query with Delimiter, Prefix is the only field set for entries which represent synthetic "directory entries".
-		// if attr.Prefix != "" {
-		// 	commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(attr.Prefix))
-		// 	continue
-		// }
-
-		// storageObjects = append(storageObjects, client.StorageObject{
-		// 	Key:        attr.Name,
-		// 	ModifiedAt: attr.Updated,
-		// })
-
+		storageObjects = append(storageObjects, client.StorageObject{
+			Key:        objectKey,
+			ModifiedAt: attr.LastModified,
+		})
 
 		return nil
 
-	})
+	}, iterParams)
 
 	return storageObjects, commonPrefixes, nil
 }

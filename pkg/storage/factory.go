@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/pkg/storage/bucket"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
@@ -40,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
+	utilLog "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -332,7 +334,9 @@ type Config struct {
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
-	ThanosObjectStore        bool         `yaml:"thanos_object_store"`
+
+	ThanosObjStore bool          `yaml:"thanos_objstore"`
+	ObjStoreConf   bucket.Config `yaml:"objstore_config"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
@@ -360,6 +364,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GrpcConfig.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
+
+	cfg.ObjStoreConf.RegisterFlags(f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
@@ -397,6 +403,9 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.BloomShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid bloom shipper config")
+	}
+	if err := cfg.ObjStoreConf.Validate(); err != nil {
+		return err
 	}
 
 	return cfg.NamedStores.Validate()
@@ -706,8 +715,8 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 		if cfg.CongestionControl.Enabled {
 			gcsCfg.EnableRetries = false
 		}
-		if cfg.ThanosObjectStore {
-			return gcp.NewGCSThanosObjectClient(context.Background(), gcsCfg, cfg.Hedging)
+		if cfg.ThanosObjStore {
+			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, utilLog.Logger, cfg.Hedging)
 		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 
