@@ -208,7 +208,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 													foundInChunk := false
 													foundInSbf := false
 
-													foundInSbf = searchSbf(sbf, bloomTokenizer, queryExperiment.searchString, got[gotIdx].ChunkRef)
+													foundInSbf = searchSbf(sbf, experiment.tokenizer, queryExperiment.searchString, got[gotIdx].ChunkRef)
 
 													lc := got[gotIdx].Data.(*chunkenc.Facade).LokiChunk()
 
@@ -306,8 +306,8 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 	return sbf
 }
 
-func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer *bt.BloomTokenizer, searchString string, chk logproto.ChunkRef) bool {
-	tokens := tokenizer.TokenizeLineWithChunkPrefix(searchString, chk)
+func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.Tokenizer, searchString string, chk logproto.ChunkRef) bool {
+	tokens := bt.SearchesForTokenizerAndLine(tokenizer, searchString)
 	for _, tokenSet := range tokens {
 		numMatches := 0
 		for _, token := range tokenSet {

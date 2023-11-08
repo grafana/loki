@@ -126,7 +126,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 // The offset is used if the Tokenizer has a skip value being utilized.
 func SearchesForTokenizerAndLine(t Tokenizer, line string) (res [][]Token) {
 	res = make([][]Token, 0, 10)
-	for i, _ := range line { // iterate by runes
+	for i := range line { // iterate by runes
 		if i < t.GetSkip()+1 {
 			tmpTokens := make([]Token, 0, 100)
 			tokens := t.Tokens(line[i:])
