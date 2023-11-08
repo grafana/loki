@@ -102,7 +102,6 @@ func newStream(
 	tenant string,
 	fp model.Fingerprint,
 	labels labels.Labels,
-	unorderedWrites bool,
 	streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
@@ -120,8 +119,6 @@ func newStream(
 		metrics:              metrics,
 		tenant:               tenant,
 		streamRateCalculator: streamRateCalculator,
-
-		unorderedWrites:      unorderedWrites,
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
@@ -395,7 +392,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+		if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
@@ -435,12 +432,8 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 
 func (s *stream) reportMetrics(outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes int) {
 	if outOfOrderSamples > 0 {
-		name := validation.OutOfOrder
-		if s.unorderedWrites {
-			name = validation.TooFarBehind
-		}
-		validation.DiscardedSamples.WithLabelValues(name, s.tenant).Add(float64(outOfOrderSamples))
-		validation.DiscardedBytes.WithLabelValues(name, s.tenant).Add(float64(outOfOrderBytes))
+		validation.DiscardedSamples.WithLabelValues(validation.TooFarBehind, s.tenant).Add(float64(outOfOrderSamples))
+		validation.DiscardedBytes.WithLabelValues(validation.TooFarBehind, s.tenant).Add(float64(outOfOrderBytes))
 	}
 	if rateLimitedSamples > 0 {
 		validation.DiscardedSamples.WithLabelValues(validation.StreamRateLimit, s.tenant).Add(float64(rateLimitedSamples))
