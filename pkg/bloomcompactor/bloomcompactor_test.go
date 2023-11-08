@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
@@ -93,14 +92,11 @@ func TestCompactor_RunCompaction(t *testing.T) {
 
 	storageConfig := storage.Config{
 		FSConfig: local.FSConfig{Directory: tempDir},
-		TSDBShipperConfig: tsdb.IndexCfg{
-			Config: indexshipper.Config{
-				ActiveIndexDirectory: indexDir,
-				ResyncInterval:       1 * time.Minute,
-				Mode:                 indexshipper.ModeReadWrite,
-				CacheLocation:        filepath.Join(tempDir, "cache"),
-			},
-			CachePostings: false,
+		TSDBShipperConfig: indexshipper.Config{
+			ActiveIndexDirectory: indexDir,
+			ResyncInterval:       1 * time.Minute,
+			Mode:                 indexshipper.ModeReadWrite,
+			CacheLocation:        filepath.Join(tempDir, "cache"),
 		},
 	}
 
@@ -128,7 +124,7 @@ func TestCompactor_RunCompaction(t *testing.T) {
 
 	shuffleSharding := NewShuffleShardingStrategy(ringManager.Ring, ringManager.RingLifecycler, overrides)
 
-	c, err := New(cfg, overrides, storageConfig, schemaCfg, util_log.Logger, shuffleSharding, clientMetrics, nil)
+	c, err := New(cfg, storageConfig, schemaCfg, overrides, util_log.Logger, shuffleSharding, clientMetrics, nil)
 	require.NoError(t, err)
 
 	err = c.runCompaction(context.Background())

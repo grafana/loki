@@ -32,40 +32,38 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
-	"sort"
 	"time"
 
-	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	index_storage "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
-
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/compactor/retention"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
+	index_storage "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -103,7 +101,7 @@ func New(
 	storageCfg storage.Config,
 	schemaConfig config.SchemaConfig,
 	limits Limits,
-logger log.Logger,
+	logger log.Logger,
 	sharding ShardingStrategy,
 	clientMetrics storage.ClientMetrics,
 	r prometheus.Registerer,
@@ -135,7 +133,7 @@ logger log.Logger,
 			continue
 		}
 
-		//Configure ObjectClient and IndexShipper for series and chunk management
+		// Configure ObjectClient and IndexShipper for series and chunk management
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageCfg, clientMetrics)
 		if err != nil {
 			return nil, fmt.Errorf("error creating object client '%s': %w", periodicConfig.ObjectType, err)
@@ -482,7 +480,7 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir string) (bloomshipper.Block, error) {
 	localDst := createLocalDirName(workingDir, series)
 
-	//write bloom to a local dir
+	// write bloom to a local dir
 	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
 	if err != nil {
 		level.Info(util_log.Logger).Log("creating builder", err)
@@ -519,7 +517,7 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir 
 			Ref: bloomshipper.Ref{
 				TenantID:       series.tenant,
 				TableName:      series.tableName,
-				MinFingerprint: uint64(series.fingerPrint), //TODO will change once we compact multiple blooms into a block
+				MinFingerprint: uint64(series.fingerPrint), // TODO will change once we compact multiple blooms into a block
 				MaxFingerprint: uint64(series.fingerPrint),
 				StartTimestamp: series.from.Unix(),
 				EndTimestamp:   series.through.Unix(),
@@ -607,7 +605,7 @@ func CompactNewChunks(ctx context.Context, series Series, bt *v1.BloomTokenizer,
 		Blocks:     storedBlockRefs,
 	}
 
-	//TODO move this to an outer layer, otherwise creates a meta per block
+	// TODO move this to an outer layer, otherwise creates a meta per block
 	err = bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Info(util_log.Logger).Log("putting meta.json to storage", err)
@@ -698,7 +696,7 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 						for _, meta := range metas {
 							for _, blockRef := range meta.Blocks {
 								uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
-								//...
+								// ...
 							}
 						}
 

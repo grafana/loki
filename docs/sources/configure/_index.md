@@ -2937,7 +2937,10 @@ shard_streams:
 # CLI flag: -bloom-gateway.shard-size
 [bloom_gateway_shard_size: <int> | default = 1]
 
-[bloom_compactor_shard_size: <int>]
+# The shard size defines how many bloom compactors should be used by a tenant
+# when computing blooms.
+# CLI flag: -bloom-compactor.shard-size
+[bloom_compactor_shard_size: <int> | default = 0]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
