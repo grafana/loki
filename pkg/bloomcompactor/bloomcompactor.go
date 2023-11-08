@@ -127,7 +127,7 @@ func New(
 		case config.BoltDBShipperType:
 			indexStorageCfg = storageCfg.BoltDBShipperConfig.Config
 		default:
-			level.Warn(util_log.Logger).Log("msg", "skipping period because index type is unsupported")
+			level.Warn(c.logger).Log("msg", "skipping period because index type is unsupported")
 			continue
 		}
 
@@ -187,7 +187,7 @@ func (c *Compactor) starting(_ context.Context) (err error) {
 func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
 	if err := c.runCompaction(ctx); err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
+		level.Error(c.logger).Log("msg", "failed to run compaction", "err", err)
 	}
 
 	ticker := time.NewTicker(util.DurationWithJitter(c.cfg.CompactionInterval, 0.05))
@@ -199,7 +199,7 @@ func (c *Compactor) running(ctx context.Context) error {
 			c.metrics.compactionRunsStarted.Inc()
 			if err := c.runCompaction(ctx); err != nil {
 				c.metrics.compactionRunsErred.Inc()
-				level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
+				level.Error(c.logger).Log("msg", "failed to run compaction", "err", err)
 				continue
 			}
 			c.metrics.compactionRunsCompleted.Inc()
@@ -260,19 +260,17 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 	}
 
 	errs := multierror.New()
-	if err := concurrency.ForEachJob(ctx, len(tables), parallelism, func(ctx context.Context, i int) error {
+	_ = concurrency.ForEachJob(ctx, len(tables), parallelism, func(ctx context.Context, i int) error {
 		tableName := tables[i]
-		level.Info(util_log.Logger).Log("msg", "compacting table", "table-name", tableName)
+		level.Info(c.logger).Log("msg", "compacting table", "table-name", tableName)
 		err := c.compactTable(ctx, tableName)
 		if err != nil {
 			errs.Add(err)
 			return nil
 		}
-		level.Info(util_log.Logger).Log("msg", "finished compacting table", "table-name", tableName)
+		level.Info(c.logger).Log("msg", "finished compacting table", "table-name", tableName)
 		return nil
-	}); err != nil {
-		errs.Add(err)
-	}
+	})
 
 	return errs.Err()
 }
@@ -280,7 +278,7 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 func (c *Compactor) compactTable(ctx context.Context, tableName string) error {
 	schemaCfg, ok := schemaPeriodForTable(c.schemaCfg, tableName)
 	if !ok {
-		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
+		level.Error(c.logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
 		return nil
 	}
 
@@ -312,6 +310,8 @@ func (c *Compactor) compactUsers(ctx context.Context, sc storeClient, tableName 
 	errs := multierror.New()
 	ownedTenants := make(map[string]struct{}, len(tenants))
 	for _, tenant := range tenants {
+		logger := log.With(c.logger, "tenant", tenant)
+
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("interrupting compaction of tenants: %w", err)
@@ -321,12 +321,12 @@ func (c *Compactor) compactUsers(ctx context.Context, sc storeClient, tableName 
 		owned, err := c.sharding.OwnsTenant(tenant)
 		if err != nil {
 			c.metrics.compactionRunSkippedTenants.Inc()
-			level.Warn(c.logger).Log("msg", "unable to check if tenant is owned by this shard", "tenantID", tenant, "err", err)
+			level.Warn(logger).Log("msg", "unable to check if tenant is owned by this shard", "err", err)
 			continue
 		}
 		if !owned {
 			c.metrics.compactionRunSkippedTenants.Inc()
-			level.Debug(c.logger).Log("msg", "skipping tenant because it is not owned by this shard", "tenantID", tenant)
+			level.Debug(logger).Log("msg", "skipping tenant because it is not owned by this shard")
 			continue
 		}
 
@@ -336,18 +336,18 @@ func (c *Compactor) compactUsers(ctx context.Context, sc storeClient, tableName 
 			switch {
 			case errors.Is(err, context.Canceled):
 				// We don't want to count shutdowns as failed compactions because we will pick up with the rest of the compaction after the restart.
-				level.Info(c.logger).Log("msg", "compaction for tenant was interrupted by a shutdown", "tenant", tenant)
+				level.Info(logger).Log("msg", "compaction for tenant was interrupted by a shutdown")
 				return nil
 			default:
 				c.metrics.compactionRunFailedTenants.Inc()
-				level.Error(c.logger).Log("msg", "failed to compact tenant", "tenant", tenant, "err", err)
+				level.Error(logger).Log("msg", "failed to compact tenant", "err", err)
 				errs.Add(err)
 			}
 			continue
 		}
 
 		c.metrics.compactionRunSucceededTenants.Inc()
-		level.Info(c.logger).Log("msg", "successfully compacted tenant", "tenant", tenant)
+		level.Info(logger).Log("msg", "successfully compacted tenant")
 	}
 
 	return errs.Err()
@@ -442,8 +442,8 @@ func runWithRetries(
 func (c *Compactor) compactTenantWithRetries(ctx context.Context, sc storeClient, tableName string, tenant string) error {
 	return runWithRetries(
 		ctx,
-		c.cfg.retryMinBackoff,
-		c.cfg.retryMaxBackoff,
+		c.cfg.RetryMinBackoff,
+		c.cfg.RetryMaxBackoff,
 		c.cfg.CompactionRetries,
 		func(ctx context.Context) error {
 			return c.compactTenant(ctx, sc, tableName, tenant)

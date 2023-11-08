@@ -19,10 +19,6 @@ type ShuffleShardingStrategy struct {
 	ring           *ring.Ring
 	ringLifeCycler *ring.BasicLifecycler
 	limits         Limits
-
-	// Buffers to avoid allocations in ring.Get
-	bufDescs           []ring.InstanceDesc
-	bufHosts, bufZones []string
 }
 
 func NewShuffleShardingStrategy(r *ring.Ring, ringLifecycler *ring.BasicLifecycler, limits Limits) *ShuffleShardingStrategy {
@@ -31,7 +27,6 @@ func NewShuffleShardingStrategy(r *ring.Ring, ringLifecycler *ring.BasicLifecycl
 		ringLifeCycler: ringLifecycler,
 		limits:         limits,
 	}
-	s.bufDescs, s.bufHosts, s.bufZones = ring.MakeBuffersForGet()
 
 	return &s
 }
@@ -64,7 +59,7 @@ func (s *ShuffleShardingStrategy) OwnsJob(job Job) (bool, error) {
 		return false, nil
 	}
 
-	rs, err := subRing.Get(uint32(job.Fingerprint()), RingOp, s.bufDescs, s.bufHosts, s.bufZones)
+	rs, err := subRing.Get(uint32(job.Fingerprint()), RingOp, nil, nil, nil)
 	if err != nil {
 		return false, err
 	}

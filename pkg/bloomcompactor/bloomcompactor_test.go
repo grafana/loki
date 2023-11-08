@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
-	ww "github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -34,7 +34,7 @@ const (
 )
 
 func TestCompactor_RunCompaction(t *testing.T) {
-	servercfg := &ww.Config{}
+	servercfg := &server.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
 	util_log.InitLogger(servercfg, nil, true, false)
 

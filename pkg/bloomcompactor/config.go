@@ -19,21 +19,27 @@ type Config struct {
 	WorkingDirectory   string        `yaml:"working_directory"`
 	CompactionInterval time.Duration `yaml:"compaction_interval"`
 
-	// No need to add options to customize the retry backoff,
-	// given the defaults should be fine, but allow to override
-	// it in tests.
-	retryMinBackoff          time.Duration `yaml:"-"`
-	retryMaxBackoff          time.Duration `yaml:"-"`
-	CompactionRetries        int           `yaml:"compaction_retries" category:"advanced"`
-	TablesToCompact          int           `yaml:"tables_to_compact"`
-	SkipLatestNTables        int           `yaml:"skip_latest_n_tables"`
-	MaxCompactionParallelism int           `yaml:"max_compaction_parallelism"`
+	RetryMinBackoff   time.Duration `yaml:"compaction_retries_min_backoff"`
+	RetryMaxBackoff   time.Duration `yaml:"compaction_retries_max_backoff"`
+	CompactionRetries int           `yaml:"compaction_retries"`
+
+	TablesToCompact          int `yaml:"tables_to_compact"`
+	SkipLatestNTables        int `yaml:"skip_latest_n_tables"`
+	MaxCompactionParallelism int `yaml:"max_compaction_parallelism"`
 }
 
 // RegisterFlags registers flags for the Bloom-Compactor configuration.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Ring.RegisterFlagsWithPrefix("bloom-compactor.", "collectors/", f)
 	f.BoolVar(&cfg.Enabled, "bloom-compactor.enabled", false, "Flag to enable or disable the usage of the bloom-compactor component.")
+	f.StringVar(&cfg.WorkingDirectory, "bloom-compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
+	f.DurationVar(&cfg.CompactionInterval, "bloom-compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
+	f.DurationVar(&cfg.RetryMinBackoff, "bloom-compactor.compaction-retries-min-backoff", 10*time.Second, "Minimum backoff time between retries.")
+	f.DurationVar(&cfg.RetryMaxBackoff, "bloom-compactor.compaction-retries-max-backoff", time.Minute, "Maximum backoff time between retries.")
+	f.IntVar(&cfg.CompactionRetries, "bloom-compactor.compaction-retries", 3, "Number of retries to perform when compaction fails.")
+	f.IntVar(&cfg.TablesToCompact, "bloom-compactor.tables-to-compact", 0, "Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
+	f.IntVar(&cfg.SkipLatestNTables, "bloom-compactor.skip-latest-n-tables", 0, "Do not compact N latest tables.")
+	f.IntVar(&cfg.MaxCompactionParallelism, "bloom-compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 }
 
 type Limits interface {
