@@ -34,14 +34,10 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 			interval := time.Duration(volReq.Step * 1e6)
 
 			util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
-				// Range query buckets are aligned to the starting timestamp
-				// Instant queries are for "this instant", which aligns to the end of the requested range
-				bucket := start
-				if interval == 0 {
-					bucket = end
-				}
-
-				reqs[bucket] = &logproto.VolumeRequest{
+				// Always align to the end of the requested range
+				// For range queries, this aligns to the end of the period we're returning a bytes aggregation for
+				// For instant queries, which are for "this instant", this aligns to the end of the requested range
+				reqs[end] = &logproto.VolumeRequest{
 					From:         model.TimeFromUnix(start.Unix()),
 					Through:      model.TimeFromUnix(end.Unix()),
 					Matchers:     volReq.Matchers,
