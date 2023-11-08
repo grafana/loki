@@ -88,6 +88,17 @@ func (resp *PrometheusResponse) minTime() int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
+func (resp *PrometheusResponse) SetHeader(name, value string) {
+	for i, h := range resp.Headers {
+		if h.Name == name {
+			resp.Headers[i].Values = []string{value}
+			return
+		}
+	}
+
+	resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: name, Values: []string{value}})
+}
+
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
 func NewEmptyPrometheusResponse() *PrometheusResponse {
 	return &PrometheusResponse{

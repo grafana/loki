@@ -18,6 +18,10 @@ func (m *LokiLabelNamesResponse) GetHeaders() []*queryrangebase.PrometheusRespon
 	return nil
 }
 
+func (m *LokiLabelNamesResponse) SetHeader(name, value string) {
+	m.Headers = append(deleteHeader(m.Headers, name), queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
+}
+
 func (m *LokiLabelNamesResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
@@ -28,6 +32,10 @@ func (m *LokiSeriesResponse) GetHeaders() []*queryrangebase.PrometheusResponseHe
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
+}
+
+func (m *LokiSeriesResponse) SetHeader(name, value string) {
+	m.Headers = append(deleteHeader(m.Headers, name), queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
 }
 
 func (m *LokiSeriesResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
@@ -42,6 +50,10 @@ func (m *LokiPromResponse) GetHeaders() []*queryrangebase.PrometheusResponseHead
 	return nil
 }
 
+func (m *LokiPromResponse) SetHeader(name, value string) {
+	m.Response.SetHeader(name, value)
+}
+
 func (m *LokiPromResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Response.Headers = convertPrometheusResponseHeadersToPointers(h)
 	return m
@@ -52,6 +64,10 @@ func (m *LokiResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
+}
+
+func (m *LokiResponse) SetHeader(name, value string) {
+	m.Headers = append(deleteHeader(m.Headers, name), queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
 }
 
 func (m *LokiResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
@@ -72,12 +88,29 @@ func convertPrometheusResponseHeadersToPointers(h []queryrangebase.PrometheusRes
 	return resp
 }
 
+// deleteHeader returns the passed headers without the entry belonging to the
+// name. The order is *not* maintained.
+func deleteHeader(headers []queryrangebase.PrometheusResponseHeader, name string) []queryrangebase.PrometheusResponseHeader {
+	for i, h := range headers {
+		if h.Name == name {
+			headers[i] = headers[len(headers)-1]
+			return headers[:len(headers)-1]
+		}
+	}
+
+	return headers
+}
+
 // GetHeaders returns the HTTP headers in the response.
 func (m *IndexStatsResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
+}
+
+func (m *IndexStatsResponse) SetHeader(name, value string) {
+	m.Headers = append(deleteHeader(m.Headers, name), queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
 }
 
 func (m *IndexStatsResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
@@ -93,6 +126,10 @@ func (m *VolumeResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader
 	return nil
 }
 
+func (m *VolumeResponse) SetHeader(name, value string) {
+	m.Headers = append(deleteHeader(m.Headers, name), queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
+}
+
 func (m *VolumeResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
@@ -106,6 +143,10 @@ func (m *TopKSketchesResponse) GetHeaders() []*queryrangebase.PrometheusResponse
 	return nil
 }
 
+func (m *TopKSketchesResponse) SetHeader(name, value string) {
+	m.Headers = append(deleteHeader(m.Headers, name), queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
+}
+
 func (m *TopKSketchesResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
@@ -117,6 +158,10 @@ func (m *QuantileSketchResponse) GetHeaders() []*queryrangebase.PrometheusRespon
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
+}
+
+func (m *QuantileSketchResponse) SetHeader(name, value string) {
+	m.Headers = append(deleteHeader(m.Headers, name), queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
 }
 
 func (m *QuantileSketchResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {

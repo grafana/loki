@@ -1594,7 +1594,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			},
 		}, nil
 	case *logproto.IndexStatsRequest:
-		return &logproto.IndexStatsResponse{}, nil
+		return &IndexStatsResponse{}, nil
 	case *logproto.VolumeRequest:
 		return &VolumeResponse{}, nil
 	default:
