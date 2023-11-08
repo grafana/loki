@@ -56,4 +56,5 @@ type Response interface {
 	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
 	GetHeaders() []*PrometheusResponseHeader
+	WithHeaders([]PrometheusResponseHeader) Response
 }
