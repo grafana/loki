@@ -101,15 +101,15 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
-DOCKER_BUILDKIT=1
+DOCKER_BUILDKIT ?= 1
 BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
 PUSH_OCI=docker push
 TAG_OCI=docker tag
 ifeq ($(CI), true)
 	OCI_PLATFORMS=--platform=linux/amd64,linux/arm64
-	BUILD_OCI=docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 else
-	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg $(BUILD_IMAGE)
 endif
 
 binfmt:
