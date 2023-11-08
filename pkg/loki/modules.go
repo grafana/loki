@@ -516,10 +516,17 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
 	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
 
-	internalHandler := queryrangebase.MergeMiddlewares(
+	internalMiddlewares := []queryrangebase.Middleware{
 		serverutil.RecoveryMiddleware,
 		queryrange.Instrument{Metrics: t.Metrics},
-	).Wrap(handler)
+	}
+	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
+		internalMiddlewares = append(
+			internalMiddlewares,
+			queryrangebase.CacheGenNumberContextSetterMiddleware(t.cacheGenerationLoader),
+		)
+	}
+	internalHandler := queryrangebase.MergeMiddlewares(internalMiddlewares...).Wrap(handler)
 
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
@@ -1395,7 +1402,8 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor,
 		t.ring,
 		t.Cfg.StorageConfig,
-		t.Cfg.SchemaConfig.Configs,
+		t.Cfg.SchemaConfig,
+		t.Overrides,
 		logger,
 		t.clientMetrics,
 		prometheus.DefaultRegisterer)

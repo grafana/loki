@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -29,22 +28,17 @@ var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired versio
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
-type IndexOpts struct {
-	PostingsCache cache.Cache
-}
-
-func OpenShippableTSDB(p string, opts IndexOpts) (shipperindex.Index, error) {
+func OpenShippableTSDB(p string) (shipperindex.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id, opts)
+	return NewShippableTSDBFile(id)
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipperindex.Index, error) {
-	opts := IndexOpts{}
-	indexFile, err := OpenShippableTSDB(path, opts)
+	indexFile, err := OpenShippableTSDB(path)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +77,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 	if err != nil {
 		return nil, err
 	}
-	return NewShippableTSDBFile(id, IndexOpts{})
+	return NewShippableTSDBFile(id)
 }
 
 // nolint
@@ -99,8 +93,8 @@ type TSDBFile struct {
 	getRawFileReader GetRawFileReaderFunc
 }
 
-func NewShippableTSDBFile(id Identifier, opts IndexOpts) (*TSDBFile, error) {
-	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), opts)
+func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
+	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -125,54 +119,26 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 // and translates the IndexReader to an Index implementation
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
-	reader         IndexReader
-	chunkFilter    chunk.RequestChunkFilterer
-	postingsReader PostingsReader
+	reader      IndexReader
+	chunkFilter chunk.RequestChunkFilterer
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string, opts IndexOpts) (Index, GetRawFileReaderFunc, error) {
+func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	postingsReader := getPostingsReader(reader, opts.PostingsCache)
-	tsdbIdx := NewTSDBIndex(reader, postingsReader)
-
-	return tsdbIdx, func() (io.ReadSeeker, error) {
+	return NewTSDBIndex(reader), func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
 
-func getPostingsReader(reader IndexReader, postingsCache cache.Cache) PostingsReader {
-	if postingsCache != nil {
-		return NewCachedPostingsReader(reader, util_log.Logger, postingsCache)
-	}
-	return NewPostingsReader(reader)
-}
-
-func NewPostingsReader(reader IndexReader) PostingsReader {
-	return &defaultPostingsReader{reader: reader}
-}
-
-type defaultPostingsReader struct {
-	reader IndexReader
-}
-
-func (s *defaultPostingsReader) ForPostings(_ context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
-	p, err := PostingsForMatchers(s.reader, nil, matchers...)
-	if err != nil {
-		return err
-	}
-	return fn(p)
-}
-
-func NewTSDBIndex(reader IndexReader, postingsReader PostingsReader) *TSDBIndex {
+func NewTSDBIndex(reader IndexReader) *TSDBIndex {
 	return &TSDBIndex{
-		reader:         reader,
-		postingsReader: postingsReader,
+		reader: reader,
 	}
 }
 
@@ -203,7 +169,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 		filterer = i.chunkFilter.ForRequest(ctx)
 	}
 
-	return i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
+	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
 			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
@@ -224,6 +190,20 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 		return p.Err()
 	})
 
+}
+
+func (i *TSDBIndex) forPostings(
+	_ context.Context,
+	shard *index.ShardAnnotation,
+	_, _ model.Time,
+	matchers []*labels.Matcher,
+	fn func(index.Postings) error,
+) error {
+	p, err := PostingsForMatchers(i.reader, shard, matchers...)
+	if err != nil {
+		return err
+	}
+	return fn(p)
 }
 
 func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
@@ -301,7 +281,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	return i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
+	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer
@@ -310,10 +290,9 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		}
 
 		for p.Next() {
-			seriesRef := p.At()
-			fp, stats, err := i.reader.ChunkStats(seriesRef, int64(from), int64(through), &ls)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
 			if err != nil {
-				return fmt.Errorf("stats: chunk stats: %w, seriesRef: %d", err, seriesRef)
+				return err
 			}
 
 			// skip series that belong to different shards
@@ -376,7 +355,7 @@ func (i *TSDBIndex) Volume(
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 
-	return i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
+	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
 		var filterer chunk.Filterer
 		if i.chunkFilter != nil {

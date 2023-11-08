@@ -1421,6 +1421,9 @@ func (badResponse) Reset()                                                 {}
 func (badResponse) String() string                                         { return "noop" }
 func (badResponse) ProtoMessage()                                          {}
 func (badResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader { return nil }
+func (b badResponse) WithHeaders([]queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	return b
+}
 
 type badReader struct{}
 
