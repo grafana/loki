@@ -2532,8 +2532,6 @@ ring:
 [enabled: <boolean> | default = false]
 
 [working_directory: <string> | default = ""]
-
-[max_look_back_period: <duration>]
 ```
 
 ### limits_config

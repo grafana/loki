@@ -1395,7 +1395,8 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor,
 		t.ring,
 		t.Cfg.StorageConfig,
-		t.Cfg.SchemaConfig.Configs,
+		t.Cfg.SchemaConfig,
+		t.Overrides,
 		logger,
 		t.clientMetrics,
 		prometheus.DefaultRegisterer)
