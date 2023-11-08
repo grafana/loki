@@ -101,9 +101,9 @@ func convertPrometheusResponseHeadersToPointers(h []PrometheusResponseHeader) []
 	return resp
 }
 
-func (m *PrometheusResponse) WithHeaders(h []PrometheusResponseHeader) Response {
-	m.Headers = convertPrometheusResponseHeadersToPointers(h)
-	return m
+func (resp *PrometheusResponse) WithHeaders(h []PrometheusResponseHeader) Response {
+	resp.Headers = convertPrometheusResponseHeadersToPointers(h)
+	return resp
 }
 
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
