@@ -87,12 +87,13 @@ func (s *ShuffleShardingStrategy) FilterTenants(_ context.Context, tenantIDs []s
 	return filteredIDs, nil
 }
 
+// nolint:revive
 func getBucket(rangeMin, rangeMax, pos uint64) int {
 	return 0
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *ShuffleShardingStrategy) FilterBlocks(ctx context.Context, tenantID string, blockRefs []BlockRef) ([]BlockRef, error) {
+func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, tenantID string, blockRefs []BlockRef) ([]BlockRef, error) {
 	filteredBlockRefs := make([]BlockRef, 0, len(blockRefs))
 
 	subRing := GetShuffleShardingSubring(s.r, tenantID, s.limits)
@@ -152,11 +153,11 @@ func NewNoopStrategy() *NoopStrategy {
 }
 
 // FilterTenants implements ShardingStrategy.
-func (s *NoopStrategy) FilterTenants(ctx context.Context, tenantIDs []string) ([]string, error) {
+func (s *NoopStrategy) FilterTenants(_ context.Context, tenantIDs []string) ([]string, error) {
 	return tenantIDs, nil
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *NoopStrategy) FilterBlocks(ctx context.Context, tenantID string, blockRefs []BlockRef) ([]BlockRef, error) {
+func (s *NoopStrategy) FilterBlocks(_ context.Context, _ string, blockRefs []BlockRef) ([]BlockRef, error) {
 	return blockRefs, nil
 }

@@ -16,7 +16,7 @@ import (
 		querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	*/)
 
-func Test_InitQuerierService(t *testing.T) {
+func Test_InitQuerierService(_ *testing.T) {
 
 	// TODO: use in modules test
 	/*

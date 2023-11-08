@@ -226,8 +226,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [shutdown_delay: <duration> | default = 0s]
 
 # Namespace of the metrics that in previous releases had cortex as namespace.
+# This setting is deprecated and will be removed in the next minor release.
 # CLI flag: -metrics-namespace
-[metrics_namespace: <string> | default = "cortex"]
+[metrics_namespace: <string> | default = "loki"]
 ```
 
 ### server
@@ -2100,6 +2101,11 @@ congestion_control:
     # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
+# Experimental. Sets a constant prefix for all keys inserted into object
+# storage. Example: loki/
+# CLI flag: -store.object-prefix
+[object_prefix: <string> | default = ""]
+
 # The cache block configures the cache backend.
 # The CLI flags prefix for this block configuration is: store.index-cache-read
 [index_queries_cache_config: <cache_config>]
@@ -2222,11 +2228,6 @@ tsdb_shipper:
   [mode: <string> | default = ""]
 
   [ingesterdbretainperiod: <duration>]
-
-  # Experimental. Whether TSDB should cache postings or not. The
-  # index-read-cache will be used as the backend.
-  # CLI flag: -tsdb.enable-postings-cache
-  [enable_postings_cache: <boolean> | default = false]
 
 # Configures Bloom Shipper.
 bloom_shipper:
@@ -2531,8 +2532,6 @@ ring:
 [enabled: <boolean> | default = false]
 
 [working_directory: <string> | default = ""]
-
-[max_look_back_period: <duration>]
 ```
 
 ### limits_config
@@ -4405,7 +4404,7 @@ dynamodb:
 
     # query to fetch ingester queue length
     # CLI flag: -metrics.queue-length-query
-    [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
+    [queue_length_query: <string> | default = "sum(avg_over_time(loki_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m])) or sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
 
     # query to fetch throttle rates per table
     # CLI flag: -metrics.write-throttle-query

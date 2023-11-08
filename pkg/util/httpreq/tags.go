@@ -25,15 +25,19 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
-			tags := req.Header.Get(string(QueryTagsHTTPHeader))
 
-			if tags != "" {
+			if tags := ExtractQueryTagsFromHTTP(req); tags != "" {
 				ctx = InjectQueryTags(ctx, tags)
 				req = req.WithContext(ctx)
 			}
 			next.ServeHTTP(w, req)
 		})
 	})
+}
+
+func ExtractQueryTagsFromHTTP(req *http.Request) string {
+	tags := req.Header.Get(string(QueryTagsHTTPHeader))
+	return safeQueryTags.ReplaceAllString(tags, "_")
 }
 
 func InjectQueryTags(ctx context.Context, tags string) context.Context {

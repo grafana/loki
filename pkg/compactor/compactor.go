@@ -294,6 +294,7 @@ func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClie
 
 		if c.cfg.RetentionEnabled {
 			var (
+				raw              client.ObjectClient
 				encoder          client.KeyEncoder
 				name             = fmt.Sprintf("%s_%s", period.ObjectType, period.From.String())
 				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", name)
@@ -313,7 +314,12 @@ func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClie
 			// remove markers from the store dir after copying them to period specific dirs.
 			legacyMarkerDirs[period.ObjectType] = struct{}{}
 
-			if _, ok := objectClient.(*local.FSObjectClient); ok {
+			if casted, ok := objectClient.(client.PrefixedObjectClient); ok {
+				raw = casted.GetDownstream()
+			} else {
+				raw = objectClient
+			}
+			if _, ok := raw.(*local.FSObjectClient); ok {
 				encoder = client.FSEncoder
 			}
 			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
