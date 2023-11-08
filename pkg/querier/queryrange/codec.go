@@ -383,6 +383,14 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		ctx = httpreq.InjectQueryTags(ctx, queryTags)
 	}
 
+	// Add query metrics
+	if queueTimeHeader := httpReq.Header.Get(string(httpreq.QueryQueueTimeHTTPHeader)); queueTimeHeader != "" {
+		queueTime, err := time.ParseDuration(queueTimeHeader)
+		if err == nil {
+			ctx = context.WithValue(ctx, httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		}
+	}
+
 	// If there is not encoding flags in the context, we try the HTTP request.
 	if encFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx); encFlags == nil {
 		encFlags = httpreq.ExtractEncodingFlagsFromProto(r)
@@ -524,13 +532,19 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 		return nil, err
 	}
 
-	return &httpgrpc.HTTPResponse{
+	httpRes := &httpgrpc.HTTPResponse{
 		Code: int32(http.StatusOK),
 		Body: buf.Bytes(),
 		Headers: []*httpgrpc.Header{
 			{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}},
 		},
-	}, nil
+	}
+
+	for _, h := range res.GetHeaders() {
+		httpRes.Headers = append(httpRes.Headers, &httpgrpc.Header{Key: h.Name, Values: h.Values})
+	}
+
+	return httpRes, nil
 }
 
 func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
@@ -1593,7 +1607,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			},
 		}, nil
 	case *logproto.IndexStatsRequest:
-		return &logproto.IndexStatsResponse{}, nil
+		return &IndexStatsResponse{}, nil
 	case *logproto.VolumeRequest:
 		return &VolumeResponse{}, nil
 	default:

@@ -71,6 +71,11 @@ func (v *LokiSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusRespon
 	return v.headers
 }
 
+func (v *LokiSeriesResponseView) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	v.headers = convertPrometheusResponseHeadersToPointers(h)
+	return v
+}
+
 // Implement proto.Message
 func (v *LokiSeriesResponseView) Reset()         {}
 func (v *LokiSeriesResponseView) String() string { return "" }
@@ -238,6 +243,10 @@ var _ queryrangebase.Response = &MergedSeriesResponseView{}
 
 func (v *MergedSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	return v.headers
+}
+
+func (v *MergedSeriesResponseView) WithHeaders([]queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	return v
 }
 
 // Implement proto.Message
