@@ -122,25 +122,27 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 // SearchesForTokenizerAndLine is for taking a given search string (ex: on the read/query path) and returning
 // all the possible tokens, given a tokenizer.
 // This is a multi-dimensional slice where the first slice is the offset into the line, and the
-// second slice is the tokens for that offset.
+// second slice is the tokens for that offset.  If an offset into the line returns no tokens, this first dimension
+// will be less than 1 + the number of skips specified in the tokenizer
 // The offset is used if the Tokenizer has a skip value being utilized.
 func SearchesForTokenizerAndLine(t Tokenizer, line string) (res [][]Token) {
 	res = make([][]Token, 0, 10)
 	for i := range line { // iterate by runes
-		if i < t.GetSkip()+1 {
-			tmpTokens := make([]Token, 0, 100)
-			tokens := t.Tokens(line[i:])
-			// As the way the tokenizer is coded, it will reuse its internal buffers,
-			// but we need to save the data, hence the need for copying
-			for _, token := range tokens {
-				tmpToken := Token{}
-				tmpToken.Key = make([]byte, len(token.Key))
-				copy(tmpToken.Key, token.Key)
-				tmpTokens = append(tmpTokens, tmpToken)
-			}
-			if len(tokens) > 0 {
-				res = append(res, tmpTokens)
-			}
+		if i >= t.GetSkip()+1 {
+			break
+		}
+		tmpTokens := make([]Token, 0, 100)
+		tokens := t.Tokens(line[i:])
+		// As the way the tokenizer is coded, it will reuse its internal buffers,
+		// but we need to save the data, hence the need for copying
+		for _, token := range tokens {
+			tmpToken := Token{}
+			tmpToken.Key = make([]byte, len(token.Key))
+			copy(tmpToken.Key, token.Key)
+			tmpTokens = append(tmpTokens, tmpToken)
+		}
+		if len(tokens) > 0 {
+			res = append(res, tmpTokens)
 		}
 	}
 
