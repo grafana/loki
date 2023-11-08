@@ -55,7 +55,7 @@ func InitWorkerService(
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
 	handler queryrangebase.Handler,
-	codec querier_worker.GRPCCodec,
+	codec querier_worker.RequestCodec,
 ) (serve services.Service, err error) {
 
 	// If the querier is running standalone without the query-frontend or query-scheduler, we must register the internal

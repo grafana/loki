@@ -303,7 +303,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	}
 
 	if f.cfg.Encoding == "protobuf" {
-		freq.queryRequest, err = queryrange.QueryRequestWrap(ctx, req)
+		freq.queryRequest, err = f.codec.QueryRequestWrap(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("cannot wrap request: %w", err)
 		}
