@@ -251,9 +251,6 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 		tables = tables[:c.cfg.TablesToCompact]
 	}
 
-	// Reset discovered tenants metric since we will increase it in compactTable.
-	c.metrics.compactionRunDiscoveredTenants.Set(0)
-
 	parallelism := c.cfg.MaxCompactionParallelism
 	if parallelism == 0 {
 		parallelism = len(tables)

@@ -14,13 +14,13 @@ type metrics struct {
 	compactionRunsStarted          prometheus.Counter
 	compactionRunsCompleted        prometheus.Counter
 	compactionRunsErred            prometheus.Counter
-	compactionRunDiscoveredTenants prometheus.Gauge
-	compactionRunSkippedTenants    prometheus.Gauge
-	compactionRunSucceededTenants  prometheus.Gauge
-	compactionRunFailedTenants     prometheus.Gauge
-	compactionRunSkippedJobs       prometheus.Gauge
-	compactionRunSucceededJobs     prometheus.Gauge
-	compactionRunFailedJobs        prometheus.Gauge
+	compactionRunDiscoveredTenants prometheus.Counter
+	compactionRunSkippedTenants    prometheus.Counter
+	compactionRunSucceededTenants  prometheus.Counter
+	compactionRunFailedTenants     prometheus.Counter
+	compactionRunSkippedJobs       prometheus.Counter
+	compactionRunSucceededJobs     prometheus.Counter
+	compactionRunFailedJobs        prometheus.Counter
 	compactionRunInterval          prometheus.Gauge
 	compactorRunning               prometheus.Gauge
 }
@@ -45,43 +45,43 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "runs_failed_total",
 			Help:      "Total number of compaction runs failed",
 		}),
-		compactionRunDiscoveredTenants: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		compactionRunDiscoveredTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_discovered",
 			Help:      "Number of tenants discovered during the current compaction run",
 		}),
-		compactionRunSkippedTenants: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		compactionRunSkippedTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_skipped",
 			Help:      "Number of tenants skipped during the current compaction run",
 		}),
-		compactionRunSucceededTenants: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		compactionRunSucceededTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_succeeded",
 			Help:      "Number of tenants successfully processed during the current compaction run",
 		}),
-		compactionRunFailedTenants: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		compactionRunFailedTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenants_failed",
 			Help:      "Number of tenants failed processing during the current compaction run",
 		}),
-		compactionRunSkippedJobs: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		compactionRunSkippedJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "jobs_skipped",
 			Help:      "Number of jobs skipped during the current compaction run",
 		}),
-		compactionRunSucceededJobs: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		compactionRunSucceededJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "jobs_succeeded",
 			Help:      "Number of jobs successfully processed during the current compaction run",
 		}),
-		compactionRunFailedJobs: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		compactionRunFailedJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "jobs_failed",

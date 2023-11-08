@@ -2531,17 +2531,40 @@ ring:
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
+# Directory where files can be downloaded for compaction.
+# CLI flag: -bloom-compactor.working-directory
 [working_directory: <string> | default = ""]
 
-[compaction_interval: <duration>]
+# Interval at which to re-run the compaction operation.
+# CLI flag: -bloom-compactor.compaction-interval
+[compaction_interval: <duration> | default = 10m]
 
-[compaction_retries: <int>]
+# Minimum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-min-backoff
+[compaction_retries_min_backoff: <duration> | default = 10s]
 
-[tables_to_compact: <int>]
+# Maximum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-max-backoff
+[compaction_retries_max_backoff: <duration> | default = 1m]
 
-[skip_latest_n_tables: <int>]
+# Number of retries to perform when compaction fails.
+# CLI flag: -bloom-compactor.compaction-retries
+[compaction_retries: <int> | default = 3]
 
-[max_compaction_parallelism: <int>]
+# Number of tables that compactor will try to compact. Newer tables are chosen
+# when this is less than the number of tables available.
+# CLI flag: -bloom-compactor.tables-to-compact
+[tables_to_compact: <int> | default = 0]
+
+# Do not compact N latest tables.
+# CLI flag: -bloom-compactor.skip-latest-n-tables
+[skip_latest_n_tables: <int> | default = 0]
+
+# Maximum number of tables to compact in parallel. While increasing this value,
+# please make sure compactor has enough disk space allocated to be able to store
+# and compact as many tables.
+# CLI flag: -bloom-compactor.max-compaction-parallelism
+[max_compaction_parallelism: <int> | default = 1]
 ```
 
 ### limits_config
@@ -2938,9 +2961,9 @@ shard_streams:
 [bloom_gateway_shard_size: <int> | default = 1]
 
 # The shard size defines how many bloom compactors should be used by a tenant
-# when computing blooms.
+# when computing blooms. If it's set to 0, shuffle sharding is disabled.
 # CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 0]
+[bloom_compactor_shard_size: <int> | default = 1]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
