@@ -101,7 +101,7 @@ func getFromThrough(refs []*logproto.ShortRef) (time.Time, time.Time) {
 }
 
 func convertToSearches(filters []*logproto.LineFilterExpression) [][]byte {
-	searches := make([][]byte, len(filters))
+	searches := make([][]byte, 0, len(filters))
 	for _, f := range filters {
 		searches = append(searches, []byte(f.Match))
 	}
@@ -111,7 +111,7 @@ func convertToSearches(filters []*logproto.LineFilterExpression) [][]byte {
 // convertToShortRefs converts a v1.ChunkRefs into []*logproto.ShortRef
 // TODO(chaudum): Avoid conversion by transferring v1.ChunkRefs in gRPC request.
 func convertToShortRefs(refs v1.ChunkRefs) []*logproto.ShortRef {
-	result := make([]*logproto.ShortRef, len(refs))
+	result := make([]*logproto.ShortRef, 0, len(refs))
 	for _, ref := range refs {
 		result = append(result, &logproto.ShortRef{From: ref.Start, Through: ref.End, Checksum: ref.Checksum})
 	}
@@ -121,7 +121,7 @@ func convertToShortRefs(refs v1.ChunkRefs) []*logproto.ShortRef {
 // convertToChunkRefs converts a []*logproto.ShortRef into v1.ChunkRefs
 // TODO(chaudum): Avoid conversion by transferring v1.ChunkRefs in gRPC request.
 func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
-	result := make(v1.ChunkRefs, len(refs))
+	result := make(v1.ChunkRefs, 0, len(refs))
 	for _, ref := range refs {
 		result = append(result, v1.ChunkRef{Start: ref.From, End: ref.Through, Checksum: ref.Checksum})
 	}

@@ -190,21 +190,28 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 	// We need to keep a reference to be able to call Stop() on shutdown of the gateway.
 	g.bloomStore = bloomStore
 
+	if err := g.initServices(); err != nil {
+		return nil, err
+	}
+	g.Service = services.NewBasicService(g.starting, g.running, g.stopping).WithName("bloom-gateway")
+
+	return g, nil
+}
+
+func (g *Gateway) initServices() error {
+	var err error
 	svcs := []services.Service{g.queue, g.activeUsers}
 	for i := 0; i < numWorkers; i++ {
-		w := newWorker(i, g.queue, g.bloomStore, g.pendingTasks, logger)
+		w := newWorker(i, g.queue, g.bloomStore, g.pendingTasks, g.logger)
 		svcs = append(svcs, w)
 	}
 	g.serviceMngr, err = services.NewManager(svcs...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	g.serviceWatcher = services.NewFailureWatcher()
 	g.serviceWatcher.WatchManager(g.serviceMngr)
-
-	g.Service = services.NewBasicService(g.starting, g.running, g.stopping).WithName("bloom-gateway")
-
-	return g, nil
+	return nil
 }
 
 func (g *Gateway) starting(ctx context.Context) error {
@@ -319,12 +326,11 @@ type RequestPool struct {
 }
 
 func (p *RequestPool) Get() []v1.Request {
-	r := p.Pool.Get().([]v1.Request)
-	return r[:0]
+	return p.Pool.Get().([]v1.Request)
 }
 
 func (p *RequestPool) Put(r []v1.Request) {
-	p.Pool.Put(r)
+	p.Pool.Put(r[:0])
 }
 
 // Worker is a datastructure that consumes tasks from the request queue,
@@ -353,7 +359,7 @@ func newWorker(i int, queue *queue.RequestQueue, store bloomshipper.Store, tasks
 		tasks:  tasks,
 		logger: log.With(logger, "worker", id),
 	}
-	w.Service = services.NewBasicService(w.starting, w.running, w.stopping)
+	w.Service = services.NewBasicService(w.starting, w.running, w.stopping).WithName(id)
 	w.rp = RequestPool{
 		Pool: sync.Pool{
 			New: func() any {
@@ -418,9 +424,9 @@ func (w *worker) running(ctx context.Context) error {
 			}
 		}
 
-		// TODO(chaudum): Process days in parallel?
 		for day, tasks := range tasksPerDay {
-			level.Debug(w.logger).Log("msg", "process tasks for day", "day", day, "tasks", len(tasks))
+			logger := log.With(w.logger, "day", day)
+			level.Debug(logger).Log("msg", "process tasks for day", "tasks", len(tasks))
 
 			it := newTaskMergeIterator(tasks...)
 			// TODO(chaudum): Use pool
@@ -447,7 +453,7 @@ func (w *worker) running(ctx context.Context) error {
 
 			// no blocks found
 			if len(bqs) == 0 {
-				level.Warn(w.logger).Log("msg", "no blocks found for day", "day", day)
+				level.Warn(logger).Log("msg", "no blocks found")
 				for _, t := range tasks {
 					for _, ref := range t.Request.Refs {
 						t.ResCh <- v1.Output{
@@ -459,24 +465,34 @@ func (w *worker) running(ctx context.Context) error {
 				continue
 			}
 
+			level.Debug(logger).Log("msg", "got block queriers", "count", len(bqs))
+
+			hasNext := it.Next()
 			requests := w.rp.Get()
 			for _, bq := range bqs {
 				requests = requests[:0]
-				for it.Next(); it.At().Fp <= bq.MaxFp; {
+				for hasNext && it.At().Fp <= bq.MaxFp {
 					requests = append(requests, it.At().Request)
+					hasNext = it.Next()
+				}
+				// no fingerprints in the fingerprint range of the current block
+				if len(requests) == 0 {
+					continue
 				}
 				fq := bq.Fuse([]v1.PeekingIterator[v1.Request]{NewIterWithIndex(0, requests)})
+				level.Debug(logger).Log("msg", "initialized fuse querier", "minFp", bq.MinFp, "maxFp", bq.MaxFp, "requests", len(requests))
 				err := fq.Run()
+				level.Debug(logger).Log("msg", "run chunk checks", "err", err)
 				if err != nil {
 					for _, t := range tasks {
-						t.ErrCh <- err
+						t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
 					}
 					w.rp.Put(requests)
 					continue
 				}
 			}
 			w.rp.Put(requests)
-
+			level.Debug(logger).Log("msg", "finished chunk checks")
 		}
 	}
 	return ctx.Err()
