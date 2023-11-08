@@ -359,7 +359,7 @@ func (c *Compactor) compactTenant(ctx context.Context, sc storeClient, tableName
 					return
 				}
 
-				if err := c.runCompact(ctx, c.bloomShipperClient, bt, sc, job); err != nil {
+				if err := c.runCompact(ctx, job, c.bloomShipperClient, bt, sc); err != nil {
 					c.metrics.compactionRunFailedJobs.Inc()
 					errs.Add(errors.Wrap(err, "runBloomCompact"))
 					return
@@ -417,15 +417,6 @@ func (c *Compactor) compactTenantWithRetries(ctx context.Context, sc storeClient
 	)
 }
 
-type Series struct { // TODO this can be replaced with Job struct based on Salva's ring work.
-	tableName, tenant string
-	labels            labels.Labels
-	fingerPrint       model.Fingerprint
-	chunks            []chunk.Chunk
-	from, through     model.Time
-	indexPath         string
-}
-
 func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fingerprint) []chunk.Chunk {
 	chunkRefs := make([]chunk.Chunk, 0, len(chksMetas))
 	for _, chk := range chksMetas {
@@ -444,8 +435,8 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir string) (bloomshipper.Block, error) {
-	localDst := createLocalDirName(workingDir, series)
+func buildBloomBlock(bloomForChks v1.SeriesWithBloom, job Job, workingDir string) (bloomshipper.Block, error) {
+	localDst := createLocalDirName(workingDir, job)
 
 	// write bloom to a local dir
 	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
@@ -482,15 +473,15 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir 
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
-				TenantID:       series.tenant,
-				TableName:      series.tableName,
-				MinFingerprint: uint64(series.fingerPrint), // TODO will change once we compact multiple blooms into a block
-				MaxFingerprint: uint64(series.fingerPrint),
-				StartTimestamp: series.from.Unix(),
-				EndTimestamp:   series.through.Unix(),
+				TenantID:       job.Tenant(),
+				TableName:      job.TableName(),
+				MinFingerprint: uint64(job.Fingerprint()), // TODO will change once we compact multiple blooms into a block
+				MaxFingerprint: uint64(job.Fingerprint()),
+				StartTimestamp: job.From().Unix(),
+				EndTimestamp:   job.Through().Unix(),
 				Checksum:       binary.BigEndian.Uint32(checksum),
 			},
-			IndexPath: series.indexPath,
+			IndexPath: job.IndexPath(),
 		},
 		Data: blockFile,
 	}
@@ -498,16 +489,16 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir 
 	return blocks, nil
 }
 
-func createLocalDirName(workingDir string, series Series) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", series.tableName, series.tenant, series.fingerPrint, series.fingerPrint, series.from, series.through)
+func createLocalDirName(workingDir string, job Job) string {
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.TableName(), job.Tenant(), job.Fingerprint(), job.Fingerprint(), job.From(), job.Through())
 	return filepath.Join(workingDir, dir)
 }
 
-func CompactNewChunks(ctx context.Context, series Series, bt *v1.BloomTokenizer, bloomShipperClient bloomshipper.Client, dst string) (err error) {
+func CompactNewChunks(ctx context.Context, job Job, chunks []chunk.Chunk, bt *v1.BloomTokenizer, bloomShipperClient bloomshipper.Client, dst string) (err error) {
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
-			Fingerprint: series.fingerPrint,
+			Fingerprint: job.Fingerprint(),
 		},
 		Bloom: &v1.Bloom{
 			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
@@ -515,10 +506,10 @@ func CompactNewChunks(ctx context.Context, series Series, bt *v1.BloomTokenizer,
 	}
 
 	// Tokenize data into n-grams
-	bt.PopulateSeriesWithBloom(&bloomForChks, series.chunks)
+	bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
 
 	// Build and upload bloomBlock to storage
-	blocks, err := buildBloomBlock(bloomForChks, series, dst)
+	blocks, err := buildBloomBlock(bloomForChks, job, dst)
 	if err != nil {
 		level.Info(util_log.Logger).Log("building bloomBlocks", err)
 		return
@@ -548,7 +539,7 @@ func CompactNewChunks(ctx context.Context, series Series, bt *v1.BloomTokenizer,
 	return nil
 }
 
-func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient, job Job) error {
+func (c *Compactor) runCompact(ctx context.Context, job Job, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient) error {
 	// TODO call bloomShipperClient.GetMetas to get existing meta.json
 	var metas []bloomshipper.Meta
 
@@ -562,33 +553,7 @@ func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomship
 			return err
 		}
 
-		// effectively get min and max of timestamps of the list of chunks in a series
-		// There must be a better way to get this, ordering chunkRefs by timestamp doesn't fully solve it
-		// chunk files name have this info in ObjectStore, but it's not really exposed
-		minFrom := model.Latest
-		maxThrough := model.Earliest
-
-		for _, c := range chks {
-			if minFrom > c.From {
-				minFrom = c.From
-			}
-			if maxThrough < c.From {
-				maxThrough = c.Through
-			}
-		}
-
-		series := Series{
-			tableName:   job.tableName,
-			tenant:      job.Tenant(),
-			labels:      job.Labels(),
-			fingerPrint: job.Fingerprint(),
-			chunks:      chks,
-			from:        minFrom,
-			through:     maxThrough,
-			indexPath:   job.IndexPath(),
-		}
-
-		err = CompactNewChunks(ctx, series, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+		err = CompactNewChunks(ctx, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
 		if err != nil {
 			return err
 		}

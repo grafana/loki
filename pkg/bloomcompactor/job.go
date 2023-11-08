@@ -12,6 +12,9 @@ type Job struct {
 	seriesLbs                      labels.Labels
 	seriesFP                       model.Fingerprint
 	chunks                         []index.ChunkMeta
+
+	// We compute them lazily.
+	from, through *model.Time
 }
 
 // NewJob returns a new compaction Job.
@@ -33,26 +36,62 @@ func NewJob(
 	}
 }
 
-func (j Job) String() string {
+func (j *Job) String() string {
 	return j.tableName + "_" + j.tenantID + "_" + j.seriesFP.String()
 }
 
-func (j Job) Tenant() string {
+func (j *Job) TableName() string {
+	return j.tableName
+}
+
+func (j *Job) Tenant() string {
 	return j.tenantID
 }
 
-func (j Job) Fingerprint() model.Fingerprint {
+func (j *Job) Fingerprint() model.Fingerprint {
 	return j.seriesFP
 }
 
-func (j Job) Chunks() []index.ChunkMeta {
+func (j *Job) Chunks() []index.ChunkMeta {
 	return j.chunks
 }
 
-func (j Job) Labels() labels.Labels {
+func (j *Job) Labels() labels.Labels {
 	return j.seriesLbs
 }
 
-func (j Job) IndexPath() string {
+func (j *Job) IndexPath() string {
 	return j.indexPath
+}
+
+func (j *Job) From() model.Time {
+	if j.from == nil {
+		j.computeFromThrough()
+	}
+	return *j.from
+}
+
+func (j *Job) Through() model.Time {
+	if j.through == nil {
+		j.computeFromThrough()
+	}
+	return *j.through
+}
+
+func (j *Job) computeFromThrough() {
+	minFrom := model.Latest
+	maxThrough := model.Earliest
+
+	for _, chunk := range j.chunks {
+		from, through := chunk.Bounds()
+		if minFrom > from {
+			minFrom = from
+		}
+		if maxThrough < through {
+			maxThrough = through
+		}
+	}
+
+	j.from = &minFrom
+	j.through = &maxThrough
 }
