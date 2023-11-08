@@ -208,7 +208,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 													foundInChunk := false
 													foundInSbf := false
 
-													foundInSbf = searchSbf(sbf, experiment.tokenizer, queryExperiment.searchString, got[gotIdx].ChunkRef)
+													foundInSbf = searchSbf(sbf, experiment.tokenizer, queryExperiment.searchString)
 
 													lc := got[gotIdx].Data.(*chunkenc.Facade).LokiChunk()
 
