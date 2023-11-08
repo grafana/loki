@@ -369,6 +369,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>clusterLabelOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's cluster label</td>
@@ -1040,6 +1049,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>gateway.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the gateway pods</td>
@@ -1254,6 +1272,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.resolver</td>
+			<td>string</td>
+			<td>Allows overriding the DNS resolver address nginx will use.</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.serverSnippet</td>
 			<td>string</td>
 			<td>Allows appending custom configuration to the server block</td>
@@ -1442,6 +1469,15 @@ null
 			<td>gateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3451,6 +3487,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for read pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>serviceAccount.annotations</td>
 			<td>object</td>
 			<td>Annotations for the service account</td>
@@ -4745,6 +4790,15 @@ null
 			<td>write.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for write pods</td>
 			<td><pre lang="json">
 []
 </pre>

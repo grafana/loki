@@ -8,10 +8,10 @@ _By [@leodido](https://github.com/leodido)_.
 
 To wrap up, this package provides:
 
-- a [RFC5424-compliant parser and builder](/rfc5424)
-- a [RFC3164-compliant parser](/rfc3164) - ie., BSD-syslog messages
-- a parser which works on streams for syslog with [octet counting](https://tools.ietf.org/html/rfc5425#section-4.3) framing technique, see [octetcounting](/octetcounting)
-- a parser which works on streams for syslog with [non-transparent](https://tools.ietf.org/html/rfc6587#section-3.4.2) framing technique, see [nontransparent](/nontransparent)
+- an [RFC5424-compliant parser and builder](/rfc5424)
+- an [RFC3164-compliant parser](/rfc3164) - ie., BSD-syslog messages
+- a parser that works on streams for syslog with [octet counting](https://tools.ietf.org/html/rfc5425#section-4.3) framing technique, see [octetcounting](/octetcounting)
+- a parser that works on streams for syslog with [non-transparent](https://tools.ietf.org/html/rfc6587#section-3.4.2) framing technique, see [nontransparent](/nontransparent)
 
 This library provides the pieces to parse Syslog messages transported following various RFCs.
 

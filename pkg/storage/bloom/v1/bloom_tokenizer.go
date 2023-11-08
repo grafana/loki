@@ -11,10 +11,9 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+
 	"github.com/grafana/loki/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	//"github.com/grafana/loki/tools/tsdb/helpers"
 )
 
 type metrics struct{}
@@ -59,7 +58,7 @@ func (bt *BloomTokenizer) SetLineTokenizer(t Tokenizer) {
 }
 
 // TODO: Something real here with metrics
-func newMetrics(r prometheus.Registerer) *metrics {
+func newMetrics(_ prometheus.Registerer) *metrics {
 	return &metrics{}
 }
 
@@ -69,20 +68,26 @@ func clearCache(cache map[string]interface{}) {
 	}
 }
 
-func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []chunk.Chunk) {
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
 	clearCache(bt.cache)
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
 		bt.chunkIDTokenizer.Reinit(chunks[idx].ChunkRef)
 
 		// TODO: error handling
-		itr, _ := lc.Iterator(
+		itr, err := lc.Iterator(
 			context.Background(),
 			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 			time.Unix(0, math.MaxInt64),
 			logproto.FORWARD,
 			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
 		)
+		if err != nil {
+			level.Info(util_log.Logger).Log("chunk iterator cannot be created")
+			return
+		}
+
+		defer itr.Close()
 
 		for itr.Next() && itr.Error() == nil {
 			toks := bt.chunkIDTokenizer.Tokens(itr.Entry().Line)
@@ -94,7 +99,7 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 					if !found {
 						bt.cache[str] = nil
 
-						sbf.TestAndAdd(tok.Key)
+						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok.Key)
 
 						if len(bt.cache) > 150000 { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
@@ -103,6 +108,11 @@ func (bt *BloomTokenizer) PopulateSBF(sbf *filter.ScalableBloomFilter, chunks []
 				}
 			}
 		}
+		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
+			Start:    chunks[idx].From,
+			End:      chunks[idx].Through,
+			Checksum: chunks[idx].Checksum,
+		})
 	} // for each chunk
 }
 

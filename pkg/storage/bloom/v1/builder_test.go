@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -45,6 +46,17 @@ func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 		keysList = append(keysList, keys)
 	}
 	return
+}
+
+func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
+	for expected.Next() {
+		require.True(t, actual.Next())
+		a, b := expected.At(), actual.At()
+		test(a, b)
+	}
+	require.False(t, actual.Next())
+	require.Nil(t, expected.Err())
+	require.Nil(t, actual.Err())
 }
 
 func TestBlockBuilderRoundTrip(t *testing.T) {
@@ -124,4 +136,87 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 
 		})
 	}
+}
+
+func TestMergeBuilder(t *testing.T) {
+
+	nBlocks := 10
+	numSeries := 100
+	numKeysPerSeries := 100
+	blocks := make([]PeekingIterator[*SeriesWithBloom], 0, nBlocks)
+	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	blockOpts := BlockOptions{
+		schema: Schema{
+			version:  DefaultSchemaVersion,
+			encoding: chunkenc.EncSnappy,
+		},
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10,
+	}
+
+	// Build a list of blocks containing overlapping & duplicated parts of the dataset
+	for i := 0; i < nBlocks; i++ {
+		// references for linking in memory reader+writer
+		indexBuf := bytes.NewBuffer(nil)
+		bloomsBuf := bytes.NewBuffer(nil)
+
+		min := i * numSeries / nBlocks
+		max := (i + 2) * numSeries / nBlocks // allow some overlap
+		if max > len(data) {
+			max = len(data)
+		}
+
+		writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+		reader := NewByteReader(indexBuf, bloomsBuf)
+
+		builder, err := NewBlockBuilder(
+			blockOpts,
+			writer,
+		)
+
+		require.Nil(t, err)
+		itr := NewSliceIter[SeriesWithBloom](data[min:max])
+		require.Nil(t, builder.BuildFrom(itr))
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(NewBlock(reader))))
+	}
+
+	// We're not testing the ability to extend a bloom in this test
+	pop := func(_ *Series, _ *Bloom) error {
+		return errors.New("not implemented")
+	}
+
+	// storage should contain references to all the series we ingested,
+	// regardless of block allocation/overlap.
+	storeItr := NewMapIter[SeriesWithBloom, *Series](
+		NewSliceIter[SeriesWithBloom](data),
+		func(swb SeriesWithBloom) *Series {
+			return swb.Series
+		},
+	)
+
+	// Ensure that the merge builder combines all the blocks correctly
+	mergeBuilder := NewMergeBuilder(blocks, storeItr, pop)
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	builder, err := NewBlockBuilder(
+		blockOpts,
+		writer,
+	)
+	require.Nil(t, err)
+
+	require.Nil(t, mergeBuilder.Build(builder))
+	block := NewBlock(reader)
+	querier := NewBlockQuerier(block)
+
+	EqualIterators[*SeriesWithBloom](
+		t,
+		func(a, b *SeriesWithBloom) {
+			require.Equal(t, a.Series, b.Series, "expected %+v, got %+v", a, b)
+		},
+		NewSliceIter[*SeriesWithBloom](PointerSlice(data)),
+		querier,
+	)
 }

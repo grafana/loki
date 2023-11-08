@@ -4,7 +4,6 @@ import (
 	"flag"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -43,6 +42,6 @@ func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
 }
 
-func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
+func (cfg *ChunkStoreConfig) Validate() error {
 	return nil
 }

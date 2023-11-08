@@ -410,7 +410,6 @@ var labelTests = []struct {
 }
 
 // covers responses from /loki/api/v1/tail
-// TODO(salvacorts): Support encoding flags. And fix serialized structured metadata labels which shouldn't be there unless the categorize flag is set.
 var tailTests = []struct {
 	actual   legacy.TailResponse
 	expected string
@@ -451,7 +450,7 @@ var tailTests = []struct {
 					},
 					"values":[
 						[ "123456789012345", "super line"],
-						[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
+						[ "123456789012346", "super line with labels" ]
 					]
 				}
 			],
@@ -464,6 +463,90 @@ var tailTests = []struct {
 				}
 			]
 		}`,
+	},
+}
+
+var tailTestWithEncodingFlags = []struct {
+	actual        legacy.TailResponse
+	encodingFlags httpreq.EncodingFlags
+	expected      string
+}{
+	{
+		actual: legacy.TailResponse{
+			Streams: []logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 123456789012345),
+							Line:      "super line",
+						},
+						{
+							Timestamp: time.Unix(0, 123456789012346),
+							Line:      "super line with labels",
+							StructuredMetadata: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+						},
+						{
+							Timestamp: time.Unix(0, 123456789012347),
+							Line:      "super line with labels msg=text",
+							StructuredMetadata: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+							Parsed: []logproto.LabelAdapter{
+								{Name: "msg", Value: "text"},
+							},
+						},
+					},
+					Labels: `{test="test"}`,
+				},
+			},
+			DroppedEntries: []legacy.DroppedEntry{
+				{
+					Timestamp: time.Unix(0, 123456789022345),
+					Labels:    "{test=\"test\"}",
+				},
+			},
+		},
+		encodingFlags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
+		expected: fmt.Sprintf(`{
+			"streams": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line"],
+						[ "123456789012346", "super line with labels", {
+							"structuredMetadata": {
+								"foo": "a",
+								"bar": "b" 
+							} 
+						}],
+						[ "123456789012347", "super line with labels msg=text", {
+							"structuredMetadata": {
+								"foo": "a",
+								"bar": "b" 
+							},
+							"parsed": {
+								"msg": "text"
+							}
+						}]
+					]
+				}
+			],
+			"dropped_entries": [
+				{
+					"timestamp": "123456789022345",
+					"labels": {
+						"test": "test"
+					}
+				}
+			],
+			"encodingFlags": ["%s"]
+		}`, httpreq.FlagCategorizeLabels),
 	},
 }
 
@@ -515,15 +598,18 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 
 func Test_MarshalTailResponse(t *testing.T) {
 	for i, tailTest := range tailTests {
-		// convert logproto to model objects
-		model, err := NewTailResponse(tailTest.actual)
+		var b bytes.Buffer
+		err := WriteTailResponseJSON(tailTest.actual, &b, nil)
 		require.NoError(t, err)
 
-		// marshal model object
-		bytes, err := json.Marshal(model)
+		require.JSONEqf(t, tailTest.expected, b.String(), "Tail Test %d failed", i)
+	}
+	for i, tailTest := range tailTestWithEncodingFlags {
+		var b bytes.Buffer
+		err := WriteTailResponseJSON(tailTest.actual, &b, tailTest.encodingFlags)
 		require.NoError(t, err)
 
-		require.JSONEqf(t, tailTest.expected, string(bytes), "Tail Test %d failed", i)
+		require.JSONEqf(t, tailTest.expected, b.String(), "Tail Test %d failed", i)
 	}
 }
 
@@ -925,10 +1011,11 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 				{Timestamp: time.Unix(0, 2), Labels: `{app="dropped"}`},
 			},
 		},
-			WebsocketWriterFunc(func(i int, b []byte) error {
+			NewWebsocketJSONWriter(WebsocketWriterFunc(func(i int, b []byte) error {
 				require.Equal(t, `{"streams":[{"stream":{"app":"foo"},"values":[["1","foobar"]]}],"dropped_entries":[{"timestamp":"2","labels":{"app":"dropped"}}]}`, string(b))
 				return nil
-			}),
+			})),
+			nil,
 		),
 	)
 }

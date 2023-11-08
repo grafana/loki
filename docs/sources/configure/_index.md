@@ -224,6 +224,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # will report 503 Service Unavailable status via /ready endpoint.
 # CLI flag: -shutdown-delay
 [shutdown_delay: <duration> | default = 0s]
+
+# Namespace of the metrics that in previous releases had cortex as namespace.
+# This setting is deprecated and will be removed in the next minor release.
+# CLI flag: -metrics-namespace
+[metrics_namespace: <string> | default = "loki"]
 ```
 
 ### server
@@ -2096,6 +2101,11 @@ congestion_control:
     # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
+# Experimental. Sets a constant prefix for all keys inserted into object
+# storage. Example: loki/
+# CLI flag: -store.object-prefix
+[object_prefix: <string> | default = ""]
+
 # The cache block configures the cache backend.
 # The CLI flags prefix for this block configuration is: store.index-cache-read
 [index_queries_cache_config: <cache_config>]
@@ -2121,17 +2131,6 @@ boltdb_shipper:
   # uploaded by shipper to configured storage
   # CLI flag: -boltdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
-
-  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
-  # filesystem
-  # CLI flag: -boltdb.shipper.shared-store
-  [shared_store: <string> | default = ""]
-
-  # Prefix to add to Object Keys in Shared store. Path separator(if any) should
-  # always be a '/'. Prefix should never start with a separator but should
-  # always end with it
-  # CLI flag: -boltdb.shipper.shared-store.key-prefix
-  [shared_store_key_prefix: <string> | default = "index/"]
 
   # Cache location for restoring index files from storage for queries
   # CLI flag: -boltdb.shipper.cache-location
@@ -2188,17 +2187,6 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
-  # filesystem
-  # CLI flag: -tsdb.shipper.shared-store
-  [shared_store: <string> | default = ""]
-
-  # Prefix to add to Object Keys in Shared store. Path separator(if any) should
-  # always be a '/'. Prefix should never start with a separator but should
-  # always end with it
-  # CLI flag: -tsdb.shipper.shared-store.key-prefix
-  [shared_store_key_prefix: <string> | default = "index/"]
-
   # Cache location for restoring index files from storage for queries
   # CLI flag: -tsdb.shipper.cache-location
   [cache_location: <string> | default = ""]
@@ -2240,11 +2228,6 @@ tsdb_shipper:
   [mode: <string> | default = ""]
 
   [ingesterdbretainperiod: <duration>]
-
-  # Experimental. Whether TSDB should cache postings or not. The
-  # index-read-cache will be used as the backend.
-  # CLI flag: -tsdb.enable-postings-cache
-  [enable_postings_cache: <boolean> | default = false]
 
 # Configures Bloom Shipper.
 bloom_shipper:
@@ -2291,19 +2274,6 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.working-directory
 [working_directory: <string> | default = ""]
 
-# The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
-# to operate on all the object stores that contain either boltdb-shipper or tsdb
-# index.
-# CLI flag: -compactor.shared-store
-[shared_store: <string> | default = ""]
-
-# Prefix to add to object keys in shared store. Path separator(if any) should
-# always be a '/'. Prefix should never start with a separator but should always
-# end with it.
-# CLI flag: -compactor.shared-store.key-prefix
-[shared_store_key_prefix: <string> | default = "index/"]
-
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
@@ -2331,9 +2301,13 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. Defaults to -compactor.shared-store.
+# Store used for managing delete requests.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
+
+# Path prefix for storing delete requests.
+# CLI flag: -compactor.delete-request-store.key-prefix
+[delete_request_store_key_prefix: <string> | default = "index/"]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -compactor.delete-batch-size
@@ -2558,8 +2532,6 @@ ring:
 [enabled: <boolean> | default = false]
 
 [working_directory: <string> | default = ""]
-
-[max_look_back_period: <duration>]
 ```
 
 ### limits_config
@@ -3578,7 +3550,7 @@ ring:
   # CLI flag: -common.storage.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-[instance_interface_names: <list of strings>]
+[instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
 [instance_addr: <string> | default = ""]
 
@@ -4364,6 +4336,10 @@ The `period_config` block configures what index schemas should be used for from 
 
 # Configures how the index is updated and stored.
 index:
+  # Path prefix for index tables. Prefix always needs to end with a path
+  # delimiter '/', except when the prefix is empty.
+  [path_prefix: <string> | default = "index/"]
+
   # Table prefix for all period tables.
   [prefix: <string> | default = ""]
 
@@ -4428,7 +4404,7 @@ dynamodb:
 
     # query to fetch ingester queue length
     # CLI flag: -metrics.queue-length-query
-    [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
+    [queue_length_query: <string> | default = "sum(avg_over_time(loki_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m])) or sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
 
     # query to fetch throttle rates per table
     # CLI flag: -metrics.write-throttle-query
