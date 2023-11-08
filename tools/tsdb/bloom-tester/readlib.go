@@ -126,6 +126,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	//searchString := os.Getenv("SEARCH_STRING")
 	//147854,148226,145541,145603,147159,147836,145551,145599,147393,147841,145265,145620,146181,147225,147167,146131,146189,146739,147510,145572,146710,148031,29,146205,147175,146984,147345
 	//mytenants := []string{"29"}
+	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := shipper.ForEach(
@@ -199,6 +200,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 											tenant,
 											ls.String(),
 											objectClient)
+										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
 												if len(queryExperiment.searchString) >= experiment.tokenizer.GetMin()+experiment.tokenizer.GetSkip() {
@@ -206,15 +208,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 													foundInChunk := false
 													foundInSbf := false
 
-													chunkTokenizer := bt.ChunkIDTokenizer(experiment.tokenizer)
-
-													chunkTokenizer.Reinit(got[gotIdx].ChunkRef)
-													var tokenizer bt.Tokenizer = chunkTokenizer
-													if !experiment.encodeChunkID {
-														tokenizer = experiment.tokenizer
-													}
-
-													foundInSbf = searchSbf(sbf, tokenizer, queryExperiment.searchString)
+													foundInSbf = searchSbf(sbf, experiment.tokenizer, queryExperiment.searchString)
 
 													lc := got[gotIdx].Data.(*chunkenc.Facade).LokiChunk()
 
@@ -313,22 +307,21 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 }
 
 func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.Tokenizer, searchString string) bool {
-	for i := 0; i <= tokenizer.GetSkip(); i++ {
+	tokens := bt.SearchesForTokenizerAndLine(tokenizer, searchString)
+	for _, tokenSet := range tokens {
 		numMatches := 0
-		if (len(searchString) - i) >= tokenizer.GetMin() {
-			tokens := tokenizer.Tokens(searchString[i:])
-
-			for _, token := range tokens {
-				if sbf.Test(token.Key) {
-					numMatches++
-				}
-			}
-			if numMatches > 0 {
-				if numMatches == len(tokens) {
-					return true
-				}
+		for _, token := range tokenSet {
+			if sbf.Test(token.Key) {
+				numMatches++
 			}
 		}
+		if numMatches > 0 {
+			if numMatches == len(tokenSet) {
+				return true
+			}
+		}
+
 	}
+
 	return false
 }

@@ -33,6 +33,8 @@ type BloomTokenizer struct {
 }
 
 const CacheSize = 150000
+const DefaultNGramLength = 4
+const DefaultNGramSkip = 0
 
 // NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
 // Warning: the tokens returned use the same byte slice to reduce allocations. This has two consequences:
@@ -44,7 +46,7 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	t.lineTokenizer = NewNGramTokenizer(4, 5, 0) // default to 4-grams, no skip
+	t.lineTokenizer = NewNGramTokenizer(DefaultNGramLength, DefaultNGramLength+1, DefaultNGramSkip) // default to 4-grams, no skip
 	t.chunkIDTokenizer = ChunkIDTokenizer(t.lineTokenizer)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
@@ -68,6 +70,7 @@ func clearCache(cache map[string]interface{}) {
 	}
 }
 
+// PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
 func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
 	clearCache(bt.cache)
 	for idx := range chunks {
@@ -101,7 +104,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 
 						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok.Key)
 
-						if len(bt.cache) > 150000 { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
 						}
 					}
@@ -116,6 +119,32 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 	} // for each chunk
 }
 
-func (bt *BloomTokenizer) TokenizeLine(line string) []Token {
-	return bt.lineTokenizer.Tokens(line)
+// SearchesForTokenizerAndLine is for taking a given search string (ex: on the read/query path) and returning
+// all the possible tokens, given a tokenizer.
+// This is a multi-dimensional slice where the first slice is the offset into the line, and the
+// second slice is the tokens for that offset.  If an offset into the line returns no tokens, this first dimension
+// will be less than 1 + the number of skips specified in the tokenizer
+// The offset is used if the Tokenizer has a skip value being utilized.
+func SearchesForTokenizerAndLine(t Tokenizer, line string) (res [][]Token) {
+	res = make([][]Token, 0, 10)
+	for i := range line { // iterate by runes
+		if i >= t.GetSkip()+1 {
+			break
+		}
+		tmpTokens := make([]Token, 0, 100)
+		tokens := t.Tokens(line[i:])
+		// As the way the tokenizer is coded, it will reuse its internal buffers,
+		// but we need to save the data, hence the need for copying
+		for _, token := range tokens {
+			tmpToken := Token{}
+			tmpToken.Key = make([]byte, len(token.Key))
+			copy(tmpToken.Key, token.Key)
+			tmpTokens = append(tmpTokens, tmpToken)
+		}
+		if len(tokens) > 0 {
+			res = append(res, tmpTokens)
+		}
+	}
+
+	return res
 }
