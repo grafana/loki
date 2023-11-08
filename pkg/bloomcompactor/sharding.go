@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"github.com/grafana/dskit/ring"
+	util_ring "github.com/grafana/loki/pkg/util/ring"
 )
 
 var (
@@ -11,58 +12,31 @@ var (
 
 // ShardingStrategy describes whether compactor "owns" given user or job.
 type ShardingStrategy interface {
-	OwnsTenant(tenant string) (bool, error)
+	util_ring.TenantSharding
 	OwnsJob(job Job) (bool, error)
 }
 
 type ShuffleShardingStrategy struct {
-	ring           *ring.Ring
+	util_ring.TenantSharding
 	ringLifeCycler *ring.BasicLifecycler
-	limits         Limits
 }
 
 func NewShuffleShardingStrategy(r *ring.Ring, ringLifecycler *ring.BasicLifecycler, limits Limits) *ShuffleShardingStrategy {
 	s := ShuffleShardingStrategy{
-		ring:           r,
+		TenantSharding: util_ring.NewTenantShuffleSharding(r, ringLifecycler, limits.BloomCompactorShardSize),
 		ringLifeCycler: ringLifecycler,
-		limits:         limits,
 	}
 
 	return &s
 }
 
-// getShuffleShardingSubring returns the subring to be used for a given user.
-func (s *ShuffleShardingStrategy) getShuffleShardingSubring(tenantID string) ring.ReadRing {
-	shardSize := s.limits.BloomCompactorShardSize(tenantID)
-
-	// A shard size of 0 means shuffle sharding is disabled for this specific user,
-	// so we just return the full ring so that blocks will be sharded across all compactors.
-	if shardSize <= 0 {
-		return s.ring
-	}
-
-	return s.ring.ShuffleShard(tenantID, shardSize)
-}
-
-func (s *ShuffleShardingStrategy) OwnsTenant(tenantID string) (bool, error) {
-	subRing := s.getShuffleShardingSubring(tenantID)
-	return subRing.HasInstance(s.ringLifeCycler.GetInstanceID()), nil
-}
-
 // OwnsJob makes sure only a single compactor should execute the job.
-// TODO: Pretty similar to sharding strategy in pkg/bloomgateway/sharding.go
 func (s *ShuffleShardingStrategy) OwnsJob(job Job) (bool, error) {
-	// We check again if we own the tenant
-	subRing := s.getShuffleShardingSubring(job.Tenant())
-	ownsTenant := subRing.HasInstance(s.ringLifeCycler.GetInstanceID())
-	if !ownsTenant {
+	if !s.OwnsTenant(job.Tenant()) {
 		return false, nil
 	}
 
-	rs, err := subRing.Get(uint32(job.Fingerprint()), RingOp, nil, nil, nil)
-	if err != nil {
-		return false, err
-	}
-
-	return rs.Includes(s.ringLifeCycler.GetInstanceAddr()), nil
+	tenantRing := s.GetTenantSubRing(job.Tenant())
+	fpSharding := util_ring.NewFingerprintShuffleSharding(tenantRing, s.ringLifeCycler, RingOp)
+	return fpSharding.OwnsFingerprint(uint64(job.Fingerprint()))
 }
