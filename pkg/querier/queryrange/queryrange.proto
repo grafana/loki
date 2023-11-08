@@ -14,6 +14,7 @@ import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
 option go_package = "github.com/grafana/loki/pkg/querier/queryrange";
 option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 message LokiRequest {
@@ -182,5 +183,5 @@ message QueryRequest {
     LokiRequest streams = 5;
     logproto.VolumeRequest volume = 6;
   }
-  map<string, string> metadata = 7;
+  map<string, string> metadata = 7 [(gogoproto.nullable) = false];
 }

@@ -184,7 +184,15 @@ func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Lo
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
-	// TODO: Ensure responses that are too big are not retried.
+	// Ensure responses that are too big are not retried.
+	if response.Size() >= sp.maxMessageSize {
+		level.Error(logger).Log("msg", "response larger than max message size", "size", response.Size(), "maxMessageSize", sp.maxMessageSize)
+
+		errMsg := fmt.Sprintf("response larger than the max message size (%d vs %d)", response.Size(), sp.maxMessageSize)
+		response = &queryrange.QueryResponse{
+			Status: status.New(http.StatusRequestEntityTooLarge, errMsg).Proto(),
+		}
+	}
 
 	result := &frontendv2pb.QueryResultRequest{
 		QueryID: queryID,

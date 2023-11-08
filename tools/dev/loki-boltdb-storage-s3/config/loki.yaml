@@ -31,7 +31,7 @@ frontend:
     encoding: protobuf
 frontend_worker:
     grpc_client_config:
-        max_send_msg_size: 1.048576e+08
+      max_send_msg_size: 1.048576e+08
     scheduler_address: query-scheduler:9009
 ingester:
     chunk_block_size: 262144

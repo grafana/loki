@@ -6,12 +6,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -207,7 +209,9 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 }
 
 func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
-	p := &QueryResponse{}
+	p := &QueryResponse{
+		Status: status.New(codes.OK, "").Proto(),
+	}
 
 	switch response := res.(type) {
 	case *LokiPromResponse:
@@ -259,6 +263,14 @@ func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.
 			return nil, ctx, err
 		}
 		ctx = querylimits.InjectQueryLimitsContext(ctx, *limits)
+	}
+
+	// Add query time
+	if queueTimeHeader, ok := req.Metadata[string(httpreq.QueryQueueTimeHTTPHeader)]; ok {
+		queueTime, err := time.ParseDuration(queueTimeHeader)
+		if err == nil {
+			ctx = context.WithValue(ctx, httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		}
 	}
 
 	// Add org ID

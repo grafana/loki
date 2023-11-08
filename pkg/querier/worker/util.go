@@ -140,7 +140,12 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 
 	resp, err := handler.Do(ctx, r)
 	if err != nil {
-		// TODO: set proper code
+		if s, ok := status.FromError(err); ok {
+			return &queryrange.QueryResponse{
+				Status: s.Proto(),
+			}
+		}
+
 		return &queryrange.QueryResponse{
 			Status: status.New(codes.Internal, err.Error()).Proto(),
 		}
@@ -152,7 +157,6 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 			Status: status.New(codes.Internal, err.Error()).Proto(),
 		}
 	}
-	response.Status = status.New(codes.OK, "").Proto()
 
 	return response
 }
