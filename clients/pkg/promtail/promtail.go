@@ -260,7 +260,7 @@ func (p *Promtail) watchConfig() {
 		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "promtailServer cast fail")
 		return
 	}
-	level.Warn(p.logger).Log("msg", "enable watchConfig")
+	level.Debug(p.logger).Log("msg", "enable watchConfig")
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	for {
