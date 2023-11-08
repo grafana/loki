@@ -273,11 +273,6 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		}
 	}
 
-	// Add org ID
-	//if orgID, ok := req.Metadata[user.OrgIDHeaderName]; ok {
-	//	ctx = user.InjectOrgID(ctx, orgID)
-	//}
-
 	switch concrete := req.Request.(type) {
 	case *QueryRequest_Series:
 		return concrete.Series, ctx, nil
