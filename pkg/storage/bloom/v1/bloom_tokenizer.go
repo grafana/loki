@@ -70,6 +70,7 @@ func clearCache(cache map[string]interface{}) {
 	}
 }
 
+// PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
 func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
 	clearCache(bt.cache)
 	for idx := range chunks {
@@ -118,16 +119,19 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 	} // for each chunk
 }
 
-// TokenizeLine returns a slice of tokens for the given line, based on the current value of the tokenizer
-// If the tokenizer has a skip value, then the line will be tokenized multiple times,
-// starting at the beginning of the line, with "skip" number of iterations, offset by one each time
-// Each offset is kept as a separate slice of tokens, and all are returned in a slice of slices
-func (bt *BloomTokenizer) TokenizeLine(line string) [][]Token {
-	allTokens := make([][]Token, 0, 10)
-	if len(line) >= bt.lineTokenizer.GetMin() && len(line) >= bt.lineTokenizer.GetSkip() {
-		for i := 0; i <= bt.lineTokenizer.GetSkip(); i++ {
+// SearchesForTokenizerAndLine is for taking a given search string (ex: on the read/query path) and returning
+// all the possible tokens, given a tokenizer.
+// This is a multi-dimensional slice where the first slice is the offset into the line, and the
+// second slice is the tokens for that offset.
+// The offset is used if the Tokenizer has a skip value being utilized.
+func SearchesForTokenizerAndLine(t Tokenizer, line string) (res [][]Token) {
+	res = make([][]Token, 0, 10)
+	for i, _ := range line { // iterate by runes
+		if i < t.GetSkip()+1 {
 			tmpTokens := make([]Token, 0, 100)
-			tokens := bt.lineTokenizer.Tokens(line[i:])
+			tokens := t.Tokens(line[i:])
+			// As the way the tokenizer is coded, it will reuse its internal buffers,
+			// but we need to save the data, hence the need for copying
 			for _, token := range tokens {
 				tmpToken := Token{}
 				tmpToken.Key = make([]byte, len(token.Key))
@@ -135,37 +139,10 @@ func (bt *BloomTokenizer) TokenizeLine(line string) [][]Token {
 				tmpTokens = append(tmpTokens, tmpToken)
 			}
 			if len(tokens) > 0 {
-				allTokens = append(allTokens, tmpTokens)
+				res = append(res, tmpTokens)
 			}
 		}
 	}
-	return allTokens
-}
 
-// TokenizeLineWithChunkPrefix returns a slice of tokens for the given line, based on the current value of the tokenizer,
-// and prepends the chunk ID to the tokens
-// If the tokenizer has a skip value, then the line will be tokenized multiple times,
-// starting at the beginning of the line, with "skip" number of iterations, offset by one each time
-// Each offset is kept as a separate slice of tokens, and all are returned in a slice of slices
-func (bt *BloomTokenizer) TokenizeLineWithChunkPrefix(line string, chk logproto.ChunkRef) [][]Token {
-	allTokens := make([][]Token, 0, 10)
-
-	if len(line) >= bt.chunkIDTokenizer.GetMin() && len(line) >= bt.chunkIDTokenizer.GetSkip() {
-		for i := 0; i <= bt.chunkIDTokenizer.GetSkip(); i++ {
-			bt.chunkIDTokenizer.Reinit(chk)
-
-			tmpTokens := make([]Token, 0, 100)
-			tokens := bt.chunkIDTokenizer.Tokens(line[i:])
-			for _, token := range tokens {
-				tmpToken := Token{}
-				tmpToken.Key = make([]byte, len(token.Key))
-				copy(tmpToken.Key, token.Key)
-				tmpTokens = append(tmpTokens, tmpToken)
-			}
-			if len(tokens) > 0 {
-				allTokens = append(allTokens, tmpTokens)
-			}
-		}
-	}
-	return allTokens
+	return res
 }
