@@ -2,26 +2,33 @@ package bloomcompactor
 
 import (
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-// Job holds a compaction job, which consists of a group of blocks that should be compacted together.
-// Not goroutine safe.
-// TODO: A job should probably contain series or chunks
 type Job struct {
-	tenantID  string
-	tableName string
-	seriesFP  model.Fingerprint
-	chunks    []index.ChunkMeta
+	tableName, tenantID, indexPath string
+	seriesLbs                      labels.Labels
+	seriesFP                       model.Fingerprint
+	chunks                         []index.ChunkMeta
 }
 
 // NewJob returns a new compaction Job.
-func NewJob(tenantID string, tableName string, seriesFP model.Fingerprint, chunks []index.ChunkMeta) Job {
+func NewJob(
+	tenantID string,
+	tableName string,
+	indexPath string,
+	seriesFP model.Fingerprint,
+	seriesLbs labels.Labels,
+	chunks []index.ChunkMeta,
+) Job {
 	return Job{
 		tenantID:  tenantID,
 		tableName: tableName,
+		indexPath: indexPath,
 		seriesFP:  seriesFP,
+		seriesLbs: seriesLbs,
 		chunks:    chunks,
 	}
 }
@@ -40,4 +47,12 @@ func (j Job) Fingerprint() model.Fingerprint {
 
 func (j Job) Chunks() []index.ChunkMeta {
 	return j.chunks
+}
+
+func (j Job) Labels() labels.Labels {
+	return j.seriesLbs
+}
+
+func (j Job) IndexPath() string {
+	return j.indexPath
 }

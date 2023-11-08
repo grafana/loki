@@ -33,8 +33,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -365,6 +363,9 @@ func (c *Compactor) compactTenant(ctx context.Context, sc storeClient, tableName
 		return err
 	}
 
+	// Tokenizer is not thread-safe so we need one per goroutine.
+	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
 	if err := sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
@@ -377,7 +378,7 @@ func (c *Compactor) compactTenant(ctx context.Context, sc storeClient, tableName
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-				job := NewJob(tenant, tableName, fingerprint, chksMetas)
+				job := NewJob(tenant, tableName, idx.Path(), fingerprint, labels, chksMetas)
 
 				ownsJob, err := c.sharding.OwnsJob(job)
 				if err != nil {
@@ -392,7 +393,7 @@ func (c *Compactor) compactTenant(ctx context.Context, sc storeClient, tableName
 					return
 				}
 
-				if err := c.runCompact(ctx, c.bloomShipperClient, sc, job); err != nil {
+				if err := c.runCompact(ctx, c.bloomShipperClient, bt, sc, job); err != nil {
 					c.metrics.compactionRunFailedJobs.Inc()
 					errs.Add(errors.Wrap(err, "runBloomCompact"))
 					return
@@ -531,40 +532,6 @@ func buildBloomBlock(bloomForChks v1.SeriesWithBloom, series Series, workingDir 
 	return blocks, nil
 }
 
-// TODO Will be replaced with ring implementation in https://github.com/grafana/loki/pull/11154/
-func listSeriesForBlooms(ctx context.Context, objectClient storeClient) ([]Series, error) {
-	// Returns all the TSDB files, including subdirectories
-	prefix := "index/"
-	indices, _, err := objectClient.object.List(ctx, prefix, "")
-
-	if err != nil {
-		return nil, err
-	}
-
-	var result []Series
-
-	for _, index := range indices {
-		s := strings.Split(index.Key, "/")
-
-		if len(s) > 3 {
-			tableName := s[1]
-
-			if !strings.HasPrefix(tableName, "loki_") || strings.Contains(tableName, "backup") {
-				continue
-			}
-
-			userID := s[2]
-			_, err := strconv.Atoi(userID)
-			if err != nil {
-				continue
-			}
-
-			result = append(result, Series{tableName: tableName, tenant: userID, indexPath: index.Key})
-		}
-	}
-	return result, nil
-}
-
 func createLocalDirName(workingDir string, series Series) string {
 	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", series.tableName, series.tenant, series.fingerPrint, series.fingerPrint, series.from, series.through)
 	return filepath.Join(workingDir, dir)
@@ -615,99 +582,65 @@ func CompactNewChunks(ctx context.Context, series Series, bt *v1.BloomTokenizer,
 	return nil
 }
 
-func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, storeClient storeClient, _ Job) error {
+func (c *Compactor) runCompact(ctx context.Context, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient, job Job) error {
+	// TODO call bloomShipperClient.GetMetas to get existing meta.json
+	var metas []bloomshipper.Meta
 
-	series, err := listSeriesForBlooms(ctx, storeClient)
-
-	// TODO tokenizer is not thread-safe
-	// consider moving to Job/worker level with https://github.com/grafana/loki/pull/11154/
-	// create a tokenizer
-	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
-
-	if err != nil {
-		return err
-	}
-
-	for _, s := range series {
-		err := storeClient.indexShipper.ForEach(ctx, s.tableName, s.tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
-			if isMultiTenantIndex {
-				return nil
-			}
-
-			// TODO make this casting safe
-			_ = idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
-				ctx,
-				nil,              // Process all shards
-				0, math.MaxInt64, // Replace with MaxLookBackPeriod
-
-				// Get chunks for a series label and a fp
-				func(ls labels.Labels, fp model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-
-					// TODO call bloomShipperClient.GetMetas to get existing meta.json
-					var metas []bloomshipper.Meta
-
-					if len(metas) == 0 {
-						// Get chunks data from list of chunkRefs
-						chks, err := storeClient.chunk.GetChunks(
-							ctx,
-							makeChunkRefs(chksMetas, s.tenant, fp),
-						)
-						if err != nil {
-							level.Info(util_log.Logger).Log("getting chunks", err)
-							return
-						}
-
-						// effectively get min and max of timestamps of the list of chunks in a series
-						// There must be a better way to get this, ordering chunkRefs by timestamp doesn't fully solve it
-						// chunk files name have this info in ObjectStore, but it's not really exposed
-						minFrom := model.Latest
-						maxThrough := model.Earliest
-
-						for _, c := range chks {
-							if minFrom > c.From {
-								minFrom = c.From
-							}
-							if maxThrough < c.From {
-								maxThrough = c.Through
-							}
-						}
-
-						series := Series{
-							tableName:   s.tableName,
-							tenant:      s.tenant,
-							labels:      ls,
-							fingerPrint: fp,
-							chunks:      chks,
-							from:        minFrom,
-							through:     maxThrough,
-							indexPath:   s.indexPath,
-						}
-
-						err = CompactNewChunks(ctx, series, bt, bloomShipperClient, c.cfg.WorkingDirectory)
-						if err != nil {
-							return
-						}
-					} else {
-						// TODO complete part 2 - periodic compaction for delta from previous period
-						// When already compacted metas exists
-						// Deduplicate index paths
-						uniqueIndexPaths := make(map[string]struct{})
-
-						for _, meta := range metas {
-							for _, blockRef := range meta.Blocks {
-								uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
-								// ...
-							}
-						}
-
-					}
-				})
-			return nil
-		})
+	if len(metas) == 0 {
+		// Get chunks data from list of chunkRefs
+		chks, err := storeClient.chunk.GetChunks(
+			ctx,
+			makeChunkRefs(job.Chunks(), job.Tenant(), job.Fingerprint()),
+		)
 		if err != nil {
-			return errors.Wrap(err, "getting each series")
+			return err
 		}
+
+		// effectively get min and max of timestamps of the list of chunks in a series
+		// There must be a better way to get this, ordering chunkRefs by timestamp doesn't fully solve it
+		// chunk files name have this info in ObjectStore, but it's not really exposed
+		minFrom := model.Latest
+		maxThrough := model.Earliest
+
+		for _, c := range chks {
+			if minFrom > c.From {
+				minFrom = c.From
+			}
+			if maxThrough < c.From {
+				maxThrough = c.Through
+			}
+		}
+
+		series := Series{
+			tableName:   job.tableName,
+			tenant:      job.Tenant(),
+			labels:      job.Labels(),
+			fingerPrint: job.Fingerprint(),
+			chunks:      chks,
+			from:        minFrom,
+			through:     maxThrough,
+			indexPath:   job.IndexPath(),
+		}
+
+		err = CompactNewChunks(ctx, series, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+		if err != nil {
+			return err
+		}
+	} else {
+		// TODO complete part 2 - periodic compaction for delta from previous period
+		// When already compacted metas exists
+		// Deduplicate index paths
+		uniqueIndexPaths := make(map[string]struct{})
+
+		for _, meta := range metas {
+			for _, blockRef := range meta.Blocks {
+				uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
+				// ...
+			}
+		}
+
 	}
+
 	return nil
 }
 
