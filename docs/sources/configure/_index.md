@@ -2556,9 +2556,10 @@ ring:
 # CLI flag: -bloom-compactor.tables-to-compact
 [tables_to_compact: <int> | default = 0]
 
-# Do not compact N latest tables.
-# CLI flag: -bloom-compactor.skip-latest-n-tables
-[skip_latest_n_tables: <int> | default = 0]
+# Do not compact tables older than the the configured time. Default to 7 days.
+# 0s means no limit
+# CLI flag: -bloom-compactor.max-table-age
+[max_table_age: <duration> | default = 168h]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
