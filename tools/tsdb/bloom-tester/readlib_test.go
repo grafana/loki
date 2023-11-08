@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/grafana/loki/pkg/logproto"
 	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"testing"
 
@@ -66,7 +65,6 @@ func TestSearchSbf(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			chunk := logproto.ChunkRef{From: 0, Through: 999999, Checksum: 1}
 			sbf := experiment.bloom()
 			tokens := bt.SearchesForTokenizerAndLine(four, tc.inputLine)
 			for _, tokenSet := range tokens {
@@ -74,7 +72,7 @@ func TestSearchSbf(t *testing.T) {
 					sbf.Add(token.Key)
 				}
 			}
-			require.Equal(t, tc.exp, searchSbf(sbf, four, tc.inputSearch, chunk))
+			require.Equal(t, tc.exp, searchSbf(sbf, four, tc.inputSearch))
 		})
 	}
 }

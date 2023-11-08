@@ -306,7 +306,7 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 	return sbf
 }
 
-func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.Tokenizer, searchString string, chk logproto.ChunkRef) bool {
+func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.Tokenizer, searchString string) bool {
 	tokens := bt.SearchesForTokenizerAndLine(tokenizer, searchString)
 	for _, tokenSet := range tokens {
 		numMatches := 0
