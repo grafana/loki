@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
@@ -91,7 +92,8 @@ func TestShuffleSharding(t *testing.T) {
 		}
 
 		for j := 0; j < jobsPerTenant; j++ {
-			job := NewJob(tenant, "table", model.Fingerprint(i), nil)
+			lbls := labels.FromStrings("namespace", fmt.Sprintf("namespace-%d", j))
+			job := NewJob(tenant, "", "", model.Fingerprint(lbls.Hash()), lbls, nil)
 			ownsJob, err := shard.OwnsJob(job)
 			require.NoError(t, err)
 
