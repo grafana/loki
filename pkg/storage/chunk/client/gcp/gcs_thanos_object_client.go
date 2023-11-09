@@ -68,11 +68,11 @@ func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string)
 func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
-	iterParams := objstore.IterOption(func(params *objstore.IterParams) {})
+	var iterParams []objstore.IterOption
 
 	// If delimiter is empty we want to list all files
 	if delimiter == "" {
-		iterParams = objstore.WithRecursiveIter
+		iterParams = append(iterParams, objstore.WithRecursiveIter)
 	}
 
 	s.client.Iter(ctx, prefix, func(objectKey string) error {
@@ -94,7 +94,7 @@ func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter stri
 
 		return nil
 
-	}, iterParams)
+	}, iterParams...)
 
 	return storageObjects, commonPrefixes, nil
 }
