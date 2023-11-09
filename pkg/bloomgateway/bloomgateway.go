@@ -141,14 +141,16 @@ func makePendingTasks(n int) *pendingTasks {
 type Gateway struct {
 	services.Service
 
-	cfg     Config
-	logger  log.Logger
-	metrics *metrics
+	cfg    Config
+	logger log.Logger
 
-	queue        *queue.RequestQueue
-	queueMetrics *queue.Metrics
-	activeUsers  *util.ActiveUsersCleanupService
-	bloomStore   bloomshipper.Store
+	metrics       *metrics
+	workerMetrics *workerMetrics
+	queueMetrics  *queue.Metrics
+
+	queue       *queue.RequestQueue
+	activeUsers *util.ActiveUsersCleanupService
+	bloomStore  bloomshipper.Store
 
 	sharding ShardingStrategy
 
@@ -156,19 +158,28 @@ type Gateway struct {
 
 	serviceMngr    *services.Manager
 	serviceWatcher *services.FailureWatcher
+
+	workerConfig workerConfig
 }
 
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+	metricsSubsystem := "bloom_gateway"
+
 	g := &Gateway{
 		cfg:          cfg,
 		logger:       logger,
-		metrics:      newMetrics("bloom_gateway", reg),
+		metrics:      newMetrics(metricsSubsystem, reg),
 		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
+		workerConfig: workerConfig{
+			maxWaitTime: 200 * time.Millisecond,
+			maxItems:    100,
+		},
+		workerMetrics: newWorkerMetrics(metricsSubsystem, reg),
+		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
 
-	g.queueMetrics = queue.NewMetrics(reg, constants.Loki, "bloom_gateway")
 	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
@@ -202,7 +213,8 @@ func (g *Gateway) initServices() error {
 	var err error
 	svcs := []services.Service{g.queue, g.activeUsers}
 	for i := 0; i < numWorkers; i++ {
-		w := newWorker(i, g.queue, g.bloomStore, g.pendingTasks, g.logger)
+		id := fmt.Sprintf("bloom-query-worker-%d", i)
+		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
 		svcs = append(svcs, w)
 	}
 	g.serviceMngr, err = services.NewManager(svcs...)
@@ -307,13 +319,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		case err := <-errCh:
 			return nil, errors.Wrap(err, "waiting for results")
 		case res := <-resCh:
-			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", res.Fp, "refs", res.Chks.Len())
-			// wait for all parts of the full response
+			// log line is helpful for debugging tests
+			// level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", res.Fp, "refs", res.Chks.Len())
 			response = append(response, &logproto.GroupedChunkRefs{
 				Tenant:      tenantID,
 				Fingerprint: uint64(res.Fp),
 				Refs:        convertToShortRefs(res.Chks),
 			})
+			// wait for all parts of the full response
 			if len(response) == len(req.Refs) {
 				return &logproto.FilterChunkRefResponse{ChunkRefs: response}, nil
 			}
@@ -321,19 +334,49 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 }
 
-type RequestPool struct {
-	sync.Pool
+type workerConfig struct {
+	maxWaitTime time.Duration
+	maxItems    int
 }
 
-func (p *RequestPool) Get() []v1.Request {
-	return p.Pool.Get().([]v1.Request)
+type workerMetrics struct {
+	dequeuedTasks      *prometheus.CounterVec
+	dequeueErrors      *prometheus.CounterVec
+	dequeueWaitTime    *prometheus.SummaryVec
+	storeAccessLatency *prometheus.HistogramVec
 }
 
-func (p *RequestPool) Put(r []v1.Request) {
-	p.Pool.Put(r[:0])
+func newWorkerMetrics(subsystem string, registerer prometheus.Registerer) *workerMetrics {
+	labels := []string{"worker"}
+	return &workerMetrics{
+		dequeuedTasks: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "dequeued_tasks_total",
+			Help:      "Total amount of tasks that the worker dequeued from the bloom query queue",
+		}, labels),
+		dequeueErrors: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "dequeue_errors_total",
+			Help:      "Total amount of failed dequeue operations",
+		}, labels),
+		dequeueWaitTime: promauto.With(registerer).NewSummaryVec(prometheus.SummaryOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "dequeue_wait_time",
+			Help:      "Time spent waiting for dequeuing tasks from queue",
+		}, labels),
+		storeAccessLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "store_latency",
+			Help:      "Latency in seconds of accessing the bloom store component",
+		}, append(labels, "operation")),
+	}
 }
 
-// Worker is a datastructure that consumes tasks from the request queue,
+// worker is a datastructure that consumes tasks from the request queue,
 // processes them and returns the result/error back to the response channels of
 // the tasks.
 // It is responsible for multiplexing tasks so they can be processes in a more
@@ -341,23 +384,25 @@ func (p *RequestPool) Put(r []v1.Request) {
 type worker struct {
 	services.Service
 
-	ID     string
-	queue  *queue.RequestQueue
-	store  bloomshipper.Store
-	tasks  *pendingTasks
-	logger log.Logger
-
-	rp RequestPool
+	id      string
+	cfg     workerConfig
+	queue   *queue.RequestQueue
+	store   bloomshipper.Store
+	tasks   *pendingTasks
+	logger  log.Logger
+	metrics *workerMetrics
+	rp      RequestPool
 }
 
-func newWorker(i int, queue *queue.RequestQueue, store bloomshipper.Store, tasks *pendingTasks, logger log.Logger) *worker {
-	id := fmt.Sprintf("bloom-query-worker-%d", i)
+func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, store bloomshipper.Store, tasks *pendingTasks, logger log.Logger, metrics *workerMetrics) *worker {
 	w := &worker{
-		ID:     id,
-		queue:  queue,
-		store:  store,
-		tasks:  tasks,
-		logger: log.With(logger, "worker", id),
+		id:      id,
+		cfg:     cfg,
+		queue:   queue,
+		store:   store,
+		tasks:   tasks,
+		logger:  log.With(logger, "worker", id),
+		metrics: metrics,
 	}
 	w.Service = services.NewBasicService(w.starting, w.running, w.stopping).WithName(id)
 	w.rp = RequestPool{
@@ -372,24 +417,24 @@ func newWorker(i int, queue *queue.RequestQueue, store bloomshipper.Store, tasks
 
 func (w *worker) starting(_ context.Context) error {
 	level.Debug(w.logger).Log("msg", "starting worker")
-	w.queue.RegisterConsumerConnection(w.ID)
+	w.queue.RegisterConsumerConnection(w.id)
 	return nil
 }
 
 func (w *worker) running(ctx context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
-	maxItems := 10
-	maxWaitTime := 500 * time.Millisecond
-
 	for ctx.Err() == nil {
 		taskCtx := context.Background()
-		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.ID, maxItems, maxWaitTime)
+		dequeueStart := time.Now()
+		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems, w.cfg.maxWaitTime)
+		w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
 		if err != nil {
 			// We only return an error if the queue is stopped and dequeuing did not yield any items
 			if err == queue.ErrStopped && len(items) == 0 {
 				return err
 			}
+			w.metrics.dequeueErrors.WithLabelValues(w.id).Inc()
 			level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err, "items", len(items))
 		}
 		idx = newIdx
@@ -397,20 +442,20 @@ func (w *worker) running(ctx context.Context) error {
 		if len(items) == 0 {
 			continue
 		}
+		w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
 
 		tasksPerDay := make(map[time.Time][]Task)
 
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
-				level.Error(w.logger).Log("msg", "failed to cast dequeued item to Task", "item", item)
-				continue
+				// This really should never happen, because only the bloom gateway itself can enqueue tasks.
+				return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 			}
 			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			w.tasks.Delete(task.ID)
 
-			fromDay := getDayTime(task.Request.From)
-			throughDay := getDayTime(task.Request.Through)
+			fromDay, throughDay := task.Bounds()
 
 			if fromDay.Equal(throughDay) {
 				tasksPerDay[fromDay] = append(tasksPerDay[fromDay], task)
@@ -426,10 +471,10 @@ func (w *worker) running(ctx context.Context) error {
 
 		for day, tasks := range tasksPerDay {
 			logger := log.With(w.logger, "day", day)
-			level.Debug(logger).Log("msg", "process tasks for day", "tasks", len(tasks))
+			level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
 			it := newTaskMergeIterator(tasks...)
-			// TODO(chaudum): Use pool
+
 			fingerprints := make([]uint64, 0, 1024)
 			for it.Next() {
 				// fingerprints are already sorted. we can skip duplicates by checking
@@ -443,15 +488,20 @@ func (w *worker) running(ctx context.Context) error {
 
 			it.Reset()
 
+			storeFetchStart := time.Now()
 			bqs, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour), fingerprints)
+			w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriers").Observe(time.Since(storeFetchStart).Seconds())
 			if err != nil {
 				for _, t := range tasks {
 					t.ErrCh <- err
 				}
+				// continue with tasks of next day
 				continue
 			}
 
-			// no blocks found
+			// No blocks found.
+			// Since there are no blocks for the given tasks, we need to return the
+			// unfiltered list of chunk refs.
 			if len(bqs) == 0 {
 				level.Warn(logger).Log("msg", "no blocks found")
 				for _, t := range tasks {
@@ -462,10 +512,9 @@ func (w *worker) running(ctx context.Context) error {
 						}
 					}
 				}
+				// continue with tasks of next day
 				continue
 			}
-
-			level.Debug(logger).Log("msg", "got block queriers", "count", len(bqs))
 
 			hasNext := it.Next()
 			requests := w.rp.Get()
@@ -480,19 +529,18 @@ func (w *worker) running(ctx context.Context) error {
 					continue
 				}
 				fq := bq.Fuse([]v1.PeekingIterator[v1.Request]{NewIterWithIndex(0, requests)})
-				level.Debug(logger).Log("msg", "initialized fuse querier", "minFp", bq.MinFp, "maxFp", bq.MaxFp, "requests", len(requests))
 				err := fq.Run()
-				level.Debug(logger).Log("msg", "run chunk checks", "err", err)
 				if err != nil {
 					for _, t := range tasks {
 						t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
 					}
+					// return slice back to pool
 					w.rp.Put(requests)
 					continue
 				}
 			}
+			// return slice back to pool
 			w.rp.Put(requests)
-			level.Debug(logger).Log("msg", "finished chunk checks")
 		}
 	}
 	return ctx.Err()
@@ -500,6 +548,6 @@ func (w *worker) running(ctx context.Context) error {
 
 func (w *worker) stopping(err error) error {
 	level.Debug(w.logger).Log("msg", "stopping worker", "err", err)
-	w.queue.UnregisterConsumerConnection(w.ID)
+	w.queue.UnregisterConsumerConnection(w.id)
 	return nil
 }

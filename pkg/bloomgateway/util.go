@@ -1,6 +1,7 @@
 package bloomgateway
 
 import (
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -46,6 +47,18 @@ func NewIterWithIndex[T any](i int, xs []T) *SliceIterWithIndex[T] {
 		pos: -1,
 		idx: i,
 	}
+}
+
+type RequestPool struct {
+	sync.Pool
+}
+
+func (p *RequestPool) Get() []v1.Request {
+	return p.Pool.Get().([]v1.Request)
+}
+
+func (p *RequestPool) Put(r []v1.Request) {
+	p.Pool.Put(r[:0])
 }
 
 func getDay(ts model.Time) int64 {

@@ -1,8 +1,10 @@
 package bloomgateway
 
 import (
+	"time"
+
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 )
@@ -39,6 +41,11 @@ func NewTask(tenantID string, req *logproto.FilterChunkRefRequest) (Task, chan v
 		ResCh:   resCh,
 	}
 	return task, resCh, errCh, nil
+}
+
+// Bounds returns the day boundaries of the task
+func (t Task) Bounds() (time.Time, time.Time) {
+	return getDayTime(t.Request.From), getDayTime(t.Request.Through)
 }
 
 // WithRequest returns a copy of the task, which holds the provided Request req.
