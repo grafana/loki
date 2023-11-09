@@ -20,8 +20,8 @@ func TestTask(t *testing.T) {
 		task, _, _, err := NewTask("tenant", req)
 		require.NoError(t, err)
 		from, through := task.Bounds()
-		require.Equal(t, req.From, from)
-		require.Equal(t, req.Through, through)
+		require.Equal(t, getDayTime(req.From), from)
+		require.Equal(t, getDayTime(req.Through), through)
 	})
 }
 

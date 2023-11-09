@@ -379,7 +379,7 @@ type mockBloomStore struct {
 	t *testing.T
 }
 
-func (s *mockBloomStore) GetBlockQueriers(_ context.Context, tenant string, from, through time.Time, fingerprints []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
+func (s *mockBloomStore) GetBlockQueriers(_ context.Context, _ string, from, through time.Time, _ []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
 	return []bloomshipper.BlockQuerierWithFingerprintRange{
 		{BlockQuerier: v1.MakeBlockQuerier(s.t, 0, 255, from.Unix(), through.Unix()), MinFp: 0, MaxFp: 255},
 		{BlockQuerier: v1.MakeBlockQuerier(s.t, 256, 511, from.Unix(), through.Unix()), MinFp: 256, MaxFp: 511},
