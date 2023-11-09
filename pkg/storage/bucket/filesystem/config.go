@@ -12,7 +12,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
+// RegisterFlagsWithPrefixAndDefaultDirectory registers the flags for filesystem
+// storage with the provided prefix and sets the default directory to dir.
+func (cfg *Config) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Directory, prefix+"filesystem.dir", dir, "Local filesystem storage directory.")
+}
+
 // RegisterFlagsWithPrefix registers the flags for filesystem storage with the provided prefix
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Directory, prefix+"filesystem.dir", "", "Local filesystem storage directory.")
+	cfg.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, "", f)
 }
