@@ -70,7 +70,9 @@ func getDayTime(ts model.Time) time.Time {
 }
 
 func filterRequestForDay(r *logproto.FilterChunkRefRequest, day time.Time) *logproto.FilterChunkRefRequest {
-	var from, through time.Time
+	through := model.TimeFromUnix(day.Unix())
+	from := model.TimeFromUnix(day.Add(24 * time.Hour).Unix())
+
 	refs := make([]*logproto.GroupedChunkRefs, 0, len(r.Refs))
 	for i := range r.Refs {
 		groupedChunkRefs := &logproto.GroupedChunkRefs{
@@ -89,8 +91,14 @@ func filterRequestForDay(r *logproto.FilterChunkRefRequest, day time.Time) *logp
 				groupedChunkRefs.Refs = append(groupedChunkRefs.Refs, shortRef)
 			}
 		}
+
+		// do not add empty groups to request
+		if len(groupedChunkRefs.Refs) == 0 {
+			continue
+		}
+
 		groupFrom, groupThrough := getFromThrough(groupedChunkRefs.Refs)
-		if from.Unix() > 0 && groupFrom.Before(from) {
+		if groupFrom.Before(from) {
 			from = groupFrom
 		}
 		if groupThrough.After(through) {
@@ -98,19 +106,27 @@ func filterRequestForDay(r *logproto.FilterChunkRefRequest, day time.Time) *logp
 		}
 		refs = append(refs, groupedChunkRefs)
 	}
+
+	// The initial value of `from` is the through time and vice versa.
+	// This is, in order to determine min From and max Through.
+	// In case no chunk refs match, we need to swap the initial value again.
+	if len(refs) == 0 {
+		from, through = through, from
+	}
+
 	return &logproto.FilterChunkRefRequest{
-		From:    model.TimeFromUnix(from.Unix()),
-		Through: model.TimeFromUnix(through.Unix()),
+		From:    from,
+		Through: through,
 		Refs:    refs,
 		Filters: r.Filters,
 	}
 }
 
-func getFromThrough(refs []*logproto.ShortRef) (time.Time, time.Time) {
+func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 	if len(refs) == 0 {
-		return time.Time{}, time.Time{}
+		return model.Earliest, model.Latest
 	}
-	return refs[0].From.Time(), refs[len(refs)-1].Through.Time()
+	return refs[0].From, refs[len(refs)-1].Through
 }
 
 func convertToSearches(filters []*logproto.LineFilterExpression) [][]byte {
