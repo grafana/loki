@@ -86,7 +86,7 @@ func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx 
 }
 
 // handleHTTPRequest converts the request and applies it to the handler.
-func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler, codec GRPCCodec) *httpgrpc.HTTPResponse {
+func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler, codec RequestCodec) *httpgrpc.HTTPResponse {
 	req, ctx, err := codec.DecodeHTTPGrpcRequest(ctx, request)
 	if err != nil {
 		response, ok := httpgrpc.HTTPResponseFromError(err)
@@ -130,8 +130,8 @@ func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handl
 }
 
 // handleQueryRequest applies unwraps a request and applies it to the handler.
-func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, handler RequestHandler) *queryrange.QueryResponse {
-	r, ctx, err := queryrange.QueryRequestUnwrap(ctx, request)
+func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, handler RequestHandler, codec RequestCodec) *queryrange.QueryResponse {
+	r, ctx, err := codec.QueryRequestUnwrap(ctx, request)
 	if err != nil {
 		return &queryrange.QueryResponse{
 			Status: status.New(codes.Internal, err.Error()).Proto(),
@@ -146,8 +146,11 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 			}
 		}
 
+		// This block covers any errors that are not gRPC errors and will include all query errors.
+		// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
+		code := logqlmodel.MapStatusCode(err)
 		return &queryrange.QueryResponse{
-			Status: status.New(codes.Internal, err.Error()).Proto(),
+			Status: status.New(codes.Code(code), err.Error()).Proto(),
 		}
 	}
 

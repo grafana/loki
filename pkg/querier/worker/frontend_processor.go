@@ -25,7 +25,7 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec GRPCCodec) processor {
+func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec RequestCodec) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
@@ -39,7 +39,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, co
 // This should be used by Frontend V1.
 type frontendProcessor struct {
 	handler        RequestHandler
-	codec          GRPCCodec
+	codec          RequestCodec
 	maxMessageSize int
 	querierID      string
 

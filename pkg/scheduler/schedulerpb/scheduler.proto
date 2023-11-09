@@ -36,7 +36,7 @@ message SchedulerToQuerier {
   uint64 queryID = 1;
 
   oneof request {
-    httpgrpc.HTTPRequest httpRequest = 2;
+    httpgrpc.HTTPRequest httpRequest = 2 [deprecated = true];
     queryrange.QueryRequest queryRequest = 8;
   }
 

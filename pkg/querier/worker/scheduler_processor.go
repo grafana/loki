@@ -33,7 +33,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics, codec GRPCCodec) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics, codec RequestCodec) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
@@ -61,7 +61,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 type schedulerProcessor struct {
 	log            log.Logger
 	handler        RequestHandler
-	codec          GRPCCodec
+	codec          RequestCodec
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
@@ -180,7 +180,7 @@ func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Lo
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response := handleQueryRequest(ctx, request, sp.handler)
+	response := handleQueryRequest(ctx, request, sp.handler, sp.codec)
 
 	logger = log.With(logger, "frontend", frontendAddress)
 

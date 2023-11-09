@@ -1424,6 +1424,7 @@ func (badResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader { ret
 func (b badResponse) WithHeaders([]queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	return b
 }
+func (badResponse) SetHeader(string, string) {}
 
 type badReader struct{}
 

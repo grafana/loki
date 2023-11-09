@@ -241,7 +241,7 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	return p, nil
 }
 
-func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {
+func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {
 	if req == nil {
 		return nil, ctx, nil
 	}
@@ -273,11 +273,6 @@ func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.
 		}
 	}
 
-	// Add org ID
-	//if orgID, ok := req.Metadata[user.OrgIDHeaderName]; ok {
-	//	ctx = user.InjectOrgID(ctx, orgID)
-	//}
-
 	switch concrete := req.Request.(type) {
 	case *QueryRequest_Series:
 		return concrete.Series, ctx, nil
@@ -298,7 +293,7 @@ func QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.
 	}
 }
 
-func QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequest, error) {
+func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequest, error) {
 
 	result := &QueryRequest{
 		Metadata: make(map[string]string),

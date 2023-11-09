@@ -19,7 +19,7 @@ service FrontendForQuerier {
 message QueryResultRequest {
   uint64 queryID = 1;
   oneof response {
-    httpgrpc.HTTPResponse httpResponse = 2 [deprecated = true]; // or mark as reserved
+    httpgrpc.HTTPResponse httpResponse = 2 [deprecated = true];
     queryrange.QueryResponse queryResponse = 4;
   }
   stats.Stats stats = 3;

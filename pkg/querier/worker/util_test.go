@@ -22,14 +22,14 @@ func (h HandlerFunc) Do(ctx context.Context, req queryrangebase.Request) (queryr
 
 func TestHandleQueryRequest(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	request, err := queryrange.QueryRequestWrap(ctx, &queryrange.LokiRequest{})
+	request, err := queryrange.DefaultCodec.QueryRequestWrap(ctx, &queryrange.LokiRequest{})
 	require.NoError(t, err)
 
 	mockHandler := HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "some input is malformed")
 	})
 
-	response := handleQueryRequest(ctx, request, mockHandler)
+	response := handleQueryRequest(ctx, request, mockHandler, queryrange.DefaultCodec)
 
 	require.Equal(t, "some input is malformed", response.Status.Message)
 

@@ -76,6 +76,17 @@ func (v *LokiSeriesResponseView) WithHeaders(h []queryrangebase.PrometheusRespon
 	return v
 }
 
+func (v *LokiSeriesResponseView) SetHeader(name, value string) {
+	for i, h := range v.headers {
+		if h.Name == name {
+			v.headers[i].Values = []string{value}
+			return
+		}
+	}
+
+	v.headers = append(v.headers, &queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
+}
+
 // Implement proto.Message
 func (v *LokiSeriesResponseView) Reset()         {}
 func (v *LokiSeriesResponseView) String() string { return "" }
@@ -245,8 +256,20 @@ func (v *MergedSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResp
 	return v.headers
 }
 
-func (v *MergedSeriesResponseView) WithHeaders([]queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+func (v *MergedSeriesResponseView) WithHeaders(headers []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	v.headers = convertPrometheusResponseHeadersToPointers(headers)
 	return v
+}
+
+func (v *MergedSeriesResponseView) SetHeader(name, value string) {
+	for i, h := range v.headers {
+		if h.Name == name {
+			v.headers[i].Values = []string{value}
+			return
+		}
+	}
+
+	v.headers = append(v.headers, &queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
 }
 
 // Implement proto.Message
