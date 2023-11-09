@@ -716,7 +716,10 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 			gcsCfg.EnableRetries = false
 		}
 		if cfg.ThanosObjStore {
-			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, utilLog.Logger, cfg.Hedging)
+			// Passing "gcs" as the component name as currently it's not
+			// possible to get the component called this method
+			// TODO(JoaoBraveCoding) update compoent when bigger refactor happens
+			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, "gcs", utilLog.Logger, cfg.Hedging)
 		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 

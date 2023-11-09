@@ -23,13 +23,12 @@ type GCSThanosObjectClient struct {
 	client objstore.Bucket
 }
 
-func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, logger log.Logger, hedgingCfg hedging.Config) (*GCSThanosObjectClient, error) {
-	return newGCSThanosObjectClient(ctx, cfg, logger)
+func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config) (*GCSThanosObjectClient, error) {
+	return newGCSThanosObjectClient(ctx, cfg, component, logger)
 }
 
-func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, logger log.Logger) (*GCSThanosObjectClient, error) {
-	// TODO (JoaoBraveCoding) accessing cfg.GCS directly
-	bucket, err := bucket.NewClient(ctx, cfg, cfg.GCS.BucketName, logger, prometheus.DefaultRegisterer)
+func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger) (*GCSThanosObjectClient, error) {
+	bucket, err := bucket.NewClient(ctx, cfg, component, logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -38,9 +37,9 @@ func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, logger log
 	}, nil
 }
 
-func (s *GCSThanosObjectClient) Stop() {
-}
+func (s *GCSThanosObjectClient) Stop() {}
 
+// ObjectExists checks if a given objectKey exists in the GCS bucket
 func (s *GCSThanosObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
 	return s.client.Exists(ctx, objectKey)
 }
@@ -56,21 +55,29 @@ func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string)
 	if err != nil {
 		return nil, 0, err
 	}
-	// TODO (JoaoBraveCoding) currently returning 0 for the int64 as no
-	return reader, 0, err
+
+	attr, err := s.client.Attributes(ctx, objectKey)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "failed to get attributes for %s", objectKey)
+	}
+
+	return reader, attr.Size, err
 }
 
-// List implements chunk.ObjectClient.
+// List objects with given prefix.
 func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
 	iterParams := objstore.IterOption(func(params *objstore.IterParams) {})
 
+	// If delimiter is empty we want to list all files
 	if delimiter == "" {
 		iterParams = objstore.WithRecursiveIter
 	}
 
 	s.client.Iter(ctx, prefix, func(objectKey string) error {
+		// CommonPrefixes are keys that have the prefix and have the delimiter
+		// as a suffix
 		if delimiter != "" && strings.HasSuffix(objectKey, delimiter) {
 			commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(objectKey))
 			return nil
