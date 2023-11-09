@@ -911,6 +911,28 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				},
 			}, seriesVolumeString, false, nil,
 		},
+		{
+			"empty matrix", "/loki/api/v1/query_range",
+			&LokiPromResponse{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrangebase.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     nil,
+					},
+				},
+				Statistics: statsResult,
+			},
+			`{
+				"data": {
+				  ` + statsResultString + `
+	              "resultType": "matrix",
+	              "result": []
+	            },
+	            "status": "success"
+		     }`,
+			false, nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
