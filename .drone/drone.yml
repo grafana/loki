@@ -1,23 +1,30 @@
 ---
 kind: pipeline
-name: loki-build-image
+name: loki-build-image-amd64
+platform:
+  arch: amd64
+  os: linux
 steps:
-- image: plugins/docker
-  name: test-image
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: test
   settings:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.31.2
+    - 0.32.0-amd64
   when:
     event:
     - pull_request
     paths:
     - loki-build-image/**
-- image: plugins/docker
-  name: push-image
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: push
   settings:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
@@ -26,7 +33,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.31.2
+    - 0.32.0-amd64
     username:
       from_secret: docker_username
   when:
@@ -44,6 +51,88 @@ trigger:
 workspace:
   base: /src
   path: loki
+---
+kind: pipeline
+name: loki-build-image-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: test
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.0-arm64
+  when:
+    event:
+    - pull_request
+    paths:
+    - loki-build-image/**
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: push
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.0-arm64
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+depends_on:
+- loki-build-image-amd64
+- loki-build-image-arm64
+kind: pipeline
+name: loki-build-image-publish
+steps:
+- image: plugins/manifest:1.4.0
+  name: manifest
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest-build-image.tmpl
+    target: loki-build-image:0.32.0
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 kind: pipeline
 name: helm-test-image
@@ -2017,6 +2106,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: a68ce0151ff769aa0731f120437450f0d9685c843cb3c5b046d4991f910aadd7
+hmac: caf375427f92f78711f801f56341357b67737330e906346ee908a796c61dd314
 
 ...
