@@ -58,7 +58,7 @@ func (p *RequestPool) Get() []v1.Request {
 }
 
 func (p *RequestPool) Put(r []v1.Request) {
-	p.Pool.Put(r[:0])
+	p.Pool.Put(r[:0]) // nolint:staticcheck
 }
 
 func getDay(ts model.Time) int64 {

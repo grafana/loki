@@ -38,10 +38,6 @@ func TestSliceIterWithIndex(t *testing.T) {
 	})
 }
 
-func TestGetDay(t *testing.T) {}
-
-func TestGetDayTime(t *testing.T) {}
-
 func TestFilterRequestForDay(t *testing.T) {
 	tenant := "fake"
 

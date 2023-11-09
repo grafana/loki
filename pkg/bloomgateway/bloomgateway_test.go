@@ -276,7 +276,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		// replace store implementation and re-initialize workers and sub-services
 		gw.bloomStore = newMockBloomStore(t)
-		gw.initServices()
+		err = gw.initServices()
+		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
 		require.NoError(t, err)
@@ -378,7 +379,7 @@ type mockBloomStore struct {
 	t *testing.T
 }
 
-func (s *mockBloomStore) GetBlockQueriers(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
+func (s *mockBloomStore) GetBlockQueriers(_ context.Context, tenant string, from, through time.Time, fingerprints []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
 	return []bloomshipper.BlockQuerierWithFingerprintRange{
 		{BlockQuerier: v1.MakeBlockQuerier(s.t, 0, 255, from.Unix(), through.Unix()), MinFp: 0, MaxFp: 255},
 		{BlockQuerier: v1.MakeBlockQuerier(s.t, 256, 511, from.Unix(), through.Unix()), MinFp: 256, MaxFp: 511},
