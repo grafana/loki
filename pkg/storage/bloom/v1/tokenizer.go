@@ -150,8 +150,16 @@ func ChunkIDTokenizer(t Tokenizer) *WrappedTokenizer {
 	}
 }
 
+func zeroBuffer(buf []byte) {
+	for i := range buf {
+		buf[i] = 0
+	}
+}
+
 func (w *WrappedTokenizer) Reinit(chk logproto.ChunkRef) {
 	w.prefix = w.prefix[:0]
+	zeroBuffer(w.i64buf)
+	zeroBuffer(w.i32buf)
 
 	binary.PutVarint(w.i64buf, int64(chk.From))
 	w.prefix = append(w.prefix, w.i64buf...)
