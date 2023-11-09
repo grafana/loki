@@ -12,7 +12,6 @@ type Limits interface {
 	retention.Limits
 	MaxLineSize(userID string) int
 	MaxLineSizeTruncate(userID string) bool
-	EnforceMetricName(userID string) bool
 	MaxLabelNamesPerSeries(userID string) int
 	MaxLabelNameLength(userID string) int
 	MaxLabelValueLength(userID string) int

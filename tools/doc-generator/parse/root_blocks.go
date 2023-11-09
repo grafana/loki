@@ -122,7 +122,7 @@ var (
 		{
 			Name:       "compactor",
 			StructType: []reflect.Type{reflect.TypeOf(compactor.Config{})},
-			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.",
+			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance.",
 		},
 		{
 			Name:       "bloom_compactor",
