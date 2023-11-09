@@ -1,6 +1,7 @@
 package bloomgateway
 
 import (
+	"errors"
 	"time"
 
 	"github.com/oklog/ulid"
@@ -71,6 +72,7 @@ type taskMergeIterator struct {
 	curr  FilterRequest
 	heap  *v1.HeapIterator[*logproto.GroupedChunkRefs]
 	tasks []Task
+	err   error
 }
 
 func newTaskMergeIterator(tasks ...Task) *taskMergeIterator {
@@ -93,6 +95,7 @@ func (it *taskMergeIterator) init() {
 		},
 		sequences...,
 	)
+	it.err = nil
 }
 
 func (it *taskMergeIterator) Reset() {
@@ -107,6 +110,7 @@ func (it *taskMergeIterator) Next() bool {
 
 	currIter, ok := it.heap.CurrIter().(*SliceIterWithIndex[*logproto.GroupedChunkRefs])
 	if !ok {
+		it.err = errors.New("failed to cast iterator")
 		return false
 	}
 	iterIndex := currIter.Index()
@@ -127,5 +131,5 @@ func (it *taskMergeIterator) At() FilterRequest {
 }
 
 func (it *taskMergeIterator) Err() error {
-	return nil
+	return it.err
 }
