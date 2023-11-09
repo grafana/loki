@@ -19,7 +19,7 @@ Structured metadata will be rejected by Loki unless you enable the `allow_struct
 ## Schema
 
 ```yaml
-structured-metadata:
+structured_metadata:
   # Key is REQUIRED and the name for the label of structured metadata that will be created.
   # Value is optional and will be the name from extracted data whose value
   # will be used for the value of the label. If empty, the value will be
@@ -38,7 +38,7 @@ For the given pipeline:
       traceID: traceID
 - labels:
     stream:
-- structured-metadata:
+- structured_metadata:
     traceID:
 ```
 
@@ -50,4 +50,4 @@ Given the following log line:
 
 The first stage would extract `stream` with a value of `stderr` and `traceID` with a value of `0242ac120002` into
 the extracted data set. The `labels` stage would turn that `stream` and `stderr` key-value pair into a stream label.
-The `structured-metadata` stage would attach the `traceID` and `0242ac120002` key-value pair as a structured metadata to the log line.
+The `structured_metadata` stage would attach the `traceID` and `0242ac120002` key-value pair as a structured metadata to the log line.
