@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func TestTask(t *testing.T) {

@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
 
 func MakeBlockQuerier(t testing.TB, fromFp, throughFp uint64, fromTs, throughTs int64) *BlockQuerier {

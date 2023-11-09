@@ -3,10 +3,11 @@ package bloomgateway
 import (
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 // Task is the data structure that is enqueued to the internal queue and queued by query workers

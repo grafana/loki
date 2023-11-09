@@ -4,9 +4,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/prometheus/common/model"
 )
 
 // SliceIterWithIndex implements v1.PeekingIterator
