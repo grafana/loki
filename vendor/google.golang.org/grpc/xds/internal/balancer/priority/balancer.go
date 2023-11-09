@@ -205,6 +205,7 @@ func (b *priorityBalancer) UpdateSubConnState(sc balancer.SubConn, state balance
 
 func (b *priorityBalancer) Close() {
 	b.bg.Close()
+	b.childBalancerStateUpdate.Close()
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -247,7 +248,10 @@ type resumePickerUpdates struct {
 func (b *priorityBalancer) run() {
 	for {
 		select {
-		case u := <-b.childBalancerStateUpdate.Get():
+		case u, ok := <-b.childBalancerStateUpdate.Get():
+			if !ok {
+				return
+			}
 			b.childBalancerStateUpdate.Load()
 			// Needs to handle state update in a goroutine, because each state
 			// update needs to start/close child policy, could result in

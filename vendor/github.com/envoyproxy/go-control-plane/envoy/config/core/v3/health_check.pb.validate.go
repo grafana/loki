@@ -1419,7 +1419,7 @@ func (m *HealthCheck_HttpHealthCheck) validate(all bool) error {
 	if _, ok := _HealthCheck_HttpHealthCheck_Method_NotInLookup[m.GetMethod()]; ok {
 		err := HealthCheck_HttpHealthCheckValidationError{
 			field:  "Method",
-			reason: "value must not be in list [6]",
+			reason: "value must not be in list [CONNECT]",
 		}
 		if !all {
 			return err

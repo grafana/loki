@@ -45,6 +45,11 @@ type XDSClient interface {
 	// instead use a resource-type-specific wrapper API provided by the relevant
 	// resource type implementation.
 	//
+	//
+	// During a race (e.g. an xDS response is received while the user is calling
+	// cancel()), there's a small window where the callback can be called after
+	// the watcher is canceled. Callers need to handle this case.
+	//
 	// TODO: Once this generic client API is fully implemented and integrated,
 	// delete the resource type specific watch APIs on this interface.
 	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
