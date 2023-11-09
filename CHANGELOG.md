@@ -36,6 +36,7 @@
 * [10727](https://github.com/grafana/loki/pull/10727) **sandeepsukhani** Native otlp ingestion support
 * [11051](https://github.com/grafana/loki/pull/11051) Refactor to not use global logger in modules
 ##### Fixes
+* [11074](https://github.com/grafana/loki/pull/11074) **hainenber** Fix panic in lambda-promtail due to mishandling of empty DROP_LABELS env var.
 
 ##### Changes
 
@@ -43,6 +44,7 @@
 * [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
 * [10814](https://github.com/grafana/loki/pull/10814) **shantanualsi,kaviraj** Upgrade prometheus to v0.47.1 and dskit
 * [10959](https://github.com/grafana/loki/pull/10959) **slim-bean** introduce a backoff wait on subquery retries.
+* [11121](https://github.com/grafana/loki/pull/11121) **periklis** Ensure all lifecycler cfgs ref a valid IPv6 addr and port combination
 
 #### Promtail
 

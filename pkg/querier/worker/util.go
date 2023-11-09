@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 )
 
@@ -100,8 +101,11 @@ func handle(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestH
 	if err != nil {
 		response, ok := httpgrpc.HTTPResponseFromError(err)
 		if !ok {
+			// This block covers any errors that are not gRPC errors and will include all query errors.
+			// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
+			code := logqlmodel.MapStatusCode(err)
 			return &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
+				Code: int32(code),
 				Body: []byte(err.Error()),
 			}
 		}
