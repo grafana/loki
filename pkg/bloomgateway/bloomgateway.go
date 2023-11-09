@@ -489,6 +489,10 @@ func (w *worker) running(ctx context.Context) error {
 			it.Reset()
 
 			storeFetchStart := time.Now()
+			// GetBlockQueriers() waits until all blocks are downloaded and available for querying.
+			// TODO(chaudum): Add API that allows to process blocks as soon as they become available.
+			// This will require to change the taskMergeIterator to a slice of requests so we can seek
+			// to the appropriate fingerprint range within the slice that matches the block's fingerprint range.
 			bqs, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour), fingerprints)
 			w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriers").Observe(time.Since(storeFetchStart).Seconds())
 			if err != nil {
