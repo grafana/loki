@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"time"
 
 	jsoniter "github.com/json-iterator/go"
 
@@ -136,25 +135,8 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 
 func (v *JSONSerializer) VisitLogRange(e *syntax.LogRange) {
 	v.WriteObjectStart()
-	v.WriteObjectField("interval_nanos")
-	v.WriteInt64(int64(e.Interval))
-	v.WriteMore()
-	v.WriteObjectField("offset_nanos")
-	v.WriteInt64(int64(e.Offset))
-
-	// Serialize log selector pipeline as string.
-	v.WriteMore()
-	v.WriteObjectField("log_selector")
-	encodeLogSelector(v.Stream, e.Left)
-
-	if e.Unwrap != nil {
-		v.WriteMore()
-		v.WriteObjectField("unwrap")
-		v.WriteString(e.Unwrap.String())
-		v.WriteObjectEnd()
-	}
-
-	v.WriteObjectEnd()
+	v.WriteObjectField("raw")
+	v.WriteString(e.String())
 	v.Flush()
 }
 
@@ -277,7 +259,7 @@ func decodeGrouping(iter *jsoniter.Iterator) (*syntax.Grouping, error) {
 
 func encodeLogSelector(s *jsoniter.Stream, e syntax.LogSelectorExpr) {
 	s.WriteObjectStart()
-	s.WriteObjectField("raw")
+	s.WriteObjectField("log_selector")
 
 	s.WriteString(e.String())
 
@@ -380,23 +362,19 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*syntax.RangeAggregationExpr, erro
 }
 
 func decodeLogRange(iter *jsoniter.Iterator) (*syntax.LogRange, error) {
-	expr := &syntax.LogRange{}
-	var err error
+	iter.ReadObject()
 
-	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
-		switch f {
-		case "log_selector":
-			expr.Left, err = decodeLogSelector(iter)
-		case "interval_nanos":
-			expr.Interval = time.Duration(iter.ReadInt64())
-		case "offset_nanos":
-			expr.Offset = time.Duration(iter.ReadInt64())
-		case "unwrap":
-			expr.Unwrap = 
-		}
+	raw := iter.ReadString()
+	expr, err := syntax.ParseExpr(raw)
+	if err != nil {
+		return nil, err
 	}
 
-	return expr, err
+	if e, ok := expr.(*syntax.LogRange); ok {
+		return e, nil
+	}
+
+	return nil, fmt.Errorf("unexpected expression type: want(*LogRange), got(%T)", expr)
 }
 
 func decodeLabelReplace(iter *jsoniter.Iterator) (*syntax.LabelReplaceExpr, error) {
