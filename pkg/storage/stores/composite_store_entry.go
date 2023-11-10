@@ -43,7 +43,6 @@ type storeEntry struct {
 }
 
 // Enforce implementation of interface
-// TODO(chaudum): Remove once interfaces are cleaned up.
 var _ Store = &compositeStoreEntry{}
 var _ Store = &storeEntry{}
 

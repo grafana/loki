@@ -90,7 +90,6 @@ type LokiStore struct {
 }
 
 // Enforce implementation of interface
-// TODO(chaudum): Remove once interfaces are cleaned up.
 var _ Store = &LokiStore{}
 
 // NewStore creates a new Loki Store using configuration supplied.
