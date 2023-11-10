@@ -129,7 +129,7 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 
 	v.WriteMore()
 	v.WriteObjectField("range")
-	syntax.Dispatch(e.Left, v) //nolint:errcheck
+	v.VisitLogRange(e.Left)
 	v.WriteObjectEnd()
 	v.Flush()
 }
