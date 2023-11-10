@@ -2,13 +2,14 @@ FROM golang:1.21.3 as build
 
 COPY . /src/loki
 WORKDIR /src/loki
-RUN make clean && make BUILD_IN_CONTAINER=false loki
+RUN make clean && make BUILD_IN_CONTAINER=false loki logcli
 
 FROM alpine:3.18.3
 
 RUN apk add --no-cache ca-certificates libcap
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
+COPY --from=build /src/loki/cmd/logcli/logcli /usr/bin/logcli
 COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 
 RUN addgroup -g 10001 -S loki && \
