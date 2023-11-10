@@ -60,7 +60,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -74,6 +73,7 @@ type Compactor struct {
 	cfg       Config
 	logger    log.Logger
 	schemaCfg config.SchemaConfig
+	limits    Limits
 
 	// temporary workaround until store has implemented read/write shipper interface
 	bloomShipperClient bloomshipper.Client
@@ -108,6 +108,7 @@ func New(
 		logger:    logger,
 		schemaCfg: schemaConfig,
 		sharding:  sharding,
+		limits:    limits,
 	}
 
 	// Configure BloomClient for meta.json management
@@ -226,38 +227,42 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 	}
 
 	// process most recent tables first
-	tables = filterAndSortTablesByRange(tables, c.cfg.MaxTableAge)
-
-	// Filter most-recent TablesToCompact tables
-	if c.cfg.TablesToCompact > 0 && c.cfg.TablesToCompact < len(tables) {
-		tables = tables[:c.cfg.TablesToCompact]
-	}
+	tablesIntervals := getIntervalsForTables(tables)
+	sortTablesByRange(tables, tablesIntervals)
 
 	parallelism := c.cfg.MaxCompactionParallelism
 	if parallelism == 0 {
 		parallelism = len(tables)
 	}
 
+	// TODO(salvacorts): We currently parallelize at the table level. We may want to parallelize at the tenant and job level as well.
+	// To do that, we should create a worker pool with c.cfg.MaxCompactionParallelism number of workers.
 	errs := multierror.New()
 	_ = concurrency.ForEachJob(ctx, len(tables), parallelism, func(ctx context.Context, i int) error {
 		tableName := tables[i]
-		level.Info(c.logger).Log("msg", "compacting table", "table-name", tableName)
-		err := c.compactTable(ctx, tableName)
+		logger := log.With(c.logger, "table", tableName)
+		level.Info(logger).Log("msg", "compacting table")
+		err := c.compactTable(ctx, logger, tableName, tablesIntervals[tableName])
 		if err != nil {
 			errs.Add(err)
 			return nil
 		}
-		level.Info(c.logger).Log("msg", "finished compacting table", "table-name", tableName)
+		level.Info(logger).Log("msg", "finished compacting table")
 		return nil
 	})
 
 	return errs.Err()
 }
 
-func (c *Compactor) compactTable(ctx context.Context, tableName string) error {
+func (c *Compactor) compactTable(ctx context.Context, logger log.Logger, tableName string, tableInterval model.Interval) error {
+	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("interrupting compaction of table: %w", err)
+	}
+
 	schemaCfg, ok := schemaPeriodForTable(c.schemaCfg, tableName)
 	if !ok {
-		level.Error(c.logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
+		level.Error(logger).Log("msg", "skipping compaction since we can't find schema for table")
 		return nil
 	}
 
@@ -272,48 +277,61 @@ func (c *Compactor) compactTable(ctx context.Context, tableName string) error {
 	}
 
 	c.metrics.compactionRunDiscoveredTenants.Add(float64(len(tenants)))
-	level.Info(c.logger).Log("msg", "discovered tenants from bucket", "users", len(tenants))
-	return c.compactUsers(ctx, sc, tableName, tenants)
+	level.Info(logger).Log("msg", "discovered tenants from bucket", "users", len(tenants))
+	return c.compactUsers(ctx, logger, sc, tableName, tableInterval, tenants)
 }
 
 // See: https://github.com/grafana/mimir/blob/34852137c332d4050e53128481f4f6417daee91e/pkg/compactor/compactor.go#L566-L689
-func (c *Compactor) compactUsers(ctx context.Context, sc storeClient, tableName string, tenants []string) error {
+func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc storeClient, tableName string, tableInterval model.Interval, tenants []string) error {
 	// Keep track of tenants owned by this shard, so that we can delete the local files for all other users.
 	errs := multierror.New()
 	ownedTenants := make(map[string]struct{}, len(tenants))
 	for _, tenant := range tenants {
-		logger := log.With(c.logger, "tenant", tenant)
+		tenantLogger := log.With(logger, "tenant", tenant)
 
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("interrupting compaction of tenants: %w", err)
 		}
 
+		// Skip this table if it is too new/old for the tenant limits.
+		now := model.Now()
+		tableMinAge := c.limits.BloomCompactorMinTableAge(tenant)
+		tableMaxAge := c.limits.BloomCompactorMaxTableAge(tenant)
+		if tableMinAge > 0 && tableInterval.End.After(now.Add(-tableMinAge)) {
+			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too new ", "table-min-age", tableMinAge, "table-end", tableInterval.End, "now", now)
+			continue
+		}
+		if tableMaxAge > 0 && tableInterval.Start.Before(now.Add(-tableMaxAge)) {
+			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too old", "table-max-age", tableMaxAge, "table-start", tableInterval.Start, "now", now)
+			continue
+		}
+
 		// Ensure the tenant ID belongs to our shard.
 		if !c.sharding.OwnsTenant(tenant) {
 			c.metrics.compactionRunSkippedTenants.Inc()
-			level.Debug(logger).Log("msg", "skipping tenant because it is not owned by this shard")
+			level.Debug(tenantLogger).Log("msg", "skipping tenant because it is not owned by this shard")
 			continue
 		}
 
 		ownedTenants[tenant] = struct{}{}
 
-		if err := c.compactTenantWithRetries(ctx, sc, tableName, tenant); err != nil {
+		if err := c.compactTenantWithRetries(ctx, tenantLogger, sc, tableName, tenant); err != nil {
 			switch {
 			case errors.Is(err, context.Canceled):
 				// We don't want to count shutdowns as failed compactions because we will pick up with the rest of the compaction after the restart.
-				level.Info(logger).Log("msg", "compaction for tenant was interrupted by a shutdown")
+				level.Info(tenantLogger).Log("msg", "compaction for tenant was interrupted by a shutdown")
 				return nil
 			default:
 				c.metrics.compactionRunFailedTenants.Inc()
-				level.Error(logger).Log("msg", "failed to compact tenant", "err", err)
+				level.Error(tenantLogger).Log("msg", "failed to compact tenant", "err", err)
 				errs.Add(err)
 			}
 			continue
 		}
 
 		c.metrics.compactionRunSucceededTenants.Inc()
-		level.Info(logger).Log("msg", "successfully compacted tenant")
+		level.Info(tenantLogger).Log("msg", "successfully compacted tenant")
 	}
 
 	return errs.Err()
@@ -321,8 +339,8 @@ func (c *Compactor) compactUsers(ctx context.Context, sc storeClient, tableName 
 	// TODO: Delete local files for unowned tenants, if there are any.
 }
 
-func (c *Compactor) compactTenant(ctx context.Context, sc storeClient, tableName string, tenant string) error {
-	level.Info(c.logger).Log("msg", "starting compaction of tenant", "tenant", tenant)
+func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc storeClient, tableName string, tenant string) error {
+	level.Info(logger).Log("msg", "starting compaction of tenant")
 
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
@@ -345,21 +363,22 @@ func (c *Compactor) compactTenant(ctx context.Context, sc storeClient, tableName
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
 				job := NewJob(tenant, tableName, idx.Path(), fingerprint, labels, chksMetas)
+				jobLogger := log.With(logger, "job", job.String())
 
 				ownsJob, err := c.sharding.OwnsJob(job)
 				if err != nil {
-					c.metrics.compactionRunSkippedJobs.Inc()
-					level.Error(c.logger).Log("msg", "failed to check if compactor owns job", "job", job, "err", err)
+					c.metrics.compactionRunUnownedJobs.Inc()
+					level.Error(jobLogger).Log("msg", "failed to check if compactor owns job", "err", err)
 					errs.Add(err)
 					return
 				}
 				if !ownsJob {
-					c.metrics.compactionRunSkippedJobs.Inc()
-					level.Debug(c.logger).Log("msg", "skipping job because it is not owned by this shard", "job", job)
+					c.metrics.compactionRunUnownedJobs.Inc()
+					level.Debug(jobLogger).Log("msg", "skipping job because it is not owned by this shard")
 					return
 				}
 
-				if err := c.runCompact(ctx, job, c.bloomShipperClient, bt, sc); err != nil {
+				if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {
 					c.metrics.compactionRunFailedJobs.Inc()
 					errs.Add(errors.Wrap(err, "runBloomCompact"))
 					return
@@ -405,14 +424,14 @@ func runWithRetries(
 	return lastErr
 }
 
-func (c *Compactor) compactTenantWithRetries(ctx context.Context, sc storeClient, tableName string, tenant string) error {
+func (c *Compactor) compactTenantWithRetries(ctx context.Context, logger log.Logger, sc storeClient, tableName string, tenant string) error {
 	return runWithRetries(
 		ctx,
 		c.cfg.RetryMinBackoff,
 		c.cfg.RetryMaxBackoff,
 		c.cfg.CompactionRetries,
 		func(ctx context.Context) error {
-			return c.compactTenant(ctx, sc, tableName, tenant)
+			return c.compactTenant(ctx, logger, sc, tableName, tenant)
 		},
 	)
 }
@@ -435,25 +454,30 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-func buildBloomBlock(bloomForChks v1.SeriesWithBloom, job Job, workingDir string) (bloomshipper.Block, error) {
+func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.SeriesWithBloom, job Job, workingDir string) (bloomshipper.Block, error) {
+	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
+	if err := ctx.Err(); err != nil {
+		return bloomshipper.Block{}, err
+	}
+
 	localDst := createLocalDirName(workingDir, job)
 
 	// write bloom to a local dir
 	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
 	if err != nil {
-		level.Info(util_log.Logger).Log("creating builder", err)
+		level.Error(logger).Log("creating builder", err)
 		return bloomshipper.Block{}, err
 	}
 
 	err = builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChks}))
 	if err != nil {
-		level.Info(util_log.Logger).Log("writing bloom", err)
+		level.Error(logger).Log("writing bloom", err)
 		return bloomshipper.Block{}, err
 	}
 
 	blockFile, err := os.Open(filepath.Join(localDst, bloomFileName))
 	if err != nil {
-		level.Info(util_log.Logger).Log("reading bloomBlock", err)
+		level.Error(logger).Log("reading bloomBlock", err)
 	}
 
 	// read the checksum
@@ -494,7 +518,12 @@ func createLocalDirName(workingDir string, job Job) string {
 	return filepath.Join(workingDir, dir)
 }
 
-func CompactNewChunks(ctx context.Context, job Job, chunks []chunk.Chunk, bt *v1.BloomTokenizer, bloomShipperClient bloomshipper.Client, dst string) (err error) {
+func CompactNewChunks(ctx context.Context, logger log.Logger, job Job, chunks []chunk.Chunk, bt *v1.BloomTokenizer, bloomShipperClient bloomshipper.Client, dst string) (err error) {
+	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
@@ -509,15 +538,15 @@ func CompactNewChunks(ctx context.Context, job Job, chunks []chunk.Chunk, bt *v1
 	bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
 
 	// Build and upload bloomBlock to storage
-	blocks, err := buildBloomBlock(bloomForChks, job, dst)
+	blocks, err := buildBloomBlock(ctx, logger, bloomForChks, job, dst)
 	if err != nil {
-		level.Info(util_log.Logger).Log("building bloomBlocks", err)
+		level.Error(logger).Log("building bloomBlocks", err)
 		return
 	}
 
 	storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
 	if err != nil {
-		level.Info(util_log.Logger).Log("putting blocks to storage", err)
+		level.Error(logger).Log("putting blocks to storage", err)
 		return
 	}
 
@@ -532,14 +561,19 @@ func CompactNewChunks(ctx context.Context, job Job, chunks []chunk.Chunk, bt *v1
 	// TODO move this to an outer layer, otherwise creates a meta per block
 	err = bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
-		level.Info(util_log.Logger).Log("putting meta.json to storage", err)
+		level.Error(logger).Log("putting meta.json to storage", err)
 		return
 	}
 
 	return nil
 }
 
-func (c *Compactor) runCompact(ctx context.Context, job Job, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient) error {
+func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient) error {
+	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	// TODO call bloomShipperClient.GetMetas to get existing meta.json
 	var metas []bloomshipper.Meta
 
@@ -553,7 +587,7 @@ func (c *Compactor) runCompact(ctx context.Context, job Job, bloomShipperClient 
 			return err
 		}
 
-		err = CompactNewChunks(ctx, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+		err = CompactNewChunks(ctx, logger, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
 		if err != nil {
 			return err
 		}
@@ -575,27 +609,20 @@ func (c *Compactor) runCompact(ctx context.Context, job Job, bloomShipperClient 
 	return nil
 }
 
-// filterAndSortTablesByRange returns most-recent first sorted list of tables that are within the max age.
-func filterAndSortTablesByRange(tables []string, maxAge time.Duration) []string {
-	tableRanges := make(map[string]model.Interval, len(tables))
-	tablesToSort := make([]string, 0, len(tables))
-	maxAgeTime := model.Now().Add(-maxAge)
+func getIntervalsForTables(tables []string) map[string]model.Interval {
+	tablesIntervals := make(map[string]model.Interval, len(tables))
 	for _, table := range tables {
-		interval := retention.ExtractIntervalFromTableName(table)
-		if maxAge > 0 && interval.Start.Before(maxAgeTime) {
-			continue
-		}
-
-		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
-		tablesToSort = append(tablesToSort, table)
+		tablesIntervals[table] = retention.ExtractIntervalFromTableName(table)
 	}
 
-	sort.Slice(tablesToSort, func(i, j int) bool {
-		// less than if start time is after produces a most recent first sort order
-		return tableRanges[tables[i]].Start.After(tableRanges[tables[j]].Start)
-	})
+	return tablesIntervals
+}
 
-	return tablesToSort
+func sortTablesByRange(tables []string, intervals map[string]model.Interval) {
+	sort.Slice(tables, func(i, j int) bool {
+		// less than if start time is after produces a most recent first sort order
+		return intervals[tables[i]].Start.After(intervals[tables[j]].Start)
+	})
 }
 
 // TODO: comes from pkg/compactor/compactor.go

@@ -135,3 +135,11 @@ type mockLimits struct {
 func (m mockLimits) BloomCompactorShardSize(_ string) int {
 	return m.bloomCompactorShardSize
 }
+
+func (m mockLimits) BloomCompactorMaxTableAge(_ string) time.Duration {
+	return 0
+}
+
+func (m mockLimits) BloomCompactorMinTableAge(_ string) time.Duration {
+	return 0
+}
