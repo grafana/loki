@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -274,8 +275,12 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
 		require.NoError(t, err)
 
+		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
+		now := model.TimeFromUnix(ts.Unix())
+
 		// replace store implementation and re-initialize workers and sub-services
-		gw.bloomStore = newMockBloomStore(t)
+		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
+		gw.bloomStore = newMockBloomStore(bqs)
 		err = gw.initServices()
 		require.NoError(t, err)
 
@@ -286,51 +291,12 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
-
-		chunkRefs := []*logproto.ChunkRef{
-			{
-				Fingerprint: 100,
-				UserID:      tenantID,
-				From:        now.Add(-24 * time.Hour),
-				Through:     now.Add(-23 * time.Hour),
-				Checksum:    1,
-			},
-			{
-				Fingerprint: 100,
-				UserID:      tenantID,
-				From:        now.Add(-23 * time.Hour),
-				Through:     now.Add(-22 * time.Hour),
-				Checksum:    2,
-			},
-			{
-				Fingerprint: 500,
-				UserID:      tenantID,
-				From:        now.Add(-22 * time.Hour),
-				Through:     now.Add(-21 * time.Hour),
-				Checksum:    3,
-			},
-			{
-				Fingerprint: 1000,
-				UserID:      tenantID,
-				From:        now.Add(-20 * time.Hour),
-				Through:     now.Add(-19 * time.Hour),
-				Checksum:    4,
-			},
-			{
-				Fingerprint: 1001,
-				UserID:      tenantID,
-				From:        now.Add(-19 * time.Hour),
-				Through:     now.Add(-18 * time.Hour),
-				Checksum:    5,
-			},
-		}
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
 		inputChunkRefs := groupRefs(t, chunkRefs)
 
-		t.Run("no match - return filtered", func(t *testing.T) {
+		t.Run("no match - return empty response", func(t *testing.T) {
 			req := &logproto.FilterChunkRefRequest{
-				From:    now.Add(-24 * time.Hour),
+				From:    now.Add(-8 * time.Hour),
 				Through: now,
 				Refs:    inputChunkRefs,
 				Filters: []*logproto.LineFilterExpression{
@@ -342,20 +308,26 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 
 			expectedResponse := &logproto.FilterChunkRefResponse{
-				ChunkRefs: inputChunkRefs, // why does it return all chunks?
+				ChunkRefs: []*logproto.GroupedChunkRefs{},
 			}
 			require.Equal(t, expectedResponse, res)
 		})
 
-		t.Run("match - return unfiltered", func(t *testing.T) {
+		t.Run("match - return filtered", func(t *testing.T) {
+			// hack to get indexed key for a specific series
+			// the indexed key range for a series is defined as
+			// i * keysPerSeries ... i * keysPerSeries + keysPerSeries - 1
+			// where i is the nth series in a block
+			// fortunately, i is also used as Checksum for the single chunk of a series
+			// see mkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
+			key := inputChunkRefs[0].Refs[0].Checksum*1000 + 500
+
 			req := &logproto.FilterChunkRefRequest{
-				From:    now.Add(-24 * time.Hour),
+				From:    now.Add(-8 * time.Hour),
 				Through: now,
-				Refs:    groupRefs(t, chunkRefs),
+				Refs:    inputChunkRefs,
 				Filters: []*logproto.LineFilterExpression{
-					// series with fingerprint 100 has 1000 keys
-					// range is from 100_000 to 100_999
-					{Operator: 1, Match: "100001"},
+					{Operator: 1, Match: fmt.Sprint(key)},
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -363,7 +335,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 
 			expectedResponse := &logproto.FilterChunkRefResponse{
-				ChunkRefs: inputChunkRefs, // why does it return all chunks?
+				ChunkRefs: inputChunkRefs[:1],
 			}
 			require.Equal(t, expectedResponse, res)
 		})
@@ -371,21 +343,62 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 }
 
-func newMockBloomStore(t *testing.T) *mockBloomStore {
-	return &mockBloomStore{t: t}
+func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockQuerierWithFingerprintRange, [][]v1.SeriesWithBloom) {
+	t.Helper()
+	step := (maxFp - minFp) / model.Fingerprint(numBlocks)
+	bqs := make([]bloomshipper.BlockQuerierWithFingerprintRange, 0, numBlocks)
+	series := make([][]v1.SeriesWithBloom, 0, numBlocks)
+	for i := 0; i < numBlocks; i++ {
+		fromFp := minFp + (step * model.Fingerprint(i))
+		throughFp := fromFp + step - 1
+		// last block needs to include maxFp
+		if i == numBlocks-1 {
+			throughFp = maxFp
+		}
+		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
+		bq := bloomshipper.BlockQuerierWithFingerprintRange{
+			BlockQuerier: blockQuerier,
+			MinFp:        fromFp,
+			MaxFp:        throughFp,
+		}
+		bqs = append(bqs, bq)
+		series = append(series, data)
+	}
+	return bqs, series
+}
+
+func newMockBloomStore(bqs []bloomshipper.BlockQuerierWithFingerprintRange) *mockBloomStore {
+	return &mockBloomStore{bqs: bqs}
 }
 
 type mockBloomStore struct {
-	t *testing.T
+	bqs []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
-func (s *mockBloomStore) GetBlockQueriers(_ context.Context, _ string, from, through time.Time, _ []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
-	return []bloomshipper.BlockQuerierWithFingerprintRange{
-		{BlockQuerier: v1.MakeBlockQuerier(s.t, 0, 255, from.Unix(), through.Unix()), MinFp: 0, MaxFp: 255},
-		{BlockQuerier: v1.MakeBlockQuerier(s.t, 256, 511, from.Unix(), through.Unix()), MinFp: 256, MaxFp: 511},
-		{BlockQuerier: v1.MakeBlockQuerier(s.t, 512, 767, from.Unix(), through.Unix()), MinFp: 512, MaxFp: 767},
-		{BlockQuerier: v1.MakeBlockQuerier(s.t, 768, 1023, from.Unix(), through.Unix()), MinFp: 768, MaxFp: 1023},
-	}, nil
+func (s *mockBloomStore) GetBlockQueriers(_ context.Context, _ string, _, _ time.Time, _ []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
+	return s.bqs, nil
 }
 
 func (s *mockBloomStore) Stop() {}
+
+func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.SeriesWithBloom, nthSeries int) []*logproto.ChunkRef {
+	t.Helper()
+	n := 0
+	res := make([]*logproto.ChunkRef, 0)
+	for i := range data {
+		for j := range data[i] {
+			if n%nthSeries == 0 {
+				chk := data[i][j].Series.Chunks[0]
+				res = append(res, &logproto.ChunkRef{
+					Fingerprint: uint64(data[i][j].Series.Fingerprint),
+					UserID:      tenant,
+					From:        chk.Start,
+					Through:     chk.End,
+					Checksum:    chk.Checksum,
+				})
+			}
+			n++
+		}
+	}
+	return res
+}

@@ -312,6 +312,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	response := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
+	responseCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -319,15 +320,18 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		case err := <-errCh:
 			return nil, errors.Wrap(err, "waiting for results")
 		case res := <-resCh:
+			responseCount++
 			// log line is helpful for debugging tests
-			// level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", res.Fp, "refs", res.Chks.Len())
-			response = append(response, &logproto.GroupedChunkRefs{
-				Tenant:      tenantID,
-				Fingerprint: uint64(res.Fp),
-				Refs:        convertToShortRefs(res.Chks),
-			})
+			// level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", res.Fp, "chunks", res.Chks.Len(), "progress", fmt.Sprintf("%d/%d", responseCount, len(req.Refs)))
+			if res.Chks.Len() > 0 {
+				response = append(response, &logproto.GroupedChunkRefs{
+					Tenant:      tenantID,
+					Fingerprint: uint64(res.Fp),
+					Refs:        convertToShortRefs(res.Chks),
+				})
+			}
 			// wait for all parts of the full response
-			if len(response) == len(req.Refs) {
+			if responseCount == len(req.Refs) {
 				return &logproto.FilterChunkRefResponse{ChunkRefs: response}, nil
 			}
 		}
@@ -391,7 +395,6 @@ type worker struct {
 	tasks   *pendingTasks
 	logger  log.Logger
 	metrics *workerMetrics
-	rp      RequestPool
 }
 
 func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, store bloomshipper.Store, tasks *pendingTasks, logger log.Logger, metrics *workerMetrics) *worker {
@@ -405,13 +408,6 @@ func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, store blo
 		metrics: metrics,
 	}
 	w.Service = services.NewBasicService(w.starting, w.running, w.stopping).WithName(id)
-	w.rp = RequestPool{
-		Pool: sync.Pool{
-			New: func() any {
-				return make([]v1.Request, 0, 1024)
-			},
-		},
-	}
 	return w
 }
 
@@ -423,6 +419,9 @@ func (w *worker) starting(_ context.Context) error {
 
 func (w *worker) running(ctx context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
+
+	requests := make([]v1.Request, 0, 128)
+	fingerprints := make([]uint64, 0, 1024)
 
 	for ctx.Err() == nil {
 		taskCtx := context.Background()
@@ -475,7 +474,7 @@ func (w *worker) running(ctx context.Context) error {
 
 			it := newTaskMergeIterator(tasks...)
 
-			fingerprints := make([]uint64, 0, 1024)
+			fingerprints = fingerprints[:0]
 			for it.Next() {
 				// fingerprints are already sorted. we can skip duplicates by checking
 				// if the next is greater than the previous
@@ -493,7 +492,7 @@ func (w *worker) running(ctx context.Context) error {
 			// TODO(chaudum): Add API that allows to process blocks as soon as they become available.
 			// This will require to change the taskMergeIterator to a slice of requests so we can seek
 			// to the appropriate fingerprint range within the slice that matches the block's fingerprint range.
-			bqs, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour), fingerprints)
+			bqs, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour).Add(-1*time.Nanosecond), fingerprints)
 			w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriers").Observe(time.Since(storeFetchStart).Seconds())
 			if err != nil {
 				for _, t := range tasks {
@@ -521,13 +520,13 @@ func (w *worker) running(ctx context.Context) error {
 			}
 
 			hasNext := it.Next()
-			requests := w.rp.Get()
 			for _, bq := range bqs {
 				requests = requests[:0]
 				for hasNext && it.At().Fp <= bq.MaxFp {
 					requests = append(requests, it.At().Request)
 					hasNext = it.Next()
 				}
+				// level.Debug(logger).Log("msg", "processing block", "block", i+1, "of", len(bqs), "requests", len(requests))
 				// no fingerprints in the fingerprint range of the current block
 				if len(requests) == 0 {
 					continue
@@ -538,13 +537,18 @@ func (w *worker) running(ctx context.Context) error {
 					for _, t := range tasks {
 						t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
 					}
-					// return slice back to pool
-					w.rp.Put(requests)
 					continue
 				}
 			}
-			// return slice back to pool
-			w.rp.Put(requests)
+
+			for hasNext {
+				level.Warn(logger).Log("msg", "processing remaining fingerprint", "fp", it.At().Fp)
+				it.At().Response <- v1.Output{
+					Fp:   it.At().Fp,
+					Chks: it.At().Chks,
+				}
+				hasNext = it.Next()
+			}
 		}
 	}
 	return ctx.Err()

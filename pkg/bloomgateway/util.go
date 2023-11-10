@@ -1,7 +1,6 @@
 package bloomgateway
 
 import (
-	"sync"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -48,18 +47,6 @@ func NewIterWithIndex[T any](i int, xs []T) *SliceIterWithIndex[T] {
 		pos: -1,
 		idx: i,
 	}
-}
-
-type RequestPool struct {
-	sync.Pool
-}
-
-func (p *RequestPool) Get() []v1.Request {
-	return p.Pool.Get().([]v1.Request)
-}
-
-func (p *RequestPool) Put(r []v1.Request) {
-	p.Pool.Put(r[:0]) // nolint:staticcheck
 }
 
 func getDay(ts model.Time) int64 {
@@ -156,4 +143,14 @@ func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 		result = append(result, v1.ChunkRef{Start: ref.From, End: ref.Through, Checksum: ref.Checksum})
 	}
 	return result
+}
+
+// getFirstLast returns the first and last item of a fingerprint slice
+// It assumes an ascending sorted list of fingerprints.
+func getFirstLast[T any](s []T) (T, T) {
+	var zero T
+	if len(s) == 0 {
+		return zero, zero
+	}
+	return s[0], s[len(s)-1]
 }
