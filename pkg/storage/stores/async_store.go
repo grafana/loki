@@ -242,12 +242,12 @@ func (a *AsyncStore) LabelValuesForMetricName(ctx context.Context, userID string
 }
 
 // Put implements stores.Store.
-func (*AsyncStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
+func (*AsyncStore) Put(_ context.Context, _ []chunk.Chunk) error {
 	panic("unimplemented: AsyncStore is a read-only store and must not write chunks")
 }
 
 // PutOne implements stores.Store.
-func (*AsyncStore) PutOne(ctx context.Context, from model.Time, through model.Time, chunk chunk.Chunk) error {
+func (*AsyncStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	panic("unimplemented: AsyncStore is a read-only store and must not write chunks")
 }
 
