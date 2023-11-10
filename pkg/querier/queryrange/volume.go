@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -48,18 +49,23 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 				}
 			})
 
-			type f func(context.Context) (time.Time, definitions.Response, error)
+			type f func(context.Context) (time.Time, *VolumeResponse, error)
 			var jobs []f
 
 			for bucket, req := range reqs {
 				b, r := bucket, req
-				jobs = append(jobs, f(func(ctx context.Context) (time.Time, definitions.Response, error) {
+				jobs = append(jobs, f(func(ctx context.Context) (time.Time, *VolumeResponse, error) {
 					resp, err := next.Do(ctx, r)
 					if err != nil {
 						return b, nil, err
 					}
 
-					return b, resp, nil
+					volumeResponse, ok := resp.(*VolumeResponse)
+					if !ok {
+						return b, nil, fmt.Errorf("unexpected response type: want (*VolumeResponse), got (%T)", resp)
+					}
+
+					return b, volumeResponse, nil
 				}))
 			}
 
@@ -80,7 +86,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 					}
 
 					collector <- &bucketedVolumeResponse{
-						bucket, resp.(*VolumeResponse),
+						bucket, resp,
 					}
 					return err
 				})
