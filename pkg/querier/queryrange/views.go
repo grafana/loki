@@ -62,29 +62,22 @@ func GetLokiSeriesResponseView(data []byte) (view *LokiSeriesResponseView, err e
 // message. It is decoded lazily view ForEachSeries.
 type LokiSeriesResponseView struct {
 	buffer  []byte
-	headers []*queryrangebase.PrometheusResponseHeader
+	headers []queryrangebase.PrometheusResponseHeader
 }
 
 var _ queryrangebase.Response = &LokiSeriesResponseView{}
 
 func (v *LokiSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
-	return v.headers
+	return convertPrometheusResponseHeadersToPointers(v.headers)
 }
 
 func (v *LokiSeriesResponseView) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
-	v.headers = convertPrometheusResponseHeadersToPointers(h)
+	v.headers = h
 	return v
 }
 
 func (v *LokiSeriesResponseView) SetHeader(name, value string) {
-	for i, h := range v.headers {
-		if h.Name == name {
-			v.headers[i].Values = []string{value}
-			return
-		}
-	}
-
-	v.headers = append(v.headers, &queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
+	v.headers = setHeader(v.headers, name, value)
 }
 
 // Implement proto.Message
@@ -247,29 +240,22 @@ func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, [
 // ForEachUniqueSeries iteration.
 type MergedSeriesResponseView struct {
 	responses []*LokiSeriesResponseView
-	headers   []*queryrangebase.PrometheusResponseHeader
+	headers   []queryrangebase.PrometheusResponseHeader
 }
 
 var _ queryrangebase.Response = &MergedSeriesResponseView{}
 
 func (v *MergedSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
-	return v.headers
+	return convertPrometheusResponseHeadersToPointers(v.headers)
 }
 
 func (v *MergedSeriesResponseView) WithHeaders(headers []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
-	v.headers = convertPrometheusResponseHeadersToPointers(headers)
+	v.headers = headers
 	return v
 }
 
 func (v *MergedSeriesResponseView) SetHeader(name, value string) {
-	for i, h := range v.headers {
-		if h.Name == name {
-			v.headers[i].Values = []string{value}
-			return
-		}
-	}
-
-	v.headers = append(v.headers, &queryrangebase.PrometheusResponseHeader{Name: name, Values: []string{value}})
+	v.headers = setHeader(v.headers, name, value)
 }
 
 // Implement proto.Message
