@@ -773,6 +773,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Defines the encoding for requests to and responses from the scheduler and
+# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# CLI flag: -frontend.encoding
+[encoding: <string> | default = "json"]
+
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = true]
@@ -821,11 +826,6 @@ results_cache:
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
-
-# The downstream querier is required to answer in the accepted format. Can be
-# 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
-# CLI flag: -frontend.required-query-response-format
-[required_query_response_format: <string> | default = "json"]
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results

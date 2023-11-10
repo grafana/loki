@@ -106,6 +106,17 @@ func (resp *PrometheusResponse) WithHeaders(h []PrometheusResponseHeader) Respon
 	return resp
 }
 
+func (resp *PrometheusResponse) SetHeader(name, value string) {
+	for i, h := range resp.Headers {
+		if h.Name == name {
+			resp.Headers[i].Values = []string{value}
+			return
+		}
+	}
+
+	resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: name, Values: []string{value}})
+}
+
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
 func NewEmptyPrometheusResponse() *PrometheusResponse {
 	return &PrometheusResponse{
