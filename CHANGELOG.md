@@ -35,6 +35,7 @@
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
 * [10727](https://github.com/grafana/loki/pull/10727) **sandeepsukhani** Native otlp ingestion support
 * [11051](https://github.com/grafana/loki/pull/11051) Refactor to not use global logger in modules
+
 ##### Fixes
 * [11074](https://github.com/grafana/loki/pull/11074) **hainenber** Fix panic in lambda-promtail due to mishandling of empty DROP_LABELS env var.
 
@@ -66,6 +67,7 @@
 * [10631](https://github.com/grafana/loki/pull/10631) **thampiotr**: Fix race condition in cleaning up metrics when stopping to tail files.
 * [10798](https://github.com/grafana/loki/pull/10798) **hainenber**: Fix agent panicking after reloaded due to duplicate metric collector registration.
 * [10848](https://github.com/grafana/loki/pull/10848) **rgroothuijsen**: Correctly parse list of drop stage sources from YAML.
+* [11111](https://github.com/grafana/loki/pull/11111) **hainenber** Fix panic due to concurrent map iteration and write when processing log entries in stages.
 
 #### LogCLI
 
