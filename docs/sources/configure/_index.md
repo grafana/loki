@@ -2547,16 +2547,6 @@ ring:
 # CLI flag: -bloom-compactor.compaction-retries
 [compaction_retries: <int> | default = 3]
 
-# Number of tables that compactor will try to compact. Newer tables are chosen
-# when this is less than the number of tables available.
-# CLI flag: -bloom-compactor.tables-to-compact
-[tables_to_compact: <int> | default = 0]
-
-# Do not compact tables older than the the configured time. Default to 7 days.
-# 0s means no limit
-# CLI flag: -bloom-compactor.max-table-age
-[max_table_age: <duration> | default = 168h]
-
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
 # and compact as many tables.
@@ -2952,6 +2942,18 @@ shard_streams:
 # when computing blooms. If it's set to 0, shuffle sharding is disabled.
 # CLI flag: -bloom-compactor.shard-size
 [bloom_compactor_shard_size: <int> | default = 1]
+
+# The maximum age of a table before it is compacted. Do not compact tables older
+# than the the configured time. Default to 7 days. 0s means no limit.
+# CLI flag: -bloom-compactor.max-table-age
+[bloom_compactor_max_table_age: <duration> | default = 168h]
+
+# The minimum age of a table before it is compacted. Do not compact tables newer
+# than the the configured time. Default to 1 hour. 0s means no limit. This is
+# useful to avoid compacting tables that will be updated with out-of-order
+# writes.
+# CLI flag: -bloom-compactor.min-table-age
+[bloom_compactor_min_table_age: <duration> | default = 1h]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata

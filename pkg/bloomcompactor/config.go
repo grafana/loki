@@ -23,8 +23,7 @@ type Config struct {
 	RetryMaxBackoff   time.Duration `yaml:"compaction_retries_max_backoff"`
 	CompactionRetries int           `yaml:"compaction_retries"`
 
-	MaxTableAge              time.Duration `yaml:"max_table_age"`
-	MaxCompactionParallelism int           `yaml:"max_compaction_parallelism"`
+	MaxCompactionParallelism int `yaml:"max_compaction_parallelism"`
 }
 
 // RegisterFlags registers flags for the Bloom-Compactor configuration.
@@ -36,7 +35,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetryMinBackoff, "bloom-compactor.compaction-retries-min-backoff", 10*time.Second, "Minimum backoff time between retries.")
 	f.DurationVar(&cfg.RetryMaxBackoff, "bloom-compactor.compaction-retries-max-backoff", time.Minute, "Maximum backoff time between retries.")
 	f.IntVar(&cfg.CompactionRetries, "bloom-compactor.compaction-retries", 3, "Number of retries to perform when compaction fails.")
-	f.DurationVar(&cfg.MaxTableAge, "bloom-compactor.max-table-age", 7*24*time.Hour, "Do not compact tables older than the the configured time. Default to 7 days. 0s means no limit")
 	f.IntVar(&cfg.MaxCompactionParallelism, "bloom-compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 }
 
