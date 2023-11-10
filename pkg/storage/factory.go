@@ -38,8 +38,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -335,7 +335,7 @@ type Config struct {
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
-	TSDBShipperConfig   tsdb.IndexCfg             `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
+	TSDBShipperConfig   indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
 	BloomShipperConfig  bloomshipperconfig.Config `yaml:"bloom_shipper" doc:"description=Configures Bloom Shipper."`
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
@@ -420,7 +420,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 					return indexGatewayClient, nil
 				}
 
-				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
+				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger, constants.Loki)
 				if err != nil {
 					return nil, err
 				}
