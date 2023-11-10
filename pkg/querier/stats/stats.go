@@ -109,5 +109,6 @@ func ShouldTrackQueryResponse(s *rpc.Status) bool {
 	// https://github.com/gogo/googleapis/blob/master/google/rpc/code.proto.
 	return s.Code == int32(rpc.UNKNOWN) || s.Code == int32(rpc.DEADLINE_EXCEEDED) ||
 		s.Code == int32(rpc.UNIMPLEMENTED) || s.Code == int32(rpc.INTERNAL) ||
-		s.Code == int32(rpc.UNAVAILABLE) || s.Code == int32(rpc.DATA_LOSS)
+		s.Code == int32(rpc.UNAVAILABLE) || s.Code == int32(rpc.DATA_LOSS) ||
+		(s.Code > 200 && s.Code < 500)
 }

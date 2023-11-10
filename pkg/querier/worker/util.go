@@ -14,8 +14,8 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 // newExecutionContext returns a new execution context (execCtx) that wraps the input workerCtx and
@@ -105,7 +105,7 @@ func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handl
 		if !ok {
 			// This block covers any errors that are not gRPC errors and will include all query errors.
 			// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
-			code := logqlmodel.MapStatusCode(err)
+			code, _ := server.ClientHTTPStatusAndError(err)
 			return &httpgrpc.HTTPResponse{
 				Code: int32(code),
 				Body: []byte(err.Error()),
@@ -148,7 +148,7 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 
 		// This block covers any errors that are not gRPC errors and will include all query errors.
 		// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
-		code := logqlmodel.MapStatusCode(err)
+		code, _ := server.ClientHTTPStatusAndError(err)
 		return &queryrange.QueryResponse{
 			Status: status.New(codes.Code(code), err.Error()).Proto(),
 		}
