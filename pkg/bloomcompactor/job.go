@@ -79,6 +79,13 @@ func (j *Job) Through() model.Time {
 }
 
 func (j *Job) computeFromThrough() {
+	if len(j.chunks) == 0 {
+		var zero model.Time
+		j.from = &zero
+		j.through = &zero
+		return
+	}
+
 	minFrom := model.Latest
 	maxThrough := model.Earliest
 
