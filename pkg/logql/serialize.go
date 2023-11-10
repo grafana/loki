@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
 
@@ -128,26 +129,31 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 
 	v.WriteMore()
 	v.WriteObjectField("range")
-	// TODO: decide whether LogRange should have a visitor method
+	syntax.Dispatch(e.Left, v) //nolint:errcheck
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+func (v *JSONSerializer) VisitLogRange(e *syntax.LogRange) {
 	v.WriteObjectStart()
 	v.WriteObjectField("interval_nanos")
-	v.WriteInt64(int64(e.Left.Interval))
+	v.WriteInt64(int64(e.Interval))
 	v.WriteMore()
 	v.WriteObjectField("offset_nanos")
-	v.WriteInt64(int64(e.Left.Offset))
+	v.WriteInt64(int64(e.Offset))
 
 	// Serialize log selector pipeline as string.
 	v.WriteMore()
-	encodeLogSelector(v.Stream, e.Left.Left)
+	v.WriteObjectField("log_selector")
+	encodeLogSelector(v.Stream, e.Left)
 
-	if e.Left.Unwrap != nil {
+	if e.Unwrap != nil {
 		v.WriteMore()
 		v.WriteObjectField("unwrap")
-		v.WriteString(e.Left.Unwrap.String())
+		v.WriteString(e.Unwrap.String())
 		v.WriteObjectEnd()
 	}
 
-	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
 }
@@ -271,7 +277,7 @@ func decodeGrouping(iter *jsoniter.Iterator) (*syntax.Grouping, error) {
 
 func encodeLogSelector(s *jsoniter.Stream, e syntax.LogSelectorExpr) {
 	s.WriteObjectStart()
-	s.WriteObjectField("log_selector")
+	s.WriteObjectField("raw")
 
 	s.WriteString(e.String())
 
@@ -280,6 +286,8 @@ func encodeLogSelector(s *jsoniter.Stream, e syntax.LogSelectorExpr) {
 }
 
 func decodeLogSelector(iter *jsoniter.Iterator) (syntax.LogSelectorExpr, error) {
+
+	iter.ReadObject()
 
 	raw := iter.ReadString()
 	expr, err := syntax.ParseExpr(raw)
@@ -351,9 +359,7 @@ func decodeVectorAgg(iter *jsoniter.Iterator) (*syntax.VectorAggregationExpr, er
 }
 
 func decodeRangeAgg(iter *jsoniter.Iterator) (*syntax.RangeAggregationExpr, error) {
-	expr := &syntax.RangeAggregationExpr{
-		Left: &syntax.LogRange{},
-	}
+	expr := &syntax.RangeAggregationExpr{}
 	var err error
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
@@ -364,14 +370,29 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*syntax.RangeAggregationExpr, erro
 			tmp := iter.ReadFloat64()
 			expr.Params = &tmp
 		case "range":
-			// TODO
-			iter.Skip()
+			expr.Left, err = decodeLogRange(iter)
 		case "grouping":
 			expr.Grouping, err = decodeGrouping(iter)
+		}
+	}
+
+	return expr, err
+}
+
+func decodeLogRange(iter *jsoniter.Iterator) (*syntax.LogRange, error) {
+	expr := &syntax.LogRange{}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
 		case "log_selector":
-			expr.Left.Left, err = decodeLogSelector(iter)
+			expr.Left, err = decodeLogSelector(iter)
+		case "interval_nanos":
+			expr.Interval = time.Duration(iter.ReadInt64())
+		case "offset_nanos":
+			expr.Offset = time.Duration(iter.ReadInt64())
 		case "unwrap":
-			// TODO:
+			expr.Unwrap = 
 		}
 	}
 

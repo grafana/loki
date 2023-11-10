@@ -18,6 +18,8 @@ type RootVisitor interface {
 	SampleExprVisitor
 	LogSelectorExprVisitor
 	StageExprVisitor
+
+	VisitLogRange(*LogRange)
 }
 
 type SampleExprVisitor interface {
@@ -58,6 +60,8 @@ func Dispatch(root Expr, v RootVisitor) error {
 		DispatchLogSelectorExpr(e, v)
 	case StageExpr:
 		DispatchStageExpr(e, v)
+	case *LogRange:
+		v.VisitLogRange(e)
 	default:
 		return fmt.Errorf("unpexpected root expression type: got (%T)", e)
 	}
