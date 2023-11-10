@@ -17,7 +17,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 			query: `{env="prod", app=~"loki.*"}`,
 		},
 		"simple aggregation": {
-			query: `count_over_time({env="prod", app=~"loki.*"} [5m])`,
+			query: `count_over_time({env="prod", app=~"loki.*"}[5m])`,
 		},
 	}
 
