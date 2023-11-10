@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -222,6 +223,91 @@ func getLocalStore(cm ClientMetrics) Store {
 	}
 	return store
 }
+
+var streamsFixture = []*logproto.Stream{
+	{
+		Labels: "{foo=\"bar\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from,
+				Line:      "1",
+			},
+
+			{
+				Timestamp: from.Add(time.Millisecond),
+				Line:      "2",
+			},
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+		},
+	},
+	{
+		Labels: "{foo=\"bar\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+			{
+				Timestamp: from.Add(3 * time.Millisecond),
+				Line:      "4",
+			},
+
+			{
+				Timestamp: from.Add(4 * time.Millisecond),
+				Line:      "5",
+			},
+			{
+				Timestamp: from.Add(5 * time.Millisecond),
+				Line:      "6",
+			},
+		},
+	},
+	{
+		Labels: "{foo=\"bazz\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from,
+				Line:      "1",
+			},
+
+			{
+				Timestamp: from.Add(time.Millisecond),
+				Line:      "2",
+			},
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+		},
+	},
+	{
+		Labels: "{foo=\"bazz\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+			{
+				Timestamp: from.Add(3 * time.Millisecond),
+				Line:      "4",
+			},
+
+			{
+				Timestamp: from.Add(4 * time.Millisecond),
+				Line:      "5",
+			},
+			{
+				Timestamp: from.Add(5 * time.Millisecond),
+				Line:      "6",
+			},
+		},
+	},
+}
+
+var storeFixture = stores.NewMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, streamsFixture)
 
 func Test_store_SelectLogs(t *testing.T) {
 	tests := []struct {
