@@ -72,7 +72,6 @@ type Limits struct {
 	RejectOldSamples            bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
 	RejectOldSamplesMaxAge      model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
 	CreationGracePeriod         model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
-	EnforceMetricName           bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
@@ -112,9 +111,6 @@ type Limits struct {
 	VolumeMaxSeries     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
-
-	// TODO(chaudum): Remove deprecated setting in next major version
-	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
@@ -225,7 +221,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
 	_ = l.CreationGracePeriod.Set("10m")
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
-	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Maximum number of log entries that will be returned for a query.")
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
@@ -275,9 +270,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
-
-	_ = l.RulerEvaluationDelay.Set("0s")
-	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated. Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
@@ -520,11 +512,6 @@ func (o *Overrides) MaxQueryParallelism(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryParallelism
 }
 
-// EnforceMetricName whether to enforce the presence of a metric name.
-func (o *Overrides) EnforceMetricName(userID string) bool {
-	return o.getOverridesForUser(userID).EnforceMetricName
-}
-
 // CardinalityLimit whether to enforce the presence of a metric name.
 func (o *Overrides) CardinalityLimit(userID string) int {
 	return o.getOverridesForUser(userID).CardinalityLimit
@@ -590,12 +577,6 @@ func (o *Overrides) MaxStatsCacheFreshness(_ context.Context, userID string) tim
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
-}
-
-// Deprecated, can be removed in next major version
-// EvaluationDelay returns the rules evaluation delay for a given user.
-func (o *Overrides) EvaluationDelay(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).RulerEvaluationDelay)
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.

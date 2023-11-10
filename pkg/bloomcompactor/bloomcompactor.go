@@ -26,7 +26,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -469,7 +468,7 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 		return bloomshipper.Block{}, err
 	}
 
-	err = builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChks}))
+	checksum, err := builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChks}))
 	if err != nil {
 		level.Error(logger).Log("writing bloom", err)
 		return bloomshipper.Block{}, err
@@ -478,20 +477,6 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 	blockFile, err := os.Open(filepath.Join(localDst, bloomFileName))
 	if err != nil {
 		level.Error(logger).Log("reading bloomBlock", err)
-	}
-
-	// read the checksum
-	if _, err := blockFile.Seek(-4, 2); err != nil {
-		return bloomshipper.Block{}, errors.Wrap(err, "seeking to bloom checksum")
-	}
-	checksum := make([]byte, 4)
-	if _, err := blockFile.Read(checksum); err != nil {
-		return bloomshipper.Block{}, errors.Wrap(err, "reading bloom checksum")
-	}
-
-	// Reset back to beginning
-	if _, err := blockFile.Seek(0, 0); err != nil {
-		return bloomshipper.Block{}, errors.Wrap(err, "seeking to back to beginning of the file")
 	}
 
 	blocks := bloomshipper.Block{
@@ -503,7 +488,7 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 				MaxFingerprint: uint64(job.Fingerprint()),
 				StartTimestamp: job.From().Unix(),
 				EndTimestamp:   job.Through().Unix(),
-				Checksum:       binary.BigEndian.Uint32(checksum),
+				Checksum:       checksum,
 			},
 			IndexPath: job.IndexPath(),
 		},

@@ -183,8 +183,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [schema_config: <schema_config>]
 
 # The compactor block configures the compactor component, which compacts index
-# shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated,
-# please use `-compactor.` instead.
+# shards for performance.
 [compactor: <compactor>]
 
 # The limits_config block configures global and per-tenant limits in Loki.
@@ -2267,7 +2266,7 @@ Configures the chunk index schema and where it is stored.
 
 ### compactor
 
-The `compactor` block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.
+The `compactor` block configures the compactor component, which compacts index shards for performance.
 
 ```yaml
 # Directory where files can be downloaded for compaction.
@@ -2432,9 +2431,6 @@ compactor_ring:
 # -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
-
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[deletion_mode: <string> | default = ""]
 ```
 
 ### bloom_compactor
@@ -2624,10 +2620,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -validation.create-grace-period
 [creation_grace_period: <duration> | default = 10m]
 
-# Enforce every sample has a metric name.
-# CLI flag: -validation.enforce-metric-name
-[enforce_metric_name: <boolean> | default = true]
-
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
 # set which in case it is truncated instead of discarding it completely. There
@@ -2793,11 +2785,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # The maximum number of aggregated series in a log-volume response
 # CLI flag: -limits.volume-max-series
 [volume_max_series: <int> | default = 1000]
-
-# Deprecated. Duration to delay the evaluation of rules to ensure the underlying
-# metrics have been pushed to Cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[ruler_evaluation_delay_duration: <duration> | default = 0s]
 
 # Maximum number of rules per rule group per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rules-per-rule-group

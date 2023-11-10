@@ -509,7 +509,7 @@ func TestVolumeTripperware(t *testing.T) {
 			From:        model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
 			Through:     model.TimeFromUnixNano(testTime.UnixNano()),
 			Limit:       10,
-			Step:        0, // Travis/Trevor: this should be ignored and set to 0. Karsten: Why?
+			Step:        0, // Setting this value to 0 is what makes this an instant query
 			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
@@ -567,7 +567,7 @@ func TestVolumeTripperware(t *testing.T) {
 			Matchers:    `{job="varlogs"}`,
 			From:        model.TimeFromUnixNano(start.UnixNano()), // bigger than split by interval limit
 			Through:     model.TimeFromUnixNano(end.UnixNano()),
-			Step:        time.Hour.Milliseconds(),
+			Step:        time.Hour.Milliseconds(), // a non-zero value makes this a range query
 			Limit:       10,
 			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
@@ -587,10 +587,10 @@ func TestVolumeTripperware(t *testing.T) {
 		require.Equal(t, 6, *count) // 6 queries from splitting into step buckets
 
 		barBazExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
 			barBazExpectedSamples = append(barBazExpectedSamples, logproto.LegacySample{
 				Value:       3350,
-				TimestampMs: s.Unix() * 1e3,
+				TimestampMs: e.UnixMilli(),
 			})
 		})
 		sort.Slice(barBazExpectedSamples, func(i, j int) bool {
@@ -598,10 +598,10 @@ func TestVolumeTripperware(t *testing.T) {
 		})
 
 		fooBarExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
 			fooBarExpectedSamples = append(fooBarExpectedSamples, logproto.LegacySample{
 				Value:       1024,
-				TimestampMs: s.Unix() * 1e3,
+				TimestampMs: e.UnixMilli(),
 			})
 		})
 		sort.Slice(fooBarExpectedSamples, func(i, j int) bool {
