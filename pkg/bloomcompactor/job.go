@@ -13,8 +13,8 @@ type Job struct {
 	seriesFP                       model.Fingerprint
 	chunks                         []index.ChunkMeta
 
-	// We compute them lazily.
-	from, through *model.Time
+	// We compute them lazily. Unset value is 0.
+	from, through model.Time
 }
 
 // NewJob returns a new compaction Job.
@@ -65,24 +65,21 @@ func (j *Job) IndexPath() string {
 }
 
 func (j *Job) From() model.Time {
-	if j.from == nil {
+	if j.from == 0 {
 		j.computeFromThrough()
 	}
-	return *j.from
+	return j.from
 }
 
 func (j *Job) Through() model.Time {
-	if j.through == nil {
+	if j.through == 0 {
 		j.computeFromThrough()
 	}
-	return *j.through
+	return j.through
 }
 
 func (j *Job) computeFromThrough() {
 	if len(j.chunks) == 0 {
-		var zero model.Time
-		j.from = &zero
-		j.through = &zero
 		return
 	}
 
@@ -99,6 +96,6 @@ func (j *Job) computeFromThrough() {
 		}
 	}
 
-	j.from = &minFrom
-	j.through = &maxThrough
+	j.from = minFrom
+	j.through = maxThrough
 }
