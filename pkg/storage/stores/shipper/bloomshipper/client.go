@@ -79,7 +79,7 @@ type Block struct {
 }
 
 type BlockClient interface {
-	GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error)
+	GetBlock(ctx context.Context, reference BlockRef) (Block, error)
 	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
 }
@@ -190,42 +190,23 @@ func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
 
-// GetBlocks downloads all the blocks from objectStorage in parallel and sends the downloaded blocks
-// via the channel Block that is closed only if all the blocks are downloaded without errors.
-// If an error happens, the error will be sent via error channel.
-func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error) {
-	blocksChannel := make(chan Block, len(references))
-	errChannel := make(chan error)
-	go func() {
-		//todo move concurrency to the config
-		err := concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
-			reference := references[idx]
-			period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
-			if err != nil {
-				return fmt.Errorf("error while period lookup: %w", err)
-			}
-			objectClient := b.periodicObjectClients[period]
-			readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
-			if err != nil {
-				return fmt.Errorf("error while fetching object from storage: %w", err)
-			}
-			blocksChannel <- Block{
-				BlockRef: reference,
-				Data:     readCloser,
-			}
-			return nil
-		})
-		if err != nil {
-			errChannel <- fmt.Errorf("error downloading block file: %w", err)
-			return
-		}
-		//close blocks channel only if there is no error
-		close(blocksChannel)
-	}()
-	return blocksChannel, errChannel
+// GetBlock downloads the blocks from objectStorage and returns the downloaded block
+func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (Block, error) {
+	period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
+	if err != nil {
+		return Block{}, fmt.Errorf("error while period lookup: %w", err)
+	}
+	objectClient := b.periodicObjectClients[period]
+	readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
+	if err != nil {
+		return Block{}, fmt.Errorf("error while fetching object from storage: %w", err)
+	}
+	return Block{
+		BlockRef: reference,
+		Data:     readCloser,
+	}, nil
 }
 
-// TODO zip (archive) blocks before uploading to storage
 func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
 	results := make([]Block, len(blocks))
 	//todo move concurrency to the config

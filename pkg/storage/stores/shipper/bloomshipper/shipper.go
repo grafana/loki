@@ -4,32 +4,35 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 type Shipper struct {
-	client Client
-	config config.Config
-	logger log.Logger
+	client          Client
+	config          config.Config
+	logger          log.Logger
+	blockDownloader *blockDownloader
 }
 
-func NewShipper(client Client, config config.Config, logger log.Logger) (*Shipper, error) {
+type Limits interface {
+	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
+}
+
+func NewShipper(client Client, config config.Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Shipper, error) {
+	logger = log.With(logger, "component", "bloom-shipper")
+	downloader := newBlockDownloader(config, client, limits, logger, reg)
 	return &Shipper{
-		client: client,
-		config: config,
-		logger: log.With(logger, "component", "bloom-shipper"),
+		client:          client,
+		config:          config,
+		logger:          logger,
+		blockDownloader: downloader,
 	}, nil
 }
 
@@ -47,21 +50,18 @@ func (s *Shipper) ForEachBlock(
 		return fmt.Errorf("error fetching active block references : %w", err)
 	}
 
-	blocksChannel, errorsChannel := s.client.GetBlocks(ctx, blockRefs)
+	cancelContext, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
+	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blockRefs)
 	for {
 		select {
-		case block, ok := <-blocksChannel:
+		case result, ok := <-blocksChannel:
 			if !ok {
 				return nil
 			}
-			directory, err := s.extractBlock(&block, time.Now().UTC())
+			err = callback(result.BlockQuerier)
 			if err != nil {
-				return fmt.Errorf("error unarchiving block %s err: %w", block.BlockPath, err)
-			}
-			blockQuerier := s.createBlockQuerier(directory)
-			err = callback(blockQuerier)
-			if err != nil {
-				return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
+				return fmt.Errorf("error running callback function for block %s err: %w", result.BlockPath, err)
 			}
 		case err := <-errorsChannel:
 			if err != nil {
@@ -176,56 +176,4 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp int64, fingerprint
 		return true
 	}
 	return b.MaxFingerprint < fingerprints[idx]
-}
-
-// extract the files into directory and returns absolute path to this directory.
-func (s *Shipper) extractBlock(block *Block, ts time.Time) (string, error) {
-	workingDirectoryPath := filepath.Join(s.config.WorkingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixMilli(), 10))
-	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
-	if err != nil {
-		return "", fmt.Errorf("can not create directory to extract the block: %w", err)
-	}
-	archivePath, err := writeDataToTempFile(workingDirectoryPath, block)
-	if err != nil {
-		return "", fmt.Errorf("error writing data to temp file: %w", err)
-	}
-	defer func() {
-		os.Remove(archivePath)
-		// todo log err
-	}()
-	err = extractArchive(archivePath, workingDirectoryPath)
-	if err != nil {
-		return "", fmt.Errorf("error extracting archive: %w", err)
-	}
-	return workingDirectoryPath, nil
-}
-
-func (s *Shipper) createBlockQuerier(directory string) *v1.BlockQuerier {
-	reader := v1.NewDirectoryBlockReader(directory)
-	block := v1.NewBlock(reader)
-	return v1.NewBlockQuerier(block)
-}
-
-func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
-	defer block.Data.Close()
-	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
-
-	archiveFile, err := os.Create(archivePath)
-	if err != nil {
-		return "", fmt.Errorf("error creating empty file to store the archiver: %w", err)
-	}
-	defer archiveFile.Close()
-	_, err = io.Copy(archiveFile, block.Data)
-	if err != nil {
-		return "", fmt.Errorf("error writing data to archive file: %w", err)
-	}
-	return archivePath, nil
-}
-
-func extractArchive(archivePath string, workingDirectoryPath string) error {
-	file, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("error opening archive file %s: %w", file.Name(), err)
-	}
-	return v1.UnTarGz(workingDirectoryPath, file)
 }
