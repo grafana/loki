@@ -714,6 +714,34 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 			require.NoError(t, err)
 
 			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
+
+		})
+	}
+}
+
+func Test_WriteVolumeResponseJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    *logproto.VolumeResponse
+		expected string
+	}{
+		{
+			name:     "empty",
+			input:    &logproto.VolumeResponse{Volumes: []logproto.Volume{}},
+			expected: `{"volumes":[]}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b bytes.Buffer
+			err := WriteVolumeResponseJSON(tc.input, &b)
+			require.NoError(t, err)
+
+			require.JSONEq(t, tc.expected, b.String())
+
+			var resp logproto.VolumeResponse
+			err = json.Unmarshal([]byte(tc.expected), &resp)
+			require.NoError(t, err)
+			require.Equal(t, tc.input, &resp)
 		})
 	}
 }
