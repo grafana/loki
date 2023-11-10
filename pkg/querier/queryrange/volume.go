@@ -109,16 +109,17 @@ func ToPrometheusResponse(respsCh chan *bucketedVolumeResponse, aggregateBySerie
 	var headers []*definitions.PrometheusResponseHeader
 	samplesByName := make(map[string][]logproto.LegacySample)
 
-	for bucketedVolumeResponse := range respsCh {
-		if bucketedVolumeResponse == nil {
+	for response := range respsCh {
+		if response == nil {
 			continue
 		}
 
-		bucket, resp := bucketedVolumeResponse.bucket, bucketedVolumeResponse.response
+		bucket, resp := response.bucket, response.response
+
 
 		if headers == nil {
-			headers := make([]*definitions.PrometheusResponseHeader, len(resp.Headers))
-			for i, header := range resp.Headers {
+			headers = make([]*definitions.PrometheusResponseHeader, len(r.Headers))
+			for i, header := range r.Headers {
 				h := header
 				headers[i] = &h
 			}
