@@ -38,6 +38,14 @@ func parseDayTime(s string) config.DayTime {
 	}
 }
 
+func mktime(s string) model.Time {
+	ts, err := time.Parse("2006-01-02 15:04", s)
+	if err != nil {
+		panic(err)
+	}
+	return model.TimeFromUnix(ts.Unix())
+}
+
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
 	t.Helper()
 	grouped := make([]*logproto.GroupedChunkRefs, 0, len(chunkRefs))
@@ -168,8 +176,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
+		now := mktime("2023-10-03 10:00")
 
 		chunkRefs := []*logproto.ChunkRef{
 			{Fingerprint: 3000, UserID: tenantID, From: now.Add(-24 * time.Hour), Through: now.Add(-23 * time.Hour), Checksum: 1},
@@ -207,8 +214,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
 		require.NoError(t, err)
 
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
+		now := mktime("2023-10-03 10:00")
 
 		chunkRefs := []*logproto.ChunkRef{
 			{Fingerprint: 1000, UserID: tenantID, From: now.Add(-22 * time.Hour), Through: now.Add(-21 * time.Hour), Checksum: 1},
@@ -241,8 +247,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
+		now := mktime("2023-10-03 10:00")
 
 		tenants := []string{"tenant-a", "tenant-b", "tenant-c"}
 		for idx, tenantID := range tenants {
@@ -275,8 +280,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
 		require.NoError(t, err)
 
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
+		now := mktime("2023-10-03 10:00")
 
 		// replace store implementation and re-initialize workers and sub-services
 		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
