@@ -131,6 +131,8 @@ func (v *JSONSerializer) VisitRangeAggregation(e *syntax.RangeAggregationExpr) {
 	v.WriteObjectField("range")
 	v.VisitLogRange(e.Left)
 	v.WriteObjectEnd()
+
+	v.WriteObjectEnd()
 	v.Flush()
 }
 
@@ -151,8 +153,7 @@ func (v *JSONSerializer) VisitLogRange(e *syntax.LogRange) {
 	if e.Unwrap != nil {
 		v.WriteMore()
 		v.WriteObjectField("unwrap")
-		// TODO:
-		v.WriteObjectEnd()
+		encodeUnwrap(v.Stream, e.Unwrap)
 	}
 
 	v.WriteObjectEnd()
@@ -286,6 +287,47 @@ func decodeGrouping(iter *jsoniter.Iterator) (*syntax.Grouping, error) {
 	return g, nil
 }
 
+func encodeUnwrap(s *jsoniter.Stream, u *syntax.UnwrapExpr) {
+	s.WriteObjectStart()
+	s.WriteObjectField("identifier")
+	s.WriteString(u.Identifier)
+
+	s.WriteMore()
+	s.WriteObjectField("operation")
+	s.WriteString(u.Operation)
+
+	/*
+		s.WriteMore()
+		s.WriteObjectField("post_filterers")
+		s.WriteArrayStart()
+		for i, group := range u.PostFilters{
+			if i > 0 {
+				s.WriteMore()
+			}
+			s.WriteString(group)
+		}
+		s.WriteArrayEnd()
+	*/
+
+	s.WriteObjectEnd()
+}
+
+func decodeUnwrap(iter *jsoniter.Iterator) *syntax.UnwrapExpr {
+	e := &syntax.UnwrapExpr{}
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "identifier":
+			e.Identifier = iter.ReadString()
+		case "operation":
+			e.Operation = iter.ReadString()
+		case "post_filterers":
+			iter.Skip()
+		}
+	}
+
+	return e
+}
+
 func encodeLogSelector(s *jsoniter.Stream, e syntax.LogSelectorExpr) {
 	s.WriteObjectStart()
 	s.WriteObjectField("raw")
@@ -297,6 +339,9 @@ func encodeLogSelector(s *jsoniter.Stream, e syntax.LogSelectorExpr) {
 }
 
 func decodeLogSelector(iter *jsoniter.Iterator) (syntax.LogSelectorExpr, error) {
+	var e syntax.LogSelectorExpr
+	var err error
+
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "raw":
@@ -306,15 +351,16 @@ func decodeLogSelector(iter *jsoniter.Iterator) (syntax.LogSelectorExpr, error) 
 				return nil, err
 			}
 
-			if e, ok := expr.(syntax.LogSelectorExpr); ok {
-				return e, nil
-			}
+			var ok bool
+			e, ok = expr.(syntax.LogSelectorExpr)
 
-			return nil, fmt.Errorf("unexpected expression type: want(LogSelectorExpr), got(%T)", expr)
+			if !ok {
+				err = fmt.Errorf("unexpected expression type: want(LogSelectorExpr), got(%T)", expr)
+			}
 		}
 	}
 
-	return nil, fmt.Errorf("missing field: raw")
+	return e, err
 }
 
 func decodeSample(iter *jsoniter.Iterator) (syntax.SampleExpr, error) {
@@ -407,7 +453,7 @@ func decodeLogRange(iter *jsoniter.Iterator) (*syntax.LogRange, error) {
 		case "offset_nanos":
 			expr.Offset = time.Duration(iter.ReadInt64())
 		case "unwrap":
-			iter.Skip() // TODO
+			expr.Unwrap = decodeUnwrap(iter)
 		}
 	}
 

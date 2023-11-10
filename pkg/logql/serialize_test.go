@@ -2,6 +2,7 @@ package logql
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,12 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"simple aggregation": {
 			query: `count_over_time({env="prod", app=~"loki.*"}[5m])`,
 		},
+		"simple aggregation with unwrap": {
+			query: `sum_over_time({env="prod", app=~"loki.*"} | unwrap bytes[5m])`,
+		},
+		"label filterer": {
+			query: `bytes >= 0`,
+		},
 	}
 
 	for name, test := range tests {
@@ -33,6 +40,8 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 
 			actual, err := DecodeJSON(buf.String())
 			require.NoError(t, err)
+
+			fmt.Println(buf.String())
 
 			require.Equal(t, test.query, actual.String())
 		})
