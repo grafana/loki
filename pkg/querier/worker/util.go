@@ -101,29 +101,20 @@ func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handl
 
 	resp, err := handler.Do(ctx, req)
 	if err != nil {
-		response, ok := httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			// This block covers any errors that are not gRPC errors and will include all query errors.
-			// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
-			code, _ := server.ClientHTTPStatusAndError(err)
-			return &httpgrpc.HTTPResponse{
-				Code: int32(code),
-				Body: []byte(err.Error()),
-			}
+		code, err := server.ClientHTTPStatusAndError(err)
+		return &httpgrpc.HTTPResponse{
+			Code: int32(code),
+			Body: []byte(err.Error()),
 		}
-		return response
 	}
 
 	response, err := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
 	if err != nil {
-		response, ok := httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			return &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
-			}
+		code, err := server.ClientHTTPStatusAndError(err)
+		return &httpgrpc.HTTPResponse{
+			Code: int32(code),
+			Body: []byte(err.Error()),
 		}
-		return response
 	}
 
 	return response
@@ -148,7 +139,7 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 
 		// This block covers any errors that are not gRPC errors and will include all query errors.
 		// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
-		code, _ := server.ClientHTTPStatusAndError(err)
+		code, err := server.ClientHTTPStatusAndError(err)
 		return &queryrange.QueryResponse{
 			Status: status.New(codes.Code(code), err.Error()).Proto(),
 		}

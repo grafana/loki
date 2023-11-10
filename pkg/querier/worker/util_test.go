@@ -55,7 +55,7 @@ func TestHandleQueryRequest(t *testing.T) {
 		},
 		"canceled error": {
 			err:    context.Canceled,
-			errMsg: "context canceled",
+			errMsg: "cancelled by the client",
 			code:   server.StatusClientClosedRequest,
 		},
 	} {
