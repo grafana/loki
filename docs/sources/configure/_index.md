@@ -2527,7 +2527,31 @@ ring:
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
+# Directory where files can be downloaded for compaction.
+# CLI flag: -bloom-compactor.working-directory
 [working_directory: <string> | default = ""]
+
+# Interval at which to re-run the compaction operation.
+# CLI flag: -bloom-compactor.compaction-interval
+[compaction_interval: <duration> | default = 10m]
+
+# Minimum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-min-backoff
+[compaction_retries_min_backoff: <duration> | default = 10s]
+
+# Maximum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-max-backoff
+[compaction_retries_max_backoff: <duration> | default = 1m]
+
+# Number of retries to perform when compaction fails.
+# CLI flag: -bloom-compactor.compaction-retries
+[compaction_retries: <int> | default = 3]
+
+# Maximum number of tables to compact in parallel. While increasing this value,
+# please make sure compactor has enough disk space allocated to be able to store
+# and compact as many tables.
+# CLI flag: -bloom-compactor.max-compaction-parallelism
+[max_compaction_parallelism: <int> | default = 1]
 ```
 
 ### limits_config
@@ -2913,6 +2937,23 @@ shard_streams:
 # querying.
 # CLI flag: -bloom-gateway.shard-size
 [bloom_gateway_shard_size: <int> | default = 1]
+
+# The shard size defines how many bloom compactors should be used by a tenant
+# when computing blooms. If it's set to 0, shuffle sharding is disabled.
+# CLI flag: -bloom-compactor.shard-size
+[bloom_compactor_shard_size: <int> | default = 1]
+
+# The maximum age of a table before it is compacted. Do not compact tables older
+# than the the configured time. Default to 7 days. 0s means no limit.
+# CLI flag: -bloom-compactor.max-table-age
+[bloom_compactor_max_table_age: <duration> | default = 168h]
+
+# The minimum age of a table before it is compacted. Do not compact tables newer
+# than the the configured time. Default to 1 hour. 0s means no limit. This is
+# useful to avoid compacting tables that will be updated with out-of-order
+# writes.
+# CLI flag: -bloom-compactor.min-table-age
+[bloom_compactor_min_table_age: <duration> | default = 1h]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
