@@ -2,9 +2,11 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -17,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func NewVolumeMiddleware() queryrangebase.Middleware {
@@ -84,7 +87,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 					}
 
 					collector <- &bucketedVolumeResponse{
-						bucket, resp.(*VolumeResponse),
+						bucket, resp,
 					}
 					return err
 				})
@@ -102,7 +105,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 
 type bucketedVolumeResponse struct {
 	bucket   time.Time
-	response *VolumeResponse
+	response queryrangebase.Response
 }
 
 func ToPrometheusResponse(respsCh chan *bucketedVolumeResponse, aggregateBySeries bool) *LokiPromResponse {
@@ -114,18 +117,23 @@ func ToPrometheusResponse(respsCh chan *bucketedVolumeResponse, aggregateBySerie
 			continue
 		}
 
-		bucket, resp := response.bucket, response.response
+		bucket, r := response.bucket, response.response
 
+		vr, ok := r.(*VolumeResponse)
+		if !ok {
+			level.Error(util_log.Logger).Log("msg", "unexpected response type given, skipping bucket", "given", fmt.Sprintf("%T", r), "bucket", bucket.Format(time.RFC3339Nano))
+			continue
+		}
 
 		if headers == nil {
-			headers = make([]*definitions.PrometheusResponseHeader, len(r.Headers))
-			for i, header := range r.Headers {
+			headers = make([]*definitions.PrometheusResponseHeader, len(vr.Headers))
+			for i, header := range vr.Headers {
 				h := header
 				headers[i] = &h
 			}
 		}
 
-		for _, volume := range resp.Response.Volumes {
+		for _, volume := range vr.Response.Volumes {
 			if _, ok := samplesByName[volume.Name]; !ok {
 				samplesByName[volume.Name] = make([]logproto.LegacySample, 0, 1)
 			}
