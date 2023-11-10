@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -316,10 +315,6 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		httpReq, err := f.codec.EncodeRequest(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
-		}
-
-		if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
 		freq.request, err = server.HTTPRequest(httpReq)
