@@ -197,7 +197,7 @@ func (c *Compactor) running(ctx context.Context) error {
 		case <-ticker.C:
 			c.metrics.compactionRunsStarted.Inc()
 			if err := c.runCompaction(ctx); err != nil {
-				c.metrics.compactionRunsErred.Inc()
+				c.metrics.compactionRunsFailed.Inc()
 				level.Error(c.logger).Log("msg", "failed to run compaction", "err", err)
 				continue
 			}
