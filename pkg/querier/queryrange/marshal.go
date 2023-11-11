@@ -3,16 +3,26 @@
 package queryrange
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"time"
 
+	"github.com/gogo/googleapis/google/rpc"
+	"github.com/gogo/status"
+	"github.com/grafana/dskit/user"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/pkg/util/querylimits"
 )
 
 const (
@@ -109,7 +119,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 		return &QuantileSketchResponse{Response: data.ToProto()}, nil
 	}
 
-	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
+	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
 }
 
 func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
@@ -171,8 +181,37 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 	}
 }
 
+func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
+	if res.Status != nil && res.Status.Code != int32(rpc.OK) {
+		return nil, status.ErrorProto(res.Status)
+	}
+
+	switch concrete := res.Response.(type) {
+	case *QueryResponse_Series:
+		return concrete.Series, nil
+	case *QueryResponse_Labels:
+		return concrete.Labels, nil
+	case *QueryResponse_Stats:
+		return concrete.Stats, nil
+	case *QueryResponse_Prom:
+		return concrete.Prom, nil
+	case *QueryResponse_Streams:
+		return concrete.Streams, nil
+	case *QueryResponse_Volume:
+		return concrete.Volume, nil
+	case *QueryResponse_TopkSketches:
+		return concrete.TopkSketches, nil
+	case *QueryResponse_QuantileSketches:
+		return concrete.QuantileSketches, nil
+	default:
+		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
+	}
+}
+
 func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
-	p := &QueryResponse{}
+	p := &QueryResponse{
+		Status: status.New(codes.OK, "").Proto(),
+	}
 
 	switch response := res.(type) {
 	case *LokiPromResponse:
@@ -200,4 +239,121 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	}
 
 	return p, nil
+}
+
+func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {
+	if req == nil {
+		return nil, ctx, nil
+	}
+
+	// Add query tags
+	if queryTags, ok := req.Metadata[string(httpreq.QueryTagsHTTPHeader)]; ok {
+		ctx = httpreq.InjectQueryTags(ctx, queryTags)
+	}
+
+	// Add actor path
+	if actor, ok := req.Metadata[httpreq.LokiActorPathHeader]; ok {
+		ctx = httpreq.InjectActorPath(ctx, actor)
+	}
+
+	// Add limits
+	if encodedLimits, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsKey]; ok {
+		limits, err := querylimits.UnmarshalQueryLimits([]byte(encodedLimits))
+		if err != nil {
+			return nil, ctx, err
+		}
+		ctx = querylimits.InjectQueryLimitsContext(ctx, *limits)
+	}
+
+	// Add query time
+	if queueTimeHeader, ok := req.Metadata[string(httpreq.QueryQueueTimeHTTPHeader)]; ok {
+		queueTime, err := time.ParseDuration(queueTimeHeader)
+		if err == nil {
+			ctx = context.WithValue(ctx, httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		}
+	}
+
+	switch concrete := req.Request.(type) {
+	case *QueryRequest_Series:
+		return concrete.Series, ctx, nil
+	case *QueryRequest_Instant:
+		return concrete.Instant, ctx, nil
+	case *QueryRequest_Stats:
+		return concrete.Stats, ctx, nil
+	case *QueryRequest_Volume:
+		return concrete.Volume, ctx, nil
+	case *QueryRequest_Streams:
+		return concrete.Streams, ctx, nil
+	case *QueryRequest_Labels:
+		return &LabelRequest{
+			LabelRequest: *concrete.Labels,
+		}, ctx, nil
+	default:
+		return nil, ctx, fmt.Errorf("unsupported request type, got (%T)", req.Request)
+	}
+}
+
+func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*QueryRequest, error) {
+
+	result := &QueryRequest{
+		Metadata: make(map[string]string),
+	}
+
+	switch req := r.(type) {
+	case *LokiSeriesRequest:
+		result.Request = &QueryRequest_Series{Series: req}
+	case *LabelRequest:
+		result.Request = &QueryRequest_Labels{Labels: &req.LabelRequest}
+	case *logproto.IndexStatsRequest:
+		result.Request = &QueryRequest_Stats{Stats: req}
+	case *logproto.VolumeRequest:
+		result.Request = &QueryRequest_Volume{Volume: req}
+	case *LokiInstantRequest:
+		result.Request = &QueryRequest_Instant{Instant: req}
+	case *LokiRequest:
+		result.Request = &QueryRequest_Streams{Streams: req}
+	default:
+		return nil, fmt.Errorf("unsupported request type, got (%T)", r)
+	}
+
+	// Add query tags
+	queryTags := getQueryTags(ctx)
+	if queryTags != "" {
+		result.Metadata[string(httpreq.QueryTagsHTTPHeader)] = queryTags
+	}
+
+	// Add actor path
+	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
+	if actor != "" {
+		result.Metadata[httpreq.LokiActorPathHeader] = actor
+	}
+
+	// Add limits
+	limits := querylimits.ExtractQueryLimitsContext(ctx)
+	if limits != nil {
+		encodedLimits, err := querylimits.MarshalQueryLimits(limits)
+		if err != nil {
+			return nil, err
+		}
+		result.Metadata[querylimits.HTTPHeaderQueryLimitsKey] = string(encodedLimits)
+	}
+
+	// Add org ID
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result.Metadata[user.OrgIDHeaderName] = orgID
+
+	// Tracing
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := opentracing.TextMapCarrier(result.Metadata)
+		err := tracer.Inject(span.Context(), opentracing.TextMap, carrier)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
 }

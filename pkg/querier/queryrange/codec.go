@@ -549,28 +549,35 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 
 func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
-	queryTags := getQueryTags(ctx)
-	if queryTags != "" {
+
+	// Add query tags
+	if queryTags := getQueryTags(ctx); queryTags != "" {
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
-	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
-	if encodingFlags != "" {
+	if encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader); encodingFlags != "" {
 		header.Set(httpreq.LokiEncodingFlagsHeader, encodingFlags)
 	}
 
-	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
-	if actor != "" {
+	// Add actor path
+	if actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader); actor != "" {
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
-	limits := querylimits.ExtractQueryLimitsContext(ctx)
-	if limits != nil {
+	// Add limits
+	if limits := querylimits.ExtractQueryLimitsContext(ctx); limits != nil {
 		err := querylimits.InjectQueryLimitsHeader(&header, limits)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	// Add org id
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	header.Set(user.OrgIDHeaderName, orgID)
 
 	switch request := r.(type) {
 	case *LokiRequest:

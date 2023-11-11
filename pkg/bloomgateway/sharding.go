@@ -5,6 +5,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
+
+	util_ring "github.com/grafana/loki/pkg/util/ring"
 )
 
 // TODO(chaudum): Replace this placeholder with actual BlockRef struct.
@@ -45,20 +47,17 @@ type ShardingStrategy interface {
 }
 
 type ShuffleShardingStrategy struct {
-	r            ring.ReadRing
-	limits       Limits
-	instanceAddr string
-	instanceID   string
-	logger       log.Logger
+	util_ring.TenantSharding
+	r              ring.ReadRing
+	ringLifeCycler *ring.BasicLifecycler
+	logger         log.Logger
 }
 
-func NewShuffleShardingStrategy(r ring.ReadRing, l Limits, instanceAddr, instanceID string, logger log.Logger) *ShuffleShardingStrategy {
+func NewShuffleShardingStrategy(r ring.ReadRing, ringLifecycler *ring.BasicLifecycler, limits Limits, logger log.Logger) *ShuffleShardingStrategy {
 	return &ShuffleShardingStrategy{
-		r:            r,
-		limits:       l,
-		instanceAddr: instanceAddr,
-		instanceID:   instanceID,
-		logger:       logger,
+		TenantSharding: util_ring.NewTenantShuffleSharding(r, ringLifecycler, limits.BloomGatewayShardSize),
+		ringLifeCycler: ringLifecycler,
+		logger:         logger,
 	}
 }
 
@@ -69,17 +68,15 @@ func (s *ShuffleShardingStrategy) FilterTenants(_ context.Context, tenantIDs []s
 	// instance, because of the auto-forget feature.
 	if set, err := s.r.GetAllHealthy(BlocksOwnerSync); err != nil {
 		return nil, err
-	} else if !set.Includes(s.instanceAddr) {
+	} else if !set.Includes(s.ringLifeCycler.GetInstanceID()) {
 		return nil, errGatewayUnhealthy
 	}
 
 	var filteredIDs []string
 
 	for _, tenantID := range tenantIDs {
-		subRing := GetShuffleShardingSubring(s.r, tenantID, s.limits)
-
 		// Include the user only if it belongs to this bloom gateway shard.
-		if subRing.HasInstance(s.instanceID) {
+		if s.OwnsTenant(tenantID) {
 			filteredIDs = append(filteredIDs, tenantID)
 		}
 	}
@@ -94,35 +91,35 @@ func getBucket(rangeMin, rangeMax, pos uint64) int {
 
 // FilterBlocks implements ShardingStrategy.
 func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, tenantID string, blockRefs []BlockRef) ([]BlockRef, error) {
+	if !s.OwnsTenant(tenantID) {
+		return nil, nil
+	}
+
 	filteredBlockRefs := make([]BlockRef, 0, len(blockRefs))
 
-	subRing := GetShuffleShardingSubring(s.r, tenantID, s.limits)
+	tenantRing := s.GetTenantSubRing(tenantID)
 
-	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-	var rs ring.ReplicationSet
-	var err error
-
+	fpSharding := util_ring.NewFingerprintShuffleSharding(tenantRing, s.ringLifeCycler, BlocksOwnerSync)
 	for _, blockRef := range blockRefs {
-		rs, err = subRing.Get(uint32(blockRef.FromFp), BlocksOwnerSync, bufDescs, bufHosts, bufZones)
+		owns, err := fpSharding.OwnsFingerprint(blockRef.FromFp)
 		if err != nil {
 			return nil, err
 		}
-		// Include the block only if it belongs to this bloom gateway shard.
-		if rs.Includes(s.instanceID) {
+		if owns {
 			filteredBlockRefs = append(filteredBlockRefs, blockRef)
 			continue
 		}
 
-		rs, err = subRing.Get(uint32(blockRef.ThroughFp), BlocksOwnerSync, bufDescs, bufHosts, bufZones)
+		owns, err = fpSharding.OwnsFingerprint(blockRef.ThroughFp)
 		if err != nil {
 			return nil, err
 		}
-		// Include the block only if it belongs to this bloom gateway shard.
-		if rs.Includes(s.instanceID) {
+		if owns {
 			filteredBlockRefs = append(filteredBlockRefs, blockRef)
 			continue
 		}
 	}
+
 	return filteredBlockRefs, nil
 }
 
