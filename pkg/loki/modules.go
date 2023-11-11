@@ -1260,9 +1260,7 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initBloomGateway() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-gateway")
 
-	instanceAddr := t.bloomGatewayRingManager.RingLifecycler.GetInstanceAddr()
-	instanceID := t.bloomGatewayRingManager.RingLifecycler.GetInstanceID()
-	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.bloomGatewayRingManager.Ring, t.Overrides, instanceAddr, instanceID, logger)
+	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.bloomGatewayRingManager.Ring, t.bloomGatewayRingManager.RingLifecycler, t.Overrides, logger)
 
 	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, shuffleSharding, t.clientMetrics, logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -1399,12 +1397,16 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
-	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor,
-		t.ring,
+
+	shuffleSharding := bloomcompactor.NewShuffleShardingStrategy(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides)
+
+	compactor, err := bloomcompactor.New(
+		t.Cfg.BloomCompactor,
 		t.Cfg.StorageConfig,
 		t.Cfg.SchemaConfig,
 		t.Overrides,
 		logger,
+		shuffleSharding,
 		t.clientMetrics,
 		prometheus.DefaultRegisterer)
 
