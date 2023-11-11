@@ -2,9 +2,13 @@ package stores
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/pkg/storage/errors"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -155,6 +160,11 @@ func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 }
 
 func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "CompositeStore.GetChunks")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
+	defer log.Span.Finish()
+
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
@@ -172,6 +182,15 @@ func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, thro
 		fetchers = append(fetchers, fetcher...)
 		return nil
 	})
+
+	// Protect ourselves against OOMing.
+	maxChunksPerQuery := c.limits.MaxChunksPerQueryFromStore(userID)
+	if maxChunksPerQuery > 0 && len(chunkIDs) > maxChunksPerQuery {
+		err := errors.QueryError(fmt.Sprintf("Query %v fetched too many chunks (%d > %d)", matchers, len(chunkIDs), maxChunksPerQuery))
+		level.Error(log).Log("err", err)
+		return nil, nil, err
+	}
+
 	return chunkIDs, fetchers, err
 }
 
