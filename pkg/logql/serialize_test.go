@@ -26,6 +26,12 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"bin op": {
 			query: `(count_over_time({env="prod", app=~"loki.*"}[5m]) >= 0)`,
 		},
+		"label filter": {
+			query: `sum_over_time({env="prod", app=~"loki.*"} | byte>128 | unwrap bytes[5m])`,
+		},
+		"regexp": {
+			query: `{env="prod", app=~"loki.*"} |~ ".*foo.*"`,
+		},
 	}
 
 	for name, test := range tests {
