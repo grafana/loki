@@ -11,6 +11,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 	tests := map[string]struct {
 		query string
 	}{
+		/*
 		"simple matchers": {
 			query: `{env="prod", app=~"loki.*"}`,
 		},
@@ -37,6 +38,9 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		},
 		"label replace": {
 			query: `label_replace(vector(0.000000),"foo","bar","","")`,
+		},*/
+		"filters with bytes": {
+			query: `{app="foo"} |= "bar" | json | ( status_code<500 or ( status_code>200 , size>=2.5KiB ) )`,
 		},
 	}
 

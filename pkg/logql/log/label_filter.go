@@ -207,7 +207,7 @@ func (d *BytesLabelFilter) String() string {
 			return -1
 		}
 		return r
-	}, humanize.Bytes(d.Value))
+	}, humanize.IBytes(d.Value)) // TODO: discuss whether this should just be bytes, B.
 	return fmt.Sprintf("%s%s%s", d.Name, d.Type, b)
 }
 
