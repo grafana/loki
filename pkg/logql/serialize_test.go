@@ -2,7 +2,6 @@ package logql
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,7 +26,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 			query: `(count_over_time({env="prod", app=~"loki.*"}[5m]) >= 0)`,
 		},
 		"label filter": {
-			query: `sum_over_time({env="prod", app=~"loki.*"} | byte>128 | unwrap bytes[5m])`,
+			query: `{app="foo"} |= "bar" | json | ( latency>=250ms or ( status_code<500 , status_code>200 ) )`,
 		},
 		"regexp": {
 			query: `{env="prod", app=~"loki.*"} |~ ".*foo.*"`,
@@ -44,10 +43,10 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 			err = EncodeJSON(expr, &buf)
 			require.NoError(t, err)
 
+			t.Log(buf.String())
+
 			actual, err := DecodeJSON(buf.String())
 			require.NoError(t, err)
-
-			fmt.Println(buf.String())
 
 			require.Equal(t, test.query, actual.String())
 		})
