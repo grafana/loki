@@ -31,6 +31,9 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"regexp": {
 			query: `{env="prod", app=~"loki.*"} |~ ".*foo.*"`,
 		},
+		"vector matching": {
+			query: `(sum by (cluster)(rate({foo="bar"}[5m])) / ignoring (cluster)  count(rate({foo="bar"}[5m])))`,
+		},
 	}
 
 	for name, test := range tests {

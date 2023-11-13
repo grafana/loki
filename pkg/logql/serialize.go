@@ -64,8 +64,6 @@ func (v *JSONSerializer) VisitBinOp(e *syntax.BinOpExpr) {
 	v.WriteObjectField("op")
 	v.WriteString(e.Op)
 
-	// TODO: encode options
-
 	v.WriteMore()
 	v.WriteObjectField("lhs")
 	e.SampleExpr.Accept(v)
@@ -73,6 +71,55 @@ func (v *JSONSerializer) VisitBinOp(e *syntax.BinOpExpr) {
 	v.WriteMore()
 	v.WriteObjectField("rhs")
 	e.RHS.Accept(v)
+
+	if e.Opts != nil {
+		v.WriteMore()
+		v.WriteObjectField("options")
+		v.WriteObjectStart()
+
+		v.WriteObjectField("return_bool")
+		v.WriteBool(e.Opts.ReturnBool)
+
+		if e.Opts.VectorMatching != nil {
+			v.WriteMore()
+			v.WriteObjectField("vector_matching")
+			v.WriteObjectStart()
+
+			v.WriteObjectField("include")
+			v.WriteArrayStart()
+			for i, l := range e.Opts.VectorMatching.Include {
+				if i > 0 {
+					v.WriteMore()
+				}
+				v.WriteString(l)
+			}
+			v.WriteArrayEnd()
+
+			v.WriteMore()
+			v.WriteObjectField("on")
+			v.WriteBool(e.Opts.VectorMatching.On)
+
+			v.WriteMore()
+			v.WriteObjectField("card")
+			v.WriteInt(int(e.Opts.VectorMatching.Card))
+
+			v.WriteMore()
+			v.WriteObjectField("matching_labels")
+			v.WriteArrayStart()
+			for i, l := range e.Opts.VectorMatching.MatchingLabels {
+				if i > 0 {
+					v.WriteMore()
+				}
+				v.WriteString(l)
+			}
+			v.WriteArrayEnd()
+
+			v.WriteObjectEnd()
+		}
+
+		v.WriteObjectEnd()
+
+	}
 
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
@@ -87,6 +134,10 @@ func (v *JSONSerializer) VisitVectorAggregation(e *syntax.VectorAggregationExpr)
 
 	v.WriteObjectField("params")
 	v.WriteInt(e.Params)
+
+	v.WriteMore()
+	v.WriteObjectField("operation")
+	v.WriteString(e.Operation)
 
 	if e.Grouping != nil {
 		v.WriteMore()
@@ -395,10 +446,50 @@ func decodeBinOp(iter *jsoniter.Iterator) (*syntax.BinOpExpr, error) {
 			expr.RHS, err = decodeSample(iter)
 		case "lhs":
 			expr.SampleExpr, err = decodeSample(iter)
+		case "options":
+			expr.Opts = decodeBinOpOptions(iter)
 		}
 	}
 
 	return expr, err
+}
+func decodeBinOpOptions(iter *jsoniter.Iterator) *syntax.BinOpOptions {
+	opts := &syntax.BinOpOptions{}
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "return_bool":
+			opts.ReturnBool = iter.ReadBool()
+		case "vector_matching":
+			opts.VectorMatching = decodeVectorMatching(iter)
+		}
+	}
+
+	return opts
+}
+
+func decodeVectorMatching(iter *jsoniter.Iterator) *syntax.VectorMatching {
+	vm := &syntax.VectorMatching{}
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "include":
+			iter.ReadArrayCB(func(i *jsoniter.Iterator) bool {
+				vm.Include = append(vm.Include, i.ReadString())
+				return true
+			})
+		case "on":
+			vm.On = iter.ReadBool()
+		case "card":
+			vm.Card = syntax.VectorMatchCardinality(iter.ReadInt())
+		case "matching_labels":
+			iter.ReadArrayCB(func(i *jsoniter.Iterator) bool {
+				vm.MatchingLabels = append(vm.Include, i.ReadString())
+				return true
+			})
+		}
+	}
+	return vm
 }
 
 func decodeVectorAgg(iter *jsoniter.Iterator) (*syntax.VectorAggregationExpr, error) {
@@ -407,6 +498,8 @@ func decodeVectorAgg(iter *jsoniter.Iterator) (*syntax.VectorAggregationExpr, er
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
+		case "operation":
+			expr.Operation = iter.ReadString()
 		case "params":
 			expr.Params = iter.ReadInt()
 		case "grouping":
