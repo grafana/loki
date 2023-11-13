@@ -479,7 +479,7 @@ func decodeVectorMatching(iter *jsoniter.Iterator) *VectorMatching {
 			vm.Card = VectorMatchCardinality(iter.ReadInt())
 		case "matching_labels":
 			iter.ReadArrayCB(func(i *jsoniter.Iterator) bool {
-				vm.MatchingLabels = append(vm.Include, i.ReadString())
+				vm.MatchingLabels = append(vm.MatchingLabels, i.ReadString())
 				return true
 			})
 		}
