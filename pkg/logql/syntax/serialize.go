@@ -6,6 +6,8 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 type JSONSerializer struct {
@@ -312,11 +314,11 @@ func encodeUnwrap(s *jsoniter.Stream, u *UnwrapExpr) {
 	s.WriteMore()
 	s.WriteObjectField("post_filterers")
 	s.WriteArrayStart()
-	for i, group := range u.PostFilters{
+	for i, filter := range u.PostFilters {
 		if i > 0 {
 			s.WriteMore()
 		}
-		s.WriteString(group)
+		encodePostFilter(s, filter)
 	}
 	s.WriteArrayEnd()
 
@@ -337,6 +339,20 @@ func decodeUnwrap(iter *jsoniter.Iterator) *UnwrapExpr {
 	}
 
 	return e
+}
+
+func encodePostFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
+	switch concrete := filter.(type) {
+	case *log.BinaryLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField("left")
+		encodePostFilter(s, concrete.Left)
+
+		s.WriteMore()
+		s.WriteObjectField("right")
+		encodePostFilter(s, concrete.Right)
+		s.WriteObjectEnd()
+	}
 }
 
 func encodeLogSelector(s *jsoniter.Stream, e LogSelectorExpr) {

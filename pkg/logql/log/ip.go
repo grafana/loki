@@ -108,6 +108,8 @@ func (f *IPLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	return line, f.filterTy(line, f.ty, lbs)
 }
 
+func (f *IPLabelFilter) isLabelFilterer() {}
+
 // `RequiredLabelNames` implements `Stage` interface
 func (f *IPLabelFilter) RequiredLabelNames() []string {
 	return []string{f.label}
