@@ -276,7 +276,7 @@ type Frontend interface {
 // Codec defines methods to encode and decode requests from HTTP, httpgrpc and Protobuf.
 type Codec interface {
 	transport.Codec
-	worker.GRPCCodec
+	worker.RequestCodec
 }
 
 // Loki is the root datastructure for Loki.
