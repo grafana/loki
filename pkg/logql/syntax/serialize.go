@@ -3,7 +3,6 @@ package syntax
 import (
 	"fmt"
 	"io"
-	"regexp"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -550,28 +549,29 @@ func decodeLogRange(iter *jsoniter.Iterator) (*LogRange, error) {
 }
 
 func decodeLabelReplace(iter *jsoniter.Iterator) (*LabelReplaceExpr, error) {
-	expr := &LabelReplaceExpr{}
 	var err error
+	var left SampleExpr
+	var dst, src, replacement, regex string
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "inner":
-			expr.Left, err = decodeSample(iter)
-		case "dst":
-			expr.Dst = iter.ReadString()
-		case "src":
-			expr.Src = iter.ReadString()
-		case "replacement":
-			expr.Replacement = iter.ReadString()
-		case "regexp":
-			expr.Regex = iter.ReadString()
-			if expr.Regex != "" {
-				expr.Re, err = regexp.Compile(expr.Regex)
+			left, err = decodeSample(iter)
+			if err != nil {
+				return nil, err
 			}
+		case "dst":
+			dst = iter.ReadString()
+		case "src":
+			src = iter.ReadString()
+		case "replacement":
+			replacement = iter.ReadString()
+		case "regexp":
+			regex = iter.ReadString()
 		}
 	}
 
-	return expr, err
+	return mustNewLabelReplaceExpr(left, dst, replacement, src, regex), nil
 }
 
 func decodeLiteral(iter *jsoniter.Iterator) (*LiteralExpr, error) {
