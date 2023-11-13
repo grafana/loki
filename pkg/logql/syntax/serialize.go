@@ -309,18 +309,16 @@ func encodeUnwrap(s *jsoniter.Stream, u *UnwrapExpr) {
 	s.WriteObjectField("operation")
 	s.WriteString(u.Operation)
 
-	/*
-		s.WriteMore()
-		s.WriteObjectField("post_filterers")
-		s.WriteArrayStart()
-		for i, group := range u.PostFilters{
-			if i > 0 {
-				s.WriteMore()
-			}
-			s.WriteString(group)
+	s.WriteMore()
+	s.WriteObjectField("post_filterers")
+	s.WriteArrayStart()
+	for i, group := range u.PostFilters{
+		if i > 0 {
+			s.WriteMore()
 		}
-		s.WriteArrayEnd()
-	*/
+		s.WriteString(group)
+	}
+	s.WriteArrayEnd()
 
 	s.WriteObjectEnd()
 }
