@@ -26,7 +26,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags for the Bloom Gateway configuration with a common prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "collectors/", f)
-	f.BoolVar(&cfg.Enabled, prefix+"enabled", false, "Flag to enable or disable the usage of the bloom gatway component.")
+	f.BoolVar(&cfg.Enabled, prefix+"enabled", false, "Flag to enable or disable the bloom gateway component globally.")
 	// TODO(chaudum): Figure out what the better place is for registering flags
 	// -bloom-gateway.client.* or -bloom-gateway-client.*
 	cfg.Client.RegisterFlags(f)

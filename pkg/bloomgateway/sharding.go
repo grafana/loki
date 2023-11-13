@@ -37,6 +37,7 @@ var (
 
 type Limits interface {
 	BloomGatewayShardSize(tenantID string) int
+	BloomGatewayEnabled(tenantID string) bool
 }
 
 type ShardingStrategy interface {
