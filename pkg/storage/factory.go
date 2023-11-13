@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/pkg/storage/bucket"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
@@ -40,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
+	utilLog "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -333,6 +335,9 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
+	ThanosObjStore bool          `yaml:"thanos_objstore"`
+	ObjStoreConf   bucket.Config `yaml:"objstore_config"`
+
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
 	TSDBShipperConfig   indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
@@ -359,6 +364,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GrpcConfig.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
+
+	cfg.ObjStoreConf.RegisterFlags(f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
@@ -396,6 +403,10 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.BloomShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid bloom shipper config")
+	}
+
+	if err := cfg.ObjStoreConf.Validate(); err != nil {
+		return err
 	}
 
 	return cfg.NamedStores.Validate()
@@ -675,6 +686,12 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 				return nil, fmt.Errorf("Unrecognized named aws storage config %s", name)
 			}
 			s3Cfg = awsCfg.S3Config
+		}
+		if cfg.ThanosObjStore {
+			// Passing "gcs" as the component name as currently it's not
+			// possible to get the component called this method
+			// TODO(JoaoBraveCoding) update compoent when bigger refactor happens
+			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjStoreConf, "gcs", utilLog.Logger, cfg.Hedging)
 		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
