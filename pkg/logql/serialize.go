@@ -360,23 +360,27 @@ func decodeLogSelector(iter *jsoniter.Iterator) (syntax.LogSelectorExpr, error) 
 }
 
 func decodeSample(iter *jsoniter.Iterator) (syntax.SampleExpr, error) {
-	key := iter.ReadObject()
-	switch key {
-	case "bin":
-		return decodeBinOp(iter)
-	case "vector_agg":
-		return decodeVectorAgg(iter)
-	case "range_agg":
-		return decodeRangeAgg(iter)
-	case "literal":
-		return decodeLiteral(iter)
-	case "vector":
-		return decodeVector(iter)
-	case "label_replace":
-		return decodeLabelReplace(iter)
-	default:
-		return nil, fmt.Errorf("unknown sample expression type: %s", key)
+	var expr syntax.SampleExpr
+	var err error
+	for key := iter.ReadObject(); key != ""; key = iter.ReadObject() {
+		switch key {
+		case "bin":
+			expr, err = decodeBinOp(iter)
+		case "vector_agg":
+			expr, err = decodeVectorAgg(iter)
+		case "range_agg":
+			expr, err = decodeRangeAgg(iter)
+		case "literal":
+			expr, err = decodeLiteral(iter)
+		case "vector":
+			expr, err = decodeVector(iter)
+		case "label_replace":
+			expr, err = decodeLabelReplace(iter)
+		default:
+			return nil, fmt.Errorf("unknown sample expression type: %s", key)
+		}
 	}
+	return expr, err
 }
 
 func decodeBinOp(iter *jsoniter.Iterator) (*syntax.BinOpExpr, error) {

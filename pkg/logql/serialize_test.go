@@ -14,7 +14,6 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 	tests := map[string]struct {
 		query string
 	}{
-		/*
 		"simple matchers": {
 			query: `{env="prod", app=~"loki.*"}`,
 		},
@@ -23,9 +22,9 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		},
 		"simple aggregation with unwrap": {
 			query: `sum_over_time({env="prod", app=~"loki.*"} | unwrap bytes[5m])`,
-		},*/
+		},
 		"bin op": {
-			query: `count_over_time({env="prod", app=~"loki.*"}[5m]) >= 0`,
+			query: `(count_over_time({env="prod", app=~"loki.*"}[5m]) >= 0)`,
 		},
 	}
 
