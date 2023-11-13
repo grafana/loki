@@ -38,6 +38,12 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		return s3.Config{}, err
 	}
 
+	putUserMetadata := map[string]string{}
+
+	if cfg.StorageClass != "" {
+		putUserMetadata[awsStorageClassHeader] = cfg.StorageClass
+	}
+
 	return s3.Config{
 		Bucket:          cfg.BucketName,
 		Endpoint:        cfg.Endpoint,
@@ -46,8 +52,8 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		SecretKey:       cfg.SecretAccessKey.String(),
 		SessionToken:    cfg.SessionToken.String(),
 		Insecure:        cfg.Insecure,
+		PutUserMetadata: putUserMetadata,
 		SSEConfig:       sseCfg,
-		PutUserMetadata: map[string]string{awsStorageClassHeader: cfg.StorageClass},
 		HTTPConfig: s3.HTTPConfig{
 			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
