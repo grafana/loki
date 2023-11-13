@@ -566,7 +566,7 @@ func decodeLabelReplace(iter *jsoniter.Iterator) (*LabelReplaceExpr, error) {
 			src = iter.ReadString()
 		case "replacement":
 			replacement = iter.ReadString()
-		case "regexp":
+		case "regex":
 			regex = iter.ReadString()
 		}
 	}
