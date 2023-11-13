@@ -38,9 +38,13 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		},
 		"label replace": {
 			query: `label_replace(vector(0.000000),"foo","bar","","")`,
-		},*/
+		},
 		"filters with bytes": {
 			query: `{app="foo"} |= "bar" | json | ( status_code<500 or ( status_code>200 , size>=2.5KiB ) )`,
+		},*/
+		"post filters": {
+			query: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo | __error__ !~".+"[5m]) by (namespace,instance)`,
 		},
 	}
 
@@ -75,6 +79,8 @@ func TestJSONSerializationParseTestCases(t *testing.T) {
 				require.NoError(t, err)
 				actual, err := DecodeJSON(buf.String())
 				require.NoError(t, err)
+
+				t.Log(buf.String())
 
 				require.Equal(t, tc.exp, actual)
 			})
