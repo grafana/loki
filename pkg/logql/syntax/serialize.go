@@ -257,7 +257,6 @@ func (v *JSONSerializer) VisitVector(e *VectorExpr) {
 	v.WriteObjectField("vector")
 	v.WriteObjectStart()
 
-	v.WriteMore()
 	v.WriteObjectField("val")
 	v.WriteFloat64(e.Val)
 

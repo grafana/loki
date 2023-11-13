@@ -32,6 +32,12 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"vector matching": {
 			query: `(sum by (cluster)(rate({foo="bar"}[5m])) / ignoring (cluster)  count(rate({foo="bar"}[5m])))`,
 		},
+		"sum over or vector": {
+			query: `(sum(count_over_time({foo="bar"}[5m])) or vector(1.000000))`,
+		},
+		"label replace": {
+			query: `label_replace(vector(0), "foo", "bar", "", "")`,
+		},
 	}
 
 	for name, test := range tests {
@@ -55,7 +61,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 }
 func TestJSONSerializationParseTestCases(t *testing.T) {
 	for _, tc := range ParseTestCases {
-		if tc.err != nil {
+		if tc.err == nil {
 			t.Run(tc.in, func(t *testing.T) {
 				ast, err := ParseExpr(tc.in)
 				require.NoError(t, err)
