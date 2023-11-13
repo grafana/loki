@@ -80,38 +80,7 @@ func (v *JSONSerializer) VisitBinOp(e *BinOpExpr) {
 		if e.Opts.VectorMatching != nil {
 			v.WriteMore()
 			v.WriteObjectField("vector_matching")
-			v.WriteObjectStart()
-
-			v.WriteObjectField("include")
-			v.WriteArrayStart()
-			for i, l := range e.Opts.VectorMatching.Include {
-				if i > 0 {
-					v.WriteMore()
-				}
-				v.WriteString(l)
-			}
-			v.WriteArrayEnd()
-
-			v.WriteMore()
-			v.WriteObjectField("on")
-			v.WriteBool(e.Opts.VectorMatching.On)
-
-			v.WriteMore()
-			v.WriteObjectField("card")
-			v.WriteInt(int(e.Opts.VectorMatching.Card))
-
-			v.WriteMore()
-			v.WriteObjectField("matching_labels")
-			v.WriteArrayStart()
-			for i, l := range e.Opts.VectorMatching.MatchingLabels {
-				if i > 0 {
-					v.WriteMore()
-				}
-				v.WriteString(l)
-			}
-			v.WriteArrayEnd()
-
-			v.WriteObjectEnd()
+			encodeVectorMatching(v.Stream, e.Opts.VectorMatching)
 		}
 
 		v.WriteObjectEnd()
@@ -462,6 +431,42 @@ func decodeBinOpOptions(iter *jsoniter.Iterator) *BinOpOptions {
 
 	return opts
 }
+
+func encodeVectorMatching(s *jsoniter.Stream, vm *VectorMatching) {
+	s.WriteObjectStart()
+
+	s.WriteObjectField("include")
+	s.WriteArrayStart()
+	for i, l := range vm.Include {
+		if i > 0 {
+			s.WriteMore()
+		}
+		s.WriteString(l)
+	}
+	s.WriteArrayEnd()
+
+	s.WriteMore()
+	s.WriteObjectField("on")
+	s.WriteBool(vm.On)
+
+	s.WriteMore()
+	s.WriteObjectField("card")
+	s.WriteInt(int(vm.Card))
+
+	s.WriteMore()
+	s.WriteObjectField("matching_labels")
+	s.WriteArrayStart()
+	for i, l := range vm.MatchingLabels {
+		if i > 0 {
+			s.WriteMore()
+		}
+		s.WriteString(l)
+	}
+	s.WriteArrayEnd()
+
+	s.WriteObjectEnd()
+}
+
 
 func decodeVectorMatching(iter *jsoniter.Iterator) *VectorMatching {
 	vm := &VectorMatching{}
