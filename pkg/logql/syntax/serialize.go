@@ -84,6 +84,7 @@ func (v *JSONSerializer) VisitBinOp(e *BinOpExpr) {
 		}
 
 		v.WriteObjectEnd()
+		v.Flush()
 
 	}
 
@@ -268,6 +269,7 @@ func encodeGrouping(s *jsoniter.Stream, g *Grouping) {
 	s.WriteObjectStart()
 	s.WriteObjectField("without")
 	s.WriteBool(g.Without)
+
 	s.WriteMore()
 	s.WriteObjectField("groups")
 	s.WriteArrayStart()
@@ -466,7 +468,6 @@ func encodeVectorMatching(s *jsoniter.Stream, vm *VectorMatching) {
 
 	s.WriteObjectEnd()
 }
-
 
 func decodeVectorMatching(iter *jsoniter.Iterator) *VectorMatching {
 	vm := &VectorMatching{}

@@ -43,7 +43,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		},
 		"post filters": {
 			query: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
-			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo | __error__ !~".+"[5m]) by (namespace,instance)`,
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo | __error__ !~".+"[5m]) by (namespace,instance)`,
 		},
 	}
 
@@ -62,7 +62,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 			actual, err := DecodeJSON(buf.String())
 			require.NoError(t, err)
 
-			require.Equal(t, test.query, actual.String())
+			require.Equal(t, expr.Pretty(0), actual.Pretty(0))
 		})
 	}
 }
