@@ -212,7 +212,6 @@ func (v *JSONSerializer) VisitLabelReplace(e *LabelReplaceExpr) {
 	v.WriteObjectField("label_replace")
 	v.WriteObjectStart()
 
-	v.WriteMore()
 	v.WriteObjectField("inner")
 	e.Left.Accept(v)
 

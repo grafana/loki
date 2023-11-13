@@ -36,7 +36,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 			query: `(sum(count_over_time({foo="bar"}[5m])) or vector(1.000000))`,
 		},
 		"label replace": {
-			query: `label_replace(vector(0), "foo", "bar", "", "")`,
+			query: `label_replace(vector(0.000000),"foo","bar","","")`,
 		},
 	}
 
