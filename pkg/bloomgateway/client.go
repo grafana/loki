@@ -134,6 +134,10 @@ func shuffleAddrs(addrs []string) []string {
 
 // FilterChunkRefs implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...*logproto.LineFilterExpression) ([]*logproto.GroupedChunkRefs, error) {
+	if !c.limits.BloomGatewayEnabled(tenant) {
+		return groups, nil
+	}
+
 	// Get the addresses of corresponding bloom gateways for each series.
 	fingerprints, addrs, err := c.serverAddrsForFingerprints(tenant, groups)
 	if err != nil {
