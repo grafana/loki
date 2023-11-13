@@ -1,12 +1,10 @@
-package logql
+package syntax
 
 import (
 	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 func TestJSONSerializationRoundTrip(t *testing.T) {
@@ -39,7 +37,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			expr, err := syntax.ParseExpr(test.query)
+			expr, err := ParseExpr(test.query)
 			require.NoError(t, err)
 
 			var buf bytes.Buffer
@@ -53,5 +51,23 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 
 			require.Equal(t, test.query, actual.String())
 		})
+	}
+}
+func TestJSONSerializationParseTestCases(t *testing.T) {
+	for _, tc := range ParseTestCases {
+		if tc.err != nil {
+			t.Run(tc.in, func(t *testing.T) {
+				ast, err := ParseExpr(tc.in)
+				require.NoError(t, err)
+
+				var buf bytes.Buffer
+				err = EncodeJSON(ast, &buf)
+				require.NoError(t, err)
+				actual, err := DecodeJSON(buf.String())
+				require.NoError(t, err)
+
+				require.Equal(t, tc.exp, actual)
+			})
+		}
 	}
 }
