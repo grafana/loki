@@ -352,6 +352,25 @@ func encodePostFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectField("right")
 		encodePostFilter(s, concrete.Right)
 		s.WriteObjectEnd()
+	case log.NoopLabelFilter:
+		return
+	case *log.BytesLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField("name")
+		s.WriteString(concrete.Name)
+
+		s.WriteMore()
+		s.WriteObjectField("value")
+		s.WriteUint64(concrete.Value)
+
+		s.WriteMore()
+		s.WriteObjectField("type")
+		s.WriteInt(int(concrete.Type))
+		s.WriteObjectEnd()
+	case *log.DurationLabelFilter:
+	case *log.NumericLabelFilter:
+	case *log.StringLabelFilter:
+		//case *log.lineFilterLabelFilter:
 	}
 }
 

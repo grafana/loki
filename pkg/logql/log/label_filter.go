@@ -54,6 +54,8 @@ func (f LabelFilterType) String() string {
 }
 
 // LabelFilterer can filter extracted labels.
+//
+//sumtype:decl
 type LabelFilterer interface {
 	Stage
 	fmt.Stringer
