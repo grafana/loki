@@ -14,6 +14,10 @@ type Walkable interface {
 	Walk(f WalkFn)
 }
 
+type AcceptVisitor interface {
+	Accept(RootVisitor)
+}
+
 type RootVisitor interface {
 	SampleExprVisitor
 	LogSelectorExprVisitor

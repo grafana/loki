@@ -25,10 +25,8 @@ func EncodeJSON(e syntax.Expr, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
 	v := NewJSONSerializer(s)
-	err := syntax.Dispatch(e, v)
-	s.Flush()
-
-	return err
+	e.Accept(v)
+	return s.Flush()
 }
 
 func DecodeJSON(raw string) (syntax.Expr, error) {
@@ -63,7 +61,6 @@ func (v *JSONSerializer) VisitBinOp(e *syntax.BinOpExpr) {
 	v.WriteObjectField("bin")
 	v.WriteObjectStart()
 
-	v.WriteMore()
 	v.WriteObjectField("op")
 	v.WriteString(e.Op)
 
@@ -71,11 +68,11 @@ func (v *JSONSerializer) VisitBinOp(e *syntax.BinOpExpr) {
 
 	v.WriteMore()
 	v.WriteObjectField("lhs")
-	syntax.DispatchSampleExpr(e.SampleExpr, v)
+	e.SampleExpr.Accept(v)
 
 	v.WriteMore()
 	v.WriteObjectField("rhs")
-	syntax.DispatchSampleExpr(e.RHS, v)
+	e.RHS.Accept(v)
 
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
@@ -99,7 +96,7 @@ func (v *JSONSerializer) VisitVectorAggregation(e *syntax.VectorAggregationExpr)
 
 	v.WriteMore()
 	v.WriteObjectField("inner")
-	syntax.DispatchSampleExpr(e.Left, v)
+	e.Left.Accept(v)
 
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
@@ -168,7 +165,7 @@ func (v *JSONSerializer) VisitLabelReplace(e *syntax.LabelReplaceExpr) {
 
 	v.WriteMore()
 	v.WriteObjectField("inner")
-	syntax.DispatchSampleExpr(e.Left, v)
+	e.Left.Accept(v)
 
 	v.WriteMore()
 	v.WriteObjectField("dst")
@@ -197,7 +194,6 @@ func (v *JSONSerializer) VisitLiteral(e *syntax.LiteralExpr) {
 	v.WriteObjectField("literal")
 	v.WriteObjectStart()
 
-	v.WriteMore()
 	v.WriteObjectField("val")
 	v.WriteFloat64(e.Val)
 
