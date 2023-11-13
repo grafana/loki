@@ -2248,12 +2248,12 @@ var ParseTestCases = []struct {
 					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
 								) by (namespace,instance)
 					)
-					+ ignoring (bar) group_left (foo)
+					+
 					avg(
 						avg_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 							| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m]
 										) by (namespace,instance)
-							) by (foo)
+							) by (foo,bar)
 					`,
 		exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{
 			VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool: false,
