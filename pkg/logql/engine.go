@@ -203,7 +203,7 @@ func (q *query) resultLength(res promql_parser.Value) int {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	sp, ctx := utiltracing.StartChildSpan(ctx, "query.Exec", "loki query processing")
+	sp, ctx := utiltracing.StartChildSpan(ctx, "query.Exec", utiltracing.QueryExecutionBoundary)
 	defer sp.Finish()
 	spLogger := spanlogger.FromContext(ctx)
 	defer spLogger.Finish()

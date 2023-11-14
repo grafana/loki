@@ -14,24 +14,25 @@ const (
 	IndexBoundary              string = "index"
 	HTTPQueryServingBoundary   string = "HTTP query serving"
 	ChunkStoreFetchingBoundary string = "chunk store fetching"
+	ReadingFromCacheBoundary   string = "reading from caching"
 )
 
 func StartRootSpan(ctx context.Context, operation, boundary, rootAction string) (opentracing.Span, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, operation, WithBoundary(boundary))
 	span = span.SetBaggageItem("root_action", rootAction)
-	return PropagateRootAction(ctx, span), ctx
+	return PropagateRootAction(span), ctx
 }
 
 func StartChildSpan(ctx context.Context, operation, boundary string) (opentracing.Span, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, operation, WithBoundary(boundary))
-	return PropagateRootAction(ctx, span), ctx
+	return PropagateRootAction(span), ctx
 }
 
-func PropagateRootAction(ctx context.Context, span opentracing.Span) opentracing.Span {
-	return BaggageAsTag(ctx, "root_action", span)
+func PropagateRootAction(span opentracing.Span) opentracing.Span {
+	return BaggageAsTag("root_action", span)
 }
 
-func BaggageAsTag(ctx context.Context, baggageKey string, span opentracing.Span) opentracing.Span {
+func BaggageAsTag(baggageKey string, span opentracing.Span) opentracing.Span {
 	v := span.BaggageItem(baggageKey)
 	return span.SetTag(baggageKey, v)
 }

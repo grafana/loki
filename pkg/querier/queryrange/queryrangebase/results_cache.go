@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -213,7 +214,7 @@ func NewResultsCacheMiddleware(
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "resultsCache.Do")
+	sp, ctx := utiltracing.StartChildSpan(ctx, "resultsCache.Do", utiltracing.ReadingFromCacheBoundary)
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
