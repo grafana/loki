@@ -494,7 +494,7 @@ func (w *worker) running(ctx context.Context) error {
 			// TODO(chaudum): Add API that allows to process blocks as soon as they become available.
 			// This will require to change the taskMergeIterator to a slice of requests so we can seek
 			// to the appropriate fingerprint range within the slice that matches the block's fingerprint range.
-			bqs, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour).Add(-1*time.Nanosecond), fingerprints)
+			blockQueriers, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour).Add(-1*time.Nanosecond), fingerprints)
 			w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriers").Observe(time.Since(storeFetchStart).Seconds())
 			if err != nil {
 				for _, t := range tasks {
@@ -507,7 +507,7 @@ func (w *worker) running(ctx context.Context) error {
 			// No blocks found.
 			// Since there are no blocks for the given tasks, we need to return the
 			// unfiltered list of chunk refs.
-			if len(bqs) == 0 {
+			if len(blockQueriers) == 0 {
 				level.Warn(logger).Log("msg", "no blocks found")
 				for _, t := range tasks {
 					for _, ref := range t.Request.Refs {
@@ -522,9 +522,9 @@ func (w *worker) running(ctx context.Context) error {
 			}
 
 			hasNext := it.Next()
-			for _, bq := range bqs {
+			for _, blockQuerier := range blockQueriers {
 				requests = requests[:0]
-				for hasNext && it.At().Fp <= bq.MaxFp {
+				for hasNext && it.At().Fp <= blockQuerier.MaxFp {
 					requests = append(requests, it.At().Request)
 					hasNext = it.Next()
 				}
@@ -533,7 +533,7 @@ func (w *worker) running(ctx context.Context) error {
 				if len(requests) == 0 {
 					continue
 				}
-				fq := bq.Fuse([]v1.PeekingIterator[v1.Request]{NewIterWithIndex(0, requests)})
+				fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{NewIterWithIndex(0, requests)})
 				err := fq.Run()
 				if err != nil {
 					for _, t := range tasks {
