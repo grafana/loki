@@ -333,7 +333,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	// information, since that is a long-running request.
 	tracer := opentracing.GlobalTracer()
 	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg)
-	if err != nil {
+	if err != nil && err != opentracing.ErrSpanContextNotFound {
 		return err
 	}
 
