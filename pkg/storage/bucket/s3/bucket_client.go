@@ -4,6 +4,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/exthttp"
 	"github.com/thanos-io/objstore/providers/s3"
 )
 
@@ -64,6 +65,9 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
 			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 			Transport:             cfg.HTTP.Transport,
+			TLSConfig: exthttp.TLSConfig{
+				CAFile: cfg.HTTP.CAFile,
+			},
 		},
 	}, nil
 }

@@ -15,6 +15,7 @@ type Config struct {
 	MaxIdleConns          int           `yaml:"max_idle_connections"`
 	MaxIdleConnsPerHost   int           `yaml:"max_idle_connections_per_host"`
 	MaxConnsPerHost       int           `yaml:"max_connections_per_host"`
+	CAFile                string        `yaml:"ca_file"`
 }
 
 // RegisterFlags registers the flags for the storage HTTP client.
@@ -32,4 +33,5 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxIdleConns, prefix+"max-idle-connections", 100, "Maximum number of idle (keep-alive) connections across all hosts. 0 means no limit.")
 	f.IntVar(&cfg.MaxIdleConnsPerHost, prefix+"max-idle-connections-per-host", 100, "Maximum number of idle (keep-alive) connections to keep per-host. If 0, a built-in default value is used.")
 	f.IntVar(&cfg.MaxConnsPerHost, prefix+"max-connections-per-host", 0, "Maximum number of connections per host. 0 means no limit.")
+	f.StringVar(&cfg.CAFile, prefix+"ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the object storage endpoint.")
 }
