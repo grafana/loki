@@ -49,10 +49,6 @@ func NewIterWithIndex[T any](i int, xs []T) *SliceIterWithIndex[T] {
 	}
 }
 
-func getDay(ts model.Time) int64 {
-	return ts.Unix() / int64(24*time.Hour/time.Second)
-}
-
 func getDayTime(ts model.Time) time.Time {
 	return time.Date(ts.Time().Year(), ts.Time().Month(), ts.Time().Day(), 0, 0, 0, 0, time.UTC)
 }
