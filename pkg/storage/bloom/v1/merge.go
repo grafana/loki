@@ -1,70 +1,82 @@
 package v1
 
-// MergeBlockQuerier is a heap implementation of BlockQuerier backed by multiple blocks
+// HeapIterator is a heap implementation of BlockQuerier backed by multiple blocks
 // It is used to merge multiple blocks into a single ordered querier
 // NB(owen-d): it uses a custom heap implementation because Pop() only returns a single
 // value of the top-most iterator, rather than the iterator itself
-type MergeBlockQuerier struct {
-	qs []PeekingIterator[*SeriesWithBloom]
+type HeapIterator[T any] struct {
+	itrs []PeekingIterator[T]
+	less func(T, T) bool
 
-	cache *SeriesWithBloom
+	zero  T // zero value of T
+	cache T
 	ok    bool
 }
 
-func NewMergeBlockQuerier(queriers ...PeekingIterator[*SeriesWithBloom]) *MergeBlockQuerier {
-	res := &MergeBlockQuerier{
-		qs: queriers,
+func NewHeapIterForSeriesWithBloom(queriers ...PeekingIterator[*SeriesWithBloom]) *HeapIterator[*SeriesWithBloom] {
+	return NewHeapIterator(
+		func(a, b *SeriesWithBloom) bool {
+			return a.Series.Fingerprint < b.Series.Fingerprint
+		},
+		queriers...,
+	)
+}
+
+func NewHeapIterator[T any](less func(T, T) bool, itrs ...PeekingIterator[T]) *HeapIterator[T] {
+	res := &HeapIterator[T]{
+		itrs: itrs,
+		less: less,
 	}
 	res.init()
 	return res
 }
 
-func (mbq MergeBlockQuerier) Len() int {
-	return len(mbq.qs)
+func (mbq HeapIterator[T]) Len() int {
+	return len(mbq.itrs)
 }
 
-func (mbq *MergeBlockQuerier) Less(i, j int) bool {
-	a, aOk := mbq.qs[i].Peek()
-	b, bOk := mbq.qs[j].Peek()
+func (mbq *HeapIterator[T]) Less(i, j int) bool {
+	a, aOk := mbq.itrs[i].Peek()
+	b, bOk := mbq.itrs[j].Peek()
 	if !bOk {
 		return true
 	}
 	if !aOk {
 		return false
 	}
-	return a.Series.Fingerprint < b.Series.Fingerprint
+	return mbq.less(a, b)
 }
 
-func (mbq *MergeBlockQuerier) Swap(a, b int) {
-	mbq.qs[a], mbq.qs[b] = mbq.qs[b], mbq.qs[a]
+func (mbq *HeapIterator[T]) Swap(a, b int) {
+	mbq.itrs[a], mbq.itrs[b] = mbq.itrs[b], mbq.itrs[a]
 }
 
-func (mbq *MergeBlockQuerier) Next() bool {
-	mbq.cache = mbq.pop()
-	return mbq.cache != nil
+func (mbq *HeapIterator[T]) Next() (ok bool) {
+	mbq.cache, ok = mbq.pop()
+	return
 }
 
 // TODO(owen-d): don't swallow this error
-func (mbq *MergeBlockQuerier) Err() error {
+func (mbq *HeapIterator[T]) Err() error {
 	return nil
 }
 
-func (mbq *MergeBlockQuerier) At() *SeriesWithBloom {
+func (mbq *HeapIterator[T]) At() T {
 	return mbq.cache
 }
 
-func (mbq *MergeBlockQuerier) push(x PeekingIterator[*SeriesWithBloom]) {
-	mbq.qs = append(mbq.qs, x)
+func (mbq *HeapIterator[T]) push(x PeekingIterator[T]) {
+	mbq.itrs = append(mbq.itrs, x)
 	mbq.up(mbq.Len() - 1)
 }
 
-func (mbq *MergeBlockQuerier) pop() *SeriesWithBloom {
+func (mbq *HeapIterator[T]) pop() (T, bool) {
 	for {
 		if mbq.Len() == 0 {
-			return nil
+			return mbq.zero, false
 		}
 
-		cur := mbq.qs[0]
+		cur := mbq.itrs[0]
 		if ok := cur.Next(); !ok {
 			mbq.remove(0)
 			continue
@@ -80,14 +92,14 @@ func (mbq *MergeBlockQuerier) pop() *SeriesWithBloom {
 			_ = mbq.down(0)
 		}
 
-		return result
+		return result, true
 	}
 }
 
-func (mbq *MergeBlockQuerier) remove(idx int) {
+func (mbq *HeapIterator[T]) remove(idx int) {
 	mbq.Swap(idx, mbq.Len()-1)
-	mbq.qs[len(mbq.qs)-1] = nil // don't leak reference
-	mbq.qs = mbq.qs[:mbq.Len()-1]
+	mbq.itrs[len(mbq.itrs)-1] = nil // don't leak reference
+	mbq.itrs = mbq.itrs[:mbq.Len()-1]
 	mbq.fix(idx)
 }
 
@@ -95,13 +107,13 @@ func (mbq *MergeBlockQuerier) remove(idx int) {
 // Changing the value of the element at index i and then calling fix is equivalent to,
 // but less expensive than, calling Remove(h, i) followed by a Push of the new value.
 // The complexity is O(log n) where n = h.Len().
-func (mbq *MergeBlockQuerier) fix(i int) {
+func (mbq *HeapIterator[T]) fix(i int) {
 	if !mbq.down(i) {
 		mbq.up(i)
 	}
 }
 
-func (mbq *MergeBlockQuerier) up(j int) {
+func (mbq *HeapIterator[T]) up(j int) {
 	for {
 		i := (j - 1) / 2 // parent
 		if i == j || !mbq.Less(j, i) {
@@ -112,7 +124,7 @@ func (mbq *MergeBlockQuerier) up(j int) {
 	}
 }
 
-func (mbq *MergeBlockQuerier) down(i0 int) (moved bool) {
+func (mbq *HeapIterator[T]) down(i0 int) (moved bool) {
 	i := i0
 	n := mbq.Len()
 	for {
@@ -135,7 +147,7 @@ func (mbq *MergeBlockQuerier) down(i0 int) (moved bool) {
 }
 
 // establish heap invariants. O(n)
-func (mbq *MergeBlockQuerier) init() {
+func (mbq *HeapIterator[T]) init() {
 	n := mbq.Len()
 	for i := n/2 - 1; i >= 0; i-- {
 		_ = mbq.down(i)

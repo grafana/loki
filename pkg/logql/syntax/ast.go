@@ -22,6 +22,8 @@ import (
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
+//
+//sumtype:decl
 type Expr interface {
 	logQLExpr()      // ensure it's not implemented accidentally
 	Shardable() bool // A recursive check on the AST to see if it's shardable.
@@ -1631,6 +1633,7 @@ func reduceBinOp(op string, left, right float64) *LiteralExpr {
 		&promql.Sample{F: right},
 		false,
 		false,
+		false,
 	)
 	if err != nil {
 		return &LiteralExpr{err: err}
@@ -1638,7 +1641,13 @@ func reduceBinOp(op string, left, right float64) *LiteralExpr {
 	return &LiteralExpr{Val: merged.F}
 }
 
-func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) (*promql.Sample, error) {
+// MergeBinOp performs `op` on `left` and `right` arguments and return the `promql.Sample` value.
+// In case of vector and scalar arguments, MergeBinOp assumes `left` is always vector.
+// pass `swap=true` otherwise.
+// This matters because, either it's (vector op scalar) or (scalar op vector), the return sample value should
+// always be sample value of vector argument.
+// https://github.com/grafana/loki/issues/10741
+func MergeBinOp(op string, left, right *promql.Sample, swap, filter, isVectorComparison bool) (*promql.Sample, error) {
 	var merger func(left, right *promql.Sample) *promql.Sample
 
 	switch op {
@@ -1826,11 +1835,17 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 	}
 
 	if filter {
-		// if a filter-enabled vector-wise comparison has returned non-nil,
-		// ensure we return the left hand side's value (2) instead of the
-		// comparison operator's result (1: the truthy answer)
+		// if a filter is enabled vector-wise comparison has returned non-nil,
+		// ensure we return the vector hand side's sample value, instead of the
+		// comparison operator's result (1: the truthy answer. a.k.a bool)
+
+		retSample := left
+		if swap {
+			retSample = right
+		}
+
 		if res != nil {
-			return left, nil
+			return retSample, nil
 		}
 	}
 	return res, nil
@@ -2093,7 +2108,7 @@ func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.er
 func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
-	e.Walk(func(e interface{}) {
+	e.Walk(func(e Expr) {
 		switch expr := e.(type) {
 		case *RangeAggregationExpr:
 			if groupingReducesLabels(expr.Grouping) {
@@ -2122,6 +2137,8 @@ func ReducesLabels(e Expr) (conflict bool) {
 					break
 				}
 			}
+		default:
+			return
 		}
 	})
 	return

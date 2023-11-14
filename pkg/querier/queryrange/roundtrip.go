@@ -24,6 +24,7 @@ import (
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 	logutil "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -81,7 +82,7 @@ func newResultsCacheFromConfig(cfg base.ResultsCacheConfig, registerer prometheu
 		return nil, errors.Errorf("%s cache is not configured", cacheType)
 	}
 
-	c, err := cache.New(cfg.CacheConfig, registerer, log, cacheType)
+	c, err := cache.New(cfg.CacheConfig, registerer, log, cacheType, constants.Loki)
 	if err != nil {
 		return nil, err
 	}
@@ -103,8 +104,9 @@ func NewMiddleware(
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
 	registerer prometheus.Registerer,
+	metricsNamespace string,
 ) (base.Middleware, Stopper, error) {
-	metrics := NewMetrics(registerer)
+	metrics := NewMetrics(registerer, metricsNamespace)
 
 	var (
 		resultsCache cache.Cache
@@ -149,18 +151,15 @@ func NewMiddleware(
 	}
 
 	var codec base.Codec = DefaultCodec
-	if cfg.RequiredQueryResponseFormat == "protobuf" {
-		codec = &RequestProtobufCodec{}
-	}
 
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
-		cacheGenNumLoader, retentionEnabled, metrics)
+		cacheGenNumLoader, retentionEnabled, metrics, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, codec, resultsCache,
-		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware)
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -172,27 +171,27 @@ func NewMiddleware(
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, codec, resultsCache, metrics, indexStatsTripperware)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, codec, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, metrics, schema, DefaultCodec)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, metrics, schema, DefaultCodec, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, metrics, schema)
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, metrics, schema, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, volumeCache, cacheGenNumLoader, retentionEnabled, metrics)
+	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, volumeCache, cacheGenNumLoader, retentionEnabled, metrics, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -388,6 +387,7 @@ func NewLogFilterTripperware(
 	c cache.Cache,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
@@ -442,7 +442,7 @@ func NewLogFilterTripperware(
 		if cfg.MaxRetries > 0 {
 			queryRangeMiddleware = append(
 				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 			)
 		}
 
@@ -496,6 +496,7 @@ func NewSeriesTripperware(
 	metrics *Metrics,
 	schema config.SchemaConfig,
 	merger base.Merger,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	queryRangeMiddleware := []base.Middleware{
 		StatsCollectorMiddleware(),
@@ -510,7 +511,7 @@ func NewSeriesTripperware(
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-			base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+			base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 		)
 	}
 
@@ -543,6 +544,7 @@ func NewLabelsTripperware(
 	merger base.Merger,
 	metrics *Metrics,
 	schema config.SchemaConfig,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	queryRangeMiddleware := []base.Middleware{
 		StatsCollectorMiddleware(),
@@ -556,7 +558,7 @@ func NewLabelsTripperware(
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware,
 			base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-			base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+			base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 		)
 	}
 
@@ -583,6 +585,7 @@ func NewMetricTripperware(
 	extractor base.Extractor,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
 	var queryCacheMiddleware base.Middleware
@@ -605,8 +608,8 @@ func NewMetricTripperware(
 					tenantIDs,
 					schema.Configs,
 					limits,
-					model.Time(r.GetStart()),
-					model.Time(r.GetEnd()),
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
 				)
 			},
 			retentionEnabled,
@@ -673,7 +676,7 @@ func NewMetricTripperware(
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 			)
 		}
 
@@ -681,8 +684,7 @@ func NewMetricTripperware(
 		if len(queryRangeMiddleware) > 0 {
 			rt := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 			return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
-				_, ok := r.(*LokiRequest)
-				if !ok {
+				if _, ok := r.(*LokiRequest); !ok {
 					return next.Do(ctx, r)
 				}
 				return rt.Do(ctx, r)
@@ -699,9 +701,9 @@ func NewInstantMetricTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	merger base.Merger,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
@@ -732,7 +734,7 @@ func NewInstantMetricTripperware(
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 			)
 		}
 
@@ -753,6 +755,7 @@ func NewVolumeTripperware(
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
 	metrics *Metrics,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
@@ -775,8 +778,8 @@ func NewVolumeTripperware(
 					tenantIDs,
 					schema.Configs,
 					limits,
-					model.Time(r.GetStart()),
-					model.Time(r.GetEnd()),
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
 				)
 			},
 			retentionEnabled,
@@ -796,6 +799,7 @@ func NewVolumeTripperware(
 		log,
 		metrics,
 		schema,
+		metricsNamespace,
 	)
 
 	if err != nil {
@@ -806,6 +810,22 @@ func NewVolumeTripperware(
 		volumeRangeTripperware(indexTw),
 		limits,
 	), nil
+}
+
+func statsTripperware(nextTW base.Middleware) base.Middleware {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+			cacheMiddlewares := []base.Middleware{
+				StatsCollectorMiddleware(),
+				nextTW,
+			}
+
+			// wrap nextRT with our new middleware
+			return base.MergeMiddlewares(
+				cacheMiddlewares...,
+			).Wrap(next).Do(ctx, r)
+		})
+	})
 }
 
 func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {
@@ -853,6 +873,7 @@ func NewIndexStatsTripperware(
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
 	metrics *Metrics,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
@@ -876,8 +897,8 @@ func NewIndexStatsTripperware(
 					tenantIDs,
 					schema.Configs,
 					limits,
-					model.Time(r.GetStart()),
-					model.Time(r.GetEnd()),
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
 				)
 			},
 			retentionEnabled,
@@ -889,7 +910,7 @@ func NewIndexStatsTripperware(
 		}
 	}
 
-	return sharedIndexTripperware(
+	tw, err := sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
@@ -897,7 +918,13 @@ func NewIndexStatsTripperware(
 		log,
 		metrics,
 		schema,
+		metricsNamespace,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return statsTripperware(tw), nil
 }
 
 func sharedIndexTripperware(
@@ -908,6 +935,7 @@ func sharedIndexTripperware(
 	log log.Logger,
 	metrics *Metrics,
 	schema config.SchemaConfig,
+	metricsNamespace string,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		middlewares := []base.Middleware{
@@ -928,7 +956,7 @@ func sharedIndexTripperware(
 			middlewares = append(
 				middlewares,
 				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
 			)
 		}
 

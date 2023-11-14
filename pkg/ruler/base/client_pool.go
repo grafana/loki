@@ -33,7 +33,7 @@ func (p *rulerClientsPool) GetClientFor(addr string) (RulerClient, error) {
 	return c.(RulerClient), nil
 }
 
-func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer) ClientsPool {
+func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prometheus.Registerer, metricsNamespace string) ClientsPool {
 	// We prefer sane defaults instead of exposing further config options.
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,
@@ -42,8 +42,9 @@ func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prom
 	}
 
 	clientsCount := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_ruler_clients",
-		Help: "The current number of ruler clients in the pool.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_clients",
+		Help:      "The current number of ruler clients in the pool.",
 	})
 
 	return &rulerClientsPool{

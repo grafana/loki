@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -16,4 +17,5 @@ type GrpcRoundTripper interface {
 type Codec interface {
 	queryrangebase.Codec
 	DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase.Request) (queryrangebase.Response, error)
+	QueryRequestWrap(context.Context, queryrangebase.Request) (*queryrange.QueryRequest, error)
 }
