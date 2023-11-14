@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/grafana/loki/pkg/chunkenc"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -172,6 +174,21 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 
 }
 
+func uncompressData(compressedData []byte) []byte {
+	reader := bytes.NewReader(compressedData)
+	gz, err := chunkenc.GetReaderPool(chunkenc.EncGZIP).GetReader(reader)
+	if err != nil {
+		return nil
+	}
+
+	decompressedData, err := ioutil.ReadAll(gz)
+	if err != nil {
+		return nil
+	}
+
+	return decompressedData
+}
+
 func Test_BloomClient_GetBlocks(t *testing.T) {
 	shipper := createShipper(t)
 	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
@@ -236,13 +253,31 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 
 	firstBlockActualData, exists := blocks[firstBlockRef.BlockPath]
 	require.Truef(t, exists, "data for the first block must be present in the results: %+v", blocks)
-	require.Equal(t, firstBlockData, firstBlockActualData)
+	require.Equal(t, uncompressData(firstBlockData), ([]byte)(firstBlockActualData))
 
 	secondBlockActualData, exists := blocks[secondBlockRef.BlockPath]
 	require.True(t, exists, "data for the second block must be present in the results: %+v", blocks)
-	require.Equal(t, secondBlockData, secondBlockActualData)
+	require.Equal(t, uncompressData(secondBlockData), ([]byte)(secondBlockActualData))
 
 	require.Len(t, blocks, 2)
+}
+
+func compressData(data []byte) []byte {
+	var buf bytes.Buffer
+	gz := chunkenc.Gzip.GetWriter(&buf)
+
+	_, err := gz.Write(data)
+	if err != nil {
+		// Handle error
+		return nil
+	}
+
+	if err := gz.Close(); err != nil {
+		// Handle error
+		return nil
+	}
+
+	return buf.Bytes()
 }
 
 func Test_BloomClient_PutBlocks(t *testing.T) {
@@ -300,7 +335,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.FileExists(t, savedFilePath)
 	savedData, err := os.ReadFile(savedFilePath)
 	require.NoError(t, err)
-	require.Equal(t, blockForFirstFolderData, string(savedData))
+	require.Equal(t, compressData(([]byte)(blockForFirstFolderData)), savedData)
 
 	secondResultBlock := results[1]
 	path = secondResultBlock.BlockPath
@@ -319,7 +354,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.FileExists(t, savedFilePath)
 	savedData, err = os.ReadFile(savedFilePath)
 	require.NoError(t, err)
-	require.Equal(t, blockForSecondFolderData, string(savedData))
+	require.Equal(t, compressData(([]byte)(blockForSecondFolderData)), savedData)
 }
 
 func Test_BloomClient_DeleteBlocks(t *testing.T) {
@@ -364,13 +399,14 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 	require.NoFileExists(t, block2Path)
 }
 
-func createBlockFile(t *testing.T, path string) string {
+func createBlockFile(t *testing.T, path string) []byte {
 	err := os.MkdirAll(path[:strings.LastIndex(path, "/")], 0755)
 	require.NoError(t, err)
 	fileContent := uuid.NewString()
-	err = os.WriteFile(path, []byte(fileContent), 0700)
+	results := compressData([]byte(fileContent))
+	err = os.WriteFile(path, compressData([]byte(fileContent)), 0700)
 	require.NoError(t, err)
-	return fileContent
+	return results
 }
 
 func Test_TablesByPeriod(t *testing.T) {
