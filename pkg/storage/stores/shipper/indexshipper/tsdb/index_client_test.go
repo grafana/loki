@@ -59,7 +59,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
 				},
-			}, IndexOpts{}),
+			}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -68,7 +68,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
 				},
-			}, IndexOpts{}),
+			}),
 		},
 	}
 
@@ -118,7 +118,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{fizz="buzz"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
-			}, IndexOpts{}),
+			}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -135,7 +135,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{ping="pong"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
-			}, IndexOpts{}),
+			}),
 		},
 	}
 
@@ -247,7 +247,7 @@ func TestIndexClient_Volume(t *testing.T) {
 					Labels: mustParseLabels(`{fizz="buzz"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
-			}, IndexOpts{}),
+			}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -264,7 +264,7 @@ func TestIndexClient_Volume(t *testing.T) {
 					Labels: mustParseLabels(`{ping="pong"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
-			}, IndexOpts{}),
+			}),
 		},
 	}
 

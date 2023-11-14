@@ -2,11 +2,11 @@ package logql
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -242,20 +243,10 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(spLogger))
 
-	status := "200"
-	if err != nil {
-		status = "500"
-		if errors.Is(err, logqlmodel.ErrParse) ||
-			errors.Is(err, logqlmodel.ErrPipeline) ||
-			errors.Is(err, logqlmodel.ErrLimit) ||
-			errors.Is(err, logqlmodel.ErrBlocked) ||
-			errors.Is(err, context.Canceled) {
-			status = "400"
-		}
-	}
+	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
 	}
 
 	return logqlmodel.Result{

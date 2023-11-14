@@ -62,25 +62,26 @@ type SeriesWithBloom struct {
 	Bloom  *Bloom
 }
 
-func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) error {
+func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
 	for itr.Next() {
 		if err := b.AddSeries(itr.At()); err != nil {
-			return err
+			return 0, err
 		}
 
 	}
 
 	if err := itr.Err(); err != nil {
-		return errors.Wrap(err, "iterating series with blooms")
+		return 0, errors.Wrap(err, "iterating series with blooms")
 	}
 
-	if err := b.blooms.Close(); err != nil {
-		return errors.Wrap(err, "closing bloom file")
+	checksum, err := b.blooms.Close()
+	if err != nil {
+		return 0, errors.Wrap(err, "closing bloom file")
 	}
 	if err := b.index.Close(); err != nil {
-		return errors.Wrap(err, "closing series file")
+		return 0, errors.Wrap(err, "closing series file")
 	}
-	return nil
+	return checksum, nil
 }
 
 func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
@@ -154,10 +155,10 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 	}, nil
 }
 
-func (b *BloomBlockBuilder) Close() error {
+func (b *BloomBlockBuilder) Close() (uint32, error) {
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
-			return errors.Wrap(err, "flushing final bloom page")
+			return 0, errors.Wrap(err, "flushing final bloom page")
 		}
 	}
 
@@ -177,9 +178,9 @@ func (b *BloomBlockBuilder) Close() error {
 	b.scratch.PutHash(crc32Hash)
 	_, err := b.writer.Write(b.scratch.Get())
 	if err != nil {
-		return errors.Wrap(err, "writing bloom page headers")
+		return 0, errors.Wrap(err, "writing bloom page headers")
 	}
-	return errors.Wrap(b.writer.Close(), "closing bloom writer")
+	return crc32Hash.Sum32(), errors.Wrap(b.writer.Close(), "closing bloom writer")
 }
 
 func (b *BloomBlockBuilder) flushPage() error {
@@ -568,7 +569,8 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 		}
 	}
 
-	if err := builder.blooms.Close(); err != nil {
+	_, err := builder.blooms.Close()
+	if err != nil {
 		return errors.Wrap(err, "closing bloom file")
 	}
 	if err := builder.index.Close(); err != nil {
