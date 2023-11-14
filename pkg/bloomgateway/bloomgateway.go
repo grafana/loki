@@ -78,22 +78,26 @@ const (
 	pendingTasksInitialCap = 1024
 )
 
+const (
+	metricsSubsystem = "bloom_gateway"
+)
+
 type metrics struct {
 	queueDuration    prometheus.Histogram
 	inflightRequests prometheus.Summary
 }
 
-func newMetrics(subsystem string, registerer prometheus.Registerer) *metrics {
+func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
 	return &metrics{
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
+			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "queue_duration_seconds",
 			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
 			Buckets:   prometheus.DefBuckets,
 		}),
 		inflightRequests: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Namespace:  constants.Loki,
+			Namespace:  namespace,
 			Subsystem:  subsystem,
 			Name:       "inflight_tasks",
 			Help:       "Number of inflight tasks (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight tasks over the last 60s.",
@@ -164,19 +168,17 @@ type Gateway struct {
 
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
-	metricsSubsystem := "bloom_gateway"
-
 	g := &Gateway{
 		cfg:          cfg,
 		logger:       logger,
-		metrics:      newMetrics(metricsSubsystem, reg),
+		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
 		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 		workerConfig: workerConfig{
 			maxWaitTime: 200 * time.Millisecond,
 			maxItems:    100,
 		},
-		workerMetrics: newWorkerMetrics(metricsSubsystem, reg),
+		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
 
@@ -350,29 +352,29 @@ type workerMetrics struct {
 	storeAccessLatency *prometheus.HistogramVec
 }
 
-func newWorkerMetrics(subsystem string, registerer prometheus.Registerer) *workerMetrics {
+func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
 	labels := []string{"worker"}
 	return &workerMetrics{
 		dequeuedTasks: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "dequeued_tasks_total",
 			Help:      "Total amount of tasks that the worker dequeued from the bloom query queue",
 		}, labels),
 		dequeueErrors: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "dequeue_errors_total",
 			Help:      "Total amount of failed dequeue operations",
 		}, labels),
 		dequeueWaitTime: promauto.With(registerer).NewSummaryVec(prometheus.SummaryOpts{
-			Namespace: "loki",
+			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "dequeue_wait_time",
 			Help:      "Time spent waiting for dequeuing tasks from queue",
 		}, labels),
 		storeAccessLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "store_latency",
 			Help:      "Latency in seconds of accessing the bloom store component",
