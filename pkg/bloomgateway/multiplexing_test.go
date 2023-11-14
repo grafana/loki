@@ -161,7 +161,7 @@ func TestTaskMergeIterator(t *testing.T) {
 			From:    ts.Add(-1 * time.Hour),
 			Through: ts,
 			Refs: []*logproto.GroupedChunkRefs{
-				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
+				{Fingerprint: 200, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 300},
 				}},
 			},
@@ -172,18 +172,14 @@ func TestTaskMergeIterator(t *testing.T) {
 		it := newTaskMergeIterator(t1, t2, t3)
 		require.NotNil(t, it.heap)
 
-		count := 0
-		for it.Next() {
-			count++
+		checksums := []uint32{100, 200, 300}
+		for i := 0; i < 3; i++ {
+			count := 0
+			for it.Next() {
+				require.Equal(t, checksums[count], it.At().Chks[0].Checksum)
+				count++
+			}
+			it.Reset()
 		}
-		require.Equal(t, 3, count)
-
-		it.Reset()
-
-		count = 0
-		for it.Next() {
-			count++
-		}
-		require.Equal(t, 3, count)
 	})
 }
