@@ -3144,6 +3144,12 @@ func TestParse(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.exp, ast)
+
+			if err == nil {
+				roundtrip, err := ParseExpr(ast.String())
+				require.NoError(t, err)
+				require.Equal(t, ast, roundtrip)
+			}
 		})
 	}
 }
