@@ -207,7 +207,7 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 	}
 }
 
-func (b *BytesLabelFilter) isLabelFilterer() {}
+func (d *BytesLabelFilter) isLabelFilterer() {}
 
 func (d *BytesLabelFilter) RequiredLabelNames() []string {
 	return []string{d.Name}
@@ -274,7 +274,7 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 	}
 }
 
-func (b *DurationLabelFilter) isLabelFilterer() {}
+func (d *DurationLabelFilter) isLabelFilterer() {}
 
 func (d *DurationLabelFilter) RequiredLabelNames() []string {
 	return []string{d.Name}
