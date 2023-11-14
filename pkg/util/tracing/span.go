@@ -47,5 +47,8 @@ type Boundary struct {
 }
 
 func (b Boundary) Apply(opt *opentracing.StartSpanOptions) {
+	if opt.Tags == nil {
+		opt.Tags = make(map[string]interface{})
+	}
 	opt.Tags["boundary"] = b.Name
 }
