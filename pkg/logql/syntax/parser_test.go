@@ -1654,6 +1654,30 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{app="foo"} | json | size >= 2.56GiB `,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&LabelFilterExpr{
+						LabelFilterer: log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, "size", 2_748_779_070),
+					},
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | json | duration >= 3s15ms`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLabelParserExpr(OpParserTypeJSON, ""),
+					&LabelFilterExpr{
+						LabelFilterer: log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "duration", 3_015_000_000),
+					},
+				},
+			},
+		},
+		{
 			in: `stdvar_over_time({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo [5m])`,
 			exp: newRangeAggregationExpr(
