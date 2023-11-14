@@ -67,7 +67,7 @@ type LabelFilterer interface {
 type BinaryLabelFilter struct {
 	Left  LabelFilterer
 	Right LabelFilterer
-	and   bool
+	And   bool
 }
 
 // NewAndLabelFilter creates a new LabelFilterer from a and binary operation of two LabelFilterer.
@@ -75,7 +75,7 @@ func NewAndLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilt
 	return &BinaryLabelFilter{
 		Left:  left,
 		Right: right,
-		and:   true,
+		And:   true,
 	}
 }
 
@@ -89,11 +89,11 @@ func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilte
 
 func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	line, lok := b.Left.Process(ts, line, lbs)
-	if !b.and && lok {
+	if !b.And && lok {
 		return line, true
 	}
 	line, rok := b.Right.Process(ts, line, lbs)
-	if !b.and {
+	if !b.And {
 		return line, lok || rok
 	}
 	return line, lok && rok
@@ -112,7 +112,7 @@ func (b *BinaryLabelFilter) String() string {
 	var sb strings.Builder
 	sb.WriteString("( ")
 	sb.WriteString(b.Left.String())
-	if b.and {
+	if b.And {
 		sb.WriteString(" , ")
 	} else {
 		sb.WriteString(" or ")
@@ -219,7 +219,7 @@ func (d *BytesLabelFilter) String() string {
 			return -1
 		}
 		return r
-	}, humanize.IBytes(d.Value)) // TODO: discuss whether this should just be bytes, B, to be more accurate.
+	}, humanize.Bytes(d.Value)) // TODO: discuss whether this should just be bytes, B, to be more accurate.
 	return fmt.Sprintf("%s%s%s", d.Name, d.Type, b)
 }
 
@@ -364,7 +364,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 		return &NoopLabelFilter{m}
 	}
 
-	return &lineFilterLabelFilter{
+	return &LineFilterLabelFilter{
 		Matcher: m,
 		filter:  f,
 	}
@@ -380,14 +380,14 @@ func (s *StringLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
 }
 
-// lineFilterLabelFilter filters the desired label using an optimized line filter
-type lineFilterLabelFilter struct {
+// LineFilterLabelFilter filters the desired label using an optimized line filter
+type LineFilterLabelFilter struct {
 	*labels.Matcher
 	filter Filterer
 }
 
 // overrides the matcher.String() function in case there is a regexpFilter
-func (s *lineFilterLabelFilter) String() string {
+func (s *LineFilterLabelFilter) String() string {
 	if unwrappedFilter, ok := s.filter.(regexpFilter); ok {
 		rStr := unwrappedFilter.String()
 		str := fmt.Sprintf("%s%s`%s`", s.Matcher.Name, s.Matcher.Type, rStr)
@@ -396,14 +396,14 @@ func (s *lineFilterLabelFilter) String() string {
 	return s.Matcher.String()
 }
 
-func (s *lineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (s *LineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	v := labelValue(s.Name, lbs)
 	return line, s.filter.Filter(unsafeGetBytes(v))
 }
 
-func (s *lineFilterLabelFilter) isLabelFilterer() {}
+func (s *LineFilterLabelFilter) isLabelFilterer() {}
 
-func (s *lineFilterLabelFilter) RequiredLabelNames() []string {
+func (s *LineFilterLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
 }
 

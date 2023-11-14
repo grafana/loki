@@ -6,6 +6,7 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logql/log"
 )
@@ -318,7 +319,7 @@ func encodeUnwrap(s *jsoniter.Stream, u *UnwrapExpr) {
 		if i > 0 {
 			s.WriteMore()
 		}
-		encodePostFilter(s, filter)
+		encodeLabelFilter(s, filter)
 	}
 	s.WriteArrayEnd()
 
@@ -334,27 +335,42 @@ func decodeUnwrap(iter *jsoniter.Iterator) *UnwrapExpr {
 		case "operation":
 			e.Operation = iter.ReadString()
 		case "post_filterers":
-			iter.Skip()
+			iter.ReadArrayCB(func(i *jsoniter.Iterator) bool {
+				e.PostFilters = append(e.PostFilters, decodeLabelFilter(i))
+				return true
+			})
 		}
 	}
 
 	return e
 }
 
-func encodePostFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
+func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 	switch concrete := filter.(type) {
 	case *log.BinaryLabelFilter:
 		s.WriteObjectStart()
+		s.WriteObjectField("binary")
+
+		s.WriteObjectStart()
 		s.WriteObjectField("left")
-		encodePostFilter(s, concrete.Left)
+		encodeLabelFilter(s, concrete.Left)
 
 		s.WriteMore()
 		s.WriteObjectField("right")
-		encodePostFilter(s, concrete.Right)
+		encodeLabelFilter(s, concrete.Right)
+		s.WriteObjectEnd()
+
+		s.WriteMore()
+		s.WriteObjectField("and")
+		s.WriteBool(concrete.And)
+
 		s.WriteObjectEnd()
 	case log.NoopLabelFilter:
 		return
 	case *log.BytesLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField("bytes")
+
 		s.WriteObjectStart()
 		s.WriteObjectField("name")
 		s.WriteString(concrete.Name)
@@ -367,11 +383,220 @@ func encodePostFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectField("type")
 		s.WriteInt(int(concrete.Type))
 		s.WriteObjectEnd()
+
+		s.WriteObjectEnd()
 	case *log.DurationLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField("duration")
+
+		s.WriteObjectStart()
+		s.WriteObjectField("name")
+		s.WriteString(concrete.Name)
+
+		s.WriteMore()
+		s.WriteObjectField("value")
+		s.WriteInt64(int64(concrete.Value))
+
+		s.WriteMore()
+		s.WriteObjectField("type")
+		s.WriteInt(int(concrete.Type))
+		s.WriteObjectEnd()
+
+		s.WriteObjectEnd()
 	case *log.NumericLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField("numeric")
+
+		s.WriteObjectStart()
+		s.WriteObjectField("name")
+		s.WriteString(concrete.Name)
+
+		s.WriteMore()
+		s.WriteObjectField("value")
+		s.WriteFloat64(concrete.Value)
+
+		s.WriteMore()
+		s.WriteObjectField("type")
+		s.WriteInt(int(concrete.Type))
+		s.WriteObjectEnd()
+
+		s.WriteObjectEnd()
 	case *log.StringLabelFilter:
-		//case *log.lineFilterLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField("string")
+
+		s.WriteObjectStart()
+		if concrete.Matcher != nil {
+			s.WriteObjectField("name")
+			s.WriteString(concrete.Name)
+
+			s.WriteMore()
+			s.WriteObjectField("value")
+			s.WriteString(concrete.Value)
+
+			s.WriteMore()
+			s.WriteObjectField("type")
+			s.WriteInt(int(concrete.Type))
+		}
+		s.WriteObjectEnd()
+
+		s.WriteObjectEnd()
+	case *log.LineFilterLabelFilter:
+		// Line filter label filter are encoded as string filters as
+		// well. See log.NewStringLabelFilter.
+		s.WriteObjectStart()
+		s.WriteObjectField("string")
+
+		s.WriteObjectStart()
+		if concrete.Matcher != nil {
+			s.WriteObjectField("name")
+			s.WriteString(concrete.Name)
+
+			s.WriteMore()
+			s.WriteObjectField("value")
+			s.WriteString(concrete.Value)
+
+			s.WriteMore()
+			s.WriteObjectField("type")
+			s.WriteInt(int(concrete.Type))
+		}
+		s.WriteObjectEnd()
+
+		s.WriteObjectEnd()
+	case *log.IPLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField("ip")
+
+		s.WriteObjectStart()
+		s.WriteObjectField("ty")
+		s.WriteInt(int(concrete.Ty))
+
+		s.WriteMore()
+		s.WriteObjectField("label")
+		s.WriteString(concrete.Label)
+
+		s.WriteMore()
+		s.WriteObjectField("pattern")
+		s.WriteString(concrete.Pattern)
+
+		s.WriteObjectEnd()
+
+		s.WriteObjectEnd()
 	}
+}
+
+func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case "binary":
+			var left, right log.LabelFilterer
+			var and bool
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				switch k {
+				case "and":
+					and = iter.ReadBool()
+				case "left":
+					left = decodeLabelFilter(iter)
+				case "right":
+					right = decodeLabelFilter(iter)
+				}
+			}
+
+			return &log.BinaryLabelFilter{
+				And:   and,
+				Left:  left,
+				Right: right,
+			}
+
+		case "bytes":
+			var name string
+			var b uint64
+			var t log.LabelFilterType
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				switch k {
+				case "name":
+					name = iter.ReadString()
+				case "value":
+					b = iter.ReadUint64()
+				case "type":
+					t = log.LabelFilterType(iter.ReadInt())
+				}
+			}
+			return log.NewBytesLabelFilter(t, name, b)
+		case "duration":
+			var name string
+			var duration time.Duration
+			var t log.LabelFilterType
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				switch k {
+				case "name":
+					name = iter.ReadString()
+				case "value":
+					duration = time.Duration(iter.ReadInt64())
+				case "type":
+					t = log.LabelFilterType(iter.ReadInt())
+				}
+			}
+
+			return log.NewDurationLabelFilter(t, name, duration)
+		case "numeric":
+			var name string
+			var value float64
+			var t log.LabelFilterType
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				switch k {
+				case "name":
+					name = iter.ReadString()
+				case "value":
+					value = iter.ReadFloat64()
+				case "type":
+					t = log.LabelFilterType(iter.ReadInt())
+				}
+			}
+
+			return log.NewNumericLabelFilter(t, name, value)
+		case "string":
+
+			var name string
+			var value string
+			var t labels.MatchType
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				switch k {
+				case "name":
+					name = iter.ReadString()
+				case "value":
+					value = iter.ReadString()
+				case "type":
+					t = labels.MatchType(iter.ReadInt())
+				}
+			}
+
+			var matcher *labels.Matcher
+			if name != "" && value != "" {
+				matcher = labels.MustNewMatcher(t, name, value)
+			}
+
+			return log.NewStringLabelFilter(matcher)
+
+		case "ip":
+			var label string
+			var pattern string
+			var t log.LabelFilterType
+			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
+				switch k {
+				case "pattern":
+					label = iter.ReadString()
+				case "label":
+					pattern = iter.ReadString()
+				case "ty":
+					t = log.LabelFilterType(iter.ReadInt())
+				}
+			}
+			return log.NewIPLabelFilter(pattern, label, t)
+		}
+	}
+
+	return nil
 }
 
 func encodeLogSelector(s *jsoniter.Stream, e LogSelectorExpr) {
