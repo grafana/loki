@@ -11,7 +11,7 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-// Task is the data structure that is enqueued to the internal queue and queued by query workers
+// Task is the data structure that is enqueued to the internal queue and dequeued by query workers
 type Task struct {
 	// ID is a lexcographically sortable unique identifier of the task
 	ID ulid.ULID
@@ -26,7 +26,7 @@ type Task struct {
 }
 
 // NewTask returns a new Task that can be enqueued to the task queue.
-// As additional arguments, it returns a result and an error channel, as well
+// In addition, it returns a result and an error channel, as well
 // as an error if the instantiation fails.
 func NewTask(tenantID string, req *logproto.FilterChunkRefRequest) (Task, chan v1.Output, chan error, error) {
 	key, err := ulid.New(ulid.Now(), nil)
