@@ -733,7 +733,7 @@ func (e *KeepLabelsExpr) String() string {
 
 func (e *KeepLabelsExpr) Walk(f WalkFn) { f(e) }
 
-func (e *KeepLabelsExpr) Accept(v RootVisitor) { v.VisitKeekLabel(e) }
+func (e *KeepLabelsExpr) Accept(v RootVisitor) { v.VisitKeepLabel(e) }
 
 func (*LineFmtExpr) isStageExpr() {}
 

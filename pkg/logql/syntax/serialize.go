@@ -259,7 +259,7 @@ func (v *JSONSerializer) VisitPipeline(e *PipelineExpr) {
 func (*JSONSerializer) VisitDecolorize(*DecolorizeExpr)                     {}
 func (*JSONSerializer) VisitDropLabels(*DropLabelsExpr)                     {}
 func (*JSONSerializer) VisitJSONExpressionParser(*JSONExpressionParser)     {}
-func (*JSONSerializer) VisitKeekLabel(*KeepLabelsExpr)                      {}
+func (*JSONSerializer) VisitKeepLabel(*KeepLabelsExpr)                      {}
 func (*JSONSerializer) VisitLabelFilter(*LabelFilterExpr)                   {}
 func (*JSONSerializer) VisitLabelFmt(*LabelFmtExpr)                         {}
 func (*JSONSerializer) VisitLabelParser(*LabelParserExpr)                   {}

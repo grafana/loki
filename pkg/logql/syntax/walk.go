@@ -46,7 +46,7 @@ type StageExprVisitor interface {
 	VisitDecolorize(*DecolorizeExpr)
 	VisitDropLabels(*DropLabelsExpr)
 	VisitJSONExpressionParser(*JSONExpressionParser)
-	VisitKeekLabel(*KeepLabelsExpr)
+	VisitKeepLabel(*KeepLabelsExpr)
 	VisitLabelFilter(*LabelFilterExpr)
 	VisitLabelFmt(*LabelFmtExpr)
 	VisitLabelParser(*LabelParserExpr)
@@ -112,7 +112,7 @@ func DispatchStageExpr(expr StageExpr, v StageExprVisitor) {
 	case *JSONExpressionParser:
 		v.VisitJSONExpressionParser(e)
 	case *KeepLabelsExpr:
-		v.VisitKeekLabel(e)
+		v.VisitKeepLabel(e)
 	case *LabelFilterExpr:
 		v.VisitLabelFilter(e)
 	case *LabelFmtExpr:
