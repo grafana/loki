@@ -345,6 +345,12 @@ func decodeUnwrap(iter *jsoniter.Iterator) *UnwrapExpr {
 	return e
 }
 
+const (
+	Name  = "name"
+	Value = "value"
+	Type  = "type"
+)
+
 func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 	switch concrete := filter.(type) {
 	case *log.BinaryLabelFilter:
@@ -372,15 +378,15 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectField("bytes")
 
 		s.WriteObjectStart()
-		s.WriteObjectField("name")
+		s.WriteObjectField(Name)
 		s.WriteString(concrete.Name)
 
 		s.WriteMore()
-		s.WriteObjectField("value")
+		s.WriteObjectField(Value)
 		s.WriteUint64(concrete.Value)
 
 		s.WriteMore()
-		s.WriteObjectField("type")
+		s.WriteObjectField(Type)
 		s.WriteInt(int(concrete.Type))
 		s.WriteObjectEnd()
 
@@ -390,15 +396,15 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectField("duration")
 
 		s.WriteObjectStart()
-		s.WriteObjectField("name")
+		s.WriteObjectField(Name)
 		s.WriteString(concrete.Name)
 
 		s.WriteMore()
-		s.WriteObjectField("value")
+		s.WriteObjectField(Value)
 		s.WriteInt64(int64(concrete.Value))
 
 		s.WriteMore()
-		s.WriteObjectField("type")
+		s.WriteObjectField(Type)
 		s.WriteInt(int(concrete.Type))
 		s.WriteObjectEnd()
 
@@ -408,15 +414,15 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectField("numeric")
 
 		s.WriteObjectStart()
-		s.WriteObjectField("name")
+		s.WriteObjectField(Name)
 		s.WriteString(concrete.Name)
 
 		s.WriteMore()
-		s.WriteObjectField("value")
+		s.WriteObjectField(Value)
 		s.WriteFloat64(concrete.Value)
 
 		s.WriteMore()
-		s.WriteObjectField("type")
+		s.WriteObjectField(Type)
 		s.WriteInt(int(concrete.Type))
 		s.WriteObjectEnd()
 
@@ -427,15 +433,15 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 
 		s.WriteObjectStart()
 		if concrete.Matcher != nil {
-			s.WriteObjectField("name")
+			s.WriteObjectField(Name)
 			s.WriteString(concrete.Name)
 
 			s.WriteMore()
-			s.WriteObjectField("value")
+			s.WriteObjectField(Value)
 			s.WriteString(concrete.Value)
 
 			s.WriteMore()
-			s.WriteObjectField("type")
+			s.WriteObjectField(Type)
 			s.WriteInt(int(concrete.Type))
 		}
 		s.WriteObjectEnd()
@@ -449,15 +455,15 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 
 		s.WriteObjectStart()
 		if concrete.Matcher != nil {
-			s.WriteObjectField("name")
+			s.WriteObjectField(Name)
 			s.WriteString(concrete.Name)
 
 			s.WriteMore()
-			s.WriteObjectField("value")
+			s.WriteObjectField(Value)
 			s.WriteString(concrete.Value)
 
 			s.WriteMore()
-			s.WriteObjectField("type")
+			s.WriteObjectField(Type)
 			s.WriteInt(int(concrete.Type))
 		}
 		s.WriteObjectEnd()
@@ -468,7 +474,7 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectField("ip")
 
 		s.WriteObjectStart()
-		s.WriteObjectField("ty")
+		s.WriteObjectField(Type)
 		s.WriteInt(int(concrete.Ty))
 
 		s.WriteMore()
@@ -514,11 +520,11 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			var t log.LabelFilterType
 			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
 				switch k {
-				case "name":
+				case Name:
 					name = iter.ReadString()
-				case "value":
+				case Value:
 					b = iter.ReadUint64()
-				case "type":
+				case Type:
 					t = log.LabelFilterType(iter.ReadInt())
 				}
 			}
@@ -529,11 +535,11 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			var t log.LabelFilterType
 			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
 				switch k {
-				case "name":
+				case Name:
 					name = iter.ReadString()
-				case "value":
+				case Value:
 					duration = time.Duration(iter.ReadInt64())
-				case "type":
+				case Type:
 					t = log.LabelFilterType(iter.ReadInt())
 				}
 			}
@@ -545,11 +551,11 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			var t log.LabelFilterType
 			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
 				switch k {
-				case "name":
+				case Name:
 					name = iter.ReadString()
-				case "value":
+				case Value:
 					value = iter.ReadFloat64()
-				case "type":
+				case Type:
 					t = log.LabelFilterType(iter.ReadInt())
 				}
 			}
@@ -562,11 +568,11 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			var t labels.MatchType
 			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
 				switch k {
-				case "name":
+				case Name:
 					name = iter.ReadString()
-				case "value":
+				case Value:
 					value = iter.ReadString()
-				case "type":
+				case Type:
 					t = labels.MatchType(iter.ReadInt())
 				}
 			}
@@ -588,7 +594,7 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 					label = iter.ReadString()
 				case "label":
 					pattern = iter.ReadString()
-				case "ty":
+				case Type:
 					t = log.LabelFilterType(iter.ReadInt())
 				}
 			}
@@ -611,7 +617,6 @@ func encodeLogSelector(s *jsoniter.Stream, e LogSelectorExpr) {
 
 func decodeLogSelector(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
 	var e LogSelectorExpr
-	var err error
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
@@ -626,12 +631,12 @@ func decodeLogSelector(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
 			e, ok = expr.(LogSelectorExpr)
 
 			if !ok {
-				err = fmt.Errorf("unexpected expression type: want(LogSelectorExpr), got(%T)", expr)
+				return nil, fmt.Errorf("unexpected expression type: want(LogSelectorExpr), got(%T)", expr)
 			}
 		}
 	}
 
-	return e, err
+	return e, nil
 }
 
 func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
