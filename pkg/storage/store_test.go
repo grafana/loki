@@ -31,7 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -206,15 +206,16 @@ func getLocalStore(cm ClientMetrics) Store {
 				IndexType:  "boltdb",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					}},
 			},
 		},
 	}
 
-	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 	if err != nil {
 		panic(err)
 	}
@@ -1008,13 +1009,13 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	shipperConfig := indexshipper.Config{}
 	flagext.DefaultValues(&shipperConfig)
-	shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "active_index")
 	shipperConfig.CacheLocation = path.Join(tempDir, "cache")
 	shipperConfig.Mode = indexshipper.ModeReadWrite
 
 	cfg := Config{
 		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig},
+		TSDBShipperConfig: shipperConfig,
 		NamedStores: NamedStores{
 			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1031,10 +1032,12 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v9",
-		IndexTables: config.PeriodicTableConfig{
-			Prefix: "index_",
-			Period: time.Hour * 24,
-		},
+		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "index/",
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: time.Hour * 24,
+			}},
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -1058,7 +1061,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 	require.NoError(t, err)
 
 	// build and add chunks to the store
@@ -1102,10 +1105,12 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		IndexType:  config.TSDBType,
 		ObjectType: "named-store",
 		Schema:     "v11",
-		IndexTables: config.PeriodicTableConfig{
-			Prefix: "index_tsdb_",
-			Period: time.Hour * 24,
-		},
+		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "index/",
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_tsdb_",
+				Period: time.Hour * 24,
+			}},
 		RowShards: 2,
 	}
 	schemaConfig.Configs = append(schemaConfig.Configs, periodConfig2)
@@ -1126,7 +1131,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// restart to load the updated schema
 	store.Stop()
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 	require.NoError(t, err)
 	defer store.Stop()
 
@@ -1191,7 +1196,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			cfg := Config{
 				FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 				BoltDBShipperConfig: boltdb.IndexCfg{Config: shipperConfig},
-				TSDBShipperConfig:   tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
+				TSDBShipperConfig:   shipperConfig,
 				NamedStores: NamedStores{
 					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1205,10 +1210,11 @@ func TestStore_MultiPeriod(t *testing.T) {
 				IndexType:  indexes[0],
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 			}
 
 			periodConfigV11 := config.PeriodConfig{
@@ -1216,10 +1222,11 @@ func TestStore_MultiPeriod(t *testing.T) {
 				IndexType:  indexes[1],
 				ObjectType: "named-store",
 				Schema:     "v11",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 2,
 			}
 
@@ -1231,7 +1238,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			}
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 			require.NoError(t, err)
 
 			// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1273,7 +1280,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			store.Stop()
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 			require.NoError(t, err)
 
 			defer store.Stop()
@@ -1507,17 +1514,15 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	// config for BoltDB Shipper
 	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
 	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
 	boltdbShipperConfig.IngesterName = ingesterName
 
 	// config for tsdb Shipper
-	tsdbShipperConfig := tsdb.IndexCfg{}
+	tsdbShipperConfig := indexshipper.Config{}
 	flagext.DefaultValues(&tsdbShipperConfig)
 	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
-	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
 	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
 	tsdbShipperConfig.IngesterName = ingesterName
@@ -1539,10 +1544,12 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				IndexType:  "boltdb-shipper",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 				RowShards: 2,
 			},
 			{
@@ -1550,16 +1557,18 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				IndexType:  "tsdb",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v12",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
 			},
 		},
 	}
 
 	ResetBoltDBIndexClientsWithShipper()
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 	require.NoError(t, err)
 
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1619,7 +1628,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	require.Len(t, tsdbFiles, 1)
 	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 	require.NoError(t, err)
 
 	defer store.Stop()

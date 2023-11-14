@@ -4,6 +4,7 @@ package frontendv2pb;
 
 import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
+import "pkg/querier/queryrange/queryrange.proto";
 import "pkg/querier/stats/stats.proto";
 
 option go_package = "frontendv2pb";
@@ -17,7 +18,10 @@ service FrontendForQuerier {
 
 message QueryResultRequest {
   uint64 queryID = 1;
-  httpgrpc.HTTPResponse httpResponse = 2;
+  oneof response {
+    httpgrpc.HTTPResponse httpResponse = 2 [deprecated = true];
+    queryrange.QueryResponse queryResponse = 4;
+  }
   stats.Stats stats = 3;
 
 // There is no userID field here, because Querier puts userID into the context when
