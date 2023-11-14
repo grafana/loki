@@ -35,7 +35,10 @@
 * [10733](https://github.com/grafana/loki/pull/10733) **shantanualsi** Add support for case-insensitive logql funtions
 * [10727](https://github.com/grafana/loki/pull/10727) **sandeepsukhani** Native otlp ingestion support
 * [11051](https://github.com/grafana/loki/pull/11051) Refactor to not use global logger in modules
+* [10956](https://github.com/grafana/loki/pull/10956) **jeschkies** do not wrap requests but send pure Protobuf from frontend v2 via scheduler to querier when `-frontend.encoding=protobuf`.
+
 ##### Fixes
+* [11074](https://github.com/grafana/loki/pull/11074) **hainenber** Fix panic in lambda-promtail due to mishandling of empty DROP_LABELS env var.
 
 ##### Changes
 
@@ -43,6 +46,7 @@
 * [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
 * [10814](https://github.com/grafana/loki/pull/10814) **shantanualsi,kaviraj** Upgrade prometheus to v0.47.1 and dskit
 * [10959](https://github.com/grafana/loki/pull/10959) **slim-bean** introduce a backoff wait on subquery retries.
+* [11121](https://github.com/grafana/loki/pull/11121) **periklis** Ensure all lifecycler cfgs ref a valid IPv6 addr and port combination
 
 #### Promtail
 
@@ -169,6 +173,7 @@
 * [10341](https://github.com/grafana/loki/pull/10341) **ashwanthgoli** Deprecate older index types and non-object stores - `aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc`
 * [10344](https://github.com/grafana/loki/pull/10344) **ashwanthgoli**  Compactor: deprecate `-boltdb.shipper.compactor.` prefix in favor of `-compactor.`.
 * [10073](https://github.com/grafana/loki/pull/10073) **sandeepsukhani,salvacorts,vlad-diachenko** Support attaching structured metadata to log lines.
+* [11151](https://github.com/grafana/loki/pull/11151) **ashwanthgoli**: Removes already deprecated configs: `ruler.evaluation-delay-duration`, `boltdb.shipper.compactor.deletion-mode`, `validation.enforce-metric-name` and flags with prefix `-boltdb.shipper.compactor.*`.
 
 ##### Fixes
 

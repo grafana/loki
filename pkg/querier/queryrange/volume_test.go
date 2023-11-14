@@ -328,4 +328,24 @@ func Test_VolumeMiddleware(t *testing.T) {
 		require.Equal(t, 1, len(promResp.Data.Result))
 		require.Equal(t, 2, len(promResp.Data.Result[0].Samples))
 	})
+
+	t.Run("timestamps are aligned with the end of steps", func(t *testing.T) {
+		volumeReq := &logproto.VolumeRequest{
+			From:        1000000000000,
+			Through:     1000000005000, // 5s range
+			Matchers:    `{foo="bar"}`,
+			Limit:       seriesvolume.DefaultLimit,
+			Step:        1000, // 1s
+			AggregateBy: seriesvolume.Series,
+		}
+		promResp := makeVolumeRequest(volumeReq)
+
+		require.Equal(t, int64(1000000000999),
+			promResp.Data.Result[0].Samples[0].TimestampMs,
+			"first timestamp should be one millisecond before the end of the first step")
+		require.Equal(t,
+			int64(1000000005000),
+			promResp.Data.Result[0].Samples[4].TimestampMs,
+			"last timestamp should be equal to the end of the requested query range")
+	})
 }
