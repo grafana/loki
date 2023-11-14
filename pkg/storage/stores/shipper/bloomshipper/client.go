@@ -209,9 +209,23 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 			if err != nil {
 				return fmt.Errorf("error while fetching object from storage: %w", err)
 			}
+			/*
+				// TODO: Is the gzip configurable?
+				gz, err := chunkenc.GetReaderPool(chunkenc.EncGZIP).GetReader(readCloser)
+				defer chunkenc.GetReaderPool(chunkenc.EncGZIP).PutReader(gz)
+
+				// Reading decompressed data into a buffer
+				decompressedData := new(bytes.Buffer)
+				_, err = io.Copy(decompressedData, gz)
+				if err != nil {
+					return fmt.Errorf("error decompressing data: %w", err)
+				}
+				// Creating a new ReadCloser from the decompressed data
+				decompressedReadCloser := io.NopCloser(decompressedData)
+			*/
 			blocksChannel <- Block{
 				BlockRef: reference,
-				Data:     readCloser,
+				Data:     readCloser, //decompressedReadCloser,
 			}
 			return nil
 		})
@@ -245,7 +259,23 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		if err != nil {
 			return fmt.Errorf("error while reading object data: %w", err)
 		}
-		err = objectClient.PutObject(ctx, key, bytes.NewReader(data))
+		/*
+			// TODO: Is this configurable?  Should it be? Do we want Gzip?
+			// Compress data using gzip
+			var buf bytes.Buffer
+			gz := chunkenc.Gzip.GetWriter(&buf)
+			defer chunkenc.Gzip.PutWriter(gz)
+			_, err = gz.Write(data)
+			if err != nil {
+				gz.Close()
+				return fmt.Errorf("error compressing data: %w", err)
+			}
+			if err := gz.Close(); err != nil {
+				return fmt.Errorf("error closing gzip writer: %w", err)
+			}
+
+		*/
+		err = objectClient.PutObject(ctx, key, bytes.NewReader(data)) //bytes.NewReader(buf.Bytes()))
 		if err != nil {
 			return fmt.Errorf("error updloading block file: %w", err)
 		}
