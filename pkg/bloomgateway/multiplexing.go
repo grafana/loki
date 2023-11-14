@@ -108,7 +108,7 @@ func (it *taskMergeIterator) Next() bool {
 		return false
 	}
 
-	currIter, ok := it.heap.CurrIter().(*SliceIterWithIndex[*logproto.GroupedChunkRefs])
+	currIter, ok := it.heap.Iter().(*SliceIterWithIndex[*logproto.GroupedChunkRefs])
 	if !ok {
 		it.err = errors.New("failed to cast iterator")
 		return false

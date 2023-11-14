@@ -83,6 +83,11 @@ type PeekingIterator[T any] interface {
 	Iterator[T]
 }
 
+type NestedIterator[T any] interface {
+	Iter() Iterator[T]
+	Iterator[T]
+}
+
 type PeekIter[T any] struct {
 	itr Iterator[T]
 

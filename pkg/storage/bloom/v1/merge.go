@@ -58,8 +58,8 @@ func (mbq *HeapIterator[T]) Next() (ok bool) {
 	return
 }
 
-// TODO(chaudum): find a better place
-func (mbq *HeapIterator[T]) CurrIter() PeekingIterator[T] {
+// Curr implements NestedIterator
+func (mbq *HeapIterator[T]) Iter() Iterator[T] {
 	return mbq.currIter
 }
 
