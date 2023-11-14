@@ -4,7 +4,7 @@ pkgs.stdenv.mkDerivation {
 
   pname = "loki";
 
-  src = ./..;
+  src = ./../..;
 
   buildInputs = with pkgs; [
     bash
@@ -36,7 +36,8 @@ pkgs.stdenv.mkDerivation {
 
   buildPhase = ''
     export GOCACHE=$TMPDIR/go-cache
-    make clean loki logcli loki-canary promtail
+    # make clean loki logcli loki-canary promtail
+    make clean loki
   '';
 
   doCheck = true;
@@ -49,8 +50,5 @@ pkgs.stdenv.mkDerivation {
   installPhase = ''
     mkdir -p $out/bin
     install -m755 cmd/loki/loki $out/bin/loki
-    install -m755 cmd/logcli/logcli $out/bin/logcli
-    install -m755 cmd/loki-canary/loki-canary $out/bin/loki-canary
-    install -m755 clients/cmd/promtail/promtail $out/bin/promtail
   '';
 }

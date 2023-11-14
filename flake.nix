@@ -35,9 +35,12 @@
 
         packages = with pkgs; {
           inherit
+            logcli
             loki
+            loki-canary
             loki-helm-test
-            loki-helm-test-docker;
+            loki-helm-test-docker
+            promtail;
         };
 
         apps = {
@@ -57,15 +60,15 @@
           };
           promtail = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
+            program = with pkgs; "${promtail.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
           };
           logcli = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
+            program = with pkgs; "${logcli.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
           };
           loki-canary = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
+            program = with pkgs; "${loki-canary.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
           };
           loki-helm-test = {
             type = "app";
@@ -75,7 +78,10 @@
 
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
-            chart-releaser
+            (import ./packages/chart-releaser.nix {
+              inherit (prev) pkgs lib buildGoModule fetchFromGitHub;
+            })
+
             chart-testing
             faillint
             gcc
