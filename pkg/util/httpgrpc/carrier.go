@@ -39,11 +39,7 @@ func GetParentSpanForHTTPRequest(tracer opentracing.Tracer, req *weaveworks_http
 	}
 
 	carrier := (*HeadersCarrier)(req)
-	extracted, err := tracer.Extract(opentracing.HTTPHeaders, carrier)
-	if err == opentracing.ErrSpanContextNotFound {
-		err = nil
-	}
-	return extracted, err
+	return tracer.Extract(opentracing.HTTPHeaders, carrier)
 }
 
 func GetParentSpanForQueryRequest(tracer opentracing.Tracer, req *queryrange.QueryRequest) (opentracing.SpanContext, error) {
@@ -52,11 +48,7 @@ func GetParentSpanForQueryRequest(tracer opentracing.Tracer, req *queryrange.Que
 	}
 
 	carrier := opentracing.TextMapCarrier(req.Metadata)
-	extracted, err := tracer.Extract(opentracing.TextMap, carrier)
-	if err == opentracing.ErrSpanContextNotFound {
-		err = nil
-	}
-	return extracted, err
+	return tracer.Extract(opentracing.TextMap, carrier)
 }
 
 func GetParentSpanForRequest(tracer opentracing.Tracer, req Request) (opentracing.SpanContext, error) {
