@@ -2,9 +2,8 @@ package jsoniter
 
 import (
 	"encoding/json"
-	"unsafe"
-
 	"github.com/modern-go/reflect2"
+	"unsafe"
 )
 
 var jsonRawMessageType = reflect2.TypeOfPtr((*json.RawMessage)(nil)).Elem()
