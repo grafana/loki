@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 )
 
 type Handler struct {
@@ -24,7 +23,7 @@ func NewQuerierHandler(api *QuerierAPI) *Handler {
 }
 
 func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "queryHandler")
+	span, ctx := utiltracing.StartChildSpan(ctx, "query handler", utiltracing.QueryExecutionBoundary)
 	defer span.Finish()
 
 	switch concrete := req.(type) {

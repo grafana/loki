@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 )
 
 var (
@@ -124,7 +125,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 	// Ignore errors here. If we cannot get parent span, we just don't create new one.
 	parentSpanContext, _ := httpgrpcutil.GetParentSpanForHTTPRequest(tracer, request)
 	if parentSpanContext != nil {
-		queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "frontend_processor_runRequest", opentracing.ChildOf(parentSpanContext))
+		queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "frontend_processor_runRequest", opentracing.ChildOf(parentSpanContext), utiltracing.WithBoundary(utiltracing.QueryExecutionBoundary))
 		defer queueSpan.Finish()
 
 		ctx = spanCtx

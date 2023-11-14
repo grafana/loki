@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -310,7 +311,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	now := time.Now()
 	req.enqueueTime = now
-	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
+	req.queueSpan, _ = utiltracing.StartChildSpan(ctx, "queued", utiltracing.QueueingBoundary)
 
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)

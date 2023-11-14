@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
@@ -20,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 )
 
 var (
@@ -181,7 +181,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "ChunkStore.FetchChunks")
+	sp, ctx := utiltracing.StartChildSpan(ctx, "ChunkStore.FetchChunks", utiltracing.ChunkStoreFetchingBoundary)
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()

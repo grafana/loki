@@ -11,7 +11,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -32,6 +31,7 @@ import (
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -374,7 +374,7 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string,
 func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
+			sp, ctx := utiltracing.StartRootSpan(req.Context(), call, utiltracing.QueryExecutionBoundary, call)
 			defer sp.Finish()
 			log := spanlogger.FromContext(req.Context())
 			defer log.Finish()

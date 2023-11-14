@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/go-kit/log"
@@ -36,6 +34,7 @@ import (
 	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -204,7 +203,7 @@ func (q *query) resultLength(res promql_parser.Value) int {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
+	sp, ctx := utiltracing.StartChildSpan(ctx, "query.Exec", "loki query processing")
 	defer sp.Finish()
 	spLogger := spanlogger.FromContext(ctx)
 	defer spLogger.Finish()

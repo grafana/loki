@@ -10,7 +10,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +17,7 @@ import (
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/tracing"
 	"github.com/grafana/dskit/user"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 )
 
 // DefBuckets are histogram buckets for the response time (in seconds)
@@ -158,7 +158,7 @@ func CollectedRequest(ctx context.Context, method string, col Collector, toStatu
 	if toStatusCode == nil {
 		toStatusCode = ErrorCode
 	}
-	sp, newCtx := opentracing.StartSpanFromContext(ctx, method)
+	sp, newCtx := utiltracing.StartRootSpan(ctx, method, "HTTP request", method)
 	ext.SpanKindRPCClient.Set(sp)
 	if userID, err := user.ExtractUserID(ctx); err == nil {
 		sp.SetTag("user", userID)

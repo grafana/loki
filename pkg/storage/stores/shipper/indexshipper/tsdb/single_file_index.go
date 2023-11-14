@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -21,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	utiltracing "github.com/grafana/loki/pkg/util/tracing"
 )
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
@@ -345,7 +344,7 @@ func (i *TSDBIndex) Volume(
 	aggregateBy string,
 	matchers ...*labels.Matcher,
 ) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.Volume")
+	sp, ctx := utiltracing.StartChildSpan(ctx, "Index.Volume", utiltracing.IndexBoundary)
 	defer sp.Finish()
 
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
