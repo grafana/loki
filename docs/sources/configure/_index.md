@@ -1799,7 +1799,7 @@ ring:
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 
-# Flag to enable or disable the usage of the bloom gatway component.
+# Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
 
@@ -2937,6 +2937,10 @@ shard_streams:
 # querying.
 # CLI flag: -bloom-gateway.shard-size
 [bloom_gateway_shard_size: <int> | default = 1]
+
+# Whether to use the bloom gateway component in the read path to filter chunks.
+# CLI flag: -bloom-gateway.enable-filtering
+[bloom_gateway_enable_filtering: <boolean> | default = false]
 
 # The shard size defines how many bloom compactors should be used by a tenant
 # when computing blooms. If it's set to 0, shuffle sharding is disabled.
