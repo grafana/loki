@@ -50,8 +50,8 @@ func (t Task) Bounds() (time.Time, time.Time) {
 	return getDayTime(t.Request.From), getDayTime(t.Request.Through)
 }
 
-// WithRequest returns a copy of the task, which holds the provided Request req.
-func (t Task) WithRequest(req *logproto.FilterChunkRefRequest) Task {
+// CopyWithRequest returns a copy of the original task, but with newly provided request
+func (t Task) CopyWithRequest(req *logproto.FilterChunkRefRequest) Task {
 	return Task{
 		ID:      t.ID,
 		Tenant:  t.Tenant,

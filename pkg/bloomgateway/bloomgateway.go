@@ -462,7 +462,7 @@ func (w *worker) running(ctx context.Context) error {
 				// split task into separate tasks per day
 				for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
 					r := filterRequestForDay(task.Request, i)
-					t := task.WithRequest(r)
+					t := task.CopyWithRequest(r)
 					tasksPerDay[i] = append(tasksPerDay[i], t)
 				}
 			}
