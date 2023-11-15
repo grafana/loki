@@ -2,6 +2,7 @@ package v1
 
 import (
 	"archive/tar"
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -97,4 +98,39 @@ func UnTarGz(dst string, r io.Reader) error {
 	}
 
 	return nil
+}
+
+func UnGzData(compressedData []byte) []byte {
+	reader := bytes.NewReader(compressedData)
+	gz, err := chunkenc.GetReaderPool(chunkenc.EncGZIP).GetReader(reader)
+	if err != nil {
+		return nil
+	}
+
+	// Read the decompressed data directly from the gzip reader
+	var decompressedData bytes.Buffer
+	_, err = decompressedData.ReadFrom(gz)
+	if err != nil {
+		return nil
+	}
+
+	return decompressedData.Bytes()
+}
+
+func GzData(data []byte) []byte {
+	var buf bytes.Buffer
+	gz := chunkenc.Gzip.GetWriter(&buf)
+
+	_, err := gz.Write(data)
+	if err != nil {
+		// Handle error
+		return nil
+	}
+
+	if err := gz.Close(); err != nil {
+		// Handle error
+		return nil
+	}
+
+	return buf.Bytes()
 }

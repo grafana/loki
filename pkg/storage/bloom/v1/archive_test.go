@@ -3,6 +3,8 @@ package v1
 import (
 	"bytes"
 	"io"
+	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -76,4 +78,76 @@ func TestArchive(t *testing.T) {
 	dstBloomsBytes, err := io.ReadAll(dstBlooms)
 	require.Nil(t, err)
 	require.Equal(t, srcBloomsBytes, dstBloomsBytes)
+}
+
+// Test to validate correctness of the UnGzData function.
+// We use the gzip command line tool to compress a file and then
+// uncompress the file contents using the UnGzData function
+func TestUnGzData(t *testing.T) {
+	// Create a temporary file to gzip
+	content := []byte("Hello World!")
+	filePath := "testfile.txt"
+	err := os.WriteFile(filePath, content, 0644)
+	require.Nil(t, err)
+
+	defer os.Remove(filePath)
+
+	// Compress the file using the gzip command line tool
+	gzipFileName := "testfile.txt.gz"
+	cmd := exec.Command("gzip", filePath)
+	err = cmd.Run()
+	require.Nil(t, err)
+
+	defer os.Remove(gzipFileName)
+
+	// Read the gzipped file using the compress/gzip package
+	gzipFile, err := os.Open(gzipFileName)
+	defer gzipFile.Close()
+
+	fileContent, err := os.ReadFile(gzipFileName)
+	require.Nil(t, err)
+
+	uncompressedContent := UnGzData(fileContent)
+
+	// Check if the uncompressed data matches the original content
+	require.Equal(t, uncompressedContent, content)
+}
+
+// Test to validate correctness of the GzData function.
+// We use the GzData function to compress data, and then write it to a file
+// Then we use the gunzip commandline tool to uncompress the file and verify
+// the contents match the original data
+func TestGzData(t *testing.T) {
+	// Create a temporary file to gzip
+	content := []byte("Hello World!")
+	compressedContent := GzData(content)
+	baseFileName := "testfile.txt"
+	filePath := "testfile.txt.gz"
+	err := os.WriteFile(filePath, compressedContent, 0644)
+	require.Nil(t, err)
+
+	defer os.Remove(filePath)
+
+	// Uncompress the file using the gunzip command line tool
+	cmd := exec.Command("gunzip", filePath)
+	err = cmd.Run()
+	require.Nil(t, err)
+
+	defer os.Remove(baseFileName)
+
+	require.Nil(t, err)
+
+	uncompressedContent, err := os.ReadFile(baseFileName)
+	require.Nil(t, err)
+
+	// Check if the uncompressed data matches the original content
+	require.Equal(t, uncompressedContent, content)
+}
+
+// Test to validate that the GzData and UnGzData functions are inverses of each other
+func TestGzUnGzData(t *testing.T) {
+	testString := []byte("Hello World!")
+	compressed := GzData(testString)
+	uncompressed := UnGzData(compressed)
+	require.Equal(t, testString, uncompressed)
 }
