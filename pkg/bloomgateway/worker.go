@@ -102,137 +102,142 @@ func (w *worker) running(ctx context.Context) error {
 	requests := make([]v1.Request, 0, 128)
 	fingerprints := make([]uint64, 0, 1024)
 
-	for ctx.Err() == nil {
-		taskCtx := context.Background()
-		dequeueStart := time.Now()
-		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems, w.cfg.maxWaitTime)
-		w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
-		if err != nil {
-			// We only return an error if the queue is stopped and dequeuing did not yield any items
-			if err == queue.ErrStopped && len(items) == 0 {
-				return err
-			}
-			w.metrics.dequeueErrors.WithLabelValues(w.id).Inc()
-			level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err, "items", len(items))
-		}
-		idx = newIdx
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
 
-		if len(items) == 0 {
-			continue
-		}
-		w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
-
-		tasksPerDay := make(map[time.Time][]Task)
-
-		for _, item := range items {
-			task, ok := item.(Task)
-			if !ok {
-				// This really should never happen, because only the bloom gateway itself can enqueue tasks.
-				return errors.Errorf("failed to cast dequeued item to Task: %v", item)
-			}
-			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
-			w.tasks.Delete(task.ID)
-
-			fromDay, throughDay := task.Bounds()
-
-			if fromDay.Equal(throughDay) {
-				tasksPerDay[fromDay] = append(tasksPerDay[fromDay], task)
-			} else {
-				// split task into separate tasks per day
-				for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
-					r := filterRequestForDay(task.Request, i)
-					t := task.CopyWithRequest(r)
-					tasksPerDay[i] = append(tasksPerDay[i], t)
-				}
-			}
-		}
-
-		for day, tasks := range tasksPerDay {
-			logger := log.With(w.logger, "day", day)
-			level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
-
-			it := newTaskMergeIterator(tasks...)
-
-			fingerprints = fingerprints[:0]
-			for it.Next() {
-				// fingerprints are already sorted. we can skip duplicates by checking
-				// if the next is greater than the previous
-				fp := uint64(it.At().Fp)
-				if len(fingerprints) > 0 && fp <= fingerprints[len(fingerprints)-1] {
-					continue
-				}
-				fingerprints = append(fingerprints, fp)
-			}
-
-			it.Reset()
-
-			storeFetchStart := time.Now()
-			// GetBlockQueriers() waits until all blocks are downloaded and available for querying.
-			// TODO(chaudum): Add API that allows to process blocks as soon as they become available.
-			// This will require to change the taskMergeIterator to a slice of requests so we can seek
-			// to the appropriate fingerprint range within the slice that matches the block's fingerprint range.
-			blockQueriers, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour).Add(-1*time.Nanosecond), fingerprints)
-			w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriers").Observe(time.Since(storeFetchStart).Seconds())
+		default:
+			taskCtx := context.Background()
+			dequeueStart := time.Now()
+			items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems, w.cfg.maxWaitTime)
+			w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
 			if err != nil {
-				for _, t := range tasks {
-					t.ErrCh <- err
+				// We only return an error if the queue is stopped and dequeuing did not yield any items
+				if err == queue.ErrStopped && len(items) == 0 {
+					return err
 				}
-				// continue with tasks of next day
+				w.metrics.dequeueErrors.WithLabelValues(w.id).Inc()
+				level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err, "items", len(items))
+			}
+			idx = newIdx
+
+			if len(items) == 0 {
 				continue
 			}
+			w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
 
-			// No blocks found.
-			// Since there are no blocks for the given tasks, we need to return the
-			// unfiltered list of chunk refs.
-			if len(blockQueriers) == 0 {
-				level.Warn(logger).Log("msg", "no blocks found")
-				for _, t := range tasks {
-					for _, ref := range t.Request.Refs {
-						t.ResCh <- v1.Output{
-							Fp:   model.Fingerprint(ref.Fingerprint),
-							Chks: convertToChunkRefs(ref.Refs),
-						}
+			tasksPerDay := make(map[time.Time][]Task)
+
+			for _, item := range items {
+				task, ok := item.(Task)
+				if !ok {
+					// This really should never happen, because only the bloom gateway itself can enqueue tasks.
+					return errors.Errorf("failed to cast dequeued item to Task: %v", item)
+				}
+				level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
+				w.tasks.Delete(task.ID)
+
+				fromDay, throughDay := task.Bounds()
+
+				if fromDay.Equal(throughDay) {
+					tasksPerDay[fromDay] = append(tasksPerDay[fromDay], task)
+				} else {
+					// split task into separate tasks per day
+					for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
+						r := filterRequestForDay(task.Request, i)
+						t := task.CopyWithRequest(r)
+						tasksPerDay[i] = append(tasksPerDay[i], t)
 					}
 				}
-				// continue with tasks of next day
-				continue
 			}
 
-			hasNext := it.Next()
-			for _, blockQuerier := range blockQueriers {
-				requests = requests[:0]
-				for hasNext && it.At().Fp <= blockQuerier.MaxFp {
-					requests = append(requests, it.At().Request)
-					hasNext = it.Next()
+			for day, tasks := range tasksPerDay {
+				logger := log.With(w.logger, "day", day)
+				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
+
+				it := newTaskMergeIterator(tasks...)
+
+				fingerprints = fingerprints[:0]
+				for it.Next() {
+					// fingerprints are already sorted. we can skip duplicates by checking
+					// if the next is greater than the previous
+					fp := uint64(it.At().Fp)
+					if len(fingerprints) > 0 && fp <= fingerprints[len(fingerprints)-1] {
+						continue
+					}
+					fingerprints = append(fingerprints, fp)
 				}
-				// level.Debug(logger).Log("msg", "processing block", "block", i+1, "of", len(bqs), "requests", len(requests))
-				// no fingerprints in the fingerprint range of the current block
-				if len(requests) == 0 {
-					continue
-				}
-				fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{
-					v1.NewPeekingIter[v1.Request](v1.NewSliceIter[v1.Request](requests)),
-				})
-				err := fq.Run()
+
+				it.Reset()
+
+				storeFetchStart := time.Now()
+				// GetBlockQueriers() waits until all blocks are downloaded and available for querying.
+				// TODO(chaudum): Add API that allows to process blocks as soon as they become available.
+				// This will require to change the taskMergeIterator to a slice of requests so we can seek
+				// to the appropriate fingerprint range within the slice that matches the block's fingerprint range.
+				blockQueriers, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour).Add(-1*time.Nanosecond), fingerprints)
+				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriers").Observe(time.Since(storeFetchStart).Seconds())
 				if err != nil {
 					for _, t := range tasks {
-						t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
+						t.ErrCh <- err
 					}
+					// continue with tasks of next day
 					continue
 				}
-			}
 
-			for hasNext {
-				level.Warn(logger).Log("msg", "processing remaining fingerprint", "fp", it.At().Fp)
-				it.At().Response <- v1.Output{
-					Fp:   it.At().Fp,
-					Chks: it.At().Chks,
+				// No blocks found.
+				// Since there are no blocks for the given tasks, we need to return the
+				// unfiltered list of chunk refs.
+				if len(blockQueriers) == 0 {
+					level.Warn(logger).Log("msg", "no blocks found")
+					for _, t := range tasks {
+						for _, ref := range t.Request.Refs {
+							t.ResCh <- v1.Output{
+								Fp:   model.Fingerprint(ref.Fingerprint),
+								Chks: convertToChunkRefs(ref.Refs),
+							}
+						}
+					}
+					// continue with tasks of next day
+					continue
 				}
-				hasNext = it.Next()
+
+				hasNext := it.Next()
+				for _, blockQuerier := range blockQueriers {
+					requests = requests[:0]
+					for hasNext && it.At().Fp <= blockQuerier.MaxFp {
+						requests = append(requests, it.At().Request)
+						hasNext = it.Next()
+					}
+					// level.Debug(logger).Log("msg", "processing block", "block", i+1, "of", len(bqs), "requests", len(requests))
+					// no fingerprints in the fingerprint range of the current block
+					if len(requests) == 0 {
+						continue
+					}
+					fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{
+						v1.NewPeekingIter[v1.Request](v1.NewSliceIter[v1.Request](requests)),
+					})
+					err := fq.Run()
+					if err != nil {
+						for _, t := range tasks {
+							t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
+						}
+						continue
+					}
+				}
+
+				for hasNext {
+					level.Warn(logger).Log("msg", "processing remaining fingerprint", "fp", it.At().Fp)
+					it.At().Response <- v1.Output{
+						Fp:   it.At().Fp,
+						Chks: it.At().Chks,
+					}
+					hasNext = it.Next()
+				}
 			}
 		}
 	}
-	return ctx.Err()
 }
 
 func (w *worker) stopping(err error) error {
