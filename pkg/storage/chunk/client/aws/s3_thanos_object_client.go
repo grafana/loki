@@ -21,12 +21,12 @@ type S3ThanosObjectClient struct {
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
-func NewS3ThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config) (*S3ThanosObjectClient, error) {
-	client, err := newS3ThanosObjClient(ctx, cfg, component, logger, false, hedgingCfg)
+func NewS3ThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, reg prometheus.Registerer) (*S3ThanosObjectClient, error) {
+	client, err := newS3ThanosObjClient(ctx, cfg, component, logger, false, hedgingCfg, reg)
 	if err != nil {
 		return nil, err
 	}
-	hedgedClient, err := newS3ThanosObjClient(ctx, cfg, component, logger, false, hedgingCfg)
+	hedgedClient, err := newS3ThanosObjClient(ctx, cfg, component, logger, true, hedgingCfg, prometheus.WrapRegistererWithPrefix("hedging_", reg))
 	if err != nil {
 		return nil, err
 	}
@@ -36,9 +36,9 @@ func NewS3ThanosObjectClient(ctx context.Context, cfg bucket.Config, component s
 	}, nil
 }
 
-func newS3ThanosObjClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config) (objstore.Bucket, error) {
+func newS3ThanosObjClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config, reg prometheus.Registerer) (objstore.Bucket, error) {
 	if hedging {
-		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, reg)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +46,8 @@ func newS3ThanosObjClient(ctx context.Context, cfg bucket.Config, component stri
 		cfg.S3.HTTP.Transport = hedgedTrasport
 	}
 
-	return bucket.NewClient(ctx, cfg, component, logger, prometheus.DefaultRegisterer)
+	//TODO(JoaoBraveCoding) Fix registry
+	return bucket.NewClient(ctx, cfg, component, logger, reg)
 }
 
 // Stop fulfills the chunk.ObjectClient interface

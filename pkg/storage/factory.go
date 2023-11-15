@@ -41,7 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
-	utilLog "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -689,10 +689,10 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 			s3Cfg = awsCfg.S3Config
 		}
 		if cfg.ThanosObjStore {
-			// Passing "gcs" as the component name as currently it's not
+			// Passing "s3" as the component name as currently it's not
 			// possible to get the component called this method
 			// TODO(JoaoBraveCoding) update compoent when bigger refactor happens
-			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjStoreConf, "gcs", utilLog.Logger, cfg.Hedging)
+			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjStoreConf, "s3", util_log.Logger, cfg.Hedging, prometheus.WrapRegistererWithPrefix("loki_", prometheus.NewRegistry()))
 		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
