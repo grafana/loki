@@ -13,7 +13,7 @@ jobs:
       - uses: cachix/install-nix-action@v22
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-      - run: nix run .#lint
+      - run: nix run --print-build-logs .#lint
   test:
     runs-on: ubuntu-latest
     steps:
@@ -21,7 +21,7 @@ jobs:
       - uses: cachix/install-nix-action@v22
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-      - run: nix run .#test
+      - run: nix run --print-build-logs .#test
   binaries:
     runs-on: ubuntu-latest
     steps:
