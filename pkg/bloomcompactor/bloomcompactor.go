@@ -579,10 +579,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	if len(metas) == 0 {
 		// Get chunks data from list of chunkRefs
-		chks, err := storeClient.chunk.GetChunks(
-			ctx,
-			makeChunkRefs(job.Chunks(), job.Tenant(), job.Fingerprint()),
-		)
+		chks, err := storeClient.chunk.GetChunks(ctx, makeChunkRefs(job.Chunks(), job.Tenant(), job.Fingerprint()))
 		if err != nil {
 			return err
 		}
@@ -611,7 +608,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 				uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
 				// ...
 
-				// the result should return a list of active blocks and tombstoned bloom blocks.
+				// the result should return a list of active
+				// blocks and tombstoned bloom blocks.
 			}
 		}
 
@@ -619,7 +617,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	// After all is done, create one meta file and upload to storage
 	meta := bloomshipper.Meta{
-		// After successful compaction there should be no tombstones
 		Tombstones: tombstonedBlockRefs,
 		Blocks:     bloomBlocksRefs,
 	}
