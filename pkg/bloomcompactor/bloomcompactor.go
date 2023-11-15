@@ -293,6 +293,11 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 			return fmt.Errorf("interrupting compaction of tenants: %w", err)
 		}
 
+		// Skip tenant if compaction is not enabled
+		if !c.limits.BloomCompactorEnabled(tenant) {
+			return level.Info(tenantLogger).Log("msg", "compaction disabled for tenant")
+		}
+
 		// Skip this table if it is too new/old for the tenant limits.
 		now := model.Now()
 		tableMinAge := c.limits.BloomCompactorMinTableAge(tenant)
@@ -557,10 +562,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return err
-	}
-
-	if !c.limits.BloomCompactorEnabled(job.tenantID) {
-		return level.Error(c.logger).Log("msg", "compaction disabled for tenant: ", job.tenantID)
 	}
 
 	// TODO call bloomShipperClient.GetMetas to get existing meta.json
