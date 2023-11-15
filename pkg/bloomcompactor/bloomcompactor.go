@@ -293,6 +293,12 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 			return fmt.Errorf("interrupting compaction of tenants: %w", err)
 		}
 
+		// Skip tenant if compaction is not enabled
+		if !c.limits.BloomCompactorEnabled(tenant) {
+			level.Info(tenantLogger).Log("msg", "compaction disabled for tenant. Skipping.")
+			continue
+		}
+
 		// Skip this table if it is too new/old for the tenant limits.
 		now := model.Now()
 		tableMinAge := c.limits.BloomCompactorMinTableAge(tenant)
