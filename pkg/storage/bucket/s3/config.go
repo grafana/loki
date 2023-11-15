@@ -73,7 +73,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", aws.StorageClassStandard, "The S3 storage class to use. Details can be found at https://aws.amazon.com/s3/storage-classes/.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
-	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"http.", f)
+	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"s3.http.", f)
 }
 
 // Validate config and returns error on failure
