@@ -44,7 +44,7 @@ const (
 	Identifier          = "identifier"
 	Inner               = "inner"
 	IntervalNanos       = "interval_nanos"
-	Ip                  = "ip"
+	IPField             = "ip"
 	Label               = "label"
 	LabelReplace        = "label_replace"
 	LHS                 = "lhs"
@@ -515,7 +515,7 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectEnd()
 	case *log.IPLabelFilter:
 		s.WriteObjectStart()
-		s.WriteObjectField(Ip)
+		s.WriteObjectField(IPField)
 
 		s.WriteObjectStart()
 		s.WriteObjectField(Type)
@@ -629,7 +629,7 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 
 			filter = log.NewStringLabelFilter(matcher)
 
-		case Ip:
+		case IPField:
 			var label string
 			var pattern string
 			var t log.LabelFilterType
