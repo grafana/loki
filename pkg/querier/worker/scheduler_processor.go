@@ -131,7 +131,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			return err
 		}
 
-		level.Debug(sp.log).Log("msg", "received query", "worker", workerId, "wait-time", time.Since(start))
+		level.Debug(sp.log).Log("msg", "received query", "worker", workerId, "wait_time_sec", time.Since(start).Seconds())
 
 		inflightQuery.Store(true)
 
