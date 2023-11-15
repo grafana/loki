@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/grafana/loki/pkg/chunkenc"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -211,20 +211,19 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 				return fmt.Errorf("error while fetching object from storage: %w", err)
 			}
 
-			gz, err := chunkenc.GetReaderPool(chunkenc.EncGZIP).GetReader(readCloser)
+			data := new(bytes.Buffer)
+			_, err = io.Copy(data, readCloser)
 			if err != nil {
-				return fmt.Errorf("error while fetching gzip reader: %w", err)
+				return fmt.Errorf("error reading data: %w", err)
 			}
-			defer chunkenc.GetReaderPool(chunkenc.EncGZIP).PutReader(gz)
+			decompressedData := v1.UnGzData(data.Bytes())
+			if decompressedData == nil {
+				return fmt.Errorf("error decompressing data")
+			}
 
-			// Reading decompressed data into a buffer
-			decompressedData := new(bytes.Buffer)
-			_, err = io.Copy(decompressedData, gz)
-			if err != nil {
-				return fmt.Errorf("error decompressing data: %w", err)
-			}
 			// Creating a new ReadCloser from the decompressed data
-			decompressedReadCloser := io.NopCloser(decompressedData)
+			decompressedDataReader := bytes.NewReader(decompressedData)
+			decompressedReadCloser := io.NopCloser(decompressedDataReader)
 
 			blocksChannel <- Block{
 				BlockRef: reference,
@@ -262,20 +261,12 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 			return fmt.Errorf("error while reading object data: %w", err)
 		}
 
-		// Compress data using gzip
-		var buf bytes.Buffer
-		gz := chunkenc.Gzip.GetWriter(&buf)
-		defer chunkenc.Gzip.PutWriter(gz)
-		_, err = gz.Write(data)
-		if err != nil {
-			gz.Close()
-			return fmt.Errorf("error compressing data: %w", err)
-		}
-		if err := gz.Close(); err != nil {
-			return fmt.Errorf("error closing gzip writer: %w", err)
+		compressedData := v1.GzData(data)
+		if compressedData == nil {
+			return fmt.Errorf("error compressing data")
 		}
 
-		err = objectClient.PutObject(ctx, key, bytes.NewReader(buf.Bytes()))
+		err = objectClient.PutObject(ctx, key, bytes.NewReader(compressedData))
 		if err != nil {
 			return fmt.Errorf("error updloading block file: %w", err)
 		}
