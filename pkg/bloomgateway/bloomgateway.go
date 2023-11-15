@@ -67,7 +67,6 @@ import (
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
-var errInvalidTenant = errors.New("invalid tenant in chunk refs")
 
 // TODO(chaudum): Make these configurable
 const (
@@ -282,16 +281,6 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
-	}
-
-	for _, ref := range req.Refs {
-		if ref.Tenant != tenantID {
-			return nil, errors.Wrapf(errInvalidTenant, "expected chunk refs from tenant %s, got tenant %s", tenantID, ref.Tenant)
-		}
-		// Sort ShortRefs by From time in ascending order
-		sort.Slice(ref.Refs, func(i, j int) bool {
-			return ref.Refs[i].From.Before(ref.Refs[j].From)
-		})
 	}
 
 	// Sort ChunkRefs by fingerprint in ascending order

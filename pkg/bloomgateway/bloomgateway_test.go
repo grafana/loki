@@ -209,32 +209,6 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		}, res)
 	})
 
-	t.Run("returns error if chunk refs do not belong to tenant", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
-		require.NoError(t, err)
-
-		now := mktime("2023-10-03 10:00")
-
-		chunkRefs := []*logproto.ChunkRef{
-			{Fingerprint: 1000, UserID: tenantID, From: now.Add(-22 * time.Hour), Through: now.Add(-21 * time.Hour), Checksum: 1},
-			{Fingerprint: 2000, UserID: "other", From: now.Add(-20 * time.Hour), Through: now.Add(-19 * time.Hour), Checksum: 2},
-		}
-		req := &logproto.FilterChunkRefRequest{
-			From:    now.Add(-24 * time.Hour),
-			Through: now,
-			Refs:    groupRefs(t, chunkRefs),
-			Filters: []*logproto.LineFilterExpression{
-				{Operator: 1, Match: "foo"},
-			},
-		}
-
-		ctx := user.InjectOrgID(context.Background(), tenantID)
-		_, err = gw.FilterChunkRefs(ctx, req)
-		require.Error(t, err)
-		require.Equal(t, "expected chunk refs from tenant test, got tenant other: invalid tenant in chunk refs", err.Error())
-	})
-
 	t.Run("gateway tracks active users", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
