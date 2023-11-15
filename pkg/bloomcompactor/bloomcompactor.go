@@ -503,10 +503,13 @@ func createLocalDirName(workingDir string, job Job) string {
 	return filepath.Join(workingDir, dir)
 }
 
-func CompactNewChunks(ctx context.Context, logger log.Logger, job Job, chunks []chunk.Chunk, bt *v1.BloomTokenizer, bloomShipperClient bloomshipper.Client, dst string) (err error) {
+// Compacts given list of chunks, uploads them to storage and returns a list of bloomBlocks
+func CompactNewChunks(ctx context.Context, logger log.Logger, job Job,
+	chunks []chunk.Chunk, bt *v1.BloomTokenizer,
+	bloomShipperClient bloomshipper.Client, dst string) ([]bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Create a bloom for this series
@@ -526,30 +529,29 @@ func CompactNewChunks(ctx context.Context, logger log.Logger, job Job, chunks []
 	blocks, err := buildBloomBlock(ctx, logger, bloomForChks, job, dst)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
-		return
+		return nil, err
 	}
-
 	storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
 	if err != nil {
 		level.Error(logger).Log("putting blocks to storage", err)
-		return
+		return nil, err
 	}
+	return storedBlocks, nil
+}
 
-	storedBlockRefs := make([]bloomshipper.BlockRef, len(storedBlocks))
+// Given a list of compacted bloom blocks, creates a single meta file from them and uploads to storage.
+func CreateMetaFile(ctx context.Context, logger log.Logger, tombstonedBlockRefs, activeBlockRefs []bloomshipper.BlockRef, bloomShipperClient bloomshipper.Client) error {
 	// Build and upload meta.json to storage
 	meta := bloomshipper.Meta{
 		// After successful compaction there should be no tombstones
-		Tombstones: make([]bloomshipper.BlockRef, 0),
-		Blocks:     storedBlockRefs,
+		Tombstones: tombstonedBlockRefs,
+		Blocks:     activeBlockRefs,
 	}
-
-	// TODO move this to an outer layer, otherwise creates a meta per block
-	err = bloomShipperClient.PutMeta(ctx, meta)
+	err := bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Error(logger).Log("putting meta.json to storage", err)
-		return
+		return err
 	}
-
 	return nil
 }
 
@@ -559,8 +561,21 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
-	// TODO call bloomShipperClient.GetMetas to get existing meta.json
+	metaSearchParams := bloomshipper.MetaSearchParams{
+		TenantID:       job.tenantID,
+		MinFingerprint: uint64(job.seriesFP),
+		MaxFingerprint: uint64(job.seriesFP),
+		StartTimestamp: int64(job.from),
+		EndTimestamp:   int64(job.through),
+	}
 	var metas []bloomshipper.Meta
+	var bloomBlocksRefs []bloomshipper.BlockRef
+	var tombstonedBlockRefs []bloomshipper.BlockRef
+
+	metas, err := bloomShipperClient.GetMetas(ctx, metaSearchParams)
+	if err != nil {
+		return err
+	}
 
 	if len(metas) == 0 {
 		// Get chunks data from list of chunkRefs
@@ -572,10 +587,19 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		err = CompactNewChunks(ctx, logger, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+		storedBlocks, err := CompactNewChunks(ctx, logger, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
 		if err != nil {
-			return err
+			return level.Error(logger).Log("compacting new chunks", err)
 		}
+
+		storedBlockRefs := make([]bloomshipper.BlockRef, len(storedBlocks))
+
+		for i, block := range storedBlocks {
+			storedBlockRefs[i] = block.BlockRef
+		}
+
+		// all blocks are new and active blocks
+		bloomBlocksRefs = storedBlockRefs
 	} else {
 		// TODO complete part 2 - periodic compaction for delta from previous period
 		// When already compacted metas exists
@@ -586,11 +610,24 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			for _, blockRef := range meta.Blocks {
 				uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
 				// ...
+
+				// the result should return a list of active blocks and tombstoned bloom blocks.
 			}
 		}
 
 	}
 
+	// After all is done, create one meta file and upload to storage
+	meta := bloomshipper.Meta{
+		// After successful compaction there should be no tombstones
+		Tombstones: tombstonedBlockRefs,
+		Blocks:     bloomBlocksRefs,
+	}
+	err = bloomShipperClient.PutMeta(ctx, meta)
+	if err != nil {
+		level.Error(logger).Log("putting meta.json to storage", err)
+		return err
+	}
 	return nil
 }
 
