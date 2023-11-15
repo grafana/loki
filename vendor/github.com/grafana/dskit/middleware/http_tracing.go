@@ -114,6 +114,7 @@ func (hgt HTTPGRPCTracer) Wrap(next http.Handler) http.Handler {
 			opentracing.Tag{Key: string(ext.HTTPMethod), Value: method},
 			opentracing.Tag{Key: "http.route", Value: matchedRoute},
 			opentracing.Tag{Key: "http.user_agent", Value: userAgent},
+			opentracing.Tag{Key: "root_action", Value: childSpanName},
 		}
 		if parentSpan != nil {
 			startSpanOpts = append(
