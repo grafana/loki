@@ -553,6 +553,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		EndTimestamp:   int64(job.through),
 	}
 	var metas []bloomshipper.Meta
+	//TODO  Configure pool for these to avoid allocations
 	var bloomBlocksRefs []bloomshipper.BlockRef
 	var tombstonedBlockRefs []bloomshipper.BlockRef
 
