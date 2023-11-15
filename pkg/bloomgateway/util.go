@@ -9,12 +9,17 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
+type IndexedValue[T any] struct {
+	idx int
+	val T
+}
+
 // SliceIterWithIndex implements v1.PeekingIterator
 type SliceIterWithIndex[T any] struct {
-	xs   []T // source slice
-	pos  int // position within the slice
-	idx  int // the index that identifies the iterator
-	zero T   // zero value of T
+	xs    []T // source slice
+	pos   int // position within the slice
+	zero  T   // zero value of T
+	cache IndexedValue[T]
 }
 
 func (it *SliceIterWithIndex[T]) Next() bool {
@@ -26,26 +31,25 @@ func (it *SliceIterWithIndex[T]) Err() error {
 	return nil
 }
 
-func (it *SliceIterWithIndex[T]) At() T {
-	return it.xs[it.pos]
+func (it *SliceIterWithIndex[T]) At() IndexedValue[T] {
+	it.cache.val = it.xs[it.pos]
+	return it.cache
 }
 
-func (it *SliceIterWithIndex[T]) Peek() (T, bool) {
+func (it *SliceIterWithIndex[T]) Peek() (IndexedValue[T], bool) {
 	if it.pos+1 >= len(it.xs) {
-		return it.zero, false
+		it.cache.val = it.zero
+		return it.cache, false
 	}
-	return it.xs[it.pos+1], true
+	it.cache.val = it.xs[it.pos+1]
+	return it.cache, true
 }
 
-func (it *SliceIterWithIndex[T]) Index() int {
-	return it.idx
-}
-
-func NewIterWithIndex[T any](i int, xs []T) *SliceIterWithIndex[T] {
+func NewIterWithIndex[T any](xs []T, idx int) v1.PeekingIterator[IndexedValue[T]] {
 	return &SliceIterWithIndex[T]{
-		xs:  xs,
-		pos: -1,
-		idx: i,
+		xs:    xs,
+		pos:   -1,
+		cache: IndexedValue[T]{idx: idx},
 	}
 }
 

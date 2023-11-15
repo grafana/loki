@@ -1,7 +1,6 @@
 package bloomgateway
 
 import (
-	"errors"
 	"time"
 
 	"github.com/oklog/ulid"
@@ -70,7 +69,7 @@ type FilterRequest struct {
 // taskMergeIterator implements v1.Iterator
 type taskMergeIterator struct {
 	curr  FilterRequest
-	heap  *v1.HeapIterator[*logproto.GroupedChunkRefs]
+	heap  *v1.HeapIterator[IndexedValue[*logproto.GroupedChunkRefs]]
 	tasks []Task
 	err   error
 }
@@ -85,13 +84,13 @@ func newTaskMergeIterator(tasks ...Task) *taskMergeIterator {
 }
 
 func (it *taskMergeIterator) init() {
-	sequences := make([]v1.PeekingIterator[*logproto.GroupedChunkRefs], 0, len(it.tasks))
+	sequences := make([]v1.PeekingIterator[IndexedValue[*logproto.GroupedChunkRefs]], 0, len(it.tasks))
 	for i := range it.tasks {
-		sequences = append(sequences, NewIterWithIndex(i, it.tasks[i].Request.Refs))
+		sequences = append(sequences, NewIterWithIndex(it.tasks[i].Request.Refs, i))
 	}
 	it.heap = v1.NewHeapIterator(
-		func(i, j *logproto.GroupedChunkRefs) bool {
-			return i.Fingerprint < j.Fingerprint
+		func(i, j IndexedValue[*logproto.GroupedChunkRefs]) bool {
+			return i.val.Fingerprint < j.val.Fingerprint
 		},
 		sequences...,
 	)
@@ -108,18 +107,11 @@ func (it *taskMergeIterator) Next() bool {
 		return false
 	}
 
-	currIter, ok := it.heap.Iter().(*SliceIterWithIndex[*logproto.GroupedChunkRefs])
-	if !ok {
-		it.err = errors.New("failed to cast iterator")
-		return false
-	}
-	iterIndex := currIter.Index()
-
-	task := it.tasks[iterIndex]
 	group := it.heap.At()
+	task := it.tasks[group.idx]
 
-	it.curr.Fp = model.Fingerprint(group.Fingerprint)
-	it.curr.Chks = convertToChunkRefs(group.Refs)
+	it.curr.Fp = model.Fingerprint(group.val.Fingerprint)
+	it.curr.Chks = convertToChunkRefs(group.val.Refs)
 	it.curr.Searches = convertToSearches(task.Request.Filters)
 	it.curr.Response = task.ResCh
 	it.curr.Error = task.ErrCh

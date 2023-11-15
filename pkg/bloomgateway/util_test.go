@@ -11,31 +11,30 @@ import (
 )
 
 func TestSliceIterWithIndex(t *testing.T) {
-	t.Run("SliceIterWithIndex implements v1.Iterator interface", func(t *testing.T) {
-		xs := []string{"a", "b", "c"}
-		it := NewIterWithIndex(0, xs)
-		require.True(t, it.Next())
-		require.Equal(t, "a", it.At())
-		require.True(t, it.Next())
-		require.Equal(t, "b", it.At())
-		require.True(t, it.Next())
-		require.Equal(t, "c", it.At())
-		require.False(t, it.Next())
-		require.NoError(t, it.Err())
-	})
 	t.Run("SliceIterWithIndex implements v1.PeekingIterator interface", func(t *testing.T) {
 		xs := []string{"a", "b", "c"}
-		it := NewIterWithIndex(0, xs)
+		it := NewIterWithIndex(xs, 123)
+
+		// peek at first item
 		p, ok := it.Peek()
 		require.True(t, ok)
-		require.Equal(t, "a", p)
+		require.Equal(t, "a", p.val)
+		require.Equal(t, 123, p.idx)
+
+		// proceed to first item
 		require.True(t, it.Next())
-		require.Equal(t, "a", it.At())
+		require.Equal(t, "a", it.At().val)
+		require.Equal(t, 123, it.At().idx)
+
+		// proceed to second and third item
 		require.True(t, it.Next())
 		require.True(t, it.Next())
+
+		// peek at non-existing fourth item
 		p, ok = it.Peek()
 		require.False(t, ok)
-		require.Equal(t, "", p) // "" is zero value for type string
+		require.Equal(t, "", p.val) // "" is zero value for type string
+		require.Equal(t, 123, p.idx)
 	})
 }
 

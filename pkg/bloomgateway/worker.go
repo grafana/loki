@@ -210,7 +210,9 @@ func (w *worker) running(ctx context.Context) error {
 				if len(requests) == 0 {
 					continue
 				}
-				fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{NewIterWithIndex(0, requests)})
+				fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{
+					v1.NewPeekingIter[v1.Request](v1.NewSliceIter[v1.Request](requests)),
+				})
 				err := fq.Run()
 				if err != nil {
 					for _, t := range tasks {
