@@ -43,4 +43,5 @@ type Limits interface {
 	BloomCompactorShardSize(tenantID string) int
 	BloomCompactorMaxTableAge(tenantID string) time.Duration
 	BloomCompactorMinTableAge(tenantID string) time.Duration
+	BloomCompactorEnabled(tenantID string) bool
 }
