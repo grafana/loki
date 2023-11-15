@@ -47,7 +47,7 @@ const (
 	Ip                  = "ip"
 	Label               = "label"
 	LabelReplace        = "label_replace"
-	Lhs                 = "lhs"
+	LHS                 = "lhs"
 	Literal             = "literal"
 	LogSelector         = "log_selector"
 	Name                = "name"
@@ -66,7 +66,7 @@ const (
 	RegexField          = "regex"
 	Replacement         = "replacement"
 	ReturnBool          = "return_bool"
-	Rhs                 = "rhs"
+	RHS                 = "rhs"
 	Src                 = "src"
 	StringField         = "string"
 	Type                = "type"
@@ -114,11 +114,11 @@ func (v *JSONSerializer) VisitBinOp(e *BinOpExpr) {
 	v.WriteString(e.Op)
 
 	v.WriteMore()
-	v.WriteObjectField(Lhs)
+	v.WriteObjectField(LHS)
 	e.SampleExpr.Accept(v)
 
 	v.WriteMore()
-	v.WriteObjectField(Rhs)
+	v.WriteObjectField(RHS)
 	e.RHS.Accept(v)
 
 	if e.Opts != nil {
@@ -401,11 +401,11 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectField(Binary)
 
 		s.WriteObjectStart()
-		s.WriteObjectField(Lhs)
+		s.WriteObjectField(LHS)
 		encodeLabelFilter(s, concrete.Left)
 
 		s.WriteMore()
-		s.WriteObjectField(Rhs)
+		s.WriteObjectField(RHS)
 		encodeLabelFilter(s, concrete.Right)
 
 		s.WriteMore()
@@ -546,9 +546,9 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 				switch k {
 				case And:
 					and = iter.ReadBool()
-				case Lhs:
+				case LHS:
 					left = decodeLabelFilter(iter)
-				case Rhs:
+				case RHS:
 					right = decodeLabelFilter(iter)
 				}
 			}
@@ -716,9 +716,9 @@ func decodeBinOp(iter *jsoniter.Iterator) (*BinOpExpr, error) {
 		switch f {
 		case Op:
 			expr.Op = iter.ReadString()
-		case Rhs:
+		case RHS:
 			expr.RHS, err = decodeSample(iter)
-		case Lhs:
+		case LHS:
 			expr.SampleExpr, err = decodeSample(iter)
 		case Options:
 			expr.Opts = decodeBinOpOptions(iter)
