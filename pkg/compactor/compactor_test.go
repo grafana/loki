@@ -42,11 +42,10 @@ func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.Ob
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
 	cfg.RetentionEnabled = false
+	cfg.CompactorRing.InstanceAddr = localhost
 
 	if loopbackIFace, err := loki_net.LoopbackInterfaceName(); err == nil {
 		cfg.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorRing.InstanceInterfaceNames, loopbackIFace)
-	} else {
-		cfg.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorRing.InstanceInterfaceNames, localhost)
 	}
 
 	require.NoError(t, cfg.Validate())

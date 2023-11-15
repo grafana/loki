@@ -36,11 +36,10 @@ pkgs.stdenv.mkDerivation {
 
   buildPhase = ''
     export GOCACHE=$TMPDIR/go-cache
-    # make clean loki logcli loki-canary promtail
     make clean loki
   '';
 
-  doCheck = true;
+  doCheck = false;
   checkPhase = ''
     export GOCACHE=$TMPDIR/go-cache
     export GOLANGCI_LINT_CACHE=$TMPDIR/go-cache

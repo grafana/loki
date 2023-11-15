@@ -54,21 +54,26 @@
               }/bin/lint.sh";
           };
 
+          test = {
+            type = "app";
+            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = true; })}/bin/loki --version";
+          };
+
           loki = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki";
+            program = with pkgs; "${loki}/bin/loki";
           };
           promtail = {
             type = "app";
-            program = with pkgs; "${promtail.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
+            program = with pkgs; "${promtail}/bin/promtail";
           };
           logcli = {
             type = "app";
-            program = with pkgs; "${logcli.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
+            program = with pkgs; "${logcli}/bin/logcli";
           };
           loki-canary = {
             type = "app";
-            program = with pkgs; "${loki-canary.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
+            program = with pkgs; "${loki-canary}/bin/loki-canary";
           };
           loki-helm-test = {
             type = "app";

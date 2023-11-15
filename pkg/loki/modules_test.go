@@ -396,6 +396,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.Distributor.DistributorRing.InstanceAddr = localhost
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
+	cfg.BloomCompactor.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
 	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
 
