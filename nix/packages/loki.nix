@@ -36,12 +36,14 @@ pkgs.stdenv.mkDerivation {
 
   buildPhase = ''
     export GOCACHE=$TMPDIR/go-cache
+    export GOMODCACHE=$TMPDIR/gomodcache
     make clean loki
   '';
 
   doCheck = false;
   checkPhase = ''
     export GOCACHE=$TMPDIR/go-cache
+    export GOMODCACHE=$TMPDIR/gomodcache
     export GOLANGCI_LINT_CACHE=$TMPDIR/go-cache
     make lint test
   '';
