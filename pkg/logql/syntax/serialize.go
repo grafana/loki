@@ -29,24 +29,73 @@ func EncodeJSON(e Expr, w io.Writer) error {
 	return s.Flush()
 }
 
+// Field names
+const (
+	Bin                 = "bin"
+	Binary              = "binary"
+	Bytes               = "bytes"
+	And                 = "and"
+	Card                = "cardinality"
+	Dst                 = "dst"
+	Duration            = "duration"
+	Groups              = "groups"
+	GroupingField       = "grouping"
+	Include             = "include"
+	Identifier          = "identifier"
+	Inner               = "inner"
+	IntervalNanos       = "interval_nanos"
+	IPField             = "ip"
+	Label               = "label"
+	LabelReplace        = "label_replace"
+	LHS                 = "lhs"
+	Literal             = "literal"
+	LogSelector         = "log_selector"
+	Name                = "name"
+	Numeric             = "numeric"
+	MatchingLabels      = "matching_labels"
+	On                  = "on"
+	Op                  = "operation"
+	Options             = "options"
+	OffsetNanos         = "offset_nanos"
+	Params              = "params"
+	Pattern             = "pattern"
+	PostFilterers       = "post_filterers"
+	Range               = "range"
+	RangeAgg            = "range_agg"
+	Raw                 = "raw"
+	RegexField          = "regex"
+	Replacement         = "replacement"
+	ReturnBool          = "return_bool"
+	RHS                 = "rhs"
+	Src                 = "src"
+	StringField         = "string"
+	Type                = "type"
+	Unwrap              = "unwrap"
+	Value               = "value"
+	Vector              = "vector"
+	VectorAgg           = "vector_agg"
+	VectorMatchingField = "vector_matching"
+	Without             = "without"
+)
+
 func DecodeJSON(raw string) (Expr, error) {
 	iter := jsoniter.ParseString(jsoniter.ConfigFastest, raw)
 
 	key := iter.ReadObject()
 	switch key {
-	case "bin":
+	case Bin:
 		return decodeBinOp(iter)
-	case "vector_agg":
+	case VectorAgg:
 		return decodeVectorAgg(iter)
-	case "range_agg":
+	case RangeAgg:
 		return decodeRangeAgg(iter)
-	case "literal":
+	case Literal:
 		return decodeLiteral(iter)
-	case "vector":
+	case Vector:
 		return decodeVector(iter)
-	case "label_replace":
+	case LabelReplace:
 		return decodeLabelReplace(iter)
-	case "log_selector":
+	case LogSelector:
 		return decodeLogSelector(iter)
 	default:
 		return nil, fmt.Errorf("unknown expression type: %s", key)
@@ -58,31 +107,31 @@ var _ RootVisitor = &JSONSerializer{}
 func (v *JSONSerializer) VisitBinOp(e *BinOpExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("bin")
+	v.WriteObjectField(Bin)
 	v.WriteObjectStart()
 
-	v.WriteObjectField("op")
+	v.WriteObjectField(Op)
 	v.WriteString(e.Op)
 
 	v.WriteMore()
-	v.WriteObjectField("lhs")
+	v.WriteObjectField(LHS)
 	e.SampleExpr.Accept(v)
 
 	v.WriteMore()
-	v.WriteObjectField("rhs")
+	v.WriteObjectField(RHS)
 	e.RHS.Accept(v)
 
 	if e.Opts != nil {
 		v.WriteMore()
-		v.WriteObjectField("options")
+		v.WriteObjectField(Options)
 		v.WriteObjectStart()
 
-		v.WriteObjectField("return_bool")
+		v.WriteObjectField(ReturnBool)
 		v.WriteBool(e.Opts.ReturnBool)
 
 		if e.Opts.VectorMatching != nil {
 			v.WriteMore()
-			v.WriteObjectField("vector_matching")
+			v.WriteObjectField(VectorMatchingField)
 			encodeVectorMatching(v.Stream, e.Opts.VectorMatching)
 		}
 
@@ -99,24 +148,24 @@ func (v *JSONSerializer) VisitBinOp(e *BinOpExpr) {
 func (v *JSONSerializer) VisitVectorAggregation(e *VectorAggregationExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("vector_agg")
+	v.WriteObjectField(VectorAgg)
 	v.WriteObjectStart()
 
-	v.WriteObjectField("params")
+	v.WriteObjectField(Params)
 	v.WriteInt(e.Params)
 
 	v.WriteMore()
-	v.WriteObjectField("operation")
+	v.WriteObjectField(Op)
 	v.WriteString(e.Operation)
 
 	if e.Grouping != nil {
 		v.WriteMore()
-		v.WriteObjectField("grouping")
+		v.WriteObjectField(GroupingField)
 		encodeGrouping(v.Stream, e.Grouping)
 	}
 
 	v.WriteMore()
-	v.WriteObjectField("inner")
+	v.WriteObjectField(Inner)
 	e.Left.Accept(v)
 
 	v.WriteObjectEnd()
@@ -127,26 +176,26 @@ func (v *JSONSerializer) VisitVectorAggregation(e *VectorAggregationExpr) {
 func (v *JSONSerializer) VisitRangeAggregation(e *RangeAggregationExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("range_agg")
+	v.WriteObjectField(RangeAgg)
 	v.WriteObjectStart()
 
-	v.WriteObjectField("op")
+	v.WriteObjectField(Op)
 	v.WriteString(e.Operation)
 
 	if e.Grouping != nil {
 		v.WriteMore()
-		v.WriteObjectField("grouping")
+		v.WriteObjectField(GroupingField)
 		encodeGrouping(v.Stream, e.Grouping)
 	}
 
 	if e.Params != nil {
 		v.WriteMore()
-		v.WriteObjectField("params")
+		v.WriteObjectField(Params)
 		v.WriteFloat64(*e.Params)
 	}
 
 	v.WriteMore()
-	v.WriteObjectField("range")
+	v.WriteObjectField(Range)
 	v.VisitLogRange(e.Left)
 	v.WriteObjectEnd()
 
@@ -157,20 +206,20 @@ func (v *JSONSerializer) VisitRangeAggregation(e *RangeAggregationExpr) {
 func (v *JSONSerializer) VisitLogRange(e *LogRange) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("interval_nanos")
+	v.WriteObjectField(IntervalNanos)
 	v.WriteInt64(int64(e.Interval))
 	v.WriteMore()
-	v.WriteObjectField("offset_nanos")
+	v.WriteObjectField(OffsetNanos)
 	v.WriteInt64(int64(e.Offset))
 
 	// Serialize log selector pipeline as string.
 	v.WriteMore()
-	v.WriteObjectField("log_selector")
+	v.WriteObjectField(LogSelector)
 	encodeLogSelector(v.Stream, e.Left)
 
 	if e.Unwrap != nil {
 		v.WriteMore()
-		v.WriteObjectField("unwrap")
+		v.WriteObjectField(Unwrap)
 		encodeUnwrap(v.Stream, e.Unwrap)
 	}
 
@@ -181,26 +230,26 @@ func (v *JSONSerializer) VisitLogRange(e *LogRange) {
 func (v *JSONSerializer) VisitLabelReplace(e *LabelReplaceExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("label_replace")
+	v.WriteObjectField(LabelReplace)
 	v.WriteObjectStart()
 
-	v.WriteObjectField("inner")
+	v.WriteObjectField(Inner)
 	e.Left.Accept(v)
 
 	v.WriteMore()
-	v.WriteObjectField("dst")
+	v.WriteObjectField(Dst)
 	v.WriteString(e.Dst)
 
 	v.WriteMore()
-	v.WriteObjectField("src")
+	v.WriteObjectField(Src)
 	v.WriteString(e.Src)
 
 	v.WriteMore()
-	v.WriteObjectField("replacement")
+	v.WriteObjectField(Replacement)
 	v.WriteString(e.Replacement)
 
 	v.WriteMore()
-	v.WriteObjectField("regex")
+	v.WriteObjectField(RegexField)
 	v.WriteString(e.Regex)
 
 	v.WriteObjectEnd()
@@ -211,10 +260,10 @@ func (v *JSONSerializer) VisitLabelReplace(e *LabelReplaceExpr) {
 func (v *JSONSerializer) VisitLiteral(e *LiteralExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("literal")
+	v.WriteObjectField(Literal)
 	v.WriteObjectStart()
 
-	v.WriteObjectField("val")
+	v.WriteObjectField(Value)
 	v.WriteFloat64(e.Val)
 
 	v.WriteObjectEnd()
@@ -225,10 +274,10 @@ func (v *JSONSerializer) VisitLiteral(e *LiteralExpr) {
 func (v *JSONSerializer) VisitVector(e *VectorExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("vector")
+	v.WriteObjectField(Vector)
 	v.WriteObjectStart()
 
-	v.WriteObjectField("val")
+	v.WriteObjectField(Value)
 	v.WriteFloat64(e.Val)
 
 	v.WriteObjectEnd()
@@ -239,7 +288,7 @@ func (v *JSONSerializer) VisitVector(e *VectorExpr) {
 func (v *JSONSerializer) VisitMatchers(e *MatchersExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("log_selector")
+	v.WriteObjectField(LogSelector)
 	encodeLogSelector(v.Stream, e)
 	v.WriteObjectEnd()
 	v.Flush()
@@ -248,7 +297,7 @@ func (v *JSONSerializer) VisitMatchers(e *MatchersExpr) {
 func (v *JSONSerializer) VisitPipeline(e *PipelineExpr) {
 	v.WriteObjectStart()
 
-	v.WriteObjectField("log_selector")
+	v.WriteObjectField(LogSelector)
 	encodeLogSelector(v.Stream, e)
 	v.WriteObjectEnd()
 	v.Flush()
@@ -270,11 +319,11 @@ func (*JSONSerializer) VisitLogfmtParser(*LogfmtParserExpr)                 {}
 
 func encodeGrouping(s *jsoniter.Stream, g *Grouping) {
 	s.WriteObjectStart()
-	s.WriteObjectField("without")
+	s.WriteObjectField(Without)
 	s.WriteBool(g.Without)
 
 	s.WriteMore()
-	s.WriteObjectField("groups")
+	s.WriteObjectField(Groups)
 	s.WriteArrayStart()
 	for i, group := range g.Groups {
 		if i > 0 {
@@ -290,9 +339,9 @@ func decodeGrouping(iter *jsoniter.Iterator) (*Grouping, error) {
 	g := &Grouping{}
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "without":
+		case Without:
 			g.Without = iter.ReadBool()
-		case "groups":
+		case Groups:
 			iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
 				g.Groups = append(g.Groups, iter.ReadString())
 				return true
@@ -305,15 +354,15 @@ func decodeGrouping(iter *jsoniter.Iterator) (*Grouping, error) {
 
 func encodeUnwrap(s *jsoniter.Stream, u *UnwrapExpr) {
 	s.WriteObjectStart()
-	s.WriteObjectField("identifier")
+	s.WriteObjectField(Identifier)
 	s.WriteString(u.Identifier)
 
 	s.WriteMore()
-	s.WriteObjectField("operation")
+	s.WriteObjectField(Op)
 	s.WriteString(u.Operation)
 
 	s.WriteMore()
-	s.WriteObjectField("post_filterers")
+	s.WriteObjectField(PostFilterers)
 	s.WriteArrayStart()
 	for i, filter := range u.PostFilters {
 		if i > 0 {
@@ -330,11 +379,11 @@ func decodeUnwrap(iter *jsoniter.Iterator) *UnwrapExpr {
 	e := &UnwrapExpr{}
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "identifier":
+		case Identifier:
 			e.Identifier = iter.ReadString()
-		case "operation":
+		case Op:
 			e.Operation = iter.ReadString()
-		case "post_filterers":
+		case PostFilterers:
 			iter.ReadArrayCB(func(i *jsoniter.Iterator) bool {
 				e.PostFilters = append(e.PostFilters, decodeLabelFilter(i))
 				return true
@@ -345,37 +394,32 @@ func decodeUnwrap(iter *jsoniter.Iterator) *UnwrapExpr {
 	return e
 }
 
-const (
-	Name  = "name"
-	Value = "value"
-	Type  = "type"
-)
-
 func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 	switch concrete := filter.(type) {
 	case *log.BinaryLabelFilter:
 		s.WriteObjectStart()
-		s.WriteObjectField("binary")
+		s.WriteObjectField(Binary)
 
 		s.WriteObjectStart()
-		s.WriteObjectField("left")
+		s.WriteObjectField(LHS)
 		encodeLabelFilter(s, concrete.Left)
 
 		s.WriteMore()
-		s.WriteObjectField("right")
+		s.WriteObjectField(RHS)
 		encodeLabelFilter(s, concrete.Right)
-		s.WriteObjectEnd()
 
 		s.WriteMore()
-		s.WriteObjectField("and")
+		s.WriteObjectField(And)
 		s.WriteBool(concrete.And)
+
+		s.WriteObjectEnd()
 
 		s.WriteObjectEnd()
 	case log.NoopLabelFilter:
 		return
 	case *log.BytesLabelFilter:
 		s.WriteObjectStart()
-		s.WriteObjectField("bytes")
+		s.WriteObjectField(Bytes)
 
 		s.WriteObjectStart()
 		s.WriteObjectField(Name)
@@ -393,7 +437,7 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectEnd()
 	case *log.DurationLabelFilter:
 		s.WriteObjectStart()
-		s.WriteObjectField("duration")
+		s.WriteObjectField(Duration)
 
 		s.WriteObjectStart()
 		s.WriteObjectField(Name)
@@ -411,7 +455,7 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectEnd()
 	case *log.NumericLabelFilter:
 		s.WriteObjectStart()
-		s.WriteObjectField("numeric")
+		s.WriteObjectField(Numeric)
 
 		s.WriteObjectStart()
 		s.WriteObjectField(Name)
@@ -429,7 +473,7 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectEnd()
 	case *log.StringLabelFilter:
 		s.WriteObjectStart()
-		s.WriteObjectField("string")
+		s.WriteObjectField(StringField)
 
 		s.WriteObjectStart()
 		if concrete.Matcher != nil {
@@ -451,7 +495,7 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		// Line filter label filter are encoded as string filters as
 		// well. See log.NewStringLabelFilter.
 		s.WriteObjectStart()
-		s.WriteObjectField("string")
+		s.WriteObjectField(StringField)
 
 		s.WriteObjectStart()
 		if concrete.Matcher != nil {
@@ -471,18 +515,18 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectEnd()
 	case *log.IPLabelFilter:
 		s.WriteObjectStart()
-		s.WriteObjectField("ip")
+		s.WriteObjectField(IPField)
 
 		s.WriteObjectStart()
 		s.WriteObjectField(Type)
 		s.WriteInt(int(concrete.Ty))
 
 		s.WriteMore()
-		s.WriteObjectField("label")
+		s.WriteObjectField(Label)
 		s.WriteString(concrete.Label)
 
 		s.WriteMore()
-		s.WriteObjectField("pattern")
+		s.WriteObjectField(Pattern)
 		s.WriteString(concrete.Pattern)
 
 		s.WriteObjectEnd()
@@ -492,29 +536,30 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 }
 
 func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
+	var filter log.LabelFilterer
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "binary":
+		case Binary:
 			var left, right log.LabelFilterer
 			var and bool
 			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
 				switch k {
-				case "and":
+				case And:
 					and = iter.ReadBool()
-				case "left":
+				case LHS:
 					left = decodeLabelFilter(iter)
-				case "right":
+				case RHS:
 					right = decodeLabelFilter(iter)
 				}
 			}
 
-			return &log.BinaryLabelFilter{
+			filter = &log.BinaryLabelFilter{
 				And:   and,
 				Left:  left,
 				Right: right,
 			}
 
-		case "bytes":
+		case Bytes:
 			var name string
 			var b uint64
 			var t log.LabelFilterType
@@ -528,8 +573,8 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 					t = log.LabelFilterType(iter.ReadInt())
 				}
 			}
-			return log.NewBytesLabelFilter(t, name, b)
-		case "duration":
+			filter = log.NewBytesLabelFilter(t, name, b)
+		case Duration:
 			var name string
 			var duration time.Duration
 			var t log.LabelFilterType
@@ -544,8 +589,8 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 				}
 			}
 
-			return log.NewDurationLabelFilter(t, name, duration)
-		case "numeric":
+			filter = log.NewDurationLabelFilter(t, name, duration)
+		case Numeric:
 			var name string
 			var value float64
 			var t log.LabelFilterType
@@ -560,8 +605,8 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 				}
 			}
 
-			return log.NewNumericLabelFilter(t, name, value)
-		case "string":
+			filter = log.NewNumericLabelFilter(t, name, value)
+		case StringField:
 
 			var name string
 			var value string
@@ -582,32 +627,32 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 				matcher = labels.MustNewMatcher(t, name, value)
 			}
 
-			return log.NewStringLabelFilter(matcher)
+			filter = log.NewStringLabelFilter(matcher)
 
-		case "ip":
+		case IPField:
 			var label string
 			var pattern string
 			var t log.LabelFilterType
 			for k := iter.ReadObject(); k != ""; k = iter.ReadObject() {
 				switch k {
-				case "pattern":
-					label = iter.ReadString()
-				case "label":
+				case Pattern:
 					pattern = iter.ReadString()
+				case Label:
+					label = iter.ReadString()
 				case Type:
 					t = log.LabelFilterType(iter.ReadInt())
 				}
 			}
-			return log.NewIPLabelFilter(pattern, label, t)
+			filter = log.NewIPLabelFilter(pattern, label, t)
 		}
 	}
 
-	return nil
+	return filter
 }
 
 func encodeLogSelector(s *jsoniter.Stream, e LogSelectorExpr) {
 	s.WriteObjectStart()
-	s.WriteObjectField("raw")
+	s.WriteObjectField(Raw)
 
 	s.WriteString(e.String())
 
@@ -620,7 +665,7 @@ func decodeLogSelector(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "raw":
+		case Raw:
 			raw := iter.ReadString()
 			expr, err := ParseExpr(raw)
 			if err != nil {
@@ -644,17 +689,17 @@ func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
 	var err error
 	for key := iter.ReadObject(); key != ""; key = iter.ReadObject() {
 		switch key {
-		case "bin":
+		case Bin:
 			expr, err = decodeBinOp(iter)
-		case "vector_agg":
+		case VectorAgg:
 			expr, err = decodeVectorAgg(iter)
-		case "range_agg":
+		case RangeAgg:
 			expr, err = decodeRangeAgg(iter)
-		case "literal":
+		case Literal:
 			expr, err = decodeLiteral(iter)
-		case "vector":
+		case Vector:
 			expr, err = decodeVector(iter)
-		case "label_replace":
+		case LabelReplace:
 			expr, err = decodeLabelReplace(iter)
 		default:
 			return nil, fmt.Errorf("unknown sample expression type: %s", key)
@@ -669,13 +714,13 @@ func decodeBinOp(iter *jsoniter.Iterator) (*BinOpExpr, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "op":
+		case Op:
 			expr.Op = iter.ReadString()
-		case "rhs":
+		case RHS:
 			expr.RHS, err = decodeSample(iter)
-		case "lhs":
+		case LHS:
 			expr.SampleExpr, err = decodeSample(iter)
-		case "options":
+		case Options:
 			expr.Opts = decodeBinOpOptions(iter)
 		}
 	}
@@ -687,9 +732,9 @@ func decodeBinOpOptions(iter *jsoniter.Iterator) *BinOpOptions {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "return_bool":
+		case ReturnBool:
 			opts.ReturnBool = iter.ReadBool()
-		case "vector_matching":
+		case VectorMatchingField:
 			opts.VectorMatching = decodeVectorMatching(iter)
 		}
 	}
@@ -700,7 +745,7 @@ func decodeBinOpOptions(iter *jsoniter.Iterator) *BinOpOptions {
 func encodeVectorMatching(s *jsoniter.Stream, vm *VectorMatching) {
 	s.WriteObjectStart()
 
-	s.WriteObjectField("include")
+	s.WriteObjectField(Include)
 	s.WriteArrayStart()
 	for i, l := range vm.Include {
 		if i > 0 {
@@ -711,15 +756,15 @@ func encodeVectorMatching(s *jsoniter.Stream, vm *VectorMatching) {
 	s.WriteArrayEnd()
 
 	s.WriteMore()
-	s.WriteObjectField("on")
+	s.WriteObjectField(On)
 	s.WriteBool(vm.On)
 
 	s.WriteMore()
-	s.WriteObjectField("card")
+	s.WriteObjectField(Card)
 	s.WriteInt(int(vm.Card))
 
 	s.WriteMore()
-	s.WriteObjectField("matching_labels")
+	s.WriteObjectField(MatchingLabels)
 	s.WriteArrayStart()
 	for i, l := range vm.MatchingLabels {
 		if i > 0 {
@@ -737,16 +782,16 @@ func decodeVectorMatching(iter *jsoniter.Iterator) *VectorMatching {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "include":
+		case Include:
 			iter.ReadArrayCB(func(i *jsoniter.Iterator) bool {
 				vm.Include = append(vm.Include, i.ReadString())
 				return true
 			})
-		case "on":
+		case On:
 			vm.On = iter.ReadBool()
-		case "card":
+		case Card:
 			vm.Card = VectorMatchCardinality(iter.ReadInt())
-		case "matching_labels":
+		case MatchingLabels:
 			iter.ReadArrayCB(func(i *jsoniter.Iterator) bool {
 				vm.MatchingLabels = append(vm.MatchingLabels, i.ReadString())
 				return true
@@ -762,13 +807,13 @@ func decodeVectorAgg(iter *jsoniter.Iterator) (*VectorAggregationExpr, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "operation":
+		case Op:
 			expr.Operation = iter.ReadString()
-		case "params":
+		case Params:
 			expr.Params = iter.ReadInt()
-		case "grouping":
+		case GroupingField:
 			expr.Grouping, err = decodeGrouping(iter)
-		case "inner":
+		case Inner:
 			expr.Left, err = decodeSample(iter)
 		}
 	}
@@ -782,14 +827,14 @@ func decodeRangeAgg(iter *jsoniter.Iterator) (*RangeAggregationExpr, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "op":
+		case Op:
 			expr.Operation = iter.ReadString()
-		case "params":
+		case Params:
 			tmp := iter.ReadFloat64()
 			expr.Params = &tmp
-		case "range":
+		case Range:
 			expr.Left, err = decodeLogRange(iter)
-		case "grouping":
+		case GroupingField:
 			expr.Grouping, err = decodeGrouping(iter)
 		}
 	}
@@ -803,13 +848,13 @@ func decodeLogRange(iter *jsoniter.Iterator) (*LogRange, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "log_selector":
+		case LogSelector:
 			expr.Left, err = decodeLogSelector(iter)
-		case "interval_nanos":
+		case IntervalNanos:
 			expr.Interval = time.Duration(iter.ReadInt64())
-		case "offset_nanos":
+		case OffsetNanos:
 			expr.Offset = time.Duration(iter.ReadInt64())
-		case "unwrap":
+		case Unwrap:
 			expr.Unwrap = decodeUnwrap(iter)
 		}
 	}
@@ -824,18 +869,18 @@ func decodeLabelReplace(iter *jsoniter.Iterator) (*LabelReplaceExpr, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "inner":
+		case Inner:
 			left, err = decodeSample(iter)
 			if err != nil {
 				return nil, err
 			}
-		case "dst":
+		case Dst:
 			dst = iter.ReadString()
-		case "src":
+		case Src:
 			src = iter.ReadString()
-		case "replacement":
+		case Replacement:
 			replacement = iter.ReadString()
-		case "regex":
+		case RegexField:
 			regex = iter.ReadString()
 		}
 	}
@@ -848,7 +893,7 @@ func decodeLiteral(iter *jsoniter.Iterator) (*LiteralExpr, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "val":
+		case Value:
 			expr.Val = iter.ReadFloat64()
 		}
 	}
@@ -861,7 +906,7 @@ func decodeVector(iter *jsoniter.Iterator) (*VectorExpr, error) {
 
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
-		case "val":
+		case Value:
 			expr.Val = iter.ReadFloat64()
 		}
 	}
