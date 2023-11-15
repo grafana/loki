@@ -26,9 +26,9 @@ pkgs.stdenv.mkDerivation {
 
     substituteInPlace Makefile \
       --replace "SHELL = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail" \
-      --replace "IMAGE_TAG := \$(shell ./tools/image-tag)" "IMAGE_TAG := ${imageTag}" \
+      --replace "IMAGE_TAG ?= \$(shell ./tools/image-tag)" "IMAGE_TAG ?= ${imageTag}" \
       --replace "GIT_REVISION := \$(shell git rev-parse --short HEAD)" "GIT_REVISION := ${version}" \
-      --replace "GIT_BRANCH := \$(shell git rev-parse --abbrev-ref HEAD)" "GIT_BRANCH := nix" \
+      --replace "GIT_BRANCH := \$(shell git rev-parse --abbrev-ref HEAD)" "GIT_BRANCH := nix"
 
     substituteInPlace clients/cmd/fluentd/Makefile \
       --replace "SHELL    = /usr/bin/env bash -o pipefail" "SHELL = ${bash}/bin/bash -o pipefail"
