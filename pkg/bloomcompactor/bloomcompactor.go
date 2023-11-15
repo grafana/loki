@@ -539,22 +539,6 @@ func CompactNewChunks(ctx context.Context, logger log.Logger, job Job,
 	return storedBlocks, nil
 }
 
-// Given a list of compacted bloom blocks, creates a single meta file from them and uploads to storage.
-func CreateMetaFile(ctx context.Context, logger log.Logger, tombstonedBlockRefs, activeBlockRefs []bloomshipper.BlockRef, bloomShipperClient bloomshipper.Client) error {
-	// Build and upload meta.json to storage
-	meta := bloomshipper.Meta{
-		// After successful compaction there should be no tombstones
-		Tombstones: tombstonedBlockRefs,
-		Blocks:     activeBlockRefs,
-	}
-	err := bloomShipperClient.PutMeta(ctx, meta)
-	if err != nil {
-		level.Error(logger).Log("putting meta.json to storage", err)
-		return err
-	}
-	return nil
-}
-
 func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient) error {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
