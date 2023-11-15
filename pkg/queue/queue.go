@@ -138,9 +138,7 @@ FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
 	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
-		start := time.Now()
 		q.cond.Wait(ctx)
-		q.metrics.querierWaitTime.WithLabelValues(consumerID).Observe(time.Since(start).Seconds())
 	}
 
 	if q.stopped {

@@ -83,7 +83,7 @@ func (sp *schedulerProcessor) notifyShutdown(ctx context.Context, conn *grpc.Cli
 	}
 }
 
-func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Context, conn *grpc.ClientConn, address string) {
+func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Context, conn *grpc.ClientConn, address, workerId string) {
 	schedulerClient := sp.schedulerClientFactory(conn)
 
 	// Run the querier loop (and so all the queries) in a dedicated context that we call the "execution context".
@@ -104,7 +104,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 			continue
 		}
 
-		if err := sp.querierLoop(c, address, inflightQuery); err != nil {
+		if err := sp.querierLoop(c, address, inflightQuery, workerId); err != nil {
 			// Do not log an error if the query-scheduler is shutting down.
 			if s, ok := status.FromError(err); !ok || !strings.Contains(s.Message(), schedulerpb.ErrSchedulerIsNotRunning.Error()) {
 				level.Error(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
@@ -119,16 +119,19 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 }
 
 // process loops processing requests on an established stream.
-func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient, address string, inflightQuery *atomic.Bool) error {
+func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient, address string, inflightQuery *atomic.Bool, workerId string) error {
 	// Build a child context so we can cancel a query when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
 
 	for {
+		start := time.Now()
 		request, err := c.Recv()
 		if err != nil {
 			return err
 		}
+
+		level.Debug(sp.log).Log("msg", "received query", "worker", workerId, "wait-time", time.Since(start))
 
 		inflightQuery.Store(true)
 
