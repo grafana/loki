@@ -211,7 +211,6 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 				return fmt.Errorf("error while fetching object from storage: %w", err)
 			}
 
-			// TODO: Is the gzip configurable?
 			gz, err := chunkenc.GetReaderPool(chunkenc.EncGZIP).GetReader(readCloser)
 			if err != nil {
 				return fmt.Errorf("error while fetching gzip reader: %w", err)
@@ -243,7 +242,6 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 	return blocksChannel, errChannel
 }
 
-// TODO zip (archive) blocks before uploading to storage
 func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
 	results := make([]Block, len(blocks))
 	//todo move concurrency to the config
@@ -264,7 +262,6 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 			return fmt.Errorf("error while reading object data: %w", err)
 		}
 
-		// TODO: Is this configurable?  Should it be? Do we want Gzip?
 		// Compress data using gzip
 		var buf bytes.Buffer
 		gz := chunkenc.Gzip.GetWriter(&buf)

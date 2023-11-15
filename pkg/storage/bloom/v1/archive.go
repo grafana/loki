@@ -123,12 +123,10 @@ func GzData(data []byte) []byte {
 
 	_, err := gz.Write(data)
 	if err != nil {
-		// Handle error
 		return nil
 	}
 
 	if err := gz.Close(); err != nil {
-		// Handle error
 		return nil
 	}
 
