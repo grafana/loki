@@ -97,11 +97,11 @@ func TestUnGzData(t *testing.T) {
 	cmd := exec.Command("gzip", filePath)
 	err = cmd.Run()
 	require.Nil(t, err)
-
 	defer os.Remove(gzipFileName)
 
 	// Read the gzipped file using the compress/gzip package
 	gzipFile, err := os.Open(gzipFileName)
+	require.Nil(t, err)
 	defer gzipFile.Close()
 
 	fileContent, err := os.ReadFile(gzipFileName)
