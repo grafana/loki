@@ -295,7 +295,8 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 
 		// Skip tenant if compaction is not enabled
 		if !c.limits.BloomCompactorEnabled(tenant) {
-			return level.Info(tenantLogger).Log("msg", "compaction disabled for tenant")
+			level.Info(tenantLogger).Log("msg", "compaction disabled for tenant. Skipping.")
+			continue
 		}
 
 		// Skip this table if it is too new/old for the tenant limits.
