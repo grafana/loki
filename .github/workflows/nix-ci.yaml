@@ -22,7 +22,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix run --print-build-logs .#test
-  binaries:
+  packages:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
