@@ -559,6 +559,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
+	if !c.limits.BloomCompactorEnabled(job.tenantID) {
+		return level.Error(c.logger).Log("msg", "compaction disabled for tenant: ", job.tenantID)
+	}
+
 	// TODO call bloomShipperClient.GetMetas to get existing meta.json
 	var metas []bloomshipper.Meta
 

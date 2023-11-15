@@ -36,6 +36,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetryMaxBackoff, "bloom-compactor.compaction-retries-max-backoff", time.Minute, "Maximum backoff time between retries.")
 	f.IntVar(&cfg.CompactionRetries, "bloom-compactor.compaction-retries", 3, "Number of retries to perform when compaction fails.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "bloom-compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
+	f.BoolVar(&cfg.Enabled, "bloom-compactor.enable-compaction", false, "Flag to enable bloom compactor globally")
 }
 
 type Limits interface {
@@ -43,4 +44,5 @@ type Limits interface {
 	BloomCompactorShardSize(tenantID string) int
 	BloomCompactorMaxTableAge(tenantID string) time.Duration
 	BloomCompactorMinTableAge(tenantID string) time.Duration
+	BloomCompactorEnabled(tenantID string) bool
 }
