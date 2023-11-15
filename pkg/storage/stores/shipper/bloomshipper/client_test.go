@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"io"
 	"math/rand"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 
 	aws_io "github.com/aws/smithy-go/io"
 	"github.com/google/uuid"
