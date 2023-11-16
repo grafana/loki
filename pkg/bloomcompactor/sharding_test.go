@@ -143,3 +143,7 @@ func (m mockLimits) BloomCompactorMaxTableAge(_ string) time.Duration {
 func (m mockLimits) BloomCompactorMinTableAge(_ string) time.Duration {
 	return 0
 }
+
+func (m mockLimits) BloomCompactorEnabled(_ string) bool {
+	return false
+}
