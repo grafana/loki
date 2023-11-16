@@ -365,7 +365,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
-	cfg.ObjStoreConf.RegisterFlags(f)
+	f.BoolVar(&cfg.ThanosObjStore, "thanos.enable", false, "Enable the thanos.io/objstore to be the backend for object storage")
+	cfg.ObjStoreConf.RegisterFlagsWithPrefix("thanos.", f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
@@ -719,7 +720,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 			// Passing "gcs" as the component name as currently it's not
 			// possible to get the component called this method
 			// TODO(JoaoBraveCoding) update compoent when bigger refactor happens
-			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, "gcs", utilLog.Logger, cfg.Hedging)
+			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, "gcs", utilLog.Logger, cfg.Hedging, prometheus.WrapRegistererWithPrefix("loki_", prometheus.NewRegistry()))
 		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 

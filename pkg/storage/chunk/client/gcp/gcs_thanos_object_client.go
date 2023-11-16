@@ -23,12 +23,13 @@ type GCSThanosObjectClient struct {
 	client objstore.Bucket
 }
 
-func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config) (*GCSThanosObjectClient, error) {
-	return newGCSThanosObjectClient(ctx, cfg, component, logger)
+func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, reg prometheus.Registerer) (*GCSThanosObjectClient, error) {
+	//TODO(JoaoBraveCoding) Add Hedging client once we are able to configure HTTP on GCS provider
+	return newGCSThanosObjectClient(ctx, cfg, component, logger, reg)
 }
 
-func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger) (*GCSThanosObjectClient, error) {
-	bucket, err := bucket.NewClient(ctx, cfg, component, logger, prometheus.DefaultRegisterer)
+func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, reg prometheus.Registerer) (*GCSThanosObjectClient, error) {
+	bucket, err := bucket.NewClient(ctx, cfg, component, logger, reg)
 	if err != nil {
 		return nil, err
 	}
