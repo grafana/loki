@@ -45,7 +45,7 @@ type QueryResponse struct {
 }
 
 type Engine interface {
-	Query(logql.Params) logql.Query
+	Query(logql.Params, syntax.Expr) logql.Query
 }
 
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
@@ -78,7 +78,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return logqlmodel.Result{}, err
 	}
 
-	query := q.engine.Query(params)
+	query := q.engine.Query(params, req.Plan.AST)
 	return query.Exec(ctx)
 }
 
@@ -92,7 +92,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
-	query := q.engine.Query(params)
+	query := q.engine.Query(params, req.Plan.AST)
 	return query.Exec(ctx)
 }
 

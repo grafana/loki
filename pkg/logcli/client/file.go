@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	logqllog "github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -117,7 +118,12 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		nil,
 	)
 
-	query := f.engine.Query(params)
+	parsed, err := syntax.ParseExpr(queryStr)
+	if err != nil {
+		return nil, err
+	}
+
+	query := f.engine.Query(params, parsed)
 
 	result, err := query.Exec(ctx)
 	if err != nil {

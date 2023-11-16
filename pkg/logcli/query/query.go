@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	chunk "github.com/grafana/loki/pkg/storage/chunk/client"
@@ -447,6 +448,11 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
+	parsed, err := syntax.ParseExpr(q.QueryString)
+	if err != nil {
+		return err
+	}
+
 	eng := logql.NewEngine(conf.Querier.Engine, querier, limits, util_log.Logger)
 	var query logql.Query
 
@@ -460,7 +466,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
-		))
+		), parsed)
 	} else {
 		query = eng.Query(logql.NewLiteralParams(
 			q.QueryString,
