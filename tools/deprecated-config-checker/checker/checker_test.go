@@ -48,7 +48,6 @@ var (
 		"storage_config.aws.dynamodb",
 		"chunk_store_config.write_dedupe_cache_config",
 		"limits_config.unordered_writes",
-		"limits_config.ruler_remote_write_headers",
 		"limits_config.per_tenant_override_config",
 		"limits_config.per_tenant_override_period",
 		"limits_config.allow_deletes",
@@ -79,12 +78,10 @@ var (
 
 	expectedRuntimeConfigDeprecates = []string{
 		"overrides.foo.unordered_writes",
-		"overrides.foo.ruler_remote_write_headers",
 		"overrides.foo.per_tenant_override_config",
 		"overrides.foo.per_tenant_override_period",
 		"overrides.foo.allow_deletes",
 		"overrides.bar.unordered_writes",
-		"overrides.bar.ruler_remote_write_headers",
 		"overrides.bar.per_tenant_override_config",
 		"overrides.bar.per_tenant_override_period",
 		"overrides.bar.allow_deletes",

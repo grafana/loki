@@ -234,11 +234,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		// metadata is only used by prometheus scrape configs
 		clt.MetadataConfig = config.MetadataConfig{Send: false}
 
-		// overwrite, do not merge
-		if v := r.overrides.RulerRemoteWriteHeaders(tenant); v != nil {
-			clt.Headers = v
-		}
-
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
 			// overwrite, do not merge
 			if v.Headers != nil {

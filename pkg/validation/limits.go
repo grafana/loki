@@ -115,14 +115,10 @@ type Limits struct {
 	RulerTenantShardSize        int                              `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 
 	// TODO(dannyk): add HTTP client overrides (basic auth / tls config, etc)
-	// Ruler remote-write limits.
 
 	// this field is the inversion of the general remote_write.enabled because the zero value of a boolean is false,
 	// and if it were ruler_remote_write_enabled, it would be impossible to know if the value was explicitly set or default
 	RulerRemoteWriteDisabled bool `yaml:"ruler_remote_write_disabled" json:"ruler_remote_write_disabled" doc:"description=Disable recording rules remote-write."`
-
-	// deprecated use RulerRemoteWriteConfig instead
-	RulerRemoteWriteHeaders OverwriteMarshalingStringMap `yaml:"ruler_remote_write_headers" json:"ruler_remote_write_headers" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Custom HTTP headers to be sent along with each remote write request. Be aware that headers that are set by Loki itself can't be overwritten."`
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
@@ -584,12 +580,6 @@ func (o *Overrides) RulerAlertManagerConfig(userID string) *ruler_config.AlertMa
 // RulerRemoteWriteDisabled returns whether remote-write is disabled for a given user or not.
 func (o *Overrides) RulerRemoteWriteDisabled(userID string) bool {
 	return o.getOverridesForUser(userID).RulerRemoteWriteDisabled
-}
-
-// Deprecated: use RulerRemoteWriteConfig instead
-// RulerRemoteWriteHeaders returns the headers to use in a remote-write for a given user.
-func (o *Overrides) RulerRemoteWriteHeaders(userID string) map[string]string {
-	return o.getOverridesForUser(userID).RulerRemoteWriteHeaders.Map()
 }
 
 // RulerRemoteWriteConfig returns the remote-write configurations to use for a given user and a given remote client.

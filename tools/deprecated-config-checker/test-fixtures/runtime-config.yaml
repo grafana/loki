@@ -4,7 +4,6 @@ overrides:
     unordered_writes: true # DEPRECATED
     enforce_metric_name: true # DELETED
     ruler_evaluation_delay_duration: 1m # DELETED
-    ruler_remote_write_headers: [ "foo", "bar" ] # DEPRECATED
     per_tenant_override_config: ./overrides.yaml # DEPRECATED
     per_tenant_override_period: 5s # DEPRECATED
     allow_deletes: true # DEPRECATED

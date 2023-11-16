@@ -45,7 +45,6 @@ chunk_store_config:
 ## NOTE: This will also be used to validate per-tenant overrides.
 limits_config:
   unordered_writes: "Will be eventually removed."
-  ruler_remote_write_headers: "Use ruler_remote_write_config instead."
   per_tenant_override_config: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.file"
   per_tenant_override_period: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.period"
   allow_deletes: "Use deletion_mode per tenant configuration instead."

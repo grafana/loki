@@ -2793,11 +2793,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
 
-# Deprecated: Use 'ruler_remote_write_config' instead. Custom HTTP headers to be
-# sent along with each remote write request. Be aware that headers that are set
-# by Loki itself can't be overwritten.
-[ruler_remote_write_headers: <headers>]
-
 # Configures global and per-tenant limits for remote write clients. A map with
 # remote client id as key.
 ruler_remote_write_config:

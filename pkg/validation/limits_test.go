@@ -2,12 +2,15 @@ package validation
 
 import (
 	"encoding/json"
+	"net/url"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
+	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -168,10 +171,17 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 	defer func() {
 		defaultLimits = initialDefault
 	}()
-
+	var remoteURL, _ = url.Parse("http://remote-write")
 	// Set new defaults with non-nil values for non-scalar types
 	newDefaults := Limits{
-		RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+		RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+			"default": {
+				URL:           &promConfig.URL{URL: remoteURL},
+				Headers:       map[string]string{"a": "b"},
+				RemoteTimeout: model.Duration(30 * time.Second),
+				QueueConfig:   defaultQueueConfig(),
+			},
+		},
 		StreamRetention: []StreamRetention{
 			{
 				Period:   model.Duration(24 * time.Hour),
@@ -189,11 +199,30 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 		{
 			desc: "map",
 			yaml: `
-ruler_remote_write_headers:
-  foo: "bar"
+ruler_remote_write_config:
+  tenant: 
+    url: "http://remote-write"
+    headers:
+      foo: bar
 `,
 			exp: Limits{
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"foo": "bar"}},
+				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+					"default": {
+						URL:            &promConfig.URL{URL: remoteURL},
+						Headers:        map[string]string{"a": "b"},
+						QueueConfig:    config.DefaultQueueConfig,
+						MetadataConfig: config.DefaultMetadataConfig,
+						RemoteTimeout:  model.Duration(30000000000),
+					},
+					"tenant": {
+						URL:              &promConfig.URL{URL: remoteURL},
+						HTTPClientConfig: promConfig.DefaultHTTPClientConfig,
+						Headers:          map[string]string{"foo": "bar"},
+						QueueConfig:      config.DefaultQueueConfig,
+						MetadataConfig:   config.DefaultMetadataConfig,
+						RemoteTimeout:    model.Duration(30000000000),
+					},
+				},
 
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
@@ -207,10 +236,28 @@ ruler_remote_write_headers:
 		{
 			desc: "empty map overrides defaults",
 			yaml: `
-ruler_remote_write_headers:
+ruler_remote_write_config:
+  tenant: 
+    url: "http://remote-write"
+    headers:
 `,
 			exp: Limits{
-
+				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+					"default": {
+						URL:            &promConfig.URL{URL: remoteURL},
+						Headers:        map[string]string{"a": "b"},
+						QueueConfig:    config.DefaultQueueConfig,
+						MetadataConfig: config.DefaultMetadataConfig,
+						RemoteTimeout:  model.Duration(30000000000),
+					},
+					"tenant": {
+						URL:              &promConfig.URL{URL: remoteURL},
+						HTTPClientConfig: promConfig.DefaultHTTPClientConfig,
+						QueueConfig:      config.DefaultQueueConfig,
+						MetadataConfig:   config.DefaultMetadataConfig,
+						RemoteTimeout:    model.Duration(30000000000),
+					},
+				},
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
 					{
@@ -236,7 +283,15 @@ retention_stream:
 				},
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+					"default": {
+						URL:            &promConfig.URL{URL: remoteURL},
+						Headers:        map[string]string{"a": "b"},
+						QueueConfig:    config.DefaultQueueConfig,
+						MetadataConfig: config.DefaultMetadataConfig,
+						RemoteTimeout:  model.Duration(30000000000),
+					},
+				},
 			},
 		},
 		{
@@ -248,7 +303,15 @@ reject_old_samples: true
 				RejectOldSamples: true,
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+					"default": {
+						URL:            &promConfig.URL{URL: remoteURL},
+						Headers:        map[string]string{"a": "b"},
+						QueueConfig:    config.DefaultQueueConfig,
+						MetadataConfig: config.DefaultMetadataConfig,
+						RemoteTimeout:  model.Duration(30000000000),
+					},
+				},
 				StreamRetention: []StreamRetention{
 					{
 						Period:   model.Duration(24 * time.Hour),
@@ -266,7 +329,15 @@ query_timeout: 5m
 				QueryTimeout: model.Duration(5 * time.Minute),
 
 				// Rest from new defaults.
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+					"default": {
+						URL:            &promConfig.URL{URL: remoteURL},
+						Headers:        map[string]string{"a": "b"},
+						QueueConfig:    config.DefaultQueueConfig,
+						MetadataConfig: config.DefaultMetadataConfig,
+						RemoteTimeout:  model.Duration(30000000000),
+					},
+				},
 				StreamRetention: []StreamRetention{
 					{
 						Period:   model.Duration(24 * time.Hour),
@@ -297,5 +368,18 @@ func TestLimitsValidation(t *testing.T) {
 	} {
 		limits := Limits{DeletionMode: tc.mode}
 		require.True(t, errors.Is(limits.Validate(), tc.expected))
+	}
+}
+
+func defaultQueueConfig() config.QueueConfig {
+	return config.QueueConfig{
+		Capacity:          10000,
+		MaxShards:         50,
+		MinShards:         1,
+		MaxSamplesPerSend: 2000,
+		BatchSendDeadline: model.Duration(5 * time.Second),
+		MinBackoff:        model.Duration(30 * time.Millisecond),
+		MaxBackoff:        model.Duration(5 * time.Second),
+		RetryOnRateLimit:  false,
 	}
 }
