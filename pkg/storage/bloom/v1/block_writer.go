@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	bloomFileName  = "bloom"
-	seriesFileName = "series"
+	BloomFileName  = "bloom"
+	SeriesFileName = "series"
 )
 
 type BlockWriter interface {
@@ -66,12 +66,12 @@ func (b *DirectoryBlockWriter) Init() error {
 			return errors.Wrap(err, "creating bloom block dir")
 		}
 
-		b.index, err = os.Create(filepath.Join(b.dir, seriesFileName))
+		b.index, err = os.Create(filepath.Join(b.dir, SeriesFileName))
 		if err != nil {
 			return errors.Wrap(err, "creating series file")
 		}
 
-		b.blooms, err = os.Create(filepath.Join(b.dir, bloomFileName))
+		b.blooms, err = os.Create(filepath.Join(b.dir, BloomFileName))
 		if err != nil {
 			return errors.Wrap(err, "creating bloom file")
 		}

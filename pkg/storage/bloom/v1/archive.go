@@ -11,6 +11,39 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 )
 
+func TarGzMemory(dst io.Writer, src *ByteReader) error {
+	gzipper := chunkenc.GetWriterPool(chunkenc.EncGZIP).GetWriter(dst)
+	defer gzipper.Close()
+
+	tarballer := tar.NewWriter(gzipper)
+	defer tarballer.Close()
+
+	header := &tar.Header{
+		Name: SeriesFileName,
+		Size: int64(src.index.Len()),
+	}
+	// Write the header
+	if err := tarballer.WriteHeader(header); err != nil {
+		return errors.Wrapf(err, "error writing tar header for index file")
+	}
+	// Write the file contents
+	if _, err := tarballer.Write(src.index.Bytes()); err != nil {
+		return errors.Wrapf(err, "error writing file contents for index file")
+	}
+
+	header = &tar.Header{
+		Name: BloomFileName,
+		Size: int64(src.blooms.Len()),
+	}
+	if err := tarballer.WriteHeader(header); err != nil {
+		return errors.Wrapf(err, "error writing tar header for bloom file")
+	}
+	if _, err := tarballer.Write(src.blooms.Bytes()); err != nil {
+		return errors.Wrapf(err, "error writing file contents for bloom file")
+	}
+	return nil
+}
+
 func TarGz(dst io.Writer, src *DirectoryBlockReader) error {
 	if err := src.Init(); err != nil {
 		return errors.Wrap(err, "error initializing directory block reader")

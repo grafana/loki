@@ -62,9 +62,9 @@ import (
 )
 
 const (
-	fpRate        = 0.01
-	bloomFileName = "bloom"
-	indexFileName = "index"
+	fpRate         = 0.01
+	bloomFileName  = "bloom"
+	seriesFileName = "series"
 )
 
 type Compactor struct {
@@ -486,7 +486,7 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 		level.Error(logger).Log("reading bloomBlock", err)
 	}
 
-	indexFile, err := os.Open(filepath.Join(localDst, indexFileName))
+	indexFile, err := os.Open(filepath.Join(localDst, seriesFileName))
 	if err != nil {
 		level.Error(logger).Log("reading bloomBlock", err)
 	}
