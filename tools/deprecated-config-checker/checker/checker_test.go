@@ -31,13 +31,15 @@ var (
 		"storage_config.boltdb_shipper.shared_store_key_prefix",
 		"storage_config.tsdb_shipper.shared_store",
 		"storage_config.tsdb_shipper.shared_store_key_prefix",
+		"compactor.deletion_mode",
 		"compactor.shared_store",
 		"compactor.shared_store_key_prefix",
+		"limits_config.enforce_metric_name",
+		"limits_config.ruler_evaluation_delay_duration",
 	}
 
 	expectedConfigDeprecates = []string{
 		"ruler.remote_write.client",
-		"compactor.deletion_mode",
 		"index_gateway.ring.replication_factor",
 		"storage_config.bigtable",
 		"storage_config.cassandra",
@@ -46,7 +48,6 @@ var (
 		"storage_config.aws.dynamodb",
 		"chunk_store_config.write_dedupe_cache_config",
 		"limits_config.unordered_writes",
-		"limits_config.ruler_evaluation_delay_duration",
 		"limits_config.ruler_remote_write_headers",
 		"limits_config.per_tenant_override_config",
 		"limits_config.per_tenant_override_period",
@@ -69,17 +70,20 @@ var (
 		"schema_config.configs.[8].object_store",
 	}
 
-	expectedRuntimeConfigDeletes = []string{}
+	expectedRuntimeConfigDeletes = []string{
+		"overrides.foo.ruler_evaluation_delay_duration",
+		"overrides.foo.enforce_metric_name",
+		"overrides.bar.ruler_evaluation_delay_duration",
+		"overrides.bar.enforce_metric_name",
+	}
 
 	expectedRuntimeConfigDeprecates = []string{
 		"overrides.foo.unordered_writes",
-		"overrides.foo.ruler_evaluation_delay_duration",
 		"overrides.foo.ruler_remote_write_headers",
 		"overrides.foo.per_tenant_override_config",
 		"overrides.foo.per_tenant_override_period",
 		"overrides.foo.allow_deletes",
 		"overrides.bar.unordered_writes",
-		"overrides.bar.ruler_evaluation_delay_duration",
 		"overrides.bar.ruler_remote_write_headers",
 		"overrides.bar.per_tenant_override_config",
 		"overrides.bar.per_tenant_override_period",

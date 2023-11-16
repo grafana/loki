@@ -55,12 +55,15 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
         commonConfig:
           replication_factor: 3
         storage:
+          bucketNames:
+            chunks: loki-chunks
+            ruler: loki-ruler
+            admin: loki-admin
           type: 's3'
           s3:
             endpoint: foo.aws.com
-            bucketnames: loki-chunks
-            secret_access_key: supersecret
-            access_key_id: secret
+            secretAccessKey: supersecret
+            accessKeyId: secret
       singleBinary:
         replicas: 3
       ```

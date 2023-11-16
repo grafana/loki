@@ -183,8 +183,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [schema_config: <schema_config>]
 
 # The compactor block configures the compactor component, which compacts index
-# shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated,
-# please use `-compactor.` instead.
+# shards for performance.
 [compactor: <compactor>]
 
 # The limits_config block configures global and per-tenant limits in Loki.
@@ -774,6 +773,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Defines the encoding for requests to and responses from the scheduler and
+# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# CLI flag: -frontend.encoding
+[encoding: <string> | default = "json"]
+
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = true]
@@ -822,11 +826,6 @@ results_cache:
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
-
-# The downstream querier is required to answer in the accepted format. Can be
-# 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
-# CLI flag: -frontend.required-query-response-format
-[required_query_response_format: <string> | default = "json"]
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
@@ -1800,7 +1799,7 @@ ring:
   # CLI flag: -bloom-gateway.replication-factor
   [replication_factor: <int> | default = 3]
 
-# Flag to enable or disable the usage of the bloom gatway component.
+# Flag to enable or disable the bloom gateway component globally.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
 
@@ -2267,7 +2266,7 @@ Configures the chunk index schema and where it is stored.
 
 ### compactor
 
-The `compactor` block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.
+The `compactor` block configures the compactor component, which compacts index shards for performance.
 
 ```yaml
 # Directory where files can be downloaded for compaction.
@@ -2432,9 +2431,6 @@ compactor_ring:
 # -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
-
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[deletion_mode: <string> | default = ""]
 ```
 
 ### bloom_compactor
@@ -2531,7 +2527,31 @@ ring:
 # CLI flag: -bloom-compactor.enabled
 [enabled: <boolean> | default = false]
 
+# Directory where files can be downloaded for compaction.
+# CLI flag: -bloom-compactor.working-directory
 [working_directory: <string> | default = ""]
+
+# Interval at which to re-run the compaction operation.
+# CLI flag: -bloom-compactor.compaction-interval
+[compaction_interval: <duration> | default = 10m]
+
+# Minimum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-min-backoff
+[compaction_retries_min_backoff: <duration> | default = 10s]
+
+# Maximum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-max-backoff
+[compaction_retries_max_backoff: <duration> | default = 1m]
+
+# Number of retries to perform when compaction fails.
+# CLI flag: -bloom-compactor.compaction-retries
+[compaction_retries: <int> | default = 3]
+
+# Maximum number of tables to compact in parallel. While increasing this value,
+# please make sure compactor has enough disk space allocated to be able to store
+# and compact as many tables.
+# CLI flag: -bloom-compactor.max-compaction-parallelism
+[max_compaction_parallelism: <int> | default = 1]
 ```
 
 ### limits_config
@@ -2589,10 +2609,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # won't accept sample from before this time.
 # CLI flag: -validation.create-grace-period
 [creation_grace_period: <duration> | default = 10m]
-
-# Enforce every sample has a metric name.
-# CLI flag: -validation.enforce-metric-name
-[enforce_metric_name: <boolean> | default = true]
 
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
@@ -2760,11 +2776,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -limits.volume-max-series
 [volume_max_series: <int> | default = 1000]
 
-# Deprecated. Duration to delay the evaluation of rules to ensure the underlying
-# metrics have been pushed to Cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[ruler_evaluation_delay_duration: <duration> | default = 0s]
-
 # Maximum number of rules per rule group per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rules-per-rule-group
 [ruler_max_rules_per_rule_group: <int> | default = 0]
@@ -2903,6 +2914,31 @@ shard_streams:
 # querying.
 # CLI flag: -bloom-gateway.shard-size
 [bloom_gateway_shard_size: <int> | default = 1]
+
+# Whether to use the bloom gateway component in the read path to filter chunks.
+# CLI flag: -bloom-gateway.enable-filtering
+[bloom_gateway_enable_filtering: <boolean> | default = false]
+
+# The shard size defines how many bloom compactors should be used by a tenant
+# when computing blooms. If it's set to 0, shuffle sharding is disabled.
+# CLI flag: -bloom-compactor.shard-size
+[bloom_compactor_shard_size: <int> | default = 1]
+
+# The maximum age of a table before it is compacted. Do not compact tables older
+# than the the configured time. Default to 7 days. 0s means no limit.
+# CLI flag: -bloom-compactor.max-table-age
+[bloom_compactor_max_table_age: <duration> | default = 168h]
+
+# The minimum age of a table before it is compacted. Do not compact tables newer
+# than the the configured time. Default to 1 hour. 0s means no limit. This is
+# useful to avoid compacting tables that will be updated with out-of-order
+# writes.
+# CLI flag: -bloom-compactor.min-table-age
+[bloom_compactor_min_table_age: <duration> | default = 1h]
+
+# Whether to compact chunks into bloom filters.
+# CLI flag: -bloom-compactor.enable-compaction
+[bloom_compactor_enable_compaction: <boolean> | default = false]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
