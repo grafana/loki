@@ -94,8 +94,8 @@ func TestFusedQuerier(t *testing.T) {
 			require.Equal(
 				t,
 				output{
-					fp:   req.fp,
-					chks: req.chks,
+					fp:       req.fp,
+					removals: nil,
 				},
 				resp,
 			)
