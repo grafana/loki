@@ -216,10 +216,8 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 			defer func() {
 				compressedObjectReadCloser.Close()
 			}()
-			// TODO: This - how best to get the working directory here
-			workingDirectoryPath := ""
 
-			//workingDirectoryPath := filepath.Join(b.storageConfig.BloomShipperConfig.WorkingDirectory, block.BlockPath, strconv.FormatInt(time.Now().UTC().UnixMilli(), 10))
+			workingDirectoryPath := filepath.Join(b.storageConfig.BloomShipperConfig.WorkingDirectory, reference.BlockPath, strconv.FormatInt(time.Now().UTC().UnixMilli(), 10))
 			err = v1.UnTarGz(workingDirectoryPath, compressedObjectReadCloser)
 			if err != nil {
 				return fmt.Errorf("error while untarring: %w", err)
