@@ -342,7 +342,7 @@ func TestInstanceDownstream(t *testing.T) {
 
 	queries := []logql.DownstreamQuery{
 		{
-			Params: logql.ParamsWithMappedExpression{Params: params, Mapped: expr},
+			Params: logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
 			Shards: logql.Shards{{Shard: 0, Of: 2}},
 		},
 	}

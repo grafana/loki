@@ -88,7 +88,7 @@ func TestMappingEquivalence(t *testing.T) {
 			_, _, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
-			shardedQry := sharded.Query(ctx, ParamsWithMappedExpression{Params: params, Mapped: mapped})
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped})
 
 			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
@@ -154,7 +154,7 @@ func TestShardCounter(t *testing.T) {
 			noop, _, mapped, err := mapper.Parse(tc.query)
 			require.NoError(t, err)
 
-			shardedQry := sharded.Query(ctx, ParamsWithMappedExpression{Params: params, Mapped: mapped})
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped})
 
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.Nil(t, err)
@@ -421,8 +421,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 
-			params.queryExpr = rangeExpr
-			rangeQry := downstreamEngine.Query(ctx, params)
+			rangeQry := downstreamEngine.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: rangeExpr})
 			rangeRes, err := rangeQry.Exec(ctx)
 			require.Nil(t, err)
 

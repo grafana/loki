@@ -44,6 +44,9 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 			Direction: params.Direction(),
 			Path:      "/loki/api/v1/query", // TODO(owen-d): make this derivable
 			Shards:    shards.Encode(),
+			Plan:      &plan.QueryPlan{
+				AST: params.GetExpression(),
+			},
 		}
 	}
 	return &LokiRequest{

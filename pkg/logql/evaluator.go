@@ -114,15 +114,15 @@ func GetRangeType(q Params) QueryRangeType {
 	return RangeType
 }
 
-// ParamsWithMappedExpression overrides the query expression so that the query
+// ParamsWithExpressionOverride overrides the query expression so that the query
 // string and the expression can differ. This is useful for sharding etc.
-type ParamsWithMappedExpression struct {
+type ParamsWithExpressionOverride struct {
 	Params
-	Mapped syntax.Expr
+	ExpressionOverride syntax.Expr
 }
 
-func (p ParamsWithMappedExpression) GetExpression() syntax.Expr {
-	return p.Mapped
+func (p ParamsWithExpressionOverride) GetExpression() syntax.Expr {
+	return p.ExpressionOverride
 }
 
 // Sortable logql contain sort or sort_desc.

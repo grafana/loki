@@ -264,7 +264,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			shards = append(shards, *e.shard)
 		}
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Params: ParamsWithMappedExpression{Params: params, Mapped: e.SampleExpr},
+			Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
 			Shards: shards,
 		}})
 		if err != nil {
@@ -277,7 +277,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		var queries []DownstreamQuery
 		for cur != nil {
 			qry := DownstreamQuery{
-				Params: ParamsWithMappedExpression{Params: params, Mapped: cur.DownstreamSampleExpr.SampleExpr},
+				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr},
 			}
 			if shard := cur.DownstreamSampleExpr.shard; shard != nil {
 				qry.Shards = Shards{*shard}
@@ -326,7 +326,7 @@ func (ev *DownstreamEvaluator) NewIterator(
 			shards = append(shards, *e.shard)
 		}
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Params: ParamsWithMappedExpression{Params: params, Mapped: e.LogSelectorExpr},
+			Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.LogSelectorExpr},
 			Shards: shards,
 		}})
 		if err != nil {
@@ -339,7 +339,7 @@ func (ev *DownstreamEvaluator) NewIterator(
 		var queries []DownstreamQuery
 		for cur != nil {
 			qry := DownstreamQuery{
-				Params: ParamsWithMappedExpression{Params: params, Mapped: cur.DownstreamLogSelectorExpr.LogSelectorExpr},
+				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr},
 			}
 			if shard := cur.DownstreamLogSelectorExpr.shard; shard != nil {
 				qry.Shards = Shards{*shard}
