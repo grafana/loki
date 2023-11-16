@@ -555,6 +555,10 @@ monitoring:
     enabled: true
     # -- Include alerting rules
     alerting: true
+    # -- Specify which alerts should be disabled
+    disabled: {}
+    #  LokiRequestErrors: true
+    #  LokiRequestPanics: true
     # -- Alternative namespace to create PrometheusRule resources in
     namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
