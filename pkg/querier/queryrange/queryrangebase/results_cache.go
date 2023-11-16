@@ -391,7 +391,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime in
 
 	extent, err := toExtent(ctx, r, s.extractor.ResponseWithoutHeaders(response))
 	if err != nil {
-		return nil, nil, err
+		return response, []Extent{}, nil
 	}
 
 	extents := []Extent{
