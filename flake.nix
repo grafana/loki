@@ -56,7 +56,11 @@
 
           test = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = true; })}/bin/loki --version";
+            program = with pkgs; "${
+                (writeShellScriptBin "test.sh" ''
+                  ${loki.overrideAttrs(old: { doCheck = true; })}/bin/loki --version
+                '')
+              }/bin/test.sh";
           };
 
           loki = {

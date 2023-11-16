@@ -1,4 +1,21 @@
 { pkgs, version, imageTag }:
+let
+  lambda-promtail-gomod = pkgs.buildGoModule {
+    inherit version;
+    pname = "lambda-promtail";
+
+    src = ./../../tools/lambda-promtail;
+    vendorSha256 = "11yNeQb4k5/w0+r+LJOmjXUQRaWvWSXqM+zMHtMVxY8=";
+
+    doCheck = false;
+
+    installPhase = ''
+      runHook preInstall
+      cp -r --reflink=auto vendor $out
+      runHook postInstall
+    '';
+  };
+in
 pkgs.stdenv.mkDerivation {
   inherit version;
 
@@ -37,6 +54,9 @@ pkgs.stdenv.mkDerivation {
   buildPhase = ''
     export GOCACHE=$TMPDIR/go-cache
     export GOMODCACHE=$TMPDIR/gomodcache
+    export GOPROXY=off
+
+    cp -r ${lambda-promtail-gomod} tools/lambda-promtail/vendor
     make clean loki
   '';
 
@@ -45,6 +65,8 @@ pkgs.stdenv.mkDerivation {
     export GOCACHE=$TMPDIR/go-cache
     export GOMODCACHE=$TMPDIR/gomodcache
     export GOLANGCI_LINT_CACHE=$TMPDIR/go-cache
+    export GOPROXY=off
+
     make lint test
   '';
 
