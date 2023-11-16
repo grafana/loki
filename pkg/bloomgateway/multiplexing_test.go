@@ -28,6 +28,7 @@ func TestTask(t *testing.T) {
 func TestTaskMergeIterator(t *testing.T) {
 	// Thu Nov 09 2023 10:56:50 UTC
 	ts := model.TimeFromUnix(1699523810)
+	day := getDayTime(ts)
 	tenant := "fake"
 
 	t.Run("empty requests result in empty iterator", func(t *testing.T) {
@@ -55,7 +56,7 @@ func TestTaskMergeIterator(t *testing.T) {
 		t3, _, _, err := NewTask(tenant, r3)
 		require.NoError(t, err)
 
-		it := newTaskMergeIterator(t1, t2, t3)
+		it := newTaskMergeIterator(day, t1, t2, t3)
 		require.NotNil(t, it.heap)
 		// nothing to iterate over
 		require.False(t, it.Next())
@@ -101,7 +102,7 @@ func TestTaskMergeIterator(t *testing.T) {
 		t3, _, _, err := NewTask(tenant, r3)
 		require.NoError(t, err)
 
-		it := newTaskMergeIterator(t1, t2, t3)
+		it := newTaskMergeIterator(day, t1, t2, t3)
 		require.NotNil(t, it.heap)
 
 		// first item
@@ -169,7 +170,7 @@ func TestTaskMergeIterator(t *testing.T) {
 		t3, _, _, err := NewTask(tenant, r3)
 		require.NoError(t, err)
 
-		it := newTaskMergeIterator(t1, t2, t3)
+		it := newTaskMergeIterator(day, t1, t2, t3)
 		require.NotNil(t, it.heap)
 
 		checksums := []uint32{100, 200, 300}

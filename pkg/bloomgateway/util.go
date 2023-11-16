@@ -14,7 +14,34 @@ type IndexedValue[T any] struct {
 	val T
 }
 
-// SliceIterWithIndex implements v1.PeekingIterator
+type IterWithIndex[T any] struct {
+	v1.PeekingIterator[T]
+	zero  T // zero value of T
+	cache IndexedValue[T]
+}
+
+func (it *IterWithIndex[T]) At() IndexedValue[T] {
+	it.cache.val = it.PeekingIterator.At()
+	return it.cache
+}
+
+func (it *IterWithIndex[T]) Peek() (IndexedValue[T], bool) {
+	peek, ok := it.PeekingIterator.Peek()
+	if !ok {
+		it.cache.val = it.zero
+		return it.cache, false
+	}
+	it.cache.val = peek
+	return it.cache, true
+}
+
+func NewIterWithIndex[T any](iter v1.PeekingIterator[T], idx int) v1.PeekingIterator[IndexedValue[T]] {
+	return &IterWithIndex[T]{
+		PeekingIterator: iter,
+		cache:           IndexedValue[T]{idx: idx},
+	}
+}
+
 type SliceIterWithIndex[T any] struct {
 	xs    []T // source slice
 	pos   int // position within the slice
@@ -45,7 +72,7 @@ func (it *SliceIterWithIndex[T]) Peek() (IndexedValue[T], bool) {
 	return it.cache, true
 }
 
-func NewIterWithIndex[T any](xs []T, idx int) v1.PeekingIterator[IndexedValue[T]] {
+func NewSliceIterWithIndex[T any](xs []T, idx int) v1.PeekingIterator[IndexedValue[T]] {
 	return &SliceIterWithIndex[T]{
 		xs:    xs,
 		pos:   -1,
@@ -110,6 +137,10 @@ func filterRequestForDay(r *logproto.FilterChunkRefRequest, day time.Time) *logp
 	}
 }
 
+// TODO(chaudum): Fix Through time calculation
+// getFromThrough assumes a list of ShortRefs sorted by From time
+// However, it does also assume that the last item has the highest
+// Through time, which might not be the case!
 func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 	if len(refs) == 0 {
 		return model.Earliest, model.Latest

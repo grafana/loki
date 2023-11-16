@@ -1,6 +1,7 @@
 package bloomgateway
 
 import (
+	"sort"
 	"time"
 
 	"github.com/oklog/ulid"
@@ -8,6 +9,10 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+)
+
+const (
+	Day = 24 * time.Hour
 )
 
 // Task is the data structure that is enqueued to the internal queue and dequeued by query workers
@@ -60,6 +65,80 @@ func (t Task) CopyWithRequest(req *logproto.FilterChunkRefRequest) Task {
 	}
 }
 
+type filterGroupedChunkRefsByDay struct {
+	day time.Time
+}
+
+func (cf filterGroupedChunkRefsByDay) contains(a *logproto.GroupedChunkRefs) bool {
+	from, through := getFromThrough(a.Refs)
+	if from.Time().After(cf.day.Add(Day)) || through.Time().Before(cf.day) {
+		return false
+	}
+	return true
+}
+
+func (cf filterGroupedChunkRefsByDay) filter(a *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
+	min := sort.Search(len(a.Refs), func(i int) bool {
+		start := a.Refs[i].From.Time()
+		return start.Compare(cf.day) >= 0 && start.Compare(cf.day.Add(Day)) < 0
+	})
+	max := sort.Search(len(a.Refs), func(i int) bool {
+		start := a.Refs[i].From.Time()
+		return start.Compare(cf.day.Add(Day)) >= 0
+	})
+	return &logproto.GroupedChunkRefs{
+		Tenant:      a.Tenant,
+		Fingerprint: a.Fingerprint,
+		Refs:        a.Refs[min:max],
+	}
+}
+
+func (t Task) ChunkIterForDay(day time.Time) v1.PeekingIterator[*logproto.GroupedChunkRefs] {
+	cf := filterGroupedChunkRefsByDay{day: day}
+	iter := &FilterIter[*logproto.GroupedChunkRefs]{
+		iter:      v1.NewSliceIter(t.Request.Refs),
+		predicate: cf.contains,
+		transform: cf.filter,
+	}
+	return v1.NewPeekingIter[*logproto.GroupedChunkRefs](iter)
+}
+
+type Predicate[T any] func(a T) bool
+type Transform[T any] func(a T) T
+
+type FilterIter[T any] struct {
+	iter      v1.Iterator[T]
+	predicate Predicate[T]
+	transform Transform[T]
+	cache     T
+	zero      T // zero value of the return type of Next()
+}
+
+func (it *FilterIter[T]) Next() bool {
+	next := it.iter.Next()
+	if !next {
+		it.cache = it.zero
+		return false
+	}
+	for next && !it.predicate(it.iter.At()) {
+		next = it.iter.Next()
+		if !next {
+			it.cache = it.zero
+			return false
+		}
+	}
+	it.cache = it.transform(it.iter.At())
+	return true
+}
+
+func (it *FilterIter[T]) At() T {
+	return it.cache
+}
+
+func (it *FilterIter[T]) Err() error {
+	return nil
+}
+
 // FilterRequest extends v1.Request with an error channel
 type FilterRequest struct {
 	v1.Request
@@ -71,13 +150,15 @@ type taskMergeIterator struct {
 	curr  FilterRequest
 	heap  *v1.HeapIterator[IndexedValue[*logproto.GroupedChunkRefs]]
 	tasks []Task
+	day   time.Time
 	err   error
 }
 
-func newTaskMergeIterator(tasks ...Task) *taskMergeIterator {
+func newTaskMergeIterator(day time.Time, tasks ...Task) *taskMergeIterator {
 	it := &taskMergeIterator{
 		tasks: tasks,
 		curr:  FilterRequest{},
+		day:   day,
 	}
 	it.init()
 	return it
@@ -86,7 +167,8 @@ func newTaskMergeIterator(tasks ...Task) *taskMergeIterator {
 func (it *taskMergeIterator) init() {
 	sequences := make([]v1.PeekingIterator[IndexedValue[*logproto.GroupedChunkRefs]], 0, len(it.tasks))
 	for i := range it.tasks {
-		sequences = append(sequences, NewIterWithIndex(it.tasks[i].Request.Refs, i))
+		iter := NewIterWithIndex(it.tasks[i].ChunkIterForDay(it.day), i)
+		sequences = append(sequences, iter)
 	}
 	it.heap = v1.NewHeapIterator(
 		func(i, j IndexedValue[*logproto.GroupedChunkRefs]) bool {

@@ -13,7 +13,7 @@ import (
 func TestSliceIterWithIndex(t *testing.T) {
 	t.Run("SliceIterWithIndex implements v1.PeekingIterator interface", func(t *testing.T) {
 		xs := []string{"a", "b", "c"}
-		it := NewIterWithIndex(xs, 123)
+		it := NewSliceIterWithIndex(xs, 123)
 
 		// peek at first item
 		p, ok := it.Peek()

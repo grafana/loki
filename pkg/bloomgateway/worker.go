@@ -143,11 +143,8 @@ func (w *worker) running(ctx context.Context) error {
 				if fromDay.Equal(throughDay) {
 					tasksPerDay[fromDay] = append(tasksPerDay[fromDay], task)
 				} else {
-					// split task into separate tasks per day
 					for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
-						r := filterRequestForDay(task.Request, i)
-						t := task.CopyWithRequest(r)
-						tasksPerDay[i] = append(tasksPerDay[i], t)
+						tasksPerDay[i] = append(tasksPerDay[i], task)
 					}
 				}
 			}
@@ -156,7 +153,7 @@ func (w *worker) running(ctx context.Context) error {
 				logger := log.With(w.logger, "day", day)
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
-				it := newTaskMergeIterator(tasks...)
+				it := newTaskMergeIterator(day, tasks...)
 
 				fingerprints = fingerprints[:0]
 				for it.Next() {
@@ -204,13 +201,13 @@ func (w *worker) running(ctx context.Context) error {
 				}
 
 				hasNext := it.Next()
-				for _, blockQuerier := range blockQueriers {
+				for i, blockQuerier := range blockQueriers {
 					requests = requests[:0]
 					for hasNext && it.At().Fp <= blockQuerier.MaxFp {
 						requests = append(requests, it.At().Request)
 						hasNext = it.Next()
 					}
-					// level.Debug(logger).Log("msg", "processing block", "block", i+1, "of", len(bqs), "requests", len(requests))
+					level.Debug(logger).Log("msg", "processing block", "block", i+1, "of", len(blockQueriers), "requests", len(requests))
 					// no fingerprints in the fingerprint range of the current block
 					if len(requests) == 0 {
 						continue
