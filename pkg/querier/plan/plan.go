@@ -57,5 +57,14 @@ func (t *QueryPlan) UnmarshalJSON(data []byte) error {
 }
 
 func (t QueryPlan) Equal(other QueryPlan) bool {
-	return syntax.Equal(t.AST, other.AST)
+	left, err := t.Marshal()
+	if err != nil {
+		return false
+	}
+
+	right, err := other.Marshal()
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(left, right)
 }

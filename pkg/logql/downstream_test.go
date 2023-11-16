@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -79,7 +80,11 @@ func TestMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			qry := regular.Query(params)
+
+			parsed, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
+
+			qry := regular.Query(params, parsed)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
@@ -404,8 +409,11 @@ func TestRangeMappingEquivalence(t *testing.T) {
 				nil,
 			)
 
+			parsed, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
+
 			// Regular engine
-			qry := regularEngine.Query(params)
+			qry := regularEngine.Query(params, parsed)
 			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
 

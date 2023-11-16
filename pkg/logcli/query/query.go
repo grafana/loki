@@ -477,7 +477,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
-		))
+		), parsed)
 	}
 
 	// execute the query

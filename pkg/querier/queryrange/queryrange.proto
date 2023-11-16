@@ -48,7 +48,7 @@ message LokiInstantRequest {
   logproto.Direction direction = 4;
   string path = 5;
   repeated string shards = 6 [(gogoproto.jsontag) = "shards"];
-  bytes plan = 6 [
+  bytes plan = 7 [
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"
   ];
 }

@@ -80,7 +80,12 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		nil,
 	)
 
-	query := f.engine.Query(params)
+	parsed, err := syntax.ParseExpr(q)
+	if err != nil {
+		return nil, err
+	}
+
+	query := f.engine.Query(params, parsed)
 
 	result, err := query.Exec(ctx)
 	if err != nil {

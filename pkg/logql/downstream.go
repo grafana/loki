@@ -67,8 +67,8 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.E
 		logger:    ng.logger,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
-		queryExpr:     mapped,
-		limits: ng.limits,
+		queryExpr: mapped,
+		limits:    ng.limits,
 	}
 }
 

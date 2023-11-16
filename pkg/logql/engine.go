@@ -163,7 +163,7 @@ func (ng *Engine) Query(params Params, parsedQuery syntax.Expr) Query {
 		logger:       ng.logger,
 		params:       params,
 		evaluator:    ng.evaluatorFactory,
-		queryExpr:        parsedQuery,
+		queryExpr:    parsedQuery,
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,

@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -427,7 +428,12 @@ func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through t
 
 	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
 
-	v, err := t.engine.Query(params).Exec(ctx)
+	parsed, err := syntax.ParseExpr(queryStr)
+	if err != nil {
+		return nil, err
+	}
+
+	v, err := t.engine.Query(params, parsed).Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
