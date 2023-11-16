@@ -236,6 +236,10 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 			_ = Data.Close()
 		}(block.BloomData)
 
+		defer func(Data io.ReadCloser) {
+			_ = Data.Close()
+		}(block.IndexData)
+
 		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
 		if err != nil {
 			return fmt.Errorf("error updloading block file: %w", err)
