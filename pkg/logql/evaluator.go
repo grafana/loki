@@ -125,6 +125,15 @@ func (p ParamsWithExpressionOverride) GetExpression() syntax.Expr {
 	return p.ExpressionOverride
 }
 
+type ParamsWithShardsOverride struct {
+	Params
+	ShardsOverride []string
+}
+
+func (p ParamsWithShardsOverride) Shards() []string {
+	return p.ShardsOverride
+}
+
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool

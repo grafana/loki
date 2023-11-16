@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
@@ -187,7 +188,6 @@ type Downstreamable interface {
 
 type DownstreamQuery struct {
 	Params Params
-	Shards Shards
 }
 
 // Downstreamer is an interface for deferring responsibility for query execution.
@@ -264,8 +264,10 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			shards = append(shards, *e.shard)
 		}
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
-			Shards: shards,
+			Params: ParamsWithShardsOverride{
+				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
+				ShardsOverride: Shards(shards).Encode(),
+			},
 		}})
 		if err != nil {
 			return nil, err
@@ -280,7 +282,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr},
 			}
 			if shard := cur.DownstreamSampleExpr.shard; shard != nil {
-				qry.Shards = Shards{*shard}
+				qry.Params = ParamsWithShardsOverride{Params: qry.Params, ShardsOverride: Shards{*shard}.Encode()}
 			}
 			queries = append(queries, qry)
 			cur = cur.next
@@ -326,13 +328,15 @@ func (ev *DownstreamEvaluator) NewIterator(
 			shards = append(shards, *e.shard)
 		}
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.LogSelectorExpr},
-			Shards: shards,
+			Params: ParamsWithShardsOverride{
+				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.LogSelectorExpr},
+				ShardsOverride: shards.Encode(),
+			},
 		}})
 		if err != nil {
 			return nil, err
 		}
-		return ResultIterator(results[0], params)
+		return ResultIterator(results[0], params.Direction())
 
 	case *ConcatLogSelectorExpr:
 		cur := e
@@ -342,7 +346,7 @@ func (ev *DownstreamEvaluator) NewIterator(
 				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr},
 			}
 			if shard := cur.DownstreamLogSelectorExpr.shard; shard != nil {
-				qry.Shards = Shards{*shard}
+				qry.Params = ParamsWithShardsOverride{Params: qry.Params, ShardsOverride: Shards{*shard}.Encode()}
 			}
 			queries = append(queries, qry)
 			cur = cur.next
@@ -355,7 +359,7 @@ func (ev *DownstreamEvaluator) NewIterator(
 
 		xs := make([]iter.EntryIterator, 0, len(results))
 		for i, res := range results {
-			iter, err := ResultIterator(res, params)
+			iter, err := ResultIterator(res, params.Direction())
 			if err != nil {
 				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract Iterator",
@@ -444,10 +448,10 @@ func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator
 }
 
 // ResultIterator coerces a downstream streams result into an iter.EntryIterator
-func ResultIterator(res logqlmodel.Result, params Params) (iter.EntryIterator, error) {
+func ResultIterator(res logqlmodel.Result, direction logproto.Direction) (iter.EntryIterator, error) {
 	streams, ok := res.Data.(logqlmodel.Streams)
 	if !ok {
 		return nil, fmt.Errorf("unexpected type (%s) for ResultIterator; expected %s", res.Data.Type(), logqlmodel.ValueTypeStreams)
 	}
-	return iter.NewStreamsIterator(streams, params.Direction()), nil
+	return iter.NewStreamsIterator(streams, direction), nil
 }
