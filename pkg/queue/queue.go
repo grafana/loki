@@ -59,6 +59,7 @@ type RequestQueue struct {
 	stopped bool
 
 	metrics *Metrics
+	pool    *BufferPool[Request]
 }
 
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
@@ -66,6 +67,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, met
 		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedConsumers: atomic.NewInt32(0),
 		metrics:            metrics,
+		pool:               NewBufferPool[Request](1<<6, 1<<10, 2), // Buckets are [64, 128, 256, 512, 1024].
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -132,8 +134,11 @@ func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consume
 	defer cancel()
 
 	var idx QueueIndex
-	// TODO(chaudum): Use a pool
-	items := make([]Request, 0, maxItems)
+
+	items := q.pool.Get(maxItems)
+	defer func() {
+		q.pool.Put(items)
+	}()
 
 	for {
 		item, newIdx, err := q.Dequeue(dequeueCtx, last, consumerID)
