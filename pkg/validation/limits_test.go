@@ -179,7 +179,7 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 				URL:           &promConfig.URL{URL: remoteURL},
 				Headers:       map[string]string{"a": "b"},
 				RemoteTimeout: model.Duration(30 * time.Second),
-				QueueConfig:   defaultQueueConfig(),
+				QueueConfig:   config.DefaultQueueConfig,
 			},
 		},
 		StreamRetention: []StreamRetention{
@@ -368,18 +368,5 @@ func TestLimitsValidation(t *testing.T) {
 	} {
 		limits := Limits{DeletionMode: tc.mode}
 		require.True(t, errors.Is(limits.Validate(), tc.expected))
-	}
-}
-
-func defaultQueueConfig() config.QueueConfig {
-	return config.QueueConfig{
-		Capacity:          10000,
-		MaxShards:         50,
-		MinShards:         1,
-		MaxSamplesPerSend: 2000,
-		BatchSendDeadline: model.Duration(5 * time.Second),
-		MinBackoff:        model.Duration(30 * time.Millisecond),
-		MaxBackoff:        model.Duration(5 * time.Second),
-		RetryOnRateLimit:  false,
 	}
 }
