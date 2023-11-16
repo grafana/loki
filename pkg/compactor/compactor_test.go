@@ -21,6 +21,7 @@ import (
 )
 
 const indexTablePrefix = "table_"
+const localhost = "localhost"
 
 func dayFromTime(t model.Time) config.DayTime {
 	parsed, err := time.Parse("2006-01-02", t.Time().In(time.UTC).Format("2006-01-02"))
@@ -41,6 +42,7 @@ func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.Ob
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
 	cfg.RetentionEnabled = false
+	cfg.CompactorRing.InstanceAddr = localhost
 
 	if loopbackIFace, err := loki_net.LoopbackInterfaceName(); err == nil {
 		cfg.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorRing.InstanceInterfaceNames, loopbackIFace)

@@ -606,6 +606,7 @@ func Test_DuplicateCount(t *testing.T) {
 			_, ctx := stats.NewContext(context.Background())
 			it := NewMergeEntryIterator(ctx, test.iters, test.direction)
 			defer it.Close()
+			//nolint:revive
 			for it.Next() {
 			}
 			require.Equal(t, test.expectedDuplicates, stats.FromContext(ctx).Result(0, 0, 0).TotalDuplicates())
