@@ -355,7 +355,7 @@ func TestInstanceDownstream(t *testing.T) {
 	queries := []logql.DownstreamQuery{
 		{
 			Params: logql.ParamsWithShardsOverride{
-				Params: logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
+				Params:         logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
 				ShardsOverride: logql.Shards{{Shard: 0, Of: 2}}.Encode(),
 			},
 		},
