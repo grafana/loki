@@ -36,6 +36,7 @@
 * [10727](https://github.com/grafana/loki/pull/10727) **sandeepsukhani** Native otlp ingestion support
 * [11051](https://github.com/grafana/loki/pull/11051) Refactor to not use global logger in modules
 * [10956](https://github.com/grafana/loki/pull/10956) **jeschkies** do not wrap requests but send pure Protobuf from frontend v2 via scheduler to querier when `-frontend.encoding=protobuf`.
+* [11105](https://github.com/grafana/loki/pull/11105) **shantanualsi** Remove deprecated `ruler_remote_write_*` configs from `limit_config` in favour of `remote_write_config`
 
 ##### Fixes
 * [11074](https://github.com/grafana/loki/pull/11074) **hainenber** Fix panic in lambda-promtail due to mishandling of empty DROP_LABELS env var.
