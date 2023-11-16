@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -426,14 +425,12 @@ func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Directi
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
-
-	parsed, err := syntax.ParseExpr(queryStr)
+	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	v, err := t.engine.Query(params, parsed).Exec(ctx)
+	v, err := t.engine.Query(params).Exec(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -39,6 +39,7 @@ type Params interface {
 	Limit() uint32
 	Direction() logproto.Direction
 	Shards() []string
+	GetExpression() syntax.Expr // TODO: rename to GetPlan
 }
 
 func NewLiteralParams(
@@ -48,8 +49,8 @@ func NewLiteralParams(
 	direction logproto.Direction,
 	limit uint32,
 	shards []string,
-) LiteralParams {
-	return LiteralParams{
+) (LiteralParams, error) {
+	p := LiteralParams{
 		qs:        qs,
 		start:     start,
 		end:       end,
@@ -59,6 +60,10 @@ func NewLiteralParams(
 		limit:     limit,
 		shards:    shards,
 	}
+	var err error
+	p.queryExpr, err = syntax.ParseExpr(qs)
+	return p, err
+
 }
 
 // LiteralParams impls Params
@@ -69,12 +74,16 @@ type LiteralParams struct {
 	direction      logproto.Direction
 	limit          uint32
 	shards         []string
+	queryExpr      syntax.Expr
 }
 
 func (p LiteralParams) Copy() LiteralParams { return p }
 
 // String impls Params
 func (p LiteralParams) Query() string { return p.qs }
+
+// GetExpression impls Params
+func (p LiteralParams) GetExpression() syntax.Expr { return p.queryExpr }
 
 // Start impls Params
 func (p LiteralParams) Start() time.Time { return p.start }
@@ -103,6 +112,17 @@ func GetRangeType(q Params) QueryRangeType {
 		return InstantType
 	}
 	return RangeType
+}
+
+// ParamsWithMappedExpression overrides the query expression so that the query
+// string and the expression can differ. This is useful for sharding etc.
+type ParamsWithMappedExpression struct {
+	Params
+	Mapped syntax.Expr
+}
+
+func (p ParamsWithMappedExpression) GetExpression() syntax.Expr {
+	return p.Mapped
 }
 
 // Sortable logql contain sort or sort_desc.

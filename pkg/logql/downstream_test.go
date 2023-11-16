@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -70,7 +69,7 @@ func TestMappingEquivalence(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
-			params := NewLiteralParams(
+			params, err := NewLiteralParams(
 				tc.query,
 				start,
 				end,
@@ -80,18 +79,16 @@ func TestMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-
-			parsed, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 
-			qry := regular.Query(params, parsed)
+			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
 			_, _, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
-			shardedQry := sharded.Query(ctx, params, mapped)
+			shardedQry := sharded.Query(ctx, ParamsWithMappedExpression{Params: params, Mapped: mapped})
 
 			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
@@ -140,7 +137,7 @@ func TestShardCounter(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
-			params := NewLiteralParams(
+			params, err := NewLiteralParams(
 				tc.query,
 				start,
 				end,
@@ -150,13 +147,14 @@ func TestShardCounter(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
+			require.NoError(t, err)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
 			noop, _, mapped, err := mapper.Parse(tc.query)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
-			shardedQry := sharded.Query(ctx, params, mapped)
+			shardedQry := sharded.Query(ctx, ParamsWithMappedExpression{Params: params, Mapped: mapped})
 
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.Nil(t, err)
@@ -398,7 +396,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			params := NewLiteralParams(
+			params, err := NewLiteralParams(
 				tc.query,
 				start,
 				end,
@@ -408,12 +406,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-
-			parsed, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 
 			// Regular engine
-			qry := regularEngine.Query(params, parsed)
+			qry := regularEngine.Query(params)
 			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
 
@@ -425,7 +421,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 
-			rangeQry := downstreamEngine.Query(ctx, params, rangeExpr)
+			params.queryExpr = rangeExpr
+			rangeQry := downstreamEngine.Query(ctx, params)
 			rangeRes, err := rangeQry.Exec(ctx)
 			require.Nil(t, err)
 

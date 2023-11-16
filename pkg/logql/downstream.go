@@ -62,12 +62,11 @@ func NewDownstreamEngine(opts EngineOpts, downstreamable Downstreamable, limits 
 func (ng *DownstreamEngine) Opts() EngineOpts { return ng.opts }
 
 // Query constructs a Query
-func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.Expr) Query {
+func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
 	return &query{
 		logger:    ng.logger,
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
-		queryExpr: mapped,
 		limits:    ng.limits,
 	}
 }
@@ -187,7 +186,6 @@ type Downstreamable interface {
 }
 
 type DownstreamQuery struct {
-	Expr   syntax.Expr
 	Params Params
 	Shards Shards
 }
@@ -266,8 +264,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			shards = append(shards, *e.shard)
 		}
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Expr:   e.SampleExpr,
-			Params: params,
+			Params: ParamsWithMappedExpression{Params: params, Mapped: e.SampleExpr},
 			Shards: shards,
 		}})
 		if err != nil {
@@ -280,8 +277,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		var queries []DownstreamQuery
 		for cur != nil {
 			qry := DownstreamQuery{
-				Expr:   cur.DownstreamSampleExpr.SampleExpr,
-				Params: params,
+				Params: ParamsWithMappedExpression{Params: params, Mapped: cur.DownstreamSampleExpr.SampleExpr},
 			}
 			if shard := cur.DownstreamSampleExpr.shard; shard != nil {
 				qry.Shards = Shards{*shard}
@@ -302,7 +298,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract StepEvaluator",
 					"err", err,
-					"expr", queries[i].Expr.String(),
+					"expr", queries[i].Params.GetExpression().String(),
 				)
 				return nil, err
 			}
@@ -330,8 +326,7 @@ func (ev *DownstreamEvaluator) NewIterator(
 			shards = append(shards, *e.shard)
 		}
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Expr:   e.LogSelectorExpr,
-			Params: params,
+			Params: ParamsWithMappedExpression{Params: params, Mapped: e.LogSelectorExpr},
 			Shards: shards,
 		}})
 		if err != nil {
@@ -344,8 +339,7 @@ func (ev *DownstreamEvaluator) NewIterator(
 		var queries []DownstreamQuery
 		for cur != nil {
 			qry := DownstreamQuery{
-				Expr:   cur.DownstreamLogSelectorExpr.LogSelectorExpr,
-				Params: params,
+				Params: ParamsWithMappedExpression{Params: params, Mapped: cur.DownstreamLogSelectorExpr.LogSelectorExpr},
 			}
 			if shard := cur.DownstreamLogSelectorExpr.shard; shard != nil {
 				qry.Shards = Shards{*shard}
@@ -366,7 +360,7 @@ func (ev *DownstreamEvaluator) NewIterator(
 				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract Iterator",
 					"err", err,
-					"expr", queries[i].Expr.String(),
+					"expr", queries[i].Params.GetExpression().String(),
 				)
 			}
 			xs = append(xs, iter)

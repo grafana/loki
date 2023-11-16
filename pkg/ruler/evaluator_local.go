@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -29,7 +28,7 @@ func NewLocalEvaluator(engine *logql.Engine, logger log.Logger) (*LocalEvaluator
 }
 
 func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		qs,
 		now,
 		now,
@@ -39,13 +38,11 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 		0,
 		nil,
 	)
-
-	parsed, err := syntax.ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}
 
-	q := l.engine.Query(params, parsed)
+	q := l.engine.Query(params)
 	res, err := q.Exec(ctx)
 	if err != nil {
 		return nil, err

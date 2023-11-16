@@ -89,7 +89,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, fmt.Errorf("expected *LokiInstantRequest")
 	}
 
-	query := s.ng.Query(ctx, params, parsed)
+	query := s.ng.Query(ctx, logql.ParamsWithMappedExpression{Params: params, Mapped: parsed})
 
 	res, err := query.Exec(ctx)
 	if err != nil {

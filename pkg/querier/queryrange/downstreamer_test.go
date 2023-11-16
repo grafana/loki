@@ -223,7 +223,7 @@ func TestInstanceFor(t *testing.T) {
 	}
 	in := mkIn()
 	newParams := func() logql.Params {
-		return logql.NewLiteralParams(
+		params, err := logql.NewLiteralParams(
 			"",
 			time.Now(),
 			time.Now(),
@@ -233,6 +233,8 @@ func TestInstanceFor(t *testing.T) {
 			1000,
 			nil,
 		)
+		require.NoError(t, err)
+		return params
 	}
 
 	var queries []logql.DownstreamQuery
@@ -309,7 +311,7 @@ func TestInstanceFor(t *testing.T) {
 }
 
 func TestInstanceDownstream(t *testing.T) {
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		"",
 		time.Now(),
 		time.Now(),
@@ -320,7 +322,7 @@ func TestInstanceDownstream(t *testing.T) {
 		nil,
 	)
 	expr, err := syntax.ParseExpr(`{foo="bar"}`)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	expectedResp := func() *LokiResponse {
 		return &LokiResponse{
@@ -340,8 +342,7 @@ func TestInstanceDownstream(t *testing.T) {
 
 	queries := []logql.DownstreamQuery{
 		{
-			Expr:   expr,
-			Params: params,
+			Params: logql.ParamsWithMappedExpression{Params: params, Mapped: expr},
 			Shards: logql.Shards{{Shard: 0, Of: 2}},
 		},
 	}
@@ -484,9 +485,10 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 		x = append(x, *s)
 	}
 	// dummy params. Only need to populate direction & limit
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 	)
+	require.NoError(t, err)
 
 	acc := newDownstreamAccumulator(params, 1)
 	result := logqlmodel.Result{
@@ -542,9 +544,10 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			}
 
 			// dummy params. Only need to populate direction & limit
-			params := logql.NewLiteralParams(
+			params, err := logql.NewLiteralParams(
 				"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 			)
+			require.NoError(t, err)
 
 			acc := newDownstreamAccumulator(params, 1)
 			for i := 0; i < nQueries; i++ {

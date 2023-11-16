@@ -275,7 +275,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Interval:  rangeQuery.Interval.Milliseconds(),
 			Path:      r.URL.Path,
 			Shards:    rangeQuery.Shards,
-			Plan:      &plan.QueryPlan{
+			Plan: &plan.QueryPlan{
 				AST: parsed,
 			},
 		}, nil
@@ -297,7 +297,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			TimeTs:    req.Ts.UTC(),
 			Path:      r.URL.Path,
 			Shards:    req.Shards,
-			Plan:      &plan.QueryPlan{
+			Plan: &plan.QueryPlan{
 				AST: parsed,
 			},
 		}, nil
@@ -1442,6 +1442,10 @@ func (p paramsRangeWrapper) Query() string {
 	return p.GetQuery()
 }
 
+func (p paramsRangeWrapper) GetExpression() syntax.Expr {
+	return p.LokiRequest.Plan.AST
+}
+
 func (p paramsRangeWrapper) Start() time.Time {
 	return p.GetStartTs()
 }
@@ -1472,6 +1476,10 @@ func (p paramsInstantWrapper) Query() string {
 	return p.GetQuery()
 }
 
+func (p paramsInstantWrapper) GetExpression() syntax.Expr {
+	return p.LokiInstantRequest.Plan.AST
+}
+
 func (p paramsInstantWrapper) Start() time.Time {
 	return p.LokiInstantRequest.GetTimeTs()
 }
@@ -1498,6 +1506,10 @@ type paramsSeriesWrapper struct {
 
 func (p paramsSeriesWrapper) Query() string {
 	return p.GetQuery()
+}
+
+func (p paramsSeriesWrapper) GetExpression() syntax.Expr {
+	return nil
 }
 
 func (p paramsSeriesWrapper) Start() time.Time {
@@ -1528,6 +1540,10 @@ func (p paramsLabelWrapper) Query() string {
 	return p.GetQuery()
 }
 
+func (p paramsLabelWrapper) GetExpression() syntax.Expr {
+	return nil
+}
+
 func (p paramsLabelWrapper) Start() time.Time {
 	return p.LabelRequest.GetStartTs()
 }
@@ -1554,6 +1570,10 @@ type paramsStatsWrapper struct {
 
 func (p paramsStatsWrapper) Query() string {
 	return p.GetQuery()
+}
+
+func (p paramsStatsWrapper) GetExpression() syntax.Expr {
+	return nil // TODO: use parsed query
 }
 
 func (p paramsStatsWrapper) Start() time.Time {

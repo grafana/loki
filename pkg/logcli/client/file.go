@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	logqllog "github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -70,7 +69,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
 
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		q,
 		t, t,
 		0,
@@ -79,13 +78,11 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		uint32(limit),
 		nil,
 	)
-
-	parsed, err := syntax.ParseExpr(q)
 	if err != nil {
 		return nil, err
 	}
 
-	query := f.engine.Query(params, parsed)
+	query := f.engine.Query(params)
 
 	result, err := query.Exec(ctx)
 	if err != nil {
@@ -112,7 +109,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
 
-	params := logql.NewLiteralParams(
+	params, err := logql.NewLiteralParams(
 		queryStr,
 		start,
 		end,
@@ -122,13 +119,11 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		uint32(limit),
 		nil,
 	)
-
-	parsed, err := syntax.ParseExpr(queryStr)
 	if err != nil {
 		return nil, err
 	}
 
-	query := f.engine.Query(params, parsed)
+	query := f.engine.Query(params)
 
 	result, err := query.Exec(ctx)
 	if err != nil {

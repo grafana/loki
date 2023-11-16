@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -145,17 +144,9 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			limits.blockedQueries = test.blocked
 
-			parsed, err := syntax.ParseExpr(test.q)
+			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil)
 			require.NoError(t, err)
-
-			q := eng.Query(LiteralParams{
-				qs:        test.q,
-				start:     time.Unix(0, 0),
-				end:       time.Unix(100000, 0),
-				step:      60 * time.Second,
-				direction: logproto.FORWARD,
-				limit:     1000,
-			}, parsed)
+			q := eng.Query(params)
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 
 			if test.expectedErr == nil {

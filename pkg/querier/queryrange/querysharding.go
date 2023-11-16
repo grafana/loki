@@ -217,7 +217,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	default:
 		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 	}
-	query := ast.ng.Query(ctx, params, parsed)
+	query := ast.ng.Query(ctx, logql.ParamsWithMappedExpression{Params: params, Mapped: parsed})
 
 	res, err := query.Exec(ctx)
 	if err != nil {
