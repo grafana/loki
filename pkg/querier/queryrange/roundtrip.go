@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/constants"
 	logutil "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/queryutil"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -247,8 +248,19 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		queryHash := logql.HashedQuery(op.Query)
-		level.Info(logger).Log("msg", "executing query", "type", "range", "query", op.Query, "length", op.EndTs.Sub(op.StartTs), "step", op.Step, "query_hash", queryHash)
+		queryHash := queryutil.HashedQuery(op.Query)
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "range",
+			"query", op.Query,
+			"start", op.StartTs.Format(time.RFC3339Nano),
+			"end", op.EndTs.Format(time.RFC3339Nano),
+			"start_delta", time.Since(op.StartTs),
+			"end_delta", time.Since(op.EndTs),
+			"length", op.EndTs.Sub(op.StartTs),
+			"step", op.Step,
+			"query_hash", queryHash,
+		)
 
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
@@ -296,7 +308,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		queryHash := logql.HashedQuery(op.Query)
+		queryHash := queryutil.HashedQuery(op.Query)
 		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", op.Query, "query_hash", queryHash)
 
 		switch expr.(type) {

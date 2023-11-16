@@ -24,11 +24,11 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/util/queryutil"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -60,7 +60,7 @@ type RulesLimits interface {
 // and passing an altered timestamp.
 func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		hash := logql.HashedQuery(qs)
+		hash := queryutil.HashedQuery(qs)
 		detail := rules.FromOriginContext(ctx)
 		detailLog := log.With(logger, "rule_name", detail.Name, "rule_type", detail.Kind, "query", qs, "query_hash", hash)
 
