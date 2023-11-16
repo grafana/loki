@@ -75,7 +75,8 @@ type MetaClient interface {
 type Block struct {
 	BlockRef
 
-	Data io.ReadCloser
+	IndexData io.ReadCloser
+	BloomData io.ReadCloser
 }
 
 type BlockClient interface {
@@ -210,8 +211,8 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 				return fmt.Errorf("error while fetching object from storage: %w", err)
 			}
 			blocksChannel <- Block{
-				BlockRef: reference,
-				Data:     readCloser,
+				BlockRef:  reference,
+				BloomData: readCloser,
 			}
 			return nil
 		})
@@ -233,7 +234,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		block := blocks[idx]
 		defer func(Data io.ReadCloser) {
 			_ = Data.Close()
-		}(block.Data)
+		}(block.BloomData)
 
 		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
 		if err != nil {
@@ -241,7 +242,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
-		data, err := io.ReadAll(block.Data)
+		data, err := io.ReadAll(block.BloomData)
 		if err != nil {
 			return fmt.Errorf("error while reading object data: %w", err)
 		}

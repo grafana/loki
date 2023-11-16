@@ -226,7 +226,7 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 				if !ok {
 					return
 				}
-				blockData, err := io.ReadAll(block.Data)
+				blockData, err := io.ReadAll(block.BloomData)
 				require.NoError(t, err)
 				blocks[block.BlockRef.BlockPath] = string(blockData)
 
@@ -261,7 +261,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			},
 			IndexPath: uuid.New().String(),
 		},
-		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
+		BloomData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
 	}
 
 	blockForSecondFolderData := "data2"
@@ -278,7 +278,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			},
 			IndexPath: uuid.New().String(),
 		},
-		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
+		BloomData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
 	}
 
 	results, err := shipper.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
