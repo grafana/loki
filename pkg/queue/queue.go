@@ -132,6 +132,7 @@ func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consume
 	defer cancel()
 
 	var idx QueueIndex
+	// TODO(chaudum): Use a pool
 	items := make([]Request, 0, maxItems)
 
 	for {
