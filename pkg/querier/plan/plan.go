@@ -47,6 +47,11 @@ func (t QueryPlan) MarshalJSON() ([]byte, error) {
 }
 
 func (t *QueryPlan) UnmarshalJSON(data []byte) error {
+	// An empty query plan is ingored to be backwards compatible.
+	if len(data) == 0 {
+		return nil
+	}
+
 	expr, err := syntax.DecodeJSON(string(data))
 	if err != nil {
 		return err

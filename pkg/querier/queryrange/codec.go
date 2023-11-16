@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -259,6 +260,11 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
+		parsed, err := syntax.ParseExpr(rangeQuery.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiRequest{
 			Query:     rangeQuery.Query,
 			Limit:     rangeQuery.Limit,
@@ -269,12 +275,21 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Interval:  rangeQuery.Interval.Milliseconds(),
 			Path:      r.URL.Path,
 			Shards:    rangeQuery.Shards,
+			Plan:      &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, nil
 	case InstantQueryOp:
 		req, err := loghttp.ParseInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiInstantRequest{
 			Query:     req.Query,
 			Limit:     req.Limit,
@@ -282,6 +297,9 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			TimeTs:    req.Ts.UTC(),
 			Path:      r.URL.Path,
 			Shards:    req.Shards,
+			Plan:      &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(r)
