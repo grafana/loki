@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -224,7 +226,7 @@ func TestInstanceFor(t *testing.T) {
 	in := mkIn()
 	newParams := func() logql.Params {
 		params, err := logql.NewLiteralParams(
-			"",
+			`{app="foo"}`,
 			time.Now(),
 			time.Now(),
 			0,
@@ -282,22 +284,32 @@ func TestInstanceFor(t *testing.T) {
 		context.TODO(),
 		[]logql.DownstreamQuery{
 			{
-				Params: newParams(),
-				Shards: logql.Shards{
-					{Shard: 0, Of: 2},
+				Params: logql.ParamsWithShardsOverride{
+					Params: newParams(),
+					ShardsOverride: logql.Shards{
+						{Shard: 0, Of: 2},
+					}.Encode(),
 				},
 			},
 			{
-				Params: newParams(),
-				Shards: logql.Shards{
-					{Shard: 1, Of: 2},
+				Params: logql.ParamsWithShardsOverride{
+					Params: newParams(),
+					ShardsOverride: logql.Shards{
+						{Shard: 1, Of: 2},
+					}.Encode(),
 				},
 			},
 		},
 		func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
+			// Decode shard
+			s := strings.Split(qry.Params.Shards()[0], "_")
+			shard, err := strconv.Atoi(s[0])
+			if err != nil {
+				return logqlmodel.Result{}, err
+			}
 			return logqlmodel.Result{
 				Data: promql.Scalar{
-					V: float64(qry.Shards[0].Shard),
+					V: float64(shard),
 				},
 			}, nil
 		},
@@ -342,8 +354,10 @@ func TestInstanceDownstream(t *testing.T) {
 
 	queries := []logql.DownstreamQuery{
 		{
-			Params: logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
-			Shards: logql.Shards{{Shard: 0, Of: 2}},
+			Params: logql.ParamsWithShardsOverride{
+				Params: logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
+				ShardsOverride: logql.Shards{{Shard: 0, Of: 2}}.Encode(),
+			},
 		},
 	}
 
@@ -354,7 +368,7 @@ func TestInstanceDownstream(t *testing.T) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(params, queries[0].Shards).WithQuery(expr.String())
+			want = ParamsToLokiRequest(queries[0].Params).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},
@@ -486,7 +500,7 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 	}
 	// dummy params. Only need to populate direction & limit
 	params, err := logql.NewLiteralParams(
-		"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 	)
 	require.NoError(t, err)
 
@@ -545,7 +559,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 
 			// dummy params. Only need to populate direction & limit
 			params, err := logql.NewLiteralParams(
-				"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+				`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 			)
 			require.NoError(t, err)
 
