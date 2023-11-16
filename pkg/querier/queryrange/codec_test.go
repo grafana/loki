@@ -559,7 +559,13 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 	}
 	codec := RequestProtobufCodec{}
 	for i, queryTest := range queryTests {
-		u := &url.URL{Path: "/loki/api/v1/query_range"}
+		params := url.Values{
+			"query":     []string{`{app="foo"}`},
+		}
+		u := &url.URL{
+			Path: "/loki/api/v1/query_range",
+			RawQuery: params.Encode(),
+		}
 		httpReq := &http.Request{
 			Method:     "GET",
 			RequestURI: u.String(),
