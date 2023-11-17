@@ -689,9 +689,6 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 			s3Cfg = awsCfg.S3Config
 		}
 		if cfg.ThanosObjStore {
-			// Passing "s3" as the component name as currently it's not
-			// possible to get the component called this method
-			// TODO(JoaoBraveCoding) update compoent when bigger refactor happens
 			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjStoreConf, component, util_log.Logger, cfg.Hedging, reg)
 		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)

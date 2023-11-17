@@ -497,7 +497,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
 	oc, err := storage.NewObjectClient(
-		"log_cli_query",
+		"log-cli-query",
 		store,
 		conf.StorageConfig,
 		cm,

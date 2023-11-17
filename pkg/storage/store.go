@@ -293,7 +293,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 	}
 
-	idx, err := NewIndexClient(component, p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger, s.metricsNamespace)
+	idx, err := NewIndexClient(component, p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, s.registerer, indexClientLogger, s.metricsNamespace)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}

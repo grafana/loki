@@ -97,7 +97,7 @@ func main() {
 }
 
 func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMetrics storage.ClientMetrics, tableRange config.TableRange) error {
-	objClient, err := storage.NewObjectClient(pCfg.ObjectType, storageCfg, clientMetrics)
+	objClient, err := storage.NewObjectClient("tables-migration-tool", pCfg.ObjectType, storageCfg, clientMetrics, prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}

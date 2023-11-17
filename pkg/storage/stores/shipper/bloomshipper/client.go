@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/dskit/concurrency"
@@ -94,7 +95,7 @@ type Client interface {
 func NewBloomClient(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*BloomClient, error) {
 	periodicObjectClients := make(map[config.DayTime]client.ObjectClient)
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
+		objectClient, err := storage.NewObjectClient("bloom-shipper", periodicConfig.ObjectType, storageConfig, clientMetrics, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, fmt.Errorf("error creating object client '%s': %w", periodicConfig.ObjectType, err)
 		}

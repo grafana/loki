@@ -22,11 +22,11 @@ type S3ThanosObjectClient struct {
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
 func NewS3ThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, reg prometheus.Registerer) (*S3ThanosObjectClient, error) {
-	client, err := newS3ThanosObjClient(ctx, cfg, component, logger, false, hedgingCfg, reg)
+	client, err := newS3ThanosObjClient(ctx, cfg, component, logger, false, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "false"}, reg))
 	if err != nil {
 		return nil, err
 	}
-	hedgedClient, err := newS3ThanosObjClient(ctx, cfg, component + "-hedging", logger, true, hedgingCfg, prometheus.WrapRegistererWithPrefix("hedging_", reg))
+	hedgedClient, err := newS3ThanosObjClient(ctx, cfg, component, logger, true, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, reg))
 	if err != nil {
 		return nil, err
 	}
