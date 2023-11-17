@@ -29,6 +29,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Add support for enabling tracing.
 ## 5.36.3
+## 5.36.4
 - [BUGFIX] Fix typo in read-deployment causing `read` annotations to be ignored
 
 ## 5.36.2
