@@ -6,9 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
@@ -23,28 +21,26 @@ func main() {
 
 	flag.Parse()
 
-	objectClient, err := storage.NewObjectClient(conf.StorageConfig.TSDBShipperConfig.SharedStoreType, conf.StorageConfig, clientMetrics)
+	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
+	helpers.ExitErr("find period config for bucket", err)
+
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
-	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
-
-	openFn := func(p string) (index.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
-	}
-
 	shipper, err := indexshipper.NewIndexShipper(
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		periodCfg.IndexTables.PathPrefix,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,
-		openFn,
-		tableRanges[len(tableRanges)-1],
+		tsdb.OpenShippableTSDB,
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,
 	)
 	helpers.ExitErr("creating index shipper", err)
 
-	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
+	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
 	helpers.ExitErr("resolving tenants", err)
 
 	err = analyze(shipper, tableName, tenants)

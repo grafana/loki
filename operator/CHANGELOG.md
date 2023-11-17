@@ -1,7 +1,8 @@
 ## Main
 
 - [11022](https://github.com/grafana/loki/pull/11022) **JoaoBraveCoding**: Remove outdated BoltDB dashboards 
-
+- [11129](https://github.com/grafana/loki/pull/11129) **periklis**: Update deps to secure webhooks for CVE-2023-44487
+- 
 ## 0.5.0 (2023-10-24)
 
 - [10924](https://github.com/grafana/loki/pull/10924) **periklis**: Update Loki operand to v2.9.2

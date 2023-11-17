@@ -676,6 +676,25 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			},
 		},
 		{
+			// should return same results as `count_over_time({app="foo"}[1m]) > 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < count_over_time({app="foo"}[1m])`,
+			time.Unix(60, 0),
+			logproto.FORWARD,
+			0,
+			[][]logproto.Series{
+				{newSeries(testSize, identity, `{app="foo"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}},
+			},
+			promql.Vector{
+				{T: 60 * 1000, F: 60, Metric: labels.FromStrings("app", "foo")},
+			},
+		},
+		{
 			`count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])`,
 			time.Unix(60, 0),
 			logproto.FORWARD,
@@ -2108,7 +2127,69 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
+			// should return same results as `bytes_over_time({app="foo"}[30s]) > 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 5.}, // 5 bytes
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+						{Timestamp: time.Unix(75, 0).UnixNano(), Hash: 3, Value: 0.},
+						{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 4, Value: 0.},
+						{Timestamp: time.Unix(105, 0).UnixNano(), Hash: 5, Value: 4.}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{{T: 60 * 1000, F: 5.}, {T: 105 * 1000, F: 4.}, {T: 120 * 1000, F: 4.}},
+				},
+			},
+		},
+		{
 			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			[][]logproto.Series{
+				{logproto.Series{
+					Labels: `{app="foo"}`,
+					Samples: []logproto.Sample{
+						{Timestamp: time.Unix(45, 0).UnixNano(), Hash: 1, Value: 5.}, // 5 bytes
+						{Timestamp: time.Unix(60, 0).UnixNano(), Hash: 2, Value: 0.},
+						{Timestamp: time.Unix(75, 0).UnixNano(), Hash: 3, Value: 0.},
+						{Timestamp: time.Unix(90, 0).UnixNano(), Hash: 4, Value: 0.},
+						{Timestamp: time.Unix(105, 0).UnixNano(), Hash: 5, Value: 4.}, // 4 bytes
+					},
+				}},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{
+						{T: 60000, F: 1},
+						{T: 75000, F: 0},
+						{T: 90000, F: 0},
+						{T: 105000, F: 1},
+						{T: 120000, F: 1},
+					},
+				},
+			},
+		},
+		{
+			// should return same results as `bytes_over_time({app="foo"}[30s]) > bool 1`.
+			// https://grafana.com/docs/loki/latest/query/#comparison-operators
+			// Between a vector and a scalar, these operators are
+			// applied to the value of every data sample in the vector
+			`1 < bool bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,

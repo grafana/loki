@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
@@ -86,21 +87,21 @@ func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logge
 
 func newMetrics(registerer prometheus.Registerer) *metrics {
 	reqDurationSecs := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "request_duration_seconds",
 		// 0.005000, 0.015000, 0.045000, 0.135000, 0.405000, 1.215000, 3.645000, 10.935000, 32.805000
 		Buckets: prometheus.ExponentialBuckets(0.005, 3, 9),
 	}, []string{"user"})
 	responseSizeBytes := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_bytes",
 		// 32, 128, 512, 2K, 8K, 32K, 128K, 512K, 2M, 8M
 		Buckets: prometheus.ExponentialBuckets(32, 4, 10),
 	}, []string{"user"})
 	responseSizeSamples := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_samples",
 		// 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144
@@ -108,12 +109,12 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 	}, []string{"user"})
 
 	successfulEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "success_total",
 	}, []string{"user"})
 	failedEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "failure_total",
 	}, []string{"reason", "user"})

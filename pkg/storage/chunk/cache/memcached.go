@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
 )
 
@@ -62,7 +63,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 		cacheType: cacheType,
 		requestDuration: instr.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace: "loki",
+				Namespace: constants.Loki,
 				Name:      "memcache_request_duration_seconds",
 				Help:      "Total time spent in seconds doing memcache requests.",
 				// 16us, 64us, 256us, 1.024ms, 4.096ms, 16.384ms, 65.536ms, 150ms, 250ms, 500ms, 1s

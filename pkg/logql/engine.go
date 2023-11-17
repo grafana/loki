@@ -2,11 +2,11 @@ package logql
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,8 +31,10 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -50,7 +52,7 @@ var (
 	}, []string{"query_type"})
 
 	QueriesBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "blocked_queries",
 		Help:      "Count of queries blocked by per-tenant policy",
 	}, []string{"user"})
@@ -241,20 +243,10 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(spLogger))
 
-	status := "200"
-	if err != nil {
-		status = "500"
-		if errors.Is(err, logqlmodel.ErrParse) ||
-			errors.Is(err, logqlmodel.ErrPipeline) ||
-			errors.Is(err, logqlmodel.ErrLimit) ||
-			errors.Is(err, logqlmodel.ErrBlocked) ||
-			errors.Is(err, context.Canceled) {
-			status = "400"
-		}
-	}
+	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
 	}
 
 	return logqlmodel.Result{
@@ -286,16 +278,18 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case syntax.LogSelectorExpr:
-		iter, err := q.evaluator.NewIterator(ctx, e, q.params)
+		itr, err := q.evaluator.NewIterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
 		}
 
 		encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
-		categorizeLabels := encodingFlags.Has(httpreq.FlagCategorizeLabels)
+		if encodingFlags.Has(httpreq.FlagCategorizeLabels) {
+			itr = iter.NewCategorizeLabelsIterator(itr)
+		}
 
-		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval(), categorizeLabels)
+		defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
+		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
@@ -427,7 +421,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
 	var err error
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch e := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			if e.Left == nil || e.Left.Interval <= limit {
@@ -505,14 +499,14 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 // If categorizeLabels is true, the stream labels contains just the stream labels and entries inside each stream have their
 // structuredMetadata and parsed fields populated with structured metadata labels plus the parsed labels respectively.
 // Otherwise, the stream labels are the whole series labels including the stream labels, structured metadata labels and parsed labels.
-func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration, categorizeLabels bool) (logqlmodel.Streams, error) {
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
-		entry := i.Entry()
+		streamLabels, entry := i.Labels(), i.Entry()
 
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(entry.Timestamp.Equal(lastEntry.Add(interval)) || entry.Timestamp.After(lastEntry.Add(interval)))
@@ -523,27 +517,6 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward or reverse step
 		if interval == 0 || lastEntry.Unix() < 0 || forwardShouldOutput || backwardShouldOutput {
-			streamLabels := i.Labels()
-
-			// If categorizeLabels is true, We need to remove the structured metadata labels and parsed labels from the stream labels.
-			// TODO(salvacorts): If this is too slow, provided this is in the hot path, we can consider doing this in the iterator.
-			if categorizeLabels && (len(entry.StructuredMetadata) > 0 || len(entry.Parsed) > 0) {
-				lbls, err := syntax.ParseLabels(streamLabels)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse series labels to categorize labels: %w", err)
-				}
-
-				builder := labels.NewBuilder(lbls)
-				for _, label := range entry.StructuredMetadata {
-					builder.Del(label.Name)
-				}
-				for _, label := range entry.Parsed {
-					builder.Del(label.Name)
-				}
-
-				streamLabels = builder.Labels().String()
-			}
-
 			stream, ok := streams[streamLabels]
 			if !ok {
 				stream = &logproto.Stream{
