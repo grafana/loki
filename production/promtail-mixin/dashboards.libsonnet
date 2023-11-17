@@ -12,13 +12,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ),
     local dashboards = self,
 
-    local labelsSelector = dashboard._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
-    local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail.*"',
+    local labelsSelector = dashboard._config.dashboard_labels_selector,
+    local quantileLabelSelector = dashboard._config.dashboard_quantile_label_selector,
 
     'promtail.json': {
                        local cfg = self,
                      } +
-                     dashboard.dashboard('Loki / Promtail', uid='promtail')
+                     dashboard.dashboard(dashboard._config.dashboard_name, uid='promtail')
                      .addTemplate('cluster', 'promtail_build_info', dashboard._config.per_cluster_label)
                      .addTag()
                      .addTemplate('namespace', 'promtail_build_info{' + dashboard._config.per_cluster_label + '=~"$cluster"}', 'namespace')
