@@ -26,7 +26,7 @@ func NewS3ThanosObjectClient(ctx context.Context, cfg bucket.Config, component s
 	if err != nil {
 		return nil, err
 	}
-	hedgedClient, err := newS3ThanosObjClient(ctx, cfg, component, logger, true, hedgingCfg, prometheus.WrapRegistererWithPrefix("hedging_", reg))
+	hedgedClient, err := newS3ThanosObjClient(ctx, cfg, component + "-hedging", logger, true, hedgingCfg, prometheus.WrapRegistererWithPrefix("hedging_", reg))
 	if err != nil {
 		return nil, err
 	}

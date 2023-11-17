@@ -414,7 +414,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
-func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
+func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
 
 	switch true {
 	case util.StringsContain(testingStorageTypes, periodCfg.IndexType):
@@ -445,7 +445,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 				return client, nil
 			}
 
-			objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
+			objectClient, err := NewObjectClient(component, periodCfg.ObjectType, cfg, cm, registerer)
 			if err != nil {
 				return nil, err
 			}
@@ -506,7 +506,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var storeType = name
 
 	// lookup storeType for named stores
@@ -519,7 +519,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 	case util.StringsContain(testingStorageTypes, storeType):
 		switch storeType {
 		case config.StorageTypeInMemory:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
 			if err != nil {
 				return nil, err
 			}
@@ -529,21 +529,21 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 	case util.StringsContain(supportedStorageTypes, storeType):
 		switch storeType {
 		case config.StorageTypeFileSystem:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
 			if err != nil {
 				return nil, err
 			}
 			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift, config.StorageTypeCOS, config.StorageTypeAlibabaCloud:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
 			if err != nil {
 				return nil, err
 			}
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case config.StorageTypeGCS:
-			c, err := NewObjectClient(name, cfg, clientMetrics)
+			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
 			if err != nil {
 				return nil, err
 			}
@@ -593,7 +593,7 @@ func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm C
 		}
 
 	case util.StringsContain(supportedIndexTypes, name):
-		objectClient, err := NewObjectClient(periodCfg.ObjectType, cfg, cm)
+		objectClient, err := NewObjectClient("table", periodCfg.ObjectType, cfg, cm, registerer)
 		if err != nil {
 			return nil, err
 		}
@@ -648,8 +648,8 @@ func (c *ClientMetrics) Unregister() {
 }
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
-func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
-	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
+func NewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics, reg prometheus.Registerer) (client.ObjectClient, error) {
+	actual, err := internalNewObjectClient(component, name, cfg, clientMetrics, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +663,7 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 }
 
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
-func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+func internalNewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics, reg prometheus.Registerer) (client.ObjectClient, error) {
 	var (
 		namedStore string
 		storeType  = name
@@ -692,7 +692,7 @@ func internalNewObjectClient(name string, cfg Config, clientMetrics ClientMetric
 			// Passing "s3" as the component name as currently it's not
 			// possible to get the component called this method
 			// TODO(JoaoBraveCoding) update compoent when bigger refactor happens
-			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjStoreConf, "s3", util_log.Logger, cfg.Hedging, prometheus.WrapRegistererWithPrefix("loki_", prometheus.NewRegistry()))
+			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjStoreConf, component, util_log.Logger, cfg.Hedging, reg)
 		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
