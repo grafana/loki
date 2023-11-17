@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -28,7 +27,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -37,20 +35,7 @@ type RulesLimits interface {
 	ruler.RulesLimits
 
 	RulerRemoteWriteDisabled(userID string) bool
-	RulerRemoteWriteURL(userID string) string
-	RulerRemoteWriteTimeout(userID string) time.Duration
-	RulerRemoteWriteHeaders(userID string) map[string]string
-	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
 	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
-	RulerRemoteWriteQueueCapacity(userID string) int
-	RulerRemoteWriteQueueMinShards(userID string) int
-	RulerRemoteWriteQueueMaxShards(userID string) int
-	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
-	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
-	RulerRemoteWriteQueueMinBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
-	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
 
 	RulerRemoteEvaluationTimeout(userID string) time.Duration
 	RulerRemoteEvaluationMaxResponseSize(userID string) int64

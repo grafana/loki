@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -13,16 +12,12 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	promConfig "github.com/prometheus/common/config"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
-	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
@@ -239,71 +234,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		// metadata is only used by prometheus scrape configs
 		clt.MetadataConfig = config.MetadataConfig{Send: false}
 
-		// Keeping these blocks for backward compatibility
-		if v := r.overrides.RulerRemoteWriteURL(tenant); v != "" {
-			u, err := url.Parse(v)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
-			}
-			clt.URL = &promConfig.URL{u}
-		}
-		if v := r.overrides.RulerRemoteWriteTimeout(tenant); v > 0 {
-			clt.RemoteTimeout = model.Duration(v)
-		}
-
-		// overwrite, do not merge
-		if v := r.overrides.RulerRemoteWriteHeaders(tenant); v != nil {
-			clt.Headers = v
-		}
-
-		relabelConfigs, err := r.createRelabelConfigs(tenant)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse relabel configs: %w", err)
-		}
-
-		// if any relabel configs are defined for a tenant, override all base relabel configs,
-		// even if an empty list is configured; however if this value is not overridden for a tenant,
-		// it should retain the base value
-		if relabelConfigs != nil {
-			clt.WriteRelabelConfigs = relabelConfigs
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueCapacity(tenant); v > 0 {
-			clt.QueueConfig.Capacity = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMinShards(tenant); v > 0 {
-			clt.QueueConfig.MinShards = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxShards(tenant); v > 0 {
-			clt.QueueConfig.MaxShards = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxSamplesPerSend(tenant); v > 0 {
-			clt.QueueConfig.MaxSamplesPerSend = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMinBackoff(tenant); v > 0 {
-			clt.QueueConfig.MinBackoff = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueMaxBackoff(tenant); v > 0 {
-			clt.QueueConfig.MaxBackoff = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueBatchSendDeadline(tenant); v > 0 {
-			clt.QueueConfig.BatchSendDeadline = model.Duration(v)
-		}
-
-		if v := r.overrides.RulerRemoteWriteQueueRetryOnRateLimit(tenant); v {
-			clt.QueueConfig.RetryOnRateLimit = v
-		}
-
-		if v := r.overrides.RulerRemoteWriteSigV4Config(tenant); v != nil {
-			clt.SigV4Config = v
-		}
-
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
 			// overwrite, do not merge
 			if v.Headers != nil {
@@ -327,35 +257,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	}
 
 	return overrides, nil
-}
-
-// createRelabelConfigs converts the util.RelabelConfig into relabel.Config to allow for
-// more control over json/yaml unmarshaling
-func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, error) {
-	configs := r.overrides.RulerRemoteWriteRelabelConfigs(tenant)
-
-	// zero value is nil, which we want to treat as "no override"
-	if configs == nil {
-		return nil, nil
-	}
-
-	// we want to treat an empty slice as "no relabel configs"
-	relabelConfigs := make([]*relabel.Config, len(configs))
-	for i, config := range configs {
-		out, err := yaml.Marshal(config)
-		if err != nil {
-			return nil, err
-		}
-
-		var rc relabel.Config
-		if err = yaml.Unmarshal(out, &rc); err != nil {
-			return nil, err
-		}
-
-		relabelConfigs[i] = &rc
-	}
-
-	return relabelConfigs, nil
 }
 
 var errNotReady = errors.New("appender not ready")
