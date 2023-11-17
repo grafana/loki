@@ -13,7 +13,7 @@ const (
 type metrics struct {
 	compactionRunsStarted          prometheus.Counter
 	compactionRunsCompleted        prometheus.Counter
-	compactionRunsErred            prometheus.Counter
+	compactionRunsFailed           prometheus.Counter
 	compactionRunDiscoveredTenants prometheus.Counter
 	compactionRunSkippedTenants    prometheus.Counter
 	compactionRunSucceededTenants  prometheus.Counter
@@ -39,7 +39,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "runs_completed_total",
 			Help:      "Total number of compactions completed successfully",
 		}),
-		compactionRunsErred: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "runs_failed_total",

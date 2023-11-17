@@ -9,7 +9,7 @@ import (
 	querier_limits "github.com/grafana/loki/pkg/querier/limits"
 	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/pkg/ruler"
-	"github.com/grafana/loki/pkg/scheduler"
+	scheduler_limits "github.com/grafana/loki/pkg/scheduler/limits"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 )
@@ -21,7 +21,7 @@ type CombinedLimits interface {
 	querier_limits.Limits
 	queryrange_limits.Limits
 	ruler.RulesLimits
-	scheduler.Limits
+	scheduler_limits.Limits
 	storage.StoreLimits
 	indexgateway.Limits
 	bloomgateway.Limits

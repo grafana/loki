@@ -6,8 +6,6 @@ import (
 
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 const (
@@ -46,10 +44,9 @@ func CacheGenNumberContextSetterMiddleware(cacheGenNumbersLoader CacheGenNumberL
 			if err != nil {
 				return nil, err
 			}
-			header := definitions.PrometheusResponseHeader{
-				Name:   ResultsCacheGenNumberHeaderName,
-				Values: []string{cacheGenNumber}}
-			return res.WithHeaders([]definitions.PrometheusResponseHeader{header}), nil
+
+			res.SetHeader(ResultsCacheGenNumberHeaderName, cacheGenNumber)
+			return res, nil
 		})
 	})
 }
