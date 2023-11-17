@@ -25,6 +25,46 @@ var (
 	six        = NewNGramTokenizer(6, 7, 0)
 )
 
+func TestNGramIterator(t *testing.T) {
+	var (
+		three      = NewNGramTokenizerV2(3, 0)
+		threeSkip1 = NewNGramTokenizerV2(3, 1)
+		threeSkip3 = NewNGramTokenizerV2(3, 3)
+	)
+
+	for _, tc := range []struct {
+		desc  string
+		t     *NGramTokenizerV2
+		input string
+		exp   []string
+	}{
+		{
+			t:     three,
+			input: "abcdefg",
+			exp:   []string{"abc", "bcd", "cde", "def", "efg"},
+		},
+		{
+			t:     threeSkip1,
+			input: "abcdefg",
+			exp:   []string{"abc", "cde", "efg"},
+		},
+		{
+			t:     threeSkip3,
+			input: "abcdefgh",
+			exp:   []string{"abc", "efg"},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			itr := tc.t.Tokens(tc.input)
+			for _, exp := range tc.exp {
+				require.True(t, itr.Next())
+				require.Equal(t, exp, string(itr.At()))
+			}
+			require.False(t, itr.Next())
+		})
+	}
+}
+
 func TestNGrams(t *testing.T) {
 	tokenizer := NewNGramTokenizer(2, 4, 0)
 	for _, tc := range []struct {
@@ -541,18 +581,147 @@ func TestWrappedTokenizer(t *testing.T) {
 	}
 }
 
-func BenchmarkTokens(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		file, _ := os.Open(BigFile)
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
+const lorem = `
+lorum ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna
+aliqua ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat
+duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur excepteur
+sint occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est
+laborum ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna
+aliqua ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat
+duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur excepteur
+sint occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est
+`
 
-		b.StartTimer()
-		for scanner.Scan() {
-			line := scanner.Text()
-			_ = three.Tokens(line)
-		}
+func BenchmarkTokens(b *testing.B) {
+	var (
+		v2Three      = NewNGramTokenizerV2(3, 0)
+		v2ThreeSkip1 = NewNGramTokenizerV2(3, 1)
+
+		// fp + from + through + checksum
+		chunkPrefixLen = 8 + 8 + 8 + 4
+	)
+
+	type impl struct {
+		desc string
+		f    func()
+	}
+	type tc struct {
+		desc  string
+		impls []impl
+	}
+	for _, tc := range []tc{
+		{
+			desc: "three",
+			impls: []impl{
+				{
+					desc: "v1",
+					f: func() {
+						for _, tok := range three.Tokens(lorem) {
+							_ = tok
+						}
+					},
+				},
+				{
+					desc: "v2",
+					f: func() {
+						itr := v2Three.Tokens(lorem)
+						for itr.Next() {
+							_ = itr.At()
+						}
+					},
+				},
+			},
+		},
+		{
+			desc: "threeSkip1",
+			impls: []impl{
+				{
+					desc: "v1",
+					f: func() {
+						for _, tok := range threeSkip1.Tokens(lorem) {
+							_ = tok
+						}
+					},
+				},
+				{
+					desc: "v2",
+					f: func() {
+						itr := v2ThreeSkip1.Tokens(lorem)
+						for itr.Next() {
+							_ = itr.At()
+						}
+					},
+				},
+			},
+		},
+		{
+			desc: "threeChunk",
+			impls: []impl{
+				{
+					desc: "v1",
+					f: func() func() {
+						chunkTokenizer := ChunkIDTokenizer(three)
+						chunkTokenizer.Reinit(logproto.ChunkRef{})
+						return func() {
+							for _, tok := range chunkTokenizer.Tokens(lorem) {
+								_ = tok
+							}
+						}
+					}(),
+				},
+				{
+					desc: "v2",
+					f: func() func() {
+						prefix := make([]byte, chunkPrefixLen, 512)
+						return func() {
+							itr := NewPrefixedTokenIter(prefix, v2Three.Tokens(lorem))
+							for itr.Next() {
+								_ = itr.At()
+							}
+						}
+					}(),
+				},
+			},
+		},
+		{
+			desc: "threeSkip1Chunk",
+			impls: []impl{
+				{
+					desc: "v1",
+					f: func() func() {
+						chunkTokenizer := ChunkIDTokenizer(threeSkip1)
+						chunkTokenizer.Reinit(logproto.ChunkRef{})
+						return func() {
+							for _, tok := range chunkTokenizer.Tokens(lorem) {
+								_ = tok
+							}
+						}
+					}(),
+				},
+				{
+					desc: "v2",
+					f: func() func() {
+						prefix := make([]byte, chunkPrefixLen, 512)
+						return func() {
+							itr := NewPrefixedTokenIter(prefix, v2ThreeSkip1.Tokens(lorem))
+							for itr.Next() {
+								_ = itr.At()
+							}
+						}
+					}(),
+				},
+			},
+		},
+	} {
+		b.Run(tc.desc, func(b *testing.B) {
+			for _, impl := range tc.impls {
+				b.Run(impl.desc, func(b *testing.B) {
+					for i := 0; i < b.N; i++ {
+						impl.f()
+					}
+				})
+			}
+		})
 	}
 }
 
