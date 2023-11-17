@@ -78,6 +78,15 @@ func (cf filterGroupedChunkRefsByDay) contains(a *logproto.GroupedChunkRefs) boo
 }
 
 func (cf filterGroupedChunkRefsByDay) filter(a *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
+	minTs, maxTs := getFromThrough(a.Refs)
+
+	// in most cases, all chunks are within day range
+	if minTs.Time().Compare(cf.day) >= 0 && maxTs.Time().Before(cf.day.Add(24*time.Hour)) {
+		return a
+	}
+
+	// case where certain chunks are outside of day range
+	// using binary search to get min and max index of chunks that fall into the day range
 	min := sort.Search(len(a.Refs), func(i int) bool {
 		start := a.Refs[i].From.Time()
 		return start.Compare(cf.day) >= 0 && start.Compare(cf.day.Add(Day)) < 0
@@ -86,6 +95,7 @@ func (cf filterGroupedChunkRefsByDay) filter(a *logproto.GroupedChunkRefs) *logp
 		start := a.Refs[i].From.Time()
 		return start.Compare(cf.day.Add(Day)) >= 0
 	})
+
 	return &logproto.GroupedChunkRefs{
 		Tenant:      a.Tenant,
 		Fingerprint: a.Fingerprint,
