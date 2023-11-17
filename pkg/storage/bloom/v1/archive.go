@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -110,7 +111,12 @@ func UnTarGz(dst string, r io.Reader) error {
 
 		// if it's a file create it
 		case tar.TypeReg:
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+			err := os.MkdirAll(target[:strings.LastIndex(target, "/")], 0755)
+			if err != nil {
+				return errors.Wrapf(err, "error creating directory %s", target)
+			}
+			//f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0755)
 			if err != nil {
 				return errors.Wrapf(err, "error creating file %s", target)
 			}
