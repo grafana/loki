@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "pkg/logproto/logproto.proto";
+
+option go_package = "github.com/grafana/loki/pkg/logproto";
+
+message QuantileSketchMatrix {
+  repeated QuantileSketchVector values = 1;
+}
+
+message QuantileSketchVector {
+  repeated QuantileSketchSample samples = 1;
+}
+
+message QuantileSketchSample {
+  QuantileSketch f = 1;
+  int64 timestamp_ms = 2;
+  repeated LabelPair metric = 3;
+}
+
+message QuantileSketch {
+  oneof sketch {
+    TDigest tdigest = 1;
+    bytes ddsketch = 2; // Use binary encoding for DDSketch.
+  }
+}
+
+// "Large" bytes format from https://github.com/tdunning/t-digest
+message TDigest {
+  double min = 1;
+  double max = 2;
+  double compression = 3;
+
+  message Centroid {
+    double mean = 1;
+    double weight = 2;
+  }
+  repeated Centroid processed = 4;
+}
+
+message CountMinSketch {
+  uint32 depth = 1;
+  uint32 width = 2;
+
+  // counters is a matrix of depth * width.
+  repeated uint32 counters = 3;
+}
+
+message TopK {
+  CountMinSketch cms = 1;
+
+  message Pair {
+    string event = 1;
+    uint32 count = 2;
+  }
+  repeated Pair list = 2;
+
+  bytes hyperloglog = 3;
+}
+
+message TopKMatrix {
+  message Vector {
+    TopK topk = 1;
+    int64 timestamp_ms = 2;
+  }
+
+  repeated Vector values = 1;
+}

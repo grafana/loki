@@ -30,7 +30,12 @@ func TestQueryTags(t *testing.T) {
 		{
 			desc: "remove-invalid-chars",
 			in:   `Source=log+volhi\\st,Statate=be$ta`,
-			exp:  `Source=logvolhist,Statate=beta`,
+			exp:  `Source=log_volhi_st,Statate=be_ta`,
+		},
+		{
+			desc: "test invalid char set",
+			in:   `Source=abc.def@geh.com_test-test`,
+			exp:  `Source=abc.def@geh.com_test-test`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

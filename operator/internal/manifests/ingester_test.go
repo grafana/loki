@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -136,7 +137,7 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
-	ss := NewIngesterStatefulSet(Options{
+	obj, _ := BuildIngester(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -161,6 +162,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		},
 	})
 
+	ss := obj[0].(*appsv1.StatefulSet)
 	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,

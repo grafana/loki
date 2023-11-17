@@ -83,6 +83,7 @@ func (d *TokensPersistencyDelegate) OnRingInstanceRegister(lifecycler *BasicLife
 	// case the instance exist in the ring (which is OK because the lifecycler
 	// will correctly reconcile this case too).
 	return d.next.OnRingInstanceRegister(lifecycler, ringDesc, true, lifecycler.GetInstanceID(), InstanceDesc{
+		Id:                  lifecycler.GetInstanceID(),
 		Addr:                lifecycler.GetInstanceAddr(),
 		Timestamp:           time.Now().Unix(),
 		RegisteredTimestamp: lifecycler.GetRegisteredAt().Unix(),
@@ -164,7 +165,7 @@ func NewInstanceRegisterDelegate(state InstanceState, tokenCount int) InstanceRe
 	}
 }
 
-func (d InstanceRegisterDelegate) OnRingInstanceRegister(_ *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
+func (d InstanceRegisterDelegate) OnRingInstanceRegister(l *BasicLifecycler, ringDesc Desc, instanceExists bool, _ string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	// Keep the existing tokens if any, otherwise start with a clean situation.
 	var tokens []uint32
 	if instanceExists {
@@ -172,7 +173,7 @@ func (d InstanceRegisterDelegate) OnRingInstanceRegister(_ *BasicLifecycler, rin
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := GenerateTokens(d.tokenCount-len(tokens), takenTokens)
+	newTokens := l.GetTokenGenerator().GenerateTokens(d.tokenCount-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

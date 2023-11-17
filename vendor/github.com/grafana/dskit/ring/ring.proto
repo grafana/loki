@@ -7,11 +7,13 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
+// Desc is the top-level type used to model a ring, containing information for individual instances.
 message Desc {
 	map<string,InstanceDesc> ingesters = 1 [(gogoproto.nullable) = false];
 	reserved 2;
 }
 
+// InstanceDesc is the top-level type used to model per-instance information in a ring.
 message InstanceDesc {
 	reserved 4, 5; // old, deprecated fields
 
@@ -39,6 +41,9 @@ message InstanceDesc {
 	// was already registered before "now". If unknown (0), it should be left as is, and the
 	// code will properly deal with that.
 	int64 registered_timestamp = 8;
+
+	// ID of the instance. This value is the same as the key in the ingesters map in Desc.
+	string id = 9;
 }
 
 enum InstanceState {

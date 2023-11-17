@@ -13,7 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weaveworks/common/user"
+	"github.com/buger/jsonparser"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 const requestTimeout = 30 * time.Second
@@ -84,15 +89,19 @@ func New(instanceID, token, baseURL string, opts ...Option) *Client {
 	}
 }
 
-// PushLogLine creates a new logline with the current time as timestamp
-func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) error {
-	return c.pushLogLine(line, c.Now, extraLabels...)
+func (c *Client) PushLogLine(line string, timestamp time.Time, structuredMetadata map[string]string, extraLabelList ...map[string]string) error {
+	// If the structuredMetadata map is empty, labels.FromMap will allocate some empty slices.
+	// Since this code is executed for every log line we receive, as an optimization
+	// to avoid those allocations we'll call labels.FromMap only if the map is not empty.
+	var metadata labels.Labels
+	if len(structuredMetadata) > 0 {
+		metadata = labels.FromMap(structuredMetadata)
+	}
+	return c.pushLogLine(line, timestamp, metadata, extraLabelList...)
 }
 
-// PushLogLineWithTimestamp creates a new logline at the given timestamp
-// The timestamp has to be a Unix timestamp (epoch seconds)
-func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabelList ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, extraLabelList...)
+func (c *Client) PushOTLPLogLine(line string, timestamp time.Time, logAttributes map[string]any) error {
+	return c.pushOTLPLogLine(line, timestamp, logAttributes)
 }
 
 func formatTS(ts time.Time) string {
@@ -101,21 +110,22 @@ func formatTS(ts time.Time) string {
 
 type stream struct {
 	Stream map[string]string `json:"stream"`
-	Values [][]string        `json:"values"`
+	Values [][]any           `json:"values"`
 }
 
 // pushLogLine creates a new logline
-func (c *Client) pushLogLine(line string, timestamp time.Time, extraLabelList ...map[string]string) error {
+func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadata labels.Labels, extraLabelList ...map[string]string) error {
 	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/push", c.baseURL)
 
 	s := stream{
 		Stream: map[string]string{
 			"job": "varlog",
 		},
-		Values: [][]string{
+		Values: [][]any{
 			{
 				formatTS(timestamp),
 				line,
+				structuredMetadata,
 			},
 		},
 	}
@@ -154,10 +164,58 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, extraLabelList ..
 
 	buf, err := io.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("reading request failed with status code %v: %w", res.StatusCode, err)
+		return fmt.Errorf("reading response failed with status code %v: %v", res.StatusCode, err)
 	}
 
-	return fmt.Errorf("request failed with status code %v: %w", res.StatusCode, errors.New(string(buf)))
+	return fmt.Errorf("request failed with status code %v: %s", res.StatusCode, buf)
+}
+
+// pushLogLine creates a new logline
+func (c *Client) pushOTLPLogLine(line string, timestamp time.Time, logAttributes map[string]any) error {
+	apiEndpoint := fmt.Sprintf("%s/otlp/v1/logs", c.baseURL)
+
+	logs := plog.NewLogs()
+
+	logs.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "varlog")
+	logRecord := logs.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+	logRecord.SetTimestamp(pcommon.Timestamp(timestamp.UnixNano()))
+	logRecord.Body().SetStr(line)
+	if len(logAttributes) > 0 {
+		if err := logRecord.Attributes().FromRaw(logAttributes); err != nil {
+			return err
+		}
+	}
+
+	ereq := plogotlp.NewExportRequestFromLogs(logs)
+
+	data, err := ereq.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", apiEndpoint, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Scope-OrgID", c.instanceID)
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode/100 == 2 {
+		defer res.Body.Close()
+		return nil
+	}
+
+	buf, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("reading response failed with status code %v: %v", res.StatusCode, err)
+	}
+
+	return fmt.Errorf("request failed with status code %v: %s", res.StatusCode, buf)
 }
 
 func (c *Client) Get(path string) (*http.Response, error) {
@@ -278,10 +336,40 @@ func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
 	return deleteReqs, nil
 }
 
+type Entry []string
+
+func (e *Entry) UnmarshalJSON(data []byte) error {
+	if *e == nil {
+		*e = make([]string, 0, 3)
+	}
+
+	var parseError error
+	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
+		// The TS and the lines are strings. The labels are a JSON object.
+		// but we will parse them as strings.
+		if t != jsonparser.String && t != jsonparser.Object {
+			parseError = jsonparser.MalformedStringError
+			return
+		}
+
+		v, err := jsonparser.ParseString(value)
+		if err != nil {
+			parseError = err
+			return
+		}
+		*e = append(*e, v)
+	})
+
+	if parseError != nil {
+		return parseError
+	}
+	return err
+}
+
 // StreamValues holds a label key value pairs for the Stream and a list of a list of values
 type StreamValues struct {
 	Stream map[string]string
-	Values [][]string
+	Values []Entry
 }
 
 // MatrixValues holds a label key value pairs for the metric and a list of a list of values
@@ -320,17 +408,19 @@ func (a *VectorValues) UnmarshalJSON(b []byte) error {
 
 // DataType holds the result type and a list of StreamValues
 type DataType struct {
-	ResultType string
-	Stream     []StreamValues
-	Matrix     []MatrixValues
-	Vector     []VectorValues
+	ResultType    string
+	Stream        []StreamValues
+	Matrix        []MatrixValues
+	Vector        []VectorValues
+	EncodingFlags []string
 }
 
 func (a *DataType) UnmarshalJSON(b []byte) error {
 	// get the result type
 	var s struct {
-		ResultType string          `json:"resultType"`
-		Result     json.RawMessage `json:"result"`
+		ResultType    string          `json:"resultType"`
+		EncodingFlags []string        `json:"encodingFlags"`
+		Result        json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -353,6 +443,7 @@ func (a *DataType) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("unknown result type %s", s.ResultType)
 	}
 	a.ResultType = s.ResultType
+	a.EncodingFlags = s.EncodingFlags
 	return nil
 }
 
@@ -377,12 +468,16 @@ type Rules struct {
 	Rules []interface{}
 }
 
+type Header struct {
+	Name, Value string
+}
+
 // RunRangeQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, error) {
+func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
-	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query))
+	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query), extraHeaders...)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +486,7 @@ func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, er
 }
 
 // RunQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) {
+func (c *Client) RunQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
@@ -406,7 +501,7 @@ func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) 
 	u.Path = "/loki/api/v1/query"
 	u.RawQuery = v.Encode()
 
-	buf, statusCode, err := c.run(ctx, u.String())
+	buf, statusCode, err := c.run(ctx, u.String(), extraHeaders...)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +589,7 @@ func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
 	return values.Data, nil
 }
 
-// LabelValues return a LabelValues query
+// LabelValues return a LabelValues query result
 func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
@@ -526,18 +621,55 @@ func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, e
 	return values.Data, nil
 }
 
-func (c *Client) request(ctx context.Context, method string, url string) (*http.Request, error) {
+// Series return a series query result
+func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]string, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
+	v := url.Values{}
+	v.Set("match[]", matcher)
+
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		panic(err)
+	}
+	u.Path = "/loki/api/v1/series"
+	u.RawQuery = v.Encode()
+
+	buf, statusCode, err := c.run(ctx, u.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	}
+
+	var values struct {
+		Data []map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(buf, &values); err != nil {
+		return nil, err
+	}
+
+	return values.Data, nil
+}
+
+func (c *Client) request(ctx context.Context, method string, url string, extraHeaders ...Header) (*http.Request, error) {
 	ctx = user.InjectOrgID(ctx, c.instanceID)
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Scope-OrgID", c.instanceID)
+	for _, h := range extraHeaders {
+		req.Header.Add(h.Name, h.Value)
+	}
 	return req, nil
 }
 
-func (c *Client) run(ctx context.Context, u string) ([]byte, int, error) {
-	req, err := c.request(ctx, "GET", u)
+func (c *Client) run(ctx context.Context, u string, extraHeaders ...Header) ([]byte, int, error) {
+	req, err := c.request(ctx, "GET", u, extraHeaders...)
 	if err != nil {
 		return nil, 0, err
 	}

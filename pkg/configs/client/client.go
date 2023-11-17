@@ -14,10 +14,10 @@ import (
 	"github.com/go-kit/log/level"
 	dstls "github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/configs/userconfig"
 	util_log "github.com/grafana/loki/pkg/util/log"

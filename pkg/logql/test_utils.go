@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	logger "log"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -239,7 +240,8 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
-func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (streams []logproto.Stream) {
+func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueField bool) (streams []logproto.Stream) {
+	r := rand.New(rand.NewSource(42))
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
@@ -259,9 +261,13 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (stream
 			})
 		}
 		for j := 0; j <= nEntries; j++ {
+			line := fmt.Sprintf("stream=stderr level=debug line=%d", j)
+			if valueField {
+				line = fmt.Sprintf("%s value=%f", line, r.Float64()*100.0)
+			}
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Unix(0, int64(j*int(time.Second))),
-				Line:      fmt.Sprintf("stream=stderr level=debug line=%d", j),
+				Line:      line,
 			})
 		}
 

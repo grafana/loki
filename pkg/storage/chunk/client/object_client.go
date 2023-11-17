@@ -17,6 +17,8 @@ import (
 
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
 type ObjectClient interface {
+	ObjectExists(ctx context.Context, objectKey string) (bool, error)
+
 	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)
@@ -34,6 +36,7 @@ type ObjectClient interface {
 	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
 	IsObjectNotFoundErr(err error) bool
+	IsRetryableErr(err error) bool
 	Stop()
 }
 
@@ -202,4 +205,8 @@ func (o *client) DeleteChunk(ctx context.Context, userID, chunkID string) error 
 
 func (o *client) IsChunkNotFoundErr(err error) bool {
 	return o.store.IsObjectNotFoundErr(err)
+}
+
+func (o *client) IsRetryableErr(err error) bool {
+	return o.store.IsRetryableErr(err)
 }

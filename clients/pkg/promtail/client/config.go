@@ -23,6 +23,10 @@ const (
 
 // Config describes configuration for an HTTP pusher client.
 type Config struct {
+	// Note even though the command line flag arguments which use this config
+	// are deprecated, this struct is still the primary way to configure
+	// a promtail client
+
 	Name      string `yaml:"name,omitempty"`
 	URL       flagext.URLValue
 	BatchWait time.Duration `yaml:"batchwait"`
@@ -44,8 +48,6 @@ type Config struct {
 	// 429 'Too Many Requests' response from the distributor. Helps
 	// prevent HOL blocking in multitenant deployments.
 	DropRateLimitedBatches bool `yaml:"drop_rate_limited_batches"`
-
-	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels" doc:"deprecated"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by

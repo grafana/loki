@@ -10,8 +10,8 @@ import (
 	"github.com/fluent/fluent-bit-go/output"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/logging"
 
 	_ "github.com/grafana/loki/pkg/util/build"
 )
@@ -28,7 +28,7 @@ var (
 )
 
 func init() {
-	var logLevel logging.Level
+	var logLevel dslog.Level
 	_ = logLevel.Set("info")
 	logger = newLogger(logLevel)
 }

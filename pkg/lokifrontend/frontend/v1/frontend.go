@@ -9,18 +9,18 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/querier/stats"
-	"github.com/grafana/loki/pkg/scheduler/queue"
+	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -80,17 +80,18 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
-	queueMetrics := queue.NewMetrics("query_frontend", registerer)
+func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, metricsNamespace string) (*Frontend, error) {
+	queueMetrics := queue.NewMetrics(registerer, metricsNamespace, "query_frontend")
 	f := &Frontend{
 		cfg:          cfg,
 		log:          log,
 		limits:       limits,
 		queueMetrics: queueMetrics,
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_query_frontend_queue_duration_seconds",
-			Help:    "Time spend by requests queued.",
-			Buckets: prometheus.DefBuckets,
+			Namespace: metricsNamespace,
+			Name:      "query_frontend_queue_duration_seconds",
+			Help:      "Time spend by requests queued.",
+			Buckets:   prometheus.DefBuckets,
 		}),
 	}
 
@@ -104,9 +105,10 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 	}
 
 	f.numClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_frontend_connected_clients",
-		Help: "Number of worker clients currently connected to the frontend.",
-	}, f.requestQueue.GetConnectedQuerierWorkersMetric)
+		Namespace: metricsNamespace,
+		Name:      "query_frontend_connected_clients",
+		Help:      "Number of worker clients currently connected to the frontend.",
+	}, f.requestQueue.GetConnectedConsumersMetric)
 
 	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
 	return f, nil
@@ -189,8 +191,8 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		return err
 	}
 
-	f.requestQueue.RegisterQuerierConnection(querierID)
-	defer f.requestQueue.UnregisterQuerierConnection(querierID)
+	f.requestQueue.RegisterConsumerConnection(querierID)
+	defer f.requestQueue.UnregisterConsumerConnection(querierID)
 
 	lastIndex := queue.StartIndex
 
@@ -273,7 +275,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 
 func (f *Frontend) NotifyClientShutdown(_ context.Context, req *frontendv1pb.NotifyClientShutdownRequest) (*frontendv1pb.NotifyClientShutdownResponse, error) {
 	level.Info(f.log).Log("msg", "received shutdown notification from querier", "querier", req.GetClientID())
-	f.requestQueue.NotifyQuerierShutdown(req.GetClientID())
+	f.requestQueue.NotifyConsumerShutdown(req.GetClientID())
 
 	return &frontendv1pb.NotifyClientShutdownResponse{}, nil
 }
@@ -327,7 +329,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 // chosen to match the same method in the ingester
 func (f *Frontend) CheckReady(_ context.Context) error {
 	// if we have more than one querier connected we will consider ourselves ready
-	connectedClients := f.requestQueue.GetConnectedQuerierWorkersMetric()
+	connectedClients := f.requestQueue.GetConnectedConsumersMetric()
 	if connectedClients > 0 {
 		return nil
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -107,7 +108,7 @@ func TestBuildIndexGateway_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
-	depl := NewIndexGatewayStatefulSet(Options{
+	obj, _ := BuildIndexGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -132,6 +133,7 @@ func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		},
 	})
 
+	ss := obj[0].(*appsv1.StatefulSet)
 	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           3,
@@ -155,5 +157,5 @@ func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
 				},
 			},
 		},
-	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
+	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }

@@ -590,3 +590,7 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Quer
 type v12Entries struct {
 	v11Entries
 }
+
+type v13Entries struct {
+	v12Entries
+}

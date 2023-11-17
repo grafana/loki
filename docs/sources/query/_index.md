@@ -3,9 +3,8 @@ title: "LogQL: Log query language"
 menuTItle: Query
 description: LogQL, Loki's query language for logs.
 aliases: 
-- /docs/loki/latest/logql
-- /docs/loki/latest/query
-weight: 700 
+- ./logql
+weight: 600
 ---
 
 # LogQL: Log query language
@@ -53,7 +52,7 @@ Implement a health check with a simple query:
 1 + 1
 ```
 
-Double the rate of a a log stream's entries:
+Double the rate of a log stream's entries:
 
 ```logql
 sum(rate({app="foo"}[1m])) * 2
@@ -291,7 +290,7 @@ Loki supports functions to operate on data.
 
 ### label_replace()
 
-For each timeseries in `v`,
+For each time series in `v`,
 
 ```
 label_replace(v instant-vector,
@@ -301,12 +300,12 @@ label_replace(v instant-vector,
     regex string)
 ```
 matches the regular expression `regex` against the label `src_label`.
-If it matches, then the timeseries is returned with the label `dst_label` replaced by the expansion of `replacement`.
+If it matches, then the time series is returned with the label `dst_label` replaced by the expansion of `replacement`.
 
 `$1` is replaced with the first matching subgroup,
 `$2` with the second etc.
 If the regular expression doesn't match,
-then the timeseries is returned unchanged.
+then the time series is returned unchanged.
 
 This example will return a vector with each time series having a `foo` label with the value `a` added to it:
 

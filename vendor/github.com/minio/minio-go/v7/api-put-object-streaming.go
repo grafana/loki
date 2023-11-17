@@ -193,7 +193,7 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 				}
 
 				sectionReader := newHook(io.NewSectionReader(reader, readOffset, partSize), opts.Progress)
-				var trailer = make(http.Header, 1)
+				trailer := make(http.Header, 1)
 				if withChecksum {
 					crc := crc32.New(crc32.MakeTable(crc32.Castagnoli))
 					trailer.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(crc.Sum(nil)))
@@ -203,7 +203,8 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 				}
 
 				// Proceed to upload the part.
-				p := uploadPartParams{bucketName: bucketName,
+				p := uploadPartParams{
+					bucketName:   bucketName,
 					objectName:   objectName,
 					uploadID:     uploadID,
 					reader:       sectionReader,
@@ -244,7 +245,6 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 			return UploadInfo{}, ctx.Err()
 		case uploadRes := <-uploadedPartsCh:
 			if uploadRes.Error != nil {
-
 				return UploadInfo{}, uploadRes.Error
 			}
 
@@ -452,7 +452,8 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 // putObjectMultipartStreamParallel uploads opts.NumThreads parts in parallel.
 // This is expected to take opts.PartSize * opts.NumThreads * (GOGC / 100) bytes of buffer.
 func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketName, objectName string,
-	reader io.Reader, opts PutObjectOptions) (info UploadInfo, err error) {
+	reader io.Reader, opts PutObjectOptions,
+) (info UploadInfo, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
 		return UploadInfo{}, err
@@ -741,6 +742,17 @@ func (c *Client) putObjectDo(ctx context.Context, bucketName, objectName string,
 	// Set headers.
 	customHeader := opts.Header()
 
+	// Add CRC when client supports it, MD5 is not set, not Google and we don't add SHA256 to chunks.
+	addCrc := c.trailingHeaderSupport && md5Base64 == "" && !s3utils.IsGoogleEndpoint(*c.endpointURL) && (opts.DisableContentSha256 || c.secure)
+
+	if addCrc {
+		// If user has added checksums, don't add them ourselves.
+		for k := range opts.UserMetadata {
+			if strings.HasPrefix(strings.ToLower(k), "x-amz-checksum-") {
+				addCrc = false
+			}
+		}
+	}
 	// Populate request metadata.
 	reqMetadata := requestMetadata{
 		bucketName:       bucketName,
@@ -751,6 +763,7 @@ func (c *Client) putObjectDo(ctx context.Context, bucketName, objectName string,
 		contentMD5Base64: md5Base64,
 		contentSHA256Hex: sha256Hex,
 		streamSha256:     !opts.DisableContentSha256,
+		addCrc:           addCrc,
 	}
 	if opts.Internal.SourceVersionID != "" {
 		if opts.Internal.SourceVersionID != nullVersionID {

@@ -8,23 +8,23 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -49,6 +49,7 @@ func main() {
 	batch := flag.Int("batchLen", 500, "Specify how many chunks to read/write in one batch")
 	shardBy := flag.Duration("shardBy", 6*time.Hour, "Break down the total interval into shards of this size, making this too small can lead to syncing a lot of duplicate chunks")
 	parallel := flag.Int("parallel", 8, "How many parallel threads to process each shard")
+	metricsNamespace := flag.String("metrics.namespace", constants.Loki, "Namespace of the generated metrics")
 	flag.Parse()
 
 	go func() {
@@ -77,17 +78,15 @@ func main() {
 
 	// This is a little brittle, if we add a new cache it may easily get missed here but it's important to disable
 	// any of the chunk caches to save on memory because we write chunks to the cache when we call Put operations on the store.
-	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = false
+	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled = false
 	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient
 	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.Redis
-	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache = false
 	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
 	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis
 
-	destConfig.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache = false
+	destConfig.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled = false
 	destConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient
 	destConfig.ChunkStoreConfig.ChunkCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.Redis
-	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache = false
 	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
 	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis
 
@@ -130,7 +129,7 @@ func main() {
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	clientMetrics := storage.NewClientMetrics()
-	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
+	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, *metricsNamespace)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
@@ -139,7 +138,7 @@ func main() {
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
-	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
+	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, *metricsNamespace)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
 		os.Exit(1)
@@ -154,7 +153,7 @@ func main() {
 	matchers := []*labels.Matcher{nameLabelMatcher}
 
 	if *match != "" {
-		m, err := syntax.ParseMatchers(*match)
+		m, err := syntax.ParseMatchers(*match, true)
 		if err != nil {
 			log.Println("Failed to parse log matcher:", err)
 			os.Exit(1)
@@ -311,7 +310,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			var totalBytes uint64
 			var totalChunks uint64
 			//log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
-			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
+			schemaGroups, fetchers, err := m.source.GetChunks(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
 				log.Println(threadID, "Error querying index for chunk refs:", err)
 				errCh <- err
@@ -330,28 +329,19 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					chunks := schemaGroups[i][j:k]
 					//log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
 
-					keys := make([]string, 0, len(chunks))
 					chks := make([]chunk.Chunk, 0, len(chunks))
 
-					// FetchChunks requires chunks to be ordered by external key.
-					sort.Slice(chunks, func(x, y int) bool {
-						return m.schema.ExternalKey(chunks[x].ChunkRef) < m.schema.ExternalKey(chunks[y].ChunkRef)
-					})
-					for _, chk := range chunks {
-						key := m.schema.ExternalKey(chk.ChunkRef)
-						keys = append(keys, key)
-						chks = append(chks, chk)
-					}
-					finalChks, err := f.FetchChunks(m.ctx, chks, keys)
+					chks = append(chks, chunks...)
+
+					finalChks, err := f.FetchChunks(m.ctx, chks)
 					if err != nil {
 						log.Println(threadID, "Error retrieving chunks, will go through them one by one:", err)
 						finalChks = make([]chunk.Chunk, 0, len(chunks))
 						for i := range chks {
 							onechunk := []chunk.Chunk{chunks[i]}
-							onekey := []string{keys[i]}
 							var retry int
 							for retry = 4; retry >= 0; retry-- {
-								onechunk, err = f.FetchChunks(m.ctx, onechunk, onekey)
+								onechunk, err = f.FetchChunks(m.ctx, onechunk)
 								if err != nil {
 									if retry == 0 {
 										log.Println(threadID, "Final error retrieving chunks, giving up:", err)

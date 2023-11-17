@@ -1,6 +1,7 @@
 package seriesvolume
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -8,7 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func Test_AddVolumes(t *testing.T) {
+func Test_AddVolume(t *testing.T) {
 	volumes := map[string]uint64{
 		`{job: "loki"}`:       5,
 		`{job: "prometheus"}`: 10,
@@ -17,8 +18,10 @@ func Test_AddVolumes(t *testing.T) {
 	}
 
 	t.Run("accumulates values for the same series", func(t *testing.T) {
-		acc := NewAccumulator(4)
-		acc.AddVolumes(volumes)
+		acc := NewAccumulator(4, 10)
+		for name, size := range volumes {
+			_ = acc.AddVolume(name, size)
+		}
 
 		resp := acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
@@ -43,8 +46,9 @@ func Test_AddVolumes(t *testing.T) {
 			Limit: 4,
 		}, resp)
 
-		acc.AddVolumes(volumes)
-
+		for name, size := range volumes {
+			_ = acc.AddVolume(name, size)
+		}
 		resp = acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
@@ -70,9 +74,10 @@ func Test_AddVolumes(t *testing.T) {
 	})
 
 	t.Run("sorts label value pairs by volume", func(t *testing.T) {
-		acc := NewAccumulator(5)
-		acc.AddVolumes(volumes)
-
+		acc := NewAccumulator(5, 10)
+		for name, size := range volumes {
+			_ = acc.AddVolume(name, size)
+		}
 		resp := acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
@@ -98,31 +103,26 @@ func Test_AddVolumes(t *testing.T) {
 	})
 
 	t.Run("applies limit", func(t *testing.T) {
-		acc := NewAccumulator(2)
+		acc := NewAccumulator(2, 10)
 		volumes := map[string]uint64{
 			`{job: "loki"}`:       5,
 			`{job: "prometheus"}`: 10,
 			`{job: "mimir"}`:      1,
 		}
-		acc.AddVolumes(volumes)
-
-		volumes = map[string]uint64{
-			`{job: "loki"}`:       20,
-			`{job: "prometheus"}`: 30,
-			`{job: "mimir"}`:      1,
+		for name, size := range volumes {
+			_ = acc.AddVolume(name, size)
 		}
-		acc.AddVolumes(volumes)
 
 		resp := acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{job: \"prometheus\"}",
-					Volume: 40,
+					Volume: 10,
 				},
 				{
 					Name:   "{job: \"loki\"}",
-					Volume: 25,
+					Volume: 5,
 				},
 			},
 			Limit: 2,
@@ -293,5 +293,12 @@ func Test_Merge(t *testing.T) {
 			},
 			Limit: limit,
 		}, mergedResponse)
+	})
+
+	t.Run("it returns an error when there are more than maxSize volumes", func(t *testing.T) {
+		acc := NewAccumulator(2, 0)
+
+		err := acc.AddVolume(`{job: "loki"}`, 5)
+		require.EqualError(t, err, fmt.Sprintf(ErrVolumeMaxSeriesHit, 0))
 	})
 }

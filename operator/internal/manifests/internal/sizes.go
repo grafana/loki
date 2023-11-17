@@ -284,7 +284,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 	lokiv1.SizeOneXExtraSmall: {
 		Size: lokiv1.SizeOneXExtraSmall,
 		Replication: &lokiv1.ReplicationSpec{
-			Factor: 1,
+			Factor: 2,
 		},
 		Limits: &lokiv1.LimitsSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
@@ -398,7 +398,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 	lokiv1.SizeOneXMedium: {
 		Size: lokiv1.SizeOneXMedium,
 		Replication: &lokiv1.ReplicationSpec{
-			Factor: 3,
+			Factor: 2,
 		},
 		Limits: &lokiv1.LimitsSpec{
 			Global: &lokiv1.LimitsTemplateSpec{

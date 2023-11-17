@@ -3,9 +3,8 @@ title: LogCLI
 menuTItle:  
 description: LogCLI, Grafana Loki's command-line interface
 aliases:
-- /docs/loki/latest/getting-started/logcli/
-- /docs/loki/latest/tools/logcli/
-- /docs/loki/latest/query/logcli/
+- ../getting-started/logcli/
+- ../tools/logcli/
 weight: 700  
 ---
 
@@ -135,7 +134,7 @@ The output of `logcli help`:
 ```nohighlight
 usage: logcli [<flags>] <command> [<args> ...]
 
-A command-line for loki.
+A command-line for Loki.
 
 Flags:
       --help             Show context-sensitive help (also try --help-long and

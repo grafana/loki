@@ -3,8 +3,7 @@ title: Metric queries
 menuTItle:  
 description: Metric queries extend log queries by applying a function to log query results. This powerful feature creates metrics from logs.
 aliases: 
-- /docs/loki/latest/logql
-- /docs/loki/latest/query
+- ../logql/metric_queries/
 weight: 20  
 ---
 
@@ -57,6 +56,15 @@ Examples:
     ```logql
     sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
     ```
+
+#### Offset modifier
+The offset modifier allows changing the time offset for individual range vectors in a query.
+
+For example, the following expression counts all the logs within the last ten minutes to five minutes rather than last five minutes for the MySQL job. Note that the `offset` modifier always needs to follow the range vector selector immediately.
+```logql
+count_over_time({job="mysql"}[5m] offset 5m) // GOOD
+count_over_time({job="mysql"}[5m]) offset 5m // INVALID
+```
 
 ### Unwrapped range aggregations
 

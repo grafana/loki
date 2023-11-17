@@ -7,9 +7,9 @@ memberlist:
 schema_config:
   configs:
     - from: 2021-08-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: s3
-      schema: v11
+      schema: v12
       index:
         prefix: index_
         period: 24h

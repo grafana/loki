@@ -289,7 +289,7 @@ func signV4(req http.Request, accessKeyID, secretAccessKey, sessionToken, locati
 			req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
 		}
 
-		req.TransferEncoding = []string{"aws-chunked"}
+		req.Header.Set("Content-Encoding", "aws-chunked")
 		req.Header.Set("x-amz-decoded-content-length", strconv.FormatInt(req.ContentLength, 10))
 	}
 

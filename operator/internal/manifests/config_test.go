@@ -262,6 +262,61 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
+		{
+			desc: "user selected Topology zone",
+			spec: lokiv1.LokiStackSpec{
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "testzone",
+						},
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableInstanceAvailabilityZone: true,
+				InstancePort:                   9095,
+				BindPort:                       7946,
+				MembersDiscoveryAddr:           "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "IPv6 enabled with default instance address type",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6: true,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableIPv6:           true,
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "IPv6 enabled with podIP instance address type",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6:       true,
+						InstanceAddrType: lokiv1.InstanceAddrPodIP,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableIPv6:           true,
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
 	}
 	for _, tc := range tt {
 		tc := tc
@@ -1008,6 +1063,80 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 			},
 			wantOverridesOptions: map[string]config.LokiOverrides{
 				"application": {
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",
+							EnableV2:        true,
+							EnableDiscovery: true,
+							RefreshInterval: "1m",
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     pointer.String("/var/run/ca/alertmanager/service-ca.crt"),
+								},
+								HeaderAuth: config.HeaderAuth{
+									Type:            pointer.String("Bearer"),
+									CredentialsFile: pointer.String("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging mode with application override",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+					Limits: &lokiv1.LimitsSpec{
+						Tenants: map[string]lokiv1.LimitsTemplateSpec{
+							"application": {
+								QueryLimits: &lokiv1.QueryLimitSpec{
+									QueryTimeout: "5m",
+								},
+							},
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled:             false,
+						UserWorkloadAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        false,
+				EnableDiscovery: false,
+				RefreshInterval: "2m",
+				Hosts:           "http://my-alertmanager",
+			},
+			wantOverridesOptions: map[string]config.LokiOverrides{
+				"application": {
+					Limits: lokiv1.LimitsTemplateSpec{
+						QueryLimits: &lokiv1.QueryLimitSpec{
+							QueryTimeout: "5m",
+						},
+					},
 					Ruler: config.RulerOverrides{
 						AlertManager: &config.AlertManagerConfig{
 							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",

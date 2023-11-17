@@ -7,13 +7,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/compactor/deletionmode"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
@@ -80,6 +79,7 @@ blocked_queries:
   - pattern: ".*foo.*"
     regex: true
 volume_enabled: true
+volume_max_series: 10001
 `
 	inputJSON := `
  {
@@ -128,7 +128,8 @@ volume_enabled: true
 		"regex": true
 	}
   ],
-  "volume_enabled": true
+  "volume_enabled": true,
+  "volume_max_series": 10001
  }
 `
 

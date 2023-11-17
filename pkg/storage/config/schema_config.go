@@ -13,11 +13,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -49,6 +51,8 @@ const (
 
 	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
 	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
+
+	pathPrefixDelimiter = "/"
 )
 
 var (
@@ -154,13 +158,13 @@ type PeriodConfig struct {
 	// used when working with config
 	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
 	// type of index client to use.
-	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used.\nWhich store to use for the index. Either aws, aws-dynamo, gcp, bigtable, bigtable-hashed, cassandra, boltdb or boltdb-shipper. "`
-	// type of object client to use; if omitted, defaults to store.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs, cassandra, swift, filesystem or a named_store (refer to named_stores_config). If omitted, defaults to the same value as store."`
-	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v11."`
-	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
-	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
-	RowShards   uint32              `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
+	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	// type of object client to use.
+	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
+	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
+	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
+	RowShards   uint32                   `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
@@ -277,7 +281,7 @@ func (cfg *SchemaConfig) Validate() error {
 		periodCfg := &cfg.Configs[i]
 		periodCfg.applyDefaults()
 		if err := periodCfg.validate(); err != nil {
-			return err
+			return fmt.Errorf("validating period_config: %w", err)
 		}
 
 		if i+1 < len(cfg.Configs) {
@@ -366,8 +370,44 @@ func validateChunks(cfg PeriodConfig) error {
 }
 
 func (cfg *PeriodConfig) applyDefaults() {
+	if cfg.IndexTables.PathPrefix == "" {
+		cfg.IndexTables.PathPrefix = "index/"
+	}
+
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
+	}
+}
+
+// ChunkFormat returns chunk format including it's headBlockFormat corresponding to the `schema` version
+// in the given `PeriodConfig`.
+func (cfg *PeriodConfig) ChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get chunk format: %w", err)
+	}
+
+	switch {
+	case sver <= 12:
+		return chunkenc.ChunkFormatV3, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3), nil
+	default: // for v13 and above
+		return chunkenc.ChunkFormatV4, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), nil
+	}
+}
+
+// TSDBFormat returns index format corresponding to the `schema` version
+// in the given `PeriodConfig`.
+func (cfg *PeriodConfig) TSDBFormat() (int, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get index format: %w", err)
+	}
+
+	switch {
+	case sver <= 12:
+		return index.FormatV2, nil
+	default: // for v13 and above
+		return index.FormatV3, nil
 	}
 }
 
@@ -382,21 +422,21 @@ func (cfg PeriodConfig) validate() error {
 		return errTSDBNon24HoursIndexPeriod
 	}
 
-	// Ensure the tables period is a multiple of the bucket period
-	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%(24*time.Hour) != 0 {
-		return errInvalidTablePeriod
+	if err := cfg.IndexTables.Validate(); err != nil {
+		return fmt.Errorf("validating index tables: %w", err)
 	}
 
-	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%(24*time.Hour) != 0 {
-		return errInvalidTablePeriod
+	if err := cfg.ChunkTables.Validate(); err != nil {
+		return fmt.Errorf("validating chunk tables: %w", err)
 	}
+
 	v, err := cfg.VersionAsInt()
 	if err != nil {
 		return err
 	}
 
 	switch v {
-	case 10, 11, 12:
+	case 10, 11, 12, 13:
 		if cfg.RowShards == 0 {
 			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
@@ -431,8 +471,40 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 
 	v := strings.Trim(cfg.Schema, "v")
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		err = fmt.Errorf("invalid schema version: %w", err)
+	}
 	cfg.schemaInt = &n
 	return n, err
+}
+
+type IndexPeriodicTableConfig struct {
+	PathPrefix          string `yaml:"path_prefix" doc:"default=index/|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
+	PeriodicTableConfig `yaml:",inline"`
+}
+
+func (cfg *IndexPeriodicTableConfig) Validate() error {
+	if err := cfg.PeriodicTableConfig.Validate(); err != nil {
+		return err
+	}
+
+	return ValidatePathPrefix(cfg.PathPrefix)
+}
+
+func ValidatePathPrefix(prefix string) error {
+	if prefix == "" {
+		return errors.New("prefix must be set")
+	} else if strings.Contains(prefix, "\\") {
+		// When using windows filesystem as object store the implementation of ObjectClient in Cortex takes care of conversion of separator.
+		// We just need to always use `/` as a path separator.
+		return fmt.Errorf("prefix should only have '%s' as a path separator", pathPrefixDelimiter)
+	} else if strings.HasPrefix(prefix, pathPrefixDelimiter) {
+		return errors.New("prefix should never start with a path separator i.e '/'")
+	} else if !strings.HasSuffix(prefix, pathPrefixDelimiter) {
+		return errors.New("prefix should end with a path separator i.e '/'")
+	}
+
+	return nil
 }
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
@@ -473,6 +545,15 @@ func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
 	}
 
 	return g, nil
+}
+
+func (cfg PeriodicTableConfig) Validate() error {
+	// Ensure the tables period is a multiple of the bucket period
+	if cfg.Period > 0 && cfg.Period%(24*time.Hour) != 0 {
+		return errInvalidTablePeriod
+	}
+
+	return nil
 }
 
 // AutoScalingConfig for DynamoDB tables.

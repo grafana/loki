@@ -1,6 +1,7 @@
 ---
 title: Governance
-description: Governance
+description: Describes the governance of the Loki open source project.
+weight: 300  
 ---
 # Governance
 

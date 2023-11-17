@@ -7,15 +7,16 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestIndexStatsCache(t *testing.T) {
@@ -24,7 +25,7 @@ func TestIndexStatsCache(t *testing.T) {
 			Cache: cache.NewMockCache(),
 		},
 	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 	require.NoError(t, err)
 	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
 		log.NewNopLogger(),
@@ -78,7 +79,7 @@ func TestIndexStatsCache(t *testing.T) {
 	// should reuse part of the previous request and issue a new request for the remaining time till end.
 	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
 	*calls = 0
-	req := statsReq.WithStartEnd(statsReq.GetStart()+(15*time.Minute).Milliseconds(), statsReq.GetEnd()+(15*time.Minute).Milliseconds())
+	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd().Add(15*time.Minute))
 	expectedStats := &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
 			Streams: 2,
@@ -161,7 +162,7 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 					Cache: cache.NewMockCache(),
 				},
 			}
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 			defer c.Stop()
 			require.NoError(t, err)
 

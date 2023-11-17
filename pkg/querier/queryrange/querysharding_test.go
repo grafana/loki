@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -85,10 +86,7 @@ var (
 )
 
 func Test_shardSplitter(t *testing.T) {
-	req := defaultReq().WithStartEnd(
-		util.TimeToMillis(start),
-		util.TimeToMillis(end),
-	)
+	req := defaultReq().WithStartEnd(start, end)
 
 	for _, tc := range []struct {
 		desc        string
@@ -208,7 +206,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 		},
 		{
 			desc:                     "Non shardable query too big",
-			query:                    `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			query:                    `avg_over_time({job="foo"} | json busy="utilization" | unwrap busy [5m])`,
 			maxQuerierBytesSize:      10,
 			err:                      fmt.Sprintf(limErrQuerierTooManyBytesUnshardableTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
@@ -410,7 +408,7 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, testEngineOpts, DefaultCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
@@ -470,7 +468,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			RowShards: 3,
 		},
 	},
-		queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+		queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
 			maxQueryParallelism: 10,
@@ -773,7 +771,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 			mware := NewSeriesQueryShardMiddleware(
 				log.NewNopLogger(),
 				confs,
-				queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+				queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 				nilShardingMetrics,
 				fakeLimits{
 					maxQueryParallelism: 10,
@@ -812,7 +810,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 
 	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		// This is the actual check that we're testing.
-		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
 
 		return &IndexStatsResponse{
 			Response: &logproto.IndexStatsResponse{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -204,7 +203,7 @@ type Downstreamer interface {
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
 type DownstreamEvaluator struct {
 	Downstreamer
-	defaultEvaluator Evaluator
+	defaultEvaluator EvaluatorFactory
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
@@ -253,10 +252,10 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	}
 }
 
-// StepEvaluator returns a StepEvaluator for a given SampleExpr
-func (ev *DownstreamEvaluator) StepEvaluator(
+// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr
+func (ev *DownstreamEvaluator) NewStepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator,
+	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {
@@ -276,7 +275,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return ResultStepEvaluator(results[0], params)
+		return NewResultStepEvaluator(results[0], params)
 
 	case *ConcatSampleExpr:
 		cur := e
@@ -300,7 +299,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 
 		xs := make([]StepEvaluator, 0, len(queries))
 		for i, res := range results {
-			stepper, err := ResultStepEvaluator(res, params)
+			stepper, err := NewResultStepEvaluator(res, params)
 			if err != nil {
 				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract StepEvaluator",
@@ -312,15 +311,15 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 			xs = append(xs, stepper)
 		}
 
-		return ConcatEvaluator(xs)
+		return NewConcatStepEvaluator(xs), nil
 
 	default:
-		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
+		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
 }
 
-// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
-func (ev *DownstreamEvaluator) Iterator(
+// NewIterator returns the iter.EntryIterator for a given LogSelectorExpr
+func (ev *DownstreamEvaluator) NewIterator(
 	ctx context.Context,
 	expr syntax.LogSelectorExpr,
 	params Params,
@@ -382,47 +381,60 @@ func (ev *DownstreamEvaluator) Iterator(
 	}
 }
 
-// ConcatEvaluator joins multiple StepEvaluators.
-// Contract: They must be of identical start, end, and step values.
-func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
-	return newStepEvaluator(
-		func() (ok bool, ts int64, vec promql.Vector) {
-			var cur promql.Vector
-			for _, eval := range evaluators {
-				ok, ts, cur = eval.Next()
-				vec = append(vec, cur...)
-			}
-			return ok, ts, vec
-		},
-		func() (lastErr error) {
-			for _, eval := range evaluators {
-				if err := eval.Close(); err != nil {
-					lastErr = err
-				}
-			}
-			return lastErr
-		},
-		func() error {
-			var errs []error
-			for _, eval := range evaluators {
-				if err := eval.Error(); err != nil {
-					errs = append(errs, err)
-				}
-			}
-			switch len(errs) {
-			case 0:
-				return nil
-			case 1:
-				return errs[0]
-			default:
-				return util.MultiError(errs)
-			}
-		},
-	)
+type ConcatStepEvaluator struct {
+	evaluators []StepEvaluator
 }
 
-// ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
-func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
+// NewConcatStepEvaluator joins multiple StepEvaluators.
+// Contract: They must be of identical start, end, and step values.
+func NewConcatStepEvaluator(evaluators []StepEvaluator) *ConcatStepEvaluator {
+	return &ConcatStepEvaluator{evaluators}
+}
+
+func (e *ConcatStepEvaluator) Next() (bool, int64, StepResult) {
+	var (
+		cur StepResult
+		ok  bool
+		ts  int64
+	)
+	vec := SampleVector{}
+	for _, eval := range e.evaluators {
+		ok, ts, cur = eval.Next()
+		if ok {
+			vec = append(vec, cur.SampleVector()...)
+		}
+	}
+	return ok, ts, vec
+}
+
+func (e *ConcatStepEvaluator) Close() (lastErr error) {
+	for _, eval := range e.evaluators {
+		if err := eval.Close(); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func (e *ConcatStepEvaluator) Error() error {
+	var errs []error
+	for _, eval := range e.evaluators {
+		if err := eval.Error(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	switch len(errs) {
+	case 0:
+		return nil
+	case 1:
+		return errs[0]
+	default:
+		return util.MultiError(errs)
+	}
+}
+
+// NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
+func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (
 		start = params.Start()
 		end   = params.End()
@@ -431,16 +443,9 @@ func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, e
 
 	switch data := res.Data.(type) {
 	case promql.Vector:
-		var exhausted bool
-		return newStepEvaluator(func() (bool, int64, promql.Vector) {
-			if !exhausted {
-				exhausted = true
-				return true, start.UnixNano() / int64(time.Millisecond), data
-			}
-			return false, 0, nil
-		}, nil, nil)
+		return NewVectorStepEvaluator(start, data), nil
 	case promql.Matrix:
-		return NewMatrixStepper(start, end, step, data), nil
+		return NewMatrixStepEvaluator(start, end, step, data), nil
 	default:
 		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 	}

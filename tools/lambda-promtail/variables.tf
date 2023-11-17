@@ -72,6 +72,12 @@ variable "extra_labels" {
   default     = ""
 }
 
+variable "drop_labels" {
+  type        = string
+  description = "Comma separated list of labels to be drop, in the format 'name1,name2,...,nameN' to be omitted to entries forwarded by lambda-promtail."
+  default     = ""
+}
+
 variable "omit_extra_labels_prefix" {
   type        = bool
   description = "Whether or not to omit the prefix `__extra_` from extra labels defined in the variable `extra_labels`."
@@ -118,4 +124,10 @@ variable "sqs_enabled" {
   type        = bool
   description = "Enables sending S3 logs to an SQS queue which will trigger lambda-promtail, unsuccessfully processed message are sent to a dead-letter-queue"
   default     = false
+}
+
+variable "sqs_queue_name_prefix" {
+  type        = string
+  description = "Name prefix for SQS queues"
+  default     = "s3-to-lambda-promtail"
 }
