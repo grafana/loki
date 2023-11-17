@@ -110,7 +110,7 @@ The previous default value `false` is applied.
 
 #### Deprecated configuration options are removed
 
-1. Removed already deprecated `store.max-look-back-period` CLI flag and the corresponding YAML settings. Use. Use `querier.max-query-lookback` config instead.
+1. Removed already deprecated `store.max-look-back-period` CLI flag and the corresponding YAML settings. Use `querier.max-query-lookback` config instead.
 1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting.
 1. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 1. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type.
@@ -121,6 +121,10 @@ The previous default value `false` is applied.
 1. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
 1. `querier.worker-parallelism` CLI flag and its corresponding yaml setting are now removed as it does not offer additional value to already existing `querier.max-concurrent`.
     We recommend configuring `querier.max-concurrent` to limit the max concurrent requests processed by the queriers.
+1. `ruler.evaluation-delay-duration` CLI flag and the corresponding YAML setting are removed.
+1. `validation.enforce-metric-name` CLI flag and the corresponding YAML setting are removed.
+1. `boltdb.shipper.compactor.deletion-mode` CLI flag and the corresponding YAML setting are removed. You can instead configure the `compactor.deletion-mode` CLI flag or `deletion_mode` YAML setting in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+1. Compactor CLI flags that use the prefix `boltdb.shipper.compactor.` are removed. You can instead use CLI flags with the `compactor.` prefix.
 
 #### Legacy ingester shutdown handler is removed
 
@@ -237,10 +241,6 @@ Some Loki metrics started with the prefix `cortex_`. In this release they will b
  - `cortex_query_scheduler_queue_duration_seconds_sum`
  - `cortex_query_scheduler_queue_length`
  - `cortex_query_scheduler_running`
- - `cortex_quota_cgroup_cpu_max`
- - `cortex_quota_cgroup_cpu_period`
- - `cortex_quota_cpu_count`
- - `cortex_quota_gomaxprocs`
  - `cortex_ring_member_heartbeats_total`
  - `cortex_ring_member_tokens_owned`
  - `cortex_ring_member_tokens_to_own`

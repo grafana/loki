@@ -64,7 +64,7 @@ data "aws_iam_policy_document" "lambda_cloudwatch" {
       "logs:PutLogEvents",
     ]
     resources = [
-      aws_cloudwatch_log_group.this.arn,
+      format("%s:*", aws_cloudwatch_log_group.this.arn),
     ]
   }
 }

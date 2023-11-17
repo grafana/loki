@@ -383,6 +383,14 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		ctx = httpreq.InjectQueryTags(ctx, queryTags)
 	}
 
+	// Add query metrics
+	if queueTimeHeader := httpReq.Header.Get(string(httpreq.QueryQueueTimeHTTPHeader)); queueTimeHeader != "" {
+		queueTime, err := time.ParseDuration(queueTimeHeader)
+		if err == nil {
+			ctx = context.WithValue(ctx, httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		}
+	}
+
 	// If there is not encoding flags in the context, we try the HTTP request.
 	if encFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx); encFlags == nil {
 		encFlags = httpreq.ExtractEncodingFlagsFromProto(r)
@@ -524,39 +532,52 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 		return nil, err
 	}
 
-	return &httpgrpc.HTTPResponse{
+	httpRes := &httpgrpc.HTTPResponse{
 		Code: int32(http.StatusOK),
 		Body: buf.Bytes(),
 		Headers: []*httpgrpc.Header{
 			{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}},
 		},
-	}, nil
+	}
+
+	for _, h := range res.GetHeaders() {
+		httpRes.Headers = append(httpRes.Headers, &httpgrpc.Header{Key: h.Name, Values: h.Values})
+	}
+
+	return httpRes, nil
 }
 
 func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
-	queryTags := getQueryTags(ctx)
-	if queryTags != "" {
+
+	// Add query tags
+	if queryTags := getQueryTags(ctx); queryTags != "" {
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
-	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
-	if encodingFlags != "" {
+	if encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader); encodingFlags != "" {
 		header.Set(httpreq.LokiEncodingFlagsHeader, encodingFlags)
 	}
 
-	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
-	if actor != "" {
+	// Add actor path
+	if actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader); actor != "" {
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
-	limits := querylimits.ExtractQueryLimitsContext(ctx)
-	if limits != nil {
+	// Add limits
+	if limits := querylimits.ExtractQueryLimitsContext(ctx); limits != nil {
 		err := querylimits.InjectQueryLimitsHeader(&header, limits)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	// Add org id
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	header.Set(user.OrgIDHeaderName, orgID)
 
 	switch request := r.(type) {
 	case *LokiRequest:
@@ -1594,9 +1615,13 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			},
 		}, nil
 	case *logproto.IndexStatsRequest:
-		return &logproto.IndexStatsResponse{}, nil
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{},
+		}, nil
 	case *logproto.VolumeRequest:
-		return &VolumeResponse{}, nil
+		return &VolumeResponse{
+			Response: &logproto.VolumeResponse{},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}
