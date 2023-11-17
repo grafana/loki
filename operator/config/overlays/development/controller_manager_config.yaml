@@ -18,7 +18,7 @@ featureGates:
   #
   # Component feature gates
   #
-  lokiStackGateway: true
+  lokiStackGateway: false
   restrictedPodSecurityStandard: false
   #
   # Webhook feature gates

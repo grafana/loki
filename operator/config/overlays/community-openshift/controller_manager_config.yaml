@@ -34,7 +34,7 @@ featureGates:
   #
   # Component feature gates
   #
-  lokiStackGateway: true
+  lokiStackGateway: false
   restrictedPodSecurityStandard: true
   defaultNodeAffinity: true
   #
