@@ -65,7 +65,7 @@ There are different types of labels present in Promtail:
   was read from.
 
 ### Example of File Discovery  
-To scrape a set of log files defined manually on a machine, one can use `static_configs` or `file_sd_cnfigs`. Using static_configs, one need to reload Promtail to apply modifications. Using `file_sd_configs` that reload is not needed. Promtail reloads discovery files when they are updated.  
+To scrape a set of log files defined manually on a machine, one can use `static_configs` or `file_sd_configs`. Using static_configs, one must reload Promtail to apply modifications. Using `file_sd_configs` that reload is not needed. Promtail reloads discovery files when they are updated.  
 
 The bellow excerpt of Promtail's configuration show a file_sd_configs that is used to scrape `apt` and `dpkg`'s logs.  
 
