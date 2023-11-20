@@ -128,6 +128,11 @@ func (cfg *Config) Validate() error {
 			cfg.ApplyRetentionInterval = cfg.CompactionInterval
 		}
 
+		if cfg.ApplyRetentionInterval == cfg.CompactionInterval {
+			// add some jitter to avoid running retention and compaction at same time
+			cfg.ApplyRetentionInterval += minDuration(10*time.Minute, cfg.ApplyRetentionInterval/2)
+		}
+
 		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
 			return fmt.Errorf("validate delete store path prefix: %w", err)
 		}
@@ -604,7 +609,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 			}
 
 			if hasUncompactedIndex {
-				c.metrics.skippedCompactingLockedTables.Inc()
+				c.metrics.skippedCompactingLockedTables.WithLabelValues(tableName).Inc()
 				level.Warn(util_log.Logger).Log("msg", "skipped compacting table which likely has uncompacted index since it is locked by retention", "table_name", tableName)
 			}
 			return nil
@@ -657,14 +662,19 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err
 		if err != nil {
 			status = statusFailure
 		}
-		withRetentionLabelValue := fmt.Sprintf("%v", applyRetention)
-		c.metrics.compactTablesOperationTotal.WithLabelValues(status, withRetentionLabelValue).Inc()
+		if applyRetention {
+			c.metrics.applyRetentionOperationTotal.WithLabelValues(status).Inc()
+		} else {
+			c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+		}
 		runtime := time.Since(start)
 		if status == statusSuccess {
-			c.metrics.compactTablesOperationDurationSeconds.WithLabelValues(withRetentionLabelValue).Set(runtime.Seconds())
-			c.metrics.compactTablesOperationLastSuccess.WithLabelValues(withRetentionLabelValue).SetToCurrentTime()
 			if applyRetention {
+				c.metrics.applyRetentionOperationDurationSeconds.Set(runtime.Seconds())
 				c.metrics.applyRetentionLastSuccess.SetToCurrentTime()
+			} else {
+				c.metrics.compactTablesOperationDurationSeconds.Set(runtime.Seconds())
+				c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 			}
 		}
 
@@ -873,4 +883,12 @@ func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.Per
 	}
 
 	return schemaCfg, true
+}
+
+func minDuration(x time.Duration, y time.Duration) time.Duration {
+	if x < y {
+		return x
+	}
+
+	return y
 }
