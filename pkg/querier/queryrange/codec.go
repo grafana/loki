@@ -579,6 +579,15 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	}
 	header.Set(user.OrgIDHeaderName, orgID)
 
+	// Propagate trace context in request.
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := opentracing.HTTPHeadersCarrier(header)
+		if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier); err != nil {
+			return nil, err
+		}
+	}
+
 	switch request := r.(type) {
 	case *LokiRequest:
 		params := url.Values{
@@ -1615,9 +1624,13 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			},
 		}, nil
 	case *logproto.IndexStatsRequest:
-		return &IndexStatsResponse{}, nil
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{},
+		}, nil
 	case *logproto.VolumeRequest:
-		return &VolumeResponse{}, nil
+		return &VolumeResponse{
+			Response: &logproto.VolumeResponse{},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}
