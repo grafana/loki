@@ -5,9 +5,10 @@ package queryrange
 
 import (
 	fmt "fmt"
-	_ "github.com/gogo/googleapis/google/rpc"
+	rpc "github.com/gogo/googleapis/google/rpc"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
+	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	github_com_grafana_loki_pkg_logproto "github.com/grafana/loki/pkg/logproto"
@@ -784,6 +785,7 @@ func (m *QuantileSketchResponse) XXX_DiscardUnknown() {
 var xxx_messageInfo_QuantileSketchResponse proto.InternalMessageInfo
 
 type QueryResponse struct {
+	Status *rpc.Status `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	// Types that are valid to be assigned to Response:
 	//	*QueryResponse_Series
 	//	*QueryResponse_Labels
@@ -836,28 +838,28 @@ type isQueryResponse_Response interface {
 }
 
 type QueryResponse_Series struct {
-	Series *LokiSeriesResponse `protobuf:"bytes,1,opt,name=series,proto3,oneof"`
+	Series *LokiSeriesResponse `protobuf:"bytes,2,opt,name=series,proto3,oneof"`
 }
 type QueryResponse_Labels struct {
-	Labels *LokiLabelNamesResponse `protobuf:"bytes,2,opt,name=labels,proto3,oneof"`
+	Labels *LokiLabelNamesResponse `protobuf:"bytes,3,opt,name=labels,proto3,oneof"`
 }
 type QueryResponse_Stats struct {
-	Stats *IndexStatsResponse `protobuf:"bytes,3,opt,name=stats,proto3,oneof"`
+	Stats *IndexStatsResponse `protobuf:"bytes,4,opt,name=stats,proto3,oneof"`
 }
 type QueryResponse_Prom struct {
-	Prom *LokiPromResponse `protobuf:"bytes,4,opt,name=prom,proto3,oneof"`
+	Prom *LokiPromResponse `protobuf:"bytes,5,opt,name=prom,proto3,oneof"`
 }
 type QueryResponse_Streams struct {
-	Streams *LokiResponse `protobuf:"bytes,5,opt,name=streams,proto3,oneof"`
+	Streams *LokiResponse `protobuf:"bytes,6,opt,name=streams,proto3,oneof"`
 }
 type QueryResponse_Volume struct {
-	Volume *VolumeResponse `protobuf:"bytes,6,opt,name=volume,proto3,oneof"`
+	Volume *VolumeResponse `protobuf:"bytes,7,opt,name=volume,proto3,oneof"`
 }
 type QueryResponse_TopkSketches struct {
-	TopkSketches *TopKSketchesResponse `protobuf:"bytes,7,opt,name=topkSketches,proto3,oneof"`
+	TopkSketches *TopKSketchesResponse `protobuf:"bytes,8,opt,name=topkSketches,proto3,oneof"`
 }
 type QueryResponse_QuantileSketches struct {
-	QuantileSketches *QuantileSketchResponse `protobuf:"bytes,8,opt,name=quantileSketches,proto3,oneof"`
+	QuantileSketches *QuantileSketchResponse `protobuf:"bytes,9,opt,name=quantileSketches,proto3,oneof"`
 }
 
 func (*QueryResponse_Series) isQueryResponse_Response()           {}
@@ -872,6 +874,13 @@ func (*QueryResponse_QuantileSketches) isQueryResponse_Response() {}
 func (m *QueryResponse) GetResponse() isQueryResponse_Response {
 	if m != nil {
 		return m.Response
+	}
+	return nil
+}
+
+func (m *QueryResponse) GetStatus() *rpc.Status {
+	if m != nil {
+		return m.Status
 	}
 	return nil
 }
@@ -946,6 +955,151 @@ func (*QueryResponse) XXX_OneofWrappers() []interface{} {
 	}
 }
 
+type QueryRequest struct {
+	// Types that are valid to be assigned to Request:
+	//	*QueryRequest_Series
+	//	*QueryRequest_Labels
+	//	*QueryRequest_Stats
+	//	*QueryRequest_Instant
+	//	*QueryRequest_Streams
+	//	*QueryRequest_Volume
+	Request  isQueryRequest_Request `protobuf_oneof:"request"`
+	Metadata map[string]string      `protobuf:"bytes,7,rep,name=metadata,proto3" json:"metadata" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+}
+
+func (m *QueryRequest) Reset()      { *m = QueryRequest{} }
+func (*QueryRequest) ProtoMessage() {}
+func (*QueryRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_51b9d53b40d11902, []int{13}
+}
+func (m *QueryRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRequest.Merge(m, src)
+}
+func (m *QueryRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRequest proto.InternalMessageInfo
+
+type isQueryRequest_Request interface {
+	isQueryRequest_Request()
+	Equal(interface{}) bool
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type QueryRequest_Series struct {
+	Series *LokiSeriesRequest `protobuf:"bytes,1,opt,name=series,proto3,oneof"`
+}
+type QueryRequest_Labels struct {
+	Labels *logproto.LabelRequest `protobuf:"bytes,2,opt,name=labels,proto3,oneof"`
+}
+type QueryRequest_Stats struct {
+	Stats *logproto.IndexStatsRequest `protobuf:"bytes,3,opt,name=stats,proto3,oneof"`
+}
+type QueryRequest_Instant struct {
+	Instant *LokiInstantRequest `protobuf:"bytes,4,opt,name=instant,proto3,oneof"`
+}
+type QueryRequest_Streams struct {
+	Streams *LokiRequest `protobuf:"bytes,5,opt,name=streams,proto3,oneof"`
+}
+type QueryRequest_Volume struct {
+	Volume *logproto.VolumeRequest `protobuf:"bytes,6,opt,name=volume,proto3,oneof"`
+}
+
+func (*QueryRequest_Series) isQueryRequest_Request()  {}
+func (*QueryRequest_Labels) isQueryRequest_Request()  {}
+func (*QueryRequest_Stats) isQueryRequest_Request()   {}
+func (*QueryRequest_Instant) isQueryRequest_Request() {}
+func (*QueryRequest_Streams) isQueryRequest_Request() {}
+func (*QueryRequest_Volume) isQueryRequest_Request()  {}
+
+func (m *QueryRequest) GetRequest() isQueryRequest_Request {
+	if m != nil {
+		return m.Request
+	}
+	return nil
+}
+
+func (m *QueryRequest) GetSeries() *LokiSeriesRequest {
+	if x, ok := m.GetRequest().(*QueryRequest_Series); ok {
+		return x.Series
+	}
+	return nil
+}
+
+func (m *QueryRequest) GetLabels() *logproto.LabelRequest {
+	if x, ok := m.GetRequest().(*QueryRequest_Labels); ok {
+		return x.Labels
+	}
+	return nil
+}
+
+func (m *QueryRequest) GetStats() *logproto.IndexStatsRequest {
+	if x, ok := m.GetRequest().(*QueryRequest_Stats); ok {
+		return x.Stats
+	}
+	return nil
+}
+
+func (m *QueryRequest) GetInstant() *LokiInstantRequest {
+	if x, ok := m.GetRequest().(*QueryRequest_Instant); ok {
+		return x.Instant
+	}
+	return nil
+}
+
+func (m *QueryRequest) GetStreams() *LokiRequest {
+	if x, ok := m.GetRequest().(*QueryRequest_Streams); ok {
+		return x.Streams
+	}
+	return nil
+}
+
+func (m *QueryRequest) GetVolume() *logproto.VolumeRequest {
+	if x, ok := m.GetRequest().(*QueryRequest_Volume); ok {
+		return x.Volume
+	}
+	return nil
+}
+
+func (m *QueryRequest) GetMetadata() map[string]string {
+	if m != nil {
+		return m.Metadata
+	}
+	return nil
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*QueryRequest) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*QueryRequest_Series)(nil),
+		(*QueryRequest_Labels)(nil),
+		(*QueryRequest_Stats)(nil),
+		(*QueryRequest_Instant)(nil),
+		(*QueryRequest_Streams)(nil),
+		(*QueryRequest_Volume)(nil),
+	}
+}
+
 func init() {
 	proto.RegisterType((*LokiRequest)(nil), "queryrange.LokiRequest")
 	proto.RegisterType((*LokiInstantRequest)(nil), "queryrange.LokiInstantRequest")
@@ -960,6 +1114,8 @@ func init() {
 	proto.RegisterType((*TopKSketchesResponse)(nil), "queryrange.TopKSketchesResponse")
 	proto.RegisterType((*QuantileSketchResponse)(nil), "queryrange.QuantileSketchResponse")
 	proto.RegisterType((*QueryResponse)(nil), "queryrange.QueryResponse")
+	proto.RegisterType((*QueryRequest)(nil), "queryrange.QueryRequest")
+	proto.RegisterMapType((map[string]string)(nil), "queryrange.QueryRequest.MetadataEntry")
 }
 
 func init() {
@@ -967,87 +1123,99 @@ func init() {
 }
 
 var fileDescriptor_51b9d53b40d11902 = []byte{
-	// 1276 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xec, 0x97, 0xcb, 0x8f, 0xdb, 0x44,
-	0x1c, 0xc7, 0xed, 0xbc, 0x76, 0x33, 0xdb, 0x2e, 0x65, 0x76, 0xd5, 0x9a, 0xa5, 0xb2, 0xa3, 0x48,
-	0xd0, 0x20, 0x81, 0x23, 0xb2, 0xa5, 0xa5, 0xbc, 0x44, 0x4d, 0xa9, 0xb6, 0xa2, 0xa0, 0xd6, 0x8d,
-	0x38, 0x70, 0x9b, 0x24, 0xb3, 0x89, 0x89, 0x5f, 0xeb, 0x99, 0x54, 0xdd, 0x1b, 0x17, 0x6e, 0x20,
-	0xf5, 0xaf, 0x40, 0x48, 0x54, 0xfc, 0x01, 0x1c, 0x39, 0xf5, 0xb8, 0xc7, 0x2a, 0x12, 0x86, 0xa6,
-	0x17, 0xd8, 0x53, 0xff, 0x04, 0x34, 0x33, 0xb6, 0x33, 0x4e, 0xd2, 0x36, 0x29, 0x97, 0x56, 0xe2,
-	0x92, 0xcc, 0xe3, 0xf7, 0x1d, 0xcf, 0x7c, 0x7e, 0x0f, 0x7b, 0xc0, 0xb9, 0x70, 0xd8, 0x6f, 0x1e,
-	0x8c, 0x70, 0xe4, 0xe0, 0x88, 0xff, 0x1f, 0x46, 0xc8, 0xef, 0x63, 0xa9, 0x69, 0x86, 0x51, 0x40,
-	0x03, 0x08, 0xa6, 0x23, 0x3b, 0xad, 0xbe, 0x43, 0x07, 0xa3, 0x8e, 0xd9, 0x0d, 0xbc, 0x66, 0x3f,
-	0xe8, 0x07, 0xcd, 0x7e, 0x10, 0xf4, 0x5d, 0x8c, 0x42, 0x87, 0x24, 0xcd, 0x66, 0x14, 0x76, 0x9b,
-	0x84, 0x22, 0x3a, 0x22, 0x42, 0xbf, 0xb3, 0xcd, 0x0c, 0x79, 0x93, 0x4b, 0x92, 0x51, 0x23, 0x31,
-	0xe7, 0xbd, 0xce, 0x68, 0xbf, 0x49, 0x1d, 0x0f, 0x13, 0x8a, 0xbc, 0x30, 0x31, 0x78, 0x9d, 0xed,
-	0xcf, 0x0d, 0xfa, 0x42, 0x99, 0x36, 0x92, 0xc9, 0xd7, 0x72, 0x93, 0x64, 0x88, 0x69, 0x77, 0x90,
-	0x4c, 0xd5, 0x92, 0xa9, 0x03, 0xd7, 0x0b, 0x7a, 0xd8, 0xe5, 0x7b, 0x21, 0xe2, 0x37, 0xb1, 0xd8,
-	0x62, 0x16, 0xe1, 0x88, 0x0c, 0xf8, 0x4f, 0x32, 0xf8, 0xd9, 0x33, 0x71, 0x74, 0x10, 0xc1, 0xcd,
-	0x1e, 0xde, 0x77, 0x7c, 0x87, 0x3a, 0x81, 0x4f, 0xe4, 0x76, 0xb2, 0xc8, 0x85, 0xe5, 0x16, 0x99,
-	0x45, 0x5c, 0x3f, 0x2a, 0x80, 0x8d, 0xeb, 0xc1, 0xd0, 0xb1, 0xf1, 0xc1, 0x08, 0x13, 0x0a, 0xb7,
-	0x41, 0x99, 0xdb, 0x68, 0x6a, 0x4d, 0x6d, 0x54, 0x6d, 0xd1, 0x61, 0xa3, 0xae, 0xe3, 0x39, 0x54,
-	0x2b, 0xd4, 0xd4, 0xc6, 0x49, 0x5b, 0x74, 0x20, 0x04, 0x25, 0x42, 0x71, 0xa8, 0x15, 0x6b, 0x6a,
-	0xa3, 0x68, 0xf3, 0x36, 0xdc, 0x01, 0xeb, 0x8e, 0x4f, 0x71, 0x74, 0x1b, 0xb9, 0x5a, 0x95, 0x8f,
-	0x67, 0x7d, 0xf8, 0x09, 0x58, 0x23, 0x14, 0x45, 0xb4, 0x4d, 0xb4, 0x52, 0x4d, 0x6d, 0x6c, 0xb4,
-	0x76, 0x4c, 0xe1, 0x0a, 0x33, 0x75, 0x85, 0xd9, 0x4e, 0x5d, 0x61, 0xad, 0xdf, 0x8f, 0x0d, 0xe5,
-	0xee, 0x9f, 0x86, 0x6a, 0xa7, 0x22, 0xf8, 0x01, 0x28, 0x63, 0xbf, 0xd7, 0x26, 0x5a, 0x79, 0x05,
-	0xb5, 0x90, 0xc0, 0x77, 0x41, 0xb5, 0xe7, 0x44, 0xb8, 0xcb, 0x98, 0x69, 0x95, 0x9a, 0xda, 0xd8,
-	0x6c, 0x6d, 0x99, 0x99, 0x6b, 0xaf, 0xa4, 0x53, 0xf6, 0xd4, 0x8a, 0x1d, 0x2f, 0x44, 0x74, 0xa0,
-	0xad, 0x71, 0x12, 0xbc, 0x0d, 0xeb, 0xa0, 0x42, 0x06, 0x28, 0xea, 0x11, 0x6d, 0xbd, 0x56, 0x6c,
-	0x54, 0x2d, 0x70, 0x1c, 0x1b, 0xc9, 0x88, 0x9d, 0xfc, 0xd7, 0xff, 0x51, 0x01, 0x64, 0x48, 0xaf,
-	0xf9, 0x84, 0x22, 0x9f, 0x3e, 0x0f, 0xd9, 0x8f, 0x40, 0x85, 0x05, 0x65, 0x9b, 0x70, 0xb6, 0xcb,
-	0x1e, 0x35, 0xd1, 0xe4, 0xcf, 0x5a, 0x5a, 0xe9, 0xac, 0xe5, 0x85, 0x67, 0xad, 0x3c, 0xf1, 0xac,
-	0xbf, 0x94, 0xc0, 0x09, 0x11, 0x3e, 0x24, 0x0c, 0x7c, 0x82, 0x99, 0xe8, 0x16, 0x4f, 0x41, 0x71,
-	0xcc, 0x44, 0xc4, 0x47, 0xec, 0x64, 0x06, 0x7e, 0x0a, 0x4a, 0x57, 0x10, 0x45, 0xfc, 0xc8, 0x1b,
-	0xad, 0x6d, 0x53, 0x0a, 0x4a, 0xb6, 0x16, 0x9b, 0xb3, 0x4e, 0xb3, 0x53, 0x1d, 0xc7, 0xc6, 0x66,
-	0x0f, 0x51, 0xf4, 0x76, 0xe0, 0x39, 0x14, 0x7b, 0x21, 0x3d, 0xb4, 0xb9, 0x12, 0xbe, 0x07, 0xaa,
-	0x9f, 0x47, 0x51, 0x10, 0xb5, 0x0f, 0x43, 0xcc, 0x11, 0x55, 0xad, 0x33, 0xc7, 0xb1, 0xb1, 0x85,
-	0xd3, 0x41, 0x49, 0x31, 0xb5, 0x84, 0x6f, 0x81, 0x32, 0xef, 0x70, 0x28, 0x55, 0x6b, 0xeb, 0x38,
-	0x36, 0x5e, 0xe1, 0x12, 0xc9, 0x5c, 0x58, 0xe4, 0x19, 0x96, 0x97, 0x62, 0x98, 0xb9, 0xb2, 0x22,
-	0xbb, 0x52, 0x03, 0x6b, 0xb7, 0x71, 0x44, 0xd8, 0x32, 0x6b, 0x7c, 0x3c, 0xed, 0xc2, 0xcb, 0x00,
-	0x30, 0x30, 0x0e, 0xa1, 0x4e, 0x97, 0xc5, 0x13, 0x83, 0x71, 0xd2, 0x14, 0xe5, 0xc2, 0xc6, 0x64,
-	0xe4, 0x52, 0x0b, 0x26, 0x14, 0x24, 0x43, 0x5b, 0x6a, 0xc3, 0x7b, 0x2a, 0x58, 0xdb, 0xc3, 0xa8,
-	0x87, 0x23, 0xa2, 0x55, 0x6b, 0xc5, 0xc6, 0x46, 0xeb, 0x0d, 0x53, 0xae, 0x0d, 0x37, 0xa2, 0xc0,
-	0xc3, 0x74, 0x80, 0x47, 0x24, 0x75, 0x90, 0xb0, 0xb6, 0x86, 0xe3, 0xd8, 0xe8, 0xc8, 0x15, 0x35,
-	0x42, 0xfb, 0xc8, 0x47, 0x4d, 0x37, 0x18, 0x3a, 0xcd, 0x95, 0xeb, 0xd1, 0x13, 0x9f, 0x73, 0x1c,
-	0x1b, 0xea, 0x3b, 0x76, 0xba, 0xc5, 0xfa, 0x1f, 0x2a, 0x78, 0x95, 0x79, 0xf8, 0x16, 0x5b, 0x9b,
-	0x48, 0x89, 0xe1, 0x21, 0xda, 0x1d, 0x68, 0x2a, 0x0b, 0x33, 0x5b, 0x74, 0xe4, 0x62, 0x51, 0xf8,
-	0x4f, 0xc5, 0xa2, 0xb8, 0x7a, 0xb1, 0x48, 0xb3, 0xa1, 0xb4, 0x30, 0x1b, 0xca, 0x4f, 0xcc, 0x86,
-	0x1f, 0x8a, 0x22, 0xf3, 0xd3, 0xf3, 0xad, 0x90, 0x13, 0x57, 0xb3, 0x9c, 0x28, 0xf2, 0xdd, 0x66,
-	0xa1, 0x26, 0xd6, 0xba, 0xd6, 0xc3, 0x3e, 0x75, 0xf6, 0x1d, 0x1c, 0x3d, 0x23, 0x33, 0xa4, 0x70,
-	0x2b, 0xe6, 0xc3, 0x4d, 0x8e, 0x95, 0xd2, 0x0b, 0x1f, 0x2b, 0x33, 0xd9, 0x51, 0x7e, 0x8e, 0xec,
-	0xa8, 0x3f, 0x2e, 0x80, 0xd3, 0xcc, 0x1d, 0xd7, 0x51, 0x07, 0xbb, 0x5f, 0x21, 0x6f, 0x45, 0x97,
-	0xbc, 0x29, 0xb9, 0xa4, 0x6a, 0xc1, 0xff, 0x91, 0x2f, 0x81, 0xfc, 0x27, 0x15, 0xac, 0xa7, 0x35,
-	0x1c, 0x9a, 0x00, 0x08, 0x19, 0x2f, 0xd3, 0x02, 0xf4, 0x26, 0x13, 0x47, 0xd9, 0xa8, 0x2d, 0x59,
-	0xc0, 0x6f, 0x41, 0x45, 0xf4, 0x92, 0x2c, 0x38, 0x23, 0x65, 0x01, 0x8d, 0x30, 0xf2, 0x2e, 0xf7,
-	0x50, 0x48, 0x71, 0x64, 0x5d, 0x62, 0xbb, 0x18, 0xc7, 0xc6, 0xb9, 0xa7, 0x21, 0xe2, 0x5f, 0x58,
-	0x42, 0xc7, 0x9c, 0x2b, 0x9e, 0x69, 0x27, 0x4f, 0xa8, 0xff, 0xa8, 0x82, 0x53, 0x6c, 0xa3, 0x0c,
-	0x4d, 0x16, 0x15, 0x57, 0xc0, 0x7a, 0x94, 0xb4, 0xf9, 0x76, 0x37, 0x5a, 0x75, 0x33, 0x8f, 0x75,
-	0x01, 0x4a, 0xab, 0x74, 0x3f, 0x36, 0x54, 0x3b, 0x53, 0xc2, 0xdd, 0x1c, 0xc6, 0xc2, 0x22, 0x8c,
-	0x4c, 0xa2, 0xe4, 0xc0, 0xfd, 0x56, 0x00, 0xf0, 0x9a, 0xdf, 0xc3, 0x77, 0x58, 0xf0, 0x4d, 0xe3,
-	0x74, 0x34, 0xb7, 0xa3, 0xb3, 0x53, 0x28, 0xf3, 0xf6, 0xd6, 0x87, 0xe3, 0xd8, 0xb8, 0xf8, 0x34,
-	0x2a, 0x4f, 0x11, 0x4b, 0x47, 0x90, 0x03, 0xb7, 0xf0, 0xe2, 0xbf, 0x57, 0x7e, 0x2d, 0x80, 0xcd,
-	0xaf, 0x03, 0x77, 0xe4, 0xe1, 0x0c, 0x9c, 0x37, 0x07, 0x4e, 0x9b, 0x82, 0xcb, 0xdb, 0x5a, 0x17,
-	0xc7, 0xb1, 0xb1, 0xbb, 0x14, 0xb4, 0xbc, 0xf0, 0xe5, 0x05, 0x76, 0xaf, 0x00, 0xb6, 0xdb, 0x41,
-	0xf8, 0xc5, 0x2d, 0x7e, 0x7d, 0x91, 0xea, 0x22, 0x9e, 0xc3, 0xb6, 0x3d, 0xc5, 0xc6, 0x14, 0x5f,
-	0x22, 0x1a, 0x39, 0x77, 0xac, 0xdd, 0x71, 0x6c, 0x34, 0x97, 0x42, 0x36, 0x15, 0xbd, 0xbc, 0xb8,
-	0x7e, 0x2f, 0x80, 0xd3, 0x37, 0x47, 0xc8, 0xa7, 0x8e, 0x8b, 0x05, 0xb2, 0x0c, 0xd8, 0xe1, 0x1c,
-	0x30, 0x7d, 0x0a, 0x2c, 0xaf, 0x49, 0xd0, 0x7d, 0x3c, 0x8e, 0x8d, 0x4b, 0x4b, 0xa1, 0x5b, 0x24,
-	0x7f, 0x79, 0x21, 0x7e, 0x5f, 0x02, 0x27, 0x6f, 0xb2, 0x55, 0x32, 0x76, 0xef, 0x83, 0x0a, 0xe1,
-	0x5f, 0x37, 0x19, 0xb9, 0x99, 0x9b, 0x40, 0xfe, 0x3b, 0x6a, 0x4f, 0xb1, 0x13, 0x7b, 0x76, 0x3f,
-	0x72, 0xd9, 0x4b, 0x3d, 0x2d, 0xaf, 0xf5, 0x59, 0xe5, 0xfc, 0x2b, 0x9f, 0xa9, 0x85, 0x06, 0x5e,
-	0x00, 0x65, 0x5e, 0x8d, 0x93, 0x4f, 0xc3, 0xdc, 0x63, 0xe7, 0xcb, 0xe2, 0x9e, 0x62, 0x0b, 0x73,
-	0xd8, 0x02, 0xa5, 0x30, 0x0a, 0xbc, 0xe4, 0xf2, 0x7a, 0x76, 0xf6, 0x99, 0xf2, 0xab, 0x64, 0x4f,
-	0xb1, 0xb9, 0x2d, 0x3c, 0xcf, 0x3e, 0x63, 0xd9, 0x3b, 0x28, 0x7d, 0xa1, 0x6a, 0xb3, 0x32, 0x49,
-	0x92, 0x9a, 0xc2, 0xf3, 0xa0, 0x72, 0x9b, 0x97, 0x1a, 0x7e, 0x97, 0x60, 0xdf, 0x83, 0x92, 0x28,
-	0x5f, 0x84, 0xd8, 0xb9, 0x84, 0x2d, 0xbc, 0x0a, 0x4e, 0xd0, 0x20, 0x1c, 0xa6, 0x49, 0xcd, 0xef,
-	0x1b, 0x1b, 0xad, 0x9a, 0xac, 0x5d, 0x94, 0xf4, 0x7b, 0x8a, 0x9d, 0xd3, 0xc1, 0x1b, 0xe0, 0xd4,
-	0x41, 0x2e, 0xf4, 0x70, 0x7a, 0x3d, 0xc9, 0x71, 0x5e, 0x9c, 0x11, 0x7b, 0x8a, 0x3d, 0xa7, 0xb6,
-	0xc0, 0x34, 0x4b, 0xac, 0xde, 0xd1, 0x43, 0x5d, 0x79, 0xf0, 0x50, 0x57, 0x1e, 0x3f, 0xd4, 0xd5,
-	0xef, 0x26, 0xba, 0xfa, 0xf3, 0x44, 0x57, 0xef, 0x4f, 0x74, 0xf5, 0x68, 0xa2, 0xab, 0x7f, 0x4d,
-	0x74, 0xf5, 0xef, 0x89, 0xae, 0x3c, 0x9e, 0xe8, 0xea, 0xdd, 0x47, 0xba, 0x72, 0xf4, 0x48, 0x57,
-	0x1e, 0x3c, 0xd2, 0x95, 0x6f, 0xcc, 0xd5, 0xe2, 0xb5, 0x53, 0xe1, 0x29, 0xb4, 0xfb, 0x6f, 0x00,
-	0x00, 0x00, 0xff, 0xff, 0xe2, 0x6b, 0x8d, 0x42, 0x6c, 0x12, 0x00, 0x00,
+	// 1458 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xec, 0x58, 0xcd, 0x6f, 0x1b, 0x45,
+	0x1b, 0xf7, 0xfa, 0x33, 0x9e, 0x34, 0x79, 0xfb, 0x4e, 0xa2, 0x74, 0xdf, 0xb4, 0xef, 0xae, 0x65,
+	0x89, 0xd6, 0x20, 0x58, 0x53, 0xa7, 0xf4, 0x13, 0x10, 0x5d, 0xda, 0xca, 0x15, 0x2d, 0x6a, 0x37,
+	0x11, 0x07, 0x6e, 0x13, 0x7b, 0x62, 0x2f, 0xf6, 0x7a, 0x37, 0x3b, 0xe3, 0xa8, 0xb9, 0xf1, 0x07,
+	0x80, 0xd4, 0xbf, 0x02, 0x21, 0x51, 0x21, 0x71, 0xe5, 0xc8, 0xa9, 0xc7, 0x1c, 0xab, 0x48, 0x18,
+	0xea, 0x72, 0x80, 0x9c, 0xfa, 0x27, 0xa0, 0xf9, 0xd8, 0xf5, 0xac, 0xed, 0xb4, 0x76, 0xb9, 0xb4,
+	0x12, 0x97, 0x64, 0x3e, 0x9e, 0xdf, 0xec, 0x3c, 0xbf, 0xe7, 0xf7, 0x3c, 0x33, 0x63, 0x70, 0x2e,
+	0xe8, 0xb4, 0xaa, 0xbb, 0x7d, 0x1c, 0xba, 0x38, 0xe4, 0xff, 0xf7, 0x43, 0xd4, 0x6b, 0x61, 0xa5,
+	0x69, 0x05, 0xa1, 0x4f, 0x7d, 0x08, 0x46, 0x23, 0xeb, 0xb5, 0x96, 0x4b, 0xdb, 0xfd, 0x6d, 0xab,
+	0xe1, 0x7b, 0xd5, 0x96, 0xdf, 0xf2, 0xab, 0x2d, 0xdf, 0x6f, 0x75, 0x31, 0x0a, 0x5c, 0x22, 0x9b,
+	0xd5, 0x30, 0x68, 0x54, 0x09, 0x45, 0xb4, 0x4f, 0x04, 0x7e, 0x7d, 0x95, 0x19, 0xf2, 0x26, 0x87,
+	0xc8, 0x51, 0x53, 0x9a, 0xf3, 0xde, 0x76, 0x7f, 0xa7, 0x4a, 0x5d, 0x0f, 0x13, 0x8a, 0xbc, 0x40,
+	0x1a, 0x9c, 0x66, 0xfb, 0xeb, 0xfa, 0x2d, 0x81, 0x8c, 0x1a, 0x72, 0xf2, 0x7f, 0x89, 0x49, 0xd2,
+	0xc1, 0xb4, 0xd1, 0x96, 0x53, 0x25, 0x39, 0xb5, 0xdb, 0xf5, 0xfc, 0x26, 0xee, 0xf2, 0xbd, 0x10,
+	0xf1, 0x57, 0x5a, 0xac, 0x30, 0x8b, 0xa0, 0x4f, 0xda, 0xfc, 0x8f, 0x1c, 0xfc, 0xf4, 0xa5, 0x74,
+	0x6c, 0x23, 0x82, 0xab, 0x4d, 0xbc, 0xe3, 0xf6, 0x5c, 0xea, 0xfa, 0x3d, 0xa2, 0xb6, 0xe5, 0x22,
+	0x17, 0x67, 0x5b, 0x64, 0x9c, 0xe2, 0xf2, 0x41, 0x1a, 0x2c, 0xde, 0xf1, 0x3b, 0xae, 0x83, 0x77,
+	0xfb, 0x98, 0x50, 0xb8, 0x0a, 0x72, 0xdc, 0x46, 0xd7, 0x4a, 0x5a, 0xa5, 0xe8, 0x88, 0x0e, 0x1b,
+	0xed, 0xba, 0x9e, 0x4b, 0xf5, 0x74, 0x49, 0xab, 0x2c, 0x39, 0xa2, 0x03, 0x21, 0xc8, 0x12, 0x8a,
+	0x03, 0x3d, 0x53, 0xd2, 0x2a, 0x19, 0x87, 0xb7, 0xe1, 0x3a, 0x58, 0x70, 0x7b, 0x14, 0x87, 0x7b,
+	0xa8, 0xab, 0x17, 0xf9, 0x78, 0xdc, 0x87, 0x1f, 0x83, 0x02, 0xa1, 0x28, 0xa4, 0x5b, 0x44, 0xcf,
+	0x96, 0xb4, 0xca, 0x62, 0x6d, 0xdd, 0x12, 0xa1, 0xb0, 0xa2, 0x50, 0x58, 0x5b, 0x51, 0x28, 0xec,
+	0x85, 0xc7, 0x03, 0x33, 0xf5, 0xf0, 0x37, 0x53, 0x73, 0x22, 0x10, 0xbc, 0x0a, 0x72, 0xb8, 0xd7,
+	0xdc, 0x22, 0x7a, 0x6e, 0x0e, 0xb4, 0x80, 0xc0, 0xf3, 0xa0, 0xd8, 0x74, 0x43, 0xdc, 0x60, 0x9c,
+	0xe9, 0xf9, 0x92, 0x56, 0x59, 0xae, 0xad, 0x58, 0x71, 0x68, 0x6f, 0x44, 0x53, 0xce, 0xc8, 0x8a,
+	0xb9, 0x17, 0x20, 0xda, 0xd6, 0x0b, 0x9c, 0x09, 0xde, 0x86, 0x65, 0x90, 0x27, 0x6d, 0x14, 0x36,
+	0x89, 0xbe, 0x50, 0xca, 0x54, 0x8a, 0x36, 0x38, 0x1a, 0x98, 0x72, 0xc4, 0x91, 0xff, 0xcb, 0x7f,
+	0x69, 0x00, 0x32, 0x4a, 0x6f, 0xf7, 0x08, 0x45, 0x3d, 0xfa, 0x2a, 0xcc, 0x7e, 0x08, 0xf2, 0x4c,
+	0x94, 0x5b, 0x84, 0x73, 0x3b, 0xab, 0xab, 0x12, 0x93, 0xf4, 0x35, 0x3b, 0x97, 0xaf, 0xb9, 0xa9,
+	0xbe, 0xe6, 0x8f, 0xf5, 0xf5, 0x87, 0x2c, 0x38, 0x21, 0xe4, 0x43, 0x02, 0xbf, 0x47, 0x30, 0x03,
+	0x6d, 0xf2, 0x14, 0x14, 0x6e, 0x4a, 0x10, 0x1f, 0x71, 0xe4, 0x0c, 0xfc, 0x04, 0x64, 0x6f, 0x20,
+	0x8a, 0xb8, 0xcb, 0x8b, 0xb5, 0x55, 0x4b, 0x11, 0x25, 0x5b, 0x8b, 0xcd, 0xd9, 0x6b, 0xcc, 0xab,
+	0xa3, 0x81, 0xb9, 0xdc, 0x44, 0x14, 0xbd, 0xeb, 0x7b, 0x2e, 0xc5, 0x5e, 0x40, 0xf7, 0x1d, 0x8e,
+	0x84, 0x1f, 0x80, 0xe2, 0xcd, 0x30, 0xf4, 0xc3, 0xad, 0xfd, 0x00, 0x73, 0x8a, 0x8a, 0xf6, 0xa9,
+	0xa3, 0x81, 0xb9, 0x82, 0xa3, 0x41, 0x05, 0x31, 0xb2, 0x84, 0x6f, 0x83, 0x1c, 0xef, 0x70, 0x52,
+	0x8a, 0xf6, 0xca, 0xd1, 0xc0, 0xfc, 0x0f, 0x87, 0x28, 0xe6, 0xc2, 0x22, 0xc9, 0x61, 0x6e, 0x26,
+	0x0e, 0xe3, 0x50, 0xe6, 0xd5, 0x50, 0xea, 0xa0, 0xb0, 0x87, 0x43, 0xc2, 0x96, 0x29, 0xf0, 0xf1,
+	0xa8, 0x0b, 0xaf, 0x03, 0xc0, 0x88, 0x71, 0x09, 0x75, 0x1b, 0x4c, 0x4f, 0x8c, 0x8c, 0x25, 0x4b,
+	0x94, 0x0b, 0x07, 0x93, 0x7e, 0x97, 0xda, 0x50, 0xb2, 0xa0, 0x18, 0x3a, 0x4a, 0x1b, 0x3e, 0xd2,
+	0x40, 0xa1, 0x8e, 0x51, 0x13, 0x87, 0x44, 0x2f, 0x96, 0x32, 0x95, 0xc5, 0xda, 0x5b, 0x96, 0x5a,
+	0x1b, 0xee, 0x85, 0xbe, 0x87, 0x69, 0x1b, 0xf7, 0x49, 0x14, 0x20, 0x61, 0x6d, 0x77, 0x0e, 0x07,
+	0xe6, 0xb6, 0x5a, 0x51, 0x43, 0xb4, 0x83, 0x7a, 0xa8, 0xda, 0xf5, 0x3b, 0x6e, 0x75, 0xee, 0x7a,
+	0x74, 0xec, 0x77, 0x8e, 0x06, 0xa6, 0xf6, 0x9e, 0x13, 0x6d, 0xb1, 0xfc, 0xab, 0x06, 0xfe, 0xcb,
+	0x22, 0xbc, 0xc9, 0xd6, 0x26, 0x4a, 0x62, 0x78, 0x88, 0x36, 0xda, 0xba, 0xc6, 0x64, 0xe6, 0x88,
+	0x8e, 0x5a, 0x2c, 0xd2, 0xff, 0xa8, 0x58, 0x64, 0xe6, 0x2f, 0x16, 0x51, 0x36, 0x64, 0xa7, 0x66,
+	0x43, 0xee, 0xd8, 0x6c, 0xf8, 0x26, 0x23, 0x32, 0x3f, 0xf2, 0x6f, 0x8e, 0x9c, 0xb8, 0x15, 0xe7,
+	0x44, 0x86, 0xef, 0x36, 0x96, 0x9a, 0x58, 0xeb, 0x76, 0x13, 0xf7, 0xa8, 0xbb, 0xe3, 0xe2, 0xf0,
+	0x25, 0x99, 0xa1, 0xc8, 0x2d, 0x93, 0x94, 0x9b, 0xaa, 0x95, 0xec, 0x6b, 0xaf, 0x95, 0xb1, 0xec,
+	0xc8, 0xbd, 0x42, 0x76, 0x94, 0x9f, 0xa7, 0xc1, 0x1a, 0x0b, 0xc7, 0x1d, 0xb4, 0x8d, 0xbb, 0x9f,
+	0x23, 0x6f, 0xce, 0x90, 0x9c, 0x55, 0x42, 0x52, 0xb4, 0xe1, 0xbf, 0x94, 0xcf, 0x40, 0xf9, 0x77,
+	0x1a, 0x58, 0x88, 0x6a, 0x38, 0xb4, 0x00, 0x10, 0x30, 0x5e, 0xa6, 0x05, 0xd1, 0xcb, 0x0c, 0x1c,
+	0xc6, 0xa3, 0x8e, 0x62, 0x01, 0xbf, 0x02, 0x79, 0xd1, 0x93, 0x59, 0x70, 0x4a, 0xc9, 0x02, 0x1a,
+	0x62, 0xe4, 0x5d, 0x6f, 0xa2, 0x80, 0xe2, 0xd0, 0xbe, 0xc2, 0x76, 0x71, 0x38, 0x30, 0xcf, 0xbd,
+	0x88, 0x22, 0x7e, 0xc3, 0x12, 0x38, 0x16, 0x5c, 0xf1, 0x4d, 0x47, 0x7e, 0xa1, 0xfc, 0xad, 0x06,
+	0x4e, 0xb2, 0x8d, 0x32, 0x6a, 0x62, 0x55, 0xdc, 0x00, 0x0b, 0xa1, 0x6c, 0xf3, 0xed, 0x2e, 0xd6,
+	0xca, 0x56, 0x92, 0xd6, 0x29, 0x54, 0xda, 0xd9, 0xc7, 0x03, 0x53, 0x73, 0x62, 0x24, 0xdc, 0x48,
+	0xd0, 0x98, 0x9e, 0x46, 0x23, 0x83, 0xa4, 0x12, 0xc4, 0xfd, 0x9c, 0x06, 0xf0, 0x76, 0xaf, 0x89,
+	0x1f, 0x30, 0xf1, 0x8d, 0x74, 0xda, 0x9f, 0xd8, 0xd1, 0x99, 0x11, 0x29, 0x93, 0xf6, 0xf6, 0xb5,
+	0xc3, 0x81, 0x79, 0xe9, 0x45, 0xac, 0xbc, 0x00, 0xac, 0xb8, 0xa0, 0x0a, 0x37, 0xfd, 0xfa, 0x9f,
+	0x2b, 0x3f, 0xa6, 0xc1, 0xf2, 0x17, 0x7e, 0xb7, 0xef, 0xe1, 0x98, 0x38, 0x6f, 0x82, 0x38, 0x7d,
+	0x44, 0x5c, 0xd2, 0xd6, 0xbe, 0x74, 0x38, 0x30, 0x37, 0x66, 0x22, 0x2d, 0x09, 0x7c, 0x73, 0x09,
+	0x7b, 0x94, 0x06, 0xab, 0x5b, 0x7e, 0xf0, 0xd9, 0x26, 0x7f, 0xbe, 0x28, 0x75, 0x11, 0x4f, 0xd0,
+	0xb6, 0x3a, 0xa2, 0x8d, 0x21, 0xee, 0x22, 0x1a, 0xba, 0x0f, 0xec, 0x8d, 0xc3, 0x81, 0x59, 0x9d,
+	0x89, 0xb2, 0x11, 0xe8, 0xcd, 0xa5, 0xeb, 0x97, 0x34, 0x58, 0xbb, 0xdf, 0x47, 0x3d, 0xea, 0x76,
+	0xb1, 0xa0, 0x2c, 0x26, 0x6c, 0x7f, 0x82, 0x30, 0x63, 0x44, 0x58, 0x12, 0x23, 0xa9, 0xfb, 0xe8,
+	0x70, 0x60, 0x5e, 0x99, 0x89, 0xba, 0x69, 0xf0, 0x37, 0x97, 0xc4, 0x9f, 0xb2, 0x60, 0xe9, 0x3e,
+	0x5b, 0x25, 0xe6, 0xee, 0x1d, 0x20, 0x8f, 0x5c, 0xc9, 0x1c, 0x8c, 0xee, 0x68, 0x61, 0xd0, 0xb0,
+	0x36, 0xe5, 0x61, 0x2c, 0x2c, 0xe0, 0x65, 0x90, 0x27, 0xfc, 0x26, 0x24, 0x0b, 0xaa, 0x31, 0xfe,
+	0x6a, 0x48, 0xde, 0xb9, 0xea, 0x29, 0x47, 0xda, 0xb3, 0xb7, 0x54, 0x97, 0x5d, 0x00, 0xa2, 0x9b,
+	0x60, 0x79, 0x1c, 0x39, 0x79, 0x3d, 0x60, 0x68, 0x81, 0x81, 0x17, 0x41, 0x8e, 0x57, 0x6e, 0xf9,
+	0x62, 0x4d, 0x7c, 0x76, 0xb2, 0x84, 0xd6, 0x53, 0x8e, 0x30, 0x87, 0x35, 0x90, 0x0d, 0x42, 0xdf,
+	0x93, 0xa7, 0xe8, 0x99, 0xf1, 0x6f, 0xaa, 0xc7, 0x4e, 0x3d, 0xe5, 0x70, 0x5b, 0x78, 0x81, 0x5d,
+	0x79, 0xd9, 0x79, 0x45, 0xf8, 0x13, 0x82, 0x95, 0xac, 0x31, 0x98, 0x02, 0x89, 0x4c, 0xe1, 0x05,
+	0x90, 0xdf, 0xe3, 0x65, 0x89, 0xbf, 0x2f, 0xd8, 0xdd, 0x51, 0x01, 0x25, 0x0b, 0x16, 0xf3, 0x4b,
+	0xd8, 0xc2, 0x5b, 0xe0, 0x04, 0xf5, 0x83, 0x4e, 0x54, 0x00, 0xe4, 0xf3, 0xa3, 0xa4, 0x62, 0xa7,
+	0x15, 0x88, 0x7a, 0xca, 0x49, 0xe0, 0xe0, 0x3d, 0x70, 0x72, 0x37, 0x21, 0x53, 0x4c, 0xf8, 0xbb,
+	0x7f, 0x8c, 0xe7, 0xe9, 0xd9, 0x53, 0x4f, 0x39, 0x13, 0x68, 0x1b, 0x8c, 0x32, 0xaa, 0xfc, 0x47,
+	0x06, 0x9c, 0x90, 0x9a, 0x11, 0x6f, 0x85, 0x4b, 0xb1, 0x0c, 0x84, 0x64, 0xfe, 0x7f, 0x9c, 0x0c,
+	0xb8, 0xb9, 0xa2, 0x82, 0xf7, 0x63, 0x15, 0x08, 0xfd, 0xac, 0x8d, 0xb2, 0x94, 0xc7, 0x5f, 0x41,
+	0xc8, 0xc8, 0x6f, 0x44, 0x91, 0x17, 0xb2, 0x39, 0x3d, 0xfd, 0xdc, 0x8d, 0x50, 0x32, 0xec, 0x57,
+	0x41, 0xc1, 0x15, 0xcf, 0xfe, 0x69, 0x82, 0x99, 0xfc, 0x55, 0x80, 0x05, 0x52, 0x02, 0xe0, 0xc6,
+	0x28, 0xfc, 0x42, 0x35, 0xa7, 0x26, 0xc3, 0x1f, 0x83, 0xa2, 0xe8, 0x9f, 0x8f, 0xa3, 0x9f, 0x97,
+	0x98, 0x89, 0xc3, 0x2a, 0x76, 0x4c, 0x86, 0xbe, 0x0e, 0x16, 0x3c, 0x4c, 0x11, 0xbb, 0xcb, 0xea,
+	0x05, 0x5e, 0x37, 0xce, 0x26, 0x43, 0x35, 0xe2, 0xdb, 0xba, 0x2b, 0x0d, 0x6f, 0xf6, 0x68, 0xb8,
+	0x2f, 0xaf, 0x2d, 0x31, 0x7a, 0xfd, 0x1a, 0x58, 0x4a, 0x18, 0xc0, 0x93, 0x20, 0xd3, 0xc1, 0xd1,
+	0x2f, 0x1c, 0xac, 0xc9, 0x1e, 0x77, 0x7b, 0xa8, 0xdb, 0xc7, 0x9c, 0xf6, 0xa2, 0x23, 0x3a, 0x57,
+	0xd3, 0x97, 0x35, 0xbb, 0x08, 0x0a, 0xa1, 0xf8, 0x8a, 0xdd, 0x3c, 0x78, 0x6a, 0xa4, 0x9e, 0x3c,
+	0x35, 0x52, 0xcf, 0x9f, 0x1a, 0xda, 0xd7, 0x43, 0x43, 0xfb, 0x7e, 0x68, 0x68, 0x8f, 0x87, 0x86,
+	0x76, 0x30, 0x34, 0xb4, 0xdf, 0x87, 0x86, 0xf6, 0xe7, 0xd0, 0x48, 0x3d, 0x1f, 0x1a, 0xda, 0xc3,
+	0x67, 0x46, 0xea, 0xe0, 0x99, 0x91, 0x7a, 0xf2, 0xcc, 0x48, 0x7d, 0x69, 0xcd, 0x57, 0xc2, 0xb6,
+	0xf3, 0x9c, 0x96, 0x8d, 0xbf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x66, 0x27, 0xc9, 0x7f, 0x7f, 0x14,
+	0x00, 0x00,
 }
 
 func (this *LokiRequest) Equal(that interface{}) bool {
@@ -1560,6 +1728,9 @@ func (this *QueryResponse) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
+	if !this.Status.Equal(that1.Status) {
+		return false
+	}
 	if that1.Response == nil {
 		if this.Response != nil {
 			return false
@@ -1763,6 +1934,188 @@ func (this *QueryResponse_QuantileSketches) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *QueryRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRequest)
+	if !ok {
+		that2, ok := that.(QueryRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if that1.Request == nil {
+		if this.Request != nil {
+			return false
+		}
+	} else if this.Request == nil {
+		return false
+	} else if !this.Request.Equal(that1.Request) {
+		return false
+	}
+	if len(this.Metadata) != len(that1.Metadata) {
+		return false
+	}
+	for i := range this.Metadata {
+		if this.Metadata[i] != that1.Metadata[i] {
+			return false
+		}
+	}
+	return true
+}
+func (this *QueryRequest_Series) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRequest_Series)
+	if !ok {
+		that2, ok := that.(QueryRequest_Series)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Series.Equal(that1.Series) {
+		return false
+	}
+	return true
+}
+func (this *QueryRequest_Labels) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRequest_Labels)
+	if !ok {
+		that2, ok := that.(QueryRequest_Labels)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Labels.Equal(that1.Labels) {
+		return false
+	}
+	return true
+}
+func (this *QueryRequest_Stats) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRequest_Stats)
+	if !ok {
+		that2, ok := that.(QueryRequest_Stats)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Stats.Equal(that1.Stats) {
+		return false
+	}
+	return true
+}
+func (this *QueryRequest_Instant) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRequest_Instant)
+	if !ok {
+		that2, ok := that.(QueryRequest_Instant)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Instant.Equal(that1.Instant) {
+		return false
+	}
+	return true
+}
+func (this *QueryRequest_Streams) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRequest_Streams)
+	if !ok {
+		that2, ok := that.(QueryRequest_Streams)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Streams.Equal(that1.Streams) {
+		return false
+	}
+	return true
+}
+func (this *QueryRequest_Volume) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRequest_Volume)
+	if !ok {
+		that2, ok := that.(QueryRequest_Volume)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Volume.Equal(that1.Volume) {
+		return false
+	}
+	return true
+}
 func (this *LokiRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -1934,8 +2287,11 @@ func (this *QueryResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 12)
+	s := make([]string, 0, 13)
 	s = append(s, "&queryrange.QueryResponse{")
+	if this.Status != nil {
+		s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
+	}
 	if this.Response != nil {
 		s = append(s, "Response: "+fmt.Sprintf("%#v", this.Response)+",\n")
 	}
@@ -2004,6 +2360,79 @@ func (this *QueryResponse_QuantileSketches) GoString() string {
 	}
 	s := strings.Join([]string{`&queryrange.QueryResponse_QuantileSketches{` +
 		`QuantileSketches:` + fmt.Sprintf("%#v", this.QuantileSketches) + `}`}, ", ")
+	return s
+}
+func (this *QueryRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 11)
+	s = append(s, "&queryrange.QueryRequest{")
+	if this.Request != nil {
+		s = append(s, "Request: "+fmt.Sprintf("%#v", this.Request)+",\n")
+	}
+	keysForMetadata := make([]string, 0, len(this.Metadata))
+	for k, _ := range this.Metadata {
+		keysForMetadata = append(keysForMetadata, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForMetadata)
+	mapStringForMetadata := "map[string]string{"
+	for _, k := range keysForMetadata {
+		mapStringForMetadata += fmt.Sprintf("%#v: %#v,", k, this.Metadata[k])
+	}
+	mapStringForMetadata += "}"
+	if this.Metadata != nil {
+		s = append(s, "Metadata: "+mapStringForMetadata+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *QueryRequest_Series) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&queryrange.QueryRequest_Series{` +
+		`Series:` + fmt.Sprintf("%#v", this.Series) + `}`}, ", ")
+	return s
+}
+func (this *QueryRequest_Labels) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&queryrange.QueryRequest_Labels{` +
+		`Labels:` + fmt.Sprintf("%#v", this.Labels) + `}`}, ", ")
+	return s
+}
+func (this *QueryRequest_Stats) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&queryrange.QueryRequest_Stats{` +
+		`Stats:` + fmt.Sprintf("%#v", this.Stats) + `}`}, ", ")
+	return s
+}
+func (this *QueryRequest_Instant) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&queryrange.QueryRequest_Instant{` +
+		`Instant:` + fmt.Sprintf("%#v", this.Instant) + `}`}, ", ")
+	return s
+}
+func (this *QueryRequest_Streams) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&queryrange.QueryRequest_Streams{` +
+		`Streams:` + fmt.Sprintf("%#v", this.Streams) + `}`}, ", ")
+	return s
+}
+func (this *QueryRequest_Volume) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&queryrange.QueryRequest_Volume{` +
+		`Volume:` + fmt.Sprintf("%#v", this.Volume) + `}`}, ", ")
 	return s
 }
 func valueToGoStringQueryrange(v interface{}, typ string) string {
@@ -2772,6 +3201,18 @@ func (m *QueryResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			}
 		}
 	}
+	if m.Status != nil {
+		{
+			size, err := m.Status.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
 	return len(dAtA) - i, nil
 }
 
@@ -2791,7 +3232,7 @@ func (m *QueryResponse_Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x12
 	}
 	return len(dAtA) - i, nil
 }
@@ -2811,7 +3252,7 @@ func (m *QueryResponse_Labels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -2831,7 +3272,7 @@ func (m *QueryResponse_Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -2851,7 +3292,7 @@ func (m *QueryResponse_Prom) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x2a
 	}
 	return len(dAtA) - i, nil
 }
@@ -2871,7 +3312,7 @@ func (m *QueryResponse_Streams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -2891,7 +3332,7 @@ func (m *QueryResponse_Volume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -2911,7 +3352,7 @@ func (m *QueryResponse_TopkSketches) MarshalToSizedBuffer(dAtA []byte) (int, err
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
@@ -2931,7 +3372,178 @@ func (m *QueryResponse_QuantileSketches) MarshalToSizedBuffer(dAtA []byte) (int,
 			i = encodeVarintQueryrange(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x42
+		dAtA[i] = 0x4a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *QueryRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Metadata) > 0 {
+		for k := range m.Metadata {
+			v := m.Metadata[k]
+			baseI := i
+			i -= len(v)
+			copy(dAtA[i:], v)
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(v)))
+			i--
+			dAtA[i] = 0x12
+			i -= len(k)
+			copy(dAtA[i:], k)
+			i = encodeVarintQueryrange(dAtA, i, uint64(len(k)))
+			i--
+			dAtA[i] = 0xa
+			i = encodeVarintQueryrange(dAtA, i, uint64(baseI-i))
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
+	if m.Request != nil {
+		{
+			size := m.Request.Size()
+			i -= size
+			if _, err := m.Request.MarshalTo(dAtA[i:]); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *QueryRequest_Series) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *QueryRequest_Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Series != nil {
+		{
+			size, err := m.Series.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+func (m *QueryRequest_Labels) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *QueryRequest_Labels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Labels != nil {
+		{
+			size, err := m.Labels.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *QueryRequest_Stats) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *QueryRequest_Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Stats != nil {
+		{
+			size, err := m.Stats.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *QueryRequest_Instant) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *QueryRequest_Instant) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Instant != nil {
+		{
+			size, err := m.Instant.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
+	return len(dAtA) - i, nil
+}
+func (m *QueryRequest_Streams) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *QueryRequest_Streams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Streams != nil {
+		{
+			size, err := m.Streams.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *QueryRequest_Volume) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *QueryRequest_Volume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Volume != nil {
+		{
+			size, err := m.Volume.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintQueryrange(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -3261,6 +3873,10 @@ func (m *QueryResponse) Size() (n int) {
 	}
 	var l int
 	_ = l
+	if m.Status != nil {
+		l = m.Status.Size()
+		n += 1 + l + sovQueryrange(uint64(l))
+	}
 	if m.Response != nil {
 		n += m.Response.Size()
 	}
@@ -3359,6 +3975,98 @@ func (m *QueryResponse_QuantileSketches) Size() (n int) {
 	_ = l
 	if m.QuantileSketches != nil {
 		l = m.QuantileSketches.Size()
+		n += 1 + l + sovQueryrange(uint64(l))
+	}
+	return n
+}
+func (m *QueryRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Request != nil {
+		n += m.Request.Size()
+	}
+	if len(m.Metadata) > 0 {
+		for k, v := range m.Metadata {
+			_ = k
+			_ = v
+			mapEntrySize := 1 + len(k) + sovQueryrange(uint64(len(k))) + 1 + len(v) + sovQueryrange(uint64(len(v)))
+			n += mapEntrySize + 1 + sovQueryrange(uint64(mapEntrySize))
+		}
+	}
+	return n
+}
+
+func (m *QueryRequest_Series) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Series != nil {
+		l = m.Series.Size()
+		n += 1 + l + sovQueryrange(uint64(l))
+	}
+	return n
+}
+func (m *QueryRequest_Labels) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Labels != nil {
+		l = m.Labels.Size()
+		n += 1 + l + sovQueryrange(uint64(l))
+	}
+	return n
+}
+func (m *QueryRequest_Stats) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Stats != nil {
+		l = m.Stats.Size()
+		n += 1 + l + sovQueryrange(uint64(l))
+	}
+	return n
+}
+func (m *QueryRequest_Instant) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Instant != nil {
+		l = m.Instant.Size()
+		n += 1 + l + sovQueryrange(uint64(l))
+	}
+	return n
+}
+func (m *QueryRequest_Streams) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Streams != nil {
+		l = m.Streams.Size()
+		n += 1 + l + sovQueryrange(uint64(l))
+	}
+	return n
+}
+func (m *QueryRequest_Volume) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Volume != nil {
+		l = m.Volume.Size()
 		n += 1 + l + sovQueryrange(uint64(l))
 	}
 	return n
@@ -3539,6 +4247,7 @@ func (this *QueryResponse) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&QueryResponse{`,
+		`Status:` + strings.Replace(fmt.Sprintf("%v", this.Status), "Status", "rpc.Status", 1) + `,`,
 		`Response:` + fmt.Sprintf("%v", this.Response) + `,`,
 		`}`,
 	}, "")
@@ -3620,6 +4329,87 @@ func (this *QueryResponse_QuantileSketches) String() string {
 	}
 	s := strings.Join([]string{`&QueryResponse_QuantileSketches{`,
 		`QuantileSketches:` + strings.Replace(fmt.Sprintf("%v", this.QuantileSketches), "QuantileSketchResponse", "QuantileSketchResponse", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QueryRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	keysForMetadata := make([]string, 0, len(this.Metadata))
+	for k, _ := range this.Metadata {
+		keysForMetadata = append(keysForMetadata, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForMetadata)
+	mapStringForMetadata := "map[string]string{"
+	for _, k := range keysForMetadata {
+		mapStringForMetadata += fmt.Sprintf("%v: %v,", k, this.Metadata[k])
+	}
+	mapStringForMetadata += "}"
+	s := strings.Join([]string{`&QueryRequest{`,
+		`Request:` + fmt.Sprintf("%v", this.Request) + `,`,
+		`Metadata:` + mapStringForMetadata + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QueryRequest_Series) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QueryRequest_Series{`,
+		`Series:` + strings.Replace(fmt.Sprintf("%v", this.Series), "LokiSeriesRequest", "LokiSeriesRequest", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QueryRequest_Labels) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QueryRequest_Labels{`,
+		`Labels:` + strings.Replace(fmt.Sprintf("%v", this.Labels), "LabelRequest", "logproto.LabelRequest", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QueryRequest_Stats) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QueryRequest_Stats{`,
+		`Stats:` + strings.Replace(fmt.Sprintf("%v", this.Stats), "IndexStatsRequest", "logproto.IndexStatsRequest", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QueryRequest_Instant) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QueryRequest_Instant{`,
+		`Instant:` + strings.Replace(fmt.Sprintf("%v", this.Instant), "LokiInstantRequest", "LokiInstantRequest", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QueryRequest_Streams) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QueryRequest_Streams{`,
+		`Streams:` + strings.Replace(fmt.Sprintf("%v", this.Streams), "LokiRequest", "LokiRequest", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QueryRequest_Volume) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QueryRequest_Volume{`,
+		`Volume:` + strings.Replace(fmt.Sprintf("%v", this.Volume), "VolumeRequest", "logproto.VolumeRequest", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -5836,6 +6626,42 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Status == nil {
+				m.Status = &rpc.Status{}
+			}
+			if err := m.Status.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Series", wireType)
 			}
 			var msglen int
@@ -5869,7 +6695,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Response = &QueryResponse_Series{v}
 			iNdEx = postIndex
-		case 2:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
 			}
@@ -5904,7 +6730,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Response = &QueryResponse_Labels{v}
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Stats", wireType)
 			}
@@ -5939,7 +6765,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Response = &QueryResponse_Stats{v}
 			iNdEx = postIndex
-		case 4:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Prom", wireType)
 			}
@@ -5974,7 +6800,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Response = &QueryResponse_Prom{v}
 			iNdEx = postIndex
-		case 5:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Streams", wireType)
 			}
@@ -6009,7 +6835,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Response = &QueryResponse_Streams{v}
 			iNdEx = postIndex
-		case 6:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Volume", wireType)
 			}
@@ -6044,7 +6870,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Response = &QueryResponse_Volume{v}
 			iNdEx = postIndex
-		case 7:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TopkSketches", wireType)
 			}
@@ -6079,7 +6905,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Response = &QueryResponse_TopkSketches{v}
 			iNdEx = postIndex
-		case 8:
+		case 9:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field QuantileSketches", wireType)
 			}
@@ -6113,6 +6939,396 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			m.Response = &QueryResponse_QuantileSketches{v}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQueryrange(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQueryrange
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Series", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &LokiSeriesRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Request = &QueryRequest_Series{v}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &logproto.LabelRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Request = &QueryRequest_Labels{v}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Stats", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &logproto.IndexStatsRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Request = &QueryRequest_Stats{v}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Instant", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &LokiInstantRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Request = &QueryRequest_Instant{v}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Streams", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &LokiRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Request = &QueryRequest_Streams{v}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Volume", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &logproto.VolumeRequest{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Request = &QueryRequest_Volume{v}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Metadata == nil {
+				m.Metadata = make(map[string]string)
+			}
+			var mapkey string
+			var mapvalue string
+			for iNdEx < postIndex {
+				entryPreIndex := iNdEx
+				var wire uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowQueryrange
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					wire |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				fieldNum := int32(wire >> 3)
+				if fieldNum == 1 {
+					var stringLenmapkey uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowQueryrange
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						stringLenmapkey |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					intStringLenmapkey := int(stringLenmapkey)
+					if intStringLenmapkey < 0 {
+						return ErrInvalidLengthQueryrange
+					}
+					postStringIndexmapkey := iNdEx + intStringLenmapkey
+					if postStringIndexmapkey < 0 {
+						return ErrInvalidLengthQueryrange
+					}
+					if postStringIndexmapkey > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
+					iNdEx = postStringIndexmapkey
+				} else if fieldNum == 2 {
+					var stringLenmapvalue uint64
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowQueryrange
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						stringLenmapvalue |= uint64(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					intStringLenmapvalue := int(stringLenmapvalue)
+					if intStringLenmapvalue < 0 {
+						return ErrInvalidLengthQueryrange
+					}
+					postStringIndexmapvalue := iNdEx + intStringLenmapvalue
+					if postStringIndexmapvalue < 0 {
+						return ErrInvalidLengthQueryrange
+					}
+					if postStringIndexmapvalue > l {
+						return io.ErrUnexpectedEOF
+					}
+					mapvalue = string(dAtA[iNdEx:postStringIndexmapvalue])
+					iNdEx = postStringIndexmapvalue
+				} else {
+					iNdEx = entryPreIndex
+					skippy, err := skipQueryrange(dAtA[iNdEx:])
+					if err != nil {
+						return err
+					}
+					if skippy < 0 {
+						return ErrInvalidLengthQueryrange
+					}
+					if (iNdEx + skippy) > postIndex {
+						return io.ErrUnexpectedEOF
+					}
+					iNdEx += skippy
+				}
+			}
+			m.Metadata[mapkey] = mapvalue
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
