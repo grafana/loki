@@ -6,13 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 
 	"github.com/prometheus/common/model"
 
