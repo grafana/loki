@@ -73,6 +73,7 @@ func BenchmarkQuery_PostingsForMatchers(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				p, _ := tsdb.PostingsForMatchers(reader, nil, bm.matchers...)
 
+				//nolint:revive
 				for p.Next() {
 				}
 			}
