@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -218,7 +219,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	)
 
 	if q.logExecQuery {
-		queryHash := HashedQuery(q.params.Query())
+		queryHash := util.HashedQuery(q.params.Query())
 		if GetRangeType(q.params) == InstantType {
 			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
 		} else {
@@ -242,7 +243,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(spLogger))
 
-	status := logqlmodel.MapStatusCode(err)
+	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
 		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
