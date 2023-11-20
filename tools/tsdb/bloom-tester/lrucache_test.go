@@ -2,9 +2,10 @@ package main
 
 import (
 	"encoding/binary"
-	"github.com/stretchr/testify/require"
 	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 var num = 1000000

@@ -539,6 +539,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
@@ -4026,6 +4027,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
