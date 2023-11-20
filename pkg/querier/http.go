@@ -98,7 +98,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
 func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
-	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeLabels))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
@@ -111,7 +111,6 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	if resp != nil {
 		resLength = len(resp.Values)
 	}
-	// record stats about the label query
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
@@ -146,6 +145,9 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	encodingFlags := httpreq.ExtractEncodingFlags(r)
+	version := loghttp.GetVersion(r.RequestURI)
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
@@ -164,7 +166,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	tailer, err := q.querier.Tail(r.Context(), req)
+	tailer, err := q.querier.Tail(r.Context(), req, encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
 			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
@@ -179,6 +181,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
+
+	connWriter := marshal.NewWebsocketJSONWriter(conn)
 
 	var response *loghttp_legacy.TailResponse
 	responseChan := tailer.getResponseChan()
@@ -197,10 +201,10 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 					break
 				} else if tailer.stopped {
 					return
-				} else {
-					level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
-					break
 				}
+
+				level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
+				break
 			}
 		}
 		doneChan <- struct{}{}
@@ -210,8 +214,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case response = <-responseChan:
 			var err error
-			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, conn)
+			if version == loghttp.VersionV1 {
+				err = marshal.WriteTailResponseJSON(*response, connWriter, encodingFlags)
 			} else {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}
@@ -247,7 +251,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 // SeriesHandler returns the list of time series that match a certain label set.
 // See https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers
 func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, stats.Result, error) {
-	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("series"))
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeSeries))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
@@ -261,7 +265,6 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 		resLength = len(resp.Series)
 	}
 
-	// record stats about the label query
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 	log := spanlogger.FromContext(ctx)
 	statResult.Log(level.Debug(log))
@@ -271,20 +274,37 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
+	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
 	return resp, statResult, err
 }
 
 // IndexStatsHandler queries the index for the data statistics related to a query
 func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQuery) (*logproto.IndexStatsResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeStats))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	// TODO(karsten): we might want to change IndexStats to receive a logproto.IndexStatsRequest instead
-	// TODO(owen-d): log metadata, record stats?
 	resp, err := q.querier.IndexStats(ctx, req)
 	if resp == nil {
 		// Some stores don't implement this
 		resp = &index_stats.Stats{}
 	}
+
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
+	}
+
+	logql.RecordStatsQueryMetrics(ctx, log, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -294,6 +314,12 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 // VolumeHandler queries the index label volumes related to the passed matchers and given time range.
 // Returns either N values where N is the time range / step and a single value for a time range depending on the request.
 func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues(logql.QueryTypeVolume))
+	defer timer.ObserveDuration()
+
+	start := time.Now()
+	statsCtx, ctx := stats.NewContext(ctx)
+
 	resp, err := q.querier.Volume(ctx, req)
 	if err != nil {
 		return nil, err
@@ -301,6 +327,18 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	if resp == nil { // Some stores don't implement this
 		return &logproto.VolumeResponse{Volumes: []logproto.Volume{}}, nil
 	}
+
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
+	log := spanlogger.FromContext(ctx)
+	statResult.Log(level.Debug(log))
+
+	status := 200
+	if err != nil {
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
+	}
+
+	logql.RecordVolumeQueryMetrics(ctx, log, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
 }

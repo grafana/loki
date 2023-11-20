@@ -18,10 +18,10 @@ type RetryMiddlewareMetrics struct {
 	retriesCount prometheus.Histogram
 }
 
-func NewRetryMiddlewareMetrics(registerer prometheus.Registerer) *RetryMiddlewareMetrics {
+func NewRetryMiddlewareMetrics(registerer prometheus.Registerer, metricsNamespace string) *RetryMiddlewareMetrics {
 	return &RetryMiddlewareMetrics{
 		retriesCount: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Name:      "query_frontend_retries",
 			Help:      "Number of times a request is retried.",
 			Buckets:   []float64{0, 1, 2, 3, 4, 5},
@@ -39,9 +39,9 @@ type retry struct {
 
 // NewRetryMiddleware returns a middleware that retries requests if they
 // fail with 500 or a non-HTTP error.
-func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddlewareMetrics) Middleware {
+func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddlewareMetrics, metricsNamespace string) Middleware {
 	if metrics == nil {
-		metrics = NewRetryMiddlewareMetrics(nil)
+		metrics = NewRetryMiddlewareMetrics(nil, metricsNamespace)
 	}
 
 	return MiddlewareFunc(func(next Handler) Handler {

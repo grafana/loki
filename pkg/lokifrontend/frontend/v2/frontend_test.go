@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/test"
 )
 
@@ -47,7 +49,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 	cfg.Port = grpcPort
 
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, nil, logger, nil, queryrange.DefaultCodec)
+	f, err := NewFrontend(cfg, nil, logger, nil, queryrange.DefaultCodec, constants.Loki)
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
@@ -86,9 +88,11 @@ func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, quer
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, _ = f.QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-		QueryID:      queryID,
-		HttpResponse: resp,
-		Stats:        &stats.Stats{},
+		QueryID: queryID,
+		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
+			HttpResponse: resp,
+		},
+		Stats: &stats.Stats{},
 	})
 }
 
@@ -338,6 +342,33 @@ func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
 	require.NoError(t, err)
 
 	wg.Wait()
+}
+
+func TestProtobufBackwardsCompatibility(t *testing.T) {
+	expected := &frontendv2pb.QueryResultRequest{
+		QueryID: 42,
+		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
+			HttpResponse: &httpgrpc.HTTPResponse{
+				Code:    200,
+				Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
+				Body:    []byte("Hello world!"),
+			},
+		},
+		Stats: &stats.Stats{
+			FetchedSeriesCount: 100,
+			FetchedChunkBytes:  1024,
+		},
+	}
+
+	b, err := os.ReadFile("testdata/k173.bin")
+	require.NoError(t, err)
+
+	actual := &frontendv2pb.QueryResultRequest{}
+	err = actual.Unmarshal(b)
+	require.NoError(t, err)
+
+	require.IsType(t, &frontendv2pb.QueryResultRequest_HttpResponse{}, actual.Response)
+	require.EqualValues(t, expected, actual)
 }
 
 type mockScheduler struct {

@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -36,11 +37,11 @@ type LogResultCacheMetrics struct {
 func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheMetrics {
 	return &LogResultCacheMetrics{
 		CacheHit: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_hit_total",
 		}),
 		CacheMiss: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_miss_total",
 		}),
 	}

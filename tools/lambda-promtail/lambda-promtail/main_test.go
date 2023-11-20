@@ -37,7 +37,8 @@ func TestLambdaPromtail_TestParseLabelsNoneProvided(t *testing.T) {
 }
 
 func TestLambdaPromtail_TestDropLabels(t *testing.T) {
-	os.Setenv("DROP_LABELS", "A1,A2")
+	// Simulate default env var set in Terraform
+	os.Setenv("DROP_LABELS", "")
 
 	// Reset the shared global variables
 	defer func() {
@@ -46,6 +47,10 @@ func TestLambdaPromtail_TestDropLabels(t *testing.T) {
 	}()
 
 	var err error
+	dropLabels, err = getDropLabels()
+	require.Nil(t, err)
+
+	os.Setenv("DROP_LABELS", "A1,A2")
 	dropLabels, err = getDropLabels()
 	require.Nil(t, err)
 	require.Contains(t, dropLabels, model.LabelName("A1"))

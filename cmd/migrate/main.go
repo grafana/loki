@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -48,6 +49,7 @@ func main() {
 	batch := flag.Int("batchLen", 500, "Specify how many chunks to read/write in one batch")
 	shardBy := flag.Duration("shardBy", 6*time.Hour, "Break down the total interval into shards of this size, making this too small can lead to syncing a lot of duplicate chunks")
 	parallel := flag.Int("parallel", 8, "How many parallel threads to process each shard")
+	metricsNamespace := flag.String("metrics.namespace", constants.Loki, "Namespace of the generated metrics")
 	flag.Parse()
 
 	go func() {
@@ -127,7 +129,7 @@ func main() {
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	clientMetrics := storage.NewClientMetrics()
-	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
+	s, err := storage.NewStore(sourceConfig.StorageConfig, sourceConfig.ChunkStoreConfig, sourceConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, *metricsNamespace)
 	if err != nil {
 		log.Println("Failed to create source store:", err)
 		os.Exit(1)
@@ -136,7 +138,7 @@ func main() {
 	// Create a new registerer to avoid registering duplicate metrics
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
-	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
+	d, err := storage.NewStore(destConfig.StorageConfig, destConfig.ChunkStoreConfig, destConfig.SchemaConfig, limits, clientMetrics, prometheus.DefaultRegisterer, util_log.Logger, *metricsNamespace)
 	if err != nil {
 		log.Println("Failed to create destination store:", err)
 		os.Exit(1)

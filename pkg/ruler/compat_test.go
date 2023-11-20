@@ -109,7 +109,7 @@ func TestNonMetricQuery(t *testing.T) {
 	eval, err := NewLocalEvaluator(engine, log)
 	require.NoError(t, err)
 
-	queryFunc := queryFunc(eval, overrides, fakeChecker{}, "fake", log)
+	queryFunc := queryFunc(eval, fakeChecker{}, "fake", log)
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")

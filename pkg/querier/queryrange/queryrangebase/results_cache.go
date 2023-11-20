@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -52,12 +53,12 @@ type ResultsCacheMetrics struct {
 func NewResultsCacheMetrics(registerer prometheus.Registerer) *ResultsCacheMetrics {
 	return &ResultsCacheMetrics{
 		versionComparisons: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "results_cache_version_comparisons_total",
 			Help:      "Comparisons of cache key versions in the results cache between query-frontends & queriers",
 		}),
 		versionComparisonFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "results_cache_version_comparisons_failed",
 			Help:      "Comparison failures of cache key versions in the results cache between query-frontends & queriers",
 		}, []string{"reason"}),

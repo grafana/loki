@@ -15,7 +15,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: bos
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com
