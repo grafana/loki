@@ -24,6 +24,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/integration/util"
+
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -78,6 +79,7 @@ storage_config:
 compactor:
   working_directory: {{.dataPath}}/retention
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false
