@@ -427,6 +427,12 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiRequest{
 			Query:     req.Query,
 			Limit:     req.Limit,
@@ -437,12 +443,21 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			Interval:  req.Interval.Milliseconds(),
 			Path:      r.Url,
 			Shards:    req.Shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, ctx, nil
 	case InstantQueryOp:
 		req, err := loghttp.ParseInstantQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiInstantRequest{
 			Query:     req.Query,
 			Limit:     req.Limit,
@@ -450,6 +465,9 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			TimeTs:    req.Ts.UTC(),
 			Path:      r.Url,
 			Shards:    req.Shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, ctx, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(httpReq)
