@@ -208,7 +208,6 @@
         query_ingesters_within: '2h',  // twice the max-chunk age (1h default) for safety buffer
       },
       limits_config: {
-        enforce_metric_name: false,
         // align middleware parallelism with shard factor to optimize one-legged sharded queries.
         max_query_parallelism: if $._config.queryFrontend.sharded_queries_enabled then
           // For a sharding factor of 16 (default), this is 256, or enough for 16 sharded queries.

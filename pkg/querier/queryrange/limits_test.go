@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
 )
@@ -43,7 +45,7 @@ func TestLimits(t *testing.T) {
 
 	require.Equal(
 		t,
-		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
+		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart().UnixMilli()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
 		cacheKeyLimits{wrapped, nil}.GenerateCacheKey(context.Background(), "a", r),
 	)
 }
@@ -56,7 +58,7 @@ func Test_seriesLimiter(t *testing.T) {
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
 	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
-	}, nil, false, nil)
+	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -226,7 +228,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
 		Configs: testSchemas,
-	}, nil, false, nil)
+	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -253,6 +255,48 @@ func Test_MaxQueryLookBack(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, called)
 	require.Equal(t, resp.(*LokiResponse).Status, "success")
+}
+
+func Test_MaxQueryLookBack_Types(t *testing.T) {
+	m := NewLimitsMiddleware(fakeLimits{
+		maxQueryLookback:    1 * time.Hour,
+		maxQueryParallelism: 1,
+	})
+
+	now := time.Now()
+	type tcase struct {
+		request          base.Request
+		expectedResponse base.Response
+	}
+	cases := []tcase{
+		{
+			request: &logproto.IndexStatsRequest{
+				From:    model.Time(now.UnixMilli()),
+				Through: model.Time(now.Add(-90 * time.Minute).UnixMilli()),
+			},
+			expectedResponse: &IndexStatsResponse{},
+		},
+		{
+			request: &logproto.VolumeRequest{
+				From:    model.Time(now.UnixMilli()),
+				Through: model.Time(now.Add(-90 * time.Minute).UnixMilli()),
+			},
+			expectedResponse: &VolumeResponse{},
+		},
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+		return nil, nil
+	})
+
+	for _, tcase := range cases {
+		resp, err := m.Wrap(h).Do(ctx, tcase.request)
+		require.NoError(t, err)
+
+		require.Equal(t, reflect.TypeOf(tcase.expectedResponse), reflect.TypeOf(resp))
+	}
 }
 
 func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
@@ -580,7 +624,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 
 	statsHandler := base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
 		// This is the actual check that we're testing.
-		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
 
 		return &IndexStatsResponse{
 			Response: &logproto.IndexStatsResponse{
@@ -622,4 +666,60 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestAcquireWithTiming(t *testing.T) {
+
+	ctx := context.Background()
+	sem := NewSemaphoreWithTiming(2)
+
+	// Channel to collect waiting times
+	waitingTimes := make(chan struct {
+		GoroutineID int
+		WaitingTime int64
+	}, 3)
+
+	tryAcquire := func(n int64, goroutineID int) {
+		elapsed, err := sem.Acquire(ctx, n)
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+		waitingTimes <- struct {
+			GoroutineID int
+			WaitingTime int64
+		}{goroutineID, elapsed.Milliseconds()}
+
+		defer sem.sem.Release(n)
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	go tryAcquire(1, 1)
+	go tryAcquire(1, 2)
+
+	// Sleep briefly to allow the first two goroutines to start running
+	time.Sleep(5 * time.Millisecond)
+
+	go tryAcquire(1, 3)
+
+	// Collect and sort waiting times
+	var waitingDurations []struct {
+		GoroutineID int
+		WaitingTime int64
+	}
+	for i := 0; i < 3; i++ {
+		waitingDurations = append(waitingDurations, <-waitingTimes)
+	}
+	// Find and check the waiting time for the third goroutine
+	var waiting3 int64
+	for _, waiting := range waitingDurations {
+		if waiting.GoroutineID == 3 {
+			waiting3 = waiting.WaitingTime
+			break
+		}
+	}
+
+	// Check that the waiting time for the third request is larger than 0 milliseconds and less than or equal to 10-5=5 milliseconds
+	require.Greater(t, waiting3, 0*time.Millisecond)
+	require.LessOrEqual(t, waiting3, 5*time.Millisecond)
 }

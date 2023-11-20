@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -109,9 +110,9 @@ func TestLogLabelsQuery(t *testing.T) {
 			TotalEntriesReturned:    12,
 		},
 	})
-	require.Equal(t,
+	require.Regexp(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo query= splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 label=foo query= query_hash=2166136261 total_entries=12\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
@@ -127,7 +128,7 @@ func TestLogSeriesQuery(t *testing.T) {
 	sp := opentracing.StartSpan("")
 	ctx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), "foo"), sp)
 	now := time.Now()
-	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", stats.Result{
+	RecordSeriesQueryMetrics(ctx, logger, now.Add(-1*time.Hour), now, []string{`{container_name=~"prometheus.*", component="server"}`, `{app="loki"}`}, "200", []string{}, stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,
 			ExecTime:                25.25,
@@ -135,9 +136,9 @@ func TestLogSeriesQuery(t *testing.T) {
 			TotalEntriesReturned:    10,
 		},
 	})
-	require.Equal(t,
+	require.Regexp(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" splits=0 throughput=100kB total_bytes=100kB total_entries=10\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 match=\"{container_name=.*\"}:{app=.*}\" query_hash=23523089 total_entries=10\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
@@ -191,11 +192,11 @@ func Test_testToKeyValues(t *testing.T) {
 }
 
 func TestQueryHashing(t *testing.T) {
-	h1 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
-	h2 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= logfmt |= "metrics.go"`)
+	h1 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
+	h2 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= logfmt |= "metrics.go"`)
 	// check that it capture differences of order.
 	require.NotEqual(t, h1, h2)
-	h3 := HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
+	h3 := util.HashedQuery(`{app="myapp",env="myenv"} |= "error" |= "metrics.go" |= logfmt`)
 	// check that it evaluate same queries as same hashes, even if evaluated at different timestamps.
 	require.Equal(t, h1, h3)
 }

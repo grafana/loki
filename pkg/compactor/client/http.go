@@ -30,7 +30,7 @@ type HTTPConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *HTTPConfig) RegisterFlags(f *flag.FlagSet) {
-	prefix := "boltdb.shipper.compactor.client"
+	prefix := "compactor.client"
 	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", false,
 		"Enable TLS in the HTTP client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to HTTP server will be used.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)

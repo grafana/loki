@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/storage/stores/index"
@@ -88,7 +89,7 @@ type Querier interface {
 	logql.Querier
 	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
-	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
+	Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
 	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 }
@@ -110,6 +111,7 @@ type SingleTenantQuerier struct {
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
+	logger          log.Logger
 }
 
 type deleteGetter interface {
@@ -117,7 +119,7 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer, logger log.Logger) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -125,6 +127,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limit
 		limits:          limits,
 		deleteGetter:    d,
 		metrics:         NewMetrics(r),
+		logger:          logger,
 	}, nil
 }
 
@@ -434,7 +437,7 @@ func (*SingleTenantQuerier) Check(_ context.Context, _ *grpc_health_v1.HealthChe
 }
 
 // Tail keeps getting matching logs from all ingesters for given query
-func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*Tailer, error) {
 	err := q.checkTailRequestLimit(ctx)
 	if err != nil {
 		return nil, err
@@ -496,7 +499,9 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		},
 		q.cfg.TailMaxDuration,
 		tailerWaitEntryThrottle,
+		categorizedLabels,
 		q.metrics,
+		q.logger,
 	), nil
 }
 
