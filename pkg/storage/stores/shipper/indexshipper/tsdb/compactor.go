@@ -36,7 +36,7 @@ func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet co
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
-	indexFile, err := OpenShippableTSDB(path, IndexOpts{})
+	indexFile, err := OpenShippableTSDB(path)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (t *tableCompactor) CompactTable() error {
 		}
 
 		downloadPaths[job] = downloadedAt
-		idx, err := OpenShippableTSDB(downloadedAt, IndexOpts{})
+		idx, err := OpenShippableTSDB(downloadedAt)
 		if err != nil {
 			return err
 		}
@@ -233,7 +233,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 			}
 		}()
 
-		indexFile, err := OpenShippableTSDB(path, IndexOpts{})
+		indexFile, err := OpenShippableTSDB(path)
 		if err != nil {
 			return nil, err
 		}
@@ -402,7 +402,7 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id, IndexOpts{})
+	return NewShippableTSDBFile(id)
 }
 
 func getUnsafeBytes(s string) []byte {

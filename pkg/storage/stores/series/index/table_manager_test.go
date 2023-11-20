@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -190,7 +191,7 @@ func TestTableManager(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +385,7 @@ func TestTableManagerAutoscaleInactiveOnly(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,7 +483,7 @@ func TestTableManagerDynamicIOModeInactiveOnly(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,7 +567,7 @@ func TestTableManagerTags(t *testing.T) {
 					PeriodicTableConfig: config.PeriodicTableConfig{}},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -591,7 +592,7 @@ func TestTableManagerTags(t *testing.T) {
 					}},
 			}},
 		}
-		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil)
+		tableManager, err := NewTableManager(TableManagerConfig{}, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -654,7 +655,7 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 			},
 		},
 	}
-	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	tableManager, err := NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -777,6 +778,6 @@ func TestTableManagerRetentionOnly(t *testing.T) {
 
 	// Test table manager retention not multiple of periodic config
 	tbmConfig.RetentionPeriod++
-	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil)
+	_, err = NewTableManager(tbmConfig, cfg, maxChunkAge, client, nil, nil, nil, log.NewNopLogger())
 	require.Error(t, err)
 }

@@ -113,11 +113,11 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterBoltdbShipperDefaults(r)
 		}
 
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterTSDBShipperDefaults(r)
 		}
 
 		applyEmbeddedCacheConfig(r)
@@ -575,7 +575,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
+func betterBoltdbShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -589,7 +589,7 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 	}
 }
 
-func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
+func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 

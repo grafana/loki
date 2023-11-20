@@ -24,6 +24,7 @@ import (
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 	logutil "github.com/grafana/loki/pkg/util/log"
 )
@@ -151,9 +152,6 @@ func NewMiddleware(
 	}
 
 	var codec base.Codec = DefaultCodec
-	if cfg.RequiredQueryResponseFormat == "protobuf" {
-		codec = &RequestProtobufCodec{}
-	}
 
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
 		cacheGenNumLoader, retentionEnabled, metrics, metricsNamespace)
@@ -189,7 +187,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware, metricsNamespace)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -250,8 +248,19 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		queryHash := logql.HashedQuery(op.Query)
-		level.Info(logger).Log("msg", "executing query", "type", "range", "query", op.Query, "length", op.EndTs.Sub(op.StartTs), "step", op.Step, "query_hash", queryHash)
+		queryHash := util.HashedQuery(op.Query)
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "range",
+			"query", op.Query,
+			"start", op.StartTs.Format(time.RFC3339Nano),
+			"end", op.EndTs.Format(time.RFC3339Nano),
+			"start_delta", time.Since(op.StartTs),
+			"end_delta", time.Since(op.EndTs),
+			"length", op.EndTs.Sub(op.StartTs),
+			"step", op.Step,
+			"query_hash", queryHash,
+		)
 
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
@@ -299,7 +308,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		queryHash := logql.HashedQuery(op.Query)
+		queryHash := util.HashedQuery(op.Query)
 		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", op.Query, "query_hash", queryHash)
 
 		switch expr.(type) {
@@ -704,7 +713,6 @@ func NewInstantMetricTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	merger base.Merger,
 	metrics *Metrics,
 	indexStatsTripperware base.Middleware,
 	metricsNamespace string,

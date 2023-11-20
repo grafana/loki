@@ -52,7 +52,7 @@ func main() {
 		exit(1)
 	}
 	serverCfg := &config.Server
-	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.

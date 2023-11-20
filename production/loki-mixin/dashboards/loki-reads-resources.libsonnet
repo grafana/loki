@@ -139,7 +139,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addPanel(
             $.panel('Rules') +
             $.queryPanel(
-              'sum by(%s) (cortex_prometheus_rule_group_rules{%s})' % [$._config.per_instance_label, $.jobMatcher('ruler')],
+              'sum by(%(label)s) (loki_prometheus_rule_group_rules{%(matcher)s}) or sum by(%(label)s) (cortex_prometheus_rule_group_rules{%(matcher)s})' % { label: $._config.per_instance_label, matcher: $.jobMatcher('ruler') },
               '{{%s}}' % $._config.per_instance_label
             ),
           )
