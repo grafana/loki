@@ -2014,7 +2014,7 @@ var ParseTestCases = []struct {
 			MultiStages: MultiStageExpr{
 				newLabelParserExpr(OpParserTypeJSON, ""),
 				&LabelFilterExpr{
-					LabelFilterer: log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, "size", 2_748_779_070),
+					LabelFilterer: log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, "size", 2_748_779_069),
 				},
 			},
 		},

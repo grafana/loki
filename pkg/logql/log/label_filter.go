@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/model/labels"
@@ -214,13 +213,7 @@ func (d *BytesLabelFilter) RequiredLabelNames() []string {
 }
 
 func (d *BytesLabelFilter) String() string {
-	b := strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) {
-			return -1
-		}
-		return r
-	}, humanize.Bytes(d.Value)) // TODO: discuss whether this should just be bytes, B, to be more accurate.
-	return fmt.Sprintf("%s%s%s", d.Name, d.Type, b)
+	return fmt.Sprintf("%s%s%dB", d.Name, d.Type, d.Value)
 }
 
 type DurationLabelFilter struct {
