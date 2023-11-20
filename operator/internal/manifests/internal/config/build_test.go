@@ -5012,7 +5012,6 @@ limits_config:
   max_query_length: 721h
   max_query_parallelism: 32
   tsdb_max_query_parallelism: 512
-  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
