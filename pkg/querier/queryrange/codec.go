@@ -572,6 +572,22 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 	}
 
+	// Add org id
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	header.Set(user.OrgIDHeaderName, orgID)
+
+	// Propagate trace context in request.
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := opentracing.HTTPHeadersCarrier(header)
+		if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier); err != nil {
+			return nil, err
+		}
+	}
+
 	switch request := r.(type) {
 	case *LokiRequest:
 		params := url.Values{
@@ -725,6 +741,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	}
 }
 
+// nolint:goconst
 func (c Codec) Path(r queryrangebase.Request) string {
 	switch request := r.(type) {
 	case *LokiRequest:
