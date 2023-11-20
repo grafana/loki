@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/regexp"
 
 	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/queryutil"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -44,7 +44,7 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 	for _, b := range blocks {
 
 		if b.Hash > 0 {
-			if b.Hash == queryutil.HashedQuery(query) {
+			if b.Hash == util.HashedQuery(query) {
 				level.Warn(logger).Log("msg", "query blocker matched with hash policy", "hash", b.Hash, "query", query)
 				return qb.block(b, typ, logger)
 			}

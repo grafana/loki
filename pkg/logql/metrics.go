@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/queryutil"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -120,7 +120,7 @@ func RecordRangeAndInstantQueryMetrics(
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", p.Query(),
-		"query_hash", queryutil.HashedQuery(p.Query()),
+		"query_hash", util.HashedQuery(p.Query()),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
@@ -219,7 +219,7 @@ func RecordLabelQueryMetrics(
 		"status", status,
 		"label", label,
 		"query", query,
-		"query_hash", queryutil.HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
@@ -270,7 +270,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"match", PrintMatches(match),
-		"query_hash", queryutil.HashedQuery(PrintMatches(match)),
+		"query_hash", util.HashedQuery(PrintMatches(match)),
 		"total_entries", stats.Summary.TotalEntriesReturned)
 
 	if shard != nil {
@@ -310,7 +310,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"query", query,
-		"query_hash", queryutil.HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
 
 	level.Info(logger).Log(logValues...)
@@ -340,7 +340,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"latency", latencyType,
 		"query_type", queryType,
 		"query", query,
-		"query_hash", queryutil.HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),

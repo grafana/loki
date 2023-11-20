@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/constants"
 	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/queryutil"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // Config is the configuration for the queryrange tripperware
@@ -248,7 +248,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		queryHash := queryutil.HashedQuery(op.Query)
+		queryHash := util.HashedQuery(op.Query)
 		level.Info(logger).Log(
 			"msg", "executing query",
 			"type", "range",
@@ -308,7 +308,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		queryHash := queryutil.HashedQuery(op.Query)
+		queryHash := util.HashedQuery(op.Query)
 		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", op.Query, "query_hash", queryHash)
 
 		switch expr.(type) {

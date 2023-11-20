@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/queryutil"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type RetryMiddlewareMetrics struct {
@@ -96,7 +96,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 				"msg", "error processing request",
 				"try", tries,
 				"query", query,
-				"query_hash", queryutil.HashedQuery(query),
+				"query_hash", util.HashedQuery(query),
 				"start", start.Format(time.RFC3339Nano),
 				"end", end.Format(time.RFC3339Nano),
 				"start_delta", time.Since(start),

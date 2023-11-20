@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util/queryutil"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // EvaluatorWithJitter wraps a given Evaluator. It applies a consistent jitter based on a rule's query string by hashing
@@ -44,7 +44,7 @@ func NewEvaluatorWithJitter(inner Evaluator, maxJitter time.Duration, hasher has
 }
 
 func (e *EvaluatorWithJitter) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {
-	logger := log.With(e.logger, "query", qs, "query_hash", queryutil.HashedQuery(qs))
+	logger := log.With(e.logger, "query", qs, "query_hash", util.HashedQuery(qs))
 	jitter := e.calculateJitter(qs, logger)
 
 	if jitter > 0 {
