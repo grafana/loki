@@ -17,7 +17,7 @@ func TestNGramIterator(t *testing.T) {
 
 	for _, tc := range []struct {
 		desc  string
-		t     *NGramTokenizerV2
+		t     *NGramTokenizer
 		input string
 		exp   []string
 	}{

@@ -14,7 +14,7 @@ func reassemble(buf []rune, ln, pos int, result []byte) []byte {
 }
 
 // Iterable variants (more performant, less space)
-type NGramTokenizerV2 struct {
+type NGramTokenizer struct {
 	N, Skip int
 	buffer  []rune // circular buffer used for ngram generation
 	res     []byte // buffer used for token generation
@@ -24,8 +24,8 @@ type NGramTokenizerV2 struct {
 N-Grams (https://en.wikipedia.org/wiki/N-gram) are a series of 'n' adjacent characters in a string.
 These will be utilized for the bloom filters to allow for fuzzy searching.
 */
-func NewNGramTokenizerV2(n, skip int) *NGramTokenizerV2 {
-	t := &NGramTokenizerV2{
+func NewNGramTokenizerV2(n, skip int) *NGramTokenizer {
+	t := &NGramTokenizer{
 		N:      n,
 		Skip:   skip,
 		buffer: make([]rune, n+skip),
@@ -37,7 +37,7 @@ func NewNGramTokenizerV2(n, skip int) *NGramTokenizerV2 {
 
 // The Token iterator uses shared buffers for performance. The []byte returned by At()
 // is not safe for use after subsequent calls to Next()
-func (t *NGramTokenizerV2) Tokens(line string) NGramTokenIter {
+func (t *NGramTokenizer) Tokens(line string) NGramTokenIter {
 	return NGramTokenIter{
 		n:    t.N,
 		skip: t.Skip,

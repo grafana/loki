@@ -28,7 +28,7 @@ Bloom filters are utilized for faster lookups of log lines.
 type BloomTokenizer struct {
 	metrics *metrics
 
-	lineTokenizer *NGramTokenizerV2
+	lineTokenizer *NGramTokenizer
 	cache         map[string]interface{}
 }
 
@@ -53,7 +53,7 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 	return t, nil
 }
 
-func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizerV2) {
+func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {
 	bt.lineTokenizer = t
 }
 
