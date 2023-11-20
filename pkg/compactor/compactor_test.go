@@ -418,9 +418,9 @@ func TestCompactor_TableLocking(t *testing.T) {
 					// if the table was locked and compaction ran without retention then only locked table should have been skipped
 					if tc.lockTable != "" {
 						if tc.applyRetention {
-							require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables))
+							require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						} else {
-							require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables))
+							require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						}
 					}
 
