@@ -27,7 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
+	rulerutil "github.com/grafana/loki/pkg/ruler/util"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -40,7 +40,7 @@ type RulesLimits interface {
 	RulerRemoteWriteURL(userID string) string
 	RulerRemoteWriteTimeout(userID string) time.Duration
 	RulerRemoteWriteHeaders(userID string) map[string]string
-	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
+	RulerRemoteWriteRelabelConfigs(userID string) []*rulerutil.RelabelConfig
 	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
 	RulerRemoteWriteQueueCapacity(userID string) int
 	RulerRemoteWriteQueueMinShards(userID string) int

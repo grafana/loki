@@ -34,7 +34,6 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
