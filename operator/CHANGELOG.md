@@ -1,5 +1,6 @@
 ## Main
 
+- [10932](https://github.com/grafana/loki/pull/10932) **JoaoBraveCoding**: Adds new value v13 to schema
 - [11232](https://github.com/grafana/loki/pull/11232) **periklis**: Update dependencies and dev tools
 - [11129](https://github.com/grafana/loki/pull/11129) **periklis**: Update deps to secure webhooks for CVE-2023-44487
 
