@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	four = NewNGramTokenizerV2(4, 0)
+	four = NewNGramTokenizer(4, 0)
 )
 
 func TestSetLineTokenizer(t *testing.T) {
@@ -32,7 +32,7 @@ func TestSetLineTokenizer(t *testing.T) {
 	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
-	bt.SetLineTokenizer(NewNGramTokenizerV2(6, 7))
+	bt.SetLineTokenizer(NewNGramTokenizer(6, 7))
 	require.Equal(t, bt.lineTokenizer.N, 6)
 	require.Equal(t, bt.lineTokenizer.Skip, 7)
 }
@@ -75,7 +75,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 	}
 
 	bt.PopulateSeriesWithBloom(&swb, chunks)
-	tokenizer := NewNGramTokenizerV2(DefaultNGramLength, DefaultNGramSkip)
+	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	itr := tokenizer.Tokens(testLine)
 	for itr.Next() {
 		token := itr.At()

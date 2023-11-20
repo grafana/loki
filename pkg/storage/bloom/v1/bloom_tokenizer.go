@@ -46,7 +46,7 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	t.lineTokenizer = NewNGramTokenizerV2(DefaultNGramLength, DefaultNGramSkip) // default to 4-grams, no skip
+	t.lineTokenizer = NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip) // default to 4-grams, no skip
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 

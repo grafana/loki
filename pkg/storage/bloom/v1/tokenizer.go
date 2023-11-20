@@ -24,7 +24,7 @@ type NGramTokenizer struct {
 N-Grams (https://en.wikipedia.org/wiki/N-gram) are a series of 'n' adjacent characters in a string.
 These will be utilized for the bloom filters to allow for fuzzy searching.
 */
-func NewNGramTokenizerV2(n, skip int) *NGramTokenizer {
+func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 	t := &NGramTokenizer{
 		N:      n,
 		Skip:   skip,

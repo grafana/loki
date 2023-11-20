@@ -89,8 +89,8 @@ func execute() {
 }
 
 var (
-	three = bt.NewNGramTokenizerV2(3, 0)
-	four  = bt.NewNGramTokenizerV2(4, 0)
+	three = bt.NewNGramTokenizer(3, 0)
+	four  = bt.NewNGramTokenizer(4, 0)
 
 	onePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
 )

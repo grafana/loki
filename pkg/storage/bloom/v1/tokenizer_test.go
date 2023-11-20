@@ -10,9 +10,9 @@ const BigFile = "../../../logql/sketch/testdata/war_peace.txt"
 
 func TestNGramIterator(t *testing.T) {
 	var (
-		three      = NewNGramTokenizerV2(3, 0)
-		threeSkip1 = NewNGramTokenizerV2(3, 1)
-		threeSkip3 = NewNGramTokenizerV2(3, 3)
+		three      = NewNGramTokenizer(3, 0)
+		threeSkip1 = NewNGramTokenizer(3, 1)
+		threeSkip3 = NewNGramTokenizer(3, 3)
 	)
 
 	for _, tc := range []struct {
@@ -73,7 +73,7 @@ func TestNGramIterator(t *testing.T) {
 
 func TestPrefixedIterator(t *testing.T) {
 	var (
-		three = NewNGramTokenizerV2(3, 0)
+		three = NewNGramTokenizer(3, 0)
 	)
 
 	for _, tc := range []struct {
@@ -124,8 +124,8 @@ sint occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit a
 
 func BenchmarkTokens(b *testing.B) {
 	var (
-		v2Three      = NewNGramTokenizerV2(3, 0)
-		v2ThreeSkip1 = NewNGramTokenizerV2(3, 1)
+		v2Three      = NewNGramTokenizer(3, 0)
+		v2ThreeSkip1 = NewNGramTokenizer(3, 1)
 
 		// fp + from + through + checksum
 		chunkPrefixLen = 8 + 8 + 8 + 4
