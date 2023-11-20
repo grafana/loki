@@ -324,7 +324,7 @@ func TestInstanceFor(t *testing.T) {
 
 func TestInstanceDownstream(t *testing.T) {
 	params, err := logql.NewLiteralParams(
-		"",
+		`{foo="bar"}`,
 		time.Now(),
 		time.Now(),
 		0,
