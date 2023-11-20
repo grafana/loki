@@ -519,6 +519,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	internalHandler := queryrangebase.MergeMiddlewares(
 		serverutil.RecoveryMiddleware,
 		queryrange.Instrument{Metrics: t.Metrics},
+		queryrange.Tracer{},
 	).Wrap(handler)
 
 	svc, err := querier.InitWorkerService(
