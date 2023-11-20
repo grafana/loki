@@ -333,6 +333,7 @@ func TestInstanceDownstream(t *testing.T) {
 		1000,
 		nil,
 	)
+	require.NoError(t, err)
 	expr, err := syntax.ParseExpr(`{foo="bar"}`)
 	require.NoError(t, err)
 
