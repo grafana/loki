@@ -514,7 +514,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 	go func() {
 		defer c.wg.Done()
 
-		ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
+		ticker := time.NewTicker(c.cfg.CompactionInterval)
 		defer ticker.Stop()
 
 		for {
@@ -536,7 +536,7 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 			level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
 		}
 
-		ticker := time.NewTicker(c.cfg.CompactionInterval)
+		ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
 		defer ticker.Stop()
 
 		for {
