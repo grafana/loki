@@ -24,9 +24,9 @@ import (
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util"
 )
 
 // Config is the configuration for the queryrange tripperware

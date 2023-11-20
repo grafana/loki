@@ -37,10 +37,10 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 

@@ -8,8 +8,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/regexp"
 
-	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util"
+	logutil "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
