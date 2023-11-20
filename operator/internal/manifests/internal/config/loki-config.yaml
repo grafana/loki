@@ -204,6 +204,7 @@ limits_config:
   per_stream_rate_limit: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}MB
   per_stream_rate_limit_burst: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}MB
   split_queries_by_interval: 30m
+  allow_structured_metadata: true
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
