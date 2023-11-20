@@ -186,6 +186,8 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 	secondBlockData := createBlockFile(t, secondBlockFullPath)
 	require.FileExists(t, firstBlockFullPath)
 	require.FileExists(t, secondBlockFullPath)
+	rootDir := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom")
+	defer os.RemoveAll(rootDir)
 
 	firstBlockRef := BlockRef{
 		Ref: Ref{
@@ -236,6 +238,7 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 			}
 		}
 	}()
+	defer os.RemoveAll("./bloom")
 
 	firstBlockActualData, exists := blocks[firstBlockRef.BlockPath]
 	require.Truef(t, exists, "data for the first block must be present in the results: %+v", blocks)
