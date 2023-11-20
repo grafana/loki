@@ -669,6 +669,11 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		storeType  = name
 	)
 
+	// preserve olf reg behaviour
+	if !cfg.ThanosObjStore {
+		reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, reg)
+	}
+
 	// lookup storeType for named stores
 	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
 		storeType = nsType
