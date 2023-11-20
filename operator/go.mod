@@ -11,7 +11,7 @@ require (
 	github.com/grafana/loki/operator/apis/loki v0.0.0-00010101000000-000000000000
 	github.com/imdario/mergo v0.3.13
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.7.0
-	github.com/openshift/api v0.0.0-20231031181504-3be12e93388f // release-4.14
+	github.com/openshift/api v0.0.0-20231117201702-2ea16bbab164 // release-4.14
 	github.com/openshift/library-go v0.0.0-20231103161458-0ec67489d123
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.67.1
 	github.com/prometheus/client_golang v1.17.0
@@ -19,8 +19,8 @@ require (
 	github.com/prometheus/prometheus v0.42.0
 	github.com/stretchr/testify v1.8.4
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.27.7
-	k8s.io/apimachinery v0.27.7
+	k8s.io/api v0.28.2
+	k8s.io/apimachinery v0.28.2
 	k8s.io/apiserver v0.27.7
 	k8s.io/client-go v0.27.7
 	k8s.io/utils v0.0.0-20230505201702-9f6742963106
@@ -54,7 +54,7 @@ require (
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
-	github.com/go-openapi/jsonreference v0.20.1 // indirect
+	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -64,6 +64,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
+	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2 // indirect
@@ -152,7 +153,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.27.7 // indirect
 	k8s.io/component-base v0.27.7 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
+	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 )
