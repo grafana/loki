@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -73,6 +74,11 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		MaxRetries: 0,
 	}
 	bk := backoff.New(ctx, cfg)
+
+	start := req.GetStart()
+	end := req.GetEnd()
+	query := req.GetQuery()
+
 	for ; tries < r.maxRetries; tries++ {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -86,7 +92,19 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 		if !ok || httpResp.Code/100 == 5 {
 			lastErr = err
-			level.Error(util_log.WithContext(ctx, r.log)).Log("msg", "error processing request", "try", tries, "query", req.GetQuery(), "retry_in", bk.NextDelay(), "err", err)
+			level.Error(util_log.WithContext(ctx, r.log)).Log(
+				"msg", "error processing request",
+				"try", tries,
+				"query", query,
+				"query_hash", util.HashedQuery(query),
+				"start", start.Format(time.RFC3339Nano),
+				"end", end.Format(time.RFC3339Nano),
+				"start_delta", time.Since(start),
+				"end_delta", time.Since(end),
+				"length", end.Sub(start),
+				"retry_in", bk.NextDelay(),
+				"err", err,
+			)
 			bk.Wait()
 			continue
 		}
