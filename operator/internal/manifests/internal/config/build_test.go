@@ -103,6 +103,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -111,6 +112,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -252,6 +254,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -355,6 +358,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -363,6 +367,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -535,6 +540,7 @@ overrides:
 				},
 			},
 		},
+		Shippers: []string{"boltdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -619,6 +625,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 				},
 			},
 		},
+		Shippers: []string{"boltdb"},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.Error(t, err)
@@ -716,6 +723,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -724,6 +732,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -966,6 +975,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1069,6 +1079,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -1077,6 +1088,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1320,6 +1332,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1423,6 +1436,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -1431,6 +1445,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1704,6 +1719,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -1810,6 +1826,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -1823,6 +1840,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -2030,6 +2048,7 @@ overrides:
 				},
 			},
 		},
+		Shippers: []string{"boltdb"},
 		Retention: RetentionOptions{
 			Enabled:           true,
 			DeleteWorkerCount: 50,
@@ -2136,6 +2155,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -2144,6 +2164,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 2m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -2447,6 +2468,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -2571,6 +2593,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -2579,6 +2602,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -2788,6 +2812,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -2891,6 +2916,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -2899,6 +2925,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 2m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -3279,6 +3306,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -3383,6 +3411,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -3391,6 +3420,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_addr: ${HASH_RING_INSTANCE_ADDR}
@@ -3534,6 +3564,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -3639,6 +3670,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -3647,6 +3679,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_addr: ${HASH_RING_INSTANCE_ADDR}
@@ -3791,6 +3824,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -3896,6 +3930,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -3904,6 +3939,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4046,6 +4082,7 @@ overrides:
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -4154,6 +4191,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -4162,6 +4200,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4339,6 +4378,7 @@ overrides:
 				},
 			},
 		},
+		Shippers: []string{"boltdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -4443,6 +4483,7 @@ limits_config:
   max_chunks_per_query: 2000000
   max_query_length: 721h
   max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -4451,6 +4492,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4628,6 +4670,7 @@ overrides:
 				},
 			},
 		},
+		Shippers: []string{"boltdb"},
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -4717,6 +4760,7 @@ func defaultOptions() Options {
 				},
 			},
 		},
+		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
@@ -4968,6 +5012,7 @@ limits_config:
   max_query_length: 721h
   max_query_parallelism: 32
   tsdb_max_query_parallelism: 512
+  tsdb_max_query_parallelism: 512
   max_query_series: 500
   cardinality_limit: 100000
   max_streams_matchers_per_query: 1000
@@ -4976,6 +5021,7 @@ limits_config:
   per_stream_rate_limit_burst: 15MB
   split_queries_by_interval: 30m
   query_timeout: 1m
+  allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
