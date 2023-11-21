@@ -86,7 +86,7 @@ func TestMappingEquivalence(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			_, _, mapped, err := mapper.Parse(tc.query)
+			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.Nil(t, err)
 
 			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped})
@@ -152,7 +152,7 @@ func TestShardCounter(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			noop, _, mapped, err := mapper.Parse(tc.query)
+			noop, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
 			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped})

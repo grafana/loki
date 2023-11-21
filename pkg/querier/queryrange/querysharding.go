@@ -185,7 +185,12 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)
 
-	noop, bytesPerShard, parsed, err := mapper.Parse(r.GetQuery())
+	params, err := ParamsFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
+
+	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
@@ -201,11 +206,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// we can bypass the sharding engine and forward the request downstream.
 	if noop {
 		return ast.next.Do(ctx, r)
-	}
-
-	params, err := ParamsFromRequest(r)
-	if err != nil {
-		return nil, err
 	}
 
 	var path string

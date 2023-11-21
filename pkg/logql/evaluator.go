@@ -143,9 +143,9 @@ func (p ParamsWithShardsOverride) Shards() []string {
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool
-	expr, err := syntax.ParseSampleExpr(q.QueryString())
-	if err != nil {
-		return false, err
+	expr, ok := q.GetExpression().(syntax.SampleExpr)
+	if !ok {
+		return false, errors.New("only sample expression supported")
 	}
 	expr.Walk(func(e syntax.Expr) {
 		rangeExpr, ok := e.(*syntax.VectorAggregationExpr)

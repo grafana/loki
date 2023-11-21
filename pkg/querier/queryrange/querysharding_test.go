@@ -19,7 +19,9 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -172,7 +174,12 @@ func Test_astMapper(t *testing.T) {
 		0,
 	)
 
-	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
+	req := defaultReq()
+	req.Query = `{foo="bar"}`
+	req.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(req.Query),
+	}
+	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 
 	require.Equal(t, []*definitions.PrometheusResponseHeader{
@@ -311,7 +318,12 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				0,
 			)
 
-			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(tc.query))
+			req := defaultReq()
+			req.Query = tc.query
+			req.Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tc.query),
+			}
+			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 			if err != nil {
 				require.ErrorContains(t, err, tc.err)
 			}
@@ -344,7 +356,13 @@ func Test_ShardingByPass(t *testing.T) {
 		0,
 	)
 
-	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
+	req := defaultReq()
+	req.Query = `1+1`
+	req.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(req.Query),
+	}
+
+	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 	require.Equal(t, called, 1)
 }
@@ -437,6 +455,9 @@ func Test_InstantSharding(t *testing.T) {
 		Query:  `rate({app="foo"}[1m])`,
 		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"}[1m])`),
+		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
