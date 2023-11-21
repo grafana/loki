@@ -181,7 +181,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         },
       },
       'loki-reads.json'+: {
-        local dropList = ['BigTable', 'Ingester - Zone Aware'],
+        // We drop both BigTable and BlotDB dashboards as they have been
+        // replaced by the Index dashboards
+        local dropList = ['BigTable', 'Ingester - Zone Aware', 'BoltDB Shipper'],
+
 
         uid: '62q5jjYwhVSaz4Mcrm8tV3My3gcKED',
         title: 'OpenShift Logging / LokiStack / Reads',
@@ -220,7 +223,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         },
       },
       'loki-writes.json'+: {
-        local dropList = ['Ingester - Zone Aware'],
+        local dropList = ['Ingester - Zone Aware', 'BoltDB Shipper'],
         uid: 'F6nRYKuXmFVpVSFQmXr7cgXy5j7UNr',
         title: 'OpenShift Logging / LokiStack / Writes',
         tags: defaultLokiTags(super.tags),

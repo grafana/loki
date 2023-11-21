@@ -36,8 +36,8 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -220,7 +220,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		args.Set("time", ts.Format(time.RFC3339Nano))
 	}
 	body := []byte(args.Encode())
-	hash := logql.HashedQuery(query)
+	hash := util.HashedQuery(query)
 
 	req := httpgrpc.HTTPRequest{
 		Method: http.MethodPost,

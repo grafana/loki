@@ -10,12 +10,12 @@ import (
 
 type Experiment struct {
 	name          string
-	tokenizer     bt.Tokenizer
+	tokenizer     bt.NGramTokenizer
 	bloom         func() *filter.ScalableBloomFilter
 	encodeChunkID bool
 }
 
-func NewExperiment(name string, tokenizer bt.Tokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
+func NewExperiment(name string, tokenizer bt.NGramTokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
 	return Experiment{
 		name:          name,
 		tokenizer:     tokenizer,

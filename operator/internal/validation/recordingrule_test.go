@@ -201,7 +201,7 @@ func TestRecordingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 			}
 
 			v := &validation.RecordingRuleValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -226,7 +226,7 @@ func TestRecordingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 			}
 
 			v := &validation.RecordingRuleValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.RecordingRule{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.RecordingRule{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

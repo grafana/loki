@@ -426,6 +426,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 			require.Nil(t, err)
 
 			// since streams are loaded lazily, force iterators to exhaust
+			//nolint:revive
 			for res.Next() {
 			}
 			queryClient.AssertExpectations(t)

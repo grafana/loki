@@ -254,7 +254,6 @@ loki:
     grpc_listen_port: 9095
   # -- Limits config
   limits_config:
-    enforce_metric_name: false
     reject_old_samples: true
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m

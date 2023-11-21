@@ -89,18 +89,10 @@ func execute() {
 }
 
 var (
-	three      = bt.NewNGramTokenizer(3, 4, 0)
-	threeSkip1 = bt.NewNGramTokenizer(3, 4, 1)
-	threeSkip2 = bt.NewNGramTokenizer(3, 4, 2)
-	threeSkip3 = bt.NewNGramTokenizer(3, 4, 3)
-	four       = bt.NewNGramTokenizer(4, 5, 0)
-	fourSkip1  = bt.NewNGramTokenizer(4, 5, 1)
-	fourSkip2  = bt.NewNGramTokenizer(4, 5, 2)
-	five       = bt.NewNGramTokenizer(5, 6, 0)
-	six        = bt.NewNGramTokenizer(6, 7, 0)
+	three = bt.NewNGramTokenizer(3, 0)
+	four  = bt.NewNGramTokenizer(4, 0)
 
-	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
-	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
+	onePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
 )
 
 var experiments = []Experiment{
@@ -116,7 +108,7 @@ var experiments = []Experiment{
 	*/
 	NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		four,
+		*four,
 		true,
 		onePctError,
 	),
@@ -344,7 +336,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										tenant,
 										ls.String(),
 										objectClient) {
-										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
+										bloomTokenizer.SetLineTokenizer(&experiment.tokenizer)
 
 										level.Info(util_log.Logger).Log("Starting work on: ", ls.String(), "'", FNV32a(ls.String()), "'", experiment.name, tenant)
 										startTime := time.Now().UnixMilli()

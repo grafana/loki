@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -124,7 +125,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"correct FNV32 hash matches",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Hash: HashedQuery(defaultQuery),
+					Hash: util.HashedQuery(defaultQuery),
 				},
 			}, logqlmodel.ErrBlocked,
 		},
@@ -132,7 +133,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			"incorrect FNV32 hash does not match",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Hash: HashedQuery(defaultQuery) + 1,
+					Hash: util.HashedQuery(defaultQuery) + 1,
 				},
 			}, nil,
 		},

@@ -1742,6 +1742,7 @@ func TestBatchCancel(t *testing.T) {
 	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
 	require.NoError(t, err)
 	defer require.NoError(t, it.Close())
+	//nolint:revive
 	for it.Next() {
 	}
 	require.Equal(t, context.Canceled, it.Error())

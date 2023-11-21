@@ -2027,7 +2027,6 @@ null
 			<td>Limits config</td>
 			<td><pre lang="json">
 {
-  "enforce_metric_name": false,
   "max_cache_freshness_per_query": "10m",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",

@@ -25,18 +25,40 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
         )
         .addRow(
-          $.row('Compact and Mark')
+          $.row('Compaction')
           .addPanel(
-            $.fromNowPanel('Last Compact and Mark Operation Success', 'loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds')
+            $.fromNowPanel('Last Compact Tables Operation Success', 'loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds')
           )
           .addPanel(
-            $.panel('Compact and Mark Operations Duration') +
+            $.panel('Compact Tables Operations Duration') +
             $.queryPanel(['loki_boltdb_shipper_compact_tables_operation_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']) +
             { yaxes: $.yaxes('s') },
           )
+        )
+        .addRow(
+          $.row('')
           .addPanel(
-            $.panel('Compact and Mark Operations Per Status') +
+            $.panel('Number of times Tables were skipped during Compaction') +
+            $.queryPanel(['sum(increase(loki_compactor_skipped_compacting_locked_table_total{%s}[$__range]))' % $.namespaceMatcher()], ['{{table_name}}']),
+          )
+          .addPanel(
+            $.panel('Compact Tables Operations Per Status') +
             $.queryPanel(['sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{success}}']),
+          )
+        )
+        .addRow(
+          $.row('Retention')
+          .addPanel(
+            $.fromNowPanel('Last Mark Operation Success', 'loki_compactor_apply_retention_last_successful_run_timestamp_seconds')
+          )
+          .addPanel(
+            $.panel('Mark Operations Duration') +
+            $.queryPanel(['loki_compactor_apply_retention_operation_duration_seconds{%s}' % $.namespaceMatcher()], ['duration']) +
+            { yaxes: $.yaxes('s') },
+          )
+          .addPanel(
+            $.panel('Mark Operations Per Status') +
+            $.queryPanel(['sum by (status)(rate(loki_compactor_apply_retention_operation_total{%s}[$__rate_interval]))' % $.namespaceMatcher()], ['{{success}}']),
           )
         )
         .addRow(

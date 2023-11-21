@@ -519,6 +519,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	internalMiddlewares := []queryrangebase.Middleware{
 		serverutil.RecoveryMiddleware,
 		queryrange.Instrument{Metrics: t.Metrics},
+		queryrange.Tracer{},
 	}
 	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		internalMiddlewares = append(

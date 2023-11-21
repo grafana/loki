@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"sort"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
 )
@@ -12,11 +14,12 @@ type request struct {
 	response chan output
 }
 
-// output represents a chunk that failed to pass all searches
-// and must be downloaded
+// output represents a chunk that was present in the bloom
+// but failed to pass the search filters and can be removed from
+// the list of chunks to download
 type output struct {
-	fp   model.Fingerprint
-	chks ChunkRefs
+	fp       model.Fingerprint
+	removals ChunkRefs
 }
 
 // Fuse combines multiple requests into a single loop iteration
@@ -77,8 +80,8 @@ func (fq *FusedQuerier) Run() error {
 			// fingerprint not found, can't remove chunks
 			for _, input := range nextBatch {
 				input.response <- output{
-					fp:   fp,
-					chks: input.chks,
+					fp:       fp,
+					removals: nil,
 				}
 			}
 		}
@@ -89,8 +92,8 @@ func (fq *FusedQuerier) Run() error {
 			// fingerprint not found, can't remove chunks
 			for _, input := range nextBatch {
 				input.response <- output{
-					fp:   fp,
-					chks: input.chks,
+					fp:       fp,
+					removals: nil,
 				}
 			}
 			continue
@@ -100,22 +103,26 @@ func (fq *FusedQuerier) Run() error {
 		// test every input against this chunk
 	inputLoop:
 		for _, input := range nextBatch {
-			mustCheck, inBlooms := input.chks.Compare(series.Chunks, true)
+			_, inBlooms := input.chks.Compare(series.Chunks, true)
 
 			// First, see if the search passes the series level bloom before checking for chunks individually
 			for _, search := range input.searches {
 				if !bloom.Test(search) {
 					// the entire series bloom didn't pass one of the searches,
 					// so we can skip checking chunks individually.
-					// We still return all chunks that are not included in the bloom
-					// as they may still have the data
+					// We return all the chunks that were the intersection of the query
+					// because they for sure do not match the search and don't
+					// need to be downloaded
 					input.response <- output{
-						fp:   fp,
-						chks: mustCheck,
+						fp:       fp,
+						removals: inBlooms,
 					}
 					continue inputLoop
 				}
 			}
+
+			// TODO(owen-d): pool
+			var removals ChunkRefs
 
 		chunkLoop:
 			for _, chk := range inBlooms {
@@ -124,21 +131,60 @@ func (fq *FusedQuerier) Run() error {
 					var combined = search
 
 					if !bloom.ScalableBloomFilter.Test(combined) {
+						removals = append(removals, chk)
 						continue chunkLoop
 					}
 				}
-				// chunk passed all searches, add to the list of chunks to download
-				mustCheck = append(mustCheck, chk)
-
+				// Otherwise, the chunk passed all the searches
 			}
 
 			input.response <- output{
-				fp:   fp,
-				chks: mustCheck,
+				fp:       fp,
+				removals: removals,
 			}
 		}
 
 	}
 
 	return nil
+}
+
+// boundedRequests is a set of requests that are clamped to a specific range
+type boundedRequests struct {
+	bounds FingerprintBounds
+	reqs   [][]model.Fingerprint
+}
+
+// reqs models a set of requests covering many fingerprints.
+// consumers models a set of blocks covering different fingerprint ranges
+func partitionFingerprintRange(reqs [][]model.Fingerprint, blocks []FingerprintBounds) (res []boundedRequests) {
+	for _, block := range blocks {
+		bounded := boundedRequests{
+			bounds: block,
+		}
+
+		for _, req := range reqs {
+			min := sort.Search(len(req), func(i int) bool {
+				return block.Cmp(req[i]) > Before
+			})
+
+			max := sort.Search(len(req), func(i int) bool {
+				return block.Cmp(req[i]) == After
+			})
+
+			// All fingerprints fall outside of the consumer's range
+			if min == len(req) || max == 0 {
+				continue
+			}
+
+			bounded.reqs = append(bounded.reqs, req[min:max])
+		}
+
+		if len(bounded.reqs) > 0 {
+			res = append(res, bounded)
+		}
+
+	}
+
+	return res
 }

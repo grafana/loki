@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/dskit/server"
 
@@ -51,4 +52,19 @@ func (i Instrument) observe(ctx context.Context, route string, err error, durati
 		}
 	}
 	instrument.ObserveWithExemplar(ctx, i.RequestDuration.WithLabelValues(method, route, respStatus, "false"), duration.Seconds())
+}
+
+type Tracer struct{}
+
+var _ queryrangebase.Middleware = Tracer{}
+
+// Wrap implements the queryrangebase.Middleware
+func (t Tracer) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
+	return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		route := DefaultCodec.Path(r)
+		route = middleware.MakeLabelValue(route)
+		span, ctx := opentracing.StartSpanFromContext(ctx, route)
+		defer span.Finish()
+		return next.Do(ctx, r)
+	})
 }

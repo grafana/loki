@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"encoding/binary"
 	"math"
 	"time"
 
@@ -27,9 +28,8 @@ Bloom filters are utilized for faster lookups of log lines.
 type BloomTokenizer struct {
 	metrics *metrics
 
-	lineTokenizer    Tokenizer
-	chunkIDTokenizer *WrappedTokenizer
-	cache            map[string]interface{}
+	lineTokenizer *NGramTokenizer
+	cache         map[string]interface{}
 }
 
 const CacheSize = 150000
@@ -46,17 +46,15 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	t.lineTokenizer = NewNGramTokenizer(DefaultNGramLength, DefaultNGramLength+1, DefaultNGramSkip) // default to 4-grams, no skip
-	t.chunkIDTokenizer = ChunkIDTokenizer(t.lineTokenizer)
+	t.lineTokenizer = NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip) // default to 4-grams, no skip
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 
 	return t, nil
 }
 
-func (bt *BloomTokenizer) SetLineTokenizer(t Tokenizer) {
+func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {
 	bt.lineTokenizer = t
-	bt.chunkIDTokenizer = ChunkIDTokenizer(bt.lineTokenizer)
 }
 
 // TODO: Something real here with metrics
@@ -70,12 +68,27 @@ func clearCache(cache map[string]interface{}) {
 	}
 }
 
+func calculatePrefix(chk logproto.ChunkRef) []byte {
+	i64buf := make([]byte, binary.MaxVarintLen64)
+	i32buf := make([]byte, 4)
+	prefix := make([]byte, 32)
+
+	binary.PutVarint(i64buf, int64(chk.From))
+	prefix = append(prefix, i64buf...)
+	binary.PutVarint(i64buf, int64(chk.Through))
+	prefix = append(prefix, i64buf...)
+	binary.LittleEndian.PutUint32(i32buf, chk.Checksum)
+	prefix = append(prefix, i32buf...)
+
+	return prefix
+}
+
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
 func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
 	clearCache(bt.cache)
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		bt.chunkIDTokenizer.Reinit(chunks[idx].ChunkRef)
+		prefix := calculatePrefix(chunks[idx].ChunkRef)
 
 		// TODO: error handling
 		itr, err := lc.Iterator(
@@ -93,16 +106,16 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 		defer itr.Close()
 
 		for itr.Next() && itr.Error() == nil {
-			toks := bt.chunkIDTokenizer.Tokens(itr.Entry().Line)
-
-			for _, tok := range toks {
-				if tok.Key != nil {
-					str := string(tok.Key)
+			chunkTokenizer := NewPrefixedTokenIter(prefix, bt.lineTokenizer.Tokens(itr.Entry().Line))
+			for chunkTokenizer.Next() {
+				tok := chunkTokenizer.At()
+				if tok != nil {
+					str := string(tok)
 					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
 					if !found {
 						bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok.Key)
+						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
 						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
@@ -110,6 +123,24 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 					}
 				}
 			}
+			lineTokenizer := bt.lineTokenizer.Tokens(itr.Entry().Line)
+			for lineTokenizer.Next() {
+				tok := lineTokenizer.At()
+				if tok != nil {
+					str := string(tok)
+					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+					if !found {
+						bt.cache[str] = nil
+
+						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+
+						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+							clearCache(bt.cache)
+						}
+					}
+				}
+			}
+
 		}
 		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
 			Start:    chunks[idx].From,
@@ -117,34 +148,4 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 			Checksum: chunks[idx].Checksum,
 		})
 	} // for each chunk
-}
-
-// SearchesForTokenizerAndLine is for taking a given search string (ex: on the read/query path) and returning
-// all the possible tokens, given a tokenizer.
-// This is a multi-dimensional slice where the first slice is the offset into the line, and the
-// second slice is the tokens for that offset.  If an offset into the line returns no tokens, this first dimension
-// will be less than 1 + the number of skips specified in the tokenizer
-// The offset is used if the Tokenizer has a skip value being utilized.
-func SearchesForTokenizerAndLine(t Tokenizer, line string) (res [][]Token) {
-	res = make([][]Token, 0, 10)
-	for i := range line { // iterate by runes
-		if i >= t.GetSkip()+1 {
-			break
-		}
-		tmpTokens := make([]Token, 0, 100)
-		tokens := t.Tokens(line[i:])
-		// As the way the tokenizer is coded, it will reuse its internal buffers,
-		// but we need to save the data, hence the need for copying
-		for _, token := range tokens {
-			tmpToken := Token{}
-			tmpToken.Key = make([]byte, len(token.Key))
-			copy(tmpToken.Key, token.Key)
-			tmpTokens = append(tmpTokens, tmpToken)
-		}
-		if len(tokens) > 0 {
-			res = append(res, tmpTokens)
-		}
-	}
-
-	return res
 }

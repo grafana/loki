@@ -48,15 +48,16 @@ func newRulerClientPool(clientCfg grpcclient.Config, logger log.Logger, reg prom
 	})
 
 	return &rulerClientsPool{
-		client.NewPool("ruler", poolCfg, nil, newRulerClientFactory(clientCfg, reg), clientsCount, logger),
+		client.NewPool("ruler", poolCfg, nil, newRulerClientFactory(clientCfg, reg, metricsNamespace), clientsCount, logger),
 	}
 }
 
-func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {
+func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer, metricsNamespace string) client.PoolFactory {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "cortex_ruler_client_request_duration_seconds",
-		Help:    "Time spent executing requests to the ruler.",
-		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
+		Namespace: metricsNamespace,
+		Name:      "ruler_client_request_duration_seconds",
+		Help:      "Time spent executing requests to the ruler.",
+		Buckets:   prometheus.ExponentialBuckets(0.008, 4, 7),
 	}, []string{"operation", "status_code"})
 
 	return client.PoolAddrFunc(func(addr string) (client.PoolClient, error) {
@@ -64,11 +65,12 @@ func newRulerClientFactory(clientCfg grpcclient.Config, reg prometheus.Registere
 	})
 }
 
-func newRulerPoolClient(clientCfg grpcclient.Config, reg prometheus.Registerer) func(addr string) (client.PoolClient, error) {
+func newRulerPoolClient(clientCfg grpcclient.Config, reg prometheus.Registerer, metricsNamespace string) func(addr string) (client.PoolClient, error) {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "cortex_ruler_client_request_duration_seconds",
-		Help:    "Time spent executing requests to the ruler.",
-		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
+		Namespace: metricsNamespace,
+		Name:      "ruler_client_request_duration_seconds",
+		Help:      "Time spent executing requests to the ruler.",
+		Buckets:   prometheus.ExponentialBuckets(0.008, 4, 7),
 	}, []string{"operation", "status_code"})
 
 	return func(addr string) (client.PoolClient, error) {

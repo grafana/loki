@@ -532,7 +532,7 @@ type ObjectStorageSecretSpec struct {
 // ObjectStorageSchemaVersion defines the storage schema version which will be
 // used with the Loki cluster.
 //
-// +kubebuilder:validation:Enum=v11;v12
+// +kubebuilder:validation:Enum=v11;v12;v13
 type ObjectStorageSchemaVersion string
 
 const (
@@ -541,6 +541,9 @@ const (
 
 	// ObjectStorageSchemaV12 when using v12 for the storage schema
 	ObjectStorageSchemaV12 ObjectStorageSchemaVersion = "v12"
+
+	// ObjectStorageSchemaV13 when using v13 for the storage schema
+	ObjectStorageSchemaV13 ObjectStorageSchemaVersion = "v13"
 )
 
 // ObjectStorageSchema defines the requirements needed to configure a new
@@ -550,7 +553,7 @@ type ObjectStorageSchema struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12"},displayName="Version"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12","urn:alm:descriptor:com.tectonic.ui:select:v13"},displayName="Version"
 	Version ObjectStorageSchemaVersion `json:"version"`
 
 	// EffectiveDate is the date in UTC that the schema will be applied on.

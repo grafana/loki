@@ -2,7 +2,7 @@ package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	cfg "sigs.k8s.io/controller-runtime/pkg/config/v1alpha1"
+	cfg "sigs.k8s.io/controller-runtime/pkg/config/v1alpha1" //nolint:staticcheck
 )
 
 // BuiltInCertManagement is the configuration for the built-in facility to generate and rotate

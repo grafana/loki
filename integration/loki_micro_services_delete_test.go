@@ -216,6 +216,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	validateQueryResponse := func(expectedStreams []client.StreamValues, resp *client.Response) {
 		t.Helper()
+		assert.Equal(t, "success", resp.Status)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
 		require.Len(t, resp.Data.Stream, len(expectedStreams))

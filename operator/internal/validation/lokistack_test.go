@@ -407,7 +407,7 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -431,7 +431,7 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-
 	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -200,10 +199,10 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 											tenant,
 											ls.String(),
 											objectClient)
-										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
+										bloomTokenizer.SetLineTokenizer(&experiment.tokenizer)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
-												if len(queryExperiment.searchString) >= experiment.tokenizer.GetMin()+experiment.tokenizer.GetSkip() {
+												if len(queryExperiment.searchString) >= experiment.tokenizer.N+experiment.tokenizer.Skip {
 
 													foundInChunk := false
 													foundInSbf := false
@@ -245,11 +244,6 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 													helpers.ExitErr("iterating chunks ", itr.Error())
 												}
-												/*else // if search string is long enough
-												{
-													//	fmt.Println("Skipping", queryExperiment.name, "because it's too short", experiment.name)
-												}*/
-
 											} // for each search string
 										} // for every chunk
 
@@ -306,21 +300,21 @@ func readSBFFromObjectStorage(location, prefix, period, tenant, series string, o
 	return sbf
 }
 
-func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.Tokenizer, searchString string) bool {
-	tokens := bt.SearchesForTokenizerAndLine(tokenizer, searchString)
-	for _, tokenSet := range tokens {
-		numMatches := 0
-		for _, token := range tokenSet {
-			if sbf.Test(token.Key) {
-				numMatches++
-			}
+func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.NGramTokenizer, searchString string) bool {
+	itr := tokenizer.Tokens(searchString)
+	numMatches := 0
+	numTokens := 0
+	for itr.Next() {
+		token := itr.At()
+		numTokens++
+		if sbf.Test(token) {
+			numMatches++
 		}
-		if numMatches > 0 {
-			if numMatches == len(tokenSet) {
-				return true
-			}
+	}
+	if numMatches > 0 {
+		if numMatches == numTokens {
+			return true
 		}
-
 	}
 
 	return false

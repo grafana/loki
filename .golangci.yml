@@ -63,6 +63,10 @@ linters-settings:
           - desc: "Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
             pkg: github.com/go-kit/kit/log
 
+  misspell:
+    ignore-words:
+      - strat
+
 linters:
   enable:
     - errcheck

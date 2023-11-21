@@ -12,7 +12,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 type FakeBuilder struct {
@@ -75,10 +74,10 @@ type FakeBuilder struct {
 	ownsReturnsOnCall map[int]struct {
 		result1 k8s.Builder
 	}
-	WatchesStub        func(source.Source, handler.EventHandler, ...builder.WatchesOption) k8s.Builder
+	WatchesStub        func(client.Object, handler.EventHandler, ...builder.WatchesOption) k8s.Builder
 	watchesMutex       sync.RWMutex
 	watchesArgsForCall []struct {
-		arg1 source.Source
+		arg1 client.Object
 		arg2 handler.EventHandler
 		arg3 []builder.WatchesOption
 	}
@@ -435,11 +434,11 @@ func (fake *FakeBuilder) OwnsReturnsOnCall(i int, result1 k8s.Builder) {
 	}{result1}
 }
 
-func (fake *FakeBuilder) Watches(arg1 source.Source, arg2 handler.EventHandler, arg3 ...builder.WatchesOption) k8s.Builder {
+func (fake *FakeBuilder) Watches(arg1 client.Object, arg2 handler.EventHandler, arg3 ...builder.WatchesOption) k8s.Builder {
 	fake.watchesMutex.Lock()
 	ret, specificReturn := fake.watchesReturnsOnCall[len(fake.watchesArgsForCall)]
 	fake.watchesArgsForCall = append(fake.watchesArgsForCall, struct {
-		arg1 source.Source
+		arg1 client.Object
 		arg2 handler.EventHandler
 		arg3 []builder.WatchesOption
 	}{arg1, arg2, arg3})
@@ -462,13 +461,13 @@ func (fake *FakeBuilder) WatchesCallCount() int {
 	return len(fake.watchesArgsForCall)
 }
 
-func (fake *FakeBuilder) WatchesCalls(stub func(source.Source, handler.EventHandler, ...builder.WatchesOption) k8s.Builder) {
+func (fake *FakeBuilder) WatchesCalls(stub func(client.Object, handler.EventHandler, ...builder.WatchesOption) k8s.Builder) {
 	fake.watchesMutex.Lock()
 	defer fake.watchesMutex.Unlock()
 	fake.WatchesStub = stub
 }
 
-func (fake *FakeBuilder) WatchesArgsForCall(i int) (source.Source, handler.EventHandler, []builder.WatchesOption) {
+func (fake *FakeBuilder) WatchesArgsForCall(i int) (client.Object, handler.EventHandler, []builder.WatchesOption) {
 	fake.watchesMutex.RLock()
 	defer fake.watchesMutex.RUnlock()
 	argsForCall := fake.watchesArgsForCall[i]

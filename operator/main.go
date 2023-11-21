@@ -62,7 +62,7 @@ func main() {
 	ctrlCfg := ctrlconfigv1.ProjectConfig{}
 	options := ctrl.Options{Scheme: scheme}
 	if configFile != "" {
-		options, err = options.AndFrom(ctrl.ConfigFile().AtPath(configFile).OfKind(&ctrlCfg))
+		options, err = options.AndFrom(ctrl.ConfigFile().AtPath(configFile).OfKind(&ctrlCfg)) //nolint:staticcheck
 		if err != nil {
 			logger.Error(err, "failed to parse controller manager config file")
 			os.Exit(1)

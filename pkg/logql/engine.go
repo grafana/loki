@@ -219,7 +219,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	)
 
 	if q.logExecQuery {
-		queryHash := HashedQuery(q.params.Query())
+		queryHash := util.HashedQuery(q.params.Query())
 		if GetRangeType(q.params) == InstantType {
 			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
 		} else {

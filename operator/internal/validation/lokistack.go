@@ -35,25 +35,25 @@ func (v *LokiStackValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 // ValidateCreate implements admission.CustomValidator.
-func (v *LokiStackValidator) ValidateCreate(ctx context.Context, obj runtime.Object) error {
+func (v *LokiStackValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	return v.validate(ctx, obj)
 }
 
 // ValidateUpdate implements admission.CustomValidator.
-func (v *LokiStackValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) error {
+func (v *LokiStackValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	return v.validate(ctx, newObj)
 }
 
 // ValidateDelete implements admission.CustomValidator.
-func (v *LokiStackValidator) ValidateDelete(_ context.Context, _ runtime.Object) error {
+func (v *LokiStackValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	// No validation on delete
-	return nil
+	return nil, nil
 }
 
-func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) error {
+func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	stack, ok := obj.(*lokiv1.LokiStack)
 	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type LokiStack: %t", obj))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("object is not of type LokiStack: %t", obj))
 	}
 
 	var allErrs field.ErrorList
@@ -83,10 +83,10 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
 		stack.Name,
 		allErrs,

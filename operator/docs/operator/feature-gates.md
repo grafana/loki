@@ -519,7 +519,7 @@ K8S Controller-runtime v1alpha1.ControllerMetrics
 </td>
 <td>
 <em>(Optional)</em>
-<p>Metrics contains thw controller metrics configuration</p>
+<p>Metrics contains the controller metrics configuration</p>
 </td>
 </tr>
 <tr>

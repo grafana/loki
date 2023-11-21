@@ -368,6 +368,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()
+		//nolint:revive
 		for it.Next() {
 		}
 	}()
@@ -410,6 +411,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 				3, 1, start, end, 0)
 			require.NoError(t, err)
 
+			//nolint:revive
 			for it.Next() {
 			}
 			_, value := it.At()

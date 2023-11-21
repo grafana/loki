@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/source"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
@@ -18,12 +18,12 @@ func TestLokiStackZoneAwarePodController_RegisterWatchedResources(t *testing.T) 
 	type test struct {
 		index             int
 		watchesCallsCount int
-		src               source.Source
+		src               client.Object
 		pred              builder.OwnsOption
 	}
 	table := []test{
 		{
-			src:               &source.Kind{Type: &corev1.Pod{}},
+			src:               &corev1.Pod{},
 			index:             0,
 			watchesCallsCount: 1,
 			pred:              createOrUpdatePodWithLabelPred,

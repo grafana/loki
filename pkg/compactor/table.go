@@ -265,3 +265,11 @@ func (t *table) openCompactedIndexForRetention(idxSet *indexSet) error {
 
 	return nil
 }
+
+// tableHasUncompactedIndex returns true if we have more than "1" common index files.
+// We are checking for more than "1" because earlier boltdb-shipper index type did not have per tenant index so there would be only common index files.
+// In case of per tenant index, it is okay to consider it compacted since having just 1 uncompacted index file for a while should be fine.
+func tableHasUncompactedIndex(ctx context.Context, tableName string, indexStorageClient storage.Client) (bool, error) {
+	commonIndexFiles, _, err := indexStorageClient.ListFiles(ctx, tableName, false)
+	return len(commonIndexFiles) > 1, err
+}
