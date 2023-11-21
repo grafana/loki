@@ -191,8 +191,8 @@ func (w *worker) running(ctx context.Context) error {
 					for _, t := range tasks {
 						for _, ref := range t.Request.Refs {
 							t.ResCh <- v1.Output{
-								Fp:   model.Fingerprint(ref.Fingerprint),
-								Chks: convertToChunkRefs(ref.Refs),
+								Fp:       model.Fingerprint(ref.Fingerprint),
+								Removals: nil,
 							}
 						}
 					}
@@ -227,8 +227,8 @@ func (w *worker) running(ctx context.Context) error {
 				for hasNext {
 					level.Warn(logger).Log("msg", "processing remaining fingerprint", "fp", it.At().Fp)
 					it.At().Response <- v1.Output{
-						Fp:   it.At().Fp,
-						Chks: it.At().Chks,
+						Fp:       it.At().Fp,
+						Removals: nil,
 					}
 					hasNext = it.Next()
 				}

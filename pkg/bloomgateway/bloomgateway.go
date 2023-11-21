@@ -60,6 +60,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
@@ -300,8 +301,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		g.pendingTasks.Add(task.ID, task)
 	})
 
-	response := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
-	responseCount := 0
+	requestCount := len(req.Refs)
+	// TODO(chaudum): Use pool
+	responses := make([]v1.Output, 0, requestCount)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -309,19 +312,47 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		case err := <-errCh:
 			return nil, errors.Wrap(err, "waiting for results")
 		case res := <-resCh:
-			responseCount++
+			responses = append(responses, res)
 			// log line is helpful for debugging tests
-			// level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", res.Fp, "chunks", res.Chks.Len(), "progress", fmt.Sprintf("%d/%d", responseCount, len(req.Refs)))
-			if res.Chks.Len() > 0 {
-				response = append(response, &logproto.GroupedChunkRefs{
-					Tenant:      tenantID,
-					Fingerprint: uint64(res.Fp),
-					Refs:        convertToShortRefs(res.Chks),
-				})
-			}
+			// level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", uint64(res.Fp), "chunks", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
 			// wait for all parts of the full response
-			if responseCount == len(req.Refs) {
-				return &logproto.FilterChunkRefResponse{ChunkRefs: response}, nil
+			if len(responses) == requestCount {
+				for _, o := range responses {
+					// we must not remove items from req.Refs as long as the worker may iterater over them
+					g.removeNotMatchingChunks(req, o)
+				}
+				return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+			}
+		}
+	}
+}
+
+func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) {
+	// binary search index of fingerprint
+	idx := sort.Search(len(req.Refs), func(i int) bool {
+		return req.Refs[i].Fingerprint >= uint64(res.Fp)
+	})
+
+	// fingerprint not found
+	if idx >= len(req.Refs) {
+		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
+		return
+	}
+
+	// if all chunks of a fingerprint are are removed
+	// then remove the whole group from the response
+	if len(req.Refs[idx].Refs) == res.Removals.Len() {
+		req.Refs[idx] = nil // avoid leaking pointer
+		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
+		return
+	}
+
+	for i := range res.Removals {
+		toRemove := res.Removals[i]
+		for j := range req.Refs[idx].Refs {
+			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
+				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
+				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
 			}
 		}
 	}

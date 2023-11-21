@@ -270,9 +270,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		})
 
 		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
-		inputChunkRefs := groupRefs(t, chunkRefs)
 
 		t.Run("no match - return empty response", func(t *testing.T) {
+			inputChunkRefs := groupRefs(t, chunkRefs)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
 				Through: now,
@@ -292,6 +292,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		})
 
 		t.Run("match - return filtered", func(t *testing.T) {
+			inputChunkRefs := groupRefs(t, chunkRefs)
 			// hack to get indexed key for a specific series
 			// the indexed key range for a series is defined as
 			// i * keysPerSeries ... i * keysPerSeries + keysPerSeries - 1

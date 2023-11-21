@@ -15,30 +15,20 @@ type IndexedValue[T any] struct {
 }
 
 type IterWithIndex[T any] struct {
-	v1.PeekingIterator[T]
+	v1.Iterator[T]
 	zero  T // zero value of T
 	cache IndexedValue[T]
 }
 
 func (it *IterWithIndex[T]) At() IndexedValue[T] {
-	it.cache.val = it.PeekingIterator.At()
+	it.cache.val = it.Iterator.At()
 	return it.cache
 }
 
-func (it *IterWithIndex[T]) Peek() (IndexedValue[T], bool) {
-	peek, ok := it.PeekingIterator.Peek()
-	if !ok {
-		it.cache.val = it.zero
-		return it.cache, false
-	}
-	it.cache.val = peek
-	return it.cache, true
-}
-
-func NewIterWithIndex[T any](iter v1.PeekingIterator[T], idx int) v1.PeekingIterator[IndexedValue[T]] {
+func NewIterWithIndex[T any](iter v1.Iterator[T], idx int) v1.Iterator[IndexedValue[T]] {
 	return &IterWithIndex[T]{
-		PeekingIterator: iter,
-		cache:           IndexedValue[T]{idx: idx},
+		Iterator: iter,
+		cache:    IndexedValue[T]{idx: idx},
 	}
 }
 
@@ -82,59 +72,6 @@ func NewSliceIterWithIndex[T any](xs []T, idx int) v1.PeekingIterator[IndexedVal
 
 func getDayTime(ts model.Time) time.Time {
 	return time.Date(ts.Time().Year(), ts.Time().Month(), ts.Time().Day(), 0, 0, 0, 0, time.UTC)
-}
-
-func filterRequestForDay(r *logproto.FilterChunkRefRequest, day time.Time) *logproto.FilterChunkRefRequest {
-	through := model.TimeFromUnix(day.Unix())
-	from := model.TimeFromUnix(day.Add(24 * time.Hour).Unix())
-
-	refs := make([]*logproto.GroupedChunkRefs, 0, len(r.Refs))
-	for i := range r.Refs {
-		groupedChunkRefs := &logproto.GroupedChunkRefs{
-			Fingerprint: r.Refs[i].Fingerprint,
-			Tenant:      r.Refs[i].Tenant,
-			Refs:        make([]*logproto.ShortRef, 0, len(r.Refs[i].Refs)),
-		}
-		for j := range r.Refs[i].Refs {
-			shortRef := r.Refs[i].Refs[j]
-			fromDay := getDayTime(shortRef.From)
-			if fromDay.After(day) {
-				break
-			}
-			throughDay := getDayTime(shortRef.Through)
-			if fromDay.Equal(day) || throughDay.Equal(day) {
-				groupedChunkRefs.Refs = append(groupedChunkRefs.Refs, shortRef)
-			}
-		}
-
-		// do not add empty groups to request
-		if len(groupedChunkRefs.Refs) == 0 {
-			continue
-		}
-
-		groupFrom, groupThrough := getFromThrough(groupedChunkRefs.Refs)
-		if groupFrom.Before(from) {
-			from = groupFrom
-		}
-		if groupThrough.After(through) {
-			through = groupThrough
-		}
-		refs = append(refs, groupedChunkRefs)
-	}
-
-	// The initial value of `from` is the through time and vice versa.
-	// This is, in order to determine min From and max Through.
-	// In case no chunk refs match, we need to swap the initial value again.
-	if len(refs) == 0 {
-		from, through = through, from
-	}
-
-	return &logproto.FilterChunkRefRequest{
-		From:    from,
-		Through: through,
-		Refs:    refs,
-		Filters: r.Filters,
-	}
 }
 
 // TODO(chaudum): Fix Through time calculation

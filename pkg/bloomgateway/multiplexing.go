@@ -54,14 +54,12 @@ func (t Task) Bounds() (time.Time, time.Time) {
 	return getDayTime(t.Request.From), getDayTime(t.Request.Through)
 }
 
-// CopyWithRequest returns a copy of the original task, but with newly provided request
-func (t Task) CopyWithRequest(req *logproto.FilterChunkRefRequest) Task {
-	return Task{
-		ID:      t.ID,
-		Tenant:  t.Tenant,
-		Request: req,
-		ErrCh:   t.ErrCh,
-		ResCh:   t.ResCh,
+func (t Task) ChunkIterForDay(day time.Time) v1.Iterator[*logproto.GroupedChunkRefs] {
+	cf := filterGroupedChunkRefsByDay{day: day}
+	return &FilterIter[*logproto.GroupedChunkRefs]{
+		iter:      v1.NewSliceIter(t.Request.Refs),
+		matches:   cf.contains,
+		transform: cf.filter,
 	}
 }
 
@@ -81,7 +79,7 @@ func (cf filterGroupedChunkRefsByDay) filter(a *logproto.GroupedChunkRefs) *logp
 	minTs, maxTs := getFromThrough(a.Refs)
 
 	// in most cases, all chunks are within day range
-	if minTs.Time().Compare(cf.day) >= 0 && maxTs.Time().Before(cf.day.Add(24*time.Hour)) {
+	if minTs.Time().Compare(cf.day) >= 0 && maxTs.Time().Before(cf.day.Add(Day)) {
 		return a
 	}
 
@@ -89,11 +87,13 @@ func (cf filterGroupedChunkRefsByDay) filter(a *logproto.GroupedChunkRefs) *logp
 	// using binary search to get min and max index of chunks that fall into the day range
 	min := sort.Search(len(a.Refs), func(i int) bool {
 		start := a.Refs[i].From.Time()
-		return start.Compare(cf.day) >= 0 && start.Compare(cf.day.Add(Day)) < 0
+		end := a.Refs[i].Through.Time()
+		return start.Compare(cf.day) >= 0 || end.Compare(cf.day) >= 0
 	})
+
 	max := sort.Search(len(a.Refs), func(i int) bool {
 		start := a.Refs[i].From.Time()
-		return start.Compare(cf.day.Add(Day)) >= 0
+		return start.Compare(cf.day.Add(Day)) > 0
 	})
 
 	return &logproto.GroupedChunkRefs{
@@ -103,22 +103,12 @@ func (cf filterGroupedChunkRefsByDay) filter(a *logproto.GroupedChunkRefs) *logp
 	}
 }
 
-func (t Task) ChunkIterForDay(day time.Time) v1.PeekingIterator[*logproto.GroupedChunkRefs] {
-	cf := filterGroupedChunkRefsByDay{day: day}
-	iter := &FilterIter[*logproto.GroupedChunkRefs]{
-		iter:      v1.NewSliceIter(t.Request.Refs),
-		predicate: cf.contains,
-		transform: cf.filter,
-	}
-	return v1.NewPeekingIter[*logproto.GroupedChunkRefs](iter)
-}
-
 type Predicate[T any] func(a T) bool
 type Transform[T any] func(a T) T
 
 type FilterIter[T any] struct {
 	iter      v1.Iterator[T]
-	predicate Predicate[T]
+	matches   Predicate[T]
 	transform Transform[T]
 	cache     T
 	zero      T // zero value of the return type of Next()
@@ -130,7 +120,7 @@ func (it *FilterIter[T]) Next() bool {
 		it.cache = it.zero
 		return false
 	}
-	for next && !it.predicate(it.iter.At()) {
+	for next && !it.matches(it.iter.At()) {
 		next = it.iter.Next()
 		if !next {
 			it.cache = it.zero
@@ -178,7 +168,7 @@ func (it *taskMergeIterator) init() {
 	sequences := make([]v1.PeekingIterator[IndexedValue[*logproto.GroupedChunkRefs]], 0, len(it.tasks))
 	for i := range it.tasks {
 		iter := NewIterWithIndex(it.tasks[i].ChunkIterForDay(it.day), i)
-		sequences = append(sequences, iter)
+		sequences = append(sequences, v1.NewPeekingIter(iter))
 	}
 	it.heap = v1.NewHeapIterator(
 		func(i, j IndexedValue[*logproto.GroupedChunkRefs]) bool {
