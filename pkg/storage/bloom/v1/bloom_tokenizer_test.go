@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
 
@@ -20,95 +21,64 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+var (
+	four = NewNGramTokenizer(4, 0)
+)
+
+func TestPrefixedKeyCreation(t *testing.T) {
+	var ones uint64 = 0xffffffffffffffff
+
+	ref := logproto.ChunkRef{
+		From:     0,
+		Through:  model.Time(int64(ones)),
+		Checksum: 0xffffffff,
+	}
+	for _, tc := range []struct {
+		desc          string
+		ngram, expLen int
+	}{
+		{
+			desc:   "0-gram",
+			ngram:  0,
+			expLen: 20,
+		},
+		{
+			desc:   "4-gram",
+			ngram:  4,
+			expLen: 20 + 4*MaxRuneLen,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			token, prefixLn := prefixedToken(tc.ngram, ref)
+			require.Equal(t, 20, prefixLn)
+			require.Equal(t, tc.expLen, len(token))
+			// first 8 bytes should be zeros from `from`
+			for i := 0; i < 8; i++ {
+				require.Equal(t, byte(0), token[i])
+			}
+			// next 8 bytes should be ones from `through`
+			for i := 8; i < 16; i++ {
+				require.Equal(t, byte(255), token[i])
+			}
+			// next 4 bytes should be ones from `checksum`
+			for i := 16; i < 20; i++ {
+				require.Equal(t, byte(255), token[i])
+			}
+		})
+	}
+}
+
 func TestSetLineTokenizer(t *testing.T) {
 	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
 
 	// Validate defaults
-	require.Equal(t, bt.lineTokenizer.GetMin(), DefaultNGramLength)
-	require.Equal(t, bt.lineTokenizer.GetMax(), DefaultNGramLength+1)
-	require.Equal(t, bt.lineTokenizer.GetSkip(), DefaultNGramSkip)
-
-	require.Equal(t, bt.chunkIDTokenizer.GetMin(), DefaultNGramLength)
-	require.Equal(t, bt.chunkIDTokenizer.GetMax(), DefaultNGramLength+1)
-	require.Equal(t, bt.chunkIDTokenizer.GetSkip(), DefaultNGramSkip)
+	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
+	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
-	bt.SetLineTokenizer(NewNGramTokenizer(6, 7, 2))
-	require.Equal(t, bt.lineTokenizer.GetMin(), 6)
-	require.Equal(t, bt.lineTokenizer.GetMax(), 7)
-	require.Equal(t, bt.lineTokenizer.GetSkip(), 2)
-
-	require.Equal(t, bt.chunkIDTokenizer.GetMin(), 6)
-	require.Equal(t, bt.chunkIDTokenizer.GetMax(), 7)
-	require.Equal(t, bt.chunkIDTokenizer.GetSkip(), 2)
-}
-
-func TestSearchesForTokenizerAndLine(t *testing.T) {
-	for _, tc := range []struct {
-		desc  string
-		input string
-		t     Tokenizer
-		exp   [][]Token
-	}{
-		{
-			desc:  "empty",
-			input: "",
-			t:     four,
-			exp:   [][]Token{},
-		},
-		{
-			desc:  "single char",
-			input: "a",
-			t:     four,
-			exp:   [][]Token{},
-		},
-		{
-			desc:  "four chars",
-			input: "abcd",
-			t:     four,
-			exp: [][]Token{
-				{{Key: []byte("abcd")}}},
-		},
-		{
-			desc:  "uuid partial",
-			input: "2b1a5e46-36a2-4",
-			t:     four,
-			exp: [][]Token{{
-				{Key: []byte("2b1a")},
-				{Key: []byte("b1a5")},
-				{Key: []byte("1a5e")},
-				{Key: []byte("a5e4")},
-				{Key: []byte("5e46")},
-				{Key: []byte("e46-")},
-				{Key: []byte("46-3")},
-				{Key: []byte("6-36")},
-				{Key: []byte("-36a")},
-				{Key: []byte("36a2")},
-				{Key: []byte("6a2-")},
-				{Key: []byte("a2-4")}},
-			},
-		},
-		{
-			desc:  "short special chars",
-			t:     four,
-			input: "日本語",
-			exp:   [][]Token{},
-		},
-		{
-			desc:  "longer special chars",
-			t:     four,
-			input: "日本語日本語",
-			exp: [][]Token{{
-				{Key: []byte("日本語日")},
-				{Key: []byte("本語日本")},
-				{Key: []byte("語日本語")}}},
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			require.Equal(t, tc.exp, SearchesForTokenizerAndLine(tc.t, tc.input))
-		})
-	}
-
+	bt.SetLineTokenizer(NewNGramTokenizer(6, 7))
+	require.Equal(t, bt.lineTokenizer.N, 6)
+	require.Equal(t, bt.lineTokenizer.Skip, 7)
 }
 
 func TestPopulateSeriesWithBloom(t *testing.T) {
@@ -149,9 +119,11 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 	}
 
 	bt.PopulateSeriesWithBloom(&swb, chunks)
-	tokens := SearchesForTokenizerAndLine(four, testLine)
-	for _, token := range tokens[0] {
-		require.True(t, swb.Bloom.Test(token.Key))
+	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
+	itr := tokenizer.Tokens(testLine)
+	for itr.Next() {
+		token := itr.At()
+		require.True(t, swb.Bloom.Test(token))
 	}
 }
 

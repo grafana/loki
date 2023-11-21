@@ -1,7 +1,6 @@
 package logqlmodel
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -94,19 +93,4 @@ func NewSeriesLimitError(limit int) *LimitError {
 // Is allows to use errors.Is(err,ErrLimit) on this error.
 func (e LimitError) Is(target error) bool {
 	return target == ErrLimit
-}
-
-func MapStatusCode(err error) int {
-	status := 200
-	if err != nil {
-		status = 500
-		if errors.Is(err, ErrParse) ||
-			errors.Is(err, ErrPipeline) ||
-			errors.Is(err, ErrLimit) ||
-			errors.Is(err, ErrBlocked) ||
-			errors.Is(err, context.Canceled) {
-			status = 400
-		}
-	}
-	return status
 }

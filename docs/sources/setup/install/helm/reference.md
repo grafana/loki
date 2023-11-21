@@ -2027,7 +2027,6 @@ null
 			<td>Limits config</td>
 			<td><pre lang="json">
 {
-  "enforce_metric_name": false,
   "max_cache_freshness_per_query": "10m",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
@@ -2297,6 +2296,17 @@ null
 			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.tracing</td>
+			<td>object</td>
+			<td>Enable tracing</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
 </pre>
 </td>
 		</tr>
@@ -4393,15 +4403,6 @@ null
 			<td>Number of times to retry the test before failing</td>
 			<td><pre lang="json">
 "1m"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>tracing.jaegerAgentHost</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-""
 </pre>
 </td>
 		</tr>
