@@ -207,7 +207,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	sp.LogKV(
 		"type", GetRangeType(q.params),
-		"query", q.params.Query(),
+		"query", q.params.QueryString(),
 		"start", q.params.Start(),
 		"end", q.params.End(),
 		"step", q.params.Step(),
@@ -215,11 +215,11 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	)
 
 	if q.logExecQuery {
-		queryHash := util.HashedQuery(q.params.Query())
+		queryHash := util.HashedQuery(q.params.QueryString())
 		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.QueryString(), "query_hash", queryHash)
 		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.QueryString(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
 		}
 	}
 
@@ -355,7 +355,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if GetRangeType(q.params) == InstantType {
 		sortByValue, err := Sortable(q.params)
 		if err != nil {
-			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.Query(), err)
+			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
 		}
 		if !sortByValue {
 			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })

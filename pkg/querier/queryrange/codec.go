@@ -1456,7 +1456,7 @@ type paramsRangeWrapper struct {
 	*LokiRequest
 }
 
-func (p paramsRangeWrapper) Query() string {
+func (p paramsRangeWrapper) QueryString() string {
 	return p.GetQuery()
 }
 
@@ -1490,7 +1490,7 @@ type paramsInstantWrapper struct {
 	*LokiInstantRequest
 }
 
-func (p paramsInstantWrapper) Query() string {
+func (p paramsInstantWrapper) QueryString() string {
 	return p.GetQuery()
 }
 
@@ -1522,7 +1522,7 @@ type paramsSeriesWrapper struct {
 	*LokiSeriesRequest
 }
 
-func (p paramsSeriesWrapper) Query() string {
+func (p paramsSeriesWrapper) QueryString() string {
 	return p.GetQuery()
 }
 
@@ -1554,7 +1554,7 @@ type paramsLabelWrapper struct {
 	*LabelRequest
 }
 
-func (p paramsLabelWrapper) Query() string {
+func (p paramsLabelWrapper) QueryString() string {
 	return p.GetQuery()
 }
 
@@ -1586,7 +1586,7 @@ type paramsStatsWrapper struct {
 	*logproto.IndexStatsRequest
 }
 
-func (p paramsStatsWrapper) Query() string {
+func (p paramsStatsWrapper) QueryString() string {
 	return p.GetQuery()
 }
 
