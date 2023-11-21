@@ -14,14 +14,13 @@ func (t QueryPlan) Marshal() ([]byte, error) {
 	return t.MarshalJSON()
 }
 
-func (t *QueryPlan) MarshalTo(data []byte) (n int, err error) {
-	// TODO: we probably want to write to data directly
+func (t *QueryPlan) MarshalTo(data []byte) (int, error) {
 	src, err := t.Marshal()
 	if err != nil {
 		return 0, err
 	}
 
-	return copy(src, data), nil
+	return copy(data[:], src), nil
 }
 
 func (t *QueryPlan) Unmarshal(data []byte) error {
@@ -29,11 +28,13 @@ func (t *QueryPlan) Unmarshal(data []byte) error {
 }
 
 func (t *QueryPlan) Size() int {
+	counter := &countWriter{}
+	err := syntax.EncodeJSON(t.AST, counter)
+	if err != nil {
+		return 0
+	}
 
-	// TODO: we probably want to calculate the size directly.
-	src, _ := t.Marshal()
-
-	return len(src)
+	return counter.bytes
 }
 
 func (t QueryPlan) MarshalJSON() ([]byte, error) {
@@ -72,4 +73,16 @@ func (t QueryPlan) Equal(other QueryPlan) bool {
 		return false
 	}
 	return bytes.Equal(left, right)
+}
+
+// countWriter is not writing any bytes. It just counts the bytes that would be
+// written.
+type countWriter struct {
+	bytes int
+}
+
+// Write implements io.Writer.
+func (w *countWriter) Write(p []byte) (int, error) {
+	w.bytes += len(p)
+	return len(p), nil
 }
