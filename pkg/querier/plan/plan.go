@@ -15,12 +15,15 @@ func (t QueryPlan) Marshal() ([]byte, error) {
 }
 
 func (t *QueryPlan) MarshalTo(data []byte) (int, error) {
-	src, err := t.Marshal()
+	appender := &appendWriter{
+		slice: data[:0],
+	}
+	err := syntax.EncodeJSON(t.AST, appender)
 	if err != nil {
 		return 0, err
 	}
 
-	return copy(data[:], src), nil
+	return len(appender.slice), nil
 }
 
 func (t *QueryPlan) Unmarshal(data []byte) error {
@@ -84,5 +87,15 @@ type countWriter struct {
 // Write implements io.Writer.
 func (w *countWriter) Write(p []byte) (int, error) {
 	w.bytes += len(p)
+	return len(p), nil
+}
+
+// appendWriter appends to a slice.
+type appendWriter struct {
+	slice []byte
+}
+
+func (w *appendWriter) Write(p []byte) (int, error) {
+	w.slice = append(w.slice, p...)
 	return len(p), nil
 }
