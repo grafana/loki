@@ -2959,6 +2959,10 @@ shard_streams:
 # CLI flag: -bloom-compactor.min-table-age
 [bloom_compactor_min_table_age: <duration> | default = 1h]
 
+# Whether to compact chunks into bloom filters.
+# CLI flag: -bloom-compactor.enable-compaction
+[bloom_compactor_enable_compaction: <boolean> | default = false]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
