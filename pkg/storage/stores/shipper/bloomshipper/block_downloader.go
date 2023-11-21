@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/util"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,10 +11,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/util"
+
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type blockDownloader struct {
