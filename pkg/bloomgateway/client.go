@@ -93,7 +93,7 @@ type GatewayClient struct {
 	ring   ring.ReadRing
 }
 
-func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Subsystem: "bloom_gateway",
@@ -119,7 +119,7 @@ func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Reg
 		cfg:    cfg,
 		logger: logger,
 		limits: limits,
-		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger),
+		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
 	}
 
 	return c, nil
@@ -134,6 +134,10 @@ func shuffleAddrs(addrs []string) []string {
 
 // FilterChunkRefs implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...*logproto.LineFilterExpression) ([]*logproto.GroupedChunkRefs, error) {
+	if !c.limits.BloomGatewayEnabled(tenant) {
+		return groups, nil
+	}
+
 	// Get the addresses of corresponding bloom gateways for each series.
 	fingerprints, addrs, err := c.serverAddrsForFingerprints(tenant, groups)
 	if err != nil {

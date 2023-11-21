@@ -286,7 +286,7 @@ func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 		return 0, err
 	}
 
-	var len uint64
+	var len uint64 // nolint:revive
 	err = binary.Read(stream, binary.BigEndian, &len)
 	if err != nil {
 		return 0, err

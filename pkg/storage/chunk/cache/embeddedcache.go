@@ -23,19 +23,20 @@ const (
 
 	defaultPurgeInterval = 1 * time.Minute
 
-	expiredReason string = "expired" //nolint:staticcheck
-	fullReason           = "full"
-	tooBigReason         = "object too big"
+	expiredReason  string = "expired" //nolint:staticcheck
+	fullReason            = "full"
+	tooBigReason          = "object too big"
+	replacedReason        = "replaced"
 )
 
-// EmbeddedCache is a simple string -> interface{} cache which uses a fifo slide to
+// EmbeddedCache is a simple (comparable -> any) cache which uses a fifo slide to
 // manage evictions.  O(1) inserts and updates, O(1) gets.
 //
 // This embedded cache implementation supports two eviction methods - based on number of items in the cache, and based on memory usage.
 // For the memory-based eviction, set EmbeddedCacheConfig.MaxSizeMB to a positive integer, indicating upper limit of memory allocated by items in the cache.
 // Alternatively, set EmbeddedCacheConfig.MaxSizeItems to a positive integer, indicating maximum number of items in the cache.
 // If both parameters are set, both methods are enforced, whichever hits first.
-type EmbeddedCache struct {
+type EmbeddedCache[K comparable, V any] struct {
 	cacheType stats.CacheType
 
 	lock          sync.RWMutex
@@ -43,8 +44,11 @@ type EmbeddedCache struct {
 	maxSizeBytes  uint64
 	currSizeBytes uint64
 
-	entries map[string]*list.Element
-	lru     *list.List
+	entries map[K]*list.Element
+	cacheEntrySizeCalculator[K, V]
+	lru *list.List
+
+	onEntryRemoved func(key K, value V)
 
 	done chan struct{}
 
@@ -54,10 +58,10 @@ type EmbeddedCache struct {
 	memoryBytes     prometheus.Gauge
 }
 
-type cacheEntry struct {
+type cacheEntry[K comparable, V any] struct {
 	updated time.Time
-	key     string
-	value   []byte
+	key     K
+	value   V
 }
 
 // EmbeddedCacheConfig represents in-process embedded cache config.
@@ -83,8 +87,26 @@ func (cfg *EmbeddedCacheConfig) IsEnabled() bool {
 	return cfg.Enabled
 }
 
-// NewEmbeddedCache returns a new initialised EmbeddedCache.
-func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *EmbeddedCache {
+type cacheEntrySizeCalculator[K comparable, V any] func(entry *cacheEntry[K, V]) uint64
+
+// NewEmbeddedCache returns a new initialised EmbeddedCache where the key is a string and the value is a slice of bytes.
+func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *EmbeddedCache[string, []byte] {
+	return NewTypedEmbeddedCache[string, []byte](name, cfg, reg, logger, cacheType, sizeOf, nil)
+}
+
+// NewTypedEmbeddedCache returns a new initialised EmbeddedCache with the key and value of requested types.
+// To limit the memory allocated by items in the cache, it's necessary to pass cacheEntrySizeCalculator
+// that calculates the size of an entry in bytes.
+// Also, this constructor allows passing the callback that will be called for the entry whenever it is removed from the cache.
+func NewTypedEmbeddedCache[K comparable, V any](
+	name string,
+	cfg EmbeddedCacheConfig,
+	reg prometheus.Registerer,
+	logger log.Logger,
+	cacheType stats.CacheType,
+	entrySizeCalculator cacheEntrySizeCalculator[K, V],
+	onEntryRemoved func(key K, value V),
+) *EmbeddedCache[K, V] {
 	if cfg.MaxSizeMB == 0 && cfg.MaxSizeItems == 0 {
 		// zero cache capacity - no need to create cache
 		level.Warn(logger).Log("msg", "neither embedded-cache.max-size-mb nor embedded-cache.max-size-items is set", "cache", name)
@@ -97,13 +119,15 @@ func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Regis
 		cfg.PurgeInterval = defaultPurgeInterval
 	}
 
-	cache := &EmbeddedCache{
+	cache := &EmbeddedCache[K, V]{
 		cacheType: cacheType,
 
-		maxSizeItems: cfg.MaxSizeItems,
-		maxSizeBytes: uint64(cfg.MaxSizeMB * 1e6),
-		entries:      make(map[string]*list.Element),
-		lru:          list.New(),
+		maxSizeItems:             cfg.MaxSizeItems,
+		maxSizeBytes:             uint64(cfg.MaxSizeMB * 1e6),
+		entries:                  make(map[K]*list.Element),
+		lru:                      list.New(),
+		cacheEntrySizeCalculator: entrySizeCalculator,
+		onEntryRemoved:           onEntryRemoved,
 
 		done: make(chan struct{}),
 
@@ -147,7 +171,7 @@ func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Regis
 	return cache
 }
 
-func (c *EmbeddedCache) runPruneJob(interval, ttl time.Duration) {
+func (c *EmbeddedCache[K, V]) runPruneJob(interval, ttl time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -162,40 +186,36 @@ func (c *EmbeddedCache) runPruneJob(interval, ttl time.Duration) {
 }
 
 // pruneExpiredItems prunes items in the cache that exceeded their ttl
-func (c *EmbeddedCache) pruneExpiredItems(ttl time.Duration) {
+func (c *EmbeddedCache[K, V]) pruneExpiredItems(ttl time.Duration) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	for k, v := range c.entries {
-		entry := v.Value.(*cacheEntry)
+		entry := v.Value.(*cacheEntry[K, V])
 		if time.Since(entry.updated) > ttl {
-			_ = c.lru.Remove(v).(*cacheEntry)
-			delete(c.entries, k)
-			c.currSizeBytes -= sizeOf(entry)
-			c.entriesCurrent.Dec()
-			c.entriesEvicted.WithLabelValues(expiredReason).Inc()
+			c.remove(k, v, expiredReason)
 		}
 	}
 }
 
 // Fetch implements Cache.
-func (c *EmbeddedCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
-	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
+func (c *EmbeddedCache[K, V]) Fetch(ctx context.Context, keys []K) (foundKeys []K, foundValues []V, missingKeys []K, err error) {
+	foundKeys, missingKeys, foundValues = make([]K, 0, len(keys)), make([]K, 0, len(keys)), make([]V, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)
 		if !ok {
-			missing = append(missing, key)
+			missingKeys = append(missingKeys, key)
 			continue
 		}
 
-		found = append(found, key)
-		bufs = append(bufs, val)
+		foundKeys = append(foundKeys, key)
+		foundValues = append(foundValues, val)
 	}
 	return
 }
 
 // Store implements Cache.
-func (c *EmbeddedCache) Store(_ context.Context, keys []string, values [][]byte) error {
+func (c *EmbeddedCache[K, V]) Store(_ context.Context, keys []K, values []V) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -206,13 +226,12 @@ func (c *EmbeddedCache) Store(_ context.Context, keys []string, values [][]byte)
 }
 
 // Stop implements Cache.
-func (c *EmbeddedCache) Stop() {
+func (c *EmbeddedCache[K, V]) Stop() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	close(c.done)
-
-	c.entries = make(map[string]*list.Element)
+	c.entries = make(map[K]*list.Element)
 	c.lru.Init()
 	c.currSizeBytes = 0
 
@@ -220,27 +239,35 @@ func (c *EmbeddedCache) Stop() {
 	c.memoryBytes.Set(float64(0))
 }
 
-func (c *EmbeddedCache) GetCacheType() stats.CacheType {
+func (c *EmbeddedCache[K, V]) GetCacheType() stats.CacheType {
 	return c.cacheType
 }
 
-func (c *EmbeddedCache) put(key string, value []byte) {
+func (c *EmbeddedCache[K, V]) remove(key K, element *list.Element, reason string) {
+	entry := c.lru.Remove(element).(*cacheEntry[K, V])
+	delete(c.entries, key)
+	if c.onEntryRemoved != nil {
+		c.onEntryRemoved(entry.key, entry.value)
+	}
+	c.currSizeBytes -= c.cacheEntrySizeCalculator(entry)
+	c.entriesCurrent.Dec()
+	c.entriesEvicted.WithLabelValues(reason).Inc()
+}
+
+func (c *EmbeddedCache[K, V]) put(key K, value V) {
 	// See if we already have the item in the cache.
 	element, ok := c.entries[key]
 	if ok {
 		// Remove the item from the cache.
-		entry := c.lru.Remove(element).(*cacheEntry)
-		delete(c.entries, key)
-		c.currSizeBytes -= sizeOf(entry)
-		c.entriesCurrent.Dec()
+		c.remove(key, element, replacedReason)
 	}
 
-	entry := &cacheEntry{
+	entry := &cacheEntry[K, V]{
 		updated: time.Now(),
 		key:     key,
 		value:   value,
 	}
-	entrySz := sizeOf(entry)
+	entrySz := c.cacheEntrySizeCalculator(entry)
 
 	if c.maxSizeBytes > 0 && entrySz > c.maxSizeBytes {
 		// Cannot keep this item in the cache.
@@ -258,11 +285,8 @@ func (c *EmbeddedCache) put(key string, value []byte) {
 		if lastElement == nil {
 			break
 		}
-		evicted := c.lru.Remove(lastElement).(*cacheEntry)
-		delete(c.entries, evicted.key)
-		c.currSizeBytes -= sizeOf(evicted)
-		c.entriesCurrent.Dec()
-		c.entriesEvicted.WithLabelValues(fullReason).Inc()
+		entryToRemove := lastElement.Value.(*cacheEntry[K, V])
+		c.remove(entryToRemove.key, lastElement, fullReason)
 	}
 
 	// Finally, we have space to add the item.
@@ -276,20 +300,20 @@ func (c *EmbeddedCache) put(key string, value []byte) {
 }
 
 // Get returns the stored value against the key and when the key was last updated.
-func (c *EmbeddedCache) Get(_ context.Context, key string) ([]byte, bool) {
+func (c *EmbeddedCache[K, V]) Get(_ context.Context, key K) (V, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
 	element, ok := c.entries[key]
 	if ok {
-		entry := element.Value.(*cacheEntry)
+		entry := element.Value.(*cacheEntry[K, V])
 		return entry.value, true
 	}
-
-	return nil, false
+	var empty V
+	return empty, false
 }
 
-func sizeOf(item *cacheEntry) uint64 {
+func sizeOf(item *cacheEntry[string, []byte]) uint64 {
 	return uint64(int(unsafe.Sizeof(*item)) + // size of cacheEntry
 		len(item.key) + // size of key
 		cap(item.value) + // size of value

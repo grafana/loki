@@ -92,6 +92,7 @@ type Distributor struct {
 	services.Service
 
 	cfg              Config
+	logger           log.Logger
 	clientCfg        client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
@@ -135,6 +136,7 @@ func New(
 	overrides Limits,
 	registerer prometheus.Registerer,
 	metricsNamespace string,
+	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
@@ -169,12 +171,13 @@ func New(
 
 	d := &Distributor{
 		cfg:                   cfg,
+		logger:                logger,
 		clientCfg:             clientCfg,
 		tenantConfigs:         configs,
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, logger, metricsNamespace),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
@@ -199,13 +202,13 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
-		writeFailuresManager: writefailures.NewManager(util_log.Logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
-		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer, metricsNamespace)
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, logger, registerer, metricsNamespace)
 		if err != nil {
 			return nil, err
 		}
@@ -232,7 +235,8 @@ func New(
 			clientCfg.PoolConfig,
 			ingestersRing,
 			ring_client.PoolAddrFunc(internalFactory),
-			util_log.Logger,
+			logger,
+			metricsNamespace,
 		),
 		overrides,
 		registerer,
@@ -473,7 +477,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The number of shards is limited by the number of entries.
 func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) ([]uint32, []streamTracker) {
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
-	logger := log.With(util_log.WithUserID(tenantID, util_log.Logger), "stream", stream.Labels)
+	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
@@ -502,7 +506,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 
 func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) ([]uint32, []streamTracker) {
 	var (
-		streamLabels   = labelTemplate(stream.Labels)
+		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
 		derivedKeys    = make([]uint32, 0, totalShards)
 		derivedStreams = make([]streamTracker, 0, totalShards)
@@ -511,7 +515,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 	)
 
 	if totalShards <= 0 {
-		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
+		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
 		return derivedKeys, derivedStreams
 	}
 
@@ -525,7 +529,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
 		if shardStreamsCfg.LoggingEnabled {
-			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
+			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
 	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+streamCount)
@@ -542,10 +546,10 @@ func streamCount(totalShards int, stream logproto.Stream) int {
 
 // labelTemplate returns a label set that includes the dummy label to be replaced
 // To avoid allocations, this slice is reused when we know the stream value
-func labelTemplate(lbls string) labels.Labels {
+func labelTemplate(lbls string, logger log.Logger) labels.Labels {
 	baseLbls, err := syntax.ParseLabels(lbls)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
+		level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
 		return nil
 	}
 

@@ -53,12 +53,12 @@ func execute() {
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
 
 	openFn := func(p string) (shipperindex.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+		return tsdb.OpenShippableTSDB(p)
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
 		periodCfg.IndexTables.PathPrefix,
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,
@@ -89,18 +89,10 @@ func execute() {
 }
 
 var (
-	three      = bt.NewNGramTokenizer(3, 4, 0)
-	threeSkip1 = bt.NewNGramTokenizer(3, 4, 1)
-	threeSkip2 = bt.NewNGramTokenizer(3, 4, 2)
-	threeSkip3 = bt.NewNGramTokenizer(3, 4, 3)
-	four       = bt.NewNGramTokenizer(4, 5, 0)
-	fourSkip1  = bt.NewNGramTokenizer(4, 5, 1)
-	fourSkip2  = bt.NewNGramTokenizer(4, 5, 2)
-	five       = bt.NewNGramTokenizer(5, 6, 0)
-	six        = bt.NewNGramTokenizer(6, 7, 0)
+	three = bt.NewNGramTokenizer(3, 0)
+	four  = bt.NewNGramTokenizer(4, 0)
 
-	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
-	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
+	onePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
 )
 
 var experiments = []Experiment{
@@ -116,7 +108,7 @@ var experiments = []Experiment{
 	*/
 	NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		four,
+		*four,
 		true,
 		onePctError,
 	),
@@ -344,13 +336,23 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										tenant,
 										ls.String(),
 										objectClient) {
-										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
+										bloomTokenizer.SetLineTokenizer(&experiment.tokenizer)
 
 										level.Info(util_log.Logger).Log("Starting work on: ", ls.String(), "'", FNV32a(ls.String()), "'", experiment.name, tenant)
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										bloomTokenizer.PopulateSBF(sbf, got)
+										bloom := bt.Bloom{
+											ScalableBloomFilter: *sbf,
+										}
+										series := bt.Series{
+											Fingerprint: fp,
+										}
+										swb := bt.SeriesWithBloom{
+											Bloom:  &bloom,
+											Series: &series,
+										}
+										bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
 
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
@@ -361,7 +363,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 											)
 
-											writeSBF(sbf,
+											writeSBF(&swb.Bloom.ScalableBloomFilter,
 												os.Getenv("DIR"),
 												fmt.Sprint(bucketPrefix, experiment.name),
 												os.Getenv("BUCKET"),
@@ -497,7 +499,7 @@ func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
 	return err
 }
 
-func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+func writeSBFToObjectStorage(_ *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
 	// Probably a better way to do this than to reopen the file, but it's late
 	file, err := os.Open(localFilename)
 	if err != nil {
