@@ -1600,7 +1600,7 @@ func (p paramsStatsWrapper) QueryString() string {
 }
 
 func (p paramsStatsWrapper) GetExpression() syntax.Expr {
-	return nil // TODO: use parsed query
+	return nil
 }
 
 func (p paramsStatsWrapper) Start() time.Time {

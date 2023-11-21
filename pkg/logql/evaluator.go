@@ -39,7 +39,7 @@ type Params interface {
 	Limit() uint32
 	Direction() logproto.Direction
 	Shards() []string
-	GetExpression() syntax.Expr // TODO: rename to GetPlan
+	GetExpression() syntax.Expr
 }
 
 func NewLiteralParams(

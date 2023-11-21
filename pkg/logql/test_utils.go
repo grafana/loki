@@ -218,23 +218,6 @@ func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return 
 func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
-		// This should just call m.Query(query.Params).Exec(ctx) TODO: figure out why downstream parses the query.
-		/*
-			params, err := NewLiteralParams(
-					query.Params.GetExpression().String(),
-					query.Params.Start(),
-					query.Params.End(),
-					query.Params.Step(),
-					query.Params.Interval(),
-					query.Params.Direction(),
-					query.Params.Limit(),
-					query.Shards.Encode(),
-				)
-			if err != nil {
-				return nil, err
-			}
-		*/
-
 		res, err := m.Query(query.Params).Exec(ctx)
 		if err != nil {
 			return nil, err

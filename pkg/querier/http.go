@@ -73,7 +73,6 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return logqlmodel.Result{}, err
 	}
 
-	// TODO: fun fact req should implement params. So no wrapper would be required 🤷
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
 		return logqlmodel.Result{}, err
