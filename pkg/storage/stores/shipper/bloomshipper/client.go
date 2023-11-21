@@ -292,6 +292,9 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		objectClient := b.periodicObjectClients[period]
 		byteReader := v1.NewByteReader(readCloserToBuffer(block.IndexData), readCloserToBuffer(block.BloomData))
 
+		// TODO: Right now, this is asymetrical with the GetBlocks path. We have all the pieces
+		// in memory now, so it doesn't necessarily make sense to write the files to disk. That may change
+		// as we finalize on an archive format, and we may want to just house the downloaded files in memory instead.
 		// Create a buffer to write data
 		buf := new(bytes.Buffer)
 		err = v1.TarGzMemory(buf, byteReader)

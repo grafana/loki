@@ -115,7 +115,8 @@ func UnTarGz(dst string, r io.Reader) error {
 			if err != nil {
 				return errors.Wrapf(err, "error creating directory %s", target)
 			}
-			//f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+			// TODO: We need to settle on how best to handle file permissions and ownership
+			// This may be utilizing a zip file instead of tar.gz
 			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0755)
 			if err != nil {
 				return errors.Wrapf(err, "error creating file %s", target)

@@ -61,6 +61,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+// TODO: Make a constants file somewhere
 const (
 	fpRate         = 0.01
 	bloomFileName  = "bloom"

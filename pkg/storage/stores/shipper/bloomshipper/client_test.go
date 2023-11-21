@@ -410,16 +410,16 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 func createBlockFile(t *testing.T, path string) []byte {
 	err := os.MkdirAll(path[:strings.LastIndex(path, "/")], 0755)
 	require.NoError(t, err)
-	dataContent := []byte(uuid.NewString())
+	bloomContent := []byte(uuid.NewString())
 	indexContent := []byte(uuid.NewString())
 	outputFile, err := os.Create(path)
 	require.NoError(t, err)
-	byteReader := v1.NewByteReader(bytes.NewBuffer(indexContent), bytes.NewBuffer(dataContent))
+	byteReader := v1.NewByteReader(bytes.NewBuffer(indexContent), bytes.NewBuffer(bloomContent))
 	err = v1.TarGzMemory(outputFile, byteReader)
 	require.NoError(t, err)
 	err = outputFile.Close()
 	require.NoError(t, err)
-	return dataContent
+	return bloomContent
 }
 
 func Test_TablesByPeriod(t *testing.T) {
