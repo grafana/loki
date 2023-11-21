@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"encoding/binary"
 	"math"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/encoding"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -68,27 +68,32 @@ func clearCache(cache map[string]interface{}) {
 	}
 }
 
-func calculatePrefix(chk logproto.ChunkRef) []byte {
-	i64buf := make([]byte, binary.MaxVarintLen64)
-	i32buf := make([]byte, 4)
-	prefix := make([]byte, 32)
+// prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
+// of specific ngram length, along with the length of the prefix.
+// It ensures enough capacity for the prefix and the token so additional tokens can be created
+// without allocations by appending them to the prefix length
+func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
+	var enc encoding.Encbuf
+	enc.PutBE64(uint64(chk.From))
+	enc.PutBE64(uint64(chk.Through))
+	enc.PutBE32(chk.Checksum)
+	prefixLn := enc.Len() // record the length of the prefix
 
-	binary.PutVarint(i64buf, int64(chk.From))
-	prefix = append(prefix, i64buf...)
-	binary.PutVarint(i64buf, int64(chk.Through))
-	prefix = append(prefix, i64buf...)
-	binary.LittleEndian.PutUint32(i32buf, chk.Checksum)
-	prefix = append(prefix, i32buf...)
+	enc.PutBytes(make([]byte, ngram*MaxRuneLen)) // ensure enough capacity for the ngram
 
-	return prefix
+	// return the underlying byte slice and the length of the prefix
+	return enc.Get(), prefixLn
 }
 
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
 func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
 	clearCache(bt.cache)
+
+	// allocate a reusable key buffer long enough to store both the chunk ref and the ngram
+
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		prefix := calculatePrefix(chunks[idx].ChunkRef)
+		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
 
 		// TODO: error handling
 		itr, err := lc.Iterator(
@@ -106,7 +111,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 		defer itr.Close()
 
 		for itr.Next() && itr.Error() == nil {
-			chunkTokenizer := NewPrefixedTokenIter(prefix, bt.lineTokenizer.Tokens(itr.Entry().Line))
+			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
 				if tok != nil {
