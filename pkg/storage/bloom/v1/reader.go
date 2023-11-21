@@ -33,8 +33,9 @@ func (r *ByteReader) Blooms() (io.ReadSeeker, error) {
 
 // File reader
 type DirectoryBlockReader struct {
-	dir           string
-	blooms, index *os.File
+	dir                    string
+	nGramLength, nGramSkip uint64
+	blooms, index          *os.File
 
 	initialized bool
 }

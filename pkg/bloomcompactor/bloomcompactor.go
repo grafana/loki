@@ -353,7 +353,9 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	}
 
 	// Tokenizer is not thread-safe so we need one per goroutine.
-	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	NGramLength := c.limits.BloomNGramLength(tenant)
+	NGramSkip := c.limits.BloomNGramSkip(tenant)
+	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer, NGramLength, NGramSkip)
 
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
@@ -459,7 +461,14 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.SeriesWithBloom, job Job, workingDir string) (bloomshipper.Block, error) {
+func buildBloomBlock(
+	ctx context.Context,
+	logger log.Logger,
+	options v1.BlockOptions,
+	bloomForChks v1.SeriesWithBloom,
+	job Job,
+	workingDir string,
+) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return bloomshipper.Block{}, err
@@ -468,7 +477,7 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 	localDst := createLocalDirName(workingDir, job)
 
 	// write bloom to a local dir
-	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
+	builder, err := v1.NewBlockBuilder(options, v1.NewDirectoryBlockWriter(localDst))
 	if err != nil {
 		level.Error(logger).Log("creating builder", err)
 		return bloomshipper.Block{}, err
@@ -532,7 +541,8 @@ func CompactNewChunks(ctx context.Context, logger log.Logger, job Job,
 	bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
 
 	// Build and upload bloomBlock to storage
-	blocks, err := buildBloomBlock(ctx, logger, bloomForChks, job, dst)
+	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
+	blocks, err := buildBloomBlock(ctx, logger, blockOptions, bloomForChks, job, dst)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
 		return nil, err

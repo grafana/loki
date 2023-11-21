@@ -33,20 +33,18 @@ type BloomTokenizer struct {
 }
 
 const CacheSize = 150000
-const DefaultNGramLength = 4
-const DefaultNGramSkip = 0
 
 // NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
 // Warning: the tokens returned use the same byte slice to reduce allocations. This has two consequences:
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
+func NewBloomTokenizer(reg prometheus.Registerer, NGramLength, NGramSkip int) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	t.lineTokenizer = NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip) // default to 4-grams, no skip
+	t.lineTokenizer = NewNGramTokenizer(NGramLength, NGramSkip)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 
@@ -55,6 +53,14 @@ func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
 
 func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {
 	bt.lineTokenizer = t
+}
+
+func (bt *BloomTokenizer) GetNGramLength() uint64 {
+	return uint64(bt.lineTokenizer.N)
+}
+
+func (bt *BloomTokenizer) GetNGramSkip() uint64 {
+	return uint64(bt.lineTokenizer.Skip)
 }
 
 // TODO: Something real here with metrics

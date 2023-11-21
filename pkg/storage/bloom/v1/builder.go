@@ -30,10 +30,12 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions() BlockOptions {
+func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
 	return BlockOptions{
 		schema: Schema{
-			version: byte(1),
+			version:     byte(1),
+			NGramLength: NGramLength,
+			NGramSkip:   NGramSkip,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10, // 0.01MB
