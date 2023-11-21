@@ -242,6 +242,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxLabelNamesPerSeries: 30,
 					MaxLineSize:            256000,
 					DesiredRate:            3,
+					PerStreamRateLimit:     5,
 				},
 				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs
@@ -296,6 +297,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxLabelNamesPerSeries: 30,
 					MaxLineSize:            256000,
 					DesiredRate:            3,
+					PerStreamRateLimit:     5,
 				},
 				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs
@@ -353,6 +355,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxLabelNamesPerSeries: 30,
 					MaxLineSize:            256000,
 					DesiredRate:            3,
+					PerStreamRateLimit:     5,
 				},
 				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs
@@ -410,6 +413,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxLabelNamesPerSeries: 30,
 					MaxLineSize:            256000,
 					DesiredRate:            3,
+					PerStreamRateLimit:     5,
 				},
 				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs

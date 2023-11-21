@@ -110,6 +110,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -194,6 +195,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -365,6 +367,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -454,6 +457,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -569,6 +573,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					// making it nil so that the template is not generated and error is returned
@@ -729,6 +734,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -867,6 +873,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -1085,6 +1092,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -1223,6 +1231,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -1442,6 +1451,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -1593,6 +1603,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -1837,6 +1848,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -1931,6 +1943,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -2161,6 +2174,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 2m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -2325,6 +2339,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -2599,6 +2614,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -2720,6 +2736,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -2922,6 +2939,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 2m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -3114,6 +3132,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -3417,6 +3436,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -3502,6 +3522,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -3676,6 +3697,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -3761,6 +3783,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -3936,6 +3959,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -4020,6 +4044,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -4197,6 +4222,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -4286,6 +4312,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
@@ -4489,6 +4516,7 @@ limits_config:
   max_cache_freshness_per_query: 10m
   split_queries_by_interval: 30m
   query_timeout: 1m
+  per_stream_rate_limit: 5MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -4578,6 +4606,7 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        5,
 						DesiredRate:               3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{

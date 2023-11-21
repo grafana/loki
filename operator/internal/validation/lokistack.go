@@ -78,11 +78,6 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (
 		allErrs = append(allErrs, errors...)
 	}
 
-	errors = v.validateLimitsSpec(stack.Spec.Limits)
-	if len(errors) != 0 {
-		allErrs = append(allErrs, errors...)
-	}
-
 	if v.ExtendedValidator != nil {
 		allErrs = append(allErrs, v.ExtendedValidator(ctx, stack)...)
 	}
@@ -118,85 +113,6 @@ func (v *LokiStackValidator) validateHashRingSpec(s lokiv1.LokiStackSpec) field.
 	}
 
 	return nil
-}
-
-func (v *LokiStackValidator) validateLimitsSpec(s *lokiv1.LimitsSpec) field.ErrorList {
-	if s == nil {
-		return nil
-	}
-
-	if s.Global == nil && s.Tenants == nil {
-		return nil
-	}
-
-	var errors field.ErrorList
-	if s.Global != nil && s.Global.IngestionLimits != nil {
-		fp := field.NewPath("spec", "limits", "global", "ingestion", "desiredRate")
-		errors = append(errors, validateIngestionLimits(s.Global.IngestionLimits, fp)...)
-	}
-
-	for id, tenant := range s.Tenants {
-		var gl *lokiv1.IngestionLimitSpec
-		if s.Global != nil {
-			gl = s.Global.IngestionLimits
-		}
-		errors = append(errors, validateTenantIngestionLimits(id, gl, tenant.IngestionLimits)...)
-	}
-
-	return errors
-}
-
-// validateIngestionLimits checks if a given IngestionLimitSpec is valid for:
-// - Fields `desiredRate` and `perStreamRateLimit` not both set at a time.
-func validateIngestionLimits(spec *lokiv1.IngestionLimitSpec, invalidFieldPath *field.Path) (errs field.ErrorList) {
-	// Check against per stream rate limit
-	if spec.DesiredRate > 0 && spec.PerStreamRateLimit > 0 {
-		errs = append(errs, field.Invalid(
-			invalidFieldPath,
-			spec.DesiredRate,
-			lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
-		))
-	}
-
-	return errs
-}
-
-// validateTenantIngestionLimits checks if a given tenant IngestionLimitSpec is valid for:
-// - Tenant fields `desiredRate` and `perStreamRateLimit` not both set at a time.
-// - Global field `desiredRate` and tenant field `perStreamRateLimit` not both set at a time.
-// - Tenant field `desiredRate` and global field `perStreamRateLimit` not both set at a time.
-func validateTenantIngestionLimits(id string, gs, ts *lokiv1.IngestionLimitSpec) (errs field.ErrorList) {
-	if ts == nil {
-		return nil
-	}
-
-	fp := field.NewPath("spec", "limits", "tenants", id, "ingestion", "desiredRate")
-
-	errs = append(errs, validateIngestionLimits(ts, fp)...)
-
-	if gs == nil {
-		return errs
-	}
-
-	// Check if both global desired rate and tenant per stream rate limit set
-	if gs.DesiredRate > 0 && ts.PerStreamRateLimit > 0 {
-		errs = append(errs, field.Invalid(
-			field.NewPath("spec", "limits", "tenants", id, "ingestion", "perStreamRateLimit"),
-			ts.PerStreamRateLimit,
-			lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
-		))
-	}
-
-	// Check if both tenant desired rate and global per stream rate limit set
-	if ts.DesiredRate > 0 && gs.PerStreamRateLimit > 0 {
-		errs = append(errs, field.Invalid(
-			field.NewPath("spec", "limits", "global", "ingestion", "perStreamRateLimit"),
-			gs.PerStreamRateLimit,
-			lokiv1.ErrDesiredRateAndPerStreamRateNotAllowed.Error(),
-		))
-	}
-
-	return errs
 }
 
 func (v *LokiStackValidator) validateReplicationSpec(stack lokiv1.LokiStackSpec) field.ErrorList {
