@@ -354,6 +354,27 @@ type mockBloomStore struct {
 	bqs []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
+// GetBlockQueriersForBlockRefs implements bloomshipper.Store.
+func (s *mockBloomStore) GetBlockQueriersForBlockRefs(_ context.Context, _ string, _ []bloomshipper.BlockRef) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
+	return s.bqs, nil
+}
+
+// GetBlockRefs implements bloomshipper.Store.
+func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _, _ time.Time) ([]bloomshipper.BlockRef, error) {
+	blocks := make([]bloomshipper.BlockRef, 0, len(s.bqs))
+	for i := range s.bqs {
+		blocks = append(blocks, bloomshipper.BlockRef{
+			Ref: bloomshipper.Ref{
+				MinFingerprint: uint64(s.bqs[i].MinFp),
+				MaxFingerprint: uint64(s.bqs[i].MaxFp),
+				TenantID:       tenant,
+			},
+		})
+	}
+	return blocks, nil
+}
+
+// GetBlockQueriers implements bloomshipper.Store.
 func (s *mockBloomStore) GetBlockQueriers(_ context.Context, _ string, _, _ time.Time, _ []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
 	return s.bqs, nil
 }

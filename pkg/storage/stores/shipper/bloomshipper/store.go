@@ -13,7 +13,9 @@ import (
 type ForEachBlockCallback func(bq *v1.BlockQuerier, minFp, maxFp uint64) error
 
 type ReadShipper interface {
+	GetBlockRefs(ctx context.Context, tenant string, from, through time.Time) ([]BlockRef, error)
 	ForEachBlock(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error
+	Fetch(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
 }
 
 type Interface interface {
@@ -27,7 +29,9 @@ type BlockQuerierWithFingerprintRange struct {
 }
 
 type Store interface {
+	GetBlockRefs(ctx context.Context, tenant string, from, through time.Time) ([]BlockRef, error)
 	GetBlockQueriers(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) ([]BlockQuerierWithFingerprintRange, error)
+	GetBlockQueriersForBlockRefs(ctx context.Context, tenant string, blocks []BlockRef) ([]BlockQuerierWithFingerprintRange, error)
 	Stop()
 }
 
@@ -45,6 +49,29 @@ func (bs *BloomStore) Stop() {
 	bs.shipper.Stop()
 }
 
+// GetBlockRefs implements Store
+func (bs *BloomStore) GetBlockRefs(ctx context.Context, tenant string, from, through time.Time) ([]BlockRef, error) {
+	return bs.shipper.GetBlockRefs(ctx, tenant, from, through)
+}
+
+// GetQueriersForBlocks implements Store
+func (bs *BloomStore) GetBlockQueriersForBlockRefs(ctx context.Context, tenant string, blocks []BlockRef) ([]BlockQuerierWithFingerprintRange, error) {
+	bqs := make([]BlockQuerierWithFingerprintRange, 0, 32)
+	err := bs.shipper.Fetch(ctx, tenant, blocks, func(bq *v1.BlockQuerier, minFp uint64, maxFp uint64) error {
+		bqs = append(bqs, BlockQuerierWithFingerprintRange{
+			BlockQuerier: bq,
+			MinFp:        model.Fingerprint(minFp),
+			MaxFp:        model.Fingerprint(maxFp),
+		})
+		return nil
+	})
+	sort.Slice(bqs, func(i, j int) bool {
+		return bqs[i].MinFp < bqs[j].MinFp
+	})
+	return bqs, err
+}
+
+// BlockQueriers implements Store
 func (bs *BloomStore) GetBlockQueriers(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) ([]BlockQuerierWithFingerprintRange, error) {
 	bqs := make([]BlockQuerierWithFingerprintRange, 0, 32)
 	err := bs.shipper.ForEachBlock(ctx, tenant, from, through, fingerprints, func(bq *v1.BlockQuerier, minFp uint64, maxFp uint64) error {

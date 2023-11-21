@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -100,10 +101,10 @@ func (w *worker) running(ctx context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
 	requests := make([]v1.Request, 0, 128)
-	fingerprints := make([]uint64, 0, 1024)
 
 	for {
 		select {
+
 		case <-ctx.Done():
 			return ctx.Err()
 
@@ -153,28 +154,35 @@ func (w *worker) running(ctx context.Context) error {
 				logger := log.With(w.logger, "day", day)
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
-				it := newTaskMergeIterator(day, tasks...)
-
-				fingerprints = fingerprints[:0]
-				for it.Next() {
-					// fingerprints are already sorted. we can skip duplicates by checking
-					// if the next is greater than the previous
-					fp := uint64(it.At().Fp)
-					if len(fingerprints) > 0 && fp <= fingerprints[len(fingerprints)-1] {
-						continue
-					}
-					fingerprints = append(fingerprints, fp)
+				var fp [][]*logproto.GroupedChunkRefs
+				for i := range tasks {
+					fp = append(fp, tasks[i].Request.Refs)
 				}
 
-				it.Reset()
-
 				storeFetchStart := time.Now()
-				// GetBlockQueriers() waits until all blocks are downloaded and available for querying.
+				blockRefs, err := w.store.GetBlockRefs(taskCtx, tasks[0].Tenant, day, day.Add(Day).Add(-1*time.Nanosecond))
+				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
+				if err != nil {
+					for _, t := range tasks {
+						t.ErrCh <- err
+					}
+					// continue with tasks of next day
+					continue
+				}
+
+				boundedRefs := bloomshipper.PartitionFingerprintRange(fp, blockRefs)
+				blockRefs = blockRefs[0:]
+				for _, b := range boundedRefs {
+					blockRefs = append(blockRefs, b.BlockRef)
+				}
+
+				// GetBlockQueriersForBlockRefs() waits until all blocks are downloaded and available for querying.
 				// TODO(chaudum): Add API that allows to process blocks as soon as they become available.
 				// This will require to change the taskMergeIterator to a slice of requests so we can seek
 				// to the appropriate fingerprint range within the slice that matches the block's fingerprint range.
-				blockQueriers, err := w.store.GetBlockQueriers(taskCtx, tasks[0].Tenant, day, day.Add(24*time.Hour).Add(-1*time.Nanosecond), fingerprints)
-				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriers").Observe(time.Since(storeFetchStart).Seconds())
+				storeFetchStart = time.Now()
+				blockQueriers, err := w.store.GetBlockQueriersForBlockRefs(taskCtx, tasks[0].Tenant, blockRefs)
+				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriersForBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
 				if err != nil {
 					for _, t := range tasks {
 						t.ErrCh <- err
@@ -200,6 +208,7 @@ func (w *worker) running(ctx context.Context) error {
 					continue
 				}
 
+				it := newTaskMergeIterator(day, tasks...)
 				hasNext := it.Next()
 				for i, blockQuerier := range blockQueriers {
 					requests = requests[:0]

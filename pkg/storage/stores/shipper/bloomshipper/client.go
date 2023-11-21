@@ -11,9 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/dskit/concurrency"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -29,12 +28,30 @@ const (
 	fileNamePartDelimiter = "-"
 )
 
+type BoundsCheck uint8
+
+const (
+	Before BoundsCheck = iota
+	Overlap
+	After
+)
+
 type Ref struct {
 	TenantID                       string
 	TableName                      string
 	MinFingerprint, MaxFingerprint uint64
 	StartTimestamp, EndTimestamp   int64
 	Checksum                       uint32
+}
+
+// Cmp returns the fingerprint's position relative to the bounds
+func (b Ref) Cmp(fp uint64) BoundsCheck {
+	if fp < b.MinFingerprint {
+		return Before
+	} else if fp > b.MaxFingerprint {
+		return After
+	}
+	return Overlap
 }
 
 type BlockRef struct {
