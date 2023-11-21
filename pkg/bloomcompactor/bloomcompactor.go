@@ -355,6 +355,11 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	// Tokenizer is not thread-safe so we need one per goroutine.
 	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
 
+	// Only process newer chunks. Ingesters won't process samples older than RejectOldSamplesMaxAge so
+	// older chunks won't change.
+	distributorSampleMaxAge := c.limits.RejectOldSamplesMaxAge(tenant)
+	maxChunkAge := model.Now().Add(-distributorSampleMaxAge)
+
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
 	if err := sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
@@ -365,7 +370,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		// TODO: Make these casts safely
 		if err := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
 			ctx, nil,
-			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
+			maxChunkAge, model.Latest,
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
 				job := NewJob(tenant, tableName, idx.Path(), fingerprint, labels, chksMetas)
 				jobLogger := log.With(logger, "job", job.String())

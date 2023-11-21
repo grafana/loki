@@ -4,6 +4,7 @@ import (
 	"flag"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/util/ring"
 )
@@ -39,7 +40,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 type Limits interface {
-	downloads.Limits
+	downloads.Limits   // Needed to initialize the IndexShipper
+	distributor.Limits // Needed for RejectOldSamplesMaxAge
+
 	BloomCompactorShardSize(tenantID string) int
 	BloomCompactorMaxTableAge(tenantID string) time.Duration
 	BloomCompactorMinTableAge(tenantID string) time.Duration
