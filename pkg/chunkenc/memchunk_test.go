@@ -714,6 +714,7 @@ func TestChunkStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	//nolint:revive
 	for it.Next() {
 	}
 	if err := it.Close(); err != nil {
@@ -742,6 +743,7 @@ func TestChunkStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	//nolint:revive
 	for it.Next() {
 	}
 	if err := it.Close(); err != nil {

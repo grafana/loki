@@ -42,6 +42,8 @@ BUILD_IMAGE_VERSION ?= 0.31.2
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
+BUILD_IMAGE_PREFIX ?= grafana
+
 IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
@@ -102,7 +104,7 @@ RM := --rm
 TTY := --tty
 
 DOCKER_BUILDKIT ?= 1
-BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+BUILD_IMAGE = BUILD_IMAGE=$(BUILD_IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
 PUSH_OCI=docker push
 TAG_OCI=docker tag
 ifeq ($(CI), true)
