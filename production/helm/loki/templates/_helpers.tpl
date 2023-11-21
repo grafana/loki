@@ -139,6 +139,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Minio labels
+*/}}
+{{- define "minio.labels" -}}
+app: "minio"
+app.kubernetes.io/name: "minio"
+{{- end -}}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "loki.serviceAccountName" -}}
