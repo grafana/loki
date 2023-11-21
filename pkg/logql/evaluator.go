@@ -127,11 +127,15 @@ func (p ParamsWithExpressionOverride) GetExpression() syntax.Expr {
 	return p.ExpressionOverride
 }
 
+// ParamsWithExpressionOverride overrides the shards. Since the backing
+// implementation of the Params interface is unknown they are embedded and the
+// original shards are shadowed.
 type ParamsWithShardsOverride struct {
 	Params
 	ShardsOverride []string
 }
 
+// Shards returns this overwriting shards.
 func (p ParamsWithShardsOverride) Shards() []string {
 	return p.ShardsOverride
 }

@@ -23,8 +23,10 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -1101,6 +1103,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
+				},
 			},
 			expectedSplitStats: 2, // [2h] interval split by 1h configured split interval
 			expectedShardStats: 8, // 2 time splits * 4 row shards
@@ -1113,6 +1118,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // [1h] interval not split
 			expectedShardStats: 4, // 4 row shards
@@ -1127,6 +1135,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
 			expectedShardStats: 12, // 3 time splits * 4 row shards
@@ -1141,6 +1152,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // 1 minute range interval not split
 			expectedShardStats: 4, // 4 row shards

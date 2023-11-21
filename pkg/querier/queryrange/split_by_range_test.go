@@ -55,7 +55,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
 				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(bytes_over_time({app="foo"}[3m]))`),
+					AST: syntax.MustParseExpr(`sum by (bar) (bytes_over_time({app="foo"}[3m]))`),
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
@@ -71,7 +71,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
 				Plan: &plan.QueryPlan{
-					AST: syntax.MustParseExpr(`sum(bytes_over_time({app="foo"}[3m]))`),
+					AST: syntax.MustParseExpr(`sum(count_over_time({app="foo"}[3m]))`),
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{

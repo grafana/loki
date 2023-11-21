@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -416,7 +417,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			// Downstream engine - split by range
 			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
 			require.Nil(t, err)
-			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
+			noop, rangeExpr, err := rangeMapper.Parse(syntax.MustParseExpr(tc.query))
 			require.Nil(t, err)
 
 			require.False(t, noop, "downstream engine cannot execute noop")
