@@ -211,7 +211,7 @@ limits_config:
 {{- with .Stack.Limits.Global.IngestionLimits.DesiredRate }}
   shard_streams:
     enabled: true
-    desired_rate: {{ toBytes . }}
+    desired_rate: {{ . }}MB
 {{- end }}
   allow_structured_metadata: true
 {{- with .GossipRing }}

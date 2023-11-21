@@ -112,7 +112,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -367,7 +367,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -731,7 +731,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1087,7 +1087,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1444,7 +1444,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -1839,7 +1839,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -2163,7 +2163,7 @@ limits_config:
   query_timeout: 2m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -2601,7 +2601,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -2924,7 +2924,7 @@ limits_config:
   query_timeout: 2m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3419,7 +3419,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3678,7 +3678,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -3938,7 +3938,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4199,7 +4199,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true
@@ -4491,7 +4491,7 @@ limits_config:
   query_timeout: 1m
   shard_streams:
     enabled: true
-    desired_rate: 3145728
+    desired_rate: 3MB
   allow_structured_metadata: true
 memberlist:
   abort_if_cluster_join_fails: true

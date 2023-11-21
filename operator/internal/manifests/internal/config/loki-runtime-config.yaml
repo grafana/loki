@@ -35,7 +35,7 @@ overrides:
     {{- with $l.DesiredRate }}
     shard_streams:
       enabled: true
-      desired_rate: {{ . }}
+      desired_rate: {{ . }}MB
     {{- end}}
   {{- end -}}
   {{- if $l := $spec.QueryLimits -}}
