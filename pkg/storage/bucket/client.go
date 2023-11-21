@@ -190,8 +190,11 @@ func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus
 		return bucketClient
 	}
 
+	reg = prometheus.WrapRegistererWithPrefix("loki_", reg)
+	reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg)
+
 	return objstore.WrapWithMetrics(
 		bucketClient,
-		prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg),
+		reg,
 		"")
 }
