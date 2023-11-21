@@ -3,8 +3,9 @@ package v1
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const BigFile = "../../../logql/sketch/testdata/war_peace.txt"
