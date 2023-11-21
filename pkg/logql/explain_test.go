@@ -33,10 +33,10 @@ func TestExplain(t *testing.T) {
 	require.NoError(t, err)
 
 	params := LiteralParams{
-		qs:    query,
-		start: time.Unix(60, 0),
-		end:   time.Unix(60, 0),
-		limit: 1000,
+		queryString: query,
+		start:       time.Unix(60, 0),
+		end:         time.Unix(60, 0),
+		limit:       1000,
 	}
 
 	ev, err := downEv.NewStepEvaluator(ctx, downEv, expr.(syntax.SampleExpr), params)

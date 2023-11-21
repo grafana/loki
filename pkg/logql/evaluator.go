@@ -31,7 +31,7 @@ var (
 
 // Params details the parameters associated with a loki request
 type Params interface {
-	Query() string
+	QueryString() string
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
@@ -51,14 +51,14 @@ func NewLiteralParams(
 	shards []string,
 ) (LiteralParams, error) {
 	p := LiteralParams{
-		qs:        qs,
-		start:     start,
-		end:       end,
-		step:      step,
-		interval:  interval,
-		direction: direction,
-		limit:     limit,
-		shards:    shards,
+		queryString: qs,
+		start:       start,
+		end:         end,
+		step:        step,
+		interval:    interval,
+		direction:   direction,
+		limit:       limit,
+		shards:      shards,
 	}
 	var err error
 	p.queryExpr, err = syntax.ParseExpr(qs)
@@ -68,7 +68,7 @@ func NewLiteralParams(
 
 // LiteralParams impls Params
 type LiteralParams struct {
-	qs             string
+	queryString    string
 	start, end     time.Time
 	step, interval time.Duration
 	direction      logproto.Direction
@@ -80,7 +80,7 @@ type LiteralParams struct {
 func (p LiteralParams) Copy() LiteralParams { return p }
 
 // String impls Params
-func (p LiteralParams) Query() string { return p.qs }
+func (p LiteralParams) QueryString() string { return p.queryString }
 
 // GetExpression impls Params
 func (p LiteralParams) GetExpression() syntax.Expr { return p.queryExpr }
@@ -115,12 +115,14 @@ func GetRangeType(q Params) QueryRangeType {
 }
 
 // ParamsWithExpressionOverride overrides the query expression so that the query
-// string and the expression can differ. This is useful for sharding etc.
+// string and the expression can differ. This is useful for for query planning
+// when plan my not match externally available logql syntax
 type ParamsWithExpressionOverride struct {
 	Params
 	ExpressionOverride syntax.Expr
 }
 
+// GetExpression returns the parsed expression of the query.
 func (p ParamsWithExpressionOverride) GetExpression() syntax.Expr {
 	return p.ExpressionOverride
 }
@@ -137,7 +139,7 @@ func (p ParamsWithShardsOverride) Shards() []string {
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool
-	expr, err := syntax.ParseSampleExpr(q.Query())
+	expr, err := syntax.ParseSampleExpr(q.QueryString())
 	if err != nil {
 		return false, err
 	}
