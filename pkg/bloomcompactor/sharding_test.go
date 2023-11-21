@@ -91,7 +91,8 @@ func TestShuffleSharding(t *testing.T) {
 
 		for j := 0; j < jobsPerTenant; j++ {
 			lbls := labels.FromStrings("namespace", fmt.Sprintf("namespace-%d", j))
-			job := NewJob(tenant, "", "", model.Fingerprint(lbls.Hash()), lbls, nil)
+			index := Index{model.Fingerprint(lbls.Hash()), lbls, nil}
+			job := NewJob(tenant, "", "", []Index{index})
 			ownsJob, err := shard.OwnsJob(job)
 			require.NoError(t, err)
 

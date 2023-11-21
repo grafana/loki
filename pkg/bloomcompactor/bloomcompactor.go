@@ -358,42 +358,48 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
 	if err := sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
-		if isMultiTenantIndex {
+		if isMultiTenantIndex { // TODO handle multitenant tables
 			return fmt.Errorf("unexpected multi-tenant")
 		}
 
+		var indices []Index
 		// TODO: Make these casts safely
 		if err := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-				job := NewJob(tenant, tableName, idx.Path(), fingerprint, labels, chksMetas)
-				jobLogger := log.With(logger, "job", job.String())
-
-				ownsJob, err := c.sharding.OwnsJob(job)
-				if err != nil {
-					c.metrics.compactionRunUnownedJobs.Inc()
-					level.Error(jobLogger).Log("msg", "failed to check if compactor owns job", "err", err)
-					errs.Add(err)
-					return
-				}
-				if !ownsJob {
-					c.metrics.compactionRunUnownedJobs.Inc()
-					level.Debug(jobLogger).Log("msg", "skipping job because it is not owned by this shard")
-					return
-				}
-
-				if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {
-					c.metrics.compactionRunFailedJobs.Inc()
-					errs.Add(errors.Wrap(err, "runBloomCompact"))
-					return
-				}
-
-				c.metrics.compactionRunSucceededJobs.Inc()
+				var temp []tsdbindex.ChunkMeta
+				copy(temp, chksMetas)
+				indices = append(indices, Index{seriesFP: fingerprint, seriesLbs: labels, chunks: temp})
 			},
 		); err != nil {
 			errs.Add(err)
 		}
+
+		job := NewJob(tenant, tableName, idx.Path(), indices)
+		jobLogger := log.With(logger, "job", job.String())
+
+		ownsJob, err := c.sharding.OwnsJob(job) // TODO: A shard should either own all the fps of a job or not
+
+		if err != nil {
+			c.metrics.compactionRunUnownedJobs.Inc()
+			level.Error(jobLogger).Log("msg", "failed to check if compactor owns job", "err", err)
+			errs.Add(err)
+			return errs.Err()
+		}
+		if !ownsJob {
+			c.metrics.compactionRunUnownedJobs.Inc()
+			level.Debug(jobLogger).Log("msg", "skipping job because it is not owned by this shard")
+			return nil
+		}
+
+		if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {
+			c.metrics.compactionRunFailedJobs.Inc()
+			errs.Add(errors.Wrap(err, "runBloomCompact"))
+			return errs.Err()
+		}
+
+		c.metrics.compactionRunSucceededJobs.Inc()
 
 		return nil
 	}); err != nil {
@@ -459,7 +465,7 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.SeriesWithBloom, job Job, workingDir string) (bloomshipper.Block, error) {
+func buildBloomBlock(ctx context.Context, logger log.Logger, blooms []v1.SeriesWithBloom, job Job, workingDir string) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return bloomshipper.Block{}, err
@@ -474,7 +480,7 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 		return bloomshipper.Block{}, err
 	}
 
-	checksum, err := builder.BuildFrom(v1.NewSliceIter([]v1.SeriesWithBloom{bloomForChks}))
+	checksum, err := builder.BuildFrom(v1.NewSliceIter(blooms))
 	if err != nil {
 		level.Error(logger).Log("writing bloom", err)
 		return bloomshipper.Block{}, err
@@ -490,8 +496,8 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 			Ref: bloomshipper.Ref{
 				TenantID:       job.Tenant(),
 				TableName:      job.TableName(),
-				MinFingerprint: uint64(job.Fingerprint()), // TODO will change once we compact multiple blooms into a block
-				MaxFingerprint: uint64(job.Fingerprint()),
+				MinFingerprint: uint64(job.minFp),
+				MaxFingerprint: uint64(job.maxFp),
 				StartTimestamp: job.From().Unix(),
 				EndTimestamp:   job.Through().Unix(),
 				Checksum:       checksum,
@@ -505,7 +511,7 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 }
 
 func createLocalDirName(workingDir string, job Job) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.TableName(), job.Tenant(), job.Fingerprint(), job.Fingerprint(), job.From(), job.Through())
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.TableName(), job.Tenant(), job.minFp, job.maxFp, job.From(), job.Through())
 	return filepath.Join(workingDir, dir)
 }
 
@@ -518,21 +524,27 @@ func CompactNewChunks(ctx context.Context, logger log.Logger, job Job,
 		return nil, err
 	}
 
-	// Create a bloom for this series
-	bloomForChks := v1.SeriesWithBloom{
-		Series: &v1.Series{
-			Fingerprint: job.Fingerprint(),
-		},
-		Bloom: &v1.Bloom{
-			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
-		},
+	var blooms []v1.SeriesWithBloom
+
+	for _, index := range job.indices {
+		// Create a bloom for this series
+		bloomForChks := v1.SeriesWithBloom{
+			Series: &v1.Series{
+				Fingerprint: index.Fingerprint(),
+			},
+			Bloom: &v1.Bloom{
+				ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
+			},
+		}
+
+		// Tokenize data into n-grams
+		bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
+
+		blooms = append(blooms, bloomForChks)
 	}
 
-	// Tokenize data into n-grams
-	bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
-
 	// Build and upload bloomBlock to storage
-	blocks, err := buildBloomBlock(ctx, logger, bloomForChks, job, dst)
+	blocks, err := buildBloomBlock(ctx, logger, blooms, job, dst)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
 		return nil, err
@@ -553,8 +565,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
-		MinFingerprint: uint64(job.seriesFP),
-		MaxFingerprint: uint64(job.seriesFP),
+		MinFingerprint: uint64(job.minFp),
+		MaxFingerprint: uint64(job.maxFp),
 		StartTimestamp: int64(job.from),
 		EndTimestamp:   int64(job.through),
 	}
@@ -570,27 +582,34 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	if len(metas) == 0 {
 		// Get chunks data from list of chunkRefs
-		chks, err := storeClient.chunk.GetChunks(ctx, makeChunkRefs(job.Chunks(), job.Tenant(), job.Fingerprint()))
-		if err != nil {
-			return err
+
+		for _, index := range job.indices {
+			chks, err := storeClient.chunk.GetChunks(ctx, makeChunkRefs(index.Chunks(), job.Tenant(), index.Fingerprint()))
+			if err != nil {
+				return err
+			}
+
+			storedBlocks, err := CompactNewChunks(ctx, logger, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+			if err != nil {
+				return level.Error(logger).Log("compacting new chunks", err)
+			}
+
+			// all blocks are new and active blocks
+			for _, block := range storedBlocks {
+				bloomBlocksRefs = append(bloomBlocksRefs, block.BlockRef)
+			}
 		}
-
-		storedBlocks, err := CompactNewChunks(ctx, logger, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
-		if err != nil {
-			return level.Error(logger).Log("compacting new chunks", err)
-		}
-
-		storedBlockRefs := make([]bloomshipper.BlockRef, len(storedBlocks))
-
-		for i, block := range storedBlocks {
-			storedBlockRefs[i] = block.BlockRef
-		}
-
-		// all blocks are new and active blocks
-		bloomBlocksRefs = storedBlockRefs
 	} else {
 		// TODO complete part 2 - periodic compaction for delta from previous period
 		// When already compacted metas exists
+
+		// Take the seriesFP, query the org_chunks from storage and query the blooms.
+		// compare the checksums of the indexes : TODO add checksum of the index to bloomBlocks.
+		// if they match - all good nothing to do
+		//else {
+		//get all chunks
+		//}
+
 		// Deduplicate index paths
 		uniqueIndexPaths := make(map[string]struct{})
 
