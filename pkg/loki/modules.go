@@ -608,9 +608,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		os.Exit(1)
 	}
 
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
-
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, *lastConfig, t.Cfg.StorageConfig, t.clientMetrics, reg, util_log.Logger)
+	tableClient, err := storage.NewTableClient("table-manager-store", lastConfig.IndexType, *lastConfig, t.Cfg.StorageConfig, t.clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}

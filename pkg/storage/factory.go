@@ -584,7 +584,7 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
+func NewTableClient(component, name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
 	switch true {
 	case util.StringsContain(testingStorageTypes, name):
 		switch name {
@@ -593,7 +593,7 @@ func NewTableClient(name string, periodCfg config.PeriodConfig, cfg Config, cm C
 		}
 
 	case util.StringsContain(supportedIndexTypes, name):
-		objectClient, err := NewObjectClient("table", periodCfg.ObjectType, cfg, cm, registerer)
+		objectClient, err := NewObjectClient(component, periodCfg.ObjectType, cfg, cm, registerer)
 		if err != nil {
 			return nil, err
 		}
