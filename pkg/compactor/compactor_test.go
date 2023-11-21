@@ -348,7 +348,7 @@ func TestCompactor_TableLocking(t *testing.T) {
 		lockTable      string
 		applyRetention bool
 
-		compactionShouldTimeout bool
+		retentionShouldTimeout bool
 	}{
 		{
 			name: "no table locked - not applying retention",
@@ -362,10 +362,10 @@ func TestCompactor_TableLocking(t *testing.T) {
 			lockTable: fmt.Sprintf("%s%d", indexTablePrefix, tableNumEnd),
 		},
 		{
-			name:                    "first table locked - applying retention",
-			lockTable:               fmt.Sprintf("%s%d", indexTablePrefix, tableNumEnd),
-			applyRetention:          true,
-			compactionShouldTimeout: true,
+			name:                   "first table locked - applying retention",
+			lockTable:              fmt.Sprintf("%s%d", indexTablePrefix, tableNumEnd),
+			applyRetention:         true,
+			retentionShouldTimeout: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -389,30 +389,38 @@ func TestCompactor_TableLocking(t *testing.T) {
 					defer cancel()
 
 					err := compactor.RunCompaction(ctx, tc.applyRetention)
-					// compaction should not timeout after first run since we won't be locking the table
-					if n == 1 && tc.compactionShouldTimeout {
+					// retention should not timeout after first run since we won't be locking the table
+					if n == 1 && tc.retentionShouldTimeout {
 						require.ErrorIs(t, err, context.DeadlineExceeded)
-						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure, "true")))
-						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure, "false")))
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusFailure)))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure)))
 						return
 					}
 					require.NoError(t, err)
 
-					if n > 1 && tc.compactionShouldTimeout {
-						// this should be the first successful run if compaction was expected to be timeout out during first run
-						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, fmt.Sprintf("%v", tc.applyRetention))))
+					if n > 1 && tc.applyRetention && tc.retentionShouldTimeout {
+						// this should be the first successful run if retention was expected to timeout out during first run
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
 					} else {
 						// else it should have succeeded during all the n runs
-						require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, fmt.Sprintf("%v", tc.applyRetention))))
+						if tc.applyRetention {
+							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+						} else {
+							require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess)))
+						}
 					}
-					require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, fmt.Sprintf("%v", !tc.applyRetention))))
+					if tc.applyRetention {
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess)))
+					} else {
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.applyRetentionOperationTotal.WithLabelValues(statusSuccess)))
+					}
 
 					// if the table was locked and compaction ran without retention then only locked table should have been skipped
 					if tc.lockTable != "" {
 						if tc.applyRetention {
-							require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables))
+							require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						} else {
-							require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables))
+							require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						}
 					}
 
