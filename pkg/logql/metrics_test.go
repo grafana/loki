@@ -16,6 +16,7 @@ import (
 	"github.com/uber/jaeger-client-go"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -44,7 +45,7 @@ func TestQueryType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := QueryType(tt.query)
+			got, err := QueryType(syntax.MustParseExpr(tt.query))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("QueryType() error = %v, wantErr %v", err, tt.wantErr)
 				return

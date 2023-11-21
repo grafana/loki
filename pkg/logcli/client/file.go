@@ -79,7 +79,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse query: %w", err)
 	}
 
 	query := f.engine.Query(params)

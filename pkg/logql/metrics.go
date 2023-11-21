@@ -98,7 +98,7 @@ func RecordRangeAndInstantQueryMetrics(
 		latencyType   = latencyTypeFast
 		returnedLines = 0
 	)
-	queryType, err := QueryType(p.QueryString())
+	queryType, err := QueryType(p.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
@@ -373,11 +373,7 @@ func recordUsageStats(queryType string, stats logql_stats.Result) {
 	}
 }
 
-func QueryType(query string) (string, error) {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return "", err
-	}
+func QueryType(expr syntax.Expr) (string, error) {
 	switch e := expr.(type) {
 	case syntax.SampleExpr:
 		return QueryTypeMetric, nil
