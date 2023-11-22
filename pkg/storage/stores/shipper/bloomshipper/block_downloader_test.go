@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
@@ -22,16 +23,21 @@ import (
 )
 
 func Test_blockDownloader_downloadBlocks(t *testing.T) {
+	stoppedWorkersCount := atomic.NewInt32(0)
+	onWorkerStopCallback = func() {
+		stoppedWorkersCount.Inc()
+	}
 	overrides, err := validation.NewOverrides(validation.Limits{BloomGatewayBlocksDownloadingParallelism: 20}, nil)
 	require.NoError(t, err)
 	workingDirectory := t.TempDir()
 
 	blockReferences, blockClient := createFakeBlocks(t, 20)
 	blockClient.responseDelay = 100 * time.Millisecond
+	workersCount := 10
 	downloader := newBlockDownloader(config.Config{
 		WorkingDirectory: workingDirectory,
 		BlocksDownloadingQueue: config.DownloadingQueueConfig{
-			WorkersCount:              10,
+			WorkersCount:              workersCount,
 			MaxTasksEnqueuedPerTenant: 20,
 		},
 	}, blockClient, overrides, log.NewNopLogger(), prometheus.DefaultRegisterer)
@@ -57,6 +63,11 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 	case <-done:
 	}
 	require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
+
+	downloader.stop()
+	require.Eventuallyf(t, func() bool {
+		return stoppedWorkersCount.Load() == int32(workersCount)
+	}, 1*time.Second, 10*time.Millisecond, "expected all %d workers to be stopped", workersCount)
 }
 
 // creates fake blocks and returns map[block-path]Block and mockBlockClient

@@ -73,6 +73,7 @@ func (s *Shipper) ForEachBlock(
 
 func (s *Shipper) Stop() {
 	s.client.Stop()
+	s.blockDownloader.stop()
 }
 
 // getFromThrough returns the first and list item of a fingerprint slice
