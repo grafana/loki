@@ -27,7 +27,10 @@ type Limits interface {
 
 func NewShipper(client Client, config config.Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Shipper, error) {
 	logger = log.With(logger, "component", "bloom-shipper")
-	downloader := newBlockDownloader(config, client, limits, logger, reg)
+	downloader, err := newBlockDownloader(config, client, limits, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("error creating block downloader: %w", err)
+	}
 	return &Shipper{
 		client:          client,
 		config:          config,

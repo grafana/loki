@@ -13,14 +13,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/util"
-
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/queue"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
@@ -33,21 +32,29 @@ type blockDownloader struct {
 	blockClient        BlockClient
 	limits             Limits
 	activeUsersService *util.ActiveUsersCleanupService
-	ctxCancelFunc      context.CancelFunc
+
+	ctx     context.Context
+	manager *services.Manager
 }
 
-func newBlockDownloader(config config.Config, blockClient BlockClient, limits Limits, logger log.Logger, reg prometheus.Registerer) *blockDownloader {
+func newBlockDownloader(config config.Config, blockClient BlockClient, limits Limits, logger log.Logger, reg prometheus.Registerer) (*blockDownloader, error) {
 	queueMetrics := queue.NewMetrics(reg, constants.Loki, "bloom_blocks_downloader")
 	//add cleanup service
 	downloadingQueue := queue.NewRequestQueue(config.BlocksDownloadingQueue.MaxTasksEnqueuedPerTenant, time.Minute, queueMetrics)
 	activeUsersService := util.NewActiveUsersCleanupWithDefaultValues(queueMetrics.Cleanup)
-	err := activeUsersService.StartAsync(context.Background())
+
+	ctx := context.Background()
+	manager, err := services.NewManager(downloadingQueue, activeUsersService)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("error creating service manager: %w", err)
 	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
+	err = services.StartManagerAndAwaitHealthy(ctx, manager)
+	if err != nil {
+		return nil, fmt.Errorf("error starting service manager: %w", err)
+	}
+
 	b := &blockDownloader{
-		ctxCancelFunc:      cancelFunc,
+		ctx:                ctx,
 		logger:             logger,
 		workingDirectory:   config.WorkingDirectory,
 		queueMetrics:       queueMetrics,
@@ -55,12 +62,13 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 		blockClient:        blockClient,
 		activeUsersService: activeUsersService,
 		limits:             limits,
+		manager:            manager,
 	}
 
 	for i := 0; i < config.BlocksDownloadingQueue.WorkersCount; i++ {
 		go b.serveDownloadingTasks(ctx, fmt.Sprintf("worker-%d", i))
 	}
-	return b
+	return b, nil
 }
 
 type BlockDownloadingTask struct {
@@ -209,8 +217,7 @@ func (s *blockDownloader) createBlockQuerier(directory string) *v1.BlockQuerier 
 }
 
 func (d *blockDownloader) stop() {
-	d.queue.StopAsync()
-	d.ctxCancelFunc()
+	services.StopManagerAndAwaitStopped(d.ctx, d.manager)
 }
 
 func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
