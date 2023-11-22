@@ -42,3 +42,18 @@ func (s *ShuffleShardingStrategy) OwnsJob(job Job) (bool, error) {
 	// TODO: A shard should either own all the fps of a job or not
 	return fpSharding.OwnsFingerprint(uint64(0))
 }
+
+// NoopStrategy is an implementation of the ShardingStrategy that does not
+// filter anything.
+type NoopStrategy struct {
+	util_ring.NoopStrategy
+}
+
+// OwnsJob implements TenantShuffleSharding.
+func (s *NoopStrategy) OwnsJob(_ Job) (bool, error) {
+	return true, nil
+}
+
+func NewNoopStrategy() *NoopStrategy {
+	return &NoopStrategy{NoopStrategy: util_ring.NoopStrategy{}}
+}

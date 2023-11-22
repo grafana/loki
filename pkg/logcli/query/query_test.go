@@ -425,7 +425,10 @@ func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Directi
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	v, err := t.engine.Query(params).Exec(ctx)
 	if err != nil {
