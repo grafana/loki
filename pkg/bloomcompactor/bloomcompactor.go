@@ -364,7 +364,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
 				job := NewJob(tenant, tableName, idx.Path(), fingerprint, labels, chksMetas)
-				jobLogger := log.With(c.logger, "job", job.String())
+				jobLogger := log.With(logger, "job", job.String())
 
 				ownsJob, err := c.sharding.OwnsJob(job)
 				if err != nil {
