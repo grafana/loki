@@ -76,11 +76,11 @@ type BlockDownloadingTask struct {
 	block BlockRef
 	// ErrCh is a send-only channel to write an error to
 	ErrCh chan<- error
-	// ResultsCh is a send-only channel to return the path to the directed where the block is extracted
-	ResultsCh chan<- BlockDownloadingResult
+	// ResultsCh is a send-only channel to return the block querier for the downloaded block
+	ResultsCh chan<- blockWithQuerier
 }
 
-func NewBlockDownloadingTask(ctx context.Context, block BlockRef, resCh chan<- BlockDownloadingResult, errCh chan<- error) *BlockDownloadingTask {
+func NewBlockDownloadingTask(ctx context.Context, block BlockRef, resCh chan<- blockWithQuerier, errCh chan<- error) *BlockDownloadingTask {
 	return &BlockDownloadingTask{
 		ctx:       ctx,
 		block:     block,
@@ -121,6 +121,7 @@ func (d *blockDownloader) serveDownloadingTasks(ctx context.Context, workerID st
 
 		idx = newIdx
 		blockPath := task.block.BlockPath
+		//todo add cache before downloading
 		level.Debug(logger).Log("msg", "start downloading the block", "block", blockPath)
 		block, err := d.blockClient.GetBlock(task.ctx, task.block)
 		if err != nil {
@@ -134,7 +135,12 @@ func (d *blockDownloader) serveDownloadingTasks(ctx context.Context, workerID st
 			task.ErrCh <- fmt.Errorf("error extracting the block %s : %w", blockPath, err)
 			continue
 		}
-		task.ResultsCh <- BlockDownloadingResult{block: task.block, extractedBlockPath: directory}
+		level.Debug(d.logger).Log("msg", "block has been downloaded and extracted", "block", task.block.BlockPath, "directory", directory)
+		blockQuerier := d.createBlockQuerier(directory)
+		task.ResultsCh <- blockWithQuerier{
+			BlockRef:     task.block,
+			BlockQuerier: blockQuerier,
+		}
 	}
 }
 
@@ -145,41 +151,23 @@ type BlockDownloadingResult struct {
 
 func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, references []BlockRef) (chan blockWithQuerier, chan error) {
 	d.activeUsersService.UpdateUserTimestamp(tenantID, time.Now())
-	errCh := make(chan error)
+	// we need to have errCh with size that can keep max count of errors to prevent the case when
+	// the queue worker reported the error to this channel before the current goroutine
+	// and this goroutine will go to the deadlock because it won't be able to report an error
+	// because nothing reads this channel at this moment.
+	errCh := make(chan error, len(references))
 	blocksCh := make(chan blockWithQuerier, len(references))
-	go func() {
-		downloadingResultsCh := make(chan BlockDownloadingResult, len(references))
-		enqueuedCount := 0
-		downloadingParallelism := d.limits.BloomGatewayBlocksDownloadingParallelism(tenantID)
-		for _, reference := range references {
-			//todo add cache before enqueuing
-			//otherwise starts submitting the tasks to the queue and count how many tasks is submitted to know when the end reading the channel.
-			enqueuedCount++
-			task := NewBlockDownloadingTask(ctx, reference, downloadingResultsCh, errCh)
-			level.Debug(d.logger).Log("msg", "enqueuing task to download block", "block", reference.BlockPath)
-			err := d.queue.Enqueue(tenantID, nil, task, downloadingParallelism, nil)
-			if err != nil {
-				errCh <- fmt.Errorf("error enquing downloading task for block %s : %w", reference.BlockPath, err)
-				return
-			}
+
+	downloadingParallelism := d.limits.BloomGatewayBlocksDownloadingParallelism(tenantID)
+	for _, reference := range references {
+		task := NewBlockDownloadingTask(ctx, reference, blocksCh, errCh)
+		level.Debug(d.logger).Log("msg", "enqueuing task to download block", "block", reference.BlockPath)
+		err := d.queue.Enqueue(tenantID, nil, task, downloadingParallelism, nil)
+		if err != nil {
+			errCh <- fmt.Errorf("error enquing downloading task for block %s : %w", reference.BlockPath, err)
+			return blocksCh, errCh
 		}
-		level.Debug(d.logger).Log("msg", "waiting for the downloading enqueued blocks", "count", enqueuedCount)
-		for i := 0; i < enqueuedCount; i++ {
-			select {
-			case <-ctx.Done():
-				level.Error(d.logger).Log("msg", "context is done before downloading completion", "err", ctx.Err())
-				errCh <- ctx.Err()
-				return
-			case result := <-downloadingResultsCh:
-				level.Debug(d.logger).Log("msg", "block has been downloaded and extracted", "block", result.block.BlockPath, "directory", result.extractedBlockPath)
-				blockQuerier := d.createBlockQuerier(result.extractedBlockPath)
-				blocksCh <- blockWithQuerier{
-					BlockRef:     result.block,
-					BlockQuerier: blockQuerier,
-				}
-			}
-		}
-	}()
+	}
 	return blocksCh, errCh
 }
 
