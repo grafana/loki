@@ -7,43 +7,10 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/concurrency"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 )
-
-func TestPartitionFingerprintRange(t *testing.T) {
-	seriesPerBound := 100
-	bounds := []FingerprintBounds{
-		{0, 99},
-		{100, 199},
-		{200, 299},
-		{300, 399}, // one out of bounds block
-	}
-
-	nReqs := 4
-	nSeries := 300
-	reqs := make([][]model.Fingerprint, nReqs)
-	for i := 0; i < nSeries; i++ {
-		reqs[i%4] = append(reqs[i%nReqs], model.Fingerprint(i))
-	}
-
-	results := partitionFingerprintRange(reqs, bounds)
-	require.Equal(t, 3, len(results)) // ensure we only return bounds in range
-	for _, res := range results {
-		// ensure we have the right number of requests per bound
-		for i := 0; i < nReqs; i++ {
-			require.Equal(t, seriesPerBound/nReqs, len(res.reqs[i]))
-		}
-	}
-
-	// ensure bound membership
-	for i := 0; i < nSeries; i++ {
-		require.Equal(t, model.Fingerprint(i), results[i/seriesPerBound].reqs[i%nReqs][i%seriesPerBound/nReqs])
-	}
-
-}
 
 func TestFusedQuerier(t *testing.T) {
 	// references for linking in memory reader+writer

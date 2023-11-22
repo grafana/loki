@@ -49,6 +49,22 @@ func NewTask(tenantID string, req *logproto.FilterChunkRefRequest) (Task, chan v
 	return task, resCh, errCh, nil
 }
 
+// Copy returns a copy of the existing task but with a new slice of chunks
+func (t Task) Copy(refs []*logproto.GroupedChunkRefs) Task {
+	return Task{
+		ID:     t.ID,
+		Tenant: t.Tenant,
+		Request: &logproto.FilterChunkRefRequest{
+			From:    t.Request.From,
+			Through: t.Request.Through,
+			Filters: t.Request.Filters,
+			Refs:    refs,
+		},
+		ErrCh: t.ErrCh,
+		ResCh: t.ResCh,
+	}
+}
+
 // Bounds returns the day boundaries of the task
 func (t Task) Bounds() (time.Time, time.Time) {
 	return getDayTime(t.Request.From), getDayTime(t.Request.Through)

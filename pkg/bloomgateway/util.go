@@ -1,12 +1,14 @@
 package bloomgateway
 
 import (
+	"sort"
 	"time"
 
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 type IndexedValue[T any] struct {
@@ -121,4 +123,41 @@ func getFirstLast[T any](s []T) (T, T) {
 		return zero, zero
 	}
 	return s[0], s[len(s)-1]
+}
+
+type boundedTasks struct {
+	blockRef bloomshipper.BlockRef
+	tasks    []Task
+}
+
+func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (result []boundedTasks) {
+	for _, block := range blocks {
+		bounded := boundedTasks{
+			blockRef: block,
+		}
+
+		for _, task := range tasks {
+			refs := task.Request.Refs
+			min := sort.Search(len(refs), func(i int) bool {
+				return block.Cmp(refs[i].Fingerprint) > bloomshipper.Before
+			})
+
+			max := sort.Search(len(refs), func(i int) bool {
+				return block.Cmp(refs[i].Fingerprint) == bloomshipper.After
+			})
+
+			// All fingerprints fall outside of the consumer's range
+			if min == len(refs) || max == 0 {
+				continue
+			}
+
+			bounded.tasks = append(bounded.tasks, task.Copy(refs[min:max]))
+		}
+
+		if len(bounded.tasks) > 0 {
+			result = append(result, bounded)
+		}
+
+	}
+	return result
 }

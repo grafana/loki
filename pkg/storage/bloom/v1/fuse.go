@@ -1,8 +1,6 @@
 package v1
 
 import (
-	"sort"
-
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
 )
@@ -144,44 +142,4 @@ func (fq *FusedQuerier) Run() error {
 	}
 
 	return nil
-}
-
-// boundedRequests is a set of requests that are clamped to a specific range
-type boundedRequests struct {
-	bounds FingerprintBounds
-	reqs   [][]model.Fingerprint
-}
-
-// reqs models a set of requests covering many fingerprints.
-// consumers models a set of blocks covering different fingerprint ranges
-func partitionFingerprintRange(reqs [][]model.Fingerprint, blocks []FingerprintBounds) (res []boundedRequests) {
-	for _, block := range blocks {
-		bounded := boundedRequests{
-			bounds: block,
-		}
-
-		for _, req := range reqs {
-			min := sort.Search(len(req), func(i int) bool {
-				return block.Cmp(req[i]) > Before
-			})
-
-			max := sort.Search(len(req), func(i int) bool {
-				return block.Cmp(req[i]) == After
-			})
-
-			// All fingerprints fall outside of the consumer's range
-			if min == len(req) || max == 0 {
-				continue
-			}
-
-			bounded.reqs = append(bounded.reqs, req[min:max])
-		}
-
-		if len(bounded.reqs) > 0 {
-			res = append(res, bounded)
-		}
-
-	}
-
-	return res
 }

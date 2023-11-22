@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -154,11 +153,6 @@ func (w *worker) running(ctx context.Context) error {
 				logger := log.With(w.logger, "day", day)
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
-				var fp [][]*logproto.GroupedChunkRefs
-				for i := range tasks {
-					fp = append(fp, tasks[i].Request.Refs)
-				}
-
 				storeFetchStart := time.Now()
 				blockRefs, err := w.store.GetBlockRefs(taskCtx, tasks[0].Tenant, day, day.Add(Day).Add(-1*time.Nanosecond))
 				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
@@ -169,11 +163,27 @@ func (w *worker) running(ctx context.Context) error {
 					// continue with tasks of next day
 					continue
 				}
+				// No blocks found.
+				// Since there are no blocks for the given tasks, we need to return the
+				// unfiltered list of chunk refs.
+				if len(blockRefs) == 0 {
+					level.Warn(logger).Log("msg", "no blocks found")
+					for _, t := range tasks {
+						for _, ref := range t.Request.Refs {
+							t.ResCh <- v1.Output{
+								Fp:       model.Fingerprint(ref.Fingerprint),
+								Removals: nil,
+							}
+						}
+					}
+					// continue with tasks of next day
+					continue
+				}
 
-				boundedRefs := bloomshipper.PartitionFingerprintRange(fp, blockRefs)
+				boundedRefs := partitionFingerprintRange(tasks, blockRefs)
 				blockRefs = blockRefs[0:]
 				for _, b := range boundedRefs {
-					blockRefs = append(blockRefs, b.BlockRef)
+					blockRefs = append(blockRefs, b.blockRef)
 				}
 
 				// GetBlockQueriersForBlockRefs() waits until all blocks are downloaded and available for querying.
@@ -191,30 +201,11 @@ func (w *worker) running(ctx context.Context) error {
 					continue
 				}
 
-				// No blocks found.
-				// Since there are no blocks for the given tasks, we need to return the
-				// unfiltered list of chunk refs.
-				if len(blockQueriers) == 0 {
-					level.Warn(logger).Log("msg", "no blocks found")
-					for _, t := range tasks {
-						for _, ref := range t.Request.Refs {
-							t.ResCh <- v1.Output{
-								Fp:       model.Fingerprint(ref.Fingerprint),
-								Removals: nil,
-							}
-						}
-					}
-					// continue with tasks of next day
-					continue
-				}
-
-				it := newTaskMergeIterator(day, tasks...)
-				hasNext := it.Next()
 				for i, blockQuerier := range blockQueriers {
+					it := newTaskMergeIterator(day, boundedRefs[i].tasks...)
 					requests = requests[:0]
-					for hasNext && it.At().Fp <= blockQuerier.MaxFp {
+					for it.Next() {
 						requests = append(requests, it.At().Request)
-						hasNext = it.Next()
 					}
 					level.Debug(logger).Log("msg", "processing block", "block", i+1, "of", len(blockQueriers), "requests", len(requests))
 					// no fingerprints in the fingerprint range of the current block
@@ -232,16 +223,8 @@ func (w *worker) running(ctx context.Context) error {
 						continue
 					}
 				}
-
-				for hasNext {
-					level.Warn(logger).Log("msg", "processing remaining fingerprint", "fp", it.At().Fp)
-					it.At().Response <- v1.Output{
-						Fp:       it.At().Fp,
-						Removals: nil,
-					}
-					hasNext = it.Next()
-				}
 			}
+
 		}
 	}
 }
