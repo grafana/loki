@@ -46,4 +46,5 @@ type Limits interface {
 	BloomCompactorEnabled(tenantID string) bool
 	BloomNGramLength(tenantID string) int
 	BloomNGramSkip(tenantID string) int
+	BloomFalsePositiveRate(tenantID string) float64
 }

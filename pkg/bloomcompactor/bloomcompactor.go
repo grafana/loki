@@ -62,7 +62,6 @@ import (
 )
 
 const (
-	fpRate        = 0.01
 	bloomFileName = "bloom"
 )
 
@@ -519,15 +518,23 @@ func createLocalDirName(workingDir string, job Job) string {
 }
 
 // Compacts given list of chunks, uploads them to storage and returns a list of bloomBlocks
-func CompactNewChunks(ctx context.Context, logger log.Logger, job Job,
-	chunks []chunk.Chunk, bt *v1.BloomTokenizer,
-	bloomShipperClient bloomshipper.Client, dst string) ([]bloomshipper.Block, error) {
+func CompactNewChunks(
+	ctx context.Context,
+	logger log.Logger,
+	limits Limits,
+	job Job,
+	chunks []chunk.Chunk,
+	bt *v1.BloomTokenizer,
+	bloomShipperClient bloomshipper.Client,
+	dst string,
+) ([]bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	// Create a bloom for this series
+	fpRate := limits.BloomFalsePositiveRate(job.Tenant())
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
 			Fingerprint: job.Fingerprint(),
@@ -585,7 +592,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		storedBlocks, err := CompactNewChunks(ctx, logger, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+		storedBlocks, err := CompactNewChunks(ctx, logger, c.limits, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
 		if err != nil {
 			return level.Error(logger).Log("compacting new chunks", err)
 		}

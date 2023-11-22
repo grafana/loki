@@ -188,6 +188,7 @@ type Limits struct {
 	BloomCompactorEnabled     bool          `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
 	BloomNGramLength          int           `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
 	BloomNGramSkip            int           `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
+	BloomFalsePositiveRate    float64       `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
 
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
@@ -307,6 +308,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Whether to compact chunks into bloom filters.")
 	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
 	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 0, "Skip factor for the n-grams created when computing blooms from log lines.")
+	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
@@ -812,6 +814,10 @@ func (o *Overrides) BloomNGramLength(userID string) int {
 
 func (o *Overrides) BloomNGramSkip(userID string) int {
 	return o.getOverridesForUser(userID).BloomNGramSkip
+}
+
+func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {
+	return o.getOverridesForUser(userID).BloomFalsePositiveRate
 }
 
 func (o *Overrides) AllowStructuredMetadata(userID string) bool {
