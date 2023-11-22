@@ -477,15 +477,9 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 			// Downstream engine - split by range
 			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
-<<<<<<< HEAD
 			require.NoError(t, err)
-			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
-			require.NoError(t, err)
-=======
-			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(syntax.MustParseExpr(tc.query))
-			require.Nil(t, err)
->>>>>>> grafana/main
+			require.NoError(t, err)
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 
