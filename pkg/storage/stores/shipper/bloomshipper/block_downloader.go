@@ -33,8 +33,9 @@ type blockDownloader struct {
 	limits             Limits
 	activeUsersService *util.ActiveUsersCleanupService
 
-	ctx     context.Context
-	manager *services.Manager
+	ctx                  context.Context
+	manager              *services.Manager
+	onWorkerStopCallback func()
 }
 
 func newBlockDownloader(config config.Config, blockClient BlockClient, limits Limits, logger log.Logger, reg prometheus.Registerer) (*blockDownloader, error) {
@@ -54,19 +55,20 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 	}
 
 	b := &blockDownloader{
-		ctx:                ctx,
-		logger:             logger,
-		workingDirectory:   config.WorkingDirectory,
-		queueMetrics:       queueMetrics,
-		queue:              downloadingQueue,
-		blockClient:        blockClient,
-		activeUsersService: activeUsersService,
-		limits:             limits,
-		manager:            manager,
+		ctx:                  ctx,
+		logger:               logger,
+		workingDirectory:     config.WorkingDirectory,
+		queueMetrics:         queueMetrics,
+		queue:                downloadingQueue,
+		blockClient:          blockClient,
+		activeUsersService:   activeUsersService,
+		limits:               limits,
+		manager:              manager,
+		onWorkerStopCallback: onWorkerStopNoopCallback,
 	}
 
 	for i := 0; i < config.BlocksDownloadingQueue.WorkersCount; i++ {
-		go b.serveDownloadingTasks(ctx, fmt.Sprintf("worker-%d", i))
+		go b.serveDownloadingTasks(fmt.Sprintf("worker-%d", i))
 	}
 	return b, nil
 }
@@ -90,27 +92,27 @@ func NewBlockDownloadingTask(ctx context.Context, block BlockRef, resCh chan<- b
 }
 
 // noop implementation
-var onWorkerStopCallback = func() {}
+var onWorkerStopNoopCallback = func() {}
 
-func (d *blockDownloader) serveDownloadingTasks(ctx context.Context, workerID string) {
+func (d *blockDownloader) serveDownloadingTasks(workerID string) {
 	logger := log.With(d.logger, "worker", workerID)
 	level.Debug(logger).Log("msg", "starting worker")
 
 	d.queue.RegisterConsumerConnection(workerID)
 	defer d.queue.UnregisterConsumerConnection(workerID)
+	//this callback is used only in the tests to assert that worker is stopped
+	defer d.onWorkerStopCallback()
 
 	idx := queue.StartIndexWithLocalQueue
 
 	for {
-		item, newIdx, err := d.queue.Dequeue(ctx, idx, workerID)
+		item, newIdx, err := d.queue.Dequeue(d.ctx, idx, workerID)
 		if err != nil {
 			if !errors.Is(err, queue.ErrStopped) && !errors.Is(err, context.Canceled) {
 				level.Error(logger).Log("msg", "failed to dequeue task", "err", err)
 				continue
 			}
 			level.Info(logger).Log("msg", "stopping worker")
-			//this callback is used only in the tests to assert that worker is stopped
-			onWorkerStopCallback()
 			return
 		}
 		task, ok := item.(*BlockDownloadingTask)
@@ -142,11 +144,6 @@ func (d *blockDownloader) serveDownloadingTasks(ctx context.Context, workerID st
 			BlockQuerier: blockQuerier,
 		}
 	}
-}
-
-type BlockDownloadingResult struct {
-	extractedBlockPath string
-	block              BlockRef
 }
 
 func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, references []BlockRef) (chan blockWithQuerier, chan error) {

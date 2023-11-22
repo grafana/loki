@@ -23,13 +23,6 @@ import (
 )
 
 func Test_blockDownloader_downloadBlocks(t *testing.T) {
-	stoppedWorkersCount := atomic.NewInt32(0)
-	onWorkerStopCallback = func() {
-		stoppedWorkersCount.Inc()
-	}
-	t.Cleanup(func() {
-		onWorkerStopCallback = func() {}
-	})
 	overrides, err := validation.NewOverrides(validation.Limits{BloomGatewayBlocksDownloadingParallelism: 20}, nil)
 	require.NoError(t, err)
 	workingDirectory := t.TempDir()
@@ -44,6 +37,10 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 			MaxTasksEnqueuedPerTenant: 20,
 		},
 	}, blockClient, overrides, log.NewNopLogger(), prometheus.DefaultRegisterer)
+	stoppedWorkersCount := atomic.NewInt32(0)
+	downloader.onWorkerStopCallback = func() {
+		stoppedWorkersCount.Inc()
+	}
 	require.NoError(t, err)
 	blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
 	downloadedBlocks := make(map[string]any, len(blockReferences))
