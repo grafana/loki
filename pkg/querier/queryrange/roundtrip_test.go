@@ -334,12 +334,16 @@ func TestInstantQueryTripperware(t *testing.T) {
 	}
 	require.NoError(t, err)
 
+	q := `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`
 	lreq := &LokiInstantRequest{
-		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
+		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")

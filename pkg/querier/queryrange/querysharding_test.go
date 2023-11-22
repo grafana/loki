@@ -724,6 +724,13 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				0,
 			)
 
+			// currently all the tests call `defaultReq()` which creates an instance of the type LokiRequest
+			// if in the future that isn't true, we need another way to access the Plan field of an arbitrary query type
+			// or we should set the Plan in calls to `GetExpression` if the Plan is nil by calling `ParseExpr` or similar
+			tc.req.(*LokiRequest).Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tc.req.GetQuery()),
+			}
+
 			resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), tc.req)
 			require.Nil(t, err)
 
@@ -851,12 +858,16 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		0,
 	)
 
+	q := `{cluster="dev-us-central-0"}`
 	lokiReq := &LokiInstantRequest{
-		Query:     `{cluster="dev-us-central-0"}`,
+		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "foo")
