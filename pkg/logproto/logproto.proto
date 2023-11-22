@@ -68,7 +68,7 @@ message QueryRequest {
 }
 
 message SampleQueryRequest {
-  string selector = 1;
+  string selector = 1; // mark as reserved once we've fully migrated to plan.
   google.protobuf.Timestamp start = 2 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
@@ -79,6 +79,7 @@ message SampleQueryRequest {
   ];
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 5;
+  bytes plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message Delete {
