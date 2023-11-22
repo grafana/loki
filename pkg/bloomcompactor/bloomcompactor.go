@@ -61,9 +61,11 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+// TODO: Make a constants file somewhere
 const (
-	fpRate        = 0.01
-	bloomFileName = "bloom"
+	fpRate         = 0.01
+	bloomFileName  = "bloom"
+	seriesFileName = "series"
 )
 
 type Compactor struct {
@@ -485,6 +487,11 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 		level.Error(logger).Log("reading bloomBlock", err)
 	}
 
+	indexFile, err := os.Open(filepath.Join(localDst, seriesFileName))
+	if err != nil {
+		level.Error(logger).Log("reading bloomBlock", err)
+	}
+
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
@@ -498,7 +505,8 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 			},
 			IndexPath: job.IndexPath(),
 		},
-		Data: blockFile,
+		BloomData: blockFile,
+		IndexData: indexFile,
 	}
 
 	return blocks, nil
