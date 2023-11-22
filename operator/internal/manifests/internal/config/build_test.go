@@ -111,6 +111,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -196,7 +197,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -368,6 +370,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -458,7 +461,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -574,7 +578,8 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					// making it nil so that the template is not generated and error is returned
 					QueryLimits: nil,
@@ -735,6 +740,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -874,7 +880,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -1093,6 +1100,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -1232,7 +1240,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -1452,6 +1461,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -1604,7 +1614,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -1849,6 +1860,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -1944,7 +1956,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -2175,6 +2188,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 2m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -2340,7 +2354,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -2615,6 +2630,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -2737,7 +2753,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -2940,6 +2957,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 2m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -3133,7 +3151,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -3437,6 +3456,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -3523,7 +3543,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -3698,6 +3719,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -3784,7 +3806,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -3960,6 +3983,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -4045,7 +4069,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -4223,6 +4248,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -4313,7 +4339,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -4517,6 +4544,7 @@ limits_config:
   split_queries_by_interval: 30m
   query_timeout: 1m
   per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
   shard_streams:
     enabled: true
     desired_rate: 3MB
@@ -4607,7 +4635,8 @@ overrides:
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
 						PerStreamRateLimit:        5,
-						DesiredRate:               3,
+						PerStreamRateLimitBurst:   15,
+						PerStreamDesiredRate:      3,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,

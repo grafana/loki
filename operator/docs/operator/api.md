@@ -1082,19 +1082,6 @@ MemberListSpec
 <tbody>
 <tr>
 <td>
-<code>desiredRate</code><br/>
-<em>
-int32
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>DesiredRate defines the desired ingestion rate per second that LokiStack should
-target applying automatic stream sharding. Units MB.</p>
-</td>
-</tr>
-<tr>
-<td>
 <code>ingestionRate</code><br/>
 <em>
 int32
@@ -1181,6 +1168,19 @@ int32
 <td>
 <em>(Optional)</em>
 <p>MaxLineSize defines the maximum line size on ingestion path. Units in Bytes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>desiredRate</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+target applying automatic stream sharding. Units MB.</p>
 </td>
 </tr>
 <tr>
