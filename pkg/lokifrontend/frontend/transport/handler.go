@@ -15,7 +15,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -241,7 +240,7 @@ func writeError(w http.ResponseWriter, err error) {
 			err = errRequestEntityTooLarge
 		}
 	}
-	server.WriteError(w, err)
+	httpgrpc.WriteError(w, err)
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.Stats) {
@@ -277,7 +276,7 @@ func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrang
 		return nil, err
 	}
 
-	grpcReq, err := server.HTTPRequest(httpReq)
+	grpcReq, err := httpgrpc.FromHTTPRequest(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("cannot convert HTTP request to gRPC request: %w", err)
 	}
