@@ -5,10 +5,8 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +25,13 @@ import (
 	"github.com/grafana/dskit/middleware"
 )
 
+var (
+	// DoNotLogErrorHeaderKey is a header key used for marking non-loggable errors. More precisely, if an HTTP response
+	// has a status code 5xx, and contains a header with key DoNotLogErrorHeaderKey and any values, the generated error
+	// will be marked as non-loggable.
+	DoNotLogErrorHeaderKey = http.CanonicalHeaderKey("X-DoNotLogError")
+)
+
 // Server implements HTTPServer.  HTTPServer is a generated interface that gRPC
 // servers must implement.
 type Server struct {
@@ -40,35 +45,34 @@ func NewServer(handler http.Handler) *Server {
 	}
 }
 
-type nopCloser struct {
-	*bytes.Buffer
-}
-
-func (nopCloser) Close() error { return nil }
-
-// BytesBuffer returns the underlaying `bytes.buffer` used to build this io.ReadCloser.
-func (n nopCloser) BytesBuffer() *bytes.Buffer { return n.Buffer }
-
 // Handle implements HTTPServer.
 func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
-	req, err := http.NewRequest(r.Method, r.Url, nopCloser{Buffer: bytes.NewBuffer(r.Body)})
+	req, err := httpgrpc.ToHTTPRequest(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	toHeader(r.Headers, req.Header)
-	req = req.WithContext(ctx)
-	req.RequestURI = r.Url
-	req.ContentLength = int64(len(r.Body))
 
 	recorder := httptest.NewRecorder()
 	s.handler.ServeHTTP(recorder, req)
+	header := recorder.Header()
+
+	doNotLogError := false
+	if _, ok := header[DoNotLogErrorHeaderKey]; ok {
+		doNotLogError = true
+		header.Del(DoNotLogErrorHeaderKey) // remove before converting to httpgrpc resp
+	}
+
 	resp := &httpgrpc.HTTPResponse{
 		Code:    int32(recorder.Code),
-		Headers: fromHeader(recorder.Header()),
+		Headers: httpgrpc.FromHeader(header),
 		Body:    recorder.Body.Bytes(),
 	}
 	if recorder.Code/100 == 5 {
-		return nil, httpgrpc.ErrorFromHTTPResponse(resp)
+		err := httpgrpc.ErrorFromHTTPResponse(resp)
+		if doNotLogError {
+			err = middleware.DoNotLogError{Err: err}
+		}
+		return nil, err
 	}
 	return resp, nil
 }
@@ -153,38 +157,6 @@ func NewClient(address string) (*Client, error) {
 	}, nil
 }
 
-// HTTPRequest wraps an ordinary HTTPRequest with a gRPC one
-func HTTPRequest(r *http.Request) (*httpgrpc.HTTPRequest, error) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	return &httpgrpc.HTTPRequest{
-		Method:  r.Method,
-		Url:     r.RequestURI,
-		Body:    body,
-		Headers: fromHeader(r.Header),
-	}, nil
-}
-
-// WriteResponse converts an httpgrpc response to an HTTP one
-func WriteResponse(w http.ResponseWriter, resp *httpgrpc.HTTPResponse) error {
-	toHeader(resp.Headers, w.Header())
-	w.WriteHeader(int(resp.Code))
-	_, err := w.Write(resp.Body)
-	return err
-}
-
-// WriteError converts an httpgrpc error to an HTTP one
-func WriteError(w http.ResponseWriter, err error) {
-	resp, ok := httpgrpc.HTTPResponseFromError(err)
-	if ok {
-		_ = WriteResponse(w, resp)
-	} else {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
 // ServeHTTP implements http.Handler
 func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if tracer := opentracing.GlobalTracer(); tracer != nil {
@@ -195,7 +167,7 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	req, err := HTTPRequest(r)
+	req, err := httpgrpc.FromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -212,25 +184,8 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := WriteResponse(w, resp); err != nil {
+	if err := httpgrpc.WriteResponse(w, resp); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-}
-
-func toHeader(hs []*httpgrpc.Header, header http.Header) {
-	for _, h := range hs {
-		header[h.Key] = h.Values
-	}
-}
-
-func fromHeader(hs http.Header) []*httpgrpc.Header {
-	result := make([]*httpgrpc.Header, 0, len(hs))
-	for k, vs := range hs {
-		result = append(result, &httpgrpc.Header{
-			Key:    k,
-			Values: vs,
-		})
-	}
-	return result
 }
