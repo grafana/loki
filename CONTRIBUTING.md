@@ -154,6 +154,6 @@ To get a local preview of the documentation:
    - `path /tmp/make-docs.Dcq is not shared from the host and is not known to Docker.`
    - `You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing.`
 
-Then you can go to Docker Desktop settings and open the resources, add the path `/tmp` or the specific path `/tmp/make-docs.Dcq` and click **Apply** for the changes to take effect.
+Then you can go to Docker Desktop settings and open the resources, add the temporary directory path `/tmp`.
 
 > Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
