@@ -137,7 +137,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
-			params := NewLiteralParams(
+			params, err := NewLiteralParams(
 				tc.query,
 				start,
 				end,
@@ -147,6 +147,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
+			require.NoError(t, err)
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
@@ -154,7 +155,10 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
-			shardedQry := sharded.Query(ctx, params, mapped)
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{
+				Params:             params,
+				ExpressionOverride: mapped,
+			})
 
 			res, err := qry.Exec(ctx)
 			require.NoError(t, err)

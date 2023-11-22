@@ -343,11 +343,16 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		var queries []DownstreamQuery
 		for _, d := range e.quantileMergeExpr.downstreams {
 			qry := DownstreamQuery{
-				Expr:   d.SampleExpr,
-				Params: params,
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
 			}
 			if shard := d.shard; shard != nil {
-				qry.Shards = Shards{*shard}
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{*shard}.Encode(),
+				}
 			}
 			queries = append(queries, qry)
 		}
