@@ -19,11 +19,14 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -85,10 +88,7 @@ var (
 )
 
 func Test_shardSplitter(t *testing.T) {
-	req := defaultReq().WithStartEnd(
-		util.TimeToMillis(start),
-		util.TimeToMillis(end),
-	)
+	req := defaultReq().WithStartEnd(start, end)
 
 	for _, tc := range []struct {
 		desc        string
@@ -174,7 +174,12 @@ func Test_astMapper(t *testing.T) {
 		0,
 	)
 
-	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
+	req := defaultReq()
+	req.Query = `{foo="bar"}`
+	req.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(req.Query),
+	}
+	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 
 	require.Equal(t, []*definitions.PrometheusResponseHeader{
@@ -313,7 +318,12 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				0,
 			)
 
-			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(tc.query))
+			req := defaultReq()
+			req.Query = tc.query
+			req.Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tc.query),
+			}
+			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 			if err != nil {
 				require.ErrorContains(t, err, tc.err)
 			}
@@ -346,7 +356,13 @@ func Test_ShardingByPass(t *testing.T) {
 		0,
 	)
 
-	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
+	req := defaultReq()
+	req.Query = `1+1`
+	req.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(req.Query),
+	}
+
+	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 	require.Equal(t, called, 1)
 }
@@ -410,7 +426,7 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, testEngineOpts, DefaultCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, testEngineOpts, queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
@@ -439,6 +455,9 @@ func Test_InstantSharding(t *testing.T) {
 		Query:  `rate({app="foo"}[1m])`,
 		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"}[1m])`),
+		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
@@ -470,7 +489,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			RowShards: 3,
 		},
 	},
-		queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+		queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 		nilShardingMetrics,
 		fakeLimits{
 			maxQueryParallelism: 10,
@@ -705,6 +724,13 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				0,
 			)
 
+			// currently all the tests call `defaultReq()` which creates an instance of the type LokiRequest
+			// if in the future that isn't true, we need another way to access the Plan field of an arbitrary query type
+			// or we should set the Plan in calls to `GetExpression` if the Plan is nil by calling `ParseExpr` or similar
+			tc.req.(*LokiRequest).Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tc.req.GetQuery()),
+			}
+
 			resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), tc.req)
 			require.Nil(t, err)
 
@@ -773,7 +799,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 			mware := NewSeriesQueryShardMiddleware(
 				log.NewNopLogger(),
 				confs,
-				queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+				queryrangebase.NewInstrumentMiddlewareMetrics(nil, constants.Loki),
 				nilShardingMetrics,
 				fakeLimits{
 					maxQueryParallelism: 10,
@@ -812,7 +838,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 
 	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		// This is the actual check that we're testing.
-		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart().UnixMilli())
 
 		return &IndexStatsResponse{
 			Response: &logproto.IndexStatsResponse{
@@ -832,12 +858,16 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		0,
 	)
 
+	q := `{cluster="dev-us-central-0"}`
 	lokiReq := &LokiInstantRequest{
-		Query:     `{cluster="dev-us-central-0"}`,
+		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "foo")

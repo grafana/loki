@@ -24,11 +24,11 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
 
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
+	rulerutil "github.com/grafana/loki/pkg/ruler/util"
+	"github.com/grafana/loki/pkg/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -40,7 +40,7 @@ type RulesLimits interface {
 	RulerRemoteWriteURL(userID string) string
 	RulerRemoteWriteTimeout(userID string) time.Duration
 	RulerRemoteWriteHeaders(userID string) map[string]string
-	RulerRemoteWriteRelabelConfigs(userID string) []*util.RelabelConfig
+	RulerRemoteWriteRelabelConfigs(userID string) []*rulerutil.RelabelConfig
 	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
 	RulerRemoteWriteQueueCapacity(userID string) int
 	RulerRemoteWriteQueueMinShards(userID string) int
@@ -58,9 +58,9 @@ type RulesLimits interface {
 
 // queryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
+func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		hash := logql.HashedQuery(qs)
+		hash := util.HashedQuery(qs)
 		detail := rules.FromOriginContext(ctx)
 		detailLog := log.With(logger, "rule_name", detail.Name, "rule_type", detail.Kind, "query", qs, "query_hash", hash)
 
@@ -72,8 +72,7 @@ func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker,
 			return nil, errNotReady
 		}
 
-		adjusted := t.Add(-overrides.EvaluationDelay(userID))
-		res, err := evaluator.Eval(ctx, qs, adjusted)
+		res, err := evaluator.Eval(ctx, qs, t)
 
 		if err != nil {
 			level.Error(detailLog).Log("msg", "rule evaluation failed", "err", err)
@@ -145,7 +144,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFn := queryFunc(evaluator, overrides, registry, userID, logger)
+		queryFn := queryFunc(evaluator, registry, userID, logger)
 		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the

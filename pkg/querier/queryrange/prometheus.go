@@ -125,6 +125,12 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 }
 
 func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
+
+	// Make sure nil is not encoded as null.
+	if p.Response.Data.Result == nil {
+		p.Response.Data.Result = []queryrangebase.SampleStream{}
+	}
+
 	// embed response and add statistics.
 	return jsonStd.Marshal(struct {
 		Status string `json:"status"`

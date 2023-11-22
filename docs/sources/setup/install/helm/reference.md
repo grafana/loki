@@ -369,6 +369,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>clusterLabelOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's cluster label</td>
@@ -1040,6 +1049,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>gateway.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the gateway pods</td>
@@ -1254,6 +1272,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.resolver</td>
+			<td>string</td>
+			<td>Allows overriding the DNS resolver address nginx will use.</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.serverSnippet</td>
 			<td>string</td>
 			<td>Allows appending custom configuration to the server block</td>
@@ -1442,6 +1469,15 @@ null
 			<td>gateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1858,6 +1894,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.distributor</td>
+			<td>object</td>
+			<td>Optional distributor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.enableServiceLinks</td>
 			<td>bool</td>
 			<td>Should enableServiceLinks be enabled. Default to enable</td>
@@ -1982,7 +2027,6 @@ null
 			<td>Limits config</td>
 			<td><pre lang="json">
 {
-  "enforce_metric_name": false,
   "max_cache_freshness_per_query": "10m",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
@@ -2252,6 +2296,17 @@ null
 			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.tracing</td>
+			<td>object</td>
+			<td>Enable tracing</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
 </pre>
 </td>
 		</tr>
@@ -3442,6 +3497,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for read pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>serviceAccount.annotations</td>
 			<td>object</td>
 			<td>Annotations for the service account</td>
@@ -4343,15 +4407,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>tracing.jaegerAgentHost</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>write.affinity</td>
 			<td>string</td>
 			<td>Affinity for write pods. Passed through `tpl` and, thus, to be configured as string</td>
@@ -4736,6 +4791,15 @@ null
 			<td>write.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for write pods</td>
 			<td><pre lang="json">
 []
 </pre>

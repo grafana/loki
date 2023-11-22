@@ -198,6 +198,10 @@ type SeriesHeader struct {
 	FromTs, ThroughTs model.Time
 }
 
+func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
+	return h.ThroughFp >= other.FromFp && h.FromFp <= other.ThroughFp
+}
+
 // build one aggregated header for the entire block
 func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 	if len(xs) == 0 {
@@ -333,7 +337,7 @@ func (d *SeriesPageDecoder) Err() error {
 
 type Series struct {
 	Fingerprint model.Fingerprint
-	Chunks      []ChunkRef
+	Chunks      ChunkRefs
 }
 
 type SeriesWithOffset struct {

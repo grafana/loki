@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/integration/util"
 
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -78,6 +79,7 @@ storage_config:
 compactor:
   working_directory: {{.dataPath}}/retention
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false
@@ -209,6 +211,8 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
+	// cleanup singleton boltdb shipper client instances
+	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 

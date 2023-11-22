@@ -46,3 +46,7 @@ func ExtractActorPath(ctx context.Context) []string {
 	}
 	return strings.Split(value, LokiActorPathDelimiter)
 }
+
+func InjectActorPath(ctx context.Context, value string) context.Context {
+	return context.WithValue(ctx, headerContextKey(LokiActorPathHeader), value)
+}

@@ -1,6 +1,7 @@
 package queryrangebase
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/grafana/dskit/middleware"
@@ -25,6 +26,27 @@ func CacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader CacheGenNumberLo
 
 			w.Header().Set(ResultsCacheGenNumberHeaderName, cacheGenNumber)
 			next.ServeHTTP(w, r)
+		})
+	})
+}
+
+func CacheGenNumberContextSetterMiddleware(cacheGenNumbersLoader CacheGenNumberLoader) Middleware {
+	return MiddlewareFunc(func(next Handler) Handler {
+		return HandlerFunc(func(ctx context.Context, req Request) (Response, error) {
+			userIDs, err := tenant.TenantIDs(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber(userIDs)
+
+			res, err := next.Do(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+
+			res.SetHeader(ResultsCacheGenNumberHeaderName, cacheGenNumber)
+			return res, nil
 		})
 	})
 }

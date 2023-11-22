@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	loki_util "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/ring"
 )
 
 // Mode represents in which mode an Index Gateway instance is running.
@@ -47,10 +47,11 @@ const (
 	RingMode Mode = "ring"
 )
 
-// RingCfg is a wrapper for our Index Gateway ring configuration plus the replication factor.
+// RingCfg is identical to ring.RingConfigWithRF with the difference that the
+// ReplicationFactor field is deprecated.
 type RingCfg struct {
 	// InternalRingCfg configures the Index Gateway ring.
-	loki_util.RingConfig `yaml:",inline"`
+	ring.RingConfig `yaml:",inline"`
 
 	// ReplicationFactor defines how many Index Gateway instances are assigned to each tenant.
 	//

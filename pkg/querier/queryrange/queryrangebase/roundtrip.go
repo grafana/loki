@@ -18,13 +18,9 @@ package queryrangebase
 import (
 	"context"
 	"flag"
-	"io"
 	"net/http"
 	"time"
 
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 )
 
@@ -42,9 +38,6 @@ type Config struct {
 	CacheResults         bool               `yaml:"cache_results"`
 	MaxRetries           int                `yaml:"max_retries"`
 	ShardedQueries       bool               `yaml:"parallelise_shardable_queries"`
-
-	// Required format for querier responses
-	RequiredQueryResponseFormat string `yaml:"required_query_response_format"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -53,8 +46,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
-
-	f.StringVar(&cfg.RequiredQueryResponseFormat, "frontend.required-query-response-format", "json", "The downstream querier is required to answer in the accepted format. Can be 'json' or 'protobuf'. Note: Both will still be routed over GRPC.")
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
@@ -115,80 +106,4 @@ type RoundTripFunc func(*http.Request) (*http.Response, error)
 // RoundTrip implements http.RoundTripper.
 func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
-}
-
-type roundTripper struct {
-	roundTripperHandler
-	handler Handler
-	headers []string
-}
-
-// NewRoundTripper merges a set of middlewares into an handler, then inject it into the `next` roundtripper
-// using the codec to translate requests and responses.
-func NewRoundTripper(next http.RoundTripper, codec Codec, headers []string, middlewares ...Middleware) http.RoundTripper {
-	transport := roundTripper{
-		roundTripperHandler: roundTripperHandler{
-			next:  next,
-			codec: codec,
-		},
-		headers: headers,
-	}
-	transport.handler = MergeMiddlewares(middlewares...).Wrap(&transport)
-	return transport
-}
-
-func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	// include the headers specified in the roundTripper during decoding the request.
-	request, err := q.codec.DecodeRequest(r.Context(), r, q.headers)
-	if err != nil {
-		return nil, err
-	}
-
-	if span := opentracing.SpanFromContext(r.Context()); span != nil {
-		request.LogToSpan(span)
-	}
-
-	response, err := q.handler.Do(r.Context(), request)
-	if err != nil {
-		return nil, err
-	}
-
-	return q.codec.EncodeResponse(r.Context(), r, response)
-}
-
-type roundTripperHandler struct {
-	next  http.RoundTripper
-	codec Codec
-}
-
-// NewRoundTripperHandler returns a handler that translates Loki requests into http requests
-// and passes down these to the next RoundTripper.
-func NewRoundTripperHandler(next http.RoundTripper, codec Codec) Handler {
-	return roundTripperHandler{
-		next:  next,
-		codec: codec,
-	}
-}
-
-// Do implements Handler.
-func (q roundTripperHandler) Do(ctx context.Context, r Request) (Response, error) {
-	request, err := q.codec.EncodeRequest(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	response, err := q.next.RoundTrip(request)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024)) //nolint:errcheck
-		response.Body.Close()
-	}()
-
-	return q.codec.DecodeResponse(ctx, response, r)
 }

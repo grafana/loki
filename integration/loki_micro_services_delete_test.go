@@ -26,13 +26,11 @@ type pushRequest struct {
 }
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	storage.ResetBoltDBIndexClientsWithShipper()
 	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientsWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
@@ -218,6 +216,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	validateQueryResponse := func(expectedStreams []client.StreamValues, resp *client.Response) {
 		t.Helper()
+		assert.Equal(t, "success", resp.Status)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
 		require.Len(t, resp.Data.Stream, len(expectedStreams))
@@ -236,7 +235,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// ingest some log lines
 		for _, pr := range pushRequests {
 			for _, entry := range pr.entries {
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata(
+				require.NoError(t, cliDistributor.PushLogLine(
 					entry.Line,
 					entry.Timestamp,
 					logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata).Map(),
@@ -410,7 +409,7 @@ func getMetricValue(t *testing.T, metricName, metrics string) float64 {
 }
 
 func pushRequestToClientStreamValues(t *testing.T, p pushRequest) []client.StreamValues {
-	logsByStream := map[string][][]string{}
+	logsByStream := map[string][]client.Entry{}
 	for _, entry := range p.entries {
 		lb := labels.NewBuilder(labels.FromMap(p.stream))
 		for _, l := range entry.StructuredMetadata {

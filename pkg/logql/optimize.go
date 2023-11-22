@@ -6,7 +6,7 @@ import "github.com/grafana/loki/pkg/logql/syntax"
 func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	var skip bool
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch e.(type) {
 		case *ConcatSampleExpr, *DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr:
 			skip = true
@@ -28,7 +28,7 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 
 // removeLineformat removes unnecessary line_format within a SampleExpr.
 func removeLineformat(expr syntax.SampleExpr) {
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		rangeExpr, ok := e.(*syntax.RangeAggregationExpr)
 		if !ok {
 			return
