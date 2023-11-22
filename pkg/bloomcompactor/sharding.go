@@ -39,7 +39,6 @@ func (s *ShuffleShardingStrategy) OwnsJob(job Job) (bool, error) {
 
 	tenantRing := s.GetTenantSubRing(job.Tenant())
 	fpSharding := util_ring.NewFingerprintShuffleSharding(tenantRing, s.ringLifeCycler, RingOp)
-	// TODO: A shard should either own all the fps of a job or not
 	return fpSharding.OwnsFingerprint(uint64(0))
 }
 

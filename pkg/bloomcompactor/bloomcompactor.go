@@ -353,10 +353,9 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	// Tokenizer is not thread-safe so we need one per goroutine.
 	bt, _ := v1.NewBloomTokenizer(c.reg)
 
-	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
 	if err := sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
-		if isMultiTenantIndex { // TODO handle multitenant tables
+		if isMultiTenantIndex { // TODO: handle multitenant tables
 			return fmt.Errorf("unexpected multi-tenant")
 		}
 
@@ -377,7 +376,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		job := NewJob(tenant, tableName, idx.Path(), indices)
 		jobLogger := log.With(logger, "job", job.String())
 
-		ownsJob, err := c.sharding.OwnsJob(job) // TODO: A shard should either own all the fps of a job or not
+		ownsJob, err := c.sharding.OwnsJob(job)
 
 		if err != nil {
 			c.metrics.compactionRunUnownedJobs.Inc()
