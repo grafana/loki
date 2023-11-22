@@ -83,7 +83,7 @@ func (sp *schedulerProcessor) notifyShutdown(ctx context.Context, conn *grpc.Cli
 	}
 }
 
-func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Context, conn *grpc.ClientConn, address, workerId string) {
+func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Context, conn *grpc.ClientConn, address, workerID string) {
 	schedulerClient := sp.schedulerClientFactory(conn)
 
 	// Run the querier loop (and so all the queries) in a dedicated context that we call the "execution context".
@@ -104,7 +104,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 			continue
 		}
 
-		if err := sp.querierLoop(c, address, inflightQuery, workerId); err != nil {
+		if err := sp.querierLoop(c, address, inflightQuery, workerID); err != nil {
 			// Do not log an error if the query-scheduler is shutting down.
 			if s, ok := status.FromError(err); !ok || !strings.Contains(s.Message(), schedulerpb.ErrSchedulerIsNotRunning.Error()) {
 				level.Error(sp.log).Log("msg", "error processing requests from scheduler", "err", err, "addr", address)
