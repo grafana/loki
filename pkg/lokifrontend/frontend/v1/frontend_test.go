@@ -294,9 +294,14 @@ func defaultFrontendConfig() Config {
 }
 
 type limits struct {
-	queriers int
+	queriers      int
+	queryCapacity float64
 }
 
 func (l limits) MaxQueriersPerUser(_ string) int {
 	return l.queriers
+}
+
+func (l limits) MaxQueryCapacity(_ string) float64 {
+	return l.queryCapacity
 }

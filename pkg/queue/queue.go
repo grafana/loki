@@ -79,7 +79,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, met
 // between calls.
 //
 // If request is successfully enqueued, successFn is called with the lock held, before any querier can receive the request.
-func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQueriers int, successFn func()) error {
+func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQueriers int, maxQueryCapacity float64, successFn func()) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -87,7 +87,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		return ErrStopped
 	}
 
-	queue := q.queues.getOrAddQueue(tenant, path, maxQueriers)
+	queue := q.queues.getOrAddQueue(tenant, path, maxQueriers, maxQueryCapacity)
 	if queue == nil {
 		// This can only happen if tenant is "".
 		return errors.New("no queue found")

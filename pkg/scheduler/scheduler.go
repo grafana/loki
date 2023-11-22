@@ -359,6 +359,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		return err
 	}
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
+	maxQueryCapacity := validation.SmallestPositiveNonZeroFloatPerTenant(tenantIDs, s.limits.MaxQueryCapacity)
 
 	var queuePath []string
 	if s.cfg.MaxQueueHierarchyLevels > 0 {
@@ -378,7 +379,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	}
 
 	s.activeUsers.UpdateUserTimestamp(req.tenantID, now)
-	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, func() {
+	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, maxQueryCapacity, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()

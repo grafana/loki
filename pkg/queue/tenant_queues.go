@@ -6,6 +6,7 @@
 package queue
 
 import (
+	"math"
 	"math/rand"
 	"sort"
 	"time"
@@ -88,8 +89,9 @@ type tenantQueue struct {
 
 	// If not nil, only these consumers can handle user requests. If nil, all consumers can.
 	// We set this to nil if number of available consumers <= maxQueriers.
-	consumers   map[string]struct{}
-	maxQueriers int
+	consumers        map[string]struct{}
+	maxQueriers      int
+	maxQueryCapacity float64
 
 	// Seed for shuffle sharding of consumers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
@@ -121,7 +123,7 @@ func (q *tenantQueues) deleteQueue(tenant string) {
 // MaxQueriers is used to compute which consumers should handle requests for this tenant.
 // If maxQueriers is <= 0, all consumers can handle this tenant's requests.
 // If maxQueriers has changed since the last call, consumers for this are recomputed.
-func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers int) Queue {
+func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers int, maxQueryCapacity float64) Queue {
 	// Empty tenant is not allowed, as that would break our tenants list ("" is used for free spot).
 	if tenant == "" {
 		return nil
@@ -140,15 +142,30 @@ func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers i
 		q.mapping.Put(tenant, uq)
 	}
 
-	if uq.maxQueriers != maxQueriers {
+	if uq.maxQueriers != maxQueriers || uq.maxQueryCapacity != maxQueryCapacity {
 		uq.maxQueriers = maxQueriers
-		uq.consumers = shuffleConsumersForTenants(uq.seed, maxQueriers, q.sortedConsumers, nil)
+		uq.maxQueryCapacity = maxQueryCapacity
+		uq.consumers = shuffleConsumersForTenants(uq.seed, uq.computeMaxQueriers(len(q.sortedConsumers)), q.sortedConsumers, nil)
 	}
 
 	if len(path) == 0 {
 		return uq
 	}
 	return uq.add(path)
+}
+
+func (uq *tenantQueue) computeMaxQueriers(consumers int) int {
+	if uq.maxQueryCapacity == 0 {
+		return uq.maxQueriers
+	}
+
+	maxQueriers := int(math.Ceil(float64(consumers) * uq.maxQueryCapacity))
+
+	if uq.maxQueriers != 0 && uq.maxQueriers < maxQueriers {
+		return uq.maxQueriers
+	}
+
+	return maxQueriers
 }
 
 // Finds next queue for the consumer. To support fair scheduling between users, client is expected
@@ -295,7 +312,7 @@ func (q *tenantQueues) recomputeUserConsumers() {
 	scratchpad := make([]string, 0, len(q.sortedConsumers))
 
 	for _, uq := range q.mapping.Values() {
-		uq.consumers = shuffleConsumersForTenants(uq.seed, uq.maxQueriers, q.sortedConsumers, scratchpad)
+		uq.consumers = shuffleConsumersForTenants(uq.seed, uq.computeMaxQueriers(len(q.sortedConsumers)), q.sortedConsumers, scratchpad)
 	}
 }
 

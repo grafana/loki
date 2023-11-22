@@ -44,7 +44,7 @@ func enqueueRequestsForActor(t testing.TB, actor []string, useActor bool, queue 
 			if !useActor {
 				actor = nil
 			}
-			err := queue.Enqueue("tenant", actor, r, 0, nil)
+			err := queue.Enqueue("tenant", actor, r, 0, 0, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -134,17 +134,17 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 	**/
 
 	requestQueue := NewRequestQueue(1024, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
-	_ = requestQueue.Enqueue("tenant1", []string{}, r(0), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{}, r(1), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{}, r(2), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(10), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(11), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(12), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(20), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(21), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(22), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "123"}, r(200), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "456"}, r(210), 0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{}, r(0), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{}, r(1), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{}, r(2), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(10), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(11), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(12), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(20), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(21), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(22), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "123"}, r(200), 0, 0.0, nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "456"}, r(210), 0, 0.0, nil)
 	requestQueue.queues.recomputeUserConsumers()
 
 	items := make([]int, 0)

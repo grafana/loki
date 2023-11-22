@@ -43,6 +43,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Limits interface {
 	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
 	MaxQueriersPerUser(user string) int
+
+	// MaxQueryCapacity returns how much of the available query capacity can be used by this user.
+	MaxQueryCapacity(user string) float64
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -314,11 +317,12 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
+	maxQueryCapacity := validation.SmallestPositiveNonZeroFloatPerTenant(tenantIDs, f.limits.MaxQueryCapacity)
 
 	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
 	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)
 
-	err = f.requestQueue.Enqueue(joinedTenantID, nil, req, maxQueriers, nil)
+	err = f.requestQueue.Enqueue(joinedTenantID, nil, req, maxQueriers, maxQueryCapacity, nil)
 	if err == queue.ErrTooManyRequests {
 		return errTooManyRequest
 	}

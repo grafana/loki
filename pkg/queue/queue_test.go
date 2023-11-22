@@ -57,7 +57,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				for i := 0; i < maxOutstandingPerTenant; i++ {
 					for j := 0; j < numTenants; j++ {
 						userID := strconv.Itoa(j)
-						err := queue.Enqueue(userID, benchCase.fn(j), "request", 0, nil)
+						err := queue.Enqueue(userID, benchCase.fn(j), "request", 0, 0.0, nil)
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -123,7 +123,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < maxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
-				err := queues[n].Enqueue(users[j], nil, requests[j], 0, nil)
+				err := queues[n].Enqueue(users[j], nil, requests[j], 0, 0.0, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -162,7 +162,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Enqueue a request from an user which would be assigned to querier-1.
 	// NOTE: "user-1" hash falls in the querier-1 shard.
-	require.NoError(t, queue.Enqueue("user-1", nil, "request", 1, nil))
+	require.NoError(t, queue.Enqueue("user-1", nil, "request", 1, 0.0, nil))
 
 	startTime := time.Now()
 	querier2wg.Wait()
@@ -311,12 +311,12 @@ func TestMaxQueueSize(t *testing.T) {
 
 		// enqueue maxSize items with different actors
 		// different actors have individual channels with maxSize length
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, 0, 0.0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, 0, 0.0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, 0, 0.0, nil))
 
 		// max queue length per tenant is tracked globally for all actors within a tenant
-		err := queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil)
+		err := queue.Enqueue("tenant", []string{"user-a"}, 4, 0, 0.0, nil)
 		assert.Equal(t, err, ErrTooManyRequests)
 
 		// dequeue and enqueue some items
@@ -325,10 +325,10 @@ func TestMaxQueueSize(t *testing.T) {
 		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
 		assert.NoError(t, err)
 
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, 0, 0.0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, 0, 0.0, nil))
 
-		err = queue.Enqueue("tenant", []string{"user-c"}, 6, 0, nil)
+		err = queue.Enqueue("tenant", []string{"user-c"}, 6, 0, 0.0, nil)
 		assert.Equal(t, err, ErrTooManyRequests)
 	})
 }

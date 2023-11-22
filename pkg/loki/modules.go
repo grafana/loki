@@ -803,6 +803,8 @@ type disabledShuffleShardingLimits struct{}
 
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) int { return 0 }
 
+func (disabledShuffleShardingLimits) MaxQueryCapacity(_ string) float64 { return 0 }
+
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 

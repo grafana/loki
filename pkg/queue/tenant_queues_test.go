@@ -173,6 +173,60 @@ func TestQueuesWithQueriers(t *testing.T) {
 	assert.InDelta(t, stdDev, 0, mean*0.2)
 }
 
+func TestTenantQueueMaxQueiers(t *testing.T) {
+	for name, tt := range map[string]struct {
+		uq       *tenantQueue
+		expected int
+	}{
+		"no limits": {
+			uq: &tenantQueue{
+				maxQueriers:      0,
+				maxQueryCapacity: 0,
+			},
+			expected: 0,
+		},
+		"enforce max queriers": {
+			uq: &tenantQueue{
+				maxQueriers:      5,
+				maxQueryCapacity: 0,
+			},
+			expected: 5,
+		},
+		"prefer max queriers over query capacity": {
+			uq: &tenantQueue{
+				maxQueriers:      5,
+				maxQueryCapacity: 1.0,
+			},
+			expected: 5,
+		},
+		"enforce max query capacity": {
+			uq: &tenantQueue{
+				maxQueriers:      0,
+				maxQueryCapacity: 0.5,
+			},
+			expected: 5,
+		},
+		"prefer query capacity over max queriers": {
+			uq: &tenantQueue{
+				maxQueriers:      5,
+				maxQueryCapacity: 0.4,
+			},
+			expected: 4,
+		},
+		"query capacity of 1.0": {
+			uq: &tenantQueue{
+				maxQueryCapacity: 1.0,
+			},
+			expected: 10,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			res := tt.uq.computeMaxQueriers(10)
+			assert.Equal(t, tt.expected, res)
+		})
+	}
+}
+
 func TestQueuesConsistency(t *testing.T) {
 	tests := map[string]struct {
 		forgetDelay time.Duration
@@ -196,7 +250,7 @@ func TestQueuesConsistency(t *testing.T) {
 			for i := 0; i < 10000; i++ {
 				switch r.Int() % 6 {
 				case 0:
-					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), generateActor(r), 3))
+					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), generateActor(r), 3, 0.0))
 				case 1:
 					qid := generateQuerier(r)
 					_, _, luid := uq.getNextQueueForConsumer(lastUserIndexes[qid], qid)
@@ -403,10 +457,10 @@ func generateQuerier(r *rand.Rand) string {
 
 func getOrAdd(t *testing.T, uq *tenantQueues, tenant string, maxQueriers int) Queue {
 	actor := []string{}
-	q := uq.getOrAddQueue(tenant, actor, maxQueriers)
+	q := uq.getOrAddQueue(tenant, actor, maxQueriers, 0.0)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
-	assert.Equal(t, q, uq.getOrAddQueue(tenant, actor, maxQueriers))
+	assert.Equal(t, q, uq.getOrAddQueue(tenant, actor, maxQueriers, 0.0))
 	return q
 }
 

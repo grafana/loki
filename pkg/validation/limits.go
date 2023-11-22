@@ -99,6 +99,7 @@ type Limits struct {
 	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
 	MaxQueriersPerTenant       int              `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueryCapacity           float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
 	QueryReadyIndexNumDays     int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
 	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
@@ -273,6 +274,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxStatsCacheFreshness, "frontend.max-stats-cache-freshness", "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature (default).")
 
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.Float64Var(&l.MaxQueryCapacity, "frontend.max-query-capacity", 0, "How much of the available query capacity (queriers) can be used by a single tenant. Allowed values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant to use half of the available queriers for processing the query workload. If set to 0, query capacity is determined by frontend.max-queriers-per-tenant. When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are configured, smaller value of the resulting querier replica count is considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas * frontend.max-query-capacity)). *All* queriers will handle requests for the tenant if neither limits are applied. This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
@@ -358,6 +360,16 @@ func (l *Limits) Validate() error {
 
 	if l.CompactorDeletionEnabled {
 		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
+	}
+
+	if l.MaxQueryCapacity < 0 {
+		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 0 as it is configured to a value less than 0")
+		l.MaxQueryCapacity = 0
+	}
+
+	if l.MaxQueryCapacity > 1 {
+		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 1 as it is configured to a value greater than 1")
+		l.MaxQueryCapacity = 1
 	}
 
 	return nil
@@ -496,6 +508,11 @@ func (o *Overrides) MaxQueryRange(_ context.Context, userID string) time.Duratio
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
+// MaxQueryCapacity returns how much of the available query capacity can be used by this user..
+func (o *Overrides) MaxQueryCapacity(userID string) float64 {
+	return o.getOverridesForUser(userID).MaxQueryCapacity
 }
 
 // QueryReadyIndexNumDays returns the number of days for which we have to be query ready for a user.

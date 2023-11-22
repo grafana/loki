@@ -349,7 +349,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID)
-	g.queue.Enqueue(tenantID, []string{}, task, 100, func() {
+	g.queue.Enqueue(tenantID, []string{}, task, 100, 0, func() {
 		// When enqueuing, we also add the task to the pending tasks
 		g.pendingTasks.Add(task.ID, task)
 	})
