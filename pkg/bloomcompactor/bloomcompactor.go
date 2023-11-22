@@ -119,14 +119,8 @@ func New(
 	c.storeClients = make(map[config.DayTime]storeClient)
 
 	for i, periodicConfig := range schemaConfig.Configs {
-		var indexStorageCfg indexshipper.Config
-		switch periodicConfig.IndexType {
-		case config.TSDBType:
-			indexStorageCfg = storageCfg.TSDBShipperConfig
-		case config.BoltDBShipperType:
-			indexStorageCfg = storageCfg.BoltDBShipperConfig.Config
-		default:
-			level.Warn(c.logger).Log("msg", "skipping period because index type is unsupported")
+		if periodicConfig.IndexType != config.TSDBType {
+			level.Warn(c.logger).Log("msg", "skipping schema period because index type is not supported", "index_type", periodicConfig.IndexType, "period", periodicConfig.From)
 			continue
 		}
 
@@ -143,7 +137,7 @@ func New(
 
 		indexShipper, err := indexshipper.NewIndexShipper(
 			periodicConfig.IndexTables.PathPrefix,
-			indexStorageCfg,
+			storageCfg.TSDBShipperConfig,
 			objectClient,
 			limits,
 			nil,
