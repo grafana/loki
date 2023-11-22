@@ -155,7 +155,7 @@ At the time of writing, these are the compatible backends that support this:
 - [Grafana Mimir](/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
-Here is an example remote-write configuration for sending to a local Prometheus instance:
+Here is an example of a remote-write configuration for sending data to a local Prometheus instance:
 
 ```yaml
 ruler:
