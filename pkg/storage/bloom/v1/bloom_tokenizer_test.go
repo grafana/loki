@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
 
@@ -27,6 +28,49 @@ const (
 var (
 	four = NewNGramTokenizer(4, 0)
 )
+
+func TestPrefixedKeyCreation(t *testing.T) {
+	var ones uint64 = 0xffffffffffffffff
+
+	ref := logproto.ChunkRef{
+		From:     0,
+		Through:  model.Time(int64(ones)),
+		Checksum: 0xffffffff,
+	}
+	for _, tc := range []struct {
+		desc          string
+		ngram, expLen int
+	}{
+		{
+			desc:   "0-gram",
+			ngram:  0,
+			expLen: 20,
+		},
+		{
+			desc:   "4-gram",
+			ngram:  4,
+			expLen: 20 + 4*MaxRuneLen,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			token, prefixLn := prefixedToken(tc.ngram, ref)
+			require.Equal(t, 20, prefixLn)
+			require.Equal(t, tc.expLen, len(token))
+			// first 8 bytes should be zeros from `from`
+			for i := 0; i < 8; i++ {
+				require.Equal(t, byte(0), token[i])
+			}
+			// next 8 bytes should be ones from `through`
+			for i := 8; i < 16; i++ {
+				require.Equal(t, byte(255), token[i])
+			}
+			// next 4 bytes should be ones from `checksum`
+			for i := 16; i < 20; i++ {
+				require.Equal(t, byte(255), token[i])
+			}
+		})
+	}
+}
 
 func TestSetLineTokenizer(t *testing.T) {
 	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)

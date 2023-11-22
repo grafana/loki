@@ -99,6 +99,14 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	return p.Parse()
 }
 
+func MustParseExpr(input string) Expr {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		panic(err)
+	}
+	return expr
+}
+
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
