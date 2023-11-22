@@ -126,9 +126,6 @@ var functionTokens = map[string]int{
 
 	// filterOp
 	OpFilterIP: IP,
-
-	// private ops
-	OpRangeTypeQuantileSketch: __QUANTILE_SKETCH_OVER_TIME__,
 }
 
 type lexer struct {

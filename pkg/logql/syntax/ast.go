@@ -1141,7 +1141,7 @@ const (
 	OpStrict    = "--strict"
 	OpKeepEmpty = "--keep-empty"
 
-	// private expressions
+	// internal expressions not represented in LogQL.
 	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
 )
 
