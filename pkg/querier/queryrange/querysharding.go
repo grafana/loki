@@ -143,7 +143,12 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		util_log.WithContext(ctx, ast.logger),
 	)
 
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
+	params, err := ParamsFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
+
+	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(params.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
@@ -184,11 +189,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)
-
-	params, err := ParamsFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
