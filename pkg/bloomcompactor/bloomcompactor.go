@@ -83,6 +83,7 @@ type Compactor struct {
 	sharding ShardingStrategy
 
 	metrics *metrics
+	reg     prometheus.Registerer
 }
 
 type storeClient struct {
@@ -108,6 +109,7 @@ func New(
 		schemaCfg: schemaConfig,
 		sharding:  sharding,
 		limits:    limits,
+		reg:       r,
 	}
 
 	// Configure BloomClient for meta.json management
@@ -145,7 +147,7 @@ func New(
 				return tsdb.OpenShippableTSDB(p)
 			},
 			periodicConfig.GetIndexTableNumberRange(periodEndTime),
-			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
+			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", r),
 			logger,
 		)
 
@@ -338,8 +340,8 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 	// TODO: Delete local files for unowned tenants, if there are any.
 }
 
-func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc storeClient, tableName string, tenant string) error {
-	level.Info(logger).Log("msg", "starting compaction of tenant")
+func (c *Compactor) compactTenant(ctx context.Context, sc storeClient, tableName string, tenant string) error {
+	level.Info(c.logger).Log("msg", "starting compaction of tenant")
 
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
@@ -347,7 +349,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	}
 
 	// Tokenizer is not thread-safe so we need one per goroutine.
-	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := v1.NewBloomTokenizer(c.reg)
 
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
@@ -362,7 +364,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
 				job := NewJob(tenant, tableName, idx.Path(), fingerprint, labels, chksMetas)
-				jobLogger := log.With(logger, "job", job.String())
+				jobLogger := log.With(c.logger, "job", job.String())
 
 				ownsJob, err := c.sharding.OwnsJob(job)
 				if err != nil {
@@ -430,7 +432,7 @@ func (c *Compactor) compactTenantWithRetries(ctx context.Context, logger log.Log
 		c.cfg.RetryMaxBackoff,
 		c.cfg.CompactionRetries,
 		func(ctx context.Context) error {
-			return c.compactTenant(ctx, logger, sc, tableName, tenant)
+			return c.compactTenant(ctx, sc, tableName, tenant)
 		},
 	)
 }
