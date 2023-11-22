@@ -16,9 +16,7 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	if skip {
 		return expr, nil
 	}
-	// clone the expr.
-	q := expr.String()
-	expr, err := syntax.ParseSampleExpr(q)
+	expr, err := syntax.Clone[syntax.SampleExpr](expr)
 	if err != nil {
 		return nil, err
 	}

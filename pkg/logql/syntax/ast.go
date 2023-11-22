@@ -37,15 +37,21 @@ type Expr interface {
 
 func Clone[T Expr](e T) (T, error) {
 	var empty T
-	copied, err := ParseExpr(e.String())
-	if err != nil {
-		return empty, err
-	}
-	cast, ok := copied.(T)
+	v := &cloneVisitor{}
+	e.Accept(v)
+	cast, ok := v.cloned.(T)
 	if !ok {
-		return empty, fmt.Errorf("unpexpected type of cloned expression: want %T, got %T", empty, copied)
+		return empty, fmt.Errorf("unpexpected type of cloned expression: want %T, got %T", empty, v.cloned)
 	}
 	return cast, nil
+}
+
+func MustClone[T Expr](e T) T {
+	copied, err := Clone[T](e)
+	if err != nil {
+		panic(err)
+	}
+	return copied
 }
 
 // implicit holds default implementations
