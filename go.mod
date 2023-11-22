@@ -24,7 +24,7 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cristalhq/hedgedhttp v0.7.2
+	github.com/cristalhq/hedgedhttp v0.9.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20211224144127-6eecb7beb651
@@ -45,11 +45,11 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/google/go-cmp v0.5.9
 	github.com/google/renameio/v2 v2.0.0
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20231017083947-7b512eb54d47
+	github.com/grafana/dskit v0.0.0-20231120170505-765e343eda4f
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
@@ -104,7 +104,7 @@ require (
 	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.132.0
-	google.golang.org/grpc v1.58.3
+	google.golang.org/grpc v1.59.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -135,7 +135,7 @@ require (
 	go.opentelemetry.io/collector/pdata v1.0.0-rcv0015
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
-	golang.org/x/oauth2 v0.10.0
+	golang.org/x/oauth2 v0.11.0
 	golang.org/x/text v0.13.0
 	google.golang.org/protobuf v1.31.0
 	k8s.io/apimachinery v0.28.1
@@ -316,7 +316,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230913181813-007df8e322eb // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230822172742-b8732ec3820d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230920204549-e6e6cdab5c13 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect

@@ -259,6 +259,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Path:      r.Path,
 				StartTs:   start,
 				EndTs:     end,
+				Plan:      r.Plan,
 			})
 		})
 	case *LokiSeriesRequest:
@@ -383,6 +384,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 				Path:      lokiReq.Path,
 				StartTs:   start,
 				EndTs:     end,
+				Plan:      lokiReq.Plan,
 			})
 		})
 
@@ -403,6 +405,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 			Path:      lokiReq.Path,
 			StartTs:   start,
 			EndTs:     end,
+			Plan:      lokiReq.Plan,
 		})
 	}
 

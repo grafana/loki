@@ -335,13 +335,23 @@ grpc_tls_config:
 # CLI flag: -server.register-instrumentation
 [register_instrumentation: <boolean> | default = true]
 
+# If set to true, gRPC statuses will be reported in instrumentation labels with
+# their string representations. Otherwise, they will be reported as "error".
+# CLI flag: -server.report-grpc-codes-in-instrumentation-label-enabled
+[report_grpc_codes_in_instrumentation_label_enabled: <boolean> | default = false]
+
 # Timeout for graceful shutdowns
 # CLI flag: -server.graceful-shutdown-timeout
 [graceful_shutdown_timeout: <duration> | default = 30s]
 
-# Read timeout for HTTP server
+# Read timeout for entire HTTP request, including headers and body.
 # CLI flag: -server.http-read-timeout
 [http_server_read_timeout: <duration> | default = 30s]
+
+# Read timeout for HTTP request headers. If set to 0, value of
+# -server.http-read-timeout is used.
+# CLI flag: -server.http-read-header-timeout
+[http_server_read_header_timeout: <duration> | default = 0s]
 
 # Write timeout for HTTP server
 # CLI flag: -server.http-write-timeout
@@ -350,6 +360,11 @@ grpc_tls_config:
 # Idle timeout for HTTP server
 # CLI flag: -server.http-idle-timeout
 [http_server_idle_timeout: <duration> | default = 2m]
+
+# Log closed connections that did not receive any response, most likely because
+# client didn't send any request within timeout.
+# CLI flag: -server.http-log-closed-connections-without-response-enabled
+[http_log_closed_connections_without_response_enabled: <boolean> | default = false]
 
 # Limit on the size of a gRPC message this server can receive (bytes).
 # CLI flag: -server.grpc-max-recv-msg-size-bytes
