@@ -248,7 +248,7 @@ func (t *tableCompactor) fetchOrCreateUserCompactedIndexSet(userID string) error
 			return err
 		}
 
-		compactedFile, err := openBoltdbFileWithNoSync(filepath.Join(userIndexSet.GetWorkingDir(), fmt.Sprint(time.Now().Unix())))
+		compactedFile, err := openBoltdbFileWithNoSync(filepath.Join(userIndexSet.GetWorkingDir(), fmt.Sprint(time.Now().UnixNano())))
 		if err != nil {
 			return err
 		}
@@ -272,7 +272,7 @@ func (t *tableCompactor) fetchOrCreateUserCompactedIndexSet(userID string) error
 func (t *tableCompactor) compactUserIndexes(idxSet compactor.IndexSet) (*CompactedIndex, error) {
 	indexes := idxSet.ListSourceFiles()
 	workingDir := idxSet.GetWorkingDir()
-	compactedDBName := filepath.Join(workingDir, fmt.Sprint(time.Now().Unix()))
+	compactedDBName := filepath.Join(workingDir, fmt.Sprint(time.Now().UnixNano()))
 
 	compactedFile, err := openBoltdbFileWithNoSync(compactedDBName)
 	if err != nil {
@@ -318,7 +318,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 	indexes := idxSet.ListSourceFiles()
 	compactedFileIdx := compactedFileIdx(indexes)
 	workingDir := idxSet.GetWorkingDir()
-	compactedDBName := filepath.Join(workingDir, fmt.Sprint(time.Now().Unix()))
+	compactedDBName := filepath.Join(workingDir, fmt.Sprint(time.Now().UnixNano()))
 
 	// if we find a previously compacted file, use it as a seed file to copy other index into it
 	if compactedFileIdx != -1 {

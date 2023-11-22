@@ -41,12 +41,7 @@ func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
 	return newMapperMetrics(registerer, "shard")
 }
 
-func (m ShardMapper) Parse(query string) (noop bool, bytesPerShard uint64, expr syntax.Expr, err error) {
-	parsed, err := syntax.ParseExpr(query)
-	if err != nil {
-		return false, 0, nil, err
-	}
-
+func (m ShardMapper) Parse(parsed syntax.Expr) (noop bool, bytesPerShard uint64, expr syntax.Expr, err error) {
 	recorder := m.metrics.downstreamRecorder()
 
 	mapped, bytesPerShard, err := m.Map(parsed, recorder)

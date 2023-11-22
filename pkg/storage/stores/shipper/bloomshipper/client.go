@@ -1,15 +1,19 @@
 package bloomshipper
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 
 	"github.com/prometheus/common/model"
 
@@ -75,7 +79,8 @@ type MetaClient interface {
 type Block struct {
 	BlockRef
 
-	Data io.ReadCloser
+	IndexData io.ReadCloser
+	BloomData io.ReadCloser
 }
 
 type BlockClient interface {
@@ -205,13 +210,35 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 				return fmt.Errorf("error while period lookup: %w", err)
 			}
 			objectClient := b.periodicObjectClients[period]
-			readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
+			compressedObjectReadCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
 			if err != nil {
 				return fmt.Errorf("error while fetching object from storage: %w", err)
 			}
+			defer func() {
+				compressedObjectReadCloser.Close()
+			}()
+
+			workingDirectoryPath := filepath.Join(b.storageConfig.BloomShipperConfig.WorkingDirectory, reference.BlockPath, strconv.FormatInt(time.Now().UTC().UnixMilli(), 10))
+			err = v1.UnTarGz(workingDirectoryPath, compressedObjectReadCloser)
+			if err != nil {
+				return fmt.Errorf("error while untarring: %w", err)
+			}
+
+			indexFile, err := os.Open(filepath.Join(workingDirectoryPath, v1.SeriesFileName))
+			if err != nil {
+				return fmt.Errorf("error while opening index file: %w", err)
+			}
+			indexReader := bufio.NewReader(indexFile)
+
+			bloomFile, err := os.Open(filepath.Join(workingDirectoryPath, v1.BloomFileName))
+			if err != nil {
+				return fmt.Errorf("error while opening bloom file: %w", err)
+			}
+			bloomReader := bufio.NewReader(bloomFile)
 			blocksChannel <- Block{
-				BlockRef: reference,
-				Data:     readCloser,
+				BlockRef:  reference,
+				BloomData: io.NopCloser(bloomReader),
+				IndexData: io.NopCloser(indexReader),
 			}
 			return nil
 		})
@@ -225,7 +252,25 @@ func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (cha
 	return blocksChannel, errChannel
 }
 
-// TODO zip (archive) blocks before uploading to storage
+func readCloserToBuffer(rc io.ReadCloser) *bytes.Buffer {
+	defer rc.Close()
+
+	// Read the data from io.ReadCloser
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil
+	}
+
+	// Write the data into a bytes.Buffer
+	var buf bytes.Buffer
+	_, err = buf.Write(data)
+	if err != nil {
+		return nil
+	}
+
+	return &buf
+}
+
 func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
 	results := make([]Block, len(blocks))
 	//todo move concurrency to the config
@@ -233,7 +278,11 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		block := blocks[idx]
 		defer func(Data io.ReadCloser) {
 			_ = Data.Close()
-		}(block.Data)
+		}(block.BloomData)
+
+		defer func(Data io.ReadCloser) {
+			_ = Data.Close()
+		}(block.IndexData)
 
 		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
 		if err != nil {
@@ -241,11 +290,19 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
-		data, err := io.ReadAll(block.Data)
+		byteReader := v1.NewByteReader(readCloserToBuffer(block.IndexData), readCloserToBuffer(block.BloomData))
+
+		// TODO: Right now, this is asymetrical with the GetBlocks path. We have all the pieces
+		// in memory now, so it doesn't necessarily make sense to write the files to disk. That may change
+		// as we finalize on an archive format, and we may want to just house the downloaded files in memory instead.
+		// Create a buffer to write data
+		buf := new(bytes.Buffer)
+		err = v1.TarGzMemory(buf, byteReader)
 		if err != nil {
-			return fmt.Errorf("error while reading object data: %w", err)
+			return fmt.Errorf("error while tarring object data: %w", err)
 		}
-		err = objectClient.PutObject(ctx, key, bytes.NewReader(data))
+
+		err = objectClient.PutObject(ctx, key, bytes.NewReader(buf.Bytes()))
 		if err != nil {
 			return fmt.Errorf("error updloading block file: %w", err)
 		}
