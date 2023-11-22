@@ -16,6 +16,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.36.3
 
 - [CHANGE] Updated MinIO Helm Chart version to 4.0.15
+## 5.37.0
+
+- [FEATURE] Add support for enabling tracing.
 
 ## 5.36.2
 
