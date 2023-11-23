@@ -1,7 +1,6 @@
 ## Main
 
 - [11094](https://github.com/grafana/loki/pull/11094) **periklis**: Add support for blocking queries per tenant
-
 - [11091](https://github.com/grafana/loki/pull/11091) **periklis**: Add automatic stream sharding support
 - [11022](https://github.com/grafana/loki/pull/11022) **JoaoBraveCoding**: Remove outdated BoltDB dashboards 
 - [10932](https://github.com/grafana/loki/pull/10932) **JoaoBraveCoding**: Adds new value v13 to schema
