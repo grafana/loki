@@ -318,6 +318,9 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			// wait for all parts of the full response
 			if len(responses) == requestCount {
 				for _, o := range responses {
+					if res.Removals.Len() == 0 {
+						continue
+					}
 					// we must not remove items from req.Refs as long as the worker may iterater over them
 					g.removeNotMatchingChunks(req, o)
 				}
