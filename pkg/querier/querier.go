@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	querier_limits "github.com/grafana/loki/pkg/querier/limits"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/pkg/util"
