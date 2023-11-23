@@ -8,6 +8,9 @@ import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
 
 service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {}

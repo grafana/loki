@@ -814,6 +814,9 @@ func Test_DedupeIngester(t *testing.T) {
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
 				Direction: logproto.BACKWARD,
+				Plan:      &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} | label_format bar=""`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
