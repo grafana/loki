@@ -32,6 +32,7 @@ func TestTailHandler(t *testing.T) {
 	api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
 	req, err := http.NewRequest("GET", `/`, nil)
+	require.NoError(t, err)
 	q := req.URL.Query()
 	q.Add("query", `{app="loki"}`)
 	req.URL.RawQuery = q.Encode()
