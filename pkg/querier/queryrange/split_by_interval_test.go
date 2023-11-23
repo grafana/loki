@@ -59,25 +59,31 @@ var testSchemasTSDB = func() []config.PeriodConfig {
 func Test_splitQuery(t *testing.T) {
 	buildLokiRequest := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
-			Query:     "foo",
+			Query:     `{app="foo"}`,
 			Limit:     1,
 			Step:      2,
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
 			Path:      "/path",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{app="foo"}`),
+			},
 		}
 	}
 
 	buildLokiRequestWithInterval := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
-			Query:     "foo",
+			Query:     `{app="foo"}`,
 			Limit:     1,
 			Interval:  2,
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
 			Path:      "/path",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{app="foo"}`),
+			},
 		}
 	}
 

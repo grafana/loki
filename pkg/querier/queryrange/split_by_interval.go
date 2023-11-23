@@ -259,6 +259,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Path:      r.Path,
 				StartTs:   start,
 				EndTs:     end,
+				Plan:      r.Plan,
 			})
 		})
 	case *LokiSeriesRequest:

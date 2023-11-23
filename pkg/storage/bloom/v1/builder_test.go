@@ -87,12 +87,16 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
+			schema := Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 10,
+				nGramSkip:   2,
+			}
+
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					schema: Schema{
-						version:  DefaultSchemaVersion,
-						encoding: chunkenc.EncSnappy,
-					},
+					schema:         schema,
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 				},
@@ -105,6 +109,10 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 			require.Nil(t, err)
 			block := NewBlock(tc.reader)
 			querier := NewBlockQuerier(block)
+
+			err = block.LoadHeaders()
+			require.Nil(t, err)
+			require.Equal(t, block.blooms.schema, schema)
 
 			for i := 0; i < len(data); i++ {
 				require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
