@@ -2691,6 +2691,9 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if streamsIn, ok := data.([][]logproto.Stream); ok {
 		if paramsIn, ok2 := params.([]SelectLogParams); ok2 {
 			for i, p := range paramsIn {
+				p.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(p.Selector),
+				}
 				streams[paramsID(p)] = streamsIn[i]
 			}
 		}
@@ -2700,6 +2703,9 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if seriesIn, ok := data.([][]logproto.Series); ok {
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
+				p.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(p.Selector),
+				}
 				series[paramsID(p)] = seriesIn[i]
 			}
 		}
