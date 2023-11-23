@@ -14,9 +14,13 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 
-## 5.37.1
+## 5.38.1
 
 - [FEATURE] Add support to disable specific alert rules
+
+## 5.38.0
+
+- [CHANGE] Changed MinIO Helm Chart version to 4.0.15
 
 ## 5.37.0
 

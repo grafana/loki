@@ -85,6 +85,7 @@ type Compactor struct {
 	sharding ShardingStrategy
 
 	metrics *metrics
+	reg     prometheus.Registerer
 }
 
 type storeClient struct {
@@ -110,6 +111,7 @@ func New(
 		schemaCfg: schemaConfig,
 		sharding:  sharding,
 		limits:    limits,
+		reg:       r,
 	}
 
 	// Configure BloomClient for meta.json management
@@ -121,14 +123,8 @@ func New(
 	c.storeClients = make(map[config.DayTime]storeClient)
 
 	for i, periodicConfig := range schemaConfig.Configs {
-		var indexStorageCfg indexshipper.Config
-		switch periodicConfig.IndexType {
-		case config.TSDBType:
-			indexStorageCfg = storageCfg.TSDBShipperConfig
-		case config.BoltDBShipperType:
-			indexStorageCfg = storageCfg.BoltDBShipperConfig.Config
-		default:
-			level.Warn(c.logger).Log("msg", "skipping period because index type is unsupported")
+		if periodicConfig.IndexType != config.TSDBType {
+			level.Warn(c.logger).Log("msg", "skipping schema period because index type is not supported", "index_type", periodicConfig.IndexType, "period", periodicConfig.From)
 			continue
 		}
 
@@ -145,7 +141,7 @@ func New(
 
 		indexShipper, err := indexshipper.NewIndexShipper(
 			periodicConfig.IndexTables.PathPrefix,
-			indexStorageCfg,
+			storageCfg.TSDBShipperConfig,
 			objectClient,
 			limits,
 			nil,
@@ -153,7 +149,7 @@ func New(
 				return tsdb.OpenShippableTSDB(p)
 			},
 			periodicConfig.GetIndexTableNumberRange(periodEndTime),
-			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
+			prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r),
 			logger,
 		)
 
@@ -355,7 +351,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	}
 
 	// Tokenizer is not thread-safe so we need one per goroutine.
-	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := v1.NewBloomTokenizer(c.reg)
 
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
