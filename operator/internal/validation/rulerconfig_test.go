@@ -182,7 +182,7 @@ func TestRulerConfigValidationWebhook_ValidateCreate(t *testing.T) {
 			}
 
 			v := &validation.RulerConfigValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -207,7 +207,7 @@ func TestRulerConfigValidationWebhook_ValidateUpdate(t *testing.T) {
 			}
 
 			v := &validation.RulerConfigValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.RulerConfig{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.RulerConfig{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

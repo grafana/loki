@@ -81,10 +81,10 @@ func NewRangeMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
 // be executed by the downstream engine.
 // It returns a boolean indicating whether a rewrite was possible, the
 // rewritten sample expression, and an error in case the rewrite failed.
-func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
-	origExpr, err := syntax.ParseSampleExpr(query)
-	if err != nil {
-		return true, nil, err
+func (m RangeMapper) Parse(expr syntax.Expr) (bool, syntax.Expr, error) {
+	origExpr, ok := expr.(syntax.SampleExpr)
+	if !ok {
+		return true, nil, errors.New("only sample expression supported")
 	}
 
 	recorder := m.metrics.downstreamRecorder()
