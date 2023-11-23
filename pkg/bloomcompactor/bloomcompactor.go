@@ -61,8 +61,10 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+// TODO: Make a constants file somewhere
 const (
-	bloomFileName = "bloom"
+	bloomFileName  = "bloom"
+	seriesFileName = "series"
 )
 
 type Compactor struct {
@@ -82,6 +84,7 @@ type Compactor struct {
 	sharding ShardingStrategy
 
 	metrics *metrics
+	reg     prometheus.Registerer
 }
 
 type storeClient struct {
@@ -107,6 +110,7 @@ func New(
 		schemaCfg: schemaConfig,
 		sharding:  sharding,
 		limits:    limits,
+		reg:       r,
 	}
 
 	// Configure BloomClient for meta.json management
@@ -118,14 +122,8 @@ func New(
 	c.storeClients = make(map[config.DayTime]storeClient)
 
 	for i, periodicConfig := range schemaConfig.Configs {
-		var indexStorageCfg indexshipper.Config
-		switch periodicConfig.IndexType {
-		case config.TSDBType:
-			indexStorageCfg = storageCfg.TSDBShipperConfig
-		case config.BoltDBShipperType:
-			indexStorageCfg = storageCfg.BoltDBShipperConfig.Config
-		default:
-			level.Warn(c.logger).Log("msg", "skipping period because index type is unsupported")
+		if periodicConfig.IndexType != config.TSDBType {
+			level.Warn(c.logger).Log("msg", "skipping schema period because index type is not supported", "index_type", periodicConfig.IndexType, "period", periodicConfig.From)
 			continue
 		}
 
@@ -142,7 +140,7 @@ func New(
 
 		indexShipper, err := indexshipper.NewIndexShipper(
 			periodicConfig.IndexTables.PathPrefix,
-			indexStorageCfg,
+			storageCfg.TSDBShipperConfig,
 			objectClient,
 			limits,
 			nil,
@@ -150,7 +148,7 @@ func New(
 				return tsdb.OpenShippableTSDB(p)
 			},
 			periodicConfig.GetIndexTableNumberRange(periodEndTime),
-			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
+			prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r),
 			logger,
 		)
 
@@ -354,7 +352,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	// Tokenizer is not thread-safe so we need one per goroutine.
 	NGramLength := c.limits.BloomNGramLength(tenant)
 	NGramSkip := c.limits.BloomNGramSkip(tenant)
-	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer, NGramLength, NGramSkip)
+	bt, _ := v1.NewBloomTokenizer(c.reg, NGramLength, NGramSkip)
 
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
@@ -493,6 +491,11 @@ func buildBloomBlock(
 		level.Error(logger).Log("reading bloomBlock", err)
 	}
 
+	indexFile, err := os.Open(filepath.Join(localDst, seriesFileName))
+	if err != nil {
+		level.Error(logger).Log("reading bloomBlock", err)
+	}
+
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
@@ -506,7 +509,8 @@ func buildBloomBlock(
 			},
 			IndexPath: job.IndexPath(),
 		},
-		Data: blockFile,
+		BloomData: blockFile,
+		IndexData: indexFile,
 	}
 
 	return blocks, nil
