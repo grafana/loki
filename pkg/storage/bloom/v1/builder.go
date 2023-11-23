@@ -62,25 +62,26 @@ type SeriesWithBloom struct {
 	Bloom  *Bloom
 }
 
-func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) error {
+func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
 	for itr.Next() {
 		if err := b.AddSeries(itr.At()); err != nil {
-			return err
+			return 0, err
 		}
 
 	}
 
 	if err := itr.Err(); err != nil {
-		return errors.Wrap(err, "iterating series with blooms")
+		return 0, errors.Wrap(err, "iterating series with blooms")
 	}
 
-	if err := b.blooms.Close(); err != nil {
-		return errors.Wrap(err, "closing bloom file")
+	checksum, err := b.blooms.Close()
+	if err != nil {
+		return 0, errors.Wrap(err, "closing bloom file")
 	}
 	if err := b.index.Close(); err != nil {
-		return errors.Wrap(err, "closing series file")
+		return 0, errors.Wrap(err, "closing series file")
 	}
-	return nil
+	return checksum, nil
 }
 
 func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
@@ -154,10 +155,10 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 	}, nil
 }
 
-func (b *BloomBlockBuilder) Close() error {
+func (b *BloomBlockBuilder) Close() (uint32, error) {
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
-			return errors.Wrap(err, "flushing final bloom page")
+			return 0, errors.Wrap(err, "flushing final bloom page")
 		}
 	}
 
@@ -177,9 +178,9 @@ func (b *BloomBlockBuilder) Close() error {
 	b.scratch.PutHash(crc32Hash)
 	_, err := b.writer.Write(b.scratch.Get())
 	if err != nil {
-		return errors.Wrap(err, "writing bloom page headers")
+		return 0, errors.Wrap(err, "writing bloom page headers")
 	}
-	return errors.Wrap(b.writer.Close(), "closing bloom writer")
+	return crc32Hash.Sum32(), errors.Wrap(b.writer.Close(), "closing bloom writer")
 }
 
 func (b *BloomBlockBuilder) flushPage() error {
@@ -473,14 +474,18 @@ func SortBlocksIntoOverlappingGroups(xs []*Block) (groups [][]*Block) {
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks []*Block
+	blocks []PeekingIterator[*SeriesWithBloom]
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
 	populate func(*Series, *Bloom) error
 }
 
-func NewMergeBuilder(blocks []*Block, store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
+// NewMergeBuilder is a specific builder which does the following:
+//  1. merges multiple blocks into a single ordered querier,
+//     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
+//  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
+func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
@@ -492,16 +497,11 @@ func NewMergeBuilder(blocks []*Block, store Iterator[*Series], populate func(*Se
 // but this gives us a good starting point.
 func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 	var (
-		xs           = make([]PeekingIterator[*SeriesWithBloom], 0, len(mb.blocks))
 		nextInBlocks *SeriesWithBloom
 	)
 
-	for _, block := range mb.blocks {
-		xs = append(xs, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(block)))
-	}
-
 	// Turn the list of blocks into a single iterator that returns the next series
-	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewMergeBlockQuerier(xs...))
+	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(mb.blocks...))
 	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
 	// preferring the one with the most chunks already indexed since we'll have
 	// to add fewer chunks to the bloom
@@ -509,6 +509,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 		func(a, b *SeriesWithBloom) bool {
 			return a.Series.Fingerprint == b.Series.Fingerprint
 		},
+		id[*SeriesWithBloom],
 		func(a, b *SeriesWithBloom) *SeriesWithBloom {
 			if len(a.Series.Chunks) > len(b.Series.Chunks) {
 				return a
@@ -566,6 +567,14 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 		if err := builder.AddSeries(*cur); err != nil {
 			return errors.Wrap(err, "adding series to block")
 		}
+	}
+
+	_, err := builder.blooms.Close()
+	if err != nil {
+		return errors.Wrap(err, "closing bloom file")
+	}
+	if err := builder.index.Close(); err != nil {
+		return errors.Wrap(err, "closing series file")
 	}
 	return nil
 }

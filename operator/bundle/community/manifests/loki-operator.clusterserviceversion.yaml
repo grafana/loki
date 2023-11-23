@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.5.0
-    createdAt: "2023-11-02T18:38:24Z"
+    createdAt: "2023-11-23T11:25:30Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -336,6 +336,12 @@ spec:
         path: limits.global.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamDesiredRate defines the desired ingestion rate per second
+          that LokiStack should target applying automatic stream sharding. Units MB.
+        displayName: Per Stream Desired Rate (in MB)
+        path: limits.global.ingestion.perStreamDesiredRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: PerStreamRateLimit defines the maximum byte rate per second per
           stream. Units MB.
         displayName: Maximum byte rate per second per stream (in MB)
@@ -418,6 +424,12 @@ spec:
           Units in Bytes.
         displayName: Max Line Size
         path: limits.tenants.ingestion.maxLineSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamDesiredRate defines the desired ingestion rate per second
+          that LokiStack should target applying automatic stream sharding. Units MB.
+        displayName: Per Stream Desired Rate (in MB)
+        path: limits.tenants.ingestion.perStreamDesiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: PerStreamRateLimit defines the maximum byte rate per second per
@@ -565,6 +577,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:v11
         - urn:alm:descriptor:com.tectonic.ui:select:v12
+        - urn:alm:descriptor:com.tectonic.ui:select:v13
       - description: Name of a secret in the namespace configured for object storage
           secrets.
         displayName: Object Storage Secret Name
@@ -1703,7 +1716,7 @@ spec:
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --v=0
-                image: quay.io/openshift/origin-kube-rbac-proxy:latest
+                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443

@@ -185,7 +185,12 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	mapper := logql.NewShardMapper(resolver, ast.metrics)
 
-	noop, bytesPerShard, parsed, err := mapper.Parse(r.GetQuery())
+	params, err := ParamsFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
+
+	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
@@ -203,11 +208,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	params, err := ParamsFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
-
 	var path string
 	switch r := r.(type) {
 	case *LokiRequest:
@@ -217,7 +217,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	default:
 		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 	}
-	query := ast.ng.Query(ctx, params, parsed)
+	query := ast.ng.Query(ctx, logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: parsed})
 
 	res, err := query.Exec(ctx)
 	if err != nil {
@@ -333,9 +333,9 @@ func (confs ShardingConfigs) ValidRange(start, end int64) (config.PeriodConfig, 
 		} else if end < int64(confs[i+1].From.Time) {
 			// The request is entirely scoped into this shard config
 			return conf, nil
-		} else {
-			continue
 		}
+
+		continue
 	}
 
 	return config.PeriodConfig{}, errInvalidShardingRange

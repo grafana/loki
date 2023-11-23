@@ -56,4 +56,10 @@ type Response interface {
 	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
 	GetHeaders() []*PrometheusResponseHeader
+
+	// WithHeaders return the response with all headers overridden.
+	WithHeaders([]PrometheusResponseHeader) Response
+
+	// SetHeader sets one header key-value pair. If the key already exists its value is overridden.
+	SetHeader(string, string)
 }

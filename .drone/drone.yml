@@ -1,23 +1,30 @@
 ---
 kind: pipeline
-name: loki-build-image
+name: loki-build-image-amd64
+platform:
+  arch: amd64
+  os: linux
 steps:
-- image: plugins/docker
-  name: test-image
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: test
   settings:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.31.1
+    - 0.32.0-amd64
   when:
     event:
     - pull_request
     paths:
     - loki-build-image/**
-- image: plugins/docker
-  name: push-image
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: push
   settings:
     context: loki-build-image
     dockerfile: loki-build-image/Dockerfile
@@ -26,7 +33,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.31.1
+    - 0.32.0-amd64
     username:
       from_secret: docker_username
   when:
@@ -44,6 +51,88 @@ trigger:
 workspace:
   base: /src
   path: loki
+---
+kind: pipeline
+name: loki-build-image-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: test
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: true
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.0-arm64
+  when:
+    event:
+    - pull_request
+    paths:
+    - loki-build-image/**
+- environment:
+    DOCKER_BUILDKIT: 1
+  image: plugins/docker
+  name: push
+  settings:
+    context: loki-build-image
+    dockerfile: loki-build-image/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-build-image
+    tags:
+    - 0.32.0-arm64
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+workspace:
+  base: /src
+  path: loki
+---
+depends_on:
+- loki-build-image-amd64
+- loki-build-image-arm64
+kind: pipeline
+name: loki-build-image-publish
+steps:
+- image: plugins/manifest:1.4.0
+  name: manifest
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest-build-image.tmpl
+    target: loki-build-image:0.32.0
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+    paths:
+    - loki-build-image/**
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
 ---
 kind: pipeline
 name: helm-test-image
@@ -93,14 +182,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: check-generated-files
 - commands:
   - cd ..
@@ -110,7 +199,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: clone-target-branch
   when:
     event:
@@ -121,14 +210,14 @@ steps:
   - clone-target-branch
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: test
 - commands:
   - cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test
   depends_on:
   - clone-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: test-target-branch
   when:
     event:
@@ -141,7 +230,7 @@ steps:
   - test
   - test-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: compare-coverage
   when:
     event:
@@ -159,7 +248,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: report-coverage
   when:
     event:
@@ -169,7 +258,7 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -177,7 +266,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -188,21 +277,21 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false check-doc
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: check-doc
 - commands:
   - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: check-format
   when:
     event:
@@ -212,14 +301,14 @@ steps:
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: check-example-config-doc
 - commands:
   - mkdir -p /hugo/content/docs/loki/latest
@@ -252,7 +341,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: loki-mixin-check
   when:
     event:
@@ -277,7 +366,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1577,11 +1666,11 @@ platform:
 steps:
 - commands:
   - Write-Output $env:DRONE_RUNNER_NAME
-  image: golang:1.19-windowsservercore-1809
+  image: golang:1.21.3-windowsservercore-1809
   name: identify-runner
 - commands:
   - go test .\clients\pkg\promtail\targets\windows\... -v
-  image: golang:1.19-windowsservercore-1809
+  image: golang:1.21.3-windowsservercore-1809
   name: test
 trigger:
   ref:
@@ -1683,7 +1772,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1691,7 +1780,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1717,7 +1806,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: publish
   when:
     event:
@@ -1752,7 +1841,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.30.1
+  image: grafana/loki-build-image:0.31.2
   name: build and push
   privileged: true
   volumes:
@@ -2017,6 +2106,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 7c5fb8417ab5efd5a15164aa57eef618e3cf79d2578078ce29c888b3eb01e7ff
+hmac: 8ae9cff1a379503d0b568f727d9c12bcb486a5e8d1fc3271deea32f07939baf1
 
 ...

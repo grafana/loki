@@ -98,7 +98,6 @@ func TestDistributor(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
@@ -494,7 +493,6 @@ func TestDistributorPushErrors(t *testing.T) {
 func Test_SortLabelsOnPush(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.EnforceMetricName = false
 	ingester := &mockIngester{}
 	distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
@@ -510,7 +508,6 @@ func Test_TruncateLogLines(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 
-		limits.EnforceMetricName = false
 		limits.MaxLineSize = 5
 		limits.MaxLineSizeTruncate = true
 		return limits, &mockIngester{}
@@ -778,7 +775,6 @@ func BenchmarkShardStream(b *testing.B) {
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.EnforceMetricName = false
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
@@ -799,7 +795,6 @@ func Benchmark_Push(b *testing.B) {
 	limits.IngestionBurstSizeMB = math.MaxInt32
 	limits.CardinalityLimit = math.MaxInt32
 	limits.IngestionRateMB = math.MaxInt32
-	limits.EnforceMetricName = false
 	limits.MaxLineSize = math.MaxInt32
 	limits.RejectOldSamples = true
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
@@ -972,7 +967,6 @@ func TestShardCountFor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
@@ -1064,7 +1058,6 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.IngestionRateStrategy = testData.ingestionRateStrategy
 			limits.IngestionRateMB = testData.ingestionRateMB
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
@@ -1160,7 +1153,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki)
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
