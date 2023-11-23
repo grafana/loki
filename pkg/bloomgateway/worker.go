@@ -181,7 +181,7 @@ func (w *worker) running(ctx context.Context) error {
 				}
 
 				boundedRefs := partitionFingerprintRange(tasks, blockRefs)
-				blockRefs = blockRefs[0:]
+				blockRefs = blockRefs[:0]
 				for _, b := range boundedRefs {
 					blockRefs = append(blockRefs, b.blockRef)
 				}
