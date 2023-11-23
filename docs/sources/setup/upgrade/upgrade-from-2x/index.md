@@ -49,7 +49,7 @@ You will need to manually delete the existing stateful set for the above command
 
 #### Notable changes
 
-The `grafana/loki` used `Secret` as storage for configuration, you can set `.loki.existingSecretForConfig` to continue using secret or migrate your configuration to `ConfigMap`. Specifying the loki config in `values.yaml` is still available. In the old chart it was under `.config`, the new chart allows specifying either `.loki.config` or `.loki.structuredConfig` which takes precedence over the former alternative.
+The `grafana/loki` chart used `Secret` as storage for configuration.  You can set `.loki.existingSecretForConfig` to continue using `Secret` or migrate your configuration to a `ConfigMap`. Specifying the Loki config in `values.yaml` is still available. In the old chart it was under `.config`, the new chart allows specifying either `.loki.config` or `.loki.structuredConfig` which takes precedence.
 
 Similarly when using `extraVolumes`, the configuration is now nested under `.singleBinary.extraVolumes` or `.read.extraVolumes` + `.write.extraVolumes` if you decide to migrate to loki scalable mode.
 
