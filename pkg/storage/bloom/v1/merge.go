@@ -76,15 +76,15 @@ func (mbq *HeapIterator[T]) pop() (T, bool) {
 			return mbq.zero, false
 		}
 
-		curr := mbq.itrs[0]
-		if ok := curr.Next(); !ok {
+		cur := mbq.itrs[0]
+		if ok := cur.Next(); !ok {
 			mbq.remove(0)
 			continue
 		}
 
-		result := curr.At()
+		result := cur.At()
 
-		_, ok := curr.Peek()
+		_, ok := cur.Peek()
 		if !ok {
 			// that was the end of the iterator. remove it from the heap
 			mbq.remove(0)
