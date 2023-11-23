@@ -99,8 +99,6 @@ func (w *worker) starting(_ context.Context) error {
 func (w *worker) running(ctx context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
-	requests := make([]v1.Request, 0, 128)
-
 	for {
 		select {
 
@@ -203,18 +201,7 @@ func (w *worker) running(ctx context.Context) error {
 
 				for i, blockQuerier := range blockQueriers {
 					it := newTaskMergeIterator(day, boundedRefs[i].tasks...)
-					requests = requests[:0]
-					for it.Next() {
-						requests = append(requests, it.At().Request)
-					}
-					level.Debug(logger).Log("msg", "processing block", "block", i+1, "of", len(blockQueriers), "requests", len(requests))
-					// no fingerprints in the fingerprint range of the current block
-					if len(requests) == 0 {
-						continue
-					}
-					fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{
-						v1.NewPeekingIter[v1.Request](v1.NewSliceIter[v1.Request](requests)),
-					})
+					fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
 					err := fq.Run()
 					if err != nil {
 						for _, t := range tasks {

@@ -170,14 +170,14 @@ type taskMergeIterator struct {
 	err   error
 }
 
-func newTaskMergeIterator(day time.Time, tasks ...Task) *taskMergeIterator {
+func newTaskMergeIterator(day time.Time, tasks ...Task) v1.PeekingIterator[v1.Request] {
 	it := &taskMergeIterator{
 		tasks: tasks,
 		curr:  FilterRequest{},
 		day:   day,
 	}
 	it.init()
-	return it
+	return v1.NewPeekingIter[v1.Request](it)
 }
 
 func (it *taskMergeIterator) init() {
@@ -193,10 +193,6 @@ func (it *taskMergeIterator) init() {
 		sequences...,
 	)
 	it.err = nil
-}
-
-func (it *taskMergeIterator) Reset() {
-	it.init()
 }
 
 func (it *taskMergeIterator) Next() bool {
@@ -216,8 +212,8 @@ func (it *taskMergeIterator) Next() bool {
 	return true
 }
 
-func (it *taskMergeIterator) At() FilterRequest {
-	return it.curr
+func (it *taskMergeIterator) At() v1.Request {
+	return it.curr.Request
 }
 
 func (it *taskMergeIterator) Err() error {
