@@ -2978,6 +2978,18 @@ shard_streams:
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
 
+# Length of the n-grams created when computing blooms from log lines.
+# CLI flag: -bloom-compactor.ngram-length
+[bloom_ngram_length: <int> | default = 4]
+
+# Skip factor for the n-grams created when computing blooms from log lines.
+# CLI flag: -bloom-compactor.ngram-skip
+[bloom_ngram_skip: <int> | default = 0]
+
+# Scalable Bloom Filter desired false-positive rate.
+# CLI flag: -bloom-compactor.false-positive-rate
+[bloom_false_positive_rate: <float> | default = 0.01]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
