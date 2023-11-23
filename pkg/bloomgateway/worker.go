@@ -121,6 +121,7 @@ func (w *worker) running(ctx context.Context) error {
 			idx = newIdx
 
 			if len(items) == 0 {
+				w.queue.ReleaseRequests(items)
 				continue
 			}
 			w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
@@ -131,6 +132,7 @@ func (w *worker) running(ctx context.Context) error {
 				task, ok := item.(Task)
 				if !ok {
 					// This really should never happen, because only the bloom gateway itself can enqueue tasks.
+					w.queue.ReleaseRequests(items)
 					return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 				}
 				level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
@@ -211,6 +213,9 @@ func (w *worker) running(ctx context.Context) error {
 					}
 				}
 			}
+
+			// return dequeued items back to the pool
+			w.queue.ReleaseRequests(items)
 
 		}
 	}

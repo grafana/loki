@@ -127,6 +127,16 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 	}
 }
 
+// ReleaseRequests returns items back to the slice pool.
+// Must only be called in combination with DequeueMany().
+func (q *RequestQueue) ReleaseRequests(items []Request) {
+	q.pool.Put(items)
+}
+
+// DequeueMany consumes multiple items for a single tenant from the queue.
+// It returns maxItems and waits maxWait if no requests for this tenant are enqueued.
+// The caller is responsible for returning the dequeued requests back to the
+// pool by calling ReleaseRequests(items).
 func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consumerID string, maxItems int, maxWait time.Duration) ([]Request, QueueIndex, error) {
 	// create a context for dequeuing with a max time we want to wait to fullfill the desired maxItems
 
@@ -136,10 +146,6 @@ func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consume
 	var idx QueueIndex
 
 	items := q.pool.Get(maxItems)
-	defer func() {
-		q.pool.Put(items)
-	}()
-
 	for {
 		item, newIdx, err := q.Dequeue(dequeueCtx, last, consumerID)
 		if err != nil {
