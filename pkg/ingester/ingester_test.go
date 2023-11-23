@@ -35,6 +35,8 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
@@ -870,6 +872,9 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m])) by (bar)`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m])) by (bar)`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -905,6 +910,9 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m]))`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -1016,6 +1024,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `rate({foo="bar"} | json [1m])`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`rate({foo="bar"} | json [1m])`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -1041,6 +1052,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))

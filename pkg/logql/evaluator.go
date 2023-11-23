@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -210,6 +211,9 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 			Direction: q.Direction(),
 			Selector:  expr.String(),
 			Shards:    q.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
 		},
 	}
 
@@ -238,6 +242,9 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						End:      q.End().Add(-rangExpr.Left.Offset),
 						Selector: e.String(), // intentionally send the vector for reducing labels.
 						Shards:   q.Shards(),
+						Plan: &plan.QueryPlan{
+							AST: expr,
+						},
 					},
 				})
 				if err != nil {
@@ -254,6 +261,9 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				End:      q.End().Add(-e.Left.Offset),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
 			},
 		})
 		if err != nil {

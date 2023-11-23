@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/plan"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -596,6 +597,9 @@ func Test_Iterator(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{job="3"} | logfmt`),
+				},
 			},
 		},
 	)
@@ -648,6 +652,9 @@ func Test_ChunkFilter(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{job="3"}`),
+				},
 			},
 		},
 	)
@@ -729,6 +736,9 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 						Start:    0,
 						End:      10 * 1e6,
 					},
+				},
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`count_over_time({job="3"}[5m])`),
 				},
 			},
 		},
