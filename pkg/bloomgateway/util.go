@@ -143,11 +143,11 @@ func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (re
 		for _, task := range tasks {
 			refs := task.Request.Refs
 			min := sort.Search(len(refs), func(i int) bool {
-				return block.Cmp(refs[i].Fingerprint) > bloomshipper.Before
+				return block.Cmp(refs[i].Fingerprint) > v1.Before
 			})
 
 			max := sort.Search(len(refs), func(i int) bool {
-				return block.Cmp(refs[i].Fingerprint) == bloomshipper.After
+				return block.Cmp(refs[i].Fingerprint) == v1.After
 			})
 
 			// All fingerprints fall outside of the consumer's range

@@ -28,14 +28,6 @@ const (
 	fileNamePartDelimiter = "-"
 )
 
-type BoundsCheck uint8
-
-const (
-	Before BoundsCheck = iota
-	Overlap
-	After
-)
-
 type Ref struct {
 	TenantID                       string
 	TableName                      string
@@ -45,13 +37,13 @@ type Ref struct {
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
-func (b Ref) Cmp(fp uint64) BoundsCheck {
+func (b Ref) Cmp(fp uint64) v1.BoundsCheck {
 	if fp < b.MinFingerprint {
-		return Before
+		return v1.Before
 	} else if fp > b.MaxFingerprint {
-		return After
+		return v1.After
 	}
-	return Overlap
+	return v1.Overlap
 }
 
 type BlockRef struct {
