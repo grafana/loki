@@ -150,7 +150,7 @@ message Series {
 }
 
 message TailRequest {
-  string query = 1 [deprecated=true];
+  string query = 1 [deprecated = true];
   reserved 2;
   uint32 delayFor = 3;
   uint32 limit = 4;
