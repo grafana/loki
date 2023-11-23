@@ -204,7 +204,8 @@ func (s *Shipper) createBlockQuerier(directory string) *v1.BlockQuerier {
 }
 
 func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
-	defer block.Data.Close()
+	defer block.BloomData.Close()
+	defer block.IndexData.Close()
 	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
 
 	archiveFile, err := os.Create(archivePath)
@@ -212,7 +213,7 @@ func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, err
 		return "", fmt.Errorf("error creating empty file to store the archiver: %w", err)
 	}
 	defer archiveFile.Close()
-	_, err = io.Copy(archiveFile, block.Data)
+	_, err = io.Copy(archiveFile, block.BloomData)
 	if err != nil {
 		return "", fmt.Errorf("error writing data to archive file: %w", err)
 	}

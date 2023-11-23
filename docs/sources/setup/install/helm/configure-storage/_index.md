@@ -46,7 +46,7 @@ This guide assumes Loki will be installed in one of the modes above and that a `
    ```
    serviceAccount:
      annotations:
-       "eks.amazonaws.com/role-arn": "arn:aws:iam::<account id>:role/<role name>:
+       "eks.amazonaws.com/role-arn": "arn:aws:iam::<account id>:role/<role name>"
    ```
 
 3. Configure the storage:
