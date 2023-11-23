@@ -245,8 +245,9 @@ func Test_Shipper_extractBlock(t *testing.T) {
 	shipper := Shipper{config: config.Config{WorkingDirectory: workingDir}}
 	ts := time.Now().UTC()
 	block := Block{
-		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
-		Data:     blockFile,
+		BlockRef:  BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
+		BloomData: blockFile,
+		IndexData: seriesFile,
 	}
 
 	actualPath, err := shipper.extractBlock(&block, ts)

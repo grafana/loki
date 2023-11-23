@@ -2,7 +2,6 @@ package logql
 
 import (
 	"context"
-	"hash/fnv"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -98,7 +98,7 @@ func RecordRangeAndInstantQueryMetrics(
 		latencyType   = latencyTypeFast
 		returnedLines = 0
 	)
-	queryType, err := QueryType(p.Query())
+	queryType, err := QueryType(p.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
@@ -119,8 +119,8 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
-		"query", p.Query(),
-		"query_hash", HashedQuery(p.Query()),
+		"query", p.QueryString(),
+		"query_hash", util.HashedQuery(p.QueryString()),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
@@ -187,12 +187,6 @@ func RecordRangeAndInstantQueryMetrics(
 	recordUsageStats(queryType, stats)
 }
 
-func HashedQuery(query string) uint32 {
-	h := fnv.New32()
-	_, _ = h.Write([]byte(query))
-	return h.Sum32()
-}
-
 func RecordLabelQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
@@ -225,7 +219,7 @@ func RecordLabelQueryMetrics(
 		"status", status,
 		"label", label,
 		"query", query,
-		"query_hash", HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
@@ -276,7 +270,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"match", PrintMatches(match),
-		"query_hash", HashedQuery(PrintMatches(match)),
+		"query_hash", util.HashedQuery(PrintMatches(match)),
 		"total_entries", stats.Summary.TotalEntriesReturned)
 
 	if shard != nil {
@@ -316,7 +310,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"query", query,
-		"query_hash", HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
 
 	level.Info(logger).Log(logValues...)
@@ -346,7 +340,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"latency", latencyType,
 		"query_type", queryType,
 		"query", query,
-		"query_hash", HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
@@ -379,11 +373,7 @@ func recordUsageStats(queryType string, stats logql_stats.Result) {
 	}
 }
 
-func QueryType(query string) (string, error) {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return "", err
-	}
+func QueryType(expr syntax.Expr) (string, error) {
 	switch e := expr.(type) {
 	case syntax.SampleExpr:
 		return QueryTypeMetric, nil

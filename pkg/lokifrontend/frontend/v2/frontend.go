@@ -14,11 +14,9 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,11 +27,17 @@ import (
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
+)
+
+const (
+	EncodingJSON     = "json"
+	EncodingProtobuf = "protobuf"
 )
 
 // Config for a Frontend.
@@ -50,6 +54,9 @@ type Config struct {
 	// If set, address is not computed from interfaces.
 	Addr string `yaml:"address" doc:"hidden"`
 	Port int    `doc:"hidden"`
+
+	// Defines the encoding for requests to and responses from the scheduler and querier.
+	Encoding string `yaml:"encoding"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -64,6 +71,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.Port, "frontend.instance-port", 0, "Port to advertise to querier (via scheduler) (defaults to server.grpc-listen-port).")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)
+
+	f.StringVar(&cfg.Encoding, "frontend.encoding", "json", "Defines the encoding for requests to and responses from the scheduler and querier. Can be 'json' or 'protobuf' (defaults to 'json').")
 }
 
 // Frontend implements GrpcRoundTripper. It queues HTTP requests,
@@ -88,9 +97,15 @@ type Frontend struct {
 var _ queryrangebase.Handler = &Frontend{}
 var _ transport.GrpcRoundTripper = &Frontend{}
 
+type ResponseTuple = struct {
+	*frontendv2pb.QueryResultRequest
+	error
+}
+
 type frontendRequest struct {
 	queryID      uint64
 	request      *httpgrpc.HTTPRequest
+	queryRequest *queryrange.QueryRequest
 	tenantID     string
 	actor        []string
 	statsEnabled bool
@@ -98,7 +113,7 @@ type frontendRequest struct {
 	cancel context.CancelFunc
 
 	enqueue  chan enqueueResult
-	response chan *frontendv2pb.QueryResultRequest
+	response chan ResponseTuple
 }
 
 type enqueueStatus int
@@ -228,7 +243,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		// Buffer of 1 to ensure response or error can be written to the channel
 		// even if this goroutine goes away due to client context cancellation.
 		enqueue:  make(chan enqueueResult, 1),
-		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+		response: make(chan ResponseTuple, 1),
 	}
 
 	cancelCh, err := f.enqueue(ctx, freq)
@@ -251,12 +266,17 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
-			stats := stats.FromContext(ctx)
-			stats.Merge(resp.Stats) // Safe if stats is nil.
-		}
+		switch concrete := resp.Response.(type) {
+		case *frontendv2pb.QueryResultRequest_HttpResponse:
+			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 
-		return resp.HttpResponse, nil
+			return concrete.HttpResponse, nil
+		default:
+			return nil, fmt.Errorf("unsupported response type for roundtrip: %T", resp.Response)
+		}
 	}
 }
 
@@ -271,23 +291,8 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// For backwards comaptibility we are sending both encodings
-	httpReq, err := f.codec.EncodeRequest(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
-	}
-
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-	httpgrpcReq, err := server.HTTPRequest(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("connot convert HTTP request to gRPC request: %w", err)
-	}
-
 	freq := &frontendRequest{
 		queryID:      f.lastQueryID.Inc(),
-		request:      httpgrpcReq,
 		tenantID:     tenantID,
 		actor:        httpreq.ExtractActorPath(ctx),
 		statsEnabled: stats.IsEnabled(ctx),
@@ -297,7 +302,24 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		// Buffer of 1 to ensure response or error can be written to the channel
 		// even if this goroutine goes away due to client context cancellation.
 		enqueue:  make(chan enqueueResult, 1),
-		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+		response: make(chan ResponseTuple, 1),
+	}
+
+	if f.cfg.Encoding == EncodingProtobuf {
+		freq.queryRequest, err = f.codec.QueryRequestWrap(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("cannot wrap request: %w", err)
+		}
+	} else {
+		httpReq, err := f.codec.EncodeRequest(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
+		}
+
+		freq.request, err = httpgrpc.FromHTTPRequest(httpReq)
+		if err != nil {
+			return nil, fmt.Errorf("cannot convert HTTP request to gRPC request: %w", err)
+		}
 	}
 
 	cancelCh, err := f.enqueue(ctx, freq)
@@ -320,12 +342,27 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
-			stats := stats.FromContext(ctx)
-			stats.Merge(resp.Stats) // Safe if stats is nil.
+		if resp.error != nil {
+			return nil, resp.error
 		}
+		switch concrete := resp.Response.(type) {
+		case *frontendv2pb.QueryResultRequest_HttpResponse:
+			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 
-		return f.codec.DecodeHTTPGrpcResponse(resp.HttpResponse, req)
+			return f.codec.DecodeHTTPGrpcResponse(concrete.HttpResponse, req)
+		case *frontendv2pb.QueryResultRequest_QueryResponse:
+			if stats.ShouldTrackQueryResponse(concrete.QueryResponse.Status) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
+
+			return queryrange.QueryResponseUnwrap(concrete.QueryResponse)
+		default:
+			return nil, fmt.Errorf("unexpected frontend v2 response type: %T", concrete)
+		}
 	}
 }
 
@@ -373,7 +410,7 @@ func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryRes
 	// To avoid mixing results from different queries, we randomize queryID counter on start.
 	if req != nil && req.tenantID == userID {
 		select {
-		case req.response <- qrReq:
+		case req.response <- ResponseTuple{qrReq, nil}:
 			// Should always be possible, unless QueryResult is called multiple times with the same queryID.
 		default:
 			level.Warn(f.log).Log("msg", "failed to write query result to the response channel", "queryID", qrReq.QueryID, "user", userID)
