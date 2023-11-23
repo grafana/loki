@@ -525,10 +525,10 @@ func createLocalDirName(workingDir string, job Job) string {
 func CompactNewChunks(
 	ctx context.Context,
 	logger log.Logger,
-	limits Limits,
 	job Job,
 	chunks []chunk.Chunk,
 	bt *v1.BloomTokenizer,
+	fpRate float64,
 	bloomShipperClient bloomshipper.Client,
 	dst string,
 ) ([]bloomshipper.Block, error) {
@@ -538,7 +538,6 @@ func CompactNewChunks(
 	}
 
 	// Create a bloom for this series
-	fpRate := limits.BloomFalsePositiveRate(job.Tenant())
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
 			Fingerprint: job.Fingerprint(),
@@ -596,7 +595,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		storedBlocks, err := CompactNewChunks(ctx, logger, c.limits, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+		fpRate := c.limits.BloomFalsePositiveRate(job.Tenant())
+		storedBlocks, err := CompactNewChunks(ctx, logger, job, chks, bt, fpRate, bloomShipperClient, c.cfg.WorkingDirectory)
 		if err != nil {
 			return level.Error(logger).Log("compacting new chunks", err)
 		}

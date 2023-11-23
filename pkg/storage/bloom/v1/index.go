@@ -14,7 +14,7 @@ import (
 type Schema struct {
 	version                byte
 	encoding               chunkenc.Encoding
-	NGramLength, NGramSkip uint64
+	nGramLength, nGramSkip uint64
 }
 
 // byte length
@@ -36,8 +36,8 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(s.version)
 	enc.PutByte(byte(s.encoding))
-	enc.PutBE64(s.NGramLength)
-	enc.PutBE64(s.NGramSkip)
+	enc.PutBE64(s.nGramLength)
+	enc.PutBE64(s.nGramSkip)
 
 }
 
@@ -68,8 +68,8 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Wrap(err, "parsing encoding")
 	}
 
-	s.NGramLength = dec.Be64()
-	s.NGramSkip = dec.Be64()
+	s.nGramLength = dec.Be64()
+	s.nGramSkip = dec.Be64()
 
 	return dec.Err()
 }
