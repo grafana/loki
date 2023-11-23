@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -851,6 +852,16 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Selector, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
@@ -899,6 +910,16 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 	sp := opentracing.SpanFromContext(ctx)
+
+	if req.Plan == nil {
+		parsed, err := syntax.ParseSampleExpr(req.Selector)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {

@@ -310,6 +310,15 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 	return reqs, nil
 }
 
+// maxRangeVectorAndOffsetDurationFromQueryString
+func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, time.Duration, error) {
+	parsed, err := syntax.ParseSampleExpr(q)
+	if err != nil {
+		return 0, 0, err
+	}
+	return maxRangeVectorAndOffsetDuration(parsed)
+}
+
 // maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
 func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration, error) {
 	if _, ok := expr.(syntax.SampleExpr); !ok {

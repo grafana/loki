@@ -51,7 +51,7 @@ message StreamRate {
 }
 
 message QueryRequest {
-  string selector = 1;
+  string selector = 1 [deprecated = true];
   uint32 limit = 2;
   google.protobuf.Timestamp start = 3 [
     (gogoproto.stdtime) = true,
@@ -65,10 +65,11 @@ message QueryRequest {
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 8;
+  bytes plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message SampleQueryRequest {
-  string selector = 1; // mark as reserved once we've fully migrated to plan.
+  string selector = 1 [deprecated = true]; // mark as reserved once we've fully migrated to plan.
   google.protobuf.Timestamp start = 2 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false

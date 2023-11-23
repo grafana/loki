@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -83,7 +84,11 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	return syntax.ParseLogSelector(s.Selector, true)
+	expr, ok := s.QueryRequest.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return nil, errors.New("only log selector is supported")
+	}
+	return expr, nil
 }
 
 type SelectSampleParams struct {
@@ -93,13 +98,17 @@ type SelectSampleParams struct {
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
-	return syntax.ParseSampleExpr(s.Selector)
+	expr, ok := s.SampleQueryRequest.Plan.AST.(syntax.SampleExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
+	}
+	return expr, nil
 }
 
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	expr, err := syntax.ParseSampleExpr(s.Selector)
+	expr, err := s.Expr()
 	if err != nil {
 		return nil, err
 	}
