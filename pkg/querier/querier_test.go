@@ -90,7 +90,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 		DelayFor: 0,
 		Limit:    10,
 		Start:    time.Now(),
-		Plan:     &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{type="test"}`),
 		},
 	}
@@ -178,8 +178,8 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),
 		Direction: logproto.FORWARD,
-		Plan:      &plan.QueryPlan{
-			AST: syntax.MustParseExpr( `{type="test", fail="yes"} |= "foo"`),
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
 		},
 	}
 
@@ -406,7 +406,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 				Start:     tc.end.Add(-6 * time.Hour),
 				End:       tc.end,
 				Direction: logproto.FORWARD,
-				Plan:      &plan.QueryPlan{
+				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{app="foo"}`),
 				},
 			}
@@ -456,7 +456,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 		DelayFor: 0,
 		Limit:    10,
 		Start:    time.Now(),
-		Plan:     &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr("{type=\"test\"}"),
 		},
 	}
@@ -901,7 +901,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Start:     start,
 						End:       end,
 						Direction: logproto.FORWARD,
-						Plan:      &plan.QueryPlan{
+						Plan: &plan.QueryPlan{
 							AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
 						},
 					},
@@ -918,7 +918,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Selector: `count_over_time({foo="bar"}[5m])`,
 						Start:    start,
 						End:      end,
-						Plan:     &plan.QueryPlan{
+						Plan: &plan.QueryPlan{
 							AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
 						},
 					},
@@ -1227,7 +1227,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 		Start:     time.Unix(0, 300000000),
 		End:       time.Unix(0, 600000000),
 		Direction: logproto.FORWARD,
-		Plan:      &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{type="test"} |= "foo"`),
 		},
 	}
@@ -1293,7 +1293,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 		Selector: `count_over_time({foo="bar"}[5m])`,
 		Start:    time.Unix(0, 300000000),
 		End:      time.Unix(0, 600000000),
-		Plan:     &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
 		},
 	}

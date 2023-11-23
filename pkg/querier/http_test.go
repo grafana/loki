@@ -33,8 +33,8 @@ func TestTailHandler(t *testing.T) {
 
 	req, err := http.NewRequest("GET", `/`, nil)
 	q := req.URL.Query()
-    q.Add("query", `{app="loki"}`)
-    req.URL.RawQuery = q.Encode()
+	q.Add("query", `{app="loki"}`)
+	req.URL.RawQuery = q.Encode()
 	err = req.ParseForm()
 	require.NoError(t, err)
 

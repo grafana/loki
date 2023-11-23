@@ -192,7 +192,7 @@ func TestMetricsTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
-		Plan:      &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
 		},
 	}
@@ -278,7 +278,7 @@ func TestLogFilterTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan:      &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
 		},
 	}
@@ -797,7 +797,7 @@ func TestLogNoFilter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan:      &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"}`),
 		},
 	}
@@ -854,7 +854,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan:      &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"}`),
 		},
 	}
@@ -904,7 +904,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
-				Plan:      &plan.QueryPlan{
+				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(test.qs),
 				},
 			}
@@ -1012,7 +1012,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
-				Plan:      &plan.QueryPlan{
+				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.query),
 				},
 			}
