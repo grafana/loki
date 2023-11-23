@@ -149,7 +149,7 @@ func New(
 				return tsdb.OpenShippableTSDB(p)
 			},
 			periodicConfig.GetIndexTableNumberRange(periodEndTime),
-			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", r),
+			prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r),
 			logger,
 		)
 
