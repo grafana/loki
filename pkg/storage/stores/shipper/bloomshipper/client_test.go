@@ -1,9 +1,7 @@
 package bloomshipper
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 
 	aws_io "github.com/aws/smithy-go/io"
 	"github.com/google/uuid"
@@ -187,8 +183,6 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 	secondBlockData := createBlockFile(t, secondBlockFullPath)
 	require.FileExists(t, firstBlockFullPath)
 	require.FileExists(t, secondBlockFullPath)
-	rootDir := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom")
-	defer os.RemoveAll(rootDir)
 
 	firstBlockRef := BlockRef{
 		Ref: Ref{
@@ -218,7 +212,7 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 	blocksToDownload := []BlockRef{firstBlockRef, secondBlockRef}
 
 	blocksCh, errorsCh := shipper.GetBlocks(context.Background(), blocksToDownload)
-	blocks := make(map[string][]byte)
+	blocks := make(map[string]string)
 	func() {
 		timout := time.After(5 * time.Second)
 		for {
@@ -232,14 +226,13 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 				if !ok {
 					return
 				}
-				blockData, err := io.ReadAll(block.BloomData)
+				blockData, err := io.ReadAll(block.Data)
 				require.NoError(t, err)
-				blocks[block.BlockRef.BlockPath] = blockData
+				blocks[block.BlockRef.BlockPath] = string(blockData)
 
 			}
 		}
 	}()
-	defer os.RemoveAll("./bloom")
 
 	firstBlockActualData, exists := blocks[firstBlockRef.BlockPath]
 	require.Truef(t, exists, "data for the first block must be present in the results: %+v", blocks)
@@ -252,42 +245,9 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 	require.Len(t, blocks, 2)
 }
 
-func extractFileFromTGZ(tarGzData []byte, targetFileName string) []byte {
-	gzReader, err := gzip.NewReader(bytes.NewReader(tarGzData))
-	if err != nil {
-		return nil
-	}
-	defer gzReader.Close()
-
-	tarReader := tar.NewReader(gzReader)
-
-	for {
-		header, err := tarReader.Next()
-
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			return nil
-		}
-
-		if header.Name == targetFileName {
-			buffer := new(bytes.Buffer)
-			if _, err := io.Copy(buffer, tarReader); err != nil {
-				return nil
-			}
-			return buffer.Bytes()
-		}
-	}
-
-	return nil
-}
-
 func Test_BloomClient_PutBlocks(t *testing.T) {
 	shipper := createShipper(t)
 	blockForFirstFolderData := "data1"
-	indexForFirstFolderData := "index1"
 	blockForFirstFolder := Block{
 		BlockRef: BlockRef{
 			Ref: Ref{
@@ -301,12 +261,10 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			},
 			IndexPath: uuid.New().String(),
 		},
-		BloomData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
-		IndexData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(indexForFirstFolderData))},
+		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
 	}
 
 	blockForSecondFolderData := "data2"
-	indexForSecondFolderData := "index2"
 	blockForSecondFolder := Block{
 		BlockRef: BlockRef{
 			Ref: Ref{
@@ -320,8 +278,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			},
 			IndexPath: uuid.New().String(),
 		},
-		BloomData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
-		IndexData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(indexForSecondFolderData))},
+		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
 	}
 
 	results, err := shipper.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
@@ -343,7 +300,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.FileExists(t, savedFilePath)
 	savedData, err := os.ReadFile(savedFilePath)
 	require.NoError(t, err)
-	require.Equal(t, blockForFirstFolderData, string(extractFileFromTGZ(savedData, "bloom")))
+	require.Equal(t, blockForFirstFolderData, string(savedData))
 
 	secondResultBlock := results[1]
 	path = secondResultBlock.BlockPath
@@ -362,7 +319,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.FileExists(t, savedFilePath)
 	savedData, err = os.ReadFile(savedFilePath)
 	require.NoError(t, err)
-	require.Equal(t, blockForSecondFolderData, string(extractFileFromTGZ(savedData, "bloom")))
+	require.Equal(t, blockForSecondFolderData, string(savedData))
 }
 
 func Test_BloomClient_DeleteBlocks(t *testing.T) {
@@ -407,19 +364,13 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 	require.NoFileExists(t, block2Path)
 }
 
-func createBlockFile(t *testing.T, path string) []byte {
+func createBlockFile(t *testing.T, path string) string {
 	err := os.MkdirAll(path[:strings.LastIndex(path, "/")], 0755)
 	require.NoError(t, err)
-	bloomContent := []byte(uuid.NewString())
-	indexContent := []byte(uuid.NewString())
-	outputFile, err := os.Create(path)
+	fileContent := uuid.NewString()
+	err = os.WriteFile(path, []byte(fileContent), 0700)
 	require.NoError(t, err)
-	byteReader := v1.NewByteReader(bytes.NewBuffer(indexContent), bytes.NewBuffer(bloomContent))
-	err = v1.TarGzMemory(outputFile, byteReader)
-	require.NoError(t, err)
-	err = outputFile.Close()
-	require.NoError(t, err)
-	return bloomContent
+	return fileContent
 }
 
 func Test_TablesByPeriod(t *testing.T) {

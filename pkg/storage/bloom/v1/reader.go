@@ -49,12 +49,12 @@ func NewDirectoryBlockReader(dir string) *DirectoryBlockReader {
 func (r *DirectoryBlockReader) Init() error {
 	if !r.initialized {
 		var err error
-		r.index, err = os.Open(filepath.Join(r.dir, SeriesFileName))
+		r.index, err = os.Open(filepath.Join(r.dir, seriesFileName))
 		if err != nil {
 			return errors.Wrap(err, "opening series file")
 		}
 
-		r.blooms, err = os.Open(filepath.Join(r.dir, BloomFileName))
+		r.blooms, err = os.Open(filepath.Join(r.dir, bloomFileName))
 		if err != nil {
 			return errors.Wrap(err, "opening bloom file")
 		}
