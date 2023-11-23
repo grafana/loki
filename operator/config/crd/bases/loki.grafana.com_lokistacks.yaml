@@ -80,12 +80,6 @@ spec:
                         description: IngestionLimits defines the limits applied on
                           ingested log streams.
                         properties:
-                          desiredRate:
-                            description: PerStreamDesiredRate defines the desired
-                              ingestion rate per second that LokiStack should target
-                              applying automatic stream sharding. Units MB.
-                            format: int32
-                            type: integer
                           ingestionBurstSize:
                             description: IngestionBurstSize defines the local rate-limited
                               sample size per distributor replica. It should be set
@@ -121,6 +115,12 @@ spec:
                           maxLineSize:
                             description: MaxLineSize defines the maximum line size
                               on ingestion path. Units in Bytes.
+                            format: int32
+                            type: integer
+                          perStreamDesiredRate:
+                            description: PerStreamDesiredRate defines the desired
+                              ingestion rate per second that LokiStack should target
+                              applying automatic stream sharding. Units MB.
                             format: int32
                             type: integer
                           perStreamRateLimit:
@@ -211,12 +211,6 @@ spec:
                           description: IngestionLimits defines the limits applied
                             on ingested log streams.
                           properties:
-                            desiredRate:
-                              description: PerStreamDesiredRate defines the desired
-                                ingestion rate per second that LokiStack should target
-                                applying automatic stream sharding. Units MB.
-                              format: int32
-                              type: integer
                             ingestionBurstSize:
                               description: IngestionBurstSize defines the local rate-limited
                                 sample size per distributor replica. It should be
@@ -254,6 +248,12 @@ spec:
                             maxLineSize:
                               description: MaxLineSize defines the maximum line size
                                 on ingestion path. Units in Bytes.
+                              format: int32
+                              type: integer
+                            perStreamDesiredRate:
+                              description: PerStreamDesiredRate defines the desired
+                                ingestion rate per second that LokiStack should target
+                                applying automatic stream sharding. Units MB.
                               format: int32
                               type: integer
                             perStreamRateLimit:

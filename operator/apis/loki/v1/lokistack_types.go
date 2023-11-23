@@ -696,7 +696,7 @@ type IngestionLimitSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Per Stream Desired Rate (in MB)"
-	PerStreamDesiredRate int32 `json:"desiredRate,omitempty"`
+	PerStreamDesiredRate int32 `json:"perStreamDesiredRate,omitempty"`
 
 	// PerStreamRateLimit defines the maximum byte rate per second per stream. Units MB.
 	//

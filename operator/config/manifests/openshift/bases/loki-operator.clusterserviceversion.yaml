@@ -219,12 +219,6 @@ spec:
       - description: Global defines the limits applied globally across the cluster.
         displayName: Global Limits
         path: limits.global
-      - description: PerStreamDesiredRate defines the desired ingestion rate per second
-          that LokiStack should target applying automatic stream sharding. Units MB.
-        displayName: Per Stream Desired Rate (in MB)
-        path: limits.global.ingestion.desiredRate
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:number
       - description: IngestionBurstSize defines the local rate-limited sample size
           per distributor replica. It should be set to the set at least to the maximum
           logs size expected in a single push request.
@@ -265,6 +259,12 @@ spec:
           Units in Bytes.
         displayName: Max Line Size
         path: limits.global.ingestion.maxLineSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamDesiredRate defines the desired ingestion rate per second
+          that LokiStack should target applying automatic stream sharding. Units MB.
+        displayName: Per Stream Desired Rate (in MB)
+        path: limits.global.ingestion.perStreamDesiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: PerStreamRateLimit defines the maximum byte rate per second per
@@ -309,12 +309,6 @@ spec:
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
-      - description: PerStreamDesiredRate defines the desired ingestion rate per second
-          that LokiStack should target applying automatic stream sharding. Units MB.
-        displayName: Per Stream Desired Rate (in MB)
-        path: limits.tenants.ingestion.desiredRate
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:number
       - description: IngestionBurstSize defines the local rate-limited sample size
           per distributor replica. It should be set to the set at least to the maximum
           logs size expected in a single push request.
@@ -355,6 +349,12 @@ spec:
           Units in Bytes.
         displayName: Max Line Size
         path: limits.tenants.ingestion.maxLineSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamDesiredRate defines the desired ingestion rate per second
+          that LokiStack should target applying automatic stream sharding. Units MB.
+        displayName: Per Stream Desired Rate (in MB)
+        path: limits.tenants.ingestion.perStreamDesiredRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: PerStreamRateLimit defines the maximum byte rate per second per

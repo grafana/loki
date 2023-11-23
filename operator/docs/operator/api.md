@@ -1172,7 +1172,7 @@ int32
 </tr>
 <tr>
 <td>
-<code>desiredRate</code><br/>
+<code>perStreamDesiredRate</code><br/>
 <em>
 int32
 </em>
