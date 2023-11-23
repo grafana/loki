@@ -444,6 +444,16 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		return nil, err
 	}
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
@@ -457,6 +467,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
 			Deletes:   deletes,
+			Plan:      req.Plan,
 		},
 	}
 

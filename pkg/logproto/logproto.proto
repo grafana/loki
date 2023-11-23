@@ -150,7 +150,7 @@ message Series {
 }
 
 message TailRequest {
-  string query = 1;
+  string query = 1 [deprecated=true];
   reserved 2;
   uint32 delayFor = 3;
   uint32 limit = 4;
@@ -158,6 +158,7 @@ message TailRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
+  bytes plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message TailResponse {

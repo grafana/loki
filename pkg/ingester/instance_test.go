@@ -538,7 +538,9 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	ctx := context.Background()
 
 	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
-	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil, 10)
+	expr, err := syntax.ParseLogSelector(`{namespace="foo",pod="bar",instance=~"10.*"}`, true)
+	require.NoError(b, err)
+	t, err := newTailer("foo", expr, nil, 10)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
 		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{

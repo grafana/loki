@@ -1257,6 +1257,16 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Query, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(queryServer.Context())
 	if err != nil {
 		return err
@@ -1266,7 +1276,13 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	if err != nil {
 		return err
 	}
-	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
+
+	expr, ok := req.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return fmt.Errorf("unsupported query expression: want (LogSelectorExpr), got (%T)", req.Plan.AST)
+	}
+
+	tailer, err := newTailer(instanceID, expr, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err
 	}
