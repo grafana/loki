@@ -206,10 +206,9 @@ func (w *worker) running(ctx context.Context) error {
 					fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
 					err := fq.Run()
 					if err != nil {
-						for _, t := range tasks {
+						for _, t := range boundedRefs[i].tasks {
 							t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
 						}
-						continue
 					}
 				}
 			}
