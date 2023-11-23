@@ -12,14 +12,15 @@ import (
 )
 
 type Schema struct {
-	version  byte
-	encoding chunkenc.Encoding
+	version                byte
+	encoding               chunkenc.Encoding
+	nGramLength, nGramSkip uint64
 }
 
 // byte length
 func (s Schema) Len() int {
-	// magic number + version + encoding
-	return 4 + 1 + 1
+	// magic number + version + encoding + ngram length + ngram skip
+	return 4 + 1 + 1 + 8 + 8
 }
 
 func (s *Schema) DecompressorPool() chunkenc.ReaderPool {
@@ -35,6 +36,9 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(s.version)
 	enc.PutByte(byte(s.encoding))
+	enc.PutBE64(s.nGramLength)
+	enc.PutBE64(s.nGramSkip)
+
 }
 
 func (s *Schema) DecodeFrom(r io.ReadSeeker) error {
@@ -63,6 +67,9 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	if _, err := chunkenc.ParseEncoding(s.encoding.String()); err != nil {
 		return errors.Wrap(err, "parsing encoding")
 	}
+
+	s.nGramLength = dec.Be64()
+	s.nGramSkip = dec.Be64()
 
 	return dec.Err()
 }
