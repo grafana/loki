@@ -17,7 +17,7 @@ GOOGLE_APPLICATION_CREDENTIALS=$2
 
 NAMESPACE=${NAMESPACE:-openshift-logging}
 
-echo kubectl --ignore-not-found=true -n "${NAMESPACE}" delete secret test
-echo kubectl -n "${NAMESPACE}" create secret generic test \
+kubectl --ignore-not-found=true -n "${NAMESPACE}" delete secret test
+kubectl -n "${NAMESPACE}" create secret generic test \
   --from-literal=bucketname="$(echo -n "${BUCKET_NAME}")" \
   --from-file=key.json="${GOOGLE_APPLICATION_CREDENTIALS}"
