@@ -1,0 +1,10 @@
+name: Checks
+on: [push]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    container:
+      image: grafana/loki-build-image:0.32.0
+    steps:
+      - name: Lin
+        run: make lint
