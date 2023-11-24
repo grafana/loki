@@ -976,6 +976,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.BACKWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
@@ -1003,6 +1006,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.FORWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))

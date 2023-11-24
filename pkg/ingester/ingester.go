@@ -852,7 +852,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 
-	if req.Plan.AST == nil {
+	if req.Plan == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
 		if err != nil {
 			return err
