@@ -8,5 +8,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Lint
-        run: make lint
+      - run: make lint
+      - run: make check-doc
+      - run: make check-mod
+      - run: make validate-example-configs
+      - run: make check-example-config-doc
+      - run: make check-drone-drift
+      - run: make check-generated-files
+      - run: make test
