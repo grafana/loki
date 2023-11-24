@@ -186,6 +186,14 @@ type Gateway struct {
 	serviceWatcher *services.FailureWatcher
 }
 
+type fixedQueueLimits struct {
+	maxConsumers int
+}
+
+func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) (int, error) {
+	return l.maxConsumers, nil
+}
+
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
@@ -197,7 +205,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 	}
 
 	g.queueMetrics = queue.NewMetrics(reg, constants.Loki, "bloom_gateway")
-	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, g.queueMetrics)
+	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, &fixedQueueLimits{100}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
 	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
@@ -349,7 +357,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID)
-	g.queue.Enqueue(tenantID, []string{}, task, 100, 0, func() {
+	g.queue.Enqueue(tenantID, []string{}, task, func() {
 		// When enqueuing, we also add the task to the pending tasks
 		g.pendingTasks.Add(task.ID, task)
 	})

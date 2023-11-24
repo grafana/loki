@@ -362,6 +362,11 @@ func (l *Limits) Validate() error {
 		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
 	}
 
+	if l.MaxQueriersPerTenant < 0 {
+		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-queriers-per-tenant to 0 as it is configured to a value less than 0")
+		l.MaxQueriersPerTenant = 0
+	}
+
 	if l.MaxQueryCapacity < 0 {
 		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 0 as it is configured to a value less than 0")
 		l.MaxQueryCapacity = 0

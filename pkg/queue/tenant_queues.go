@@ -6,12 +6,13 @@
 package queue
 
 import (
-	"math"
 	"math/rand"
 	"sort"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type intPointerMap map[string]*int
@@ -68,6 +69,8 @@ type tenantQueues struct {
 
 	// sortedConsumer list of consumer IDs, used when creating per-user shard.
 	sortedConsumers []string
+
+	limits Limits
 }
 
 type Queue interface {
@@ -88,17 +91,15 @@ type tenantQueue struct {
 	*TreeQueue
 
 	// If not nil, only these consumers can handle user requests. If nil, all consumers can.
-	// We set this to nil if number of available consumers <= maxQueriers.
-	consumers        map[string]struct{}
-	maxQueriers      int
-	maxQueryCapacity float64
+	// We set this to nil if number of available consumers <= MaxConsumers.
+	consumers map[string]struct{}
 
 	// Seed for shuffle sharding of consumers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
 	seed int64
 }
 
-func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
+func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits) *tenantQueues {
 	mm := &Mapping[*tenantQueue]{}
 	mm.Init(64)
 	return &tenantQueues{
@@ -108,6 +109,7 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 		forgetDelay:      forgetDelay,
 		consumers:        map[string]*consumer{},
 		sortedConsumers:  nil,
+		limits:           limits,
 	}
 }
 
@@ -120,17 +122,13 @@ func (q *tenantQueues) deleteQueue(tenant string) {
 }
 
 // Returns existing or new queue for a tenant.
-// MaxQueriers is used to compute which consumers should handle requests for this tenant.
-// If maxQueriers is <= 0, all consumers can handle this tenant's requests.
-// If maxQueriers has changed since the last call, consumers for this are recomputed.
-func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers int, maxQueryCapacity float64) Queue {
+// MaxConsumers is used to compute which consumers should handle requests for this tenant.
+// If MaxConsumers is <= 0, all consumers can handle this tenant's requests.
+// If MaxConsumers has changed since the last call, consumers for this are recomputed.
+func (q *tenantQueues) getOrAddQueue(tenant string, path []string) Queue {
 	// Empty tenant is not allowed, as that would break our tenants list ("" is used for free spot).
 	if tenant == "" {
 		return nil
-	}
-
-	if maxQueriers < 0 {
-		maxQueriers = 0
 	}
 
 	uq := q.mapping.GetByKey(tenant)
@@ -142,30 +140,19 @@ func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers i
 		q.mapping.Put(tenant, uq)
 	}
 
-	if uq.maxQueriers != maxQueriers || uq.maxQueryCapacity != maxQueryCapacity {
-		uq.maxQueriers = maxQueriers
-		uq.maxQueryCapacity = maxQueryCapacity
-		uq.consumers = shuffleConsumersForTenants(uq.seed, uq.computeMaxQueriers(len(q.sortedConsumers)), q.sortedConsumers, nil)
+	consumersToSelect, err := q.limits.MaxConsumers(tenant, len(q.sortedConsumers))
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "computing max consumers", "tenant", tenant, "error", err)
+	}
+
+	if len(uq.consumers) != consumersToSelect {
+		uq.consumers = shuffleConsumersForTenants(uq.seed, consumersToSelect, q.sortedConsumers, nil)
 	}
 
 	if len(path) == 0 {
 		return uq
 	}
 	return uq.add(path)
-}
-
-func (uq *tenantQueue) computeMaxQueriers(consumers int) int {
-	if uq.maxQueryCapacity == 0 {
-		return uq.maxQueriers
-	}
-
-	maxQueriers := int(math.Ceil(float64(consumers) * uq.maxQueryCapacity))
-
-	if uq.maxQueriers != 0 && uq.maxQueriers < maxQueriers {
-		return uq.maxQueriers
-	}
-
-	return maxQueriers
 }
 
 // Finds next queue for the consumer. To support fair scheduling between users, client is expected
@@ -311,8 +298,14 @@ func (q *tenantQueues) forgetDisconnectedConsumers(now time.Time) int {
 func (q *tenantQueues) recomputeUserConsumers() {
 	scratchpad := make([]string, 0, len(q.sortedConsumers))
 
-	for _, uq := range q.mapping.Values() {
-		uq.consumers = shuffleConsumersForTenants(uq.seed, uq.computeMaxQueriers(len(q.sortedConsumers)), q.sortedConsumers, scratchpad)
+	for _, tenant := range q.mapping.Keys() {
+		if uq := q.mapping.GetByKey(tenant); uq != nil {
+			maxConsumers, err := q.limits.MaxConsumers(tenant, len(q.sortedConsumers))
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "computing max consumers", "tenant", tenant, "error", err)
+			}
+			uq.consumers = shuffleConsumersForTenants(uq.seed, maxConsumers, q.sortedConsumers, scratchpad)
+		}
 	}
 }
 

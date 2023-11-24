@@ -39,6 +39,11 @@ func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 	return ui - 1
 }
 
+type Limits interface {
+	// MaxConsumers returns the max consumers to use per tenant or 0 to allow all consumers to consume from the queue.
+	MaxConsumers(user string, allConsumers int) (int, error)
+}
+
 // Request stored into the queue.
 type Request any
 
@@ -61,9 +66,9 @@ type RequestQueue struct {
 	metrics *Metrics
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, limits Limits, metrics *Metrics) *RequestQueue {
 	q := &RequestQueue{
-		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay),
+		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay, limits),
 		connectedConsumers: atomic.NewInt32(0),
 		metrics:            metrics,
 	}
@@ -74,12 +79,9 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, met
 	return q
 }
 
-// Enqueue puts the request into the queue. MaxQueries is tenant-specific value that specifies how many queriers can
-// this tenant use (zero or negative = all queriers). It is passed to each Enqueue, because it can change
-// between calls.
-//
+// Enqueue puts the request into the queue.
 // If request is successfully enqueued, successFn is called with the lock held, before any querier can receive the request.
-func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQueriers int, maxQueryCapacity float64, successFn func()) error {
+func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, successFn func()) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -87,7 +89,7 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		return ErrStopped
 	}
 
-	queue := q.queues.getOrAddQueue(tenant, path, maxQueriers, maxQueryCapacity)
+	queue := q.queues.getOrAddQueue(tenant, path)
 	if queue == nil {
 		// This can only happen if tenant is "".
 		return errors.New("no queue found")
