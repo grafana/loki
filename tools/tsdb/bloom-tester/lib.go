@@ -36,6 +36,11 @@ import (
 	"github.com/grafana/loki/tools/tsdb/helpers"
 )
 
+const (
+	DefaultNGramLength = 4
+	DefaultNGramSkip   = 0
+)
+
 func execute() {
 	conf, svc, bucket, err := helpers.Setup()
 	helpers.ExitErr("setting up", err)
@@ -259,9 +264,9 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
 	var n int // count iterated series
-	//pool := newPool(runtime.NumCPU())
-	//pool := newPool(1)
-	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	// pool := newPool(runtime.NumCPU())
+	// pool := newPool(1)
+	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
