@@ -4,7 +4,7 @@ metadata:
   name: lokistack-dev
   namespace: openshift-logging
 spec:
- size: 1x.demo
+  size: 1x.demo
   storage:
     schemas:
     - version: v13
