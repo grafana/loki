@@ -47,6 +47,11 @@ func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, l
 func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, s.logger)
 
+	params, err := ParamsFromRequest(request)
+	if err != nil {
+		return nil, err
+	}
+
 	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -64,7 +69,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return nil, err
 	}
 
-	noop, parsed, err := mapper.Parse(request.GetQuery())
+	noop, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", request.GetQuery())
 		return nil, err
@@ -80,16 +85,11 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 	queryStatsCtx := stats.FromContext(ctx)
 	queryStatsCtx.AddSplitQueries(int64(mapperStats.GetSplitQueries()))
 
-	params, err := ParamsFromRequest(request)
-	if err != nil {
-		return nil, err
-	}
-
 	if _, ok := request.(*LokiInstantRequest); !ok {
-		return nil, fmt.Errorf("expected *LokiInstantRequest")
+		return nil, fmt.Errorf("expected *LokiInstantRequest, got %T", request)
 	}
 
-	query := s.ng.Query(ctx, params, parsed)
+	query := s.ng.Query(ctx, logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: parsed})
 
 	res, err := query.Exec(ctx)
 	if err != nil {
