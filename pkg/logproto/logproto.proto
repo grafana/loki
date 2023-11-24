@@ -68,7 +68,7 @@ message QueryRequest {
   reserved 6;
   repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 8;
-  bytes plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  Plan plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message SampleQueryRequest {
@@ -83,7 +83,11 @@ message SampleQueryRequest {
   ];
   repeated string shards = 4 [(gogoproto.jsontag) = "shards,omitempty"];
   repeated Delete deletes = 5;
-  bytes plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+}
+
+message Plan {
+  bytes raw = 1;
 }
 
 message Delete {

@@ -699,6 +699,9 @@ func Test_QueryWithDelete(t *testing.T) {
 						End:      10 * 1e6,
 					},
 				},
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{job="3"}`),
+				},
 			},
 		},
 	)
