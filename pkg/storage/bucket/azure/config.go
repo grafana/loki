@@ -3,10 +3,19 @@ package azure
 import (
 	"flag"
 
-	"github.com/grafana/dskit/flagext"
+	"net/http"
 
-	"github.com/grafana/loki/pkg/storage/bucket/http"
+	"github.com/grafana/dskit/flagext"
+	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
 )
+
+// HTTPConfig stores the http.Transport configuration for the blob storage client.
+type HTTPConfig struct {
+	bucket_http.Config `yaml:",inline"`
+
+	// Allow upstream callers to inject a round tripper
+	Transport http.RoundTripper `yaml:"-"`
+}
 
 // Config holds the config options for an Azure backend
 type Config struct {
@@ -17,7 +26,7 @@ type Config struct {
 	EndpointSuffix     string         `yaml:"endpoint_suffix"`
 	MaxRetries         int            `yaml:"max_retries"`
 
-	http.Config `yaml:"http"`
+	HTTP HTTPConfig `yaml:"http"`
 }
 
 // RegisterFlags registers the flags for Azure storage
@@ -33,5 +42,5 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ContainerName, prefix+"azure.container-name", "loki", "Azure storage container name")
 	f.StringVar(&cfg.EndpointSuffix, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN")
 	f.IntVar(&cfg.MaxRetries, prefix+"azure.max-retries", 20, "Number of retries for recoverable errors")
-	cfg.Config.RegisterFlagsWithPrefix(prefix+"azure.", f)
+	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"azure.http", f)
 }

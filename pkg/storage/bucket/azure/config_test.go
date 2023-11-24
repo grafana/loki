@@ -15,15 +15,17 @@ import (
 var defaultConfig = Config{
 	ContainerName: "loki",
 	MaxRetries:    20,
-	Config: http.Config{
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 2 * time.Minute,
-		InsecureSkipVerify:    false,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
-		MaxConnsPerHost:       0,
+	HTTP: HTTPConfig{
+		Config: http.Config{
+			IdleConnTimeout:       90 * time.Second,
+			ResponseHeaderTimeout: 2 * time.Minute,
+			InsecureSkipVerify:    false,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   100,
+			MaxConnsPerHost:       0,
+		},
 	},
 }
 
@@ -65,15 +67,17 @@ http:
 				ContainerName:      "test-container-name",
 				EndpointSuffix:     "test-endpoint-suffix",
 				MaxRetries:         1,
-				Config: http.Config{
-					IdleConnTimeout:       2 * time.Second,
-					ResponseHeaderTimeout: 3 * time.Second,
-					InsecureSkipVerify:    true,
-					TLSHandshakeTimeout:   4 * time.Second,
-					ExpectContinueTimeout: 5 * time.Second,
-					MaxIdleConns:          6,
-					MaxIdleConnsPerHost:   7,
-					MaxConnsPerHost:       8,
+				HTTP: HTTPConfig{
+					Config: http.Config{
+						IdleConnTimeout:       2 * time.Second,
+						ResponseHeaderTimeout: 3 * time.Second,
+						InsecureSkipVerify:    true,
+						TLSHandshakeTimeout:   4 * time.Second,
+						ExpectContinueTimeout: 5 * time.Second,
+						MaxIdleConns:          6,
+						MaxIdleConnsPerHost:   7,
+						MaxConnsPerHost:       8,
+					},
 				},
 			},
 			expectedErr: nil,

@@ -17,14 +17,14 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		Endpoint:                cfg.EndpointSuffix,
 		MaxRetries:              cfg.MaxRetries,
 		HTTPConfig: azure.HTTPConfig{
-			IdleConnTimeout:       model.Duration(cfg.IdleConnTimeout),
-			ResponseHeaderTimeout: model.Duration(cfg.ResponseHeaderTimeout),
-			InsecureSkipVerify:    cfg.InsecureSkipVerify,
-			TLSHandshakeTimeout:   model.Duration(cfg.TLSHandshakeTimeout),
-			ExpectContinueTimeout: model.Duration(cfg.ExpectContinueTimeout),
-			MaxIdleConns:          cfg.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.MaxIdleConnsPerHost,
-			MaxConnsPerHost:       cfg.MaxConnsPerHost,
+			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
+			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
+			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
+			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
+			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
+			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
+			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 		},
 	}
 
