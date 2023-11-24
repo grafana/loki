@@ -82,7 +82,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 			},
 		}
 
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, fakeLimits{}, ss, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -142,7 +142,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, fakeLimits{}, ss, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -188,7 +188,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("returns error if chunk refs do not belong to tenant", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, fakeLimits{}, ss, cm, logger, reg)
 		require.NoError(t, err)
 
 		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
@@ -212,7 +212,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("gateway tracks active users", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, fakeLimits{}, ss, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -247,4 +247,22 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		}
 		require.ElementsMatch(t, tenants, gw.activeUsers.ActiveUsers())
 	})
+}
+
+type fakeLimits struct {
+}
+
+func (f fakeLimits) BloomGatewayShardSize(_ string) int {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f fakeLimits) BloomGatewayEnabled(_ string) bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (f fakeLimits) BloomGatewayBlocksDownloadingParallelism(_ string) int {
+	//TODO implement me
+	panic("implement me")
 }
