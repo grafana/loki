@@ -195,14 +195,14 @@ func (d *blockDownloader) extractBlock(block *Block, ts time.Time) (string, erro
 	return workingDirectoryPath, nil
 }
 
-func (s *blockDownloader) createBlockQuerier(directory string) *v1.BlockQuerier {
+func (d *blockDownloader) createBlockQuerier(directory string) *v1.BlockQuerier {
 	reader := v1.NewDirectoryBlockReader(directory)
 	block := v1.NewBlock(reader)
 	return v1.NewBlockQuerier(block)
 }
 
 func (d *blockDownloader) stop() {
-	services.StopManagerAndAwaitStopped(d.ctx, d.manager)
+	_ = services.StopManagerAndAwaitStopped(d.ctx, d.manager)
 }
 
 func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {

@@ -252,17 +252,17 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 type fakeLimits struct {
 }
 
-func (f fakeLimits) BloomGatewayShardSize(tenantID string) int {
+func (f fakeLimits) BloomGatewayShardSize(_ string) int {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomGatewayEnabled(tenantID string) bool {
+func (f fakeLimits) BloomGatewayEnabled(_ string) bool {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomGatewayBlocksDownloadingParallelism(userID string) int {
+func (f fakeLimits) BloomGatewayBlocksDownloadingParallelism(_ string) int {
 	//TODO implement me
 	panic("implement me")
 }

@@ -47,10 +47,8 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 	done := make(chan bool)
 	go func() {
 		for i := 0; i < 20; i++ {
-			select {
-			case block := <-blocksCh:
-				downloadedBlocks[block.BlockPath] = nil
-			}
+			block := <-blocksCh
+			downloadedBlocks[block.BlockPath] = nil
 		}
 		done <- true
 	}()
