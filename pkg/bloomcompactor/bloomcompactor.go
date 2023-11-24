@@ -128,7 +128,7 @@ func New(
 		}
 
 		// Configure ObjectClient and IndexShipper for series and chunk management
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageCfg, clientMetrics)
+		objectClient, err := storage.NewObjectClient("bloom-compactor", periodicConfig.ObjectType, storageCfg, clientMetrics, r)
 		if err != nil {
 			return nil, fmt.Errorf("error creating object client '%s': %w", periodicConfig.ObjectType, err)
 		}

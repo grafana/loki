@@ -564,6 +564,17 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjStoreConf, defaults.StorageConfig.ObjStoreConf) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			//TODO (JoaoBraveCoding) Add Ruler config
+			r.StorageConfig.ThanosObjStore = r.Common.Storage.ThanosObjStore
+			r.StorageConfig.ObjStoreConf = r.Common.Storage.ObjStoreConf
+			r.StorageConfig.Hedging = r.Common.Storage.Hedging
+		}
+	}
+
 	if configsFound > 1 {
 		return ErrTooManyStorageConfigs
 	}
