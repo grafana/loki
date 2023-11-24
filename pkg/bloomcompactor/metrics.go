@@ -18,7 +18,7 @@ type metrics struct {
 	compactionRunSkippedTenants    prometheus.Counter
 	compactionRunSucceededTenants  prometheus.Counter
 	compactionRunFailedTenants     prometheus.Counter
-	compactionRunUnownedJobs       prometheus.Counter
+	compactionRunSkippedFp         prometheus.Counter
 	compactionRunSucceededJobs     prometheus.Counter
 	compactionRunFailedJobs        prometheus.Counter
 	compactionRunInterval          prometheus.Gauge
@@ -69,11 +69,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "tenants_failed",
 			Help:      "Number of tenants failed processing during the current compaction run",
 		}),
-		compactionRunUnownedJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunSkippedFp: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "jobs_unowned",
-			Help:      "Number of unowned jobs skipped during the current compaction run",
+			Name:      "fingerprints_unowned",
+			Help:      "Number of unowned stream fingerprints skipped during the current compaction run",
 		}),
 		compactionRunSucceededJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,

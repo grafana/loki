@@ -2,7 +2,6 @@ package bloomcompactor
 
 import (
 	"github.com/grafana/dskit/ring"
-
 	util_ring "github.com/grafana/loki/pkg/util/ring"
 )
 
@@ -14,7 +13,7 @@ var (
 // ShardingStrategy describes whether compactor "owns" given user or job.
 type ShardingStrategy interface {
 	util_ring.TenantSharding
-	OwnsJob(job Job) (bool, error)
+	OwnsFp(tenantID string, fp uint64) (bool, error)
 }
 
 type ShuffleShardingStrategy struct {
@@ -31,15 +30,15 @@ func NewShuffleShardingStrategy(r *ring.Ring, ringLifecycler *ring.BasicLifecycl
 	return &s
 }
 
-// OwnsJob makes sure only a single compactor should execute the job.
-func (s *ShuffleShardingStrategy) OwnsJob(job Job) (bool, error) {
-	if !s.OwnsTenant(job.Tenant()) {
+// OwnsFp makes sure only a single compactor should execute the job.
+func (s *ShuffleShardingStrategy) OwnsFp(tenantID string, fp uint64) (bool, error) {
+	if !s.OwnsTenant(tenantID) {
 		return false, nil
 	}
 
-	tenantRing := s.GetTenantSubRing(job.Tenant())
+	tenantRing := s.GetTenantSubRing(tenantID)
 	fpSharding := util_ring.NewFingerprintShuffleSharding(tenantRing, s.ringLifeCycler, RingOp)
-	return fpSharding.OwnsFingerprint(uint64(0))
+	return fpSharding.OwnsFingerprint(fp)
 }
 
 // NoopStrategy is an implementation of the ShardingStrategy that does not
@@ -48,8 +47,8 @@ type NoopStrategy struct {
 	util_ring.NoopStrategy
 }
 
-// OwnsJob implements TenantShuffleSharding.
-func (s *NoopStrategy) OwnsJob(_ Job) (bool, error) {
+// OwnsFp implements TenantShuffleSharding.
+func (s *NoopStrategy) OwnsFp(_ string, _ uint64) (bool, error) {
 	return true, nil
 }
 

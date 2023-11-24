@@ -61,10 +61,9 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// TODO: Make a constants file somewhere
 const (
-	bloomFileName  = "bloom"
-	seriesFileName = "series"
+	bloomFileName  = v1.BloomFileName
+	seriesFileName = v1.SeriesFileName
 )
 
 type Compactor struct {
@@ -366,8 +365,24 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
+				ownsFingerprint, err := c.sharding.OwnsFp(tenant, uint64(fingerprint))
+				fpLogger := log.With(logger, "fp", tableName+"_"+tenant+"_"+fingerprint.String())
+
+				if err != nil {
+					c.metrics.compactionRunSkippedFp.Inc()
+					level.Error(fpLogger).Log("msg", "failed to check if compactor owns fp", "err", err)
+					errs.Add(err)
+					return
+				}
+				if !ownsFingerprint {
+					c.metrics.compactionRunSkippedFp.Inc()
+					level.Debug(fpLogger).Log("msg", "skipping fp because it is not owned by this shard")
+					return
+				}
+
 				var temp []tsdbindex.ChunkMeta
 				copy(temp, chksMetas)
+				//All indices given a table within fp of this compactor shard
 				indices = append(indices, Index{seriesFP: fingerprint, seriesLbs: labels, chunks: temp})
 			},
 		); err != nil {
@@ -376,20 +391,6 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 
 		job := NewJob(tenant, tableName, idx.Path(), indices)
 		jobLogger := log.With(logger, "job", job.String())
-
-		ownsJob, err := c.sharding.OwnsJob(job)
-
-		if err != nil {
-			c.metrics.compactionRunUnownedJobs.Inc()
-			level.Error(jobLogger).Log("msg", "failed to check if compactor owns job", "err", err)
-			errs.Add(err)
-			return errs.Err()
-		}
-		if !ownsJob {
-			c.metrics.compactionRunUnownedJobs.Inc()
-			level.Debug(jobLogger).Log("msg", "skipping job because it is not owned by this shard")
-			return nil
-		}
 
 		if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {
 			c.metrics.compactionRunFailedJobs.Inc()
@@ -575,7 +576,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
 		MinFingerprint: uint64(job.minFp),
