@@ -6,5 +6,6 @@ jobs:
     container:
       image: grafana/loki-build-image:0.32.0
     steps:
-      - name: Lin
+      - uses: actions/checkout@v4
+      - name: Lint
         run: make lint
