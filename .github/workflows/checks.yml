@@ -3,6 +3,8 @@ on: [push]
 jobs:
   checks:
     runs-on: ubuntu-latest
+    env:
+      BUILD_IN_CONTAINER: false 
     container:
       image: grafana/loki-build-image:0.32.0
     steps:
@@ -16,3 +18,4 @@ jobs:
       - run: make check-drone-drift
       - run: make check-generated-files
       - run: make test
+      - run: GIT_TARGET_BRANCH="$GITHUB_BASE_REF" make check-format
