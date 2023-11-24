@@ -225,7 +225,7 @@ func (r *tdigestBatchRangeVectorIterator) At() (int64, StepResult) {
 
 func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
 	s := sketch.NewTDigestSketch()
-	//s := sketch.NewDDSketch()
+	//s := sketch.NewDDSketch() // TODO: make this configurable
 	for _, v := range samples {
 		// The sketch from the underlying tdigest package we are using
 		// cannot return an error when calling Add.
