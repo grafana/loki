@@ -41,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -731,6 +732,9 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 				return nil, fmt.Errorf("Unrecognized named azure storage config %s", name)
 			}
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
+		}
+		if cfg.ThanosObjStore {
+			azure.NewBlobStorageThanosObjectClient(context.Background(), cfg.ObjStoreConf, component, util_log.Logger, cfg.Hedging, reg)
 		}
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)
 
