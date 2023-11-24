@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
@@ -44,7 +43,7 @@ func TestShuffleSharding(t *testing.T) {
 		require.NoError(t, ringManager.StartAsync(context.Background()))
 
 		sharding := NewShuffleShardingStrategy(ringManager.Ring, ringManager.RingLifecycler, mockLimits{
-			Limits:                  overrides,
+			Overrides:               overrides,
 			bloomCompactorShardSize: shardSize,
 		})
 
@@ -129,22 +128,10 @@ func TestShuffleSharding(t *testing.T) {
 }
 
 type mockLimits struct {
-	downloads.Limits
+	*validation.Overrides
 	bloomCompactorShardSize int
 }
 
 func (m mockLimits) BloomCompactorShardSize(_ string) int {
 	return m.bloomCompactorShardSize
-}
-
-func (m mockLimits) BloomCompactorMaxTableAge(_ string) time.Duration {
-	return 0
-}
-
-func (m mockLimits) BloomCompactorMinTableAge(_ string) time.Duration {
-	return 0
-}
-
-func (m mockLimits) BloomCompactorEnabled(_ string) bool {
-	return false
 }

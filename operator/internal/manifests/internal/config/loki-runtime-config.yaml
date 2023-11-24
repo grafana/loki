@@ -32,6 +32,11 @@ overrides:
     {{- if $l.PerStreamRateLimitBurst }}
     per_stream_rate_limit_burst: {{ $l.PerStreamRateLimitBurst }}MB
     {{- end }}
+    {{- with $l.PerStreamDesiredRate }}
+    shard_streams:
+      enabled: true
+      desired_rate: {{ . }}MB
+    {{- end}}
   {{- end -}}
   {{- if $l := $spec.QueryLimits -}}
     {{- if $l.MaxEntriesLimitPerQuery }}

@@ -2248,6 +2248,16 @@ bloom_shipper:
   # Working directory to store downloaded Bloom Blocks.
   # CLI flag: -bloom.shipper.working-directory
   [working_directory: <string> | default = "bloom-shipper"]
+
+  blocks_downloading_queue:
+    # The count of parallel workers that download Bloom Blocks.
+    # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
+    [workers_count: <int> | default = 100]
+
+    # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
+    # the tasks above this limit will fail an error.
+    # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
+    [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 ```
 
 ### chunk_store_config
@@ -2977,6 +2987,22 @@ shard_streams:
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
+
+# Length of the n-grams created when computing blooms from log lines.
+# CLI flag: -bloom-compactor.ngram-length
+[bloom_ngram_length: <int> | default = 4]
+
+# Skip factor for the n-grams created when computing blooms from log lines.
+# CLI flag: -bloom-compactor.ngram-skip
+[bloom_ngram_skip: <int> | default = 0]
+
+# Scalable Bloom Filter desired false-positive rate.
+# CLI flag: -bloom-compactor.false-positive-rate
+[bloom_false_positive_rate: <float> | default = 0.01]
+
+# Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
+# CLI flag: -bloom-gateway.blocks-downloading-parallelism
+[bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
