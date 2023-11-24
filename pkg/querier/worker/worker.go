@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
-	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 type Config struct {
@@ -151,7 +150,7 @@ func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logg
 	}
 
 	if ring != nil {
-		w, err := lokiutil.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		w, err := util.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}

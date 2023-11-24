@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/tap"
 )
@@ -11,19 +12,15 @@ import (
 type GrpcInflightMethodLimiter interface {
 	// RPCCallStarting is called before request has been read into memory.
 	// All that's known about the request at this point is grpc method name.
+	//
+	// Returned context is used during the remainder of the gRPC call.
+	//
 	// Returned error should be convertible to gRPC Status via status.FromError,
 	// otherwise gRPC-server implementation-specific error will be returned to the client (codes.PermissionDenied in grpc@v1.55.0).
-	RPCCallStarting(methodName string) error
-	RPCCallFinished(methodName string)
+	RPCCallStarting(ctx context.Context, methodName string, md metadata.MD) (context.Context, error)
+
+	RPCCallFinished(ctx context.Context)
 }
-
-// Custom type to hide it from other packages.
-type grpcLimitCheckContextKey int
-
-// Presence of this key in the context indicates that inflight request counter was increased for this request, and needs to be decreased when request ends.
-const (
-	requestFullMethod grpcLimitCheckContextKey = 1
-)
 
 func newGrpcInflightLimitCheck(methodLimiter GrpcInflightMethodLimiter) *grpcInflightLimitCheck {
 	return &grpcInflightLimitCheck{
@@ -38,8 +35,8 @@ type grpcInflightLimitCheck struct {
 }
 
 // TapHandle is called after receiving grpc request and headers, but before reading any request data yet.
-// If we reject request here, it won't be counted towards any metrics (eg. in middleware.grpcStatsHandler).
-// If we accept request (not return error), eventually HandleRPC with stats.End notification will be called.
+// If we reject request here (by returning non-nil error), it won't be counted towards any metrics (eg. in middleware.grpcStatsHandler).
+// If we accept request (no error), eventually HandleRPC with stats.End notification will be called.
 func (g *grpcInflightLimitCheck) TapHandle(ctx context.Context, info *tap.Info) (context.Context, error) {
 	if !isMethodNameValid(info.FullMethodName) {
 		// If method name is not valid, we let the request continue, but not call method limiter.
@@ -47,12 +44,7 @@ func (g *grpcInflightLimitCheck) TapHandle(ctx context.Context, info *tap.Info) 
 		return ctx, nil
 	}
 
-	if err := g.methodLimiter.RPCCallStarting(info.FullMethodName); err != nil {
-		return ctx, err
-	}
-
-	ctx = context.WithValue(ctx, requestFullMethod, info.FullMethodName)
-	return ctx, nil
+	return g.methodLimiter.RPCCallStarting(ctx, info.FullMethodName, info.Header)
 }
 
 func (g *grpcInflightLimitCheck) TagRPC(ctx context.Context, _ *stats.RPCTagInfo) context.Context {
@@ -65,9 +57,7 @@ func (g *grpcInflightLimitCheck) HandleRPC(ctx context.Context, rpcStats stats.R
 		return
 	}
 
-	if name, ok := ctx.Value(requestFullMethod).(string); ok {
-		g.methodLimiter.RPCCallFinished(name)
-	}
+	g.methodLimiter.RPCCallFinished(ctx)
 }
 
 func (g *grpcInflightLimitCheck) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {

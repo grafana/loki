@@ -1,21 +1,11 @@
 package bloomshipper
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"math"
-	"os"
-	"path/filepath"
-	"strconv"
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 func Test_Shipper_findBlocks(t *testing.T) {
@@ -207,62 +197,4 @@ func createBlockRef(
 		// block path is unique, and it's used to distinguish the blocks so the rest of the fields might be skipped in this test
 		BlockPath: blockPath,
 	}
-}
-
-const (
-	bloomFileName  = "bloom"
-	seriesFileName = "series"
-)
-
-func Test_Shipper_extractBlock(t *testing.T) {
-	dir := t.TempDir()
-
-	mockBlockDir := filepath.Join(dir, "mock-block-dir")
-	err := os.MkdirAll(mockBlockDir, 0777)
-	require.NoError(t, err)
-	bloomFile, err := os.Create(filepath.Join(mockBlockDir, bloomFileName))
-	require.NoError(t, err)
-	bloomFileContent := uuid.NewString()
-	_, err = io.Copy(bloomFile, bytes.NewReader([]byte(bloomFileContent)))
-	require.NoError(t, err)
-
-	seriesFile, err := os.Create(filepath.Join(mockBlockDir, seriesFileName))
-	require.NoError(t, err)
-	seriesFileContent := uuid.NewString()
-	_, err = io.Copy(seriesFile, bytes.NewReader([]byte(seriesFileContent)))
-	require.NoError(t, err)
-
-	blockFilePath := filepath.Join(dir, "test-block-archive")
-	file, err := os.OpenFile(blockFilePath, os.O_CREATE|os.O_RDWR, 0700)
-	require.NoError(t, err)
-	err = v1.TarGz(file, v1.NewDirectoryBlockReader(mockBlockDir))
-	require.NoError(t, err)
-
-	blockFile, err := os.OpenFile(blockFilePath, os.O_RDONLY, 0700)
-	require.NoError(t, err)
-
-	workingDir := t.TempDir()
-	shipper := Shipper{config: config.Config{WorkingDirectory: workingDir}}
-	ts := time.Now().UTC()
-	block := Block{
-		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
-		Data:     blockFile,
-	}
-
-	actualPath, err := shipper.extractBlock(&block, ts)
-
-	require.NoError(t, err)
-	expectedPath := filepath.Join(workingDir, block.BlockPath, strconv.FormatInt(ts.UnixMilli(), 10))
-	require.Equal(t, expectedPath, actualPath,
-		"expected archive to be extracted to working directory under the same path as blockPath and with timestamp suffix")
-	require.FileExists(t, filepath.Join(expectedPath, bloomFileName))
-	require.FileExists(t, filepath.Join(expectedPath, seriesFileName))
-
-	actualBloomFileContent, err := os.ReadFile(filepath.Join(expectedPath, bloomFileName))
-	require.NoError(t, err)
-	require.Equal(t, bloomFileContent, string(actualBloomFileContent))
-
-	actualSeriesFileContent, err := os.ReadFile(filepath.Join(expectedPath, seriesFileName))
-	require.NoError(t, err)
-	require.Equal(t, seriesFileContent, string(actualSeriesFileContent))
 }

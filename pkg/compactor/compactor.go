@@ -534,29 +534,29 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		}
 	}()
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		if err := c.RunCompaction(ctx, true); err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
-		}
-
-		ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				if err := c.RunCompaction(ctx, true); err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
 	if c.cfg.RetentionEnabled {
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			if err := c.RunCompaction(ctx, true); err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+			}
+
+			ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ticker.C:
+					if err := c.RunCompaction(ctx, true); err != nil {
+						level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+
 		for _, container := range c.storeContainers {
 			c.wg.Add(1)
 			go func(sc storeContainer) {

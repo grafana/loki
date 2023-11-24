@@ -2300,6 +2300,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.tracing</td>
+			<td>object</td>
+			<td>Enable tracing</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memberlist.service.publishNotReadyAddresses</td>
 			<td>bool</td>
 			<td></td>
@@ -4392,15 +4403,6 @@ null
 			<td>Number of times to retry the test before failing</td>
 			<td><pre lang="json">
 "1m"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>tracing.jaegerAgentHost</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-""
 </pre>
 </td>
 		</tr>

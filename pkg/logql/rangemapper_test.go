@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 func Test_SplitRangeInterval(t *testing.T) {
@@ -83,7 +83,7 @@ func Test_SplitRangeInterval(t *testing.T) {
 			rvm, err := NewRangeMapper(2*time.Second, nilShardMetrics, mapperStats)
 			require.NoError(t, err)
 
-			noop, mappedExpr, err := rvm.Parse(tc.expr)
+			noop, mappedExpr, err := rvm.Parse(syntax.MustParseExpr(tc.expr))
 			require.NoError(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
@@ -1741,7 +1741,7 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			rvm, err := NewRangeMapper(time.Minute, nilShardMetrics, mapperStats)
 			require.NoError(t, err)
 
-			noop, mappedExpr, err := rvm.Parse(tc.expr)
+			noop, mappedExpr, err := rvm.Parse(syntax.MustParseExpr(tc.expr))
 			require.NoError(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
@@ -1932,7 +1932,7 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			rvm, err := NewRangeMapper(time.Minute, nilShardMetrics, mapperStats)
 			require.NoError(t, err)
 
-			noop, mappedExpr, err := rvm.Parse(tc.expr)
+			noop, mappedExpr, err := rvm.Parse(syntax.MustParseExpr(tc.expr))
 			require.NoError(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
@@ -1945,21 +1945,9 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 func Test_FailQuery(t *testing.T) {
 	rvm, err := NewRangeMapper(2*time.Minute, nilShardMetrics, NewMapperStats())
 	require.NoError(t, err)
-	_, _, err = rvm.Parse(`{app="foo"} |= "err"`)
+	_, _, err = rvm.Parse(syntax.MustParseExpr(`{app="foo"} |= "err"`))
 	require.Error(t, err)
-	_, _, err = rvm.Parse(`topk(0, sum(count_over_time({app="foo"} | json |  __error__="" [15m])))`)
-	require.Error(t, err)
-	// Check fixes for bug where missing or empty parameters for regexp and pattern parsers threw a panic
-	// Missing parameter to regexp parser
-	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | regexp [1d])))`)
-	require.ErrorIs(t, err, logqlmodel.ErrParse)
-	// Empty parameter to regexp parser
-	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | regexp ` + "``" + ` [1d])))`)
-	require.ErrorIs(t, err, logqlmodel.ErrParse)
-	// Empty parameter to pattern parser
-	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | pattern ` + `""` + ` [1d])))`)
-	require.ErrorIs(t, err, logqlmodel.ErrParse)
 	// Empty parameter to json parser
-	_, _, err = rvm.Parse(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | json [1d])))`)
+	_, _, err = rvm.Parse(syntax.MustParseExpr(`topk(10,sum by(namespace)(count_over_time({application="nginx", site!="eu-west-1-dev"} |= "/artifactory/" != "api" != "binarystore" | json [1d])))`))
 	require.NoError(t, err)
 }

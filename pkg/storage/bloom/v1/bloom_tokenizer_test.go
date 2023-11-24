@@ -2,15 +2,15 @@ package v1
 
 import (
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
-
-	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -20,12 +20,60 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	DefaultNGramLength = 4
+	DefaultNGramSkip   = 0
+)
+
 var (
 	four = NewNGramTokenizer(4, 0)
 )
 
+func TestPrefixedKeyCreation(t *testing.T) {
+	var ones uint64 = 0xffffffffffffffff
+
+	ref := logproto.ChunkRef{
+		From:     0,
+		Through:  model.Time(int64(ones)),
+		Checksum: 0xffffffff,
+	}
+	for _, tc := range []struct {
+		desc          string
+		ngram, expLen int
+	}{
+		{
+			desc:   "0-gram",
+			ngram:  0,
+			expLen: 20,
+		},
+		{
+			desc:   "4-gram",
+			ngram:  4,
+			expLen: 20 + 4*MaxRuneLen,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			token, prefixLn := prefixedToken(tc.ngram, ref)
+			require.Equal(t, 20, prefixLn)
+			require.Equal(t, tc.expLen, len(token))
+			// first 8 bytes should be zeros from `from`
+			for i := 0; i < 8; i++ {
+				require.Equal(t, byte(0), token[i])
+			}
+			// next 8 bytes should be ones from `through`
+			for i := 8; i < 16; i++ {
+				require.Equal(t, byte(255), token[i])
+			}
+			// next 4 bytes should be ones from `checksum`
+			for i := 16; i < 20; i++ {
+				require.Equal(t, byte(255), token[i])
+			}
+		})
+	}
+}
+
 func TestSetLineTokenizer(t *testing.T) {
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 
 	// Validate defaults
 	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
@@ -39,7 +87,7 @@ func TestSetLineTokenizer(t *testing.T) {
 
 func TestPopulateSeriesWithBloom(t *testing.T) {
 	var testLine = "this is a log line"
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 	var lbsList []labels.Labels
@@ -84,7 +132,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 }
 
 func BenchmarkMapClear(b *testing.B) {
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < CacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
@@ -95,7 +143,7 @@ func BenchmarkMapClear(b *testing.B) {
 }
 
 func BenchmarkNewMap(b *testing.B) {
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < CacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k

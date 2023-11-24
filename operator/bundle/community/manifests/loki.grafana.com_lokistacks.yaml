@@ -135,6 +135,12 @@ spec:
                               on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
+                          perStreamDesiredRate:
+                            description: PerStreamDesiredRate defines the desired
+                              ingestion rate per second that LokiStack should target
+                              applying automatic stream sharding. Units MB.
+                            format: int32
+                            type: integer
                           perStreamRateLimit:
                             description: PerStreamRateLimit defines the maximum byte
                               rate per second per stream. Units MB.
@@ -260,6 +266,12 @@ spec:
                             maxLineSize:
                               description: MaxLineSize defines the maximum line size
                                 on ingestion path. Units in Bytes.
+                              format: int32
+                              type: integer
+                            perStreamDesiredRate:
+                              description: PerStreamDesiredRate defines the desired
+                                ingestion rate per second that LokiStack should target
+                                applying automatic stream sharding. Units MB.
                               format: int32
                               type: integer
                             perStreamRateLimit:

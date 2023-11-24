@@ -33,8 +33,8 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 		return false
 	}
 
-	query := qb.q.params.Query()
-	typ, err := QueryType(query)
+	query := qb.q.params.QueryString()
+	typ, err := QueryType(qb.q.params.GetExpression())
 	if err != nil {
 		typ = "unknown"
 	}

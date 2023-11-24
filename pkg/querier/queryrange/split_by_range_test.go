@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp"
-
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -37,6 +38,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum(bytes_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum(bytes_over_time({app="foo"}[3m]))`),
+				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
 				subQueryRequestResponse(`sum(bytes_over_time({app="foo"}[1m]))`, 1),
@@ -50,6 +54,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum by (bar) (bytes_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (bar) (bytes_over_time({app="foo"}[3m]))`),
+				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
 				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m]))`, 10),
@@ -63,6 +70,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum(count_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum(count_over_time({app="foo"}[3m]))`),
+				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
 				subQueryRequestResponse(`sum(count_over_time({app="foo"}[1m]))`, 1),
@@ -76,6 +86,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum by (bar) (count_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (bar) (count_over_time({app="foo"}[3m]))`),
+				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
 				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m]))`, 0),
@@ -89,6 +102,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum(sum_over_time({app="foo"} | unwrap bar [3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum(sum_over_time({app="foo"} | unwrap bar [3m]))`),
+				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
 				subQueryRequestResponse(`sum(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1),
@@ -102,6 +118,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3m]))`),
+				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
 				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1),
@@ -140,6 +159,9 @@ func subQueryRequestResponse(expectedSubQuery string, sampleValue float64) query
 			Query:  expectedSubQuery,
 			TimeTs: time.Unix(1, 0),
 			Path:   "/loki/api/v1/query",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(expectedSubQuery),
+			},
 		},
 		Response: &LokiPromResponse{
 			Response: &queryrangebase.PrometheusResponse{

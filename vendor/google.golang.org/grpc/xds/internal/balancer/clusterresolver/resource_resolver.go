@@ -200,7 +200,7 @@ func (rr *resourceResolver) updateMechanisms(mechanisms []DiscoveryMechanism) {
 	for dm, r := range rr.childrenMap {
 		if !newDMs[dm] {
 			delete(rr.childrenMap, dm)
-			r.r.stop()
+			go r.r.stop()
 		}
 	}
 	// Regenerate even if there's no change in discovery mechanism, in case

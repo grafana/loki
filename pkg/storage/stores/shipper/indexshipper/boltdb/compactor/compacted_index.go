@@ -62,7 +62,7 @@ func (c *CompactedIndex) isEmpty() (bool, error) {
 //     bbolt.Compact fills the whole page by setting FillPercent to 1 which works well here since while copying the data, it receives the index entries in order.
 //     The storage space goes down from anywhere between 25% to 50% as per my(Sandeep) tests.
 func (c *CompactedIndex) recreateCompactedDB() error {
-	destDB, err := openBoltdbFileWithNoSync(filepath.Join(c.workingDir, fmt.Sprint(time.Now().Unix())))
+	destDB, err := openBoltdbFileWithNoSync(filepath.Join(c.workingDir, fmt.Sprint(time.Now().UnixNano())))
 	if err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (c *CompactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	if c.compactedFileRecreated {
 		fileNameFormat = "%s" + recreatedCompactedDBSuffix
 	}
-	fileName := fmt.Sprintf(fileNameFormat, shipperutil.BuildIndexFileName(c.tableName, uploaderName, fmt.Sprint(time.Now().Unix())))
+	fileName := fmt.Sprintf(fileNameFormat, shipperutil.BuildIndexFileName(c.tableName, uploaderName, fmt.Sprint(time.Now().UnixNano())))
 
 	idxFile := boltdb.BoltDBToIndexFile(c.compactedFile, fileName)
 	c.compactedFile = nil

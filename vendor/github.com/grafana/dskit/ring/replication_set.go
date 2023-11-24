@@ -9,6 +9,7 @@ import (
 
 	kitlog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go/ext"
 
 	"github.com/grafana/dskit/spanlogger"
 )
@@ -294,7 +295,7 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 
 	terminate := func(err error) ([]T, error) {
 		if cfg.Logger != nil {
-			_ = cfg.Logger.Error(err)
+			ext.Error.Set(cfg.Logger.Span, true)
 		}
 
 		contextTracker.cancelAllContexts()
@@ -325,7 +326,7 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 			resultsRemaining--
 
 			if result.err != nil && cfg.IsTerminalError != nil && cfg.IsTerminalError(result.err) {
-				level.Error(logger).Log("msg", "cancelling all outstanding requests because a terminal error occurred", "err", result.err)
+				level.Warn(logger).Log("msg", "cancelling all outstanding requests because a terminal error occurred", "err", result.err)
 				// We must return before calling resultTracker.done() below, otherwise done() might start further requests if request minimisation is enabled.
 				return terminate(result.err)
 			}

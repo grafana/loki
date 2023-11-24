@@ -83,3 +83,22 @@ func (s *FingerprintShuffleSharding) OwnsFingerprint(fp uint64) (bool, error) {
 
 	return rs.Includes(s.ringLifeCycler.GetInstanceAddr()), nil
 }
+
+// NoopStrategy is an implementation of the ShardingStrategy that does not
+// shard anything.
+type NoopStrategy struct{}
+
+// OwnsTenant implements TenantShuffleSharding.
+func (s *NoopStrategy) OwnsTenant(_ string) bool {
+	return false
+}
+
+// GetTenantSubRing implements TenantShuffleSharding.
+func (s *NoopStrategy) GetTenantSubRing(_ string) ring.ReadRing {
+	return nil
+}
+
+// OwnsFingerprint implements FingerprintSharding.
+func (s *NoopStrategy) OwnsFingerprint(_ uint64) (bool, error) {
+	return false, nil
+}

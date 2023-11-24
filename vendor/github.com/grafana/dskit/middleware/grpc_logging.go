@@ -29,6 +29,12 @@ type OptionalLogging interface {
 	ShouldLog(ctx context.Context, duration time.Duration) bool
 }
 
+type DoNotLogError struct{ Err error }
+
+func (i DoNotLogError) Error() string                                     { return i.Err.Error() }
+func (i DoNotLogError) Unwrap() error                                     { return i.Err }
+func (i DoNotLogError) ShouldLog(_ context.Context, _ time.Duration) bool { return false }
+
 // GRPCServerLog logs grpc requests, errors, and latency.
 type GRPCServerLog struct {
 	Log log.Logger

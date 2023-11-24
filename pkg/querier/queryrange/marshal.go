@@ -6,10 +6,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql"
@@ -19,7 +21,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/sketch"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
@@ -277,12 +281,32 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 	case *QueryRequest_Series:
 		return concrete.Series, ctx, nil
 	case *QueryRequest_Instant:
+		if concrete.Instant.Plan == nil {
+			parsed, err := syntax.ParseExpr(concrete.Instant.GetQuery())
+			if err != nil {
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+			concrete.Instant.Plan = &plan.QueryPlan{
+				AST: parsed,
+			}
+		}
+
 		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
 		return concrete.Stats, ctx, nil
 	case *QueryRequest_Volume:
 		return concrete.Volume, ctx, nil
 	case *QueryRequest_Streams:
+		if concrete.Streams.Plan == nil {
+			parsed, err := syntax.ParseExpr(concrete.Streams.GetQuery())
+			if err != nil {
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+			concrete.Streams.Plan = &plan.QueryPlan{
+				AST: parsed,
+			}
+		}
+
 		return concrete.Streams, ctx, nil
 	case *QueryRequest_Labels:
 		return &LabelRequest{

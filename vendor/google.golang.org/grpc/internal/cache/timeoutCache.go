@@ -142,3 +142,10 @@ func (c *TimeoutCache) Clear(runCallback bool) {
 		entry.callback()
 	}
 }
+
+// Len returns the number of entries in the cache.
+func (c *TimeoutCache) Len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.cache)
+}

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const BigFile = "../../../logql/sketch/testdata/war_peace.txt"
@@ -101,7 +103,7 @@ func TestPrefixedIterator(t *testing.T) {
 	} {
 		prefix := []byte("0123")
 		t.Run(tc.desc, func(t *testing.T) {
-			itr := NewPrefixedTokenIter(prefix, three.Tokens(tc.input))
+			itr := NewPrefixedTokenIter(prefix, len(prefix), three.Tokens(tc.input))
 			for _, exp := range tc.exp {
 				require.True(t, itr.Next())
 				require.Equal(t, exp, string(itr.At()))
@@ -126,9 +128,6 @@ func BenchmarkTokens(b *testing.B) {
 	var (
 		v2Three      = NewNGramTokenizer(3, 0)
 		v2ThreeSkip1 = NewNGramTokenizer(3, 1)
-
-		// fp + from + through + checksum
-		chunkPrefixLen = 8 + 8 + 8 + 4
 	)
 
 	type impl struct {
@@ -174,9 +173,9 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						prefix := make([]byte, chunkPrefixLen, 512)
+						buf, prefixLn := prefixedToken(v2Three.N, logproto.ChunkRef{})
 						return func() {
-							itr := NewPrefixedTokenIter(prefix, v2Three.Tokens(lorem))
+							itr := NewPrefixedTokenIter(buf, prefixLn, v2Three.Tokens(lorem))
 							for itr.Next() {
 								_ = itr.At()
 							}
@@ -191,9 +190,9 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						prefix := make([]byte, chunkPrefixLen, 512)
+						buf, prefixLn := prefixedToken(v2Three.N, logproto.ChunkRef{})
 						return func() {
-							itr := NewPrefixedTokenIter(prefix, v2ThreeSkip1.Tokens(lorem))
+							itr := NewPrefixedTokenIter(buf, prefixLn, v2ThreeSkip1.Tokens(lorem))
 							for itr.Next() {
 								_ = itr.At()
 							}

@@ -690,6 +690,14 @@ type IngestionLimitSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Line Size"
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
 
+	// PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+	// target applying automatic stream sharding. Units MB.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Per Stream Desired Rate (in MB)"
+	PerStreamDesiredRate int32 `json:"perStreamDesiredRate,omitempty"`
+
 	// PerStreamRateLimit defines the maximum byte rate per second per stream. Units MB.
 	//
 	// +optional

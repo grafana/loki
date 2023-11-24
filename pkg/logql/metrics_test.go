@@ -16,6 +16,7 @@ import (
 	"github.com/uber/jaeger-client-go"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -25,30 +26,25 @@ import (
 
 func TestQueryType(t *testing.T) {
 	tests := []struct {
-		name    string
-		query   string
-		want    string
-		wantErr bool
+		name  string
+		query string
+		want  string
 	}{
-		{"bad", "ddd", "", true},
-		{"limited", `{app="foo"}`, QueryTypeLimited, false},
-		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, QueryTypeLimited, false},
-		{"limited with parser", `{app="foo" ,fuzz=~"foo"} | logfmt`, QueryTypeLimited, false},
-		{"filter", `{app="foo"} |= "foo"`, QueryTypeFilter, false},
-		{"filter string extracted label", `{app="foo"} | json | foo="a"`, QueryTypeFilter, false},
-		{"filter duration", `{app="foo"} | json | duration > 5s`, QueryTypeFilter, false},
-		{"metrics", `rate({app="foo"} |= "foo"[5m])`, QueryTypeMetric, false},
-		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric, false},
-		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter, false},
-		{"filters and labels filters", `{app="foo"} |= "foo" |= "f" != "b" | json | a > 5`, QueryTypeFilter, false},
+		{"limited", `{app="foo"}`, QueryTypeLimited},
+		{"limited multi label", `{app="foo" ,fuzz=~"foo"}`, QueryTypeLimited},
+		{"limited with parser", `{app="foo" ,fuzz=~"foo"} | logfmt`, QueryTypeLimited},
+		{"filter", `{app="foo"} |= "foo"`, QueryTypeFilter},
+		{"filter string extracted label", `{app="foo"} | json | foo="a"`, QueryTypeFilter},
+		{"filter duration", `{app="foo"} | json | duration > 5s`, QueryTypeFilter},
+		{"metrics", `rate({app="foo"} |= "foo"[5m])`, QueryTypeMetric},
+		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric},
+		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter},
+		{"filters and labels filters", `{app="foo"} |= "foo" |= "f" != "b" | json | a > 5`, QueryTypeFilter},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := QueryType(tt.query)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("QueryType() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			got, err := QueryType(syntax.MustParseExpr(tt.query))
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("QueryType() = %v, want %v", got, tt.want)
 			}
@@ -69,12 +65,13 @@ func TestLogSlowQuery(t *testing.T) {
 	ctx = context.WithValue(ctx, httpreq.QueryTagsHTTPHeader, "Source=logvolhist,Feature=Beta")
 
 	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, LiteralParams{
-		qs:        `{foo="bar"} |= "buzz"`,
-		direction: logproto.BACKWARD,
-		end:       now,
-		start:     now.Add(-1 * time.Hour),
-		limit:     1000,
-		step:      time.Minute,
+		queryString: `{foo="bar"} |= "buzz"`,
+		direction:   logproto.BACKWARD,
+		end:         now,
+		start:       now.Add(-1 * time.Hour),
+		limit:       1000,
+		step:        time.Minute,
+		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
 	}, "200", stats.Result{
 		Summary: stats.Summary{
 			BytesProcessedPerSecond: 100000,

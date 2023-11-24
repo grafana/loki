@@ -92,14 +92,18 @@ type Config struct {
 	HTTPTLSConfig TLSConfig `yaml:"http_tls_config"`
 	GRPCTLSConfig TLSConfig `yaml:"grpc_tls_config"`
 
-	RegisterInstrumentation  bool `yaml:"register_instrumentation"`
-	ExcludeRequestInLog      bool `yaml:"-"`
-	DisableRequestSuccessLog bool `yaml:"-"`
+	RegisterInstrumentation               bool `yaml:"register_instrumentation"`
+	ReportGRPCCodesInInstrumentationLabel bool `yaml:"report_grpc_codes_in_instrumentation_label_enabled"`
+	ExcludeRequestInLog                   bool `yaml:"-"`
+	DisableRequestSuccessLog              bool `yaml:"-"`
 
 	ServerGracefulShutdownTimeout time.Duration `yaml:"graceful_shutdown_timeout"`
 	HTTPServerReadTimeout         time.Duration `yaml:"http_server_read_timeout"`
+	HTTPServerReadHeaderTimeout   time.Duration `yaml:"http_server_read_header_timeout"`
 	HTTPServerWriteTimeout        time.Duration `yaml:"http_server_write_timeout"`
 	HTTPServerIdleTimeout         time.Duration `yaml:"http_server_idle_timeout"`
+
+	HTTPLogClosedConnectionsWithoutResponse bool `yaml:"http_log_closed_connections_without_response_enabled"`
 
 	GRPCOptions                   []grpc.ServerOption            `yaml:"-"`
 	GRPCMiddleware                []grpc.UnaryServerInterceptor  `yaml:"-"`
@@ -109,9 +113,9 @@ type Config struct {
 	DoNotAddDefaultHTTPMiddleware bool                           `yaml:"-"`
 	RouteHTTPToGRPC               bool                           `yaml:"-"`
 
-	GPRCServerMaxRecvMsgSize           int           `yaml:"grpc_server_max_recv_msg_size"`
+	GRPCServerMaxRecvMsgSize           int           `yaml:"grpc_server_max_recv_msg_size"`
 	GRPCServerMaxSendMsgSize           int           `yaml:"grpc_server_max_send_msg_size"`
-	GPRCServerMaxConcurrentStreams     uint          `yaml:"grpc_server_max_concurrent_streams"`
+	GRPCServerMaxConcurrentStreams     uint          `yaml:"grpc_server_max_concurrent_streams"`
 	GRPCServerMaxConnectionIdle        time.Duration `yaml:"grpc_server_max_connection_idle"`
 	GRPCServerMaxConnectionAge         time.Duration `yaml:"grpc_server_max_connection_age"`
 	GRPCServerMaxConnectionAgeGrace    time.Duration `yaml:"grpc_server_max_connection_age_grace"`
@@ -167,13 +171,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.GRPCListenPort, "server.grpc-listen-port", 9095, "gRPC server listen port.")
 	f.IntVar(&cfg.GRPCConnLimit, "server.grpc-conn-limit", 0, "Maximum number of simultaneous grpc connections, <=0 to disable")
 	f.BoolVar(&cfg.RegisterInstrumentation, "server.register-instrumentation", true, "Register the intrumentation handlers (/metrics etc).")
+	f.BoolVar(&cfg.ReportGRPCCodesInInstrumentationLabel, "server.report-grpc-codes-in-instrumentation-label-enabled", false, "If set to true, gRPC statuses will be reported in instrumentation labels with their string representations. Otherwise, they will be reported as \"error\".")
 	f.DurationVar(&cfg.ServerGracefulShutdownTimeout, "server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")
-	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 30*time.Second, "Read timeout for HTTP server")
+	f.DurationVar(&cfg.HTTPServerReadTimeout, "server.http-read-timeout", 30*time.Second, "Read timeout for entire HTTP request, including headers and body.")
+	f.DurationVar(&cfg.HTTPServerReadHeaderTimeout, "server.http-read-header-timeout", 0, "Read timeout for HTTP request headers. If set to 0, value of -server.http-read-timeout is used.")
 	f.DurationVar(&cfg.HTTPServerWriteTimeout, "server.http-write-timeout", 30*time.Second, "Write timeout for HTTP server")
 	f.DurationVar(&cfg.HTTPServerIdleTimeout, "server.http-idle-timeout", 120*time.Second, "Idle timeout for HTTP server")
-	f.IntVar(&cfg.GPRCServerMaxRecvMsgSize, "server.grpc-max-recv-msg-size-bytes", 4*1024*1024, "Limit on the size of a gRPC message this server can receive (bytes).")
+	f.BoolVar(&cfg.HTTPLogClosedConnectionsWithoutResponse, "server.http-log-closed-connections-without-response-enabled", false, "Log closed connections that did not receive any response, most likely because client didn't send any request within timeout.")
+	f.IntVar(&cfg.GRPCServerMaxRecvMsgSize, "server.grpc-max-recv-msg-size-bytes", 4*1024*1024, "Limit on the size of a gRPC message this server can receive (bytes).")
 	f.IntVar(&cfg.GRPCServerMaxSendMsgSize, "server.grpc-max-send-msg-size-bytes", 4*1024*1024, "Limit on the size of a gRPC message this server can send (bytes).")
-	f.UintVar(&cfg.GPRCServerMaxConcurrentStreams, "server.grpc-max-concurrent-streams", 100, "Limit on the number of concurrent streams for gRPC calls per client connection (0 = unlimited)")
+	f.UintVar(&cfg.GRPCServerMaxConcurrentStreams, "server.grpc-max-concurrent-streams", 100, "Limit on the number of concurrent streams for gRPC calls per client connection (0 = unlimited)")
 	f.DurationVar(&cfg.GRPCServerMaxConnectionIdle, "server.grpc.keepalive.max-connection-idle", infinty, "The duration after which an idle connection should be closed. Default: infinity")
 	f.DurationVar(&cfg.GRPCServerMaxConnectionAge, "server.grpc.keepalive.max-connection-age", infinty, "The duration for the maximum amount of time a connection may exist before it will be closed. Default: infinity")
 	f.DurationVar(&cfg.GRPCServerMaxConnectionAgeGrace, "server.grpc.keepalive.max-connection-age-grace", infinty, "An additive period after max-connection-age after which the connection will be forcibly closed. Default: infinity")
@@ -259,6 +266,9 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		return nil, err
 	}
 	httpListener = middleware.CountingListener(httpListener, metrics.TCPConnections.WithLabelValues("http"))
+	if cfg.HTTPLogClosedConnectionsWithoutResponse {
+		httpListener = middleware.NewZeroResponseListener(httpListener, level.Warn(logger))
+	}
 
 	metrics.TCPConnectionsLimit.WithLabelValues("http").Set(float64(cfg.HTTPConnLimit))
 	if cfg.HTTPConnLimit > 0 {
@@ -346,17 +356,21 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		WithRequest:              !cfg.ExcludeRequestInLog,
 		DisableRequestSuccessLog: cfg.DisableRequestSuccessLog,
 	}
+	var reportGRPCStatusesOptions []middleware.InstrumentationOption
+	if cfg.ReportGRPCCodesInInstrumentationLabel {
+		reportGRPCStatusesOptions = []middleware.InstrumentationOption{middleware.ReportGRPCStatusOption}
+	}
 	grpcMiddleware := []grpc.UnaryServerInterceptor{
 		serverLog.UnaryServerInterceptor,
 		otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer()),
-		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration),
+		middleware.UnaryServerInstrumentInterceptor(metrics.RequestDuration, reportGRPCStatusesOptions...),
 	}
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
 
 	grpcStreamMiddleware := []grpc.StreamServerInterceptor{
 		serverLog.StreamServerInterceptor,
 		otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer()),
-		middleware.StreamServerInstrumentInterceptor(metrics.RequestDuration),
+		middleware.StreamServerInstrumentInterceptor(metrics.RequestDuration, reportGRPCStatusesOptions...),
 	}
 	grpcStreamMiddleware = append(grpcStreamMiddleware, cfg.GRPCStreamMiddleware...)
 
@@ -378,9 +392,9 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.ChainStreamInterceptor(grpcStreamMiddleware...),
 		grpc.KeepaliveParams(grpcKeepAliveOptions),
 		grpc.KeepaliveEnforcementPolicy(grpcKeepAliveEnforcementPolicy),
-		grpc.MaxRecvMsgSize(cfg.GPRCServerMaxRecvMsgSize),
+		grpc.MaxRecvMsgSize(cfg.GRPCServerMaxRecvMsgSize),
 		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
-		grpc.MaxConcurrentStreams(uint32(cfg.GPRCServerMaxConcurrentStreams)),
+		grpc.MaxConcurrentStreams(uint32(cfg.GRPCServerMaxConcurrentStreams)),
 		grpc.NumStreamWorkers(uint32(cfg.GRPCServerNumWorkers)),
 	}
 
@@ -457,10 +471,11 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	}
 
 	httpServer := &http.Server{
-		ReadTimeout:  cfg.HTTPServerReadTimeout,
-		WriteTimeout: cfg.HTTPServerWriteTimeout,
-		IdleTimeout:  cfg.HTTPServerIdleTimeout,
-		Handler:      middleware.Merge(httpMiddleware...).Wrap(router),
+		ReadTimeout:       cfg.HTTPServerReadTimeout,
+		ReadHeaderTimeout: cfg.HTTPServerReadHeaderTimeout,
+		WriteTimeout:      cfg.HTTPServerWriteTimeout,
+		IdleTimeout:       cfg.HTTPServerIdleTimeout,
+		Handler:           middleware.Merge(httpMiddleware...).Wrap(router),
 	}
 	if httpTLSConfig != nil {
 		httpServer.TLSConfig = httpTLSConfig

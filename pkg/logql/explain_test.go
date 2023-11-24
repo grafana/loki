@@ -29,14 +29,14 @@ func TestExplain(t *testing.T) {
 	downEv := &DownstreamEvaluator{Downstreamer: MockDownstreamer{regular}, defaultEvaluator: defaultEv}
 
 	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics)
-	_, _, expr, err := mapper.Parse(query)
+	_, _, expr, err := mapper.Parse(syntax.MustParseExpr(query))
 	require.NoError(t, err)
 
 	params := LiteralParams{
-		qs:    query,
-		start: time.Unix(60, 0),
-		end:   time.Unix(60, 0),
-		limit: 1000,
+		queryString: query,
+		start:       time.Unix(60, 0),
+		end:         time.Unix(60, 0),
+		limit:       1000,
 	}
 
 	ev, err := downEv.NewStepEvaluator(ctx, downEv, expr.(syntax.SampleExpr), params)

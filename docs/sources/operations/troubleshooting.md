@@ -173,7 +173,11 @@ Jaeger is running.
 If you deploy with Helm, use the following command:
 
 ```bash
-$ helm upgrade --install loki loki/loki --set "loki.tracing.jaegerAgentHost=YOUR_JAEGER_AGENT_HOST"
+$ helm upgrade --install loki loki/loki --set "loki.tracing.enabled=true"
+  --set "read.extraEnv[0].name=JAEGER_AGENT_HOST"    --set "read.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "write.extraEnv[0].name=JAEGER_AGENT_HOST"   --set "write.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "backend.extraEnv[0].name=JAEGER_AGENT_HOST" --set "backend.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "gateway.extraEnv[0].name=JAEGER_AGENT_HOST" --set "gateway.extraEnv[0].value=<JAEGER_AGENT_HOST>"
 ```
 
 ## Running Loki with Istio Sidecars
