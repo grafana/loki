@@ -90,14 +90,13 @@ func TestShuffleSharding(t *testing.T) {
 
 		for j := 0; j < jobsPerTenant; j++ {
 			lbls := labels.FromStrings("namespace", fmt.Sprintf("namespace-%d", j))
-			index := Index{model.Fingerprint(lbls.Hash()), lbls, nil}
-			job := NewJob(tenant, "", "", []Index{index})
-			ownsJob, err := shard.OwnsJob(job)
+			fp := model.Fingerprint(lbls.Hash())
+			ownsFingerprint, err := shard.OwnsFp(tenant, uint64(fp))
 			require.NoError(t, err)
 
 			var jobOwnedByOther int
 			for _, other := range otherShards {
-				otherOwns, err := other.OwnsJob(job)
+				otherOwns, err := other.OwnsFp(tenant, uint64(fp))
 				require.NoError(t, err)
 				if otherOwns {
 					jobOwnedByOther++
@@ -106,7 +105,7 @@ func TestShuffleSharding(t *testing.T) {
 
 			// If this shard owns the job, no one else should own the job.
 			// And if this shard doesn't own the job, only one of the other shards should own the job.
-			if ownsJob {
+			if ownsFingerprint {
 				require.Equal(t, 0, jobOwnedByOther)
 				ownedJobs++
 			} else {
