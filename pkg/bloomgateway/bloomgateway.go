@@ -162,6 +162,7 @@ type Gateway struct {
 	serviceWatcher *services.FailureWatcher
 
 	workerConfig workerConfig
+	responsePool *queue.SlicePool[v1.Output]
 }
 
 // New returns a new instance of the Bloom Gateway.
@@ -178,6 +179,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		},
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
+		responsePool:  queue.NewSlicePool[v1.Output](1<<6, 1<<32, 2), // [64, 128, 256, ..., 65536]
 	}
 
 	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, g.queueMetrics)
@@ -302,8 +304,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	requestCount := len(req.Refs)
-	// TODO(chaudum): Use pool
-	responses := make([]v1.Output, 0, requestCount)
+	responses := g.responsePool.Get(requestCount)
+	defer func() {
+		g.responsePool.Put(responses)
+	}()
 
 	for {
 		select {
