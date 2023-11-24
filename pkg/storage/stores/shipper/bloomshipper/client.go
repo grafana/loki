@@ -1,25 +1,21 @@
 package bloomshipper
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-
+	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/concurrency"
-
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/math"
@@ -39,6 +35,16 @@ type Ref struct {
 	MinFingerprint, MaxFingerprint uint64
 	StartTimestamp, EndTimestamp   int64
 	Checksum                       uint32
+}
+
+// Cmp returns the fingerprint's position relative to the bounds
+func (b Ref) Cmp(fp uint64) v1.BoundsCheck {
+	if fp < b.MinFingerprint {
+		return v1.Before
+	} else if fp > b.MaxFingerprint {
+		return v1.After
+	}
+	return v1.Overlap
 }
 
 type BlockRef struct {
@@ -79,12 +85,11 @@ type MetaClient interface {
 type Block struct {
 	BlockRef
 
-	IndexData io.ReadCloser
-	BloomData io.ReadCloser
+	Data io.ReadCloser
 }
 
 type BlockClient interface {
-	GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error)
+	GetBlock(ctx context.Context, reference BlockRef) (Block, error)
 	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
 }
@@ -195,80 +200,21 @@ func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
 
-// GetBlocks downloads all the blocks from objectStorage in parallel and sends the downloaded blocks
-// via the channel Block that is closed only if all the blocks are downloaded without errors.
-// If an error happens, the error will be sent via error channel.
-func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error) {
-	blocksChannel := make(chan Block, len(references))
-	errChannel := make(chan error)
-	go func() {
-		//todo move concurrency to the config
-		err := concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
-			reference := references[idx]
-			period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
-			if err != nil {
-				return fmt.Errorf("error while period lookup: %w", err)
-			}
-			objectClient := b.periodicObjectClients[period]
-			compressedObjectReadCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
-			if err != nil {
-				return fmt.Errorf("error while fetching object from storage: %w", err)
-			}
-			defer func() {
-				compressedObjectReadCloser.Close()
-			}()
-
-			workingDirectoryPath := filepath.Join(b.storageConfig.BloomShipperConfig.WorkingDirectory, reference.BlockPath, strconv.FormatInt(time.Now().UTC().UnixMilli(), 10))
-			err = v1.UnTarGz(workingDirectoryPath, compressedObjectReadCloser)
-			if err != nil {
-				return fmt.Errorf("error while untarring: %w", err)
-			}
-
-			indexFile, err := os.Open(filepath.Join(workingDirectoryPath, v1.SeriesFileName))
-			if err != nil {
-				return fmt.Errorf("error while opening index file: %w", err)
-			}
-			indexReader := bufio.NewReader(indexFile)
-
-			bloomFile, err := os.Open(filepath.Join(workingDirectoryPath, v1.BloomFileName))
-			if err != nil {
-				return fmt.Errorf("error while opening bloom file: %w", err)
-			}
-			bloomReader := bufio.NewReader(bloomFile)
-			blocksChannel <- Block{
-				BlockRef:  reference,
-				BloomData: io.NopCloser(bloomReader),
-				IndexData: io.NopCloser(indexReader),
-			}
-			return nil
-		})
-		if err != nil {
-			errChannel <- fmt.Errorf("error downloading block file: %w", err)
-			return
-		}
-		//close blocks channel only if there is no error
-		close(blocksChannel)
-	}()
-	return blocksChannel, errChannel
-}
-
-func readCloserToBuffer(rc io.ReadCloser) *bytes.Buffer {
-	defer rc.Close()
-
-	// Read the data from io.ReadCloser
-	data, err := io.ReadAll(rc)
+// GetBlock downloads the blocks from objectStorage and returns the downloaded block
+func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (Block, error) {
+	period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
 	if err != nil {
-		return nil
+		return Block{}, fmt.Errorf("error while period lookup: %w", err)
 	}
-
-	// Write the data into a bytes.Buffer
-	var buf bytes.Buffer
-	_, err = buf.Write(data)
+	objectClient := b.periodicObjectClients[period]
+	readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
 	if err != nil {
-		return nil
+		return Block{}, fmt.Errorf("error while fetching object from storage: %w", err)
 	}
-
-	return &buf
+	return Block{
+		BlockRef: reference,
+		Data:     readCloser,
+	}, nil
 }
 
 func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
@@ -278,11 +224,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		block := blocks[idx]
 		defer func(Data io.ReadCloser) {
 			_ = Data.Close()
-		}(block.BloomData)
-
-		defer func(Data io.ReadCloser) {
-			_ = Data.Close()
-		}(block.IndexData)
+		}(block.Data)
 
 		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
 		if err != nil {
@@ -290,19 +232,11 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
-		byteReader := v1.NewByteReader(readCloserToBuffer(block.IndexData), readCloserToBuffer(block.BloomData))
-
-		// TODO: Right now, this is asymetrical with the GetBlocks path. We have all the pieces
-		// in memory now, so it doesn't necessarily make sense to write the files to disk. That may change
-		// as we finalize on an archive format, and we may want to just house the downloaded files in memory instead.
-		// Create a buffer to write data
-		buf := new(bytes.Buffer)
-		err = v1.TarGzMemory(buf, byteReader)
+		data, err := io.ReadAll(block.Data)
 		if err != nil {
-			return fmt.Errorf("error while tarring object data: %w", err)
+			return fmt.Errorf("error while reading object data: %w", err)
 		}
-
-		err = objectClient.PutObject(ctx, key, bytes.NewReader(buf.Bytes()))
+		err = objectClient.PutObject(ctx, key, bytes.NewReader(data))
 		if err != nil {
 			return fmt.Errorf("error updloading block file: %w", err)
 		}
