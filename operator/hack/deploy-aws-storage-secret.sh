@@ -8,11 +8,13 @@ if [ -z "${1-}" ]; then
 fi
 
 readonly bucket_name=$1
-
 readonly namespace=${NAMESPACE:-openshift-logging}
-readonly region=${REGION:-$(aws configure get region)}
-readonly access_key_id=${ACCESS_KEY_ID:-$(aws configure get aws_access_key_id)}
-readonly secret_access_key=${SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)}
+region=${REGION:-$(aws configure get region)}
+readonly region
+access_key_id=${ACCESS_KEY_ID:-$(aws configure get aws_access_key_id)}
+readonly access_key_id
+secret_access_key=${SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)}
+readonly secret_access_key
 
 kubectl --ignore-not-found=true -n "${namespace}" delete secret test
 kubectl -n "${namespace}" create secret generic test \
