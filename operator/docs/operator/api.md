@@ -1172,6 +1172,19 @@ int32
 </tr>
 <tr>
 <td>
+<code>perStreamDesiredRate</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+target applying automatic stream sharding. Units MB.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>perStreamRateLimit</code><br/>
 <em>
 int32
@@ -2483,6 +2496,9 @@ used with the Loki cluster.</p>
 </td>
 </tr><tr><td><p>&#34;v12&#34;</p></td>
 <td><p>ObjectStorageSchemaV12 when using v12 for the storage schema</p>
+</td>
+</tr><tr><td><p>&#34;v13&#34;</p></td>
+<td><p>ObjectStorageSchemaV13 when using v13 for the storage schema</p>
 </td>
 </tr></tbody>
 </table>

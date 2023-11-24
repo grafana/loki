@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/encoding"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -27,36 +28,39 @@ Bloom filters are utilized for faster lookups of log lines.
 type BloomTokenizer struct {
 	metrics *metrics
 
-	lineTokenizer    Tokenizer
-	chunkIDTokenizer *WrappedTokenizer
-	cache            map[string]interface{}
+	lineTokenizer *NGramTokenizer
+	cache         map[string]interface{}
 }
 
 const CacheSize = 150000
-const DefaultNGramLength = 4
-const DefaultNGramSkip = 0
 
 // NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
 // Warning: the tokens returned use the same byte slice to reduce allocations. This has two consequences:
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(reg prometheus.Registerer) (*BloomTokenizer, error) {
+func NewBloomTokenizer(reg prometheus.Registerer, NGramLength, NGramSkip int) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
 		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, CacheSize)
-	t.lineTokenizer = NewNGramTokenizer(DefaultNGramLength, DefaultNGramLength+1, DefaultNGramSkip) // default to 4-grams, no skip
-	t.chunkIDTokenizer = ChunkIDTokenizer(t.lineTokenizer)
+	t.lineTokenizer = NewNGramTokenizer(NGramLength, NGramSkip)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 
 	return t, nil
 }
 
-func (bt *BloomTokenizer) SetLineTokenizer(t Tokenizer) {
+func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {
 	bt.lineTokenizer = t
-	bt.chunkIDTokenizer = ChunkIDTokenizer(bt.lineTokenizer)
+}
+
+func (bt *BloomTokenizer) GetNGramLength() uint64 {
+	return uint64(bt.lineTokenizer.N)
+}
+
+func (bt *BloomTokenizer) GetNGramSkip() uint64 {
+	return uint64(bt.lineTokenizer.Skip)
 }
 
 // TODO: Something real here with metrics
@@ -70,12 +74,32 @@ func clearCache(cache map[string]interface{}) {
 	}
 }
 
+// prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
+// of specific ngram length, along with the length of the prefix.
+// It ensures enough capacity for the prefix and the token so additional tokens can be created
+// without allocations by appending them to the prefix length
+func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
+	var enc encoding.Encbuf
+	enc.PutBE64(uint64(chk.From))
+	enc.PutBE64(uint64(chk.Through))
+	enc.PutBE32(chk.Checksum)
+	prefixLn := enc.Len() // record the length of the prefix
+
+	enc.PutBytes(make([]byte, ngram*MaxRuneLen)) // ensure enough capacity for the ngram
+
+	// return the underlying byte slice and the length of the prefix
+	return enc.Get(), prefixLn
+}
+
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
 func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
 	clearCache(bt.cache)
+
+	// allocate a reusable key buffer long enough to store both the chunk ref and the ngram
+
 	for idx := range chunks {
 		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		bt.chunkIDTokenizer.Reinit(chunks[idx].ChunkRef)
+		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
 
 		// TODO: error handling
 		itr, err := lc.Iterator(
@@ -93,16 +117,16 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 		defer itr.Close()
 
 		for itr.Next() && itr.Error() == nil {
-			toks := bt.chunkIDTokenizer.Tokens(itr.Entry().Line)
-
-			for _, tok := range toks {
-				if tok.Key != nil {
-					str := string(tok.Key)
+			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
+			for chunkTokenizer.Next() {
+				tok := chunkTokenizer.At()
+				if tok != nil {
+					str := string(tok)
 					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
 					if !found {
 						bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok.Key)
+						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
 						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
@@ -110,6 +134,24 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 					}
 				}
 			}
+			lineTokenizer := bt.lineTokenizer.Tokens(itr.Entry().Line)
+			for lineTokenizer.Next() {
+				tok := lineTokenizer.At()
+				if tok != nil {
+					str := string(tok)
+					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+					if !found {
+						bt.cache[str] = nil
+
+						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+
+						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+							clearCache(bt.cache)
+						}
+					}
+				}
+			}
+
 		}
 		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
 			Start:    chunks[idx].From,
@@ -117,34 +159,4 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 			Checksum: chunks[idx].Checksum,
 		})
 	} // for each chunk
-}
-
-// SearchesForTokenizerAndLine is for taking a given search string (ex: on the read/query path) and returning
-// all the possible tokens, given a tokenizer.
-// This is a multi-dimensional slice where the first slice is the offset into the line, and the
-// second slice is the tokens for that offset.  If an offset into the line returns no tokens, this first dimension
-// will be less than 1 + the number of skips specified in the tokenizer
-// The offset is used if the Tokenizer has a skip value being utilized.
-func SearchesForTokenizerAndLine(t Tokenizer, line string) (res [][]Token) {
-	res = make([][]Token, 0, 10)
-	for i := range line { // iterate by runes
-		if i >= t.GetSkip()+1 {
-			break
-		}
-		tmpTokens := make([]Token, 0, 100)
-		tokens := t.Tokens(line[i:])
-		// As the way the tokenizer is coded, it will reuse its internal buffers,
-		// but we need to save the data, hence the need for copying
-		for _, token := range tokens {
-			tmpToken := Token{}
-			tmpToken.Key = make([]byte, len(token.Key))
-			copy(tmpToken.Key, token.Key)
-			tmpTokens = append(tmpTokens, tmpToken)
-		}
-		if len(tokens) > 0 {
-			res = append(res, tmpTokens)
-		}
-	}
-
-	return res
 }

@@ -61,9 +61,10 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+// TODO: Make a constants file somewhere
 const (
-	fpRate        = 0.01
-	bloomFileName = "bloom"
+	bloomFileName  = "bloom"
+	seriesFileName = "series"
 )
 
 type Compactor struct {
@@ -83,6 +84,7 @@ type Compactor struct {
 	sharding ShardingStrategy
 
 	metrics *metrics
+	reg     prometheus.Registerer
 }
 
 type storeClient struct {
@@ -108,6 +110,7 @@ func New(
 		schemaCfg: schemaConfig,
 		sharding:  sharding,
 		limits:    limits,
+		reg:       r,
 	}
 
 	// Configure BloomClient for meta.json management
@@ -119,14 +122,8 @@ func New(
 	c.storeClients = make(map[config.DayTime]storeClient)
 
 	for i, periodicConfig := range schemaConfig.Configs {
-		var indexStorageCfg indexshipper.Config
-		switch periodicConfig.IndexType {
-		case config.TSDBType:
-			indexStorageCfg = storageCfg.TSDBShipperConfig
-		case config.BoltDBShipperType:
-			indexStorageCfg = storageCfg.BoltDBShipperConfig.Config
-		default:
-			level.Warn(c.logger).Log("msg", "skipping period because index type is unsupported")
+		if periodicConfig.IndexType != config.TSDBType {
+			level.Warn(c.logger).Log("msg", "skipping schema period because index type is not supported", "index_type", periodicConfig.IndexType, "period", periodicConfig.From)
 			continue
 		}
 
@@ -143,7 +140,7 @@ func New(
 
 		indexShipper, err := indexshipper.NewIndexShipper(
 			periodicConfig.IndexTables.PathPrefix,
-			indexStorageCfg,
+			storageCfg.TSDBShipperConfig,
 			objectClient,
 			limits,
 			nil,
@@ -151,7 +148,7 @@ func New(
 				return tsdb.OpenShippableTSDB(p)
 			},
 			periodicConfig.GetIndexTableNumberRange(periodEndTime),
-			prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
+			prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r),
 			logger,
 		)
 
@@ -293,6 +290,12 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 			return fmt.Errorf("interrupting compaction of tenants: %w", err)
 		}
 
+		// Skip tenant if compaction is not enabled
+		if !c.limits.BloomCompactorEnabled(tenant) {
+			level.Info(tenantLogger).Log("msg", "compaction disabled for tenant. Skipping.")
+			continue
+		}
+
 		// Skip this table if it is too new/old for the tenant limits.
 		now := model.Now()
 		tableMinAge := c.limits.BloomCompactorMinTableAge(tenant)
@@ -347,7 +350,9 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	}
 
 	// Tokenizer is not thread-safe so we need one per goroutine.
-	bt, _ := v1.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	NGramLength := c.limits.BloomNGramLength(tenant)
+	NGramSkip := c.limits.BloomNGramSkip(tenant)
+	bt, _ := v1.NewBloomTokenizer(c.reg, NGramLength, NGramSkip)
 
 	// TODO: Use ForEachConcurrent?
 	errs := multierror.New()
@@ -453,7 +458,14 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.SeriesWithBloom, job Job, workingDir string) (bloomshipper.Block, error) {
+func buildBloomBlock(
+	ctx context.Context,
+	logger log.Logger,
+	options v1.BlockOptions,
+	bloomForChks v1.SeriesWithBloom,
+	job Job,
+	workingDir string,
+) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return bloomshipper.Block{}, err
@@ -462,7 +474,7 @@ func buildBloomBlock(ctx context.Context, logger log.Logger, bloomForChks v1.Ser
 	localDst := createLocalDirName(workingDir, job)
 
 	// write bloom to a local dir
-	builder, err := v1.NewBlockBuilder(v1.NewBlockOptions(), v1.NewDirectoryBlockWriter(localDst))
+	builder, err := v1.NewBlockBuilder(options, v1.NewDirectoryBlockWriter(localDst))
 	if err != nil {
 		level.Error(logger).Log("creating builder", err)
 		return bloomshipper.Block{}, err
@@ -503,10 +515,20 @@ func createLocalDirName(workingDir string, job Job) string {
 	return filepath.Join(workingDir, dir)
 }
 
-func CompactNewChunks(ctx context.Context, logger log.Logger, job Job, chunks []chunk.Chunk, bt *v1.BloomTokenizer, bloomShipperClient bloomshipper.Client, dst string) (err error) {
+// Compacts given list of chunks, uploads them to storage and returns a list of bloomBlocks
+func CompactNewChunks(
+	ctx context.Context,
+	logger log.Logger,
+	job Job,
+	chunks []chunk.Chunk,
+	bt *v1.BloomTokenizer,
+	fpRate float64,
+	bloomShipperClient bloomshipper.Client,
+	dst string,
+) ([]bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Create a bloom for this series
@@ -523,34 +545,18 @@ func CompactNewChunks(ctx context.Context, logger log.Logger, job Job, chunks []
 	bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
 
 	// Build and upload bloomBlock to storage
-	blocks, err := buildBloomBlock(ctx, logger, bloomForChks, job, dst)
+	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
+	blocks, err := buildBloomBlock(ctx, logger, blockOptions, bloomForChks, job, dst)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
-		return
+		return nil, err
 	}
-
 	storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
 	if err != nil {
 		level.Error(logger).Log("putting blocks to storage", err)
-		return
+		return nil, err
 	}
-
-	storedBlockRefs := make([]bloomshipper.BlockRef, len(storedBlocks))
-	// Build and upload meta.json to storage
-	meta := bloomshipper.Meta{
-		// After successful compaction there should be no tombstones
-		Tombstones: make([]bloomshipper.BlockRef, 0),
-		Blocks:     storedBlockRefs,
-	}
-
-	// TODO move this to an outer layer, otherwise creates a meta per block
-	err = bloomShipperClient.PutMeta(ctx, meta)
-	if err != nil {
-		level.Error(logger).Log("putting meta.json to storage", err)
-		return
-	}
-
-	return nil
+	return storedBlocks, nil
 }
 
 func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient) error {
@@ -559,23 +565,44 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
-	// TODO call bloomShipperClient.GetMetas to get existing meta.json
+	metaSearchParams := bloomshipper.MetaSearchParams{
+		TenantID:       job.tenantID,
+		MinFingerprint: uint64(job.seriesFP),
+		MaxFingerprint: uint64(job.seriesFP),
+		StartTimestamp: int64(job.from),
+		EndTimestamp:   int64(job.through),
+	}
 	var metas []bloomshipper.Meta
+	//TODO  Configure pool for these to avoid allocations
+	var bloomBlocksRefs []bloomshipper.BlockRef
+	var tombstonedBlockRefs []bloomshipper.BlockRef
+
+	metas, err := bloomShipperClient.GetMetas(ctx, metaSearchParams)
+	if err != nil {
+		return err
+	}
 
 	if len(metas) == 0 {
 		// Get chunks data from list of chunkRefs
-		chks, err := storeClient.chunk.GetChunks(
-			ctx,
-			makeChunkRefs(job.Chunks(), job.Tenant(), job.Fingerprint()),
-		)
+		chks, err := storeClient.chunk.GetChunks(ctx, makeChunkRefs(job.Chunks(), job.Tenant(), job.Fingerprint()))
 		if err != nil {
 			return err
 		}
 
-		err = CompactNewChunks(ctx, logger, job, chks, bt, bloomShipperClient, c.cfg.WorkingDirectory)
+		fpRate := c.limits.BloomFalsePositiveRate(job.Tenant())
+		storedBlocks, err := CompactNewChunks(ctx, logger, job, chks, bt, fpRate, bloomShipperClient, c.cfg.WorkingDirectory)
 		if err != nil {
-			return err
+			return level.Error(logger).Log("compacting new chunks", err)
 		}
+
+		storedBlockRefs := make([]bloomshipper.BlockRef, len(storedBlocks))
+
+		for i, block := range storedBlocks {
+			storedBlockRefs[i] = block.BlockRef
+		}
+
+		// all blocks are new and active blocks
+		bloomBlocksRefs = storedBlockRefs
 	} else {
 		// TODO complete part 2 - periodic compaction for delta from previous period
 		// When already compacted metas exists
@@ -586,11 +613,24 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			for _, blockRef := range meta.Blocks {
 				uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
 				// ...
+
+				// the result should return a list of active
+				// blocks and tombstoned bloom blocks.
 			}
 		}
 
 	}
 
+	// After all is done, create one meta file and upload to storage
+	meta := bloomshipper.Meta{
+		Tombstones: tombstonedBlockRefs,
+		Blocks:     bloomBlocksRefs,
+	}
+	err = bloomShipperClient.PutMeta(ctx, meta)
+	if err != nil {
+		level.Error(logger).Log("putting meta.json to storage", err)
+		return err
+	}
 	return nil
 }
 

@@ -519,6 +519,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	internalMiddlewares := []queryrangebase.Middleware{
 		serverutil.RecoveryMiddleware,
 		queryrange.Instrument{Metrics: t.Metrics},
+		queryrange.Tracer{},
 	}
 	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		internalMiddlewares = append(
@@ -1265,7 +1266,7 @@ func (t *Loki) initBloomGateway() (services.Service, error) {
 
 	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.bloomGatewayRingManager.Ring, t.bloomGatewayRingManager.RingLifecycler, t.Overrides, logger)
 
-	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, shuffleSharding, t.clientMetrics, logger, prometheus.DefaultRegisterer)
+	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, t.Overrides, shuffleSharding, t.clientMetrics, logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

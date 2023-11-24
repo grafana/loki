@@ -61,7 +61,7 @@ func TestHandleQueryRequest(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
-			request, err := queryrange.DefaultCodec.QueryRequestWrap(ctx, &queryrange.LokiRequest{})
+			request, err := queryrange.DefaultCodec.QueryRequestWrap(ctx, &queryrange.LokiRequest{Query: `{app="foo"}`})
 			require.NoError(t, err)
 
 			mockHandler := HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {

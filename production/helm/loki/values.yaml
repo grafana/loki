@@ -240,6 +240,9 @@ loki:
     distributor:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    tracing:
+      enabled: {{ .Values.loki.tracing.enabled }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -254,7 +257,6 @@ loki:
     grpc_listen_port: 9095
   # -- Limits config
   limits_config:
-    enforce_metric_name: false
     reject_old_samples: true
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
@@ -345,6 +347,9 @@ loki:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   # -- Optional distributor configuration
   distributor: {}
+  # -- Enable tracing
+  tracing:
+    enabled: false
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
@@ -1475,8 +1480,6 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
-tracing:
-  jaegerAgentHost: ""
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------
