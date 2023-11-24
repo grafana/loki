@@ -211,7 +211,7 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 			Direction: q.Direction(),
 			Selector:  expr.String(),
 			Shards:    q.Shards(),
-			Plan:      &plan.QueryPlan{
+			Plan: &plan.QueryPlan{
 				AST: expr,
 			},
 		},

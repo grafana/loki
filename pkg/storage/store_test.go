@@ -1395,7 +1395,7 @@ func Test_OverlappingChunks(t *testing.T) {
 		Direction: logproto.BACKWARD,
 		Start:     time.Unix(0, 0),
 		End:       time.Unix(0, 10),
-		Plan:      &plan.QueryPlan{
+		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{foo="bar"}`),
 		},
 	}})

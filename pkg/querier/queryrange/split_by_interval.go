@@ -313,7 +313,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 
 // maxRangeVectorAndOffsetDurationFromQueryString
 func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, time.Duration, error) {
-	parsed, err := syntax.ParseSampleExpr(q)
+	parsed, err := syntax.ParseExpr(q)
 	if err != nil {
 		return 0, 0, err
 	}
