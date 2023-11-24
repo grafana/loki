@@ -1,9 +1,10 @@
 package bloomcompactor
 
 import (
+	"math"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"math"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
