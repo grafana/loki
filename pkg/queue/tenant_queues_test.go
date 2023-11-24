@@ -199,7 +199,9 @@ func TestQueuesConsistency(t *testing.T) {
 			for i := 0; i < 10000; i++ {
 				switch r.Int() % 6 {
 				case 0:
-					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), generateActor(r)))
+					q, err := uq.getOrAddQueue(generateTenant(r), generateActor(r))
+					assert.NoError(t, err)
+					assert.NotNil(t, q)
 				case 1:
 					qid := generateConsumer(r)
 					_, _, luid := uq.getNextQueueForConsumer(lastUserIndexes[qid], qid)
@@ -406,10 +408,13 @@ func generateConsumer(r *rand.Rand) string {
 
 func getOrAdd(t *testing.T, uq *tenantQueues, tenant string) Queue {
 	actor := []string{}
-	q := uq.getOrAddQueue(tenant, actor)
+	q, err := uq.getOrAddQueue(tenant, actor)
+	assert.NoError(t, err)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
-	assert.Equal(t, q, uq.getOrAddQueue(tenant, actor))
+	q2, err := uq.getOrAddQueue(tenant, actor)
+	assert.NoError(t, err)
+	assert.Equal(t, q, q2)
 	return q
 }
 
@@ -444,11 +449,7 @@ func isConsistent(uq *tenantQueues) error {
 
 		uc++
 
-		maxConsumers, err := uq.limits.MaxConsumers(u, len(uq.consumers))
-		if err != nil {
-			fmt.Errorf("failed to compute max consumers for user %s: %s", u, err)
-		}
-
+		maxConsumers := uq.limits.MaxConsumers(u, len(uq.consumers))
 		if maxConsumers == 0 && q.consumers != nil {
 			return fmt.Errorf("consumers for user %s should be nil when no limits are set (when MaxConsumers is 0).", u)
 		}
@@ -538,6 +539,6 @@ type mockQueueLimits struct {
 	maxConsumers int
 }
 
-func (l *mockQueueLimits) MaxConsumers(_ string, _ int) (int, error) {
-	return l.maxConsumers, nil
+func (l *mockQueueLimits) MaxConsumers(_ string, _ int) int {
+	return l.maxConsumers
 }

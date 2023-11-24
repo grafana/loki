@@ -41,7 +41,7 @@ func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 
 type Limits interface {
 	// MaxConsumers returns the max consumers to use per tenant or 0 to allow all consumers to consume from the queue.
-	MaxConsumers(user string, allConsumers int) (int, error)
+	MaxConsumers(user string, allConsumers int) int
 }
 
 // Request stored into the queue.
@@ -89,10 +89,9 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, succes
 		return ErrStopped
 	}
 
-	queue := q.queues.getOrAddQueue(tenant, path)
-	if queue == nil {
-		// This can only happen if tenant is "".
-		return errors.New("no queue found")
+	queue, err := q.queues.getOrAddQueue(tenant, path)
+	if err != nil {
+		return fmt.Errorf("no queue found: %w", err)
 	}
 
 	// Optimistically increase queue counter for tenant instead of doing separate

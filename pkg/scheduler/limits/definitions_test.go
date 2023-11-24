@@ -58,8 +58,7 @@ func TestQueueLimitsMaxConsumers(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			res, err := tt.limits.MaxConsumers("", 10)
-			assert.NoError(t, err)
+			res := tt.limits.MaxConsumers("", 10)
 			assert.Equal(t, tt.expected, res)
 		})
 	}

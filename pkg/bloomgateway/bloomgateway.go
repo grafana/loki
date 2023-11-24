@@ -190,8 +190,8 @@ type fixedQueueLimits struct {
 	maxConsumers int
 }
 
-func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) (int, error) {
-	return l.maxConsumers, nil
+func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
+	return l.maxConsumers
 }
 
 // New returns a new instance of the Bloom Gateway.
