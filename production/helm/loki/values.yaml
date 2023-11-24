@@ -829,6 +829,8 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Containers to add to the write pods
+    extraContainers: []
 # Configuration for the table-manager
 tableManager:
   # -- Specifies whether the table-manager should be enabled
