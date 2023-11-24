@@ -1172,6 +1172,19 @@ int32
 </tr>
 <tr>
 <td>
+<code>perStreamDesiredRate</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+target applying automatic stream sharding. Units MB.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>perStreamRateLimit</code><br/>
 <em>
 int32

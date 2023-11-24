@@ -195,7 +195,7 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) (int, error) {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
 		cfg:          cfg,
 		logger:       logger,
@@ -213,7 +213,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		return nil, err
 	}
 
-	bloomShipper, err := bloomshipper.NewShipper(client, storageCfg.BloomShipperConfig, logger)
+	bloomShipper, err := bloomshipper.NewShipper(client, storageCfg.BloomShipperConfig, overrides, logger, reg)
 	if err != nil {
 		return nil, err
 	}
