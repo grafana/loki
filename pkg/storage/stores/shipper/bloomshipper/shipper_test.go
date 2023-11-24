@@ -2,9 +2,10 @@ package bloomshipper
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Shipper_findBlocks(t *testing.T) {
