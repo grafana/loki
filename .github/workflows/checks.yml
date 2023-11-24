@@ -7,5 +7,6 @@ jobs:
       image: grafana/loki-build-image:0.32.0
     steps:
       - uses: actions/checkout@v4
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Lint
         run: make lint
