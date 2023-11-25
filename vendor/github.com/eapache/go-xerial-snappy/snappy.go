@@ -83,13 +83,23 @@ func Decode(src []byte) ([]byte, error) {
 // for use by this function. If `dst` is nil *or* insufficiently large to hold
 // the decoded `src`, new space will be allocated.
 func DecodeInto(dst, src []byte) ([]byte, error) {
+	if len(src) < 8 || !bytes.Equal(src[:8], xerialHeader) {
+		dst, err := master.Decode(dst[:cap(dst)], src)
+		if err != nil && len(src) < len(xerialHeader) {
+			// Keep compatibility and return ErrMalformed when there is a
+			// short or truncated header.
+			return nil, ErrMalformed
+		}
+		return dst, err
+	}
+
 	var max = len(src)
 	if max < len(xerialHeader) {
 		return nil, ErrMalformed
 	}
 
-	if !bytes.Equal(src[:8], xerialHeader) {
-		return master.Decode(dst[:cap(dst)], src)
+	if max == sizeOffset {
+		return []byte{}, nil
 	}
 
 	if max < sizeOffset+sizeBytes {

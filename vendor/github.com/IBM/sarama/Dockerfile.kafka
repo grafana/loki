@@ -1,0 +1,47 @@
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.8@sha256:b93deceb59a58588d5b16429fc47f98920f84740a1f2ed6454e33275f0701b59
+
+USER root
+
+RUN microdnf update -y \
+ && microdnf install -y curl gzip java-11-openjdk-headless tar tzdata-java \
+ && microdnf reinstall -y tzdata \
+ && microdnf clean all
+
+ENV JAVA_HOME=/usr/lib/jvm/jre-11
+
+# https://docs.oracle.com/javase/7/docs/technotes/guides/net/properties.html
+# Ensure Java doesn't cache any dns results
+RUN cd /etc/java/java-11-openjdk/*/conf/security \
+ && sed -e '/networkaddress.cache.ttl/d' -e '/networkaddress.cache.negative.ttl/d' -i java.security \
+ && echo 'networkaddress.cache.ttl=0' >> java.security \
+ && echo 'networkaddress.cache.negative.ttl=0' >> java.security
+
+ARG SCALA_VERSION="2.13"
+ARG KAFKA_VERSION="3.6.0"
+
+# https://github.com/apache/kafka/blob/9989b68d0d38c8f1357f78bf9d53a58c1476188d/tests/docker/Dockerfile#L46-L72
+ARG KAFKA_MIRROR="https://s3-us-west-2.amazonaws.com/kafka-packages"
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN mkdir -p "/opt/kafka-${KAFKA_VERSION}" \
+ && chmod a+rw "/opt/kafka-${KAFKA_VERSION}" \
+ && curl -s "$KAFKA_MIRROR/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz" | tar xz --strip-components=1 -C "/opt/kafka-${KAFKA_VERSION}"
+
+# older kafka versions depend upon jaxb-api being bundled with the JDK, but it
+# was removed from Java 11 so work around that by including it in the kafka
+# libs dir regardless
+WORKDIR /tmp
+RUN curl -sLO "https://repo1.maven.org/maven2/javax/xml/bind/jaxb-api/2.3.0/jaxb-api-2.3.0.jar" \
+ && for DIR in /opt/kafka-*; do cp -v jaxb-api-2.3.0.jar $DIR/libs/ ; done \
+ && rm -f jaxb-api-2.3.0.jar
+
+WORKDIR /opt/kafka-${KAFKA_VERSION}
+
+ENV JAVA_MAJOR_VERSION=11
+
+RUN sed -e "s/JAVA_MAJOR_VERSION=.*/JAVA_MAJOR_VERSION=${JAVA_MAJOR_VERSION}/" -i"" ./bin/kafka-run-class.sh
+
+COPY entrypoint.sh /
+
+USER 65534:65534
+
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,0 +1,282 @@
+version: '3.9'
+services:
+  zookeeper-1:
+    hostname: 'zookeeper-1'
+    image: 'docker.io/library/zookeeper:3.6.3'
+    restart: always
+    environment:
+      ZOO_MY_ID: '1'
+      ZOO_SERVERS: 'server.1=zookeeper-1:2888:3888 server.2=zookeeper-2:2888:3888 server.3=zookeeper-3:2888:3888'
+      ZOO_CFG_EXTRA: 'clientPort=2181 peerPort=2888 leaderPort=3888'
+      ZOO_INIT_LIMIT: '10'
+      ZOO_SYNC_LIMIT: '5'
+      ZOO_MAX_CLIENT_CNXNS: '0'
+      ZOO_4LW_COMMANDS_WHITELIST: 'mntr,conf,ruok'
+  zookeeper-2:
+    hostname: 'zookeeper-2'
+    image: 'docker.io/library/zookeeper:3.6.3'
+    restart: always
+    environment:
+      ZOO_MY_ID: '2'
+      ZOO_SERVERS: 'server.1=zookeeper-1:2888:3888 server.2=zookeeper-2:2888:3888 server.3=zookeeper-3:2888:3888'
+      ZOO_CFG_EXTRA: 'clientPort=2181 peerPort=2888 leaderPort=3888'
+      ZOO_INIT_LIMIT: '10'
+      ZOO_SYNC_LIMIT: '5'
+      ZOO_MAX_CLIENT_CNXNS: '0'
+      ZOO_4LW_COMMANDS_WHITELIST: 'mntr,conf,ruok'
+  zookeeper-3:
+    hostname: 'zookeeper-3'
+    image: 'docker.io/library/zookeeper:3.6.3'
+    restart: always
+    environment:
+      ZOO_MY_ID: '3'
+      ZOO_SERVERS: 'server.1=zookeeper-1:2888:3888 server.2=zookeeper-2:2888:3888 server.3=zookeeper-3:2888:3888'
+      ZOO_CFG_EXTRA: 'clientPort=2181 peerPort=2888 leaderPort=3888'
+      ZOO_INIT_LIMIT: '10'
+      ZOO_SYNC_LIMIT: '5'
+      ZOO_MAX_CLIENT_CNXNS: '0'
+      ZOO_4LW_COMMANDS_WHITELIST: 'mntr,conf,ruok'
+  kafka-1:
+    hostname: 'kafka-1'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka
+      args:
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        SCALA_VERSION: ${SCALA_VERSION:-2.13}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '--bootstrap-server',
+          'kafka-1:9091',
+        ]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 360s
+    depends_on:
+      - zookeeper-1
+      - zookeeper-2
+      - zookeeper-3
+      - toxiproxy
+    restart: always
+    environment:
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
+      KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29091'
+      KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-1:9091,LISTENER_LOCAL://localhost:29091'
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_BROKER_ID: '1'
+      KAFKA_CFG_BROKER_RACK: '1'
+      KAFKA_CFG_ZOOKEEPER_SESSION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_ZOOKEEPER_CONNECTION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_REPLICA_SELECTOR_CLASS: 'org.apache.kafka.common.replica.RackAwareReplicaSelector'
+      KAFKA_CFG_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
+  kafka-2:
+    hostname: 'kafka-2'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka
+      args:
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        SCALA_VERSION: ${SCALA_VERSION:-2.13}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '--bootstrap-server',
+          'kafka-2:9091',
+        ]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 360s
+    depends_on:
+      - zookeeper-1
+      - zookeeper-2
+      - zookeeper-3
+      - toxiproxy
+    restart: always
+    environment:
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
+      KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29092'
+      KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-2:9091,LISTENER_LOCAL://localhost:29092'
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_BROKER_ID: '2'
+      KAFKA_CFG_BROKER_RACK: '2'
+      KAFKA_CFG_ZOOKEEPER_SESSION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_ZOOKEEPER_CONNECTION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_REPLICA_SELECTOR_CLASS: 'org.apache.kafka.common.replica.RackAwareReplicaSelector'
+      KAFKA_CFG_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
+  kafka-3:
+    hostname: 'kafka-3'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka
+      args:
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        SCALA_VERSION: ${SCALA_VERSION:-2.13}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '--bootstrap-server',
+          'kafka-3:9091',
+        ]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 360s
+    depends_on:
+      - zookeeper-1
+      - zookeeper-2
+      - zookeeper-3
+      - toxiproxy
+    restart: always
+    environment:
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
+      KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29093'
+      KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-3:9091,LISTENER_LOCAL://localhost:29093'
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_BROKER_ID: '3'
+      KAFKA_CFG_BROKER_RACK: '3'
+      KAFKA_CFG_ZOOKEEPER_SESSION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_ZOOKEEPER_CONNECTION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_REPLICA_SELECTOR_CLASS: 'org.apache.kafka.common.replica.RackAwareReplicaSelector'
+      KAFKA_CFG_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
+  kafka-4:
+    hostname: 'kafka-4'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka
+      args:
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        SCALA_VERSION: ${SCALA_VERSION:-2.13}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '--bootstrap-server',
+          'kafka-4:9091',
+        ]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 360s
+    depends_on:
+      - zookeeper-1
+      - zookeeper-2
+      - zookeeper-3
+      - toxiproxy
+    restart: always
+    environment:
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
+      KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29094'
+      KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-4:9091,LISTENER_LOCAL://localhost:29094'
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_BROKER_ID: '4'
+      KAFKA_CFG_BROKER_RACK: '4'
+      KAFKA_CFG_ZOOKEEPER_SESSION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_ZOOKEEPER_CONNECTION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_REPLICA_SELECTOR_CLASS: 'org.apache.kafka.common.replica.RackAwareReplicaSelector'
+      KAFKA_CFG_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
+  kafka-5:
+    hostname: 'kafka-5'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka
+      args:
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        SCALA_VERSION: ${SCALA_VERSION:-2.13}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '--bootstrap-server',
+          'kafka-5:9091',
+        ]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 360s
+    depends_on:
+      - zookeeper-1
+      - zookeeper-2
+      - zookeeper-3
+      - toxiproxy
+    restart: always
+    environment:
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
+      KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29095'
+      KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-5:9091,LISTENER_LOCAL://localhost:29095'
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_BROKER_ID: '5'
+      KAFKA_CFG_BROKER_RACK: '5'
+      KAFKA_CFG_ZOOKEEPER_SESSION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_ZOOKEEPER_CONNECTION_TIMEOUT_MS: '6000'
+      KAFKA_CFG_REPLICA_SELECTOR_CLASS: 'org.apache.kafka.common.replica.RackAwareReplicaSelector'
+      KAFKA_CFG_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
+  toxiproxy:
+    hostname: 'toxiproxy'
+    image: 'ghcr.io/shopify/toxiproxy:2.4.0'
+    healthcheck:
+      test: ['CMD', '/toxiproxy-cli', 'l']
+      interval: 15s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    ports:
+      # The tests themselves actually start the proxies on these ports
+      - '29091:29091'
+      - '29092:29092'
+      - '29093:29093'
+      - '29094:29094'
+      - '29095:29095'
+
+      # This is the toxiproxy API port
+      - '8474:8474'

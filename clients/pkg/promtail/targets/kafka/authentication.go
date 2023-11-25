@@ -37,7 +37,7 @@ func createTLSConfig(cfg promconfig.TLSConfig) (*tls.Config, error) {
 	return tc, nil
 }
 
-// copied from https://github.com/Shopify/sarama/blob/44627b731c60bb90efe25573e7ef2b3f8df3fa23/examples/sasl_scram_client/scram_client.go
+// copied from https://github.com/IBM/sarama/blob/44627b731c60bb90efe25573e7ef2b3f8df3fa23/examples/sasl_scram_client/scram_client.go
 var (
 	SHA256 scram.HashGeneratorFcn = sha256.New
 	SHA512 scram.HashGeneratorFcn = sha512.New
