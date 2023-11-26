@@ -327,6 +327,7 @@ func (m RangeMapper) getOriginalOffset(expr syntax.SampleExpr) (offset time.Dura
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
+
 	splitCount := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval)))
 	if splitCount <= 1 {
 		return expr

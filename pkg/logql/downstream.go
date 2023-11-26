@@ -124,6 +124,10 @@ func (c ConcatSampleExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
 }
 
+func (c *ConcatSampleExpr) Next() *ConcatSampleExpr {
+	return c.next
+}
+
 func (c ConcatSampleExpr) Walk(f syntax.WalkFn) {
 	f(c)
 	f(c.next)

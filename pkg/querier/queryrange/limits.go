@@ -104,6 +104,13 @@ type cacheKeyLimits struct {
 	transformer UserIDTransformer
 }
 
+func NewCacheKeyLimitsMiddleware(l Limits) *cacheKeyLimits {
+	return &cacheKeyLimits{
+		Limits:      l,
+		transformer: nil,
+	}
+}
+
 func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
 	split := l.QuerySplitDuration(userID)
 
