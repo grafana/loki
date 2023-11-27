@@ -103,9 +103,8 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 				},
 				ReplicationFactor: 1,
 			},
-			WorkerConcurrency:           4,
-			MaxOutstandingPerTenant:     1024,
-			PendingTasksInitialCapacity: 1024,
+			WorkerConcurrency:       4,
+			MaxOutstandingPerTenant: 1024,
 		}
 
 		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
@@ -165,9 +164,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			},
 			ReplicationFactor: 1,
 		},
-		WorkerConcurrency:           4,
-		MaxOutstandingPerTenant:     1024,
-		PendingTasksInitialCapacity: 1024,
+		WorkerConcurrency:       4,
+		MaxOutstandingPerTenant: 1024,
 	}
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {

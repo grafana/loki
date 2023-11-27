@@ -70,7 +70,8 @@ import (
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
 
 const (
-	metricsSubsystem = "bloom_gateway"
+	pendingTasksInitialCap = 1024
+	metricsSubsystem       = "bloom_gateway"
 )
 
 type metrics struct {
@@ -164,7 +165,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		logger:       logger,
 		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
 		sharding:     shardingStrategy,
-		pendingTasks: makePendingTasks(cfg.PendingTasksInitialCapacity),
+		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 		workerConfig: workerConfig{
 			maxWaitTime: 200 * time.Millisecond,
 			maxItems:    100,
