@@ -64,6 +64,7 @@ type RequestQueue struct {
 	stopped bool
 
 	metrics *Metrics
+	pool    *SlicePool[Request]
 }
 
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, limits Limits, metrics *Metrics) *RequestQueue {
@@ -71,6 +72,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, lim
 		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay, limits),
 		connectedConsumers: atomic.NewInt32(0),
 		metrics:            metrics,
+		pool:               NewSlicePool[Request](1<<6, 1<<10, 2), // Buckets are [64, 128, 256, 512, 1024].
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -123,6 +125,41 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, succes
 		// decrement, because we already optimistically increased the counter
 		q.queues.perUserQueueLen.Dec(tenant)
 		return ErrTooManyRequests
+	}
+}
+
+// ReleaseRequests returns items back to the slice pool.
+// Must only be called in combination with DequeueMany().
+func (q *RequestQueue) ReleaseRequests(items []Request) {
+	q.pool.Put(items)
+}
+
+// DequeueMany consumes multiple items for a single tenant from the queue.
+// It returns maxItems and waits maxWait if no requests for this tenant are enqueued.
+// The caller is responsible for returning the dequeued requests back to the
+// pool by calling ReleaseRequests(items).
+func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consumerID string, maxItems int, maxWait time.Duration) ([]Request, QueueIndex, error) {
+	// create a context for dequeuing with a max time we want to wait to fullfill the desired maxItems
+
+	dequeueCtx, cancel := context.WithTimeout(ctx, maxWait)
+	defer cancel()
+
+	var idx QueueIndex
+
+	items := q.pool.Get(maxItems)
+	for {
+		item, newIdx, err := q.Dequeue(dequeueCtx, last, consumerID)
+		if err != nil {
+			if err == context.DeadlineExceeded {
+				err = nil
+			}
+			return items, idx, err
+		}
+		items = append(items, item)
+		idx = newIdx
+		if len(items) == maxItems {
+			return items, idx, nil
+		}
 	}
 }
 

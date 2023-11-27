@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/concurrency"
-
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/math"
@@ -35,6 +35,16 @@ type Ref struct {
 	MinFingerprint, MaxFingerprint uint64
 	StartTimestamp, EndTimestamp   int64
 	Checksum                       uint32
+}
+
+// Cmp returns the fingerprint's position relative to the bounds
+func (b Ref) Cmp(fp uint64) v1.BoundsCheck {
+	if fp < b.MinFingerprint {
+		return v1.Before
+	} else if fp > b.MaxFingerprint {
+		return v1.After
+	}
+	return v1.Overlap
 }
 
 type BlockRef struct {
