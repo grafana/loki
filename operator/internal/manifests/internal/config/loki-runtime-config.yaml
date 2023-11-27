@@ -57,17 +57,17 @@ overrides:
     {{- with $l.Blocked }}
     blocked_queries:
     {{- range $blockedQuery := . }}
-    - {{ if $blockedQuery.Pattern -}}
-      pattern: '{{ $blockedQuery.Pattern }}'
+    - {{ with $blockedQuery.Pattern -}}
+      pattern: '{{ . }}'
+      {{- end -}}
+      {{- with $blockedQuery.Regex }}
+      regex: {{ . }}
       {{- end }}
-      {{- if $blockedQuery.Regex }}
-      regex: {{ $blockedQuery.Regex }}
+      {{- with $blockedQuery.Types }}
+      types: {{ . }}
       {{- end }}
-      {{- if $blockedQuery.Types }}
-      types: {{ blockedQueryTypesToString $blockedQuery.Types }}
-      {{- end }}
-      {{- if $blockedQuery.Hash }}
-      hash: {{ $blockedQuery.Hash }}
+      {{- with $blockedQuery.Hash }}
+      hash: {{ . }}
       {{- end }}
     {{- end }}
     {{- end}}

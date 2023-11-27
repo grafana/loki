@@ -493,14 +493,14 @@ overrides:
 							Blocked: []lokiv1.BlockedQuerySpec{
 								{
 									Hash:  12345,
-									Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},
+									Types: lokiv1.BlockedQueryTypes{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},
 								},
 								{
 									Pattern: ".*prod.*",
 									Regex:   true,
 								},
 								{
-									Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric},
+									Types: lokiv1.BlockedQueryTypes{lokiv1.BlockedQueryMetric},
 								},
 								{
 									Pattern: `sum(rate({env="prod"}[1m]))`,
@@ -526,14 +526,14 @@ overrides:
 						Blocked: []lokiv1.BlockedQuerySpec{
 							{
 								Hash:  12345,
-								Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},
+								Types: lokiv1.BlockedQueryTypes{lokiv1.BlockedQueryMetric, lokiv1.BlockedQueryLimited},
 							},
 							{
 								Pattern: ".*prod.*",
 								Regex:   true,
 							},
 							{
-								Types: []lokiv1.BlockedQueryType{lokiv1.BlockedQueryMetric},
+								Types: lokiv1.BlockedQueryTypes{lokiv1.BlockedQueryMetric},
 							},
 							{
 								Pattern: `sum(rate({env="prod"}[1m]))`,

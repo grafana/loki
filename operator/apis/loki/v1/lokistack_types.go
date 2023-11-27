@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -640,12 +642,14 @@ type BlockedQueryType string
 
 const (
 	// BlockedQueryFilter defines the blocking type for queries with at least one log filter.
-	BlockedQueryFilter = "filter"
+	BlockedQueryFilter BlockedQueryType = "filter"
 	// BlockedQueryLimited defines the blocking type for queries without a filter or a metric aggregation.
-	BlockedQueryLimited = "limited"
+	BlockedQueryLimited BlockedQueryType = "limited"
 	// BlockedQueryMetric defines the blocking type for queries with an aggregation.
-	BlockedQueryMetric = "metric"
+	BlockedQueryMetric BlockedQueryType = "metric"
 )
+
+type BlockedQueryTypes []BlockedQueryType
 
 // BlockedQuerySpec defines the rule spec for queries to be blocked.
 type BlockedQuerySpec struct {
@@ -672,7 +676,7 @@ type BlockedQuerySpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Types"
-	Types []BlockedQueryType `json:"types,omitempty"`
+	Types BlockedQueryTypes `json:"types,omitempty"`
 }
 
 // PerTenantQueryLimitSpec defines the limits applied to per tenant query path.
@@ -1223,3 +1227,12 @@ func init() {
 
 // Hub declares the v1.LokiStack as the hub CRD version.
 func (*LokiStack) Hub() {}
+
+func (t BlockedQueryTypes) String() string {
+	res := make([]string, 0, len(t))
+	for _, t := range t {
+		res = append(res, string(t))
+	}
+
+	return strings.Join(res, ",")
+}
