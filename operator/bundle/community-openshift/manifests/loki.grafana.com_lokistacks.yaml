@@ -295,6 +295,7 @@ spec:
                               items:
                                 description: BlockedQuerySpec defines the rule spec
                                   for queries to be blocked.
+                                minProperties: 1
                                 properties:
                                   hash:
                                     description: Hash is a 32-bit FNV-1 hash of the
