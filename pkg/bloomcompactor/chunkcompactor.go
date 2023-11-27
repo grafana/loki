@@ -35,8 +35,24 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 	return chunkRefs
 }
 
+func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, bt *v1.BloomTokenizer, chunks []chunk.Chunk) v1.SeriesWithBloom {
+	// Create a bloom for this series
+	bloomForChks := v1.SeriesWithBloom{
+		Series: &v1.Series{
+			Fingerprint: seriesMeta.Fingerprint(),
+		},
+		Bloom: &v1.Bloom{
+			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
+		},
+	}
+
+	// Tokenize data into n-grams
+	bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
+	return bloomForChks
+}
+
 // TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
-func buildBloomBlock(
+func buildBlockFromBloom(
 	ctx context.Context,
 	logger log.Logger,
 	options v1.BlockOptions,
@@ -98,9 +114,8 @@ func CompactNewChunks(
 	ctx context.Context,
 	logger log.Logger,
 	job Job,
-	chunks []chunk.Chunk,
-	bt *v1.BloomTokenizer,
-	fpRate float64,
+	blooms []v1.SeriesWithBloom,
+	blockOptions v1.BlockOptions,
 	bloomShipperClient bloomshipper.Client,
 	dst string,
 ) ([]bloomshipper.Block, error) {
@@ -109,28 +124,8 @@ func CompactNewChunks(
 		return nil, err
 	}
 
-	var blooms []v1.SeriesWithBloom
-
-	for _, seriesMeta := range job.seriesMetas {
-		// Create a bloom for this series
-		bloomForChks := v1.SeriesWithBloom{
-			Series: &v1.Series{
-				Fingerprint: seriesMeta.Fingerprint(),
-			},
-			Bloom: &v1.Bloom{
-				ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
-			},
-		}
-
-		// Tokenize data into n-grams
-		bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
-
-		blooms = append(blooms, bloomForChks)
-	}
-
 	// Build and upload bloomBlock to storage
-	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
-	block, err := buildBloomBlock(ctx, logger, blockOptions, blooms, job, dst)
+	block, err := buildBlockFromBloom(ctx, logger, blockOptions, blooms, job, dst)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
 		return nil, err
