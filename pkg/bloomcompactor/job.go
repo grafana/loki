@@ -12,7 +12,7 @@ import (
 type SeriesMeta struct {
 	seriesFP  model.Fingerprint
 	seriesLbs labels.Labels
-	chunkRefs []index.ChunkMeta //TODO rename to chunkRefs
+	chunkRefs []index.ChunkMeta
 }
 
 func (i *SeriesMeta) Fingerprint() model.Fingerprint {
