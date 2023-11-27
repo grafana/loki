@@ -4,64 +4,67 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 type Shipper struct {
-	client Client
-	config config.Config
-	logger log.Logger
+	client          Client
+	config          config.Config
+	logger          log.Logger
+	blockDownloader *blockDownloader
 }
 
-func NewShipper(client Client, config config.Config, logger log.Logger) (*Shipper, error) {
+type Limits interface {
+	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
+}
+
+func NewShipper(client Client, config config.Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Shipper, error) {
+	logger = log.With(logger, "component", "bloom-shipper")
+	downloader, err := newBlockDownloader(config, client, limits, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("error creating block downloader: %w", err)
+	}
 	return &Shipper{
-		client: client,
-		config: config,
-		logger: log.With(logger, "component", "bloom-shipper"),
+		client:          client,
+		config:          config,
+		logger:          logger,
+		blockDownloader: downloader,
 	}, nil
 }
 
-func (s *Shipper) ForEachBlock(
-	ctx context.Context,
-	tenantID string,
-	from, through time.Time,
-	fingerprints []uint64,
-	callback ForEachBlockCallback) error {
+func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, from, through time.Time) ([]BlockRef, error) {
+	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "from", from, "through", through)
 
-	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
-
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), fingerprints)
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), nil)
 	if err != nil {
-		return fmt.Errorf("error fetching active block references : %w", err)
+		return nil, fmt.Errorf("error fetching active block references : %w", err)
 	}
+	return blockRefs, nil
+}
 
-	blocksChannel, errorsChannel := s.client.GetBlocks(ctx, blockRefs)
+func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef, callback ForEachBlockCallback) error {
+	cancelContext, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
+	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blocks)
+
 	for {
 		select {
-		case block, ok := <-blocksChannel:
+		case <-ctx.Done():
+			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
+		case result, ok := <-blocksChannel:
 			if !ok {
 				return nil
 			}
-			directory, err := s.extractBlock(&block, time.Now().UTC())
+			err := callback(result.BlockQuerier, result.MinFingerprint, result.MaxFingerprint)
 			if err != nil {
-				return fmt.Errorf("error unarchiving block %s err: %w", block.BlockPath, err)
-			}
-			blockQuerier := s.createBlockQuerier(directory)
-			err = callback(blockQuerier)
-			if err != nil {
-				return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
+				return fmt.Errorf("error running callback function for block %s err: %w", result.BlockPath, err)
 			}
 		case err := <-errorsChannel:
 			if err != nil {
@@ -71,26 +74,34 @@ func (s *Shipper) ForEachBlock(
 	}
 }
 
+func (s *Shipper) ForEachBlock(ctx context.Context, tenantID string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
+	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
+
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), fingerprints)
+	if err != nil {
+		return fmt.Errorf("error fetching active block references : %w", err)
+	}
+
+	return s.Fetch(ctx, tenantID, blockRefs, callback)
+}
+
 func (s *Shipper) Stop() {
 	s.client.Stop()
+	s.blockDownloader.stop()
 }
 
-// getFromThrough returns the first and list item of a fingerprint slice
+// getFirstLast returns the first and last item of a fingerprint slice
 // It assumes an ascending sorted list of fingerprints.
-func getFromThrough(fingerprints []uint64) (uint64, uint64) {
-	if len(fingerprints) == 0 {
-		return 0, 0
+func getFirstLast[T any](s []T) (T, T) {
+	var zero T
+	if len(s) == 0 {
+		return zero, zero
 	}
-	return fingerprints[0], fingerprints[len(fingerprints)-1]
+	return s[0], s[len(s)-1]
 }
 
-func (s *Shipper) getActiveBlockRefs(
-	ctx context.Context,
-	tenantID string,
-	from, through int64,
-	fingerprints []uint64) ([]BlockRef, error) {
-
-	minFingerprint, maxFingerprint := getFromThrough(fingerprints)
+func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through int64, fingerprints []uint64) ([]BlockRef, error) {
+	minFingerprint, maxFingerprint := getFirstLast(fingerprints)
 	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
 		TenantID:       tenantID,
 		MinFingerprint: minFingerprint,
@@ -160,7 +171,7 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp int64, fingerprint
 	}
 
 	// Then, check if outside of min/max of fingerprint slice
-	minFp, maxFp := getFromThrough(fingerprints)
+	minFp, maxFp := getFirstLast(fingerprints)
 	if b.MaxFingerprint < minFp || b.MinFingerprint > maxFp {
 		return true
 	}
@@ -176,57 +187,4 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp int64, fingerprint
 		return true
 	}
 	return b.MaxFingerprint < fingerprints[idx]
-}
-
-// extract the files into directory and returns absolute path to this directory.
-func (s *Shipper) extractBlock(block *Block, ts time.Time) (string, error) {
-	workingDirectoryPath := filepath.Join(s.config.WorkingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixMilli(), 10))
-	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
-	if err != nil {
-		return "", fmt.Errorf("can not create directory to extract the block: %w", err)
-	}
-	archivePath, err := writeDataToTempFile(workingDirectoryPath, block)
-	if err != nil {
-		return "", fmt.Errorf("error writing data to temp file: %w", err)
-	}
-	defer func() {
-		os.Remove(archivePath)
-		// todo log err
-	}()
-	err = extractArchive(archivePath, workingDirectoryPath)
-	if err != nil {
-		return "", fmt.Errorf("error extracting archive: %w", err)
-	}
-	return workingDirectoryPath, nil
-}
-
-func (s *Shipper) createBlockQuerier(directory string) *v1.BlockQuerier {
-	reader := v1.NewDirectoryBlockReader(directory)
-	block := v1.NewBlock(reader)
-	return v1.NewBlockQuerier(block)
-}
-
-func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
-	defer block.BloomData.Close()
-	defer block.IndexData.Close()
-	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
-
-	archiveFile, err := os.Create(archivePath)
-	if err != nil {
-		return "", fmt.Errorf("error creating empty file to store the archiver: %w", err)
-	}
-	defer archiveFile.Close()
-	_, err = io.Copy(archiveFile, block.BloomData)
-	if err != nil {
-		return "", fmt.Errorf("error writing data to archive file: %w", err)
-	}
-	return archivePath, nil
-}
-
-func extractArchive(archivePath string, workingDirectoryPath string) error {
-	file, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("error opening archive file %s: %w", file.Name(), err)
-	}
-	return v1.UnTarGz(workingDirectoryPath, file)
 }
