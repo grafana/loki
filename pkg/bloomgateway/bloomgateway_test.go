@@ -103,6 +103,9 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 				},
 				ReplicationFactor: 1,
 			},
+			WorkerConcurrency:           4,
+			MaxOutstandingPerTenant:     1024,
+			PendingTasksInitialCapacity: 1024,
 		}
 
 		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
@@ -113,7 +116,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 		// Wait for workers to connect to queue
 		time.Sleep(50 * time.Millisecond)
-		require.Equal(t, float64(numWorkers), gw.queue.GetConnectedConsumersMetric())
+		require.Equal(t, float64(cfg.WorkerConcurrency), gw.queue.GetConnectedConsumersMetric())
 
 		err = services.StopAndAwaitTerminated(context.Background(), gw)
 		require.NoError(t, err)
@@ -162,6 +165,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			},
 			ReplicationFactor: 1,
 		},
+		WorkerConcurrency:           4,
+		MaxOutstandingPerTenant:     1024,
+		PendingTasksInitialCapacity: 1024,
 	}
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {

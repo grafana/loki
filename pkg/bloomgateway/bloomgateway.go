@@ -69,13 +69,6 @@ import (
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
 
-// TODO(chaudum): Make these configurable
-const (
-	numWorkers             = 4
-	maxTasksPerTenant      = 1024
-	pendingTasksInitialCap = 1024
-)
-
 const (
 	metricsSubsystem = "bloom_gateway"
 )
@@ -171,7 +164,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		logger:       logger,
 		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
 		sharding:     shardingStrategy,
-		pendingTasks: makePendingTasks(pendingTasksInitialCap),
+		pendingTasks: makePendingTasks(cfg.PendingTasksInitialCapacity),
 		workerConfig: workerConfig{
 			maxWaitTime: 200 * time.Millisecond,
 			maxItems:    100,
@@ -180,7 +173,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
 
-	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, g.queueMetrics)
+	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
 	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
@@ -212,7 +205,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 func (g *Gateway) initServices() error {
 	var err error
 	svcs := []services.Service{g.queue, g.activeUsers}
-	for i := 0; i < numWorkers; i++ {
+	for i := 0; i < g.cfg.WorkerConcurrency; i++ {
 		id := fmt.Sprintf("bloom-query-worker-%d", i)
 		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
 		svcs = append(svcs, w)
