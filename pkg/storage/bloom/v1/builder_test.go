@@ -3,50 +3,12 @@ package v1
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"testing"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
-
-func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
-	seriesList = make([]SeriesWithBloom, 0, nSeries)
-	keysList = make([][][]byte, 0, nSeries)
-	for i := 0; i < nSeries; i++ {
-		var series Series
-		step := (throughFp - fromFp) / (model.Fingerprint(nSeries))
-		series.Fingerprint = fromFp + model.Fingerprint(i)*step
-		timeDelta := fromTs + (throughTs-fromTs)/model.Time(nSeries)*model.Time(i)
-		series.Chunks = []ChunkRef{
-			{
-				Start:    fromTs + timeDelta*model.Time(i),
-				End:      fromTs + timeDelta*model.Time(i),
-				Checksum: uint32(i),
-			},
-		}
-
-		var bloom Bloom
-		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
-
-		keys := make([][]byte, 0, keysPerSeries)
-		for j := 0; j < keysPerSeries; j++ {
-			key := []byte(fmt.Sprint(j))
-			bloom.Add(key)
-			keys = append(keys, key)
-		}
-
-		seriesList = append(seriesList, SeriesWithBloom{
-			Series: &series,
-			Bloom:  &bloom,
-		})
-		keysList = append(keysList, keys)
-	}
-	return
-}
 
 func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
 	for expected.Next() {
