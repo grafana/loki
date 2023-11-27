@@ -9,19 +9,31 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
+type SeriesMeta struct {
+	seriesFP  model.Fingerprint
+	seriesLbs labels.Labels
+	chunkRefs []index.ChunkMeta //TODO rename to chunkRefs
+}
+
+func (i *SeriesMeta) Fingerprint() model.Fingerprint {
+	return i.seriesFP
+}
+
+func (i *SeriesMeta) Chunks() []index.ChunkMeta {
+	return i.chunkRefs
+}
+
+func (i *SeriesMeta) Labels() labels.Labels {
+	return i.seriesLbs
+}
+
 type Job struct {
 	tableName, tenantID, indexPath string
-	indices                        []Index
+	seriesMetas                    []SeriesMeta
 
 	// We compute them lazily. Unset value is 0.
 	from, through model.Time
 	minFp, maxFp  model.Fingerprint
-}
-
-type Index struct {
-	seriesFP  model.Fingerprint
-	seriesLbs labels.Labels
-	chunks    []index.ChunkMeta //TODO rename to chunkRefs
 }
 
 // NewJob returns a new compaction Job.
@@ -29,13 +41,13 @@ func NewJob(
 	tenantID string,
 	tableName string,
 	indexPath string,
-	indices []Index,
+	seriesMetas []SeriesMeta,
 ) Job {
 	return Job{
-		tenantID:  tenantID,
-		tableName: tableName,
-		indexPath: indexPath,
-		indices:   indices,
+		tenantID:    tenantID,
+		tableName:   tableName,
+		indexPath:   indexPath,
+		seriesMetas: seriesMetas,
 	}
 }
 
@@ -49,18 +61,6 @@ func (j *Job) TableName() string {
 
 func (j *Job) Tenant() string {
 	return j.tenantID
-}
-
-func (i *Index) Fingerprint() model.Fingerprint {
-	return i.seriesFP
-}
-
-func (i *Index) Chunks() []index.ChunkMeta {
-	return i.chunks
-}
-
-func (i *Index) Labels() labels.Labels {
-	return i.seriesLbs
 }
 
 func (j *Job) IndexPath() string {
@@ -82,7 +82,7 @@ func (j *Job) Through() model.Time {
 }
 
 func (j *Job) computeBounds() {
-	if len(j.indices) == 0 {
+	if len(j.seriesMetas) == 0 {
 		return
 	}
 
@@ -92,10 +92,10 @@ func (j *Job) computeBounds() {
 	minFp := model.Fingerprint(math.MaxInt64)
 	maxFp := model.Fingerprint(0)
 
-	for _, index := range j.indices {
+	for _, seriesMeta := range j.seriesMetas {
 		// calculate timestamp boundaries
-		for _, chunk := range index.chunks {
-			from, through := chunk.Bounds()
+		for _, chunkRef := range seriesMeta.chunkRefs {
+			from, through := chunkRef.Bounds()
 			if minFrom > from {
 				minFrom = from
 			}
@@ -105,11 +105,11 @@ func (j *Job) computeBounds() {
 		}
 
 		// calculate fingerprint boundaries
-		if minFp > index.seriesFP {
-			minFp = index.seriesFP
+		if minFp > seriesMeta.seriesFP {
+			minFp = seriesMeta.seriesFP
 		}
-		if maxFp < index.seriesFP {
-			maxFp = index.seriesFP
+		if maxFp < seriesMeta.seriesFP {
+			maxFp = seriesMeta.seriesFP
 		}
 	}
 

@@ -91,12 +91,12 @@ func TestShuffleSharding(t *testing.T) {
 		for j := 0; j < jobsPerTenant; j++ {
 			lbls := labels.FromStrings("namespace", fmt.Sprintf("namespace-%d", j))
 			fp := model.Fingerprint(lbls.Hash())
-			ownsFingerprint, err := shard.OwnsFp(tenant, uint64(fp))
+			ownsFingerprint, err := shard.OwnsFingerprint(tenant, uint64(fp))
 			require.NoError(t, err)
 
 			var jobOwnedByOther int
 			for _, other := range otherShards {
-				otherOwns, err := other.OwnsFp(tenant, uint64(fp))
+				otherOwns, err := other.OwnsFingerprint(tenant, uint64(fp))
 				require.NoError(t, err)
 				if otherOwns {
 					jobOwnedByOther++

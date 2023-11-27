@@ -61,11 +61,6 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-const (
-	bloomFileName  = v1.BloomFileName
-	seriesFileName = v1.SeriesFileName
-)
-
 type Compactor struct {
 	services.Service
 
@@ -359,13 +354,13 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			return fmt.Errorf("unexpected multi-tenant")
 		}
 
-		var indices []Index
+		var seriesMetas []SeriesMeta
 		// TODO: Make these casts safely
 		if err := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-				ownsFingerprint, err := c.sharding.OwnsFp(tenant, uint64(fingerprint))
+				ownsFingerprint, err := c.sharding.OwnsFingerprint(tenant, uint64(fingerprint))
 				fpLogger := log.With(logger, "fp", tableName+"_"+tenant+"_"+fingerprint.String())
 
 				if err != nil {
@@ -382,14 +377,14 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 
 				var temp []tsdbindex.ChunkMeta
 				copy(temp, chksMetas)
-				//All indices given a table within fp of this compactor shard
-				indices = append(indices, Index{seriesFP: fingerprint, seriesLbs: labels, chunks: temp})
+				//All seriesMetas given a table within fp of this compactor shard
+				seriesMetas = append(seriesMetas, SeriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
 			},
 		); err != nil {
 			errs.Add(err)
 		}
 
-		job := NewJob(tenant, tableName, idx.Path(), indices)
+		job := NewJob(tenant, tableName, idx.Path(), seriesMetas)
 		jobLogger := log.With(logger, "job", job.String())
 
 		if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {
@@ -492,7 +487,7 @@ func buildBloomBlock(
 		return bloomshipper.Block{}, err
 	}
 
-	blockFile, err := os.Open(filepath.Join(localDst, bloomFileName))
+	blockFile, err := os.Open(filepath.Join(localDst, v1.BloomFileName))
 	if err != nil {
 		level.Error(logger).Log("reading bloomBlock", err)
 	}
@@ -539,11 +534,11 @@ func CompactNewChunks(
 
 	var blooms []v1.SeriesWithBloom
 
-	for _, index := range job.indices {
+	for _, seriesMeta := range job.seriesMetas {
 		// Create a bloom for this series
 		bloomForChks := v1.SeriesWithBloom{
 			Series: &v1.Series{
-				Fingerprint: index.Fingerprint(),
+				Fingerprint: seriesMeta.Fingerprint(),
 			},
 			Bloom: &v1.Bloom{
 				ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
@@ -597,8 +592,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	if len(metas) == 0 {
 		// Get chunks data from list of chunkRefs
 
-		for _, index := range job.indices {
-			chks, err := storeClient.chunk.GetChunks(ctx, makeChunkRefs(index.Chunks(), job.Tenant(), index.Fingerprint()))
+		for _, seriesMeta := range job.seriesMetas {
+			chks, err := storeClient.chunk.GetChunks(ctx, makeChunkRefs(seriesMeta.Chunks(), job.Tenant(), seriesMeta.Fingerprint()))
 			if err != nil {
 				return err
 			}

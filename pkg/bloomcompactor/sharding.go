@@ -14,7 +14,7 @@ var (
 // ShardingStrategy describes whether compactor "owns" given user or job.
 type ShardingStrategy interface {
 	util_ring.TenantSharding
-	OwnsFp(tenantID string, fp uint64) (bool, error)
+	OwnsFingerprint(tenantID string, fp uint64) (bool, error)
 }
 
 type ShuffleShardingStrategy struct {
@@ -31,8 +31,8 @@ func NewShuffleShardingStrategy(r *ring.Ring, ringLifecycler *ring.BasicLifecycl
 	return &s
 }
 
-// OwnsFp makes sure only a single compactor should execute the job.
-func (s *ShuffleShardingStrategy) OwnsFp(tenantID string, fp uint64) (bool, error) {
+// OwnsFingerprint makes sure only a single compactor processes the fingerprint.
+func (s *ShuffleShardingStrategy) OwnsFingerprint(tenantID string, fp uint64) (bool, error) {
 	if !s.OwnsTenant(tenantID) {
 		return false, nil
 	}
@@ -48,8 +48,8 @@ type NoopStrategy struct {
 	util_ring.NoopStrategy
 }
 
-// OwnsFp implements TenantShuffleSharding.
-func (s *NoopStrategy) OwnsFp(_ string, _ uint64) (bool, error) {
+// OwnsFingerprint implements TenantShuffleSharding.
+func (s *NoopStrategy) OwnsFingerprint(_ string, _ uint64) (bool, error) {
 	return true, nil
 }
 
