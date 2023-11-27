@@ -1197,7 +1197,6 @@ type RangeAggregationExpr struct {
 func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
-		// TODO(karsten): we could create our own expression here.
 		if operation != OpRangeTypeQuantile && operation != OpRangeTypeQuantileSketch {
 			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
 		}

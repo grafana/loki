@@ -1512,8 +1512,11 @@ func Test_GetSeries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.req.Selector != "" {
 				tt.req.Plan = &plan.QueryPlan{
-					// TODO: this fails for the empty catch all selector.
 					AST: syntax.MustParseExpr(tt.req.Selector),
+				}
+			} else {
+				tt.req.Plan = &plan.QueryPlan{
+					AST: nil,
 				}
 			}
 			series, err := store.SelectSeries(ctx, tt.req)
