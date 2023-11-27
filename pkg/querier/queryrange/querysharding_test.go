@@ -172,6 +172,7 @@ func Test_astMapper(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		true,
 	)
 
 	req := defaultReq()
@@ -316,6 +317,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 					maxQuerierBytesRead:     tc.maxQuerierBytesSize,
 				},
 				0,
+				true,
 			)
 
 			req := defaultReq()
@@ -354,6 +356,7 @@ func Test_ShardingByPass(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 		0,
+		true,
 	)
 
 	req := defaultReq()
@@ -434,7 +437,9 @@ func Test_InstantSharding(t *testing.T) {
 			queryTimeout:        time.Second,
 		},
 		0,
-		nil)
+		nil,
+		true,
+	)
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
@@ -722,6 +727,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 				0,
+				true,
 			)
 
 			// currently all the tests call `defaultReq()` which creates an instance of the type LokiRequest
@@ -856,6 +862,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		true,
 	)
 
 	q := `{cluster="dev-us-central-0"}`

@@ -26,14 +26,16 @@ func (s ConstantShards) Shards(_ syntax.Expr) (int, uint64, error)   { return in
 func (s ConstantShards) GetStats(_ syntax.Expr) (stats.Stats, error) { return stats.Stats{}, nil }
 
 type ShardMapper struct {
-	shards  ShardResolver
-	metrics *MapperMetrics
+	shards                   ShardResolver
+	metrics                  *MapperMetrics
+	quantileOverTimeSharding bool
 }
 
-func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics) ShardMapper {
+func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics, QuantileOverTimeSharding bool) ShardMapper {
 	return ShardMapper{
-		shards:  resolver,
-		metrics: metrics,
+		shards:                   resolver,
+		metrics:                  metrics,
+		quantileOverTimeSharding: QuantileOverTimeSharding,
 	}
 }
 
@@ -415,7 +417,6 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}, bytesPerShard, nil
 
 	case syntax.OpRangeTypeQuantile:
-		// TODO(karsten): only shard most outer expression.
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
 			return m.mapSampleExpr(expr, r)
@@ -425,7 +426,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		if err != nil {
 			return nil, 0, err
 		}
-		if shards == 0 {
+		if shards == 0 || !m.quantileOverTimeSharding {
 			return m.mapSampleExpr(expr, r)
 		}
 
@@ -434,7 +435,6 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		// (__quantile_sketch_over_time__() by (foo)))
 
 		downstreams := make([]DownstreamSampleExpr, 0, shards)
-		// TODO(karsten): maybe we have to clone
 		expr.Operation = syntax.OpRangeTypeQuantileSketch
 		for shard := shards - 1; shard >= 0; shard-- {
 			downstreams = append(downstreams, DownstreamSampleExpr{

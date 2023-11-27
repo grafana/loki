@@ -1,15 +1,18 @@
 package loki
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/grafana/loki/pkg/ingester/index"
+	frontend "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
 func ValidateConfigCompatibility(c Config) error {
 	for _, fn := range []func(Config) error{
 		ensureInvertedIndexShardingCompatibility,
+		ensureProtobufEncodingForQuantileOverTimeSharding,
 	} {
 		if err := fn(c); err != nil {
 			return err
@@ -37,6 +40,13 @@ func ensureInvertedIndexShardingCompatibility(c Config) error {
 			}
 		}
 
+	}
+	return nil
+}
+
+func ensureProtobufEncodingForQuantileOverTimeSharding(c Config) error {
+	if c.QueryRange.ShardQuantileOverTime && c.Frontend.FrontendV2.Encoding != frontend.EncodingProtobuf {
+		return errors.New("quantile_over_time_sharding=true requires frontend.encoding=protobuf.")
 	}
 	return nil
 }
