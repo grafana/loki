@@ -973,7 +973,7 @@ BlockedQueryTypes
 ## BlockedQueryType { #loki-grafana-com-v1-BlockedQueryType }
 (<code>string</code> alias)
 <div>
-<p>BlockedQueryType defines the query limits type for blocked queries.</p>
+<p>BlockedQueryType defines which type of query a blocked query should apply to.</p>
 </div>
 <table>
 <thead>
@@ -983,13 +983,13 @@ BlockedQueryTypes
 </tr>
 </thead>
 <tbody><tr><td><p>&#34;filter&#34;</p></td>
-<td><p>BlockedQueryFilter defines the blocking type for queries with at least one log filter.</p>
+<td><p>BlockedQueryFilter is used, when the blocked query should apply to queries using a log filter.</p>
 </td>
 </tr><tr><td><p>&#34;limited&#34;</p></td>
-<td><p>BlockedQueryLimited defines the blocking type for queries without a filter or a metric aggregation.</p>
+<td><p>BlockedQueryLimited is used, when the blocked query should apply to queries without a filter or a metric aggregation.</p>
 </td>
 </tr><tr><td><p>&#34;metric&#34;</p></td>
-<td><p>BlockedQueryMetric defines the blocking type for queries with an aggregation.</p>
+<td><p>BlockedQueryMetric is used, when the blocked query should apply to queries with an aggregation.</p>
 </td>
 </tr></tbody>
 </table>
@@ -1000,6 +1000,7 @@ BlockedQueryTypes
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-BlockedQuerySpec">BlockedQuerySpec</a>)
 </p>
 <div>
+<p>BlockedQueryTypes defines a slice of BlockedQueryType values to be used for a blocked query.</p>
 </div>
 
 ## CASpec { #loki-grafana-com-v1-CASpec }

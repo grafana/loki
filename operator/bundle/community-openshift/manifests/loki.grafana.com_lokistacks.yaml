@@ -314,8 +314,9 @@ spec:
                                     description: Types defines the list of query types
                                       that should be considered for blocking.
                                     items:
-                                      description: BlockedQueryType defines the query
-                                        limits type for blocked queries.
+                                      description: BlockedQueryType defines which
+                                        type of query a blocked query should apply
+                                        to.
                                       enum:
                                       - filter
                                       - limited

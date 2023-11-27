@@ -447,10 +447,12 @@ overrides:
     blocked_queries:
     - hash: 12345
       types: metric,limited
-    - pattern: '.*prod.*'
+    - pattern: |
+        .*prod.*
       regex: true
     - types: metric
-    - pattern: 'sum(rate({env="prod"}[1m]))'
+    - pattern: |
+        sum(rate({env="prod"}[1m]))
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
