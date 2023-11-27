@@ -635,20 +635,21 @@ type QueryLimitSpec struct {
 	CardinalityLimit int32 `json:"cardinalityLimit,omitempty"`
 }
 
-// BlockedQueryType defines the query limits type for blocked queries.
+// BlockedQueryType defines which type of query a blocked query should apply to.
 //
 // +kubebuilder:validation:Enum=filter;limited;metric
 type BlockedQueryType string
 
 const (
-	// BlockedQueryFilter defines the blocking type for queries with at least one log filter.
+	// BlockedQueryFilter is used, when the blocked query should apply to queries using a log filter.
 	BlockedQueryFilter BlockedQueryType = "filter"
-	// BlockedQueryLimited defines the blocking type for queries without a filter or a metric aggregation.
+	// BlockedQueryLimited is used, when the blocked query should apply to queries without a filter or a metric aggregation.
 	BlockedQueryLimited BlockedQueryType = "limited"
-	// BlockedQueryMetric defines the blocking type for queries with an aggregation.
+	// BlockedQueryMetric is used, when the blocked query should apply to queries with an aggregation.
 	BlockedQueryMetric BlockedQueryType = "metric"
 )
 
+// BlockedQueryTypes defines a slice of BlockedQueryType values to be used for a blocked query.
 type BlockedQueryTypes []BlockedQueryType
 
 // BlockedQuerySpec defines the rule spec for queries to be blocked.
