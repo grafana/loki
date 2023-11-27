@@ -19,33 +19,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/util/pool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
-	// groupedChunksRefPool pooling array of logproto.GroupedChunkRefs [512,1024,...,16k]
-	groupedChunksRefPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]*logproto.GroupedChunkRefs, 0, size) })
-	// chunkRefsByAddrsPool pooling array of chunkRefsByAddrs [512,1024,...,16k]
-	chunkRefsByAddrsPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]chunkRefsByAddrs, 0, size) })
-	// fingerprintsPool pooling array of uint64 [512,1024,...,16k]
-	fingerprintsPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]uint64, 0, size) })
-	// addressesPool pooling array of []string [512,1024,...,16k]
-	addressesPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([][]string, 0, size) })
+	// groupedChunksRefPool pooling slice of logproto.GroupedChunkRefs [64, 128, 256, ..., 65536]
+	groupedChunksRefPool = queue.NewSlicePool[*logproto.GroupedChunkRefs](1<<6, 1<<32, 2)
+	// chunkRefsByAddrsPool pooling slice of chunkRefsByAddrs [64, 128, 256, ..., 65536]
+	chunkRefsByAddrsPool = queue.NewSlicePool[chunkRefsByAddrs](1<<6, 1<<32, 2)
 	// ringGetBuffersPool pooling for ringGetBuffers to avoid calling ring.MakeBuffersForGet() for each request
 	ringGetBuffersPool = sync.Pool{
 		New: func() interface{} {
-			bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-			return ringGetBuffers{
-				Descs: bufDescs,
-				Hosts: bufHosts,
-				Zones: bufZones,
+			descs, hosts, zones := ring.MakeBuffersForGet()
+			return &ringGetBuffers{
+				Descs: descs,
+				Hosts: hosts,
+				Zones: zones,
 			}
 		},
 	}
@@ -178,8 +174,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	// All chunk refs of series that belong to one and the same bloom gateway are set in one batch.
 	streamsByAddr := c.groupStreamsByAddr(groups, addrs)
 
-	// TODO(chaudum): We might over-allocate for the filtered responses here?
-	filteredChunkRefs := groupedChunksRefPool.Get(len(fingerprints)).([]*logproto.GroupedChunkRefs)
+	filteredChunkRefs := groupedChunksRefPool.Get(len(fingerprints))
 	defer groupedChunksRefPool.Put(filteredChunkRefs)
 
 	for _, item := range streamsByAddr {
@@ -240,7 +235,7 @@ type chunkRefsByAddrs struct {
 }
 
 func (c *GatewayClient) groupStreamsByAddr(groups []*logproto.GroupedChunkRefs, addresses [][]string) []chunkRefsByAddrs {
-	res := chunkRefsByAddrsPool.Get(len(addresses)).([]chunkRefsByAddrs)
+	res := chunkRefsByAddrsPool.Get(len(addresses))
 	defer chunkRefsByAddrsPool.Put(res)
 
 	for i := 0; i < len(addresses); i++ {
@@ -307,13 +302,10 @@ func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, groups []*lo
 		level.Warn(c.logger).Log("msg", "using an inefficient algorithm to determin server addresses for fingerprints", "fingerprints", numFingerprints, "tokens", numTokens)
 	}
 
-	fingerprints := fingerprintsPool.Get(numFingerprints).([]uint64)
-	defer fingerprintsPool.Put(fingerprints)
+	fingerprints := make([]uint64, numFingerprints)
+	addresses := make([][]string, numFingerprints)
 
-	addresses := addressesPool.Get(numFingerprints).([][]string)
-	defer addressesPool.Put(addresses)
-
-	buf := ringGetBuffersPool.Get().(ringGetBuffers)
+	buf := ringGetBuffersPool.Get().(*ringGetBuffers)
 	defer ringGetBuffersPool.Put(buf)
 
 	for idx, key := range groups {
