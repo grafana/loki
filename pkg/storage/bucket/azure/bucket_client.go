@@ -12,10 +12,14 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 	bucketConfig := azure.Config{
 		StorageAccountName:      cfg.StorageAccountName,
 		StorageAccountKey:       cfg.StorageAccountKey.String(),
-		StorageConnectionString: cfg.ConnectionString.String(),
+		StorageConnectionString: cfg.StorageConnectionString.String(),
 		ContainerName:           cfg.ContainerName,
 		Endpoint:                cfg.EndpointSuffix,
 		MaxRetries:              cfg.MaxRetries,
+		UserAssignedID:          cfg.UserAssignedID,
+		PipelineConfig: azure.PipelineConfig{
+			MaxRetryDelay: model.Duration(cfg.MaxRetryDelay),
+		},
 		HTTPConfig: azure.HTTPConfig{
 			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),

@@ -61,12 +61,12 @@ http:
   max_connections_per_host: 8
 `,
 			expectedConfig: Config{
-				StorageAccountName: "test-account-name",
-				StorageAccountKey:  flagext.SecretWithValue("test-account-key"),
-				ConnectionString:   flagext.SecretWithValue("test-connection-string"),
-				ContainerName:      "test-container-name",
-				EndpointSuffix:     "test-endpoint-suffix",
-				MaxRetries:         1,
+				StorageAccountName:      "test-account-name",
+				StorageAccountKey:       flagext.SecretWithValue("test-account-key"),
+				StorageConnectionString: flagext.SecretWithValue("test-connection-string"),
+				ContainerName:           "test-container-name",
+				EndpointSuffix:          "test-endpoint-suffix",
+				MaxRetries:              1,
 				HTTP: HTTPConfig{
 					Config: http.Config{
 						IdleConnTimeout:       2 * time.Second,
