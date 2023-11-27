@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -11,6 +12,10 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
+)
+
+const (
+	QuantileSketchMatrixType = "QuantileSketchMatrix"
 )
 
 type QuantileSketchVector []quantileSketchSample
@@ -28,7 +33,6 @@ func (q QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketchVe
 	// labels hash to vector index map
 	groups := make(map[uint64]int)
 	for i, sample := range q {
-		// TODO(karsten): this might be slow.
 		groups[sample.Metric.Hash()] = i
 	}
 
@@ -80,7 +84,7 @@ func (QuantileSketchMatrix) String() string {
 	return "QuantileSketchMatrix()"
 }
 
-func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "QuantileSketchMatrix" }
+func (QuantileSketchMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
 
 func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	values := make([]*logproto.QuantileSketchVector, len(m))
@@ -310,11 +314,13 @@ func (*QuantileSketchMatrixStepEvaluator) Explain(parent Node) {
 // step.
 type QuantileSketchMergeStepEvaluator struct {
 	evaluators []StepEvaluator
+	err        error
 }
 
 func NewQuantileSketchMergeStepEvaluator(evaluators []StepEvaluator) *QuantileSketchMergeStepEvaluator {
 	return &QuantileSketchMergeStepEvaluator{
 		evaluators: evaluators,
+		err:        nil,
 	}
 }
 
@@ -330,12 +336,16 @@ func (e *QuantileSketchMergeStepEvaluator) Next() (bool, int64, StepResult) {
 	}
 
 	for _, eval := range e.evaluators[1:] {
-		// TODO(karsten): check ok and ts.
-		ok, _, vec := eval.Next()
+		ok, nextTs, vec := eval.Next()
 		if ok {
 			if cur == nil {
 				cur = vec.QuantileSketchVec()
 			} else {
+				if ts != nextTs {
+					e.err = fmt.Errorf("timestamps of sketches differ: %d!=%d", ts, nextTs)
+					return false, 0, nil
+				}
+
 				cur.Merge(vec.QuantileSketchVec())
 			}
 		}
@@ -346,7 +356,7 @@ func (e *QuantileSketchMergeStepEvaluator) Next() (bool, int64, StepResult) {
 
 func (*QuantileSketchMergeStepEvaluator) Close() error { return nil }
 
-func (*QuantileSketchMergeStepEvaluator) Error() error { return nil }
+func (e *QuantileSketchMergeStepEvaluator) Error() error { return e.err }
 
 func (e *QuantileSketchMergeStepEvaluator) Explain(parent Node) {
 	b := parent.Child("QuantileSketchMerge")

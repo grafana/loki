@@ -358,7 +358,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			return JoinQuantileSketchVector(next, ts, vec, stepEvaluator, q.params)
 		}
 	}
-	return nil, nil // TODO(karsten): return empty result
+	return nil, nil
 }
 
 func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {

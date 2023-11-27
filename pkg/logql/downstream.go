@@ -364,7 +364,9 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 		xs := make([]StepEvaluator, 0, len(queries))
 		for _, res := range results {
-			// TODO(karsten): validate type or move into NewResultStepEvaluator.
+			if res.Data.Type() != QuantileSketchMatrixType {
+				return nil, fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
+			}
 			stepper := NewQuantileSketchMatrixStepEvaluator(res.Data.(QuantileSketchMatrix), params)
 			xs = append(xs, stepper)
 		}
