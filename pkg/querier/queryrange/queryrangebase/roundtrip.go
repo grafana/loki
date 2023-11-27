@@ -61,7 +61,7 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.ShardQuantileOverTime && !cfg.ShardedQueries {
-		return errors.New("quantile_over_time_sharding=true requires parallelise_shardable_queries=true.")
+		return errors.New("quantile_over_time_sharding=true requires parallelise_shardable_queries=true")
 	}
 
 	return nil

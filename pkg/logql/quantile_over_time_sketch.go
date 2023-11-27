@@ -77,10 +77,10 @@ func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) (Quanti
 }
 
 func (QuantileSketchMatrix) String() string {
-	return "TDigestMatrix()"
+	return "QuantileSketchMatrix()"
 }
 
-func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "TDigestMatrix" }
+func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "QuantileSketchMatrix" }
 
 func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	values := make([]*logproto.QuantileSketchVector, len(m))
@@ -137,7 +137,7 @@ func (e *QuantileSketchStepEvaluator) Error() error {
 }
 
 func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
-	parent.Child("T-Digest")
+	parent.Child("QuantileSketch")
 }
 
 func newQuantileSketchIterator(
@@ -154,7 +154,7 @@ func newQuantileSketchIterator(
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
 	}
-	return &tdigestBatchRangeVectorIterator{
+	return &quantileSketchBatchRangeVectorIterator{
 		batchRangeVectorIterator: inner,
 	}
 }
@@ -201,12 +201,12 @@ func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (quanti
 	return out, nil
 }
 
-type tdigestBatchRangeVectorIterator struct {
+type quantileSketchBatchRangeVectorIterator struct {
 	*batchRangeVectorIterator
 	at []quantileSketchSample
 }
 
-func (r *tdigestBatchRangeVectorIterator) At() (int64, StepResult) {
+func (r *quantileSketchBatchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]quantileSketchSample, 0, len(r.window))
 	}
@@ -223,11 +223,10 @@ func (r *tdigestBatchRangeVectorIterator) At() (int64, StepResult) {
 	return ts, QuantileSketchVector(r.at)
 }
 
-func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
-	s := sketch.NewTDigestSketch()
-	//s := sketch.NewDDSketch() // TODO: make this configurable
+func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
+	s := sketch.NewDDSketch()
 	for _, v := range samples {
-		// The sketch from the underlying tdigest package we are using
+		// The sketch from the underlying sketch package we are using
 		// cannot return an error when calling Add.
 		s.Add(v.F) //nolint:errcheck
 	}
@@ -236,7 +235,6 @@ func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.Qu
 
 // JoinQuantileSketchVector joins the results from stepEvaluator into a TDigestMatrix.
 func JoinQuantileSketchVector(next bool, _ int64, r StepResult, stepEvaluator StepEvaluator, _ Params) (promql_parser.Value, error) {
-	// TODO(karsten): check if ts should be used
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
@@ -257,21 +255,21 @@ func JoinQuantileSketchVector(next bool, _ int64, r StepResult, stepEvaluator St
 	return QuantileSketchMatrix(result), stepEvaluator.Error()
 }
 
-// TDigestMatrixStepEvaluator steps through a matrix of tdigest vectors, ie
-// sketches per time step.
-type TDigestMatrixStepEvaluator struct {
+// QuantileSketchMatrixStepEvaluator steps through a matrix of quantile sketch
+// vectors, ie t-digest or DDSketch structures per time step.
+type QuantileSketchMatrixStepEvaluator struct {
 	start, end, ts time.Time
 	step           time.Duration
 	m              QuantileSketchMatrix
 }
 
-func NewTDigestMatrixStepEvaluator(m QuantileSketchMatrix, params Params) *TDigestMatrixStepEvaluator {
+func NewQuantileSketchMatrixStepEvaluator(m QuantileSketchMatrix, params Params) *QuantileSketchMatrixStepEvaluator {
 	var (
 		start = params.Start()
 		end   = params.End()
 		step  = params.Step()
 	)
-	return &TDigestMatrixStepEvaluator{
+	return &QuantileSketchMatrixStepEvaluator{
 		start: start,
 		end:   end,
 		ts:    start.Add(-step), // will be corrected on first Next() call
@@ -280,7 +278,7 @@ func NewTDigestMatrixStepEvaluator(m QuantileSketchMatrix, params Params) *TDige
 	}
 }
 
-func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, StepResult) {
+func (m *QuantileSketchMatrixStepEvaluator) Next() (bool, int64, StepResult) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
 		return false, 0, nil
@@ -288,7 +286,10 @@ func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, StepResult) {
 
 	ts := m.ts.UnixNano() / int64(time.Millisecond)
 
-	// TODO(karsten): test for empty matrix
+	if len(m.m) == 0 {
+		return false, 0, nil
+	}
+
 	vec := m.m[0]
 
 	// Reset for next step
@@ -297,15 +298,15 @@ func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, StepResult) {
 	return true, ts, vec
 }
 
-func (*TDigestMatrixStepEvaluator) Close() error { return nil }
+func (*QuantileSketchMatrixStepEvaluator) Close() error { return nil }
 
-func (*TDigestMatrixStepEvaluator) Error() error { return nil }
+func (*QuantileSketchMatrixStepEvaluator) Error() error { return nil }
 
-func (*TDigestMatrixStepEvaluator) Explain(parent Node) {
-	parent.Child("TDigestMatrix")
+func (*QuantileSketchMatrixStepEvaluator) Explain(parent Node) {
+	parent.Child("QuantileSketchMatrix")
 }
 
-// QuantileSketchMergeStepEvaluator merges multiple tdigest sketches into one for each
+// QuantileSketchMergeStepEvaluator merges multiple quantile sketches into one for each
 // step.
 type QuantileSketchMergeStepEvaluator struct {
 	evaluators []StepEvaluator
@@ -318,12 +319,16 @@ func NewQuantileSketchMergeStepEvaluator(evaluators []StepEvaluator) *QuantileSk
 }
 
 func (e *QuantileSketchMergeStepEvaluator) Next() (bool, int64, StepResult) {
-	// TODO(karsten): check that we have more than one
 	ok, ts, r := e.evaluators[0].Next()
 	var cur QuantileSketchVector
 	if ok {
 		cur = r.QuantileSketchVec()
 	}
+
+	if len(e.evaluators) == 1 {
+		return ok, ts, cur
+	}
+
 	for _, eval := range e.evaluators[1:] {
 		// TODO(karsten): check ok and ts.
 		ok, _, vec := eval.Next()
@@ -344,7 +349,7 @@ func (*QuantileSketchMergeStepEvaluator) Close() error { return nil }
 func (*QuantileSketchMergeStepEvaluator) Error() error { return nil }
 
 func (e *QuantileSketchMergeStepEvaluator) Explain(parent Node) {
-	b := parent.Child("TDigestMerge")
+	b := parent.Child("QuantileSketchMerge")
 	if len(e.evaluators) < 3 {
 		for _, child := range e.evaluators {
 			child.Explain(b)
@@ -356,7 +361,7 @@ func (e *QuantileSketchMergeStepEvaluator) Explain(parent Node) {
 	}
 }
 
-// QuantileSketchVectorStepEvaluator evaluates a tdigest qunatile sketch into a
+// QuantileSketchVectorStepEvaluator evaluates a quantile sketch into a
 // promql.Vector.
 type QuantileSketchVectorStepEvaluator struct {
 	inner    StepEvaluator
@@ -379,7 +384,6 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	vec := make(promql.Vector, len(quantileSketchVec))
 
 	for i, quantileSketch := range quantileSketchVec {
-		// TODO(karsten): check error
 		f, _ := quantileSketch.F.Quantile(e.quantile)
 
 		vec[i] = promql.Sample{

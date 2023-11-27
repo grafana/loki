@@ -46,7 +46,7 @@ func ensureInvertedIndexShardingCompatibility(c Config) error {
 
 func ensureProtobufEncodingForQuantileOverTimeSharding(c Config) error {
 	if c.QueryRange.ShardQuantileOverTime && c.Frontend.FrontendV2.Encoding != frontend.EncodingProtobuf {
-		return errors.New("quantile_over_time_sharding=true requires frontend.encoding=protobuf.")
+		return errors.New("quantile_over_time_sharding=true requires frontend.encoding=protobuf")
 	}
 	return nil
 }

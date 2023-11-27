@@ -557,7 +557,6 @@ func newRangeAggEvaluator(
 			iter: iter,
 		}, nil
 	default:
-		// TODO: avoid duplication
 		iter, err := newRangeVectorIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),
