@@ -21,15 +21,7 @@ const (
 type QuantileSketchVector []quantileSketchSample
 type QuantileSketchMatrix []QuantileSketchVector
 
-func (q QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketchVector {
-	/*
-		var groupingKey uint64
-		if e.expr.Grouping.Without {
-			groupingKey, e.buf = metric.HashWithoutLabels(e.buf, e.expr.Grouping.Groups...)
-		} else {
-			groupingKey, e.buf = metric.HashForLabels(e.buf, e.expr.Grouping.Groups...)
-		}
-	*/
+func (q QuantileSketchVector) Merge(right QuantileSketchVector) (QuantileSketchVector, error) {
 	// labels hash to vector index map
 	groups := make(map[uint64]int)
 	for i, sample := range q {
@@ -43,11 +35,13 @@ func (q QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketchVe
 			continue
 		}
 
-		// TODO(karsten): handle error
-		q[i].F.Merge(sample.F) //nolint:errcheck
+		_, err := q[i].F.Merge(sample.F)
+		if err != nil {
+			return q, err
+		}
 	}
 
-	return q
+	return q, nil
 }
 
 func (QuantileSketchVector) SampleVector() promql.Vector {
@@ -346,7 +340,10 @@ func (e *QuantileSketchMergeStepEvaluator) Next() (bool, int64, StepResult) {
 					return false, 0, nil
 				}
 
-				cur.Merge(vec.QuantileSketchVec())
+				_, e.err = cur.Merge(vec.QuantileSketchVec())
+				if e.err != nil {
+					return false, 0, nil
+				}
 			}
 		}
 	}
