@@ -491,11 +491,6 @@ func buildBloomBlock(
 		level.Error(logger).Log("reading bloomBlock", err)
 	}
 
-	indexFile, err := os.Open(filepath.Join(localDst, seriesFileName))
-	if err != nil {
-		level.Error(logger).Log("reading bloomBlock", err)
-	}
-
 	blocks := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
@@ -509,8 +504,7 @@ func buildBloomBlock(
 			},
 			IndexPath: job.IndexPath(),
 		},
-		BloomData: blockFile,
-		IndexData: indexFile,
+		Data: blockFile,
 	}
 
 	return blocks, nil
