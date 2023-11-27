@@ -1845,10 +1845,6 @@ client:
 # Maximum number of outstanding tasks per tenant.
 # CLI flag: -bloom-gateway.max-outstanding-per-tenant
 [max_outstanding_per_tenant: <int> | default = 1024]
-
-# Initial capacity of the pending tasks queue.
-# CLI flag: -bloom-gateway.pending-tasks-initial-capacity
-[pending_tasks_initial_capacity: <int> | default = 1024]
 ```
 
 ### storage_config
