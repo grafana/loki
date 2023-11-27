@@ -82,7 +82,7 @@ const (
 
 var (
 	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
-	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<32, 2)
+	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
 )
 
 type metrics struct {

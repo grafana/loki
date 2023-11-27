@@ -31,9 +31,9 @@ import (
 
 var (
 	// groupedChunksRefPool pooling slice of logproto.GroupedChunkRefs [64, 128, 256, ..., 65536]
-	groupedChunksRefPool = queue.NewSlicePool[*logproto.GroupedChunkRefs](1<<6, 1<<32, 2)
+	groupedChunksRefPool = queue.NewSlicePool[*logproto.GroupedChunkRefs](1<<6, 1<<16, 2)
 	// chunkRefsByAddrsPool pooling slice of chunkRefsByAddrs [64, 128, 256, ..., 65536]
-	chunkRefsByAddrsPool = queue.NewSlicePool[chunkRefsByAddrs](1<<6, 1<<32, 2)
+	chunkRefsByAddrsPool = queue.NewSlicePool[chunkRefsByAddrs](1<<6, 1<<16, 2)
 	// ringGetBuffersPool pooling for ringGetBuffers to avoid calling ring.MakeBuffersForGet() for each request
 	ringGetBuffersPool = sync.Pool{
 		New: func() interface{} {
