@@ -492,7 +492,7 @@ func buildBloomBlock(
 		level.Error(logger).Log("reading bloomBlock", err)
 	}
 
-	blocks := bloomshipper.Block{
+	block := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
 				TenantID:       job.Tenant(),
@@ -508,7 +508,7 @@ func buildBloomBlock(
 		Data: blockFile,
 	}
 
-	return blocks, nil
+	return block, nil
 }
 
 func createLocalDirName(workingDir string, job Job) string {
@@ -553,12 +553,12 @@ func CompactNewChunks(
 
 	// Build and upload bloomBlock to storage
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
-	blocks, err := buildBloomBlock(ctx, logger, blockOptions, blooms, job, dst)
+	block, err := buildBloomBlock(ctx, logger, blockOptions, blooms, job, dst)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
 		return nil, err
 	}
-	storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blocks})
+	storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{block})
 	if err != nil {
 		level.Error(logger).Log("putting blocks to storage", err)
 		return nil, err
