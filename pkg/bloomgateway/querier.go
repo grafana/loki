@@ -32,7 +32,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	}
 
 	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
-	grouped := groupedChunksRefPool.Get(len(chunkRefs)).([]*logproto.GroupedChunkRefs)
+	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
 	grouped = groupChunkRefs(chunkRefs, grouped)
 
