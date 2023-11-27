@@ -902,11 +902,6 @@ OPASpec
 </tbody>
 </table>
 
-## BlockedQueryPattern { #loki-grafana-com-v1-BlockedQueryPattern }
-(<code>string</code> alias)
-<div>
-</div>
-
 ## BlockedQuerySpec { #loki-grafana-com-v1-BlockedQuerySpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
