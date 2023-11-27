@@ -352,7 +352,9 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 							Name: "test",
 						},
 						TLS: &v1.ObjectStorageTLSSpec{
-							CA: "test-ca",
+							CASpec: v1.CASpec{
+								CA: "test-ca",
+							},
 						},
 					},
 					StorageClassName:  "standard",
@@ -380,8 +382,6 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 								MaxLabelNamesPerSeries:    1000,
 								MaxGlobalStreamsPerTenant: 10000,
 								MaxLineSize:               512,
-								PerStreamRateLimit:        10,
-								PerStreamRateLimitBurst:   20,
 							},
 							QueryLimits: &v1.QueryLimitSpec{
 								MaxEntriesLimitPerQuery: 1000,
@@ -399,8 +399,6 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
-									PerStreamRateLimit:        10,
-									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -417,8 +415,6 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
-									PerStreamRateLimit:        10,
-									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -683,7 +679,9 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 							Name: "test",
 						},
 						TLS: &v1.ObjectStorageTLSSpec{
-							CA: "test-ca",
+							CASpec: v1.CASpec{
+								CA: "test-ca",
+							},
 						},
 					},
 					StorageClassName:  "standard",
@@ -711,8 +709,6 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 								MaxLabelNamesPerSeries:    1000,
 								MaxGlobalStreamsPerTenant: 10000,
 								MaxLineSize:               512,
-								PerStreamRateLimit:        10,
-								PerStreamRateLimitBurst:   20,
 							},
 							QueryLimits: &v1.QueryLimitSpec{
 								MaxEntriesLimitPerQuery: 1000,
@@ -730,8 +726,6 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
-									PerStreamRateLimit:        10,
-									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -748,8 +742,6 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
-									PerStreamRateLimit:        10,
-									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -1014,8 +1006,6 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 								MaxLabelNamesPerSeries:    1000,
 								MaxGlobalStreamsPerTenant: 10000,
 								MaxLineSize:               512,
-								PerStreamRateLimit:        10,
-								PerStreamRateLimitBurst:   20,
 							},
 							QueryLimits: &v1beta1.QueryLimitSpec{
 								MaxEntriesLimitPerQuery: 1000,
@@ -1033,8 +1023,6 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
-									PerStreamRateLimit:        10,
-									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1beta1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
@@ -1051,8 +1039,6 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 									MaxLabelNamesPerSeries:    1000,
 									MaxGlobalStreamsPerTenant: 10000,
 									MaxLineSize:               512,
-									PerStreamRateLimit:        10,
-									PerStreamRateLimitBurst:   20,
 								},
 								QueryLimits: &v1beta1.QueryLimitSpec{
 									MaxEntriesLimitPerQuery: 1000,
