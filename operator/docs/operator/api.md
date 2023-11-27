@@ -902,6 +902,11 @@ OPASpec
 </tbody>
 </table>
 
+## BlockedQueryPattern { #loki-grafana-com-v1-BlockedQueryPattern }
+(<code>string</code> alias)
+<div>
+</div>
+
 ## BlockedQuerySpec { #loki-grafana-com-v1-BlockedQuerySpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
@@ -957,8 +962,8 @@ bool
 <td>
 <code>types</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-BlockedQueryType">
-[]BlockedQueryType
+<a href="#loki-grafana-com-v1-BlockedQueryTypes">
+BlockedQueryTypes
 </a>
 </em>
 </td>
@@ -972,11 +977,34 @@ bool
 
 ## BlockedQueryType { #loki-grafana-com-v1-BlockedQueryType }
 (<code>string</code> alias)
+<div>
+<p>BlockedQueryType defines the query limits type for blocked queries.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;filter&#34;</p></td>
+<td><p>BlockedQueryFilter defines the blocking type for queries with at least one log filter.</p>
+</td>
+</tr><tr><td><p>&#34;limited&#34;</p></td>
+<td><p>BlockedQueryLimited defines the blocking type for queries without a filter or a metric aggregation.</p>
+</td>
+</tr><tr><td><p>&#34;metric&#34;</p></td>
+<td><p>BlockedQueryMetric defines the blocking type for queries with an aggregation.</p>
+</td>
+</tr></tbody>
+</table>
+
+## BlockedQueryTypes { #loki-grafana-com-v1-BlockedQueryTypes }
+(<code>[]github.com/grafana/loki/operator/apis/loki/v1.BlockedQueryType</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-BlockedQuerySpec">BlockedQuerySpec</a>)
 </p>
 <div>
-<p>BlockedQueryType defines the query limits type for blocked queries.</p>
 </div>
 
 ## CASpec { #loki-grafana-com-v1-CASpec }
@@ -2884,7 +2912,7 @@ QueryLimitSpec
 </tr>
 <tr>
 <td>
-<code>blockedQueries</code><br/>
+<code>blocked</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-BlockedQuerySpec">
 []BlockedQuerySpec
@@ -2893,7 +2921,7 @@ QueryLimitSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>BlockedQueries defines the list of rules to block matching queries.</p>
+<p>Blocked defines the list of rules to block matching queries.</p>
 </td>
 </tr>
 </tbody>
