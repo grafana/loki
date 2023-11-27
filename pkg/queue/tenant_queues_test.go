@@ -13,12 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/scheduler/limits"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/scheduler/limits"
 )
 
-var noQueueLimits = limits.QueueLimits(nil)
+var noQueueLimits = limits.NewQueueLimits(nil)
 
 func TestQueues(t *testing.T) {
 	uq := newTenantQueues(0, 0, noQueueLimits)
@@ -451,7 +452,7 @@ func isConsistent(uq *tenantQueues) error {
 
 		maxConsumers := uq.limits.MaxConsumers(u, len(uq.consumers))
 		if maxConsumers == 0 && q.consumers != nil {
-			return fmt.Errorf("consumers for user %s should be nil when no limits are set (when MaxConsumers is 0).", u)
+			return fmt.Errorf("consumers for user %s should be nil when no limits are set (when MaxConsumers is 0)", u)
 		}
 
 		if maxConsumers > 0 && len(uq.sortedConsumers) <= maxConsumers && q.consumers != nil {

@@ -13,16 +13,16 @@ type Limits interface {
 	MaxQueryCapacity(user string) float64
 }
 
-func QueueLimits(limits Limits) *queueLimits {
-	return &queueLimits{limits: limits}
+func NewQueueLimits(limits Limits) *QueueLimits {
+	return &QueueLimits{limits: limits}
 }
 
-type queueLimits struct {
+type QueueLimits struct {
 	limits Limits
 }
 
 // MaxConsumers is used to compute how many of the available queriers are allowed to handle requests for a given tenant.
-func (c *queueLimits) MaxConsumers(tenantID string, allConsumers int) int {
+func (c *QueueLimits) MaxConsumers(tenantID string, allConsumers int) int {
 	if c == nil || c.limits == nil {
 		return 0
 	}

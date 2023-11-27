@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"

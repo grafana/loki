@@ -8,50 +8,50 @@ import (
 
 func TestQueueLimitsMaxConsumers(t *testing.T) {
 	for name, tt := range map[string]struct {
-		limits   *queueLimits
+		limits   *QueueLimits
 		expected int
 	}{
 		"nil limits": {
-			limits:   QueueLimits(nil),
+			limits:   NewQueueLimits(nil),
 			expected: 0,
 		},
 		"no limits": {
-			limits: QueueLimits(mockLimits{
+			limits: NewQueueLimits(mockLimits{
 				maxQueriers:      0,
 				maxQueryCapacity: 0,
 			}),
 			expected: 0,
 		},
 		"enforce max queriers": {
-			limits: QueueLimits(mockLimits{
+			limits: NewQueueLimits(mockLimits{
 				maxQueriers:      5,
 				maxQueryCapacity: 0,
 			}),
 			expected: 5,
 		},
 		"prefer max queriers over query capacity": {
-			limits: QueueLimits(mockLimits{
+			limits: NewQueueLimits(mockLimits{
 				maxQueriers:      5,
 				maxQueryCapacity: 1.0,
 			}),
 			expected: 5,
 		},
 		"enforce max query capacity": {
-			limits: QueueLimits(mockLimits{
+			limits: NewQueueLimits(mockLimits{
 				maxQueriers:      0,
 				maxQueryCapacity: 0.5,
 			}),
 			expected: 5,
 		},
 		"prefer query capacity over max queriers": {
-			limits: QueueLimits(mockLimits{
+			limits: NewQueueLimits(mockLimits{
 				maxQueriers:      5,
 				maxQueryCapacity: 0.4,
 			}),
 			expected: 4,
 		},
 		"query capacity of 1.0": {
-			limits: QueueLimits(mockLimits{
+			limits: NewQueueLimits(mockLimits{
 				maxQueryCapacity: 1.0,
 			}),
 			expected: 10,

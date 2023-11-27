@@ -134,7 +134,7 @@ func NewScheduler(cfg Config, schedulerLimits Limits, log log.Logger, ringManage
 		connectedFrontends: map[string]*connectedFrontend{},
 		queueMetrics:       queueMetrics,
 		ringManager:        ringManager,
-		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, limits.QueueLimits(schedulerLimits), queueMetrics),
+		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, limits.NewQueueLimits(schedulerLimits), queueMetrics),
 	}
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
