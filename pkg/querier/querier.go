@@ -641,9 +641,13 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
-	parsed, err := syntax.ParseExpr(matcher)
-	if err != nil {
-		return nil, err
+	var parsed syntax.Expr
+	var err error
+	if matcher != "" {
+		parsed, err = syntax.ParseExpr(matcher)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ids, err := q.store.SelectSeries(ctx, logql.SelectLogParams{
@@ -654,7 +658,7 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 			End:       through,
 			Direction: logproto.FORWARD,
 			Shards:    shards,
-			Plan:      &plan.QueryPlan{
+			Plan: &plan.QueryPlan{
 				AST: parsed,
 			},
 		},
