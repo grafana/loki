@@ -56,6 +56,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
@@ -78,6 +79,11 @@ const (
 
 const (
 	metricsSubsystem = "bloom_gateway"
+)
+
+var (
+	// responsesPool pooling array of v1.Output [512,1024,...,16k]
+	responsesPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]v1.Output, 0, size) })
 )
 
 type metrics struct {
@@ -302,8 +308,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	requestCount := len(req.Refs)
-	// TODO(chaudum): Use pool
-	responses := make([]v1.Output, 0, requestCount)
+	responses := responsesPool.Get(requestCount).([]v1.Output)
+	defer responsesPool.Put(responses)
 
 	for {
 		select {
