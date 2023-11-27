@@ -5,12 +5,12 @@ set -euo pipefail
 readonly bucket_name=${1-}
 readonly google_application_credentials=${2-}
 
-if [ -z "${bucket_name}" ]; then
+if [[ -z "${bucket_name}" ]]; then
     echo "Provide a bucket name"
     exit 1
 fi
 
-if [ -z "${google_application_credentials}" ]; then
+if [[ -z "${google_application_credentials}" ]]; then
     echo "Provide a path to the Google application credentials file"
     exit 1
 fi

@@ -2,12 +2,13 @@
 
 set -euo pipefail
 
-if [ -z "${1-}" ]; then
+readonly bucket_name=${1-}
+
+if [[ -z "${bucket_name}" ]]; then
     echo "Provide a bucket name"
     exit 1
 fi
 
-readonly bucket_name=$1
 readonly namespace=${NAMESPACE:-openshift-logging}
 region=${REGION:-$(aws configure get region)}
 readonly region
