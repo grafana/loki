@@ -2,7 +2,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"io"
 	"testing"
 	"time"
@@ -11,11 +10,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/push"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/stretchr/testify/require"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 var (
