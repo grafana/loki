@@ -42,8 +42,9 @@ type BloomTokenizer struct {
 	cache         map[string]interface{}
 }
 
-const CacheSize = 150000
-const BloomTokenizerMetricsSubsystem = "bloom_tokenizer"
+const cacheSize = 150000
+const bloomTokenizerMetricsSubsystem = "bloom_tokenizer"
+const eightBits = 8
 
 // NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
 // Warning: the tokens returned use the same byte slice to reduce allocations. This has two consequences:
@@ -52,9 +53,9 @@ const BloomTokenizerMetricsSubsystem = "bloom_tokenizer"
 // 2) This is not thread safe.
 func NewBloomTokenizer(reg prometheus.Registerer, NGramLength, NGramSkip int) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
-		metrics: newMetrics(reg, constants.Loki, BloomTokenizerMetricsSubsystem),
+		metrics: newMetrics(reg, constants.Loki, bloomTokenizerMetricsSubsystem),
 	}
-	t.cache = make(map[string]interface{}, CacheSize)
+	t.cache = make(map[string]interface{}, cacheSize)
 	t.lineTokenizer = NewNGramTokenizer(NGramLength, NGramSkip)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
@@ -78,21 +79,21 @@ func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
 	return &metrics{
 		sbfCreationTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name:      "bloom_creation_time",
-			Help:      "Time spent creating sbfs",
+			Help:      "Time spent creating scalable bloom filters",
 			Namespace: namespace,
 			Subsystem: subsystem,
 		}),
 		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:      "bloom_chunk_series_size",
 			Help:      "Uncompressed size of chunks in a series",
-			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 1<<30, 10),
+			Buckets:   prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
 			Namespace: namespace,
 			Subsystem: subsystem,
 		}),
 		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:      "bloom_size",
 			Help:      "Size of the bloom filter in bytes",
-			Buckets:   prometheus.ExponentialBucketsRange(128, 16<<20, 8),
+			Buckets:   prometheus.ExponentialBucketsRange(128, 16777216, 8),
 			Namespace: namespace,
 			Subsystem: subsystem,
 		}),
@@ -106,7 +107,7 @@ func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
 		estimatedCount: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:      "bloom_estimated_count",
 			Help:      "Estimated number of elements in the bloom filter",
-			Buckets:   prometheus.ExponentialBucketsRange(1, 32<<20, 10),
+			Buckets:   prometheus.ExponentialBucketsRange(1, 33554432, 10),
 			Namespace: namespace,
 			Subsystem: subsystem,
 		}),
@@ -175,7 +176,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 
 						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
-						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
 						}
 					}
@@ -192,7 +193,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 
 						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
-						if len(bt.cache) >= CacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 							clearCache(bt.cache)
 						}
 					}
@@ -214,7 +215,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 	bt.metrics.estimatedCount.Observe(
 		float64(estimatedCount(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
 	)
-	bt.metrics.bloomSize.Observe(float64(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity() / 8))
+	bt.metrics.bloomSize.Observe(float64(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity() / eightBits))
 	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
 	bt.metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 }

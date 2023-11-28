@@ -134,7 +134,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 func BenchmarkMapClear(b *testing.B) {
 	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for i := 0; i < b.N; i++ {
-		for k := 0; k < CacheSize; k++ {
+		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
 		}
 
@@ -145,10 +145,10 @@ func BenchmarkMapClear(b *testing.B) {
 func BenchmarkNewMap(b *testing.B) {
 	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for i := 0; i < b.N; i++ {
-		for k := 0; k < CacheSize; k++ {
+		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
 		}
 
-		bt.cache = make(map[string]interface{}, CacheSize)
+		bt.cache = make(map[string]interface{}, cacheSize)
 	}
 }
