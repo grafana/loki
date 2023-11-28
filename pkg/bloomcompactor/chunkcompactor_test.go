@@ -27,7 +27,6 @@ var (
 
 	table     = "test_table"
 	indexPath = "index_test_table"
-	dst       = "local_path"
 
 	testBlockSize  = 256 * 1024
 	testTargetSize = 1500 * 1024
@@ -65,6 +64,7 @@ func TestChunkCompactor_BuildBloomFromSeries(t *testing.T) {
 }
 
 func TestChunkCompactor_CompactNewChunks(t *testing.T) {
+	// Setup
 	logger := log.NewNopLogger()
 	label := labels.FromStrings("foo", "bar")
 	fp1 := model.Fingerprint(100)
@@ -98,9 +98,20 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	mbt := mockBloomTokenizer{}
 	mcc := mockChunkClient{}
 	pbb := mockPersistentBlockBuilder{}
+
+	// Run Compaction
 	compactedBlock, err := CompactNewChunks(context.Background(), logger, job, fpRate, &mbt, &mcc, &pbb)
+
+	// Validate Compaction Succeeds
 	require.NoError(t, err)
 	require.NotNil(t, compactedBlock)
+
+	// Validate Number of Blooms created
+	//require.Equal(t, len(job.seriesMetas), pbb.blooms)
+
+	// Validate Compacted Block has expected data
+	require.Equal(t, job.tableName, compactedBlock.TableName)
+	require.Equal(t, uint64(fp1), compactedBlock.MinFingerprint)
 }
 
 type mockBloomTokenizer struct {
@@ -117,9 +128,10 @@ func (mcc *mockChunkClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chu
 	return nil, nil
 }
 
-type mockPersistentBlockBuilder struct{}
+type mockPersistentBlockBuilder struct {
+}
 
-func (p *mockPersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
+func (p *mockPersistentBlockBuilder) BuildFrom(_ v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
 	return 0, nil
 }
 
