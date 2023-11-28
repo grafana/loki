@@ -439,6 +439,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
 		MinFingerprint: uint64(job.minFp),
@@ -472,6 +473,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("compacting new chunks", err)
 		}
 
+		// Do not change the signature of PutBlocks yet.
+		// Once block size is limited potentially, CompactNewChunks will return multiple blocks, hence a list is appropriate.
 		storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
 		if err != nil {
 			level.Error(logger).Log("putting blocks to storage", err)

@@ -69,23 +69,36 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	logger := log.NewNopLogger()
 	label := labels.FromStrings("foo", "bar")
 	fp1 := model.Fingerprint(100)
-	fp2 := model.Fingerprint(200)
+	fp2 := model.Fingerprint(999)
+	fp3 := model.Fingerprint(200)
 
-	chunkRef := index.ChunkMeta{
-		Checksum: 1243,
+	chunkRef1 := index.ChunkMeta{
+		Checksum: 1,
 		MinTime:  1,
+		MaxTime:  99,
+	}
+
+	chunkRef2 := index.ChunkMeta{
+		Checksum: 2,
+		MinTime:  10,
 		MaxTime:  999,
 	}
+
 	seriesMetas := []SeriesMeta{
 		{
 			seriesFP:  fp1,
 			seriesLbs: label,
-			chunkRefs: []index.ChunkMeta{chunkRef},
+			chunkRefs: []index.ChunkMeta{chunkRef1},
 		},
 		{
 			seriesFP:  fp2,
 			seriesLbs: label,
-			chunkRefs: []index.ChunkMeta{chunkRef, chunkRef},
+			chunkRefs: []index.ChunkMeta{chunkRef1, chunkRef2},
+		},
+		{
+			seriesFP:  fp3,
+			seriesLbs: label,
+			chunkRefs: []index.ChunkMeta{chunkRef1, chunkRef1, chunkRef2},
 		},
 	}
 
@@ -107,12 +120,14 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, compactedBlock)
 
-	// Validate Number of Blooms created
-	//require.Equal(t, len(job.seriesMetas), pbb.blooms)
-
 	// Validate Compacted Block has expected data
+	require.Equal(t, job.tenantID, compactedBlock.TenantID)
 	require.Equal(t, job.tableName, compactedBlock.TableName)
 	require.Equal(t, uint64(fp1), compactedBlock.MinFingerprint)
+	require.Equal(t, uint64(fp2), compactedBlock.MaxFingerprint)
+	require.Equal(t, chunkRef1.MinTime, compactedBlock.StartTimestamp)
+	require.Equal(t, chunkRef2.MaxTime, compactedBlock.EndTimestamp)
+	require.Equal(t, indexPath, compactedBlock.IndexPath)
 }
 
 type mockBloomTokenizer struct {
@@ -132,10 +147,10 @@ func (mcc *mockChunkClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chu
 type mockPersistentBlockBuilder struct {
 }
 
-func (p *mockPersistentBlockBuilder) BuildFrom(_ v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
+func (pbb *mockPersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
 	return 0, nil
 }
 
-func (p *mockPersistentBlockBuilder) Data() (io.ReadCloser, error) {
+func (pbb *mockPersistentBlockBuilder) Data() (io.ReadCloser, error) {
 	return nil, nil
 }
