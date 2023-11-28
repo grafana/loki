@@ -35,7 +35,17 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 	return chunkRefs
 }
 
-func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, bt *v1.BloomTokenizer, chunks []chunk.Chunk) v1.SeriesWithBloom {
+type compactorTokenizer interface {
+	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk)
+	GetNGramLength() uint64
+	GetNGramSkip() uint64
+}
+
+type chunkClient interface {
+	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
+}
+
+func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks []chunk.Chunk) v1.SeriesWithBloom {
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
@@ -47,11 +57,11 @@ func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, bt *v1.BloomTok
 	}
 
 	// Tokenize data into n-grams
-	bt.PopulateSeriesWithBloom(&bloomForChks, chunks)
+	tokenizer.PopulateSeriesWithBloom(&bloomForChks, chunks)
 	return bloomForChks
 }
 
-// TODO Revisit this step once v1/bloom lib updated to combine blooms in the same series
+// TODO Test this when bloom block size check is implemented
 func buildBlockFromBloom(
 	ctx context.Context,
 	logger log.Logger,
@@ -114,26 +124,37 @@ func CompactNewChunks(
 	ctx context.Context,
 	logger log.Logger,
 	job Job,
-	blooms []v1.SeriesWithBloom,
-	blockOptions v1.BlockOptions,
-	bloomShipperClient bloomshipper.Client,
+	fpRate float64,
+	bt compactorTokenizer,
+	storeClient chunkClient,
 	dst string,
-) ([]bloomshipper.Block, error) {
+) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return bloomshipper.Block{}, err
 	}
+
+	var blooms []v1.SeriesWithBloom
+
+	for _, seriesMeta := range job.seriesMetas {
+		// Get chunks data from list of chunkRefs
+		chks, err := storeClient.GetChunks(ctx, makeChunkRefs(seriesMeta.Chunks(), job.Tenant(), seriesMeta.Fingerprint()))
+		if err != nil {
+			return bloomshipper.Block{}, err
+		}
+
+		bloom := buildBloomFromSeries(seriesMeta, fpRate, bt, chks)
+		blooms = append(blooms, bloom)
+	}
+
+	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 
 	// Build and upload bloomBlock to storage
 	block, err := buildBlockFromBloom(ctx, logger, blockOptions, blooms, job, dst)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
-		return nil, err
+		return bloomshipper.Block{}, err
 	}
-	storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{block})
-	if err != nil {
-		level.Error(logger).Log("putting blocks to storage", err)
-		return nil, err
-	}
-	return storedBlocks, nil
+
+	return block, nil
 }

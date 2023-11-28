@@ -458,24 +458,15 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 
 	if len(metas) == 0 {
-		var blooms []v1.SeriesWithBloom
-
-		for _, seriesMeta := range job.seriesMetas {
-			// Get chunks data from list of chunkRefs
-			chks, err := storeClient.chunk.GetChunks(ctx, makeChunkRefs(seriesMeta.Chunks(), job.Tenant(), seriesMeta.Fingerprint()))
-			if err != nil {
-				return err
-			}
-
-			bloom := buildBloomFromSeries(seriesMeta, fpRate, bt, chks)
-			blooms = append(blooms, bloom)
-		}
-
-		blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
-
-		storedBlocks, err := CompactNewChunks(ctx, logger, job, blooms, blockOptions, bloomShipperClient, c.cfg.WorkingDirectory)
+		storedBlock, err := CompactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, c.cfg.WorkingDirectory)
 		if err != nil {
 			return level.Error(logger).Log("compacting new chunks", err)
+		}
+
+		storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
+		if err != nil {
+			level.Error(logger).Log("putting blocks to storage", err)
+			return err
 		}
 
 		// all blocks are new and active blocks
