@@ -1,5 +1,6 @@
 ## Main
 
+- [11330](https://github.com/grafana/loki/pull/11330) **JoaoBraveCoding**: Update loki-mixins, reworked retention dashboard, new structure metadata write dashboard 
 - [11288](https://github.com/grafana/loki/pull/11288) **periklis**: Fix custom CA for object-store in ruler component
 - [11091](https://github.com/grafana/loki/pull/11091) **periklis**: Add automatic stream sharding support
 - [11022](https://github.com/grafana/loki/pull/11022) **JoaoBraveCoding**: Remove outdated BoltDB dashboards 
