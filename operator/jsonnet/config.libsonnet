@@ -242,6 +242,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
             utils.selector.re('job', '.+-ingester-http'),
           ],
           ingester_zone:: [],
+          any_ingester:: [
+            utils.selector.eq('namespace', '$namespace'),
+            utils.selector.re('job', '.+-ingester-http'),
+          ],
         },
         rows: dropPanels(super.rows, dropList, function(p) true),
         templating+: {
