@@ -42,7 +42,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Limits interface {
 	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	MaxQueriersPerUser(user string) int
+	MaxQueriersPerUser(user string) uint
 
 	// MaxQueryCapacity returns how much of the available query capacity can be used by this user.
 	MaxQueryCapacity(user string) float64

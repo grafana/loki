@@ -295,11 +295,11 @@ func defaultFrontendConfig() Config {
 }
 
 type mockLimits struct {
-	queriers      int
+	queriers      uint
 	queryCapacity float64
 }
 
-func (l mockLimits) MaxQueriersPerUser(_ string) int {
+func (l mockLimits) MaxQueriersPerUser(_ string) uint {
 	return l.queriers
 }
 

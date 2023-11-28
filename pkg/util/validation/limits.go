@@ -38,24 +38,6 @@ func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int)
 	return *result
 }
 
-// SmallestPositiveNonZeroFloatPerTenant is returning the minimal positive and
-// non-zero value of the supplied limit function for all given tenants. In many
-// limits a value of 0 means unlimited so the method will return 0 only if all
-// inputs have a limit of 0 or an empty tenant list is given.
-func SmallestPositiveNonZeroFloatPerTenant(tenantIDs []string, f func(string) float64) float64 {
-	var result *float64
-	for _, tenantID := range tenantIDs {
-		v := f(tenantID)
-		if v > 0 && (result == nil || v < *result) {
-			result = &v
-		}
-	}
-	if result == nil {
-		return 0
-	}
-	return *result
-}
-
 // SmallestPositiveNonZeroDurationPerTenant is returning the minimal positive
 // and non-zero value of the supplied limit function for all given tenants. In
 // many limits a value of 0 means unlimited so the method will return 0 only if
