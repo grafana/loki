@@ -1738,7 +1738,7 @@ var (
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line"],
+						[ "123456789012345", "super line", {}],
 						[ "123456789012346", "super line2", {
 							"structuredMetadata": {
 								"x": "a",
