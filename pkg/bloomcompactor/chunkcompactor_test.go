@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"io"
 	"testing"
 	"time"
 
@@ -96,7 +97,8 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 
 	mbt := mockBloomTokenizer{}
 	mcc := mockChunkClient{}
-	compactedBlock, err := CompactNewChunks(context.Background(), logger, job, fpRate, &mbt, &mcc, dst)
+	pbb := mockPersistentBlockBuilder{}
+	compactedBlock, err := CompactNewChunks(context.Background(), logger, job, fpRate, &mbt, &mcc, &pbb)
 	require.NoError(t, err)
 	require.NotNil(t, compactedBlock)
 }
@@ -109,16 +111,18 @@ func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(_ *v1.SeriesWithBloom, c 
 	mbt.chunks = c
 }
 
-func (mbt *mockBloomTokenizer) GetNGramLength() uint64 {
-	return 4
-}
-
-func (mbt *mockBloomTokenizer) GetNGramSkip() uint64 {
-	return 0
-}
-
 type mockChunkClient struct{}
 
 func (mcc *mockChunkClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chunk.Chunk, error) {
+	return nil, nil
+}
+
+type mockPersistentBlockBuilder struct{}
+
+func (p *mockPersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
+	return 0, nil
+}
+
+func (p *mockPersistentBlockBuilder) Data() (io.ReadCloser, error) {
 	return nil, nil
 }

@@ -451,14 +451,23 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	var bloomBlocksRefs []bloomshipper.BlockRef
 	var tombstonedBlockRefs []bloomshipper.BlockRef
 
-	fpRate := c.limits.BloomFalsePositiveRate(job.Tenant())
 	metas, err := bloomShipperClient.GetMetas(ctx, metaSearchParams)
 	if err != nil {
 		return err
 	}
 
 	if len(metas) == 0 {
-		storedBlock, err := CompactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, c.cfg.WorkingDirectory)
+		localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
+		fpRate := c.limits.BloomFalsePositiveRate(job.Tenant())
+		blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
+
+		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
+		if err != nil {
+			level.Error(logger).Log("creating block builder", err)
+			return err
+		}
+
+		storedBlock, err := CompactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
 			return level.Error(logger).Log("compacting new chunks", err)
 		}

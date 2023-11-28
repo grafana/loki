@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -37,12 +38,45 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 
 type compactorTokenizer interface {
 	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk)
-	GetNGramLength() uint64
-	GetNGramSkip() uint64
 }
 
 type chunkClient interface {
 	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
+}
+
+type blockBuilder interface {
+	BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error)
+	Data() (io.ReadCloser, error)
+}
+
+type PersistentBlockBuilder struct {
+	builder  *v1.BlockBuilder
+	localDst string
+}
+
+func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
+	return p.builder.BuildFrom(itr)
+}
+
+func (p *PersistentBlockBuilder) Data() (io.ReadCloser, error) {
+	blockFile, err := os.Open(filepath.Join(p.localDst, v1.BloomFileName))
+	if err != nil {
+		return nil, err
+	}
+	return blockFile, nil
+}
+
+func NewPersistentBlockBuilder(localDst string, blockOptions v1.BlockOptions) (*PersistentBlockBuilder, error) {
+	// write bloom to a local dir
+	b, err := v1.NewBlockBuilder(blockOptions, v1.NewDirectoryBlockWriter(localDst))
+	if err != nil {
+		return nil, err
+	}
+	builder := PersistentBlockBuilder{
+		builder:  b,
+		localDst: localDst,
+	}
+	return &builder, nil
 }
 
 func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks []chunk.Chunk) v1.SeriesWithBloom {
@@ -65,22 +99,12 @@ func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, tokenizer compa
 func buildBlockFromBloom(
 	ctx context.Context,
 	logger log.Logger,
-	options v1.BlockOptions,
+	builder blockBuilder,
 	blooms []v1.SeriesWithBloom,
 	job Job,
-	workingDir string,
 ) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
-		return bloomshipper.Block{}, err
-	}
-
-	localDst := createLocalDirName(workingDir, job)
-
-	// write bloom to a local dir
-	builder, err := v1.NewBlockBuilder(options, v1.NewDirectoryBlockWriter(localDst))
-	if err != nil {
-		level.Error(logger).Log("creating builder", err)
 		return bloomshipper.Block{}, err
 	}
 
@@ -90,9 +114,10 @@ func buildBlockFromBloom(
 		return bloomshipper.Block{}, err
 	}
 
-	blockFile, err := os.Open(filepath.Join(localDst, v1.BloomFileName))
+	data, err := builder.Data()
 	if err != nil {
-		level.Error(logger).Log("reading bloomBlock", err)
+		level.Error(logger).Log("reading bloom data", err)
+		return bloomshipper.Block{}, err
 	}
 
 	block := bloomshipper.Block{
@@ -108,7 +133,7 @@ func buildBlockFromBloom(
 			},
 			IndexPath: job.IndexPath(),
 		},
-		Data: blockFile,
+		Data: data,
 	}
 
 	return block, nil
@@ -127,7 +152,7 @@ func CompactNewChunks(
 	fpRate float64,
 	bt compactorTokenizer,
 	storeClient chunkClient,
-	dst string,
+	builder blockBuilder,
 ) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
@@ -147,10 +172,8 @@ func CompactNewChunks(
 		blooms = append(blooms, bloom)
 	}
 
-	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
-
 	// Build and upload bloomBlock to storage
-	block, err := buildBlockFromBloom(ctx, logger, blockOptions, blooms, job, dst)
+	block, err := buildBlockFromBloom(ctx, logger, builder, blooms, job)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
 		return bloomshipper.Block{}, err
