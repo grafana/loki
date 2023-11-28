@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -259,6 +260,11 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
+		parsed, err := syntax.ParseExpr(rangeQuery.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiRequest{
 			Query:     rangeQuery.Query,
 			Limit:     rangeQuery.Limit,
@@ -269,12 +275,21 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Interval:  rangeQuery.Interval.Milliseconds(),
 			Path:      r.URL.Path,
 			Shards:    rangeQuery.Shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, nil
 	case InstantQueryOp:
 		req, err := loghttp.ParseInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiInstantRequest{
 			Query:     req.Query,
 			Limit:     req.Limit,
@@ -282,6 +297,9 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			TimeTs:    req.Ts.UTC(),
 			Path:      r.URL.Path,
 			Shards:    req.Shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(r)
@@ -378,6 +396,19 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		}
 	}
 
+	// Add query tags
+	if queryTags := httpreq.ExtractQueryTagsFromHTTP(httpReq); queryTags != "" {
+		ctx = httpreq.InjectQueryTags(ctx, queryTags)
+	}
+
+	// Add query metrics
+	if queueTimeHeader := httpReq.Header.Get(string(httpreq.QueryQueueTimeHTTPHeader)); queueTimeHeader != "" {
+		queueTime, err := time.ParseDuration(queueTimeHeader)
+		if err == nil {
+			ctx = context.WithValue(ctx, httpreq.QueryQueueTimeHTTPHeader, queueTime)
+		}
+	}
+
 	// If there is not encoding flags in the context, we try the HTTP request.
 	if encFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx); encFlags == nil {
 		encFlags = httpreq.ExtractEncodingFlagsFromProto(r)
@@ -396,6 +427,12 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiRequest{
 			Query:     req.Query,
 			Limit:     req.Limit,
@@ -406,12 +443,21 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			Interval:  req.Interval.Milliseconds(),
 			Path:      r.Url,
 			Shards:    req.Shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, ctx, nil
 	case InstantQueryOp:
 		req, err := loghttp.ParseInstantQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
 		return &LokiInstantRequest{
 			Query:     req.Query,
 			Limit:     req.Limit,
@@ -419,6 +465,9 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			TimeTs:    req.Ts.UTC(),
 			Path:      r.Url,
 			Shards:    req.Shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		}, ctx, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(httpReq)
@@ -497,6 +546,10 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 // DecodeHTTPGrpcResponse decodes an httpgrp.HTTPResponse to queryrangebase.Response.
 func (Codec) DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase.Request) (queryrangebase.Response, error) {
+	if r.Code/100 != 2 {
+		return nil, httpgrpc.Errorf(int(r.Code), string(r.Body))
+	}
+
 	headers := make(http.Header)
 	for _, header := range r.Headers {
 		headers[header.Key] = header.Values
@@ -515,36 +568,58 @@ func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest
 		return nil, err
 	}
 
-	return &httpgrpc.HTTPResponse{
+	httpRes := &httpgrpc.HTTPResponse{
 		Code: int32(http.StatusOK),
 		Body: buf.Bytes(),
 		Headers: []*httpgrpc.Header{
 			{Key: "Content-Type", Values: []string{"application/json; charset=UTF-8"}},
 		},
-	}, nil
+	}
+
+	for _, h := range res.GetHeaders() {
+		httpRes.Headers = append(httpRes.Headers, &httpgrpc.Header{Key: h.Name, Values: h.Values})
+	}
+
+	return httpRes, nil
 }
 
 func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
-	queryTags := getQueryTags(ctx)
-	if queryTags != "" {
+
+	// Add query tags
+	if queryTags := getQueryTags(ctx); queryTags != "" {
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
-	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
-	if encodingFlags != "" {
+	if encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader); encodingFlags != "" {
 		header.Set(httpreq.LokiEncodingFlagsHeader, encodingFlags)
 	}
 
-	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
-	if actor != "" {
+	// Add actor path
+	if actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader); actor != "" {
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
-	limits := querylimits.ExtractQueryLimitsContext(ctx)
-	if limits != nil {
+	// Add limits
+	if limits := querylimits.ExtractQueryLimitsContext(ctx); limits != nil {
 		err := querylimits.InjectQueryLimitsHeader(&header, limits)
 		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Add org id
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	header.Set(user.OrgIDHeaderName, orgID)
+
+	// Propagate trace context in request.
+	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+	if tracer != nil && span != nil {
+		carrier := opentracing.HTTPHeadersCarrier(header)
+		if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier); err != nil {
 			return nil, err
 		}
 	}
@@ -700,6 +775,26 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
+}
+
+// nolint:goconst
+func (c Codec) Path(r queryrangebase.Request) string {
+	switch request := r.(type) {
+	case *LokiRequest:
+		return "loki/api/v1/query_range"
+	case *LokiSeriesRequest:
+		return "loki/api/v1/series"
+	case *LabelRequest:
+		return request.Path() // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
+	case *LokiInstantRequest:
+		return "/loki/api/v1/query"
+	case *logproto.IndexStatsRequest:
+		return "/loki/api/v1/index/stats"
+	case *logproto.VolumeRequest:
+		return "/loki/api/v1/index/volume_range"
+	}
+
+	return "other"
 }
 
 func (p RequestProtobufCodec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
@@ -1370,8 +1465,12 @@ type paramsRangeWrapper struct {
 	*LokiRequest
 }
 
-func (p paramsRangeWrapper) Query() string {
+func (p paramsRangeWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsRangeWrapper) GetExpression() syntax.Expr {
+	return p.LokiRequest.Plan.AST
 }
 
 func (p paramsRangeWrapper) Start() time.Time {
@@ -1400,8 +1499,12 @@ type paramsInstantWrapper struct {
 	*LokiInstantRequest
 }
 
-func (p paramsInstantWrapper) Query() string {
+func (p paramsInstantWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsInstantWrapper) GetExpression() syntax.Expr {
+	return p.LokiInstantRequest.Plan.AST
 }
 
 func (p paramsInstantWrapper) Start() time.Time {
@@ -1428,8 +1531,12 @@ type paramsSeriesWrapper struct {
 	*LokiSeriesRequest
 }
 
-func (p paramsSeriesWrapper) Query() string {
+func (p paramsSeriesWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsSeriesWrapper) GetExpression() syntax.Expr {
+	return nil
 }
 
 func (p paramsSeriesWrapper) Start() time.Time {
@@ -1456,8 +1563,12 @@ type paramsLabelWrapper struct {
 	*LabelRequest
 }
 
-func (p paramsLabelWrapper) Query() string {
+func (p paramsLabelWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsLabelWrapper) GetExpression() syntax.Expr {
+	return nil
 }
 
 func (p paramsLabelWrapper) Start() time.Time {
@@ -1484,8 +1595,12 @@ type paramsStatsWrapper struct {
 	*logproto.IndexStatsRequest
 }
 
-func (p paramsStatsWrapper) Query() string {
+func (p paramsStatsWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsStatsWrapper) GetExpression() syntax.Expr {
+	return nil
 }
 
 func (p paramsStatsWrapper) Start() time.Time {
@@ -1565,9 +1680,13 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 			},
 		}, nil
 	case *logproto.IndexStatsRequest:
-		return &logproto.IndexStatsResponse{}, nil
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{},
+		}, nil
 	case *logproto.VolumeRequest:
-		return &VolumeResponse{}, nil
+		return &VolumeResponse{
+			Response: &logproto.VolumeResponse{},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}

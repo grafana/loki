@@ -135,6 +135,12 @@ spec:
                               on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
+                          perStreamDesiredRate:
+                            description: PerStreamDesiredRate defines the desired
+                              ingestion rate per second that LokiStack should target
+                              applying automatic stream sharding. Units MB.
+                            format: int32
+                            type: integer
                           perStreamRateLimit:
                             description: PerStreamRateLimit defines the maximum byte
                               rate per second per stream. Units MB.
@@ -262,6 +268,12 @@ spec:
                                 on ingestion path. Units in Bytes.
                               format: int32
                               type: integer
+                            perStreamDesiredRate:
+                              description: PerStreamDesiredRate defines the desired
+                                ingestion rate per second that LokiStack should target
+                                applying automatic stream sharding. Units MB.
+                              format: int32
+                              type: integer
                             perStreamRateLimit:
                               description: PerStreamRateLimit defines the maximum
                                 byte rate per second per stream. Units MB.
@@ -277,6 +289,43 @@ spec:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
+                            blocked:
+                              description: Blocked defines the list of rules to block
+                                matching queries.
+                              items:
+                                description: BlockedQuerySpec defines the rule spec
+                                  for queries to be blocked.
+                                minProperties: 1
+                                properties:
+                                  hash:
+                                    description: Hash is a 32-bit FNV-1 hash of the
+                                      query string.
+                                    format: int32
+                                    type: integer
+                                  pattern:
+                                    description: Pattern defines the pattern matching
+                                      the queries to be blocked.
+                                    type: string
+                                  regex:
+                                    description: Regex defines if the pattern is a
+                                      regular expression. If false the pattern will
+                                      be used only for exact matches.
+                                    type: boolean
+                                  types:
+                                    description: Types defines the list of query types
+                                      that should be considered for blocking.
+                                    items:
+                                      description: BlockedQueryType defines which
+                                        type of query a blocked query should apply
+                                        to.
+                                      enum:
+                                      - filter
+                                      - limited
+                                      - metric
+                                      type: string
+                                    type: array
+                                type: object
+                              type: array
                             cardinalityLimit:
                               description: CardinalityLimit defines the cardinality
                                 limit for index queries.
@@ -545,6 +594,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
@@ -4032,6 +4082,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate

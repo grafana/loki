@@ -23,8 +23,10 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -332,12 +334,16 @@ func TestInstantQueryTripperware(t *testing.T) {
 	}
 	require.NoError(t, err)
 
+	q := `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`
 	lreq := &LokiInstantRequest{
-		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
+		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -509,7 +515,7 @@ func TestVolumeTripperware(t *testing.T) {
 			From:        model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
 			Through:     model.TimeFromUnixNano(testTime.UnixNano()),
 			Limit:       10,
-			Step:        0, // Travis/Trevor: this should be ignored and set to 0. Karsten: Why?
+			Step:        0, // Setting this value to 0 is what makes this an instant query
 			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
@@ -567,7 +573,7 @@ func TestVolumeTripperware(t *testing.T) {
 			Matchers:    `{job="varlogs"}`,
 			From:        model.TimeFromUnixNano(start.UnixNano()), // bigger than split by interval limit
 			Through:     model.TimeFromUnixNano(end.UnixNano()),
-			Step:        time.Hour.Milliseconds(),
+			Step:        time.Hour.Milliseconds(), // a non-zero value makes this a range query
 			Limit:       10,
 			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
@@ -587,10 +593,10 @@ func TestVolumeTripperware(t *testing.T) {
 		require.Equal(t, 6, *count) // 6 queries from splitting into step buckets
 
 		barBazExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
 			barBazExpectedSamples = append(barBazExpectedSamples, logproto.LegacySample{
 				Value:       3350,
-				TimestampMs: s.Unix() * 1e3,
+				TimestampMs: e.UnixMilli(),
 			})
 		})
 		sort.Slice(barBazExpectedSamples, func(i, j int) bool {
@@ -598,10 +604,10 @@ func TestVolumeTripperware(t *testing.T) {
 		})
 
 		fooBarExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
 			fooBarExpectedSamples = append(fooBarExpectedSamples, logproto.LegacySample{
 				Value:       1024,
-				TimestampMs: s.Unix() * 1e3,
+				TimestampMs: e.UnixMilli(),
 			})
 		})
 		sort.Slice(fooBarExpectedSamples, func(i, j int) bool {
@@ -1101,6 +1107,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
+				},
 			},
 			expectedSplitStats: 2, // [2h] interval split by 1h configured split interval
 			expectedShardStats: 8, // 2 time splits * 4 row shards
@@ -1113,6 +1122,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // [1h] interval not split
 			expectedShardStats: 4, // 4 row shards
@@ -1127,6 +1139,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
 			expectedShardStats: 12, // 3 time splits * 4 row shards
@@ -1141,6 +1156,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // 1 minute range interval not split
 			expectedShardStats: 4, // 4 row shards

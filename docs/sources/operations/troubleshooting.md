@@ -11,7 +11,7 @@ aliases:
 ## "Loki: Bad Gateway. 502"
 
 This error can appear in Grafana when Grafana Loki is added as a
-datasource, indicating that Grafana in unable to connect to Loki. There may
+data source, indicating that Grafana in unable to connect to Loki. There may
 one of many root causes:
 
 - If Loki is deployed with Docker, and Grafana and Loki are not running in the
@@ -24,7 +24,7 @@ one of many root causes:
 
 ## "Data source connected, but no labels received. Verify that Loki and Promtail is configured properly."
 
-This error can appear in Grafana when Loki is added as a datasource, indicating
+This error can appear in Grafana when Loki is added as a data source, indicating
 that although Grafana has connected to Loki, Loki hasn't received any logs from
 Promtail yet. There may be one of many root causes:
 
@@ -173,7 +173,11 @@ Jaeger is running.
 If you deploy with Helm, use the following command:
 
 ```bash
-$ helm upgrade --install loki loki/loki --set "loki.tracing.jaegerAgentHost=YOUR_JAEGER_AGENT_HOST"
+$ helm upgrade --install loki loki/loki --set "loki.tracing.enabled=true"
+  --set "read.extraEnv[0].name=JAEGER_AGENT_HOST"    --set "read.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "write.extraEnv[0].name=JAEGER_AGENT_HOST"   --set "write.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "backend.extraEnv[0].name=JAEGER_AGENT_HOST" --set "backend.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "gateway.extraEnv[0].name=JAEGER_AGENT_HOST" --set "gateway.extraEnv[0].value=<JAEGER_AGENT_HOST>"
 ```
 
 ## Running Loki with Istio Sidecars

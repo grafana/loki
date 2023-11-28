@@ -33,10 +33,10 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
@@ -75,7 +75,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-querier.per-request-limits-enabled=true",
-			"-frontend.required-query-response-format=protobuf",
+			"-frontend.encoding=protobuf",
 		)
 		_ = clu.AddComponent(
 			"querier",
@@ -161,7 +161,7 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-compactor.compaction-interval=1s",
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
@@ -354,7 +354,7 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 				tCompactor = clu.AddComponent(
 					"compactor",
 					"-target=compactor",
-					"-boltdb.shipper.compactor.compaction-interval=1s",
+					"-compactor.compaction-interval=1s",
 				)
 				tDistributor = clu.AddComponent(
 					"distributor",
@@ -472,10 +472,10 @@ func TestSchedulerRing(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
@@ -544,14 +544,14 @@ func TestSchedulerRing(t *testing.T) {
 			// Check metrics to see if query scheduler is connected with query-frontend
 			metrics, err := cliQueryScheduler.Metrics()
 			require.NoError(t, err)
-			return getMetricValue(t, "cortex_query_scheduler_connected_frontend_clients", metrics) == 5
+			return getMetricValue(t, "loki_query_scheduler_connected_frontend_clients", metrics) == 5
 		}, 5*time.Second, 500*time.Millisecond)
 
 		require.Eventually(t, func() bool {
 			// Check metrics to see if query scheduler is connected with query-frontend
 			metrics, err := cliQueryScheduler.Metrics()
 			require.NoError(t, err)
-			return getMetricValue(t, "cortex_query_scheduler_connected_querier_clients", metrics) == 4
+			return getMetricValue(t, "loki_query_scheduler_connected_querier_clients", metrics) == 4
 		}, 5*time.Second, 500*time.Millisecond)
 	})
 
@@ -579,142 +579,6 @@ func TestSchedulerRing(t *testing.T) {
 	})
 }
 
-func TestQueryTSDB_WithCachedPostings(t *testing.T) {
-	clu := cluster.New(nil, cluster.SchemaWithTSDB)
-
-	defer func() {
-		assert.NoError(t, clu.Cleanup())
-	}()
-
-	var (
-		tDistributor = clu.AddComponent(
-			"distributor",
-			"-target=distributor",
-		)
-		tIndexGateway = clu.AddComponent(
-			"index-gateway",
-			"-target=index-gateway",
-			"-tsdb.enable-postings-cache=true",
-			"-store.index-cache-read.embedded-cache.enabled=true",
-		)
-	)
-	require.NoError(t, clu.Run())
-
-	var (
-		tIngester = clu.AddComponent(
-			"ingester",
-			"-target=ingester",
-			"-ingester.flush-on-shutdown=true",
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-		tQueryScheduler = clu.AddComponent(
-			"query-scheduler",
-			"-target=query-scheduler",
-			"-query-scheduler.use-scheduler-ring=false",
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-		tCompactor = clu.AddComponent(
-			"compactor",
-			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-	)
-	require.NoError(t, clu.Run())
-
-	// finally, run the query-frontend and querier.
-	var (
-		tQueryFrontend = clu.AddComponent(
-			"query-frontend",
-			"-target=query-frontend",
-			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-frontend.default-validity=0s",
-			"-common.compactor-address="+tCompactor.HTTPURL(),
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-		_ = clu.AddComponent(
-			"querier",
-			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-common.compactor-address="+tCompactor.HTTPURL(),
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-	)
-	require.NoError(t, clu.Run())
-
-	tenantID := randStringRunes()
-
-	now := time.Now()
-	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
-	cliDistributor.Now = now
-	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
-	cliIngester.Now = now
-	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
-	cliQueryFrontend.Now = now
-	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
-	cliIndexGateway.Now = now
-
-	// initial cache state.
-	igwMetrics, err := cliIndexGateway.Metrics()
-	require.NoError(t, err)
-	assertCacheState(t, igwMetrics, &expectedCacheState{
-		cacheName: "store.index-cache-read.embedded-cache",
-		misses:    0,
-		added:     0,
-	})
-
-	t.Run("ingest-logs", func(t *testing.T) {
-		require.NoError(t, cliDistributor.PushLogLine("lineA", time.Now().Add(-72*time.Hour), nil, map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLine("lineB", time.Now().Add(-48*time.Hour), nil, map[string]string{"job": "fake"}))
-	})
-
-	// restart ingester which should flush the chunks and index
-	require.NoError(t, tIngester.Restart())
-
-	// Query lines
-	t.Run("query to verify logs being served from storage", func(t *testing.T) {
-		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
-		require.NoError(t, err)
-		assert.Equal(t, "streams", resp.Data.ResultType)
-
-		var lines []string
-		for _, stream := range resp.Data.Stream {
-			for _, val := range stream.Values {
-				lines = append(lines, val[1])
-			}
-		}
-
-		assert.ElementsMatch(t, []string{"lineA", "lineB"}, lines)
-	})
-
-	igwMetrics, err = cliIndexGateway.Metrics()
-	require.NoError(t, err)
-	assertCacheState(t, igwMetrics, &expectedCacheState{
-		cacheName: "store.index-cache-read.embedded-cache",
-		misses:    1,
-		added:     1,
-	})
-
-	// ingest logs with ts=now.
-	require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "fake"}))
-	require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "fake"}))
-
-	// default length is 7 days.
-	resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
-	require.NoError(t, err)
-	assert.Equal(t, "streams", resp.Data.ResultType)
-
-	var lines []string
-	for _, stream := range resp.Data.Stream {
-		for _, val := range stream.Values {
-			lines = append(lines, val[1])
-		}
-	}
-	// expect lines from both, ingesters memory and from the store.
-	assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
-
-}
-
 func TestOTLPLogsIngestQuery(t *testing.T) {
 	clu := cluster.New(nil, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
@@ -728,10 +592,10 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-boltdb.shipper.compactor.retention-delete-delay=1s",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
 			// By default, a minute is added to the delete request start time. This compensates for that.
-			"-boltdb.shipper.compactor.delete-request-cancel-period=-60s",
+			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-and-delete",
 		)
 		tIndexGateway = clu.AddComponent(
@@ -770,7 +634,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-querier.per-request-limits-enabled=true",
-			"-frontend.required-query-response-format=protobuf",
+			"-frontend.encoding=protobuf",
 		)
 		_ = clu.AddComponent(
 			"querier",
@@ -859,7 +723,6 @@ func TestCategorizedLabels(t *testing.T) {
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
 			"-target=index-gateway",
-			"-tsdb.enable-postings-cache=true",
 			"-store.index-cache-read.embedded-cache.enabled=true",
 		)
 	)
@@ -882,7 +745,7 @@ func TestCategorizedLabels(t *testing.T) {
 		tCompactor = clu.AddComponent(
 			"compactor",
 			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-compactor.compaction-interval=1s",
 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 	)
@@ -1025,6 +888,7 @@ func TestCategorizedLabels(t *testing.T) {
 					},
 					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
 					CategorizedLabels: []map[string]map[string]string{
+						{},
 						{
 							"structuredMetadata": {
 								"traceID": "123",
@@ -1060,6 +924,7 @@ func TestCategorizedLabels(t *testing.T) {
 					},
 					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
 					CategorizedLabels: []map[string]map[string]string{
+						{},
 						{
 							"structuredMetadata": {
 								"traceID": "123",

@@ -259,6 +259,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Path:      r.Path,
 				StartTs:   start,
 				EndTs:     end,
+				Plan:      r.Plan,
 			})
 		})
 	case *LokiSeriesRequest:
@@ -322,7 +323,7 @@ func maxRangeVectorAndOffsetDuration(q string) (time.Duration, time.Duration, er
 	}
 
 	var maxRVDuration, maxOffset time.Duration
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		if r, ok := e.(*syntax.LogRange); ok {
 			if r.Interval > maxRVDuration {
 				maxRVDuration = r.Interval
@@ -383,6 +384,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 				Path:      lokiReq.Path,
 				StartTs:   start,
 				EndTs:     end,
+				Plan:      lokiReq.Plan,
 			})
 		})
 
@@ -403,6 +405,7 @@ func splitMetricByTime(r queryrangebase.Request, interval time.Duration) ([]quer
 			Path:      lokiReq.Path,
 			StartTs:   start,
 			EndTs:     end,
+			Plan:      lokiReq.Plan,
 		})
 	}
 

@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpcrand"
+	"google.golang.org/grpc/internal/grpcutil"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/internal/wrr"
@@ -229,19 +230,30 @@ func retryConfigToPolicy(config *xdsresource.RetryConfig) *serviceconfig.RetryPo
 func (cs *configSelector) generateHash(rpcInfo iresolver.RPCInfo, hashPolicies []*xdsresource.HashPolicy) uint64 {
 	var hash uint64
 	var generatedHash bool
+	var md, emd metadata.MD
+	var mdRead bool
 	for _, policy := range hashPolicies {
 		var policyHash uint64
 		var generatedPolicyHash bool
 		switch policy.HashPolicyType {
 		case xdsresource.HashPolicyTypeHeader:
-			md, ok := metadata.FromOutgoingContext(rpcInfo.Context)
-			if !ok {
+			if strings.HasSuffix(policy.HeaderName, "-bin") {
 				continue
 			}
-			values := md.Get(policy.HeaderName)
-			// If the header isn't present, no-op.
+			if !mdRead {
+				md, _ = metadata.FromOutgoingContext(rpcInfo.Context)
+				emd, _ = grpcutil.ExtraMetadata(rpcInfo.Context)
+				mdRead = true
+			}
+			values := emd.Get(policy.HeaderName)
 			if len(values) == 0 {
-				continue
+				// Extra metadata (e.g. the "content-type" header) takes
+				// precedence over the user's metadata.
+				values = md.Get(policy.HeaderName)
+				if len(values) == 0 {
+					// If the header isn't present at all, this policy is a no-op.
+					continue
+				}
 			}
 			joinedValues := strings.Join(values, ",")
 			if policy.Regex != nil {
