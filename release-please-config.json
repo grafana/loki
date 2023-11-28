@@ -1,0 +1,25 @@
+{
+  "bootstrap-sha": "df1a3ce79a5e4e3c5308e0aef384e429039b4b7f",
+  "versioning": "always-bump-minor",
+  "release-type": "simple",
+  "bump-minor-pre-major": false,
+  "bump-patch-for-minor-pre-major": false,
+  "draft": false,
+  "prerelease": false,
+  "include-component-in-tag": false,
+  "packages": {
+    "cmd/loki": {
+      "changelog-path": "CHANGELOG.md"
+    },
+    "cmd/loki-canary": {
+      "changelog-path": "CHANGELOG.md"
+    },
+    "cmd/logcli": {
+      "changelog-path": "CHANGELOG.md"
+    },
+    "clients/cmd/promtail": {
+      "changelog-path": "CHANGELOG.md"
+    }
+  },
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}

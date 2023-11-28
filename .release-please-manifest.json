@@ -1,0 +1,6 @@
+{
+  "cmd/loki": "2.9.3",
+  "cmd/loki-canary": "2.9.3",
+  "cmd/logcli": "2.9.3",
+  "clients/cmd/promtail": "2.9.3"
+}
