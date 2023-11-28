@@ -378,6 +378,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		}
 
 		job := NewJob(tenant, tableName, idx.Path(), seriesMetas)
+		job.computeBounds()
 		jobLogger := log.With(logger, "job", job.String())
 
 		if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {

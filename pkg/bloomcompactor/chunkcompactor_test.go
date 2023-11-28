@@ -147,7 +147,7 @@ func (mcc *mockChunkClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chu
 type mockPersistentBlockBuilder struct {
 }
 
-func (pbb *mockPersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
+func (pbb *mockPersistentBlockBuilder) BuildFrom(_ v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
 	return 0, nil
 }
 
