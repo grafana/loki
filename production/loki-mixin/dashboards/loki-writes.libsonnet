@@ -70,6 +70,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRowIf(
+                          $._config.tsdb,
+                          $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor - Structured Metadata')
+                          .addPanel(
+                            $.panel('Per Total Received Bytes') +
+                            $.queryPanel('sum (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], 'bytes')
+                          )
+                          .addPanel(
+                            $.panel('Per Tenant') +
+                            $.queryPanel('sum by (tenant) (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / ignoring(tenant) group_left sum(rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], '{{tenant}}') + {
+                              stack: true,
+                              yaxes: [
+                                { format: 'short', label: null, logBase: 1, max: 1, min: 0, show: true },
+                                { format: 'short', label: null, logBase: 1, max: 1, min: null, show: false },
+                              ],
+                            },
+                          )
+                        )
+                        .addRowIf(
                           !$._config.ssd.enabled,
                           $.row('Ingester - Zone Aware')
                           .addPanel(
