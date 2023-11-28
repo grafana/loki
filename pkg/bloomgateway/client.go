@@ -53,6 +53,12 @@ type ringGetBuffers struct {
 	Zones []string
 }
 
+func (buf *ringGetBuffers) Reset() {
+	buf.Descs = buf.Descs[:0]
+	buf.Hosts = buf.Hosts[:0]
+	buf.Zones = buf.Zones[:0]
+}
+
 // GRPCPool represents a pool of gRPC connections to different bloom gateway instances.
 // Interfaces are inlined for simplicity to automatically satisfy interface functions.
 type GRPCPool struct {
@@ -306,7 +312,11 @@ func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, groups []*lo
 	addresses := make([][]string, numFingerprints)
 
 	buf := ringGetBuffersPool.Get().(*ringGetBuffers)
-	defer ringGetBuffersPool.Put(buf)
+	defer func() {
+		// Before returning the bufs to the pool, reset them to release them earlier for GC.
+		buf.Reset()
+		ringGetBuffersPool.Put(buf)
+	}()
 
 	for idx, key := range groups {
 		rs, err = subRing.Get(uint32(key.Fingerprint), BlocksRead, buf.Descs, buf.Hosts, buf.Zones)
