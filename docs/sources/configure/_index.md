@@ -2768,18 +2768,20 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
-# How much of the available query capacity ("querier" components in distributed mode, "read" components in SSD mode) can be used by a single
-# tenant. Allowed values are 0.0 to 1.0. For example, setting this to 0.5 would
-# allow a tenant to use half of the available queriers for processing the query
-# workload. If set to 0, query capacity is determined by
-# frontend.max-queriers-per-tenant. When both frontend.max-queriers-per-tenant
-# and frontend.max-query-capacity are configured, smaller value of the resulting
-# querier replica count is considered: min(frontend.max-queriers-per-tenant,
-# ceil(querier_replicas * frontend.max-query-capacity)). *All* queriers will
-# handle requests for the tenant if neither limits are applied. This option only
-# works with queriers connecting to the query-frontend / query-scheduler, not
-# when using downstream URL.
-# Use this feature in a multi-tenant setup where you need to limit query capacity for certain tenants.
+# How much of the available query capacity ("querier" components in distributed
+# mode, "read" components in SSD mode) can be used by a single tenant. Allowed
+# values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant
+# to use half of the available queriers for processing the query workload. If
+# set to 0, query capacity is determined by frontend.max-queriers-per-tenant.
+# When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are
+# configured, smaller value of the resulting querier replica count is
+# considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas *
+# frontend.max-query-capacity)). *All* queriers will handle requests for the
+# tenant if neither limits are applied. This option only works with queriers
+# connecting to the query-frontend / query-scheduler, not when using downstream
+# URL.
+# Use this feature in a multi-tenant setup where you need to limit query
+# capacity for certain tenants.
 # CLI flag: -frontend.max-query-capacity
 [max_query_capacity: <float> | default = 0]
 

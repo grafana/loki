@@ -65,11 +65,11 @@ func TestQueueLimitsMaxConsumers(t *testing.T) {
 }
 
 type mockLimits struct {
-	maxQueriers      int
+	maxQueriers      uint
 	maxQueryCapacity float64
 }
 
-func (l mockLimits) MaxQueriersPerUser(_ string) int {
+func (l mockLimits) MaxQueriersPerUser(_ string) uint {
 	return l.maxQueriers
 }
 
