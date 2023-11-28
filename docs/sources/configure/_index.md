@@ -2771,6 +2771,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # handle requests for the tenant if neither limits are applied. This option only
 # works with queriers connecting to the query-frontend / query-scheduler, not
 # when using downstream URL.
+# Use this feature in a multi-tenant setup where you need to limit query capacity for certain tenants.
 # CLI flag: -frontend.max-query-capacity
 [max_query_capacity: <float> | default = 0]
 
