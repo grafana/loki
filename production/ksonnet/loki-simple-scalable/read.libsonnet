@@ -20,6 +20,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   read_args::
     $._config.commonArgs {
       target: 'read',
+      'legacy-read-mode': false
     },
 
   read_container::
