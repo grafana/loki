@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.39.0
 
 - [CHANGE] Add extraContainers parameter for the write pod
+- [FEATURE] Add support for adding OpenStack swift container credentials via helm chart
 
 ## 5.38.0
 
