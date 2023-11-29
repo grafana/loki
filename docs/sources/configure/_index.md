@@ -1837,6 +1837,14 @@ client:
   # not.
   # CLI flag: -bloom-gateway-client.log-gateway-requests
   [log_gateway_requests: <boolean> | default = false]
+
+# Number of workers to use for filtering chunks concurrently.
+# CLI flag: -bloom-gateway.worker-concurrency
+[worker_concurrency: <int> | default = 4]
+
+# Maximum number of outstanding tasks per tenant.
+# CLI flag: -bloom-gateway.max-outstanding-per-tenant
+[max_outstanding_per_tenant: <int> | default = 1024]
 ```
 
 ### storage_config
@@ -2248,6 +2256,16 @@ bloom_shipper:
   # Working directory to store downloaded Bloom Blocks.
   # CLI flag: -bloom.shipper.working-directory
   [working_directory: <string> | default = "bloom-shipper"]
+
+  blocks_downloading_queue:
+    # The count of parallel workers that download Bloom Blocks.
+    # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
+    [workers_count: <int> | default = 100]
+
+    # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
+    # the tasks above this limit will fail an error.
+    # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
+    [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 ```
 
 ### chunk_store_config
@@ -2989,6 +3007,10 @@ shard_streams:
 # Scalable Bloom Filter desired false-positive rate.
 # CLI flag: -bloom-compactor.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
+
+# Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
+# CLI flag: -bloom-gateway.blocks-downloading-parallelism
+[bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
