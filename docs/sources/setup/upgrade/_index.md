@@ -1,4 +1,4 @@
-d---
+---
 title: Upgrade Loki
 menuTitle:  Upgrade
 description: Upgrading Grafana Loki
