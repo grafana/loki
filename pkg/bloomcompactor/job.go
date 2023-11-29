@@ -43,12 +43,14 @@ func NewJob(
 	indexPath string,
 	seriesMetas []SeriesMeta,
 ) Job {
-	return Job{
+	j := Job{
 		tenantID:    tenantID,
 		tableName:   tableName,
 		indexPath:   indexPath,
 		seriesMetas: seriesMetas,
 	}
+	j.computeBounds()
+	return j
 }
 
 func (j *Job) String() string {
@@ -65,20 +67,6 @@ func (j *Job) Tenant() string {
 
 func (j *Job) IndexPath() string {
 	return j.indexPath
-}
-
-func (j *Job) From() model.Time {
-	if j.from == 0 {
-		j.computeBounds()
-	}
-	return j.from
-}
-
-func (j *Job) Through() model.Time {
-	if j.through == 0 {
-		j.computeBounds()
-	}
-	return j.through
 }
 
 func (j *Job) computeBounds() {

@@ -353,18 +353,15 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
+				// TODO: Inefficient as is, calls the ring per fingerprint. Refactor to make the call once per compaction fingerprint bounds.
 				ownsFingerprint, err := c.sharding.OwnsFingerprint(tenant, uint64(fingerprint))
-				fpLogger := log.With(logger, "fp", tableName+"_"+tenant+"_"+fingerprint.String())
 
 				if err != nil {
-					c.metrics.compactionRunSkippedFp.Inc()
-					level.Error(fpLogger).Log("msg", "failed to check if compactor owns fp", "err", err)
+					level.Error(logger).Log("msg", "failed to check if compactor owns fp", "err", err)
 					errs.Add(err)
 					return
 				}
 				if !ownsFingerprint {
-					c.metrics.compactionRunSkippedFp.Inc()
-					level.Debug(fpLogger).Log("msg", "skipping fp because it is not owned by this shard")
 					return
 				}
 
@@ -378,16 +375,16 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		}
 
 		job := NewJob(tenant, tableName, idx.Path(), seriesMetas)
-		job.computeBounds()
 		jobLogger := log.With(logger, "job", job.String())
+		c.metrics.compactionRunJobStarted.Inc()
 
 		if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {
-			c.metrics.compactionRunFailedJobs.Inc()
-			errs.Add(errors.Wrap(err, "runBloomCompact"))
+			c.metrics.compactionRunJobFailed.Inc()
+			errs.Add(errors.Wrap(err, "runBloomCompact failed"))
 			return errs.Err()
 		}
 
-		c.metrics.compactionRunSucceededJobs.Inc()
+		c.metrics.compactionRunJobSuceeded.Inc()
 
 		return nil
 	}); err != nil {
@@ -460,18 +457,17 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	if len(metas) == 0 {
 		localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
-		fpRate := c.limits.BloomFalsePositiveRate(job.Tenant())
 		blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
-
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
 			level.Error(logger).Log("creating block builder", err)
 			return err
 		}
 
+		fpRate := c.limits.BloomFalsePositiveRate(job.Tenant())
 		storedBlock, err := CompactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
-			return level.Error(logger).Log("compacting new chunks", err)
+			return level.Error(logger).Log("failed to compact new chunks", err)
 		}
 
 		// Do not change the signature of PutBlocks yet.

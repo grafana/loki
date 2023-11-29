@@ -19,6 +19,50 @@ import (
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
+type compactorTokenizer interface {
+	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk)
+}
+
+type chunkClient interface {
+	// TODO: Consider using lazyChunks to avoid downloading all requested chunks.
+	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
+}
+
+type blockBuilder interface {
+	BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error)
+	Data() (io.ReadCloser, error)
+}
+
+type PersistentBlockBuilder struct {
+	builder  *v1.BlockBuilder
+	localDst string
+}
+
+func NewPersistentBlockBuilder(localDst string, blockOptions v1.BlockOptions) (*PersistentBlockBuilder, error) {
+	// write bloom to a local dir
+	b, err := v1.NewBlockBuilder(blockOptions, v1.NewDirectoryBlockWriter(localDst))
+	if err != nil {
+		return nil, err
+	}
+	builder := PersistentBlockBuilder{
+		builder:  b,
+		localDst: localDst,
+	}
+	return &builder, nil
+}
+
+func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
+	return p.builder.BuildFrom(itr)
+}
+
+func (p *PersistentBlockBuilder) Data() (io.ReadCloser, error) {
+	blockFile, err := os.Open(filepath.Join(p.localDst, v1.BloomFileName))
+	if err != nil {
+		return nil, err
+	}
+	return blockFile, nil
+}
+
 func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fingerprint) []chunk.Chunk {
 	chunkRefs := make([]chunk.Chunk, 0, len(chksMetas))
 	for _, chk := range chksMetas {
@@ -34,49 +78,6 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 	}
 
 	return chunkRefs
-}
-
-type compactorTokenizer interface {
-	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk)
-}
-
-type chunkClient interface {
-	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
-}
-
-type blockBuilder interface {
-	BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error)
-	Data() (io.ReadCloser, error)
-}
-
-type PersistentBlockBuilder struct {
-	builder  *v1.BlockBuilder
-	localDst string
-}
-
-func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
-	return p.builder.BuildFrom(itr)
-}
-
-func (p *PersistentBlockBuilder) Data() (io.ReadCloser, error) {
-	blockFile, err := os.Open(filepath.Join(p.localDst, v1.BloomFileName))
-	if err != nil {
-		return nil, err
-	}
-	return blockFile, nil
-}
-
-func NewPersistentBlockBuilder(localDst string, blockOptions v1.BlockOptions) (*PersistentBlockBuilder, error) {
-	// write bloom to a local dir
-	b, err := v1.NewBlockBuilder(blockOptions, v1.NewDirectoryBlockWriter(localDst))
-	if err != nil {
-		return nil, err
-	}
-	builder := PersistentBlockBuilder{
-		builder:  b,
-		localDst: localDst,
-	}
-	return &builder, nil
 }
 
 func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks []chunk.Chunk) v1.SeriesWithBloom {
@@ -127,8 +128,8 @@ func buildBlockFromBloom(
 				TableName:      job.TableName(),
 				MinFingerprint: uint64(job.minFp),
 				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: int64(job.From()),
-				EndTimestamp:   int64(job.Through()),
+				StartTimestamp: int64(job.from),
+				EndTimestamp:   int64(job.through),
 				Checksum:       checksum,
 			},
 			IndexPath: job.IndexPath(),
@@ -140,7 +141,7 @@ func buildBlockFromBloom(
 }
 
 func createLocalDirName(workingDir string, job Job) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.TableName(), job.Tenant(), job.minFp, job.maxFp, job.From(), job.Through())
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.TableName(), job.Tenant(), job.minFp, job.maxFp, job.from, job.through)
 	return filepath.Join(workingDir, dir)
 }
 

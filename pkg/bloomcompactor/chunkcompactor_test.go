@@ -102,12 +102,7 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 		},
 	}
 
-	job := Job{
-		tableName:   table,
-		tenantID:    userID,
-		indexPath:   indexPath,
-		seriesMetas: seriesMetas,
-	}
+	job := NewJob(userID, table, indexPath, seriesMetas)
 
 	mbt := mockBloomTokenizer{}
 	mcc := mockChunkClient{}
