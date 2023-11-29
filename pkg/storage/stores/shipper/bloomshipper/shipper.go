@@ -39,30 +39,30 @@ func NewShipper(client Client, config config.Config, limits Limits, logger log.L
 	}, nil
 }
 
-func (s *Shipper) ForEachBlock(
-	ctx context.Context,
-	tenantID string,
-	from, through time.Time,
-	fingerprints []uint64,
-	callback ForEachBlockCallback) error {
+func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, from, through time.Time) ([]BlockRef, error) {
+	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "from", from, "through", through)
 
-	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
-
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), fingerprints)
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), nil)
 	if err != nil {
-		return fmt.Errorf("error fetching active block references : %w", err)
+		return nil, fmt.Errorf("error fetching active block references : %w", err)
 	}
+	return blockRefs, nil
+}
 
+func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef, callback ForEachBlockCallback) error {
 	cancelContext, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
-	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blockRefs)
+	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blocks)
+
 	for {
 		select {
+		case <-ctx.Done():
+			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
 		case result, ok := <-blocksChannel:
 			if !ok {
 				return nil
 			}
-			err = callback(result.BlockQuerier)
+			err := callback(result.BlockQuerier, result.MinFingerprint, result.MaxFingerprint)
 			if err != nil {
 				return fmt.Errorf("error running callback function for block %s err: %w", result.BlockPath, err)
 			}
@@ -74,27 +74,34 @@ func (s *Shipper) ForEachBlock(
 	}
 }
 
+func (s *Shipper) ForEachBlock(ctx context.Context, tenantID string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
+	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
+
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), fingerprints)
+	if err != nil {
+		return fmt.Errorf("error fetching active block references : %w", err)
+	}
+
+	return s.Fetch(ctx, tenantID, blockRefs, callback)
+}
+
 func (s *Shipper) Stop() {
 	s.client.Stop()
 	s.blockDownloader.stop()
 }
 
-// getFromThrough returns the first and list item of a fingerprint slice
+// getFirstLast returns the first and last item of a fingerprint slice
 // It assumes an ascending sorted list of fingerprints.
-func getFromThrough(fingerprints []uint64) (uint64, uint64) {
-	if len(fingerprints) == 0 {
-		return 0, 0
+func getFirstLast[T any](s []T) (T, T) {
+	var zero T
+	if len(s) == 0 {
+		return zero, zero
 	}
-	return fingerprints[0], fingerprints[len(fingerprints)-1]
+	return s[0], s[len(s)-1]
 }
 
-func (s *Shipper) getActiveBlockRefs(
-	ctx context.Context,
-	tenantID string,
-	from, through int64,
-	fingerprints []uint64) ([]BlockRef, error) {
-
-	minFingerprint, maxFingerprint := getFromThrough(fingerprints)
+func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through int64, fingerprints []uint64) ([]BlockRef, error) {
+	minFingerprint, maxFingerprint := getFirstLast(fingerprints)
 	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
 		TenantID:       tenantID,
 		MinFingerprint: minFingerprint,
@@ -164,7 +171,7 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp int64, fingerprint
 	}
 
 	// Then, check if outside of min/max of fingerprint slice
-	minFp, maxFp := getFromThrough(fingerprints)
+	minFp, maxFp := getFirstLast(fingerprints)
 	if b.MaxFingerprint < minFp || b.MinFingerprint > maxFp {
 		return true
 	}

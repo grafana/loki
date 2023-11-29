@@ -146,7 +146,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, errors.New("only label matchers is supported")
+		return nil, logqlmodel.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }
