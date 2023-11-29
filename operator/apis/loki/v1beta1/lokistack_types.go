@@ -933,11 +933,11 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 		}
 
 		if len(src.Spec.Limits.Tenants) > 0 {
-			dst.Spec.Limits.Tenants = make(map[string]v1.LimitsTemplateSpec)
+			dst.Spec.Limits.Tenants = make(map[string]v1.PerTenantLimitsTemplateSpec)
 		}
 
 		for tenant, srcSpec := range src.Spec.Limits.Tenants {
-			dstSpec := v1.LimitsTemplateSpec{}
+			dstSpec := v1.PerTenantLimitsTemplateSpec{}
 
 			if srcSpec.IngestionLimits != nil {
 				dstSpec.IngestionLimits = &v1.IngestionLimitSpec{
@@ -952,10 +952,12 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 			}
 
 			if srcSpec.QueryLimits != nil {
-				dstSpec.QueryLimits = &v1.QueryLimitSpec{
-					MaxEntriesLimitPerQuery: srcSpec.QueryLimits.MaxEntriesLimitPerQuery,
-					MaxChunksPerQuery:       srcSpec.QueryLimits.MaxChunksPerQuery,
-					MaxQuerySeries:          srcSpec.QueryLimits.MaxQuerySeries,
+				dstSpec.QueryLimits = &v1.PerTenantQueryLimitSpec{
+					QueryLimitSpec: v1.QueryLimitSpec{
+						MaxEntriesLimitPerQuery: srcSpec.QueryLimits.MaxEntriesLimitPerQuery,
+						MaxChunksPerQuery:       srcSpec.QueryLimits.MaxChunksPerQuery,
+						MaxQuerySeries:          srcSpec.QueryLimits.MaxQuerySeries,
+					},
 				}
 			}
 
