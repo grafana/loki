@@ -2261,6 +2261,27 @@ null
     "secretAccessKey": null,
     "signatureVersion": null
   },
+  "swift": {
+    "auth_url": null,
+    "auth_version": null,
+    "connect_timeout": null,
+    "container_name": null,
+    "domain_id": null,
+    "domain_name": null,
+    "internal": null,
+    "max_retries": null,
+    "password": null,
+    "project_domain_id": null,
+    "project_domain_name": null,
+    "project_id": null,
+    "project_name": null,
+    "region_name": null,
+    "request_timeout": null,
+    "user_domain_id": null,
+    "user_domain_name": null,
+    "user_id": null,
+    "username": null
+  },
   "type": "s3"
 }
 </pre>
