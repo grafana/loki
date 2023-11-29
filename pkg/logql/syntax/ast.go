@@ -307,11 +307,12 @@ func (e *PipelineExpr) HasFilter() bool {
 }
 
 type LineFilterExpr struct {
-	Left  *LineFilterExpr
-	Or    *LineFilterExpr
-	Ty    labels.MatchType
-	Match string
-	Op    string
+	Left      *LineFilterExpr
+	Or        *LineFilterExpr
+	IsOrChild bool
+	Ty        labels.MatchType
+	Match     string
+	Op        string
 	implicit
 }
 
@@ -328,6 +329,7 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 
 	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
 		left.Or = right
+		right.IsOrChild = true
 		return left
 	}
 
@@ -380,17 +382,21 @@ func (e *LineFilterExpr) String() string {
 		sb.WriteString(e.Left.String())
 		sb.WriteString(" ")
 	}
-	switch e.Ty {
-	case labels.MatchRegexp:
-		sb.WriteString("|~")
-	case labels.MatchNotRegexp:
-		sb.WriteString("!~")
-	case labels.MatchEqual:
-		sb.WriteString("|=")
-	case labels.MatchNotEqual:
-		sb.WriteString("!=")
+
+	if !e.IsOrChild { // Only write the type when we're not chaining "or" filters
+		switch e.Ty {
+		case labels.MatchRegexp:
+			sb.WriteString("|~")
+		case labels.MatchNotRegexp:
+			sb.WriteString("!~")
+		case labels.MatchEqual:
+			sb.WriteString("|=")
+		case labels.MatchNotEqual:
+			sb.WriteString("!=")
+		}
+		sb.WriteString(" ")
 	}
-	sb.WriteString(" ")
+
 	if e.Op == "" {
 		sb.WriteString(strconv.Quote(e.Match))
 	} else {
@@ -401,9 +407,9 @@ func (e *LineFilterExpr) String() string {
 	}
 
 	if e.Or != nil {
-		sb.WriteString(" or")
+		sb.WriteString(" or ")
 		// This is dirty but removes the leading MatchType from the or expression.
-		sb.WriteString(e.Or.String()[2:])
+		sb.WriteString(e.Or.String())
 	}
 
 	return sb.String()
