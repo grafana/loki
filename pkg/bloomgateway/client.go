@@ -178,7 +178,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		return nil, errors.Wrap(err, "bloom gateway get healthy instances")
 	}
 
-	streamsByInst, err := c.groupFingerprintsByServer(tenant, groups, subRing, rs.Instances)
+	streamsByInst, err := c.groupFingerprintsByServer(groups, subRing, rs.Instances)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	return err
 }
 
-func (c *GatewayClient) groupFingerprintsByServer(tenantID string, groups []*logproto.GroupedChunkRefs, subRing ring.ReadRing, instances []ring.InstanceDesc) ([]instanceWithFingerprints, error) {
+func (c *GatewayClient) groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, subRing ring.ReadRing, instances []ring.InstanceDesc) ([]instanceWithFingerprints, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
 	servers := make([]addrsWithTokenRange, 0, len(instances))

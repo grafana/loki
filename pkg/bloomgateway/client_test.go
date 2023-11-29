@@ -316,7 +316,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 				return tc.chunks[i].Fingerprint < tc.chunks[j].Fingerprint
 			})
 
-			res, err := c.groupFingerprintsByServer("fake", tc.chunks, subRing, instances)
+			res, err := c.groupFingerprintsByServer(tc.chunks, subRing, instances)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, res)
 		})
