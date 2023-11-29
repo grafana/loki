@@ -1,4 +1,4 @@
----
+d---
 title: Upgrade Loki
 menuTitle:  Upgrade
 description: Upgrading Grafana Loki
@@ -342,6 +342,10 @@ No impact is expected if you use Kubernetes v1.21 or newer.
 
 Please refer to [official migration guide](https://kubernetes.io/docs/reference/using-api/deprecation-guide/#poddisruptionbudget-v125) for more details.
 
+###### Resource type changed for read target in Simple Scalable deployment mode
+
+The inroduction of the `backend` target allows for the `read` target to run as Kubernetes Deployment resource.
+The new jsonnet files reflect this change, thus upgrading might result in coexisting Deplpyment and StatefulSet for the `read` component, so be sure to do a clean-up.
 
 ## 2.8.0
 
