@@ -404,6 +404,13 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
 		},
+		{
+			`{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}, {"127.0.0.2", false}, {"127.0.0.1", true}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
