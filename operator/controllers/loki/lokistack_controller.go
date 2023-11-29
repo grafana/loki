@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
@@ -150,40 +149,41 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	if r.FeatureGates.BuiltInCertManagement.Enabled {
-		err = handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
-		if err != nil {
-			return handleDegradedError(ctx, r.Client, req, err)
-		}
+	var degraded *status.DegradedError
+	err = r.updateResources(ctx, req)
+	switch {
+	case errors.As(err, &degraded):
+	// degraded errors are handled by status.Refresh below
+	case err != nil:
+		return ctrl.Result{}, err
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
-	if err != nil {
-		return handleDegradedError(ctx, r.Client, req, err)
-	}
-
-	err = status.Refresh(ctx, r.Client, req, time.Now())
+	err = status.Refresh(ctx, r.Client, req, time.Now(), degraded)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
-}
-
-func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request, err error) (ctrl.Result, error) {
-	var degraded *status.DegradedError
-	if errors.As(err, &degraded) {
-		err = status.SetDegradedCondition(ctx, c, req, degraded.Message, degraded.Reason)
-		if err != nil {
-			return ctrl.Result{}, kverrors.Wrap(err, "error setting degraded condition")
-		}
-
+	if degraded != nil {
 		return ctrl.Result{
 			Requeue: degraded.Requeue,
 		}, nil
 	}
 
-	return ctrl.Result{}, err
+	return ctrl.Result{}, nil
+}
+
+func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) error {
+	if r.FeatureGates.BuiltInCertManagement.Enabled {
+		if err := handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
+			return err
+		}
+	}
+
+	if err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
