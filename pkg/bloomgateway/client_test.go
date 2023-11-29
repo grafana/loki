@@ -343,13 +343,8 @@ type mockRing struct {
 	ranges    []instanceWithToken
 }
 
-// CleanupShuffleShardCache implements ring.ReadRing.
-func (*mockRing) CleanupShuffleShardCache(identifier string) {
-	panic("unimplemented")
-}
-
 // Get implements ring.ReadRing.
-func (r *mockRing) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDesc, bufHosts []string, bufZones []string) (ring.ReplicationSet, error) {
+func (r *mockRing) Get(key uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	idx, _ := sort.Find(len(r.ranges), func(i int) int {
 		if r.ranges[i].token < key {
 			return 1
@@ -363,24 +358,24 @@ func (r *mockRing) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDe
 }
 
 // GetAllHealthy implements ring.ReadRing.
-func (r *mockRing) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+func (r *mockRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
 	return ring.ReplicationSet{
 		Instances: r.instances,
 	}, nil
 }
 
 // GetInstanceState implements ring.ReadRing.
-func (*mockRing) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+func (*mockRing) GetInstanceState(_ string) (ring.InstanceState, error) {
 	panic("unimplemented")
 }
 
 // GetReplicationSetForOperation implements ring.ReadRing.
-func (*mockRing) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
+func (*mockRing) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
 	panic("unimplemented")
 }
 
 // HasInstance implements ring.ReadRing.
-func (*mockRing) HasInstance(instanceID string) bool {
+func (*mockRing) HasInstance(_ string) bool {
 	panic("unimplemented")
 }
 
@@ -395,11 +390,16 @@ func (*mockRing) ReplicationFactor() int {
 }
 
 // ShuffleShard implements ring.ReadRing.
-func (*mockRing) ShuffleShard(identifier string, size int) ring.ReadRing {
+func (*mockRing) ShuffleShard(_ string, _ int) ring.ReadRing {
 	panic("unimplemented")
 }
 
 // ShuffleShardWithLookback implements ring.ReadRing.
-func (*mockRing) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
+func (*mockRing) ShuffleShardWithLookback(_ string, _ int, _ time.Duration, _ time.Time) ring.ReadRing {
+	panic("unimplemented")
+}
+
+// CleanupShuffleShardCache implements ring.ReadRing.
+func (*mockRing) CleanupShuffleShardCache(_ string) {
 	panic("unimplemented")
 }
