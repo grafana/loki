@@ -4,5 +4,6 @@
 
     read: self.loki,
     write: self.loki,
+    backend: self.loki, 
   },
 }
