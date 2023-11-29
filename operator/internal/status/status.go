@@ -31,34 +31,20 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time)
 		return err
 	}
 
-	condition, err := generateCondition(ctx, cs, k, req, &stack)
+	activeConditions, err := generateConditions(ctx, cs, k, req, &stack, degradedErr)
 	if err != nil {
 		return err
 	}
 
-	condition.LastTransitionTime = metav1.NewTime(now)
-	condition.Status = metav1.ConditionTrue
+	metaTime := metav1.NewTime(now)
+	for _, c := range activeConditions {
+		c.LastTransitionTime = metaTime
+		c.Status = metav1.ConditionTrue
+	}
 
 	statusUpdater := func(stack *lokiv1.LokiStack) {
 		stack.Status.Components = *cs
-
-		index := -1
-		for i := range stack.Status.Conditions {
-			// Reset all other conditions first
-			stack.Status.Conditions[i].Status = metav1.ConditionFalse
-			stack.Status.Conditions[i].LastTransitionTime = metav1.NewTime(now)
-
-			// Locate existing pending condition if any
-			if stack.Status.Conditions[i].Type == condition.Type {
-				index = i
-			}
-		}
-
-		if index == -1 {
-			stack.Status.Conditions = append(stack.Status.Conditions, condition)
-		} else {
-			stack.Status.Conditions[index] = condition
-		}
+		stack.Status.Conditions = mergeConditions(stack.Status.Conditions, activeConditions, metaTime)
 	}
 
 	statusUpdater(&stack)

@@ -63,15 +63,19 @@ func (e *DegradedError) Error() string {
 	return fmt.Sprintf("cluster degraded: %s", e.Message)
 }
 
-// SetDegradedCondition appends the condition Degraded to the lokistack status conditions.
-func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, msg string, reason lokiv1.LokiStackConditionReason) error {
-	degraded := metav1.Condition{
-		Type:    string(lokiv1.ConditionDegraded),
-		Message: msg,
-		Reason:  string(reason),
+func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
+	conditions, err := generateWarnings(ctx, cs, k, req, stack)
+	if err != nil {
+		return nil, err
 	}
 
-	return updateCondition(ctx, k, req, degraded)
+	mainCondition, err := generateCondition(ctx, cs, k, req, stack, degradedErr)
+	if err != nil {
+		return nil, err
+	}
+
+	conditions = append(conditions, mainCondition)
+	return conditions, nil
 }
 
 func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack) (metav1.Condition, error) {
@@ -147,6 +151,10 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 	}
 
 	return true, true, nil
+}
+
+func generateWarnings(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
+	return []metav1.Condition{}, nil
 }
 
 func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {

@@ -1041,6 +1041,10 @@ const (
 	// ConditionDegraded defines the condition that some or all components in the Loki deployment
 	// are degraded or the cluster cannot connect to object storage.
 	ConditionDegraded LokiStackConditionType = "Degraded"
+
+	// ConditionWarning is used for configurations that are not recommended, but don't currently cause
+	// issues. There can be multiple warning conditions active at a time.
+	ConditionWarning LokiStackConditionType = "Warning"
 )
 
 // LokiStackConditionReason defines the type for valid reasons of a Loki deployment conditions.
