@@ -366,7 +366,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 					return
 				}
 
-				var temp []tsdbindex.ChunkMeta
+				temp := make([]tsdbindex.ChunkMeta, len(chksMetas))
 				copy(temp, chksMetas)
 				//All seriesMetas given a table within fp of this compactor shard
 				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
