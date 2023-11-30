@@ -217,6 +217,6 @@ func (m *testCommonPrefixesS3Client) ListObjectsV2WithContext(aws.Context, *s3.L
 func TestCommonPrefixes(t *testing.T) {
 	s3 := S3ObjectClient{S3: &testCommonPrefixesS3Client{}, bucketNames: []string{"bucket"}}
 	_, CommonPrefixes, error := s3.List(context.Background(), "", "/")
-	require.Equal(t, error, nil)
-	require.Equal(t, len(CommonPrefixes), 1)
+	require.Equal(t, nil, error)
+	require.Equal(t, 1, len(CommonPrefixes))
 }
