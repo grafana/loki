@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
