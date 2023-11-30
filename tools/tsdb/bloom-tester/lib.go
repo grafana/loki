@@ -36,6 +36,11 @@ import (
 	"github.com/grafana/loki/tools/tsdb/helpers"
 )
 
+const (
+	DefaultNGramLength = 4
+	DefaultNGramSkip   = 0
+)
+
 func execute() {
 	conf, svc, bucket, err := helpers.Setup()
 	helpers.ExitErr("setting up", err)
@@ -259,9 +264,9 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
 	var n int // count iterated series
-	//pool := newPool(runtime.NumCPU())
-	//pool := newPool(1)
-	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	// pool := newPool(runtime.NumCPU())
+	// pool := newPool(1)
+	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
@@ -373,7 +378,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 											metrics.sbfCreationTime.WithLabelValues(experiment.name).Add(float64(endTime - startTime))
 											metrics.sbfsCreated.WithLabelValues(experiment.name).Inc()
-											metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 
 											if err != nil {
 												helpers.ExitErr("writing sbf to file", err)

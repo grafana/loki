@@ -35,11 +35,6 @@ var (
 	})
 )
 
-type Limits interface {
-	BloomGatewayShardSize(tenantID string) int
-	BloomGatewayEnabled(tenantID string) bool
-}
-
 type ShardingStrategy interface {
 	// FilterTenants whose indexes should be loaded by the index gateway.
 	// Returns the list of user IDs that should be synced by the index gateway.

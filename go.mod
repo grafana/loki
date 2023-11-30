@@ -1,6 +1,8 @@
 module github.com/grafana/loki
 
-go 1.20
+go 1.21
+
+toolchain go1.21.3
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
@@ -123,7 +125,7 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gogo/googleapis v1.4.0
-	github.com/grafana/loki/pkg/push v0.0.0-20231023154132-0a7737e7c7eb
+	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.86.0

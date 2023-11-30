@@ -888,6 +888,7 @@ func TestCategorizedLabels(t *testing.T) {
 					},
 					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
 					CategorizedLabels: []map[string]map[string]string{
+						{},
 						{
 							"structuredMetadata": {
 								"traceID": "123",
@@ -923,6 +924,7 @@ func TestCategorizedLabels(t *testing.T) {
 					},
 					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
 					CategorizedLabels: []map[string]map[string]string{
+						{},
 						{
 							"structuredMetadata": {
 								"traceID": "123",

@@ -1,9 +1,7 @@
 package bloomshipper
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 
 	aws_io "github.com/aws/smithy-go/io"
 	"github.com/google/uuid"
@@ -36,7 +32,7 @@ var (
 )
 
 func Test_BloomClient_GetMetas(t *testing.T) {
-	shipper := createShipper(t)
+	shipper := createClient(t)
 
 	var expected []Meta
 	folder1 := shipper.storageConfig.NamedStores.Filesystem["folder-1"].Directory
@@ -103,12 +99,12 @@ func Test_BloomClient_PutMeta(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			shipper := createShipper(t)
+			bloomClient := createClient(t)
 
-			err := shipper.PutMeta(context.Background(), data.source)
+			err := bloomClient.PutMeta(context.Background(), data.source)
 			require.NoError(t, err)
 
-			directory := shipper.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
+			directory := bloomClient.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
 			filePath := filepath.Join(directory, data.expectedFilePath)
 			require.FileExists(t, filePath)
 			content, err := os.ReadFile(filePath)
@@ -159,15 +155,15 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			shipper := createShipper(t)
-			directory := shipper.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
+			bloomClient := createClient(t)
+			directory := bloomClient.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
 			file := filepath.Join(directory, data.expectedFilePath)
 			err := os.MkdirAll(file[:strings.LastIndex(file, delimiter)], 0755)
 			require.NoError(t, err)
 			err = os.WriteFile(file, []byte("dummy content"), 0700)
 			require.NoError(t, err)
 
-			err = shipper.DeleteMeta(context.Background(), data.source)
+			err = bloomClient.DeleteMeta(context.Background(), data.source)
 			require.NoError(t, err)
 
 			require.NoFileExists(t, file)
@@ -177,8 +173,8 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 }
 
 func Test_BloomClient_GetBlocks(t *testing.T) {
-	shipper := createShipper(t)
-	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
+	bloomClient := createClient(t)
+	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
 	firstBlockPath := "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400-1695276000-1"
 	firstBlockFullPath := filepath.Join(fsNamedStores["folder-1"].Directory, firstBlockPath)
 	firstBlockData := createBlockFile(t, firstBlockFullPath)
@@ -187,8 +183,6 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 	secondBlockData := createBlockFile(t, secondBlockFullPath)
 	require.FileExists(t, firstBlockFullPath)
 	require.FileExists(t, secondBlockFullPath)
-	rootDir := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom")
-	defer os.RemoveAll(rootDir)
 
 	firstBlockRef := BlockRef{
 		Ref: Ref{
@@ -215,79 +209,22 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 		BlockPath: secondBlockPath,
 	}
 
-	blocksToDownload := []BlockRef{firstBlockRef, secondBlockRef}
+	downloadedFirstBlock, err := bloomClient.GetBlock(context.Background(), firstBlockRef)
+	require.NoError(t, err)
+	firstBlockActualData, err := io.ReadAll(downloadedFirstBlock.Data)
+	require.NoError(t, err)
+	require.Equal(t, firstBlockData, string(firstBlockActualData))
 
-	blocksCh, errorsCh := shipper.GetBlocks(context.Background(), blocksToDownload)
-	blocks := make(map[string][]byte)
-	func() {
-		timout := time.After(5 * time.Second)
-		for {
-			select {
-			case <-timout:
-				t.Fatalf("the test had to be completed before the timeout")
-				return
-			case err := <-errorsCh:
-				require.NoError(t, err)
-			case block, ok := <-blocksCh:
-				if !ok {
-					return
-				}
-				blockData, err := io.ReadAll(block.BloomData)
-				require.NoError(t, err)
-				blocks[block.BlockRef.BlockPath] = blockData
-
-			}
-		}
-	}()
-	defer os.RemoveAll("./bloom")
-
-	firstBlockActualData, exists := blocks[firstBlockRef.BlockPath]
-	require.Truef(t, exists, "data for the first block must be present in the results: %+v", blocks)
-	require.Equal(t, firstBlockData, firstBlockActualData)
-
-	secondBlockActualData, exists := blocks[secondBlockRef.BlockPath]
-	require.True(t, exists, "data for the second block must be present in the results: %+v", blocks)
-	require.Equal(t, secondBlockData, secondBlockActualData)
-
-	require.Len(t, blocks, 2)
-}
-
-func extractFileFromTGZ(tarGzData []byte, targetFileName string) []byte {
-	gzReader, err := gzip.NewReader(bytes.NewReader(tarGzData))
-	if err != nil {
-		return nil
-	}
-	defer gzReader.Close()
-
-	tarReader := tar.NewReader(gzReader)
-
-	for {
-		header, err := tarReader.Next()
-
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			return nil
-		}
-
-		if header.Name == targetFileName {
-			buffer := new(bytes.Buffer)
-			if _, err := io.Copy(buffer, tarReader); err != nil {
-				return nil
-			}
-			return buffer.Bytes()
-		}
-	}
-
-	return nil
+	downloadedSecondBlock, err := bloomClient.GetBlock(context.Background(), secondBlockRef)
+	require.NoError(t, err)
+	secondBlockActualData, err := io.ReadAll(downloadedSecondBlock.Data)
+	require.NoError(t, err)
+	require.Equal(t, secondBlockData, string(secondBlockActualData))
 }
 
 func Test_BloomClient_PutBlocks(t *testing.T) {
-	shipper := createShipper(t)
+	bloomClient := createClient(t)
 	blockForFirstFolderData := "data1"
-	indexForFirstFolderData := "index1"
 	blockForFirstFolder := Block{
 		BlockRef: BlockRef{
 			Ref: Ref{
@@ -301,12 +238,10 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			},
 			IndexPath: uuid.New().String(),
 		},
-		BloomData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
-		IndexData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(indexForFirstFolderData))},
+		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
 	}
 
 	blockForSecondFolderData := "data2"
-	indexForSecondFolderData := "index2"
 	blockForSecondFolder := Block{
 		BlockRef: BlockRef{
 			Ref: Ref{
@@ -320,11 +255,10 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			},
 			IndexPath: uuid.New().String(),
 		},
-		BloomData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
-		IndexData: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(indexForSecondFolderData))},
+		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
 	}
 
-	results, err := shipper.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
+	results, err := bloomClient.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	firstResultBlock := results[0]
@@ -338,12 +272,12 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, blockForFirstFolder.EndTimestamp, firstResultBlock.EndTimestamp)
 	require.Equal(t, blockForFirstFolder.Checksum, firstResultBlock.Checksum)
 	require.Equal(t, blockForFirstFolder.IndexPath, firstResultBlock.IndexPath)
-	folder1 := shipper.storageConfig.NamedStores.Filesystem["folder-1"].Directory
+	folder1 := bloomClient.storageConfig.NamedStores.Filesystem["folder-1"].Directory
 	savedFilePath := filepath.Join(folder1, path)
 	require.FileExists(t, savedFilePath)
 	savedData, err := os.ReadFile(savedFilePath)
 	require.NoError(t, err)
-	require.Equal(t, blockForFirstFolderData, string(extractFileFromTGZ(savedData, "bloom")))
+	require.Equal(t, blockForFirstFolderData, string(savedData))
 
 	secondResultBlock := results[1]
 	path = secondResultBlock.BlockPath
@@ -356,18 +290,18 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, blockForSecondFolder.EndTimestamp, secondResultBlock.EndTimestamp)
 	require.Equal(t, blockForSecondFolder.Checksum, secondResultBlock.Checksum)
 	require.Equal(t, blockForSecondFolder.IndexPath, secondResultBlock.IndexPath)
-	folder2 := shipper.storageConfig.NamedStores.Filesystem["folder-2"].Directory
+	folder2 := bloomClient.storageConfig.NamedStores.Filesystem["folder-2"].Directory
 
 	savedFilePath = filepath.Join(folder2, path)
 	require.FileExists(t, savedFilePath)
 	savedData, err = os.ReadFile(savedFilePath)
 	require.NoError(t, err)
-	require.Equal(t, blockForSecondFolderData, string(extractFileFromTGZ(savedData, "bloom")))
+	require.Equal(t, blockForSecondFolderData, string(savedData))
 }
 
 func Test_BloomClient_DeleteBlocks(t *testing.T) {
-	shipper := createShipper(t)
-	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
+	bloomClient := createClient(t)
+	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
 	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400-1695276000-1")
 	createBlockFile(t, block1Path)
 	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600-1695535200-2")
@@ -401,25 +335,19 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 			IndexPath: uuid.New().String(),
 		},
 	}
-	err := shipper.DeleteBlocks(context.Background(), blocksToDelete)
+	err := bloomClient.DeleteBlocks(context.Background(), blocksToDelete)
 	require.NoError(t, err)
 	require.NoFileExists(t, block1Path)
 	require.NoFileExists(t, block2Path)
 }
 
-func createBlockFile(t *testing.T, path string) []byte {
+func createBlockFile(t *testing.T, path string) string {
 	err := os.MkdirAll(path[:strings.LastIndex(path, "/")], 0755)
 	require.NoError(t, err)
-	bloomContent := []byte(uuid.NewString())
-	indexContent := []byte(uuid.NewString())
-	outputFile, err := os.Create(path)
+	fileContent := uuid.NewString()
+	err = os.WriteFile(path, []byte(fileContent), 0700)
 	require.NoError(t, err)
-	byteReader := v1.NewByteReader(bytes.NewBuffer(indexContent), bytes.NewBuffer(bloomContent))
-	err = v1.TarGzMemory(outputFile, byteReader)
-	require.NoError(t, err)
-	err = outputFile.Close()
-	require.NoError(t, err)
-	return bloomContent
+	return fileContent
 }
 
 func Test_TablesByPeriod(t *testing.T) {
@@ -549,7 +477,7 @@ func Test_createMetaRef(t *testing.T) {
 	}
 }
 
-func createShipper(t *testing.T) *BloomClient {
+func createClient(t *testing.T) *BloomClient {
 	periodicConfigs := createPeriodConfigs()
 	namedStores := storage.NamedStores{
 		Filesystem: map[string]storage.NamedFSConfig{
@@ -562,9 +490,9 @@ func createShipper(t *testing.T) *BloomClient {
 
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
-	bshipper, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
+	bloomClient, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
 	require.NoError(t, err)
-	return bshipper
+	return bloomClient
 }
 
 func createPeriodConfigs() []config.PeriodConfig {
