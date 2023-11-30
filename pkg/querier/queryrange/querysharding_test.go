@@ -132,7 +132,7 @@ func Test_shardSplitter(t *testing.T) {
 				},
 			}
 
-			resp, err := splitter.Do(user.InjectOrgID(context.Background(), "1"), req)
+			resp, err := splitter.Do(user.InjectOrgID(context.Background(), "1"), req.(queryrangebase.Request))
 			require.Nil(t, err)
 
 			require.Equal(t, tc.shouldShard, didShard)

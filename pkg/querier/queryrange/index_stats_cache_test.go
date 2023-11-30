@@ -15,14 +15,17 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestIndexStatsCache(t *testing.T) {
 	cfg := queryrangebase.ResultsCacheConfig{
-		CacheConfig: cache.Config{
-			Cache: cache.NewMockCache(),
+		Config: resultscache.Config{
+			CacheConfig: cache.Config{
+				Cache: cache.NewMockCache(),
+			},
 		},
 	}
 	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
@@ -79,7 +82,7 @@ func TestIndexStatsCache(t *testing.T) {
 	// should reuse part of the previous request and issue a new request for the remaining time till end.
 	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
 	*calls = 0
-	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd().Add(15*time.Minute))
+	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd().Add(15*time.Minute)).(queryrangebase.Request)
 	expectedStats := &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
 			Streams: 2,
@@ -158,8 +161,10 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := queryrangebase.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					Cache: cache.NewMockCache(),
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						Cache: cache.NewMockCache(),
+					},
 				},
 			}
 			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)

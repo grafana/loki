@@ -14,6 +14,7 @@ import (
 	strings "strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -55,7 +56,7 @@ func (r *LokiRequest) GetStart() time.Time {
 	return r.StartTs
 }
 
-func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
+func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) resultscache.Request {
 	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
@@ -108,7 +109,7 @@ func (r *LokiInstantRequest) GetStart() time.Time {
 	return r.TimeTs
 }
 
-func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangebase.Request {
+func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) resultscache.Request {
 	clone := *r
 	clone.TimeTs = s
 	return &clone
@@ -146,7 +147,7 @@ func (r *LokiSeriesRequest) GetStart() time.Time {
 	return r.StartTs
 }
 
-func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
+func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) resultscache.Request {
 	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
@@ -220,7 +221,7 @@ func (r *LabelRequest) GetStep() int64 {
 	return 0
 }
 
-func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
+func (r *LabelRequest) WithStartEnd(s, e time.Time) resultscache.Request {
 	clone := *r
 	tmp := s
 	clone.Start = &tmp

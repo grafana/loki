@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -23,7 +24,7 @@ type IndexStatsSplitter struct {
 }
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (i IndexStatsSplitter) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
+func (i IndexStatsSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
 	return fmt.Sprintf("indexStats:%s", cacheKey)
 }
@@ -32,7 +33,7 @@ type IndexStatsExtractor struct{}
 
 // Extract favors the ability to cache over exactness of results. It assumes a constant distribution
 // of log volumes over a range and will extract subsets proportionally.
-func (p IndexStatsExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (p IndexStatsExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	factor := util.GetFactorOfTime(start, end, resStart, resEnd)
 
 	statsRes := res.(*IndexStatsResponse)
@@ -73,7 +74,7 @@ var statsCacheMiddlewareNowTimeFunc = model.Now
 // shouldCacheStats returns true if the request should be cached.
 // It returns false if:
 // - The request end time falls within the max_stats_cache_freshness duration.
-func shouldCacheStats(ctx context.Context, req queryrangebase.Request, lim Limits) (bool, error) {
+func shouldCacheStats(ctx context.Context, req resultscache.Request, lim Limits) (bool, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return false, err
@@ -93,7 +94,7 @@ func NewIndexStatsCacheMiddleware(
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
 	shouldCache queryrangebase.ShouldCacheFn,
-	parallelismForReq func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int,
+	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
 	transformer UserIDTransformer,
 	metrics *queryrangebase.ResultsCacheMetrics,

@@ -10,13 +10,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"

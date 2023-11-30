@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -47,7 +48,7 @@ var (
 type prometheusCodec struct{}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
-func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
+func (q *PrometheusRequest) WithStartEnd(start, end time.Time) resultscache.Request {
 	clone := *q
 	clone.Start = start
 	clone.End = end
