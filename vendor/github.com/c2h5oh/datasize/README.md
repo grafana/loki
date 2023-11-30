@@ -19,7 +19,7 @@ Just like `time` package provides `time.Second`, `time.Day` constants `datasize`
 Just like `time` package provides `duration.Nanoseconds() uint64 `, `duration.Hours() float64` helpers `datasize` has.
 
 * `ByteSize.Bytes() uint64`
-* `ByteSize.Kilobytes() float4`
+* `ByteSize.Kilobytes() float64`
 * `ByteSize.Megabytes() float64`
 * `ByteSize.Gigabytes() float64`
 * `ByteSize.Terabytes() float64`

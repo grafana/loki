@@ -240,6 +240,9 @@ loki:
     distributor:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    tracing:
+      enabled: {{ .Values.loki.tracing.enabled }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -254,7 +257,6 @@ loki:
     grpc_listen_port: 9095
   # -- Limits config
   limits_config:
-    enforce_metric_name: false
     reject_old_samples: true
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
@@ -296,6 +298,26 @@ loki:
       userAssignedId: null
       requestTimeout: null
       endpointSuffix: null
+    swift:
+      auth_version: null
+      auth_url: null
+      internal: null
+      username: null
+      user_domain_name: null
+      user_domain_id: null
+      user_id: null
+      password: null
+      domain_id: null
+      domain_name: null
+      project_id: null
+      project_name: null
+      project_domain_id: null
+      project_domain_name: null
+      region_name: null
+      container_name: null
+      max_retries: null
+      connect_timeout: null
+      request_timeout: null
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
@@ -345,6 +367,9 @@ loki:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   # -- Optional distributor configuration
   distributor: {}
+  # -- Enable tracing
+  tracing:
+    enabled: false
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
@@ -800,6 +825,8 @@ write:
   dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for write pods
+  topologySpreadConstraints: []
   # -- Tolerations for write pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -976,6 +1003,8 @@ read:
   dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for read pods
+  topologySpreadConstraints: []
   # -- Tolerations for read pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1077,6 +1106,8 @@ backend:
   dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for backend pods
+  topologySpreadConstraints: []
   # -- Tolerations for backend pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1318,6 +1349,8 @@ gateway:
     allowPrivilegeEscalation: false
   # -- Resource requests and limits for the gateway
   resources: {}
+  # -- Containers to add to the gateway pods
+  extraContainers: []
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string
@@ -1333,6 +1366,8 @@ gateway:
   dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway pods
   tolerations: []
   # Gateway service configuration
@@ -1419,6 +1454,8 @@ gateway:
     customWriteUrl: null
     # -- Override Backend URL
     customBackendUrl: null
+    # -- Allows overriding the DNS resolver address nginx will use.
+    resolver: ""
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
@@ -1463,8 +1500,6 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
-tracing:
-  jaegerAgentHost: ""
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------

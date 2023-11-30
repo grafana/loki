@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -34,19 +35,22 @@ type DownstreamHandler struct {
 	next   queryrangebase.Handler
 }
 
-func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
+func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 	if logql.GetRangeType(params) == logql.InstantType {
 		return &LokiInstantRequest{
-			Query:     params.Query(),
+			Query:     params.QueryString(),
 			Limit:     params.Limit(),
 			TimeTs:    params.Start(),
 			Direction: params.Direction(),
 			Path:      "/loki/api/v1/query", // TODO(owen-d): make this derivable
-			Shards:    shards.Encode(),
+			Shards:    params.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: params.GetExpression(),
+			},
 		}
 	}
 	return &LokiRequest{
-		Query:     params.Query(),
+		Query:     params.QueryString(),
 		Limit:     params.Limit(),
 		Step:      params.Step().Milliseconds(),
 		Interval:  params.Interval().Milliseconds(),
@@ -54,7 +58,10 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 		EndTs:     params.End(),
 		Direction: params.Direction(),
 		Path:      "/loki/api/v1/query_range", // TODO(owen-d): make this derivable
-		Shards:    shards.Encode(),
+		Shards:    params.Shards(),
+		Plan: &plan.QueryPlan{
+			AST: params.GetExpression(),
+		},
 	}
 }
 
@@ -97,12 +104,12 @@ type instance struct {
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
-		req := ParamsToLokiRequest(qry.Params, qry.Shards).WithQuery(qry.Expr.String())
+		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
 		logger := spanlogger.FromContext(ctx)
 		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {

@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
-	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"hash/fnv"
 	"math"
 	"os"
@@ -26,16 +25,20 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage"
+	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
+)
+
+const (
+	DefaultNGramLength = 4
+	DefaultNGramSkip   = 0
 )
 
 func execute() {
@@ -46,30 +49,32 @@ func execute() {
 
 	flag.Parse()
 
-	objectClient, err := storage.NewObjectClient(conf.StorageConfig.TSDBShipperConfig.SharedStoreType, conf.StorageConfig, clientMetrics)
+	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
+	helpers.ExitErr("find period config for bucket", err)
+
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
 
-	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
-
 	openFn := func(p string) (shipperindex.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+		return tsdb.OpenShippableTSDB(p)
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		periodCfg.IndexTables.PathPrefix,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,
 		openFn,
-		tableRanges[len(tableRanges)-1],
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,
 	)
 	helpers.ExitErr("creating index shipper", err)
 
-	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
+	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
 	level.Info(util_log.Logger).Log("tenants", strings.Join(tenants, ","), "table", tableName)
 	helpers.ExitErr("resolving tenants", err)
 
@@ -89,18 +94,10 @@ func execute() {
 }
 
 var (
-	three      = newNGramTokenizer(3, 4, 0)
-	threeSkip1 = newNGramTokenizer(3, 4, 1)
-	threeSkip2 = newNGramTokenizer(3, 4, 2)
-	threeSkip3 = newNGramTokenizer(3, 4, 3)
-	four       = newNGramTokenizer(4, 5, 0)
-	fourSkip1  = newNGramTokenizer(4, 5, 1)
-	fourSkip2  = newNGramTokenizer(4, 5, 2)
-	five       = newNGramTokenizer(5, 6, 0)
-	six        = newNGramTokenizer(6, 7, 0)
+	three = bt.NewNGramTokenizer(3, 0)
+	four  = bt.NewNGramTokenizer(4, 0)
 
-	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
-	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
+	onePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
 )
 
 var experiments = []Experiment{
@@ -116,30 +113,30 @@ var experiments = []Experiment{
 	*/
 	NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		four,
-		true,
-		onePctError,
-	),
-
-	NewExperiment(
-		"token=4skip1_error=1%_indexchunks=true",
-		fourSkip1,
+		*four,
 		true,
 		onePctError,
 	),
 	/*
+			NewExperiment(
+				"token=4skip1_error=1%_indexchunks=true",
+				fourSkip1,
+				true,
+				onePctError,
+			),
+
+				NewExperiment(
+					"token=4skip2_error=1%_indexchunks=true",
+					fourSkip2,
+					true,
+					onePctError,
+				),
 		NewExperiment(
-			"token=4skip2_error=1%_indexchunks=true",
-			fourSkip2,
+			"token=4skip0_error=5%_indexchunks=true",
+			four,
 			true,
-			onePctError,
+			fivePctError,
 		),*/
-	NewExperiment(
-		"token=4skip0_error=5%_indexchunks=true",
-		four,
-		true,
-		fivePctError,
-	),
 	/*
 		NewExperiment(
 			"token=4skip1_error=5%_indexchunks=true",
@@ -266,11 +263,10 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	}
 	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
-	var n int         // count iterated series
-	reportEvery := 10 // report every n chunks
-	//pool := newPool(runtime.NumCPU())
-	//pool := newPool(1)
-
+	var n int // count iterated series
+	// pool := newPool(runtime.NumCPU())
+	// pool := newPool(1)
+	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
@@ -308,8 +304,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								return
 							}
 
-							cache := NewLRUCache4(150000)
-
 							transformed := make([]chunk.Chunk, 0, len(chks))
 							for _, chk := range chks {
 								transformed = append(transformed, chunk.Chunk{
@@ -333,11 +327,10 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 								for _, c := range got {
 									chunkTotalUncompressedSize += c.Data.(*chunkenc.Facade).LokiChunk().UncompressedSize()
 								}
-								metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 								n += len(got)
 
 								// iterate experiments
-								for experimentIdx, experiment := range experiments {
+								for _, experiment := range experiments {
 									bucketPrefix := os.Getenv("BUCKET_PREFIX")
 									if strings.EqualFold(bucketPrefix, "") {
 										bucketPrefix = "named-experiments-"
@@ -348,63 +341,23 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										tenant,
 										ls.String(),
 										objectClient) {
+										bloomTokenizer.SetLineTokenizer(&experiment.tokenizer)
 
 										level.Info(util_log.Logger).Log("Starting work on: ", ls.String(), "'", FNV32a(ls.String()), "'", experiment.name, tenant)
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										cache.Clear()
-
-										// Iterate chunks
-										var (
-											lines, inserts, collisions float64
-										)
-										for cidx := range got {
-											chunkTokenizer := ChunkIDTokenizer(got[cidx].ChunkRef, experiment.tokenizer)
-
-											var tokenizer Tokenizer = chunkTokenizer
-											if !experiment.encodeChunkID {
-												tokenizer = experiment.tokenizer // so I don't have to change the lines of code below
-											}
-											lc := got[cidx].Data.(*chunkenc.Facade).LokiChunk()
-
-											// Only report on the last experiment since they run serially
-											if experimentIdx == len(experiments)-1 && (n+cidx+1)%reportEvery == 0 {
-												estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
-												level.Info(util_log.Logger).Log(
-													"msg", "iterated",
-													"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
-													"chunks", len(chks),
-													"series", ls.String(),
-												)
-											}
-
-											itr, err := lc.Iterator(
-												context.Background(),
-												time.Unix(0, 0),
-												time.Unix(0, math.MaxInt64),
-												logproto.FORWARD,
-												log.NewNoopPipeline().ForStream(ls),
-											)
-											helpers.ExitErr("getting iterator", err)
-
-											for itr.Next() && itr.Error() == nil {
-												toks := tokenizer.Tokens(itr.Entry().Line)
-												lines++
-												for _, tok := range toks {
-													if tok.Key != nil {
-														if !cache.GetString(tok.Value) {
-															cache.PutStringByte(tok.Value, tok.Key)
-															if dup := sbf.TestAndAdd(tok.Key); dup {
-																collisions++
-															}
-															inserts++
-														}
-													}
-												}
-											}
-											helpers.ExitErr("iterating chunks", itr.Error())
-										} // for each chunk
+										bloom := bt.Bloom{
+											ScalableBloomFilter: *sbf,
+										}
+										series := bt.Series{
+											Fingerprint: fp,
+										}
+										swb := bt.SeriesWithBloom{
+											Bloom:  &bloom,
+											Series: &series,
+										}
+										bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
 
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
@@ -414,11 +367,8 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
 												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 											)
-											metrics.lines.WithLabelValues(experiment.name).Add(lines)
-											metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
-											metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
 
-											writeSBF(sbf,
+											writeSBF(&swb.Bloom.ScalableBloomFilter,
 												os.Getenv("DIR"),
 												fmt.Sprint(bucketPrefix, experiment.name),
 												os.Getenv("BUCKET"),
@@ -553,7 +503,7 @@ func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
 	return err
 }
 
-func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+func writeSBFToObjectStorage(_ *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
 	// Probably a better way to do this than to reopen the file, but it's late
 	file, err := os.Open(localFilename)
 	if err != nil {

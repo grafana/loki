@@ -1,18 +1,15 @@
 package main
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSearchSbf(t *testing.T) {
-	tokenizer := four
-
-	searchString := "trace"
-
 	experiment := NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		tokenizer,
+		*four,
 		true,
 		onePctError,
 	)
@@ -68,11 +65,13 @@ func TestSearchSbf(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			sbf := experiment.bloom()
-			tokens := tokenizer.Tokens(tc.inputLine)
-			for _, token := range tokens {
-				sbf.Add(token.Key)
+			tokens := four.Tokens(tc.inputLine)
+			for tokens.Next() {
+				tok := tokens.At()
+				sbf.Add(tok)
 			}
-			require.Equal(t, tc.exp, searchSbf(sbf, tokenizer, searchString))
+
+			require.Equal(t, tc.exp, searchSbf(sbf, *four, tc.inputSearch))
 		})
 	}
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/util/cfg"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -53,6 +54,7 @@ type Query struct {
 	ColoredOutput          bool
 	LocalConfig            string
 	FetchSchemaFromStorage bool
+	SchemaStore            string
 
 	// Parallelization parameters.
 
@@ -406,7 +408,11 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	cm := storage.NewClientMetrics()
 	if useRemoteSchema {
-		client, err := GetObjectClient(conf, cm)
+		if q.SchemaStore == "" {
+			return fmt.Errorf("failed to fetch remote schema. -schema-store is not set")
+		}
+
+		client, err := GetObjectClient(q.SchemaStore, conf, cm)
 		if err != nil {
 			return err
 		}
@@ -436,7 +442,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	conf.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	conf.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
-	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
+	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger, constants.Loki)
 	if err != nil {
 		return err
 	}
@@ -445,7 +451,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	var query logql.Query
 
 	if q.isInstant() {
-		query = eng.Query(logql.NewLiteralParams(
+		params, err := logql.NewLiteralParams(
 			q.QueryString,
 			q.Start,
 			q.Start,
@@ -454,9 +460,14 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
-		))
+		)
+		if err != nil {
+			return err
+		}
+
+		query = eng.Query(params)
 	} else {
-		query = eng.Query(logql.NewLiteralParams(
+		params, err := logql.NewLiteralParams(
 			q.QueryString,
 			q.Start,
 			q.End,
@@ -465,7 +476,16 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
-		))
+		)
+		if err != nil {
+			return err
+		}
+
+		query = eng.Query(params)
+	}
+
+	if err != nil {
+		return err
 	}
 
 	// execute the query
@@ -489,9 +509,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	return nil
 }
 
-func GetObjectClient(conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
+func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
 	oc, err := storage.NewObjectClient(
-		conf.StorageConfig.BoltDBShipperConfig.SharedStoreType,
+		store,
 		conf.StorageConfig,
 		cm,
 	)

@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/discovery"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
@@ -108,9 +109,9 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
-func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
 		Help:      "Time (in seconds) spent serving requests when using the index gateway",
 		Buckets:   instrument.DefBuckets,
@@ -155,7 +156,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 	sgClient.cfg.PoolConfig.HealthCheckIngesters = true
 
 	if sgClient.cfg.Mode == indexgateway.RingMode {
-		sgClient.pool = clientpool.NewPool("index-gateway", sgClient.cfg.PoolConfig, sgClient.ring, client.PoolAddrFunc(factory), logger)
+		sgClient.pool = clientpool.NewPool("index-gateway", sgClient.cfg.PoolConfig, sgClient.ring, client.PoolAddrFunc(factory), logger, metricsNamespace)
 	} else {
 		// Note we don't use clientpool.NewPool because we want to provide our own discovery function
 		poolCfg := client.PoolConfig{
@@ -164,7 +165,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 			HealthCheckTimeout: sgClient.cfg.PoolConfig.RemoteTimeout,
 		}
 		clients := prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "index_gateway_clients",
 			Help:      "The current number of index gateway clients.",
 		})

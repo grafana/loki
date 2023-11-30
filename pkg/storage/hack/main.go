@@ -56,15 +56,16 @@ func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, er
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
 				Schema:     "v13",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
-				},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					}},
 			},
 		},
 	}
 
-	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger)
+	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger, "cortex")
 	return store, &schemaCfg, err
 }
 

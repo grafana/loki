@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestVolumeCache(t *testing.T) {
@@ -25,7 +26,7 @@ func TestVolumeCache(t *testing.T) {
 				Cache: cache.NewMockCache(),
 			},
 		}
-		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 		require.NoError(t, err)
 		cacheMiddleware, err := NewVolumeCacheMiddleware(
 			log.NewNopLogger(),
@@ -116,7 +117,7 @@ func TestVolumeCache(t *testing.T) {
 
 		// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
 		*calls = 0
-		req := volReq.WithStartEnd(volReq.GetStart()+(15*time.Minute).Milliseconds(), volReq.GetEnd()+(15*time.Minute).Milliseconds())
+		req := volReq.WithStartEnd(volReq.GetStart().Add(15*time.Minute), volReq.GetEnd().Add(15*time.Minute))
 		vol := float64(0.75)
 		expectedVol := &VolumeResponse{
 			Response: &logproto.VolumeResponse{
@@ -284,7 +285,7 @@ func TestVolumeCache_RecentData(t *testing.T) {
 					Cache: cache.NewMockCache(),
 				},
 			}
-			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
 			defer c.Stop()
 			require.NoError(t, err)
 
