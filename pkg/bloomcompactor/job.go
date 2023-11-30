@@ -15,18 +15,6 @@ type SeriesMeta struct {
 	chunkRefs []index.ChunkMeta
 }
 
-func (i *SeriesMeta) Fingerprint() model.Fingerprint {
-	return i.seriesFP
-}
-
-func (i *SeriesMeta) Chunks() []index.ChunkMeta {
-	return i.chunkRefs
-}
-
-func (i *SeriesMeta) Labels() labels.Labels {
-	return i.seriesLbs
-}
-
 type Job struct {
 	tableName, tenantID, indexPath string
 	seriesMetas                    []SeriesMeta
@@ -55,18 +43,6 @@ func NewJob(
 
 func (j *Job) String() string {
 	return j.tableName + "_" + j.tenantID + "_"
-}
-
-func (j *Job) TableName() string {
-	return j.tableName
-}
-
-func (j *Job) Tenant() string {
-	return j.tenantID
-}
-
-func (j *Job) IndexPath() string {
-	return j.indexPath
 }
 
 func (j *Job) computeBounds() {

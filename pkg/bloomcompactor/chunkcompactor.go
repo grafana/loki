@@ -84,7 +84,7 @@ func buildBloomFromSeries(seriesMeta SeriesMeta, fpRate float64, tokenizer compa
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
-			Fingerprint: seriesMeta.Fingerprint(),
+			Fingerprint: seriesMeta.seriesFP,
 		},
 		Bloom: &v1.Bloom{
 			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
@@ -124,15 +124,15 @@ func buildBlockFromBloom(
 	block := bloomshipper.Block{
 		BlockRef: bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
-				TenantID:       job.Tenant(),
-				TableName:      job.TableName(),
+				TenantID:       job.tenantID,
+				TableName:      job.tableName,
 				MinFingerprint: uint64(job.minFp),
 				MaxFingerprint: uint64(job.maxFp),
 				StartTimestamp: int64(job.from),
 				EndTimestamp:   int64(job.through),
 				Checksum:       checksum,
 			},
-			IndexPath: job.IndexPath(),
+			IndexPath: job.indexPath,
 		},
 		Data: data,
 	}
@@ -141,7 +141,7 @@ func buildBlockFromBloom(
 }
 
 func createLocalDirName(workingDir string, job Job) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.TableName(), job.Tenant(), job.minFp, job.maxFp, job.from, job.through)
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.tenantID, job.tenantID, job.minFp, job.maxFp, job.from, job.through)
 	return filepath.Join(workingDir, dir)
 }
 
@@ -164,7 +164,7 @@ func CompactNewChunks(
 
 	for _, seriesMeta := range job.seriesMetas {
 		// Get chunks data from list of chunkRefs
-		chks, err := storeClient.GetChunks(ctx, makeChunkRefs(seriesMeta.Chunks(), job.Tenant(), seriesMeta.Fingerprint()))
+		chks, err := storeClient.GetChunks(ctx, makeChunkRefs(seriesMeta.chunkRefs, job.tenantID, seriesMeta.seriesFP))
 		if err != nil {
 			return bloomshipper.Block{}, err
 		}
