@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -633,6 +635,65 @@ type QueryLimitSpec struct {
 	CardinalityLimit int32 `json:"cardinalityLimit,omitempty"`
 }
 
+// BlockedQueryType defines which type of query a blocked query should apply to.
+//
+// +kubebuilder:validation:Enum=filter;limited;metric
+type BlockedQueryType string
+
+const (
+	// BlockedQueryFilter is used, when the blocked query should apply to queries using a log filter.
+	BlockedQueryFilter BlockedQueryType = "filter"
+	// BlockedQueryLimited is used, when the blocked query should apply to queries without a filter or a metric aggregation.
+	BlockedQueryLimited BlockedQueryType = "limited"
+	// BlockedQueryMetric is used, when the blocked query should apply to queries with an aggregation.
+	BlockedQueryMetric BlockedQueryType = "metric"
+)
+
+// BlockedQueryTypes defines a slice of BlockedQueryType values to be used for a blocked query.
+type BlockedQueryTypes []BlockedQueryType
+
+// BlockedQuerySpec defines the rule spec for queries to be blocked.
+//
+// +kubebuilder:validation:MinProperties:=1
+type BlockedQuerySpec struct {
+	// Hash is a 32-bit FNV-1 hash of the query string.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Query Hash"
+	Hash int32 `json:"hash,omitempty"`
+	// Pattern defines the pattern matching the queries to be blocked.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Pattern"
+	Pattern string `json:"pattern,omitempty"`
+	// Regex defines if the pattern is a regular expression. If false the pattern will be used only for exact matches.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Regex"
+	Regex bool `json:"regex,omitempty"`
+	// Types defines the list of query types that should be considered for blocking.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Types"
+	Types BlockedQueryTypes `json:"types,omitempty"`
+}
+
+// PerTenantQueryLimitSpec defines the limits applied to per tenant query path.
+type PerTenantQueryLimitSpec struct {
+	QueryLimitSpec `json:",omitempty"`
+
+	// Blocked defines the list of rules to block matching queries.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Blocked"
+	Blocked []BlockedQuerySpec `json:"blocked,omitempty"`
+}
+
 // IngestionLimitSpec defines the limits applied at the ingestion path.
 type IngestionLimitSpec struct {
 	// IngestionRate defines the sample size per second. Units MB.
@@ -773,6 +834,27 @@ type LimitsTemplateSpec struct {
 	Retention *RetentionLimitSpec `json:"retention,omitempty"`
 }
 
+// LimitsTemplateSpec defines the limits  applied at ingestion or query path.
+type PerTenantLimitsTemplateSpec struct {
+	// IngestionLimits defines the limits applied on ingested log streams.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	IngestionLimits *IngestionLimitSpec `json:"ingestion,omitempty"`
+
+	// QueryLimits defines the limit applied on querying log streams.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	QueryLimits *PerTenantQueryLimitSpec `json:"queries,omitempty"`
+
+	// Retention defines how long logs are kept in storage.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	Retention *RetentionLimitSpec `json:"retention,omitempty"`
+}
+
 // LimitsSpec defines the spec for limits applied at ingestion or query
 // path across the cluster or per tenant.
 type LimitsSpec struct {
@@ -788,7 +870,7 @@ type LimitsSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Limits per Tenant"
-	Tenants map[string]LimitsTemplateSpec `json:"tenants,omitempty"`
+	Tenants map[string]PerTenantLimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
 // RulesSpec defines the spec for the ruler component.
@@ -1148,3 +1230,12 @@ func init() {
 
 // Hub declares the v1.LokiStack as the hub CRD version.
 func (*LokiStack) Hub() {}
+
+func (t BlockedQueryTypes) String() string {
+	res := make([]string, 0, len(t))
+	for _, t := range t {
+		res = append(res, string(t))
+	}
+
+	return strings.Join(res, ",")
+}
