@@ -27,7 +27,7 @@ readonly account_key
 
 kubectl --ignore-not-found=true -n "${namespace}" delete secret test
 kubectl -n "${namespace}" create secret generic test \
-    --from-literal=environment="${azure_environment}" \
+    --from-literal=environment="$(echo -n "${azure_environment}")" \
     --from-literal=account_name="$(echo -n "${account_name}")" \
-    --from-literal=account_key="${account_key}" \
+    --from-literal=account_key="$(echo -n "${account_key}")" \
     --from-literal=container="$(echo -n "${container_name}")"
