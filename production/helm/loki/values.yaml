@@ -1451,7 +1451,7 @@ gateway:
     # -- Allows appending custom configuration to the location block, passed through the `tpl` function to allow templating
     locationSnippet: ""
     # -- Allows customizing the `client_max_body_size` directive
-    clientMaxBodySize: 4m
+    clientMaxBodySize: 4M
     # -- Override Read URL
     customReadUrl: null
     # -- Override Write URL
