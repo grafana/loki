@@ -378,7 +378,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 											metrics.sbfCreationTime.WithLabelValues(experiment.name).Add(float64(endTime - startTime))
 											metrics.sbfsCreated.WithLabelValues(experiment.name).Inc()
-											metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 
 											if err != nil {
 												helpers.ExitErr("writing sbf to file", err)
