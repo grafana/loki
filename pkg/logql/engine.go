@@ -356,6 +356,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			return q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
 		case QuantileSketchVector:
 			return JoinQuantileSketchVector(next, ts, vec, stepEvaluator, q.params)
+		default:
+			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
 	}
 	return nil, nil

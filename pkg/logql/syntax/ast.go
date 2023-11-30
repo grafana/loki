@@ -41,7 +41,7 @@ func Clone[T Expr](e T) (T, error) {
 	e.Accept(v)
 	cast, ok := v.cloned.(T)
 	if !ok {
-		return empty, fmt.Errorf("unpexpected type of cloned expression: want %T, got %T", empty, v.cloned)
+		return empty, fmt.Errorf("unexpected type of cloned expression: want %T, got %T", empty, v.cloned)
 	}
 	return cast, nil
 }
@@ -1147,7 +1147,9 @@ const (
 	OpStrict    = "--strict"
 	OpKeepEmpty = "--keep-empty"
 
-	// internal expressions not represented in LogQL.
+	// internal expressions not represented in LogQL. These are used to
+	// evaluate expressions differently resulting in intermediate formats
+	// that are not consumable by LogQL clients but are used for sharding.
 	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
 )
 
