@@ -19,7 +19,7 @@ readonly namespace="${NAMESPACE:-openshift-logging}"
 
 readonly azure_environment="AzureGlobal"
 
-resource_group=$(az storage account show --name "$account_name" | jq -r '.resourceGroup')
+resource_group=$(az storage account show --name "${account_name}" | jq -r '.resourceGroup')
 readonly resource_group
 
 account_key=$(az storage account keys list --resource-group "${resource_group}" --account-name "${account_name}" | jq -r '.[0].value')
