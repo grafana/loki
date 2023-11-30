@@ -51,7 +51,7 @@ func createTestChunk(fp model.Fingerprint, lb labels.Labels) chunk.Chunk {
 func TestChunkCompactor_BuildBloomFromSeries(t *testing.T) {
 	label := labels.FromStrings("foo", "bar")
 	fp := model.Fingerprint(label.Hash())
-	seriesMeta := SeriesMeta{
+	seriesMeta := seriesMeta{
 		seriesFP:  fp,
 		seriesLbs: label,
 	}
@@ -84,7 +84,7 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 		MaxTime:  999,
 	}
 
-	seriesMetas := []SeriesMeta{
+	seriesMetas := []seriesMeta{
 		{
 			seriesFP:  fp1,
 			seriesLbs: label,

@@ -348,7 +348,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			return fmt.Errorf("unexpected multi-tenant")
 		}
 
-		var seriesMetas []SeriesMeta
+		var seriesMetas []seriesMeta
 		// TODO: Make these casts safely
 		if err := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
 			ctx, nil,
@@ -369,7 +369,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 				var temp []tsdbindex.ChunkMeta
 				copy(temp, chksMetas)
 				//All seriesMetas given a table within fp of this compactor shard
-				seriesMetas = append(seriesMetas, SeriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
+				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
 			},
 		); err != nil {
 			errs.Add(err)

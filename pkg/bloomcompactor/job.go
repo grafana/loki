@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-type SeriesMeta struct {
+type seriesMeta struct {
 	seriesFP  model.Fingerprint
 	seriesLbs labels.Labels
 	chunkRefs []index.ChunkMeta
@@ -17,7 +17,7 @@ type SeriesMeta struct {
 
 type Job struct {
 	tableName, tenantID, indexPath string
-	seriesMetas                    []SeriesMeta
+	seriesMetas                    []seriesMeta
 
 	// We compute them lazily. Unset value is 0.
 	from, through model.Time
@@ -29,7 +29,7 @@ func NewJob(
 	tenantID string,
 	tableName string,
 	indexPath string,
-	seriesMetas []SeriesMeta,
+	seriesMetas []seriesMeta,
 ) Job {
 	j := Job{
 		tenantID:    tenantID,
