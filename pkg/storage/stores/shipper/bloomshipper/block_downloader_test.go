@@ -64,7 +64,7 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 	require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
 
 	downloader.stop()
-	require.Eventuallyf(t, func() bool {
+	require.Eventually(t, func() bool {
 		return stoppedWorkersCount.Load() == int32(workersCount)
 	}, 1*time.Second, 10*time.Millisecond, "expected all %d workers to be stopped", workersCount)
 }
