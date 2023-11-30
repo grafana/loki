@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	"github.com/go-kit/log"
@@ -457,6 +458,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	if len(metas) == 0 {
 		localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
+		defer func() {
+			//clean up the bloom directory
+			if err := os.RemoveAll(localDst); err != nil {
+				level.Error(logger).Log(fmt.Sprintf("failed to remove block directory %s", localDst), err)
+			}
+		}()
+
 		blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
