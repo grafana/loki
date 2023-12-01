@@ -367,7 +367,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 				}
 
 				temp := make([]tsdbindex.ChunkMeta, len(chksMetas))
-				copy(temp, chksMetas)
+				_ = copy(temp, chksMetas)
 				//All seriesMetas given a table within fp of this compactor shard
 				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
 			},
@@ -379,7 +379,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		jobLogger := log.With(logger, "job", job.String())
 		c.metrics.compactionRunJobStarted.Inc()
 
-		if err := c.runCompact(ctx, jobLogger, job, c.bloomShipperClient, bt, sc); err != nil {
+		if err := c.runCompact(ctx, jobLogger, job, bt, sc); err != nil {
 			c.metrics.compactionRunJobFailed.Inc()
 			errs.Add(errors.Wrap(err, "runBloomCompact failed"))
 			return errs.Err()
@@ -433,12 +433,11 @@ func (c *Compactor) compactTenantWithRetries(ctx context.Context, logger log.Log
 	)
 }
 
-func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, bloomShipperClient bloomshipper.Client, bt *v1.BloomTokenizer, storeClient storeClient) error {
+func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, bt *v1.BloomTokenizer, storeClient storeClient) error {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
 		MinFingerprint: uint64(job.minFp),
@@ -451,7 +450,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	var bloomBlocksRefs []bloomshipper.BlockRef
 	var tombstonedBlockRefs []bloomshipper.BlockRef
 
-	metas, err := bloomShipperClient.GetMetas(ctx, metaSearchParams)
+	metas, err := c.bloomShipperClient.GetMetas(ctx, metaSearchParams)
 	if err != nil {
 		return err
 	}
@@ -473,14 +472,14 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 
 		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
-		storedBlock, err := CompactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
+		storedBlock, err := compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
 			return level.Error(logger).Log("failed to compact new chunks", err)
 		}
 
 		// Do not change the signature of PutBlocks yet.
-		// Once block size is limited potentially, CompactNewChunks will return multiple blocks, hence a list is appropriate.
-		storedBlocks, err := bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
+		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
+		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
 		if err != nil {
 			level.Error(logger).Log("putting blocks to storage", err)
 			return err
@@ -521,7 +520,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		Tombstones: tombstonedBlockRefs,
 		Blocks:     bloomBlocksRefs,
 	}
-	err = bloomShipperClient.PutMeta(ctx, meta)
+	err = c.bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Error(logger).Log("putting meta.json to storage", err)
 		return err

@@ -97,7 +97,7 @@ func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compa
 }
 
 // TODO Test this when bloom block size check is implemented
-func buildBlockFromBloom(
+func buildBlockFromBlooms(
 	ctx context.Context,
 	logger log.Logger,
 	builder blockBuilder,
@@ -141,12 +141,12 @@ func buildBlockFromBloom(
 }
 
 func createLocalDirName(workingDir string, job Job) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.tenantID, job.tenantID, job.minFp, job.maxFp, job.from, job.through)
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.tableName, job.tenantID, job.minFp, job.maxFp, job.from, job.through)
 	return filepath.Join(workingDir, dir)
 }
 
 // Compacts given list of chunks, uploads them to storage and returns a list of bloomBlocks
-func CompactNewChunks(
+func compactNewChunks(
 	ctx context.Context,
 	logger log.Logger,
 	job Job,
@@ -160,7 +160,7 @@ func CompactNewChunks(
 		return bloomshipper.Block{}, err
 	}
 
-	var blooms []v1.SeriesWithBloom
+	blooms := make([]v1.SeriesWithBloom, len(job.seriesMetas))
 
 	for _, seriesMeta := range job.seriesMetas {
 		// Get chunks data from list of chunkRefs
@@ -174,7 +174,7 @@ func CompactNewChunks(
 	}
 
 	// Build and upload bloomBlock to storage
-	block, err := buildBlockFromBloom(ctx, logger, builder, blooms, job)
+	block, err := buildBlockFromBlooms(ctx, logger, builder, blooms, job)
 	if err != nil {
 		level.Error(logger).Log("building bloomBlocks", err)
 		return bloomshipper.Block{}, err
