@@ -359,7 +359,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										}
 										err := bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
 										if err != nil {
-											level.Info(util_log.Logger).Log("error populating SWB", err)
+											level.Error(util_log.Logger).Log("msg", "failed populating SeriesWithBloom", "err", err)
 										}
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
