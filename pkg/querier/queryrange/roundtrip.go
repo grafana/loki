@@ -458,10 +458,7 @@ func NewLogFilterTripperware(
 			)
 		}
 
-		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-		}
-		return next
+		return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 	}), nil
 }
 
@@ -541,10 +538,7 @@ func NewSeriesTripperware(
 	}
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-		}
-		return next
+		return NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 	}), nil
 }
 
@@ -575,11 +569,8 @@ func NewLabelsTripperware(
 	}
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		if len(queryRangeMiddleware) > 0 {
-			// Do not forward any request header.
-			return base.MergeMiddlewares(queryRangeMiddleware...).Wrap(next)
-		}
-		return next
+		// Do not forward any request header.
+		return base.MergeMiddlewares(queryRangeMiddleware...).Wrap(next)
 	}), nil
 }
 
