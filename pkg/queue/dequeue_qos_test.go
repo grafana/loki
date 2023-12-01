@@ -44,7 +44,7 @@ func enqueueRequestsForActor(t testing.TB, actor []string, useActor bool, queue 
 			if !useActor {
 				actor = nil
 			}
-			err := queue.Enqueue("tenant", actor, r, 0, nil)
+			err := queue.Enqueue("tenant", actor, r, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +58,7 @@ func BenchmarkQueryFairness(t *testing.B) {
 
 	for _, useActor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("use hierarchical queues = %v", useActor), func(t *testing.B) {
-			requestQueue := NewRequestQueue(1024, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
+			requestQueue := NewRequestQueue(1024, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 			enqueueRequestsForActor(t, []string{}, useActor, requestQueue, numSubRequestsActorA, 50*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"a"}, useActor, requestQueue, numSubRequestsActorA, 100*time.Millisecond)
 			enqueueRequestsForActor(t, []string{"b"}, useActor, requestQueue, numSubRequestsActorB, 50*time.Millisecond)
@@ -133,18 +133,18 @@ func TestQueryFairnessAcrossSameLevel(t *testing.T) {
 			  456: [210]
 	**/
 
-	requestQueue := NewRequestQueue(1024, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
-	_ = requestQueue.Enqueue("tenant1", []string{}, r(0), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{}, r(1), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{}, r(2), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(10), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(11), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(12), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(20), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(21), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(22), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "123"}, r(200), 0, nil)
-	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "456"}, r(210), 0, nil)
+	requestQueue := NewRequestQueue(1024, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
+	_ = requestQueue.Enqueue("tenant1", []string{}, r(0), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{}, r(1), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{}, r(2), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(10), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(11), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"abc"}, r(12), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(20), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(21), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz"}, r(22), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "123"}, r(200), nil)
+	_ = requestQueue.Enqueue("tenant1", []string{"xyz", "456"}, r(210), nil)
 	requestQueue.queues.recomputeUserConsumers()
 
 	items := make([]int, 0)

@@ -39,10 +39,18 @@ type blockDownloader struct {
 	wg      sync.WaitGroup
 }
 
+type queueLimits struct {
+	limits Limits
+}
+
+func (l *queueLimits) MaxConsumers(tenantID string, _ int) int {
+	return l.limits.BloomGatewayBlocksDownloadingParallelism(tenantID)
+}
+
 func newBlockDownloader(config config.Config, blockClient BlockClient, limits Limits, logger log.Logger, reg prometheus.Registerer) (*blockDownloader, error) {
 	queueMetrics := queue.NewMetrics(reg, constants.Loki, "bloom_blocks_downloader")
 	//add cleanup service
-	downloadingQueue := queue.NewRequestQueue(config.BlocksDownloadingQueue.MaxTasksEnqueuedPerTenant, time.Minute, queueMetrics)
+	downloadingQueue := queue.NewRequestQueue(config.BlocksDownloadingQueue.MaxTasksEnqueuedPerTenant, time.Minute, &queueLimits{limits: limits}, queueMetrics)
 	activeUsersService := util.NewActiveUsersCleanupWithDefaultValues(queueMetrics.Cleanup)
 
 	ctx := context.Background()
@@ -155,11 +163,10 @@ func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, r
 	errCh := make(chan error, len(references))
 	blocksCh := make(chan blockWithQuerier, len(references))
 
-	downloadingParallelism := d.limits.BloomGatewayBlocksDownloadingParallelism(tenantID)
 	for _, reference := range references {
 		task := NewBlockDownloadingTask(ctx, reference, blocksCh, errCh)
 		level.Debug(d.logger).Log("msg", "enqueuing task to download block", "block", reference.BlockPath)
-		err := d.queue.Enqueue(tenantID, nil, task, downloadingParallelism, nil)
+		err := d.queue.Enqueue(tenantID, nil, task, nil)
 		if err != nil {
 			errCh <- fmt.Errorf("error enquing downloading task for block %s : %w", reference.BlockPath, err)
 			return blocksCh, errCh
