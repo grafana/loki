@@ -4,7 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/log"
 )
 
 func TestClone(t *testing.T) {
@@ -75,6 +78,20 @@ func TestClone(t *testing.T) {
 			require.Equal(t, expr.Pretty(0), actual.Pretty(0))
 		})
 	}
+}
+
+func TestCLoneStringLabelFilter(t *testing.T) {
+	expr := newPipelineExpr(
+		newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+		MultiStageExpr{
+			newLogfmtParserExpr(nil),
+			newLabelFilterExpr(&log.StringLabelFilter{Matcher: labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+		},
+	)
+	actual, err := Clone[Expr](expr)
+	require.NoError(t, err)
+
+	require.Equal(t, expr.Pretty(0), actual.Pretty(0))
 }
 
 func TestCloneParseTestCases(t *testing.T) {
