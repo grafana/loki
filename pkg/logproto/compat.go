@@ -261,8 +261,8 @@ func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Reque
 	return &clone
 }
 
-// WithStartEnd clone the current request with different start and end timestamp.
-func (m *IndexStatsRequest) WithStartEndTime(start, end time.Time) resultscache.Request {
+// WithStartEndForCache implements resultscache.Request.
+func (m *IndexStatsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
 	return m.WithStartEnd(start, end).(resultscache.Request)
 }
 
@@ -314,7 +314,8 @@ func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	return &clone
 }
 
-func (m *VolumeRequest) WithStartEndTime(start, end time.Time) resultscache.Request {
+// WithStartEndForCache implements resultscache.Request.
+func (m *VolumeRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
 	return m.WithStartEnd(start, end).(resultscache.Request)
 }
 

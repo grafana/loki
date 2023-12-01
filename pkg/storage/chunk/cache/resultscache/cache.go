@@ -339,7 +339,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 		// If there is a bit missing at the front, make a request for that.
 		if start < extent.Start {
-			r := req.WithStartEndTime(time.UnixMilli(start), time.UnixMilli(extent.Start))
+			r := req.WithStartEndForCache(time.UnixMilli(start), time.UnixMilli(extent.Start))
 			requests = append(requests, r)
 		}
 		res, err := extent.toResponse()
@@ -353,7 +353,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 	// Lastly, make a request for any data missing at the end.
 	if start < req.GetEnd().UnixMilli() {
-		r := req.WithStartEndTime(time.UnixMilli(start), time.UnixMilli(end))
+		r := req.WithStartEndForCache(time.UnixMilli(start), time.UnixMilli(end))
 		requests = append(requests, r)
 	}
 

@@ -19,8 +19,8 @@ type Request interface {
 	GetQuery() string
 	// GetCachingOptions returns the caching options.
 	GetCachingOptions() CachingOptions
-	// WithStartEndTime clone the current request with different start and end timestamp.
-	WithStartEndTime(start time.Time, end time.Time) Request
+	// WithStartEndForCache clone the current request with different start and end timestamp.
+	WithStartEndForCache(start time.Time, end time.Time) Request
 }
 
 type Response interface {

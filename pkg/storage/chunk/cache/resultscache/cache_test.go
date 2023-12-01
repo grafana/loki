@@ -441,7 +441,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 
 			// create request with start end within the key extents
-			req := parsedRequest.WithStartEndTime(time.UnixMilli(int64(modelNow)-(50*1e3)), time.UnixMilli(int64(modelNow)-(10*1e3)))
+			req := parsedRequest.WithStartEndForCache(time.UnixMilli(int64(modelNow)-(50*1e3)), time.UnixMilli(int64(modelNow)-(10*1e3)))
 
 			// fill cache
 			key := ConstSplitter(day).GenerateCacheKey(context.Background(), "1", req)
@@ -541,7 +541,7 @@ func mkExtentWithStep(start, end, step int64) Extent {
 	}
 }
 
-func (r *MockRequest) WithStartEndTime(start time.Time, end time.Time) Request {
+func (r *MockRequest) WithStartEndForCache(start time.Time, end time.Time) Request {
 	m := *r
 	m.Start = start
 	m.End = end
