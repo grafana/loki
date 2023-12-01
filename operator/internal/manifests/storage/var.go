@@ -10,9 +10,9 @@ const (
 	// EnvAWSAccessKeySecre is the environment variable to specify the AWS client secret to access S3.
 	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET"
 	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
-	EnvAzureStorageAccountName = "AZURE_ACCOUNT_NAME"
+	EnvAzureStorageAccountName = "AZURE_STORAGE_ACCOUNT_NAME"
 	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
-	EnvAzureStorageAccountKey = "AZURE_ACCOUNT_KEY"
+	EnvAzureStorageAccountKey = "AZURE_STORAGE_ACCOUNT_KEY"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
 	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
 
