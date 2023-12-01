@@ -251,7 +251,7 @@ func (m *IndexStatsRequest) GetQuery() string {
 }
 
 // GetCachingOptions returns the caching options.
-func (m *IndexStatsRequest) GetCachingOptions() (res resultscache.CachingOptions) { return }
+func (m *IndexStatsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
 func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Request {
@@ -304,7 +304,7 @@ func (m *VolumeRequest) GetQuery() string {
 }
 
 // GetCachingOptions returns the caching options.
-func (m *VolumeRequest) GetCachingOptions() (res resultscache.CachingOptions) { return }
+func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
 func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {

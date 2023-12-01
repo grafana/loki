@@ -92,7 +92,7 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
-func (r *LokiRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
+func (*LokiRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 func (r *LokiInstantRequest) GetStep() int64 {
 	return 0

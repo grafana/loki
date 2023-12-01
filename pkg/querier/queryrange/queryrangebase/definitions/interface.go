@@ -44,7 +44,7 @@ type Request interface {
 	// GetQuery returns the query of the request.
 	GetQuery() string
 	// GetCachingOptions returns the caching options.
-	GetCachingOptions() resultscache.CachingOptions
+	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
 	WithStartEnd(start time.Time, end time.Time) Request
 	// WithQuery clone the current request with a different query.
@@ -52,6 +52,8 @@ type Request interface {
 	// LogToSpan writes information about this request to an OpenTracing span
 	LogToSpan(opentracing.Span)
 }
+
+type CachingOptions = resultscache.CachingOptions
 
 // Response represents a query range response.
 type Response interface {

@@ -7,7 +7,7 @@ import (
 
 // Helpful aliases for refactoring circular imports
 
-type CachingOptions = resultscache.CachingOptions
+type CachingOptions = definitions.CachingOptions
 type PrometheusResponseHeader = definitions.PrometheusResponseHeader
 type PrometheusRequestHeader = definitions.PrometheusRequestHeader
 type Codec = definitions.Codec
