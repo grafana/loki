@@ -1,4 +1,4 @@
-package storage_test
+package storage
 
 import (
 	"testing"
@@ -8,54 +8,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestConfigureDeploymentForStorageType(t *testing.T) {
 	type tt struct {
 		desc string
-		opts storage.Options
+		opts Options
 		dpl  *appsv1.Deployment
 		want *appsv1.Deployment
 	}
 
 	tc := []tt{
 		{
-			desc: "other object storage",
-			opts: storage.Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretSwift,
-			},
-			dpl: &appsv1.Deployment{
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-ingester",
-								},
-							},
-						},
-					},
-				},
-			},
-			want: &appsv1.Deployment{
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-ingester",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
 			desc: "object storage AlibabaCloud",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretAlibabaCloud,
 			},
@@ -88,7 +54,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAlibabaCloudAccessKeyID,
+											Name: EnvAlibabaCloudAccessKeyID,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -99,7 +65,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAlibabaCloudAccessKeySecret,
+											Name: EnvAlibabaCloudAccessKeySecret,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -129,7 +95,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		},
 		{
 			desc: "object storage Azure",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretAzure,
 			},
@@ -162,7 +128,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAzureStorageAccountName,
+											Name: EnvAzureStorageAccountName,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -173,7 +139,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAzureStorageAccountKey,
+											Name: EnvAzureStorageAccountKey,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -203,7 +169,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		},
 		{
 			desc: "object storage GCS",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretGCS,
 			},
@@ -236,7 +202,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name:  storage.EnvGoogleApplicationCredentials,
+											Name:  EnvGoogleApplicationCredentials,
 											Value: "/etc/storage/secrets/key.json",
 										},
 									},
@@ -259,7 +225,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		},
 		{
 			desc: "object storage S3",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 			},
@@ -292,7 +258,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAWSAccessKeyID,
+											Name: EnvAWSAccessKeyID,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -303,7 +269,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAWSAccessKeySecret,
+											Name: EnvAWSAccessKeySecret,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -331,13 +297,87 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "object storage Swift",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretSwift,
+			},
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvOpenStackSwiftUsername,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "username",
+												},
+											},
+										},
+										{
+											Name: EnvOpenStackSwiftPassword,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "password",
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tc {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := storage.ConfigureDeployment(tc.dpl, tc.opts)
+			err := ConfigureDeployment(tc.dpl, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -347,48 +387,15 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 func TestConfigureStatefulSetForStorageType(t *testing.T) {
 	type tt struct {
 		desc string
-		opts storage.Options
+		opts Options
 		sts  *appsv1.StatefulSet
 		want *appsv1.StatefulSet
 	}
 
 	tc := []tt{
 		{
-			desc: "other object storage",
-			opts: storage.Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretSwift,
-			},
-			sts: &appsv1.StatefulSet{
-				Spec: appsv1.StatefulSetSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-ingester",
-								},
-							},
-						},
-					},
-				},
-			},
-			want: &appsv1.StatefulSet{
-				Spec: appsv1.StatefulSetSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-ingester",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
 			desc: "object storage AlibabaCloud",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretAlibabaCloud,
 			},
@@ -421,7 +428,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAlibabaCloudAccessKeyID,
+											Name: EnvAlibabaCloudAccessKeyID,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -432,7 +439,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAlibabaCloudAccessKeySecret,
+											Name: EnvAlibabaCloudAccessKeySecret,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -462,7 +469,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		},
 		{
 			desc: "object storage Azure",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretAzure,
 			},
@@ -495,7 +502,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAzureStorageAccountName,
+											Name: EnvAzureStorageAccountName,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -506,7 +513,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAzureStorageAccountKey,
+											Name: EnvAzureStorageAccountKey,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -536,7 +543,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		},
 		{
 			desc: "object storage GCS",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretGCS,
 			},
@@ -569,7 +576,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name:  storage.EnvGoogleApplicationCredentials,
+											Name:  EnvGoogleApplicationCredentials,
 											Value: "/etc/storage/secrets/key.json",
 										},
 									},
@@ -592,7 +599,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		},
 		{
 			desc: "object storage S3",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 			},
@@ -625,7 +632,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAWSAccessKeyID,
+											Name: EnvAWSAccessKeyID,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -636,7 +643,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAWSAccessKeySecret,
+											Name: EnvAWSAccessKeySecret,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -664,13 +671,87 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "object storage Swift",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretSwift,
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvOpenStackSwiftUsername,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "username",
+												},
+											},
+										},
+										{
+											Name: EnvOpenStackSwiftPassword,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "password",
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tc {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := storage.ConfigureStatefulSet(tc.sts, tc.opts)
+			err := ConfigureStatefulSet(tc.sts, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})
@@ -680,7 +761,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 func TestConfigureDeploymentForStorageCA(t *testing.T) {
 	type tt struct {
 		desc string
-		opts storage.Options
+		opts Options
 		dpl  *appsv1.Deployment
 		want *appsv1.Deployment
 	}
@@ -688,7 +769,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 	tc := []tt{
 		{
 			desc: "object storage other than S3",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretSwift,
 			},
@@ -712,6 +793,47 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-querier",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvOpenStackSwiftUsername,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "username",
+												},
+											},
+										},
+										{
+											Name: EnvOpenStackSwiftPassword,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "password",
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
 								},
 							},
 						},
@@ -721,10 +843,10 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 		},
 		{
 			desc: "object storage S3",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
-				TLS: &storage.TLSConfig{
+				TLS: &TLSConfig{
 					CA:  "test",
 					Key: "service-ca.crt",
 				},
@@ -766,7 +888,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAWSAccessKeyID,
+											Name: EnvAWSAccessKeyID,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -777,7 +899,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAWSAccessKeySecret,
+											Name: EnvAWSAccessKeySecret,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -821,7 +943,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := storage.ConfigureDeployment(tc.dpl, tc.opts)
+			err := ConfigureDeployment(tc.dpl, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -831,7 +953,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 	type tt struct {
 		desc string
-		opts storage.Options
+		opts Options
 		sts  *appsv1.StatefulSet
 		want *appsv1.StatefulSet
 	}
@@ -839,10 +961,10 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 	tc := []tt{
 		{
 			desc: "object storage other than S3",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretSwift,
-				TLS: &storage.TLSConfig{
+				TLS: &TLSConfig{
 					CA: "test",
 				},
 			},
@@ -866,6 +988,47 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvOpenStackSwiftUsername,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "username",
+												},
+											},
+										},
+										{
+											Name: EnvOpenStackSwiftPassword,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: "password",
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
 								},
 							},
 						},
@@ -875,10 +1038,10 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 		},
 		{
 			desc: "object storage S3",
-			opts: storage.Options{
+			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
-				TLS: &storage.TLSConfig{
+				TLS: &TLSConfig{
 					CA:  "test",
 					Key: "service-ca.crt",
 				},
@@ -920,7 +1083,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: storage.EnvAWSAccessKeyID,
+											Name: EnvAWSAccessKeyID,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -931,7 +1094,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 											},
 										},
 										{
-											Name: storage.EnvAWSAccessKeySecret,
+											Name: EnvAWSAccessKeySecret,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
@@ -975,7 +1138,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := storage.ConfigureStatefulSet(tc.sts, tc.opts)
+			err := ConfigureStatefulSet(tc.sts, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})

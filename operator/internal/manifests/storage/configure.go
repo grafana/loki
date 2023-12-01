@@ -27,6 +27,9 @@ const (
 	EnvAzureStorageAccountKey = "AZURE_ACCOUNT_KEY"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
 	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
+
+	EnvOpenStackSwiftUsername = "OS_SWIFT_USERNAME"
+	EnvOpenStackSwiftPassword = "OS_SWIFT_PASSWORD"
 	// GCSFileName is the file containing the Google credentials for authentication
 	GCSFileName = "key.json"
 
@@ -41,7 +44,7 @@ const (
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
 		return configureDeployment(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretS3:
 		if err := configureDeployment(d, opts.SecretName, opts.SharedStore); err != nil {
@@ -62,7 +65,7 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
 		return configureStatefulSet(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretS3:
 		if err := configureStatefulSet(d, opts.SecretName, opts.SharedStore); err != nil {
@@ -222,6 +225,31 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 							Name: secretName,
 						},
 						Key: "access_key_secret", // TODO(@periklis): make this a constant
+					},
+				},
+			},
+		}
+	case lokiv1.ObjectStorageSecretSwift:
+		objStoreEnvVar = []corev1.EnvVar{
+			{
+				Name: EnvOpenStackSwiftUsername,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: "username", // TODO(@periklis): make this a constant
+					},
+				},
+			},
+			{
+				Name: EnvOpenStackSwiftPassword,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: "password", // TODO(@periklis): make this a constant
 					},
 				},
 			},

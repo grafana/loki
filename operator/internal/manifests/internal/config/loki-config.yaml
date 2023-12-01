@@ -47,11 +47,11 @@ common:
     {{- with .ObjectStorage.Swift }}
     swift:
       auth_url: {{ .AuthURL }}
-      username: {{ .Username }}
+      username: ${OS_SWIFT_USENAME}
       user_domain_name: {{ .UserDomainName }}
       user_domain_id: {{ .UserDomainID }}
       user_id: {{ .UserID }}
-      password: {{ .Password }}
+      password: ${OS_SWIFT_PASSWORD}
       domain_id: {{ .DomainID }}
       domain_name: {{ .DomainName }}
       project_id: {{ .ProjectID }}
