@@ -98,6 +98,9 @@ type SelectSampleParams struct {
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
+	if s.SampleQueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
 	expr, ok := s.SampleQueryRequest.Plan.AST.(syntax.SampleExpr)
 	if !ok {
 		return nil, errors.New("only sample expression supported")
