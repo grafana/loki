@@ -912,6 +912,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	_, ctx := stats.NewContext(queryServer.Context())
 	sp := opentracing.SpanFromContext(ctx)
 
+	// If the plan is empty we want all series to be returned.
 	if req.Plan == nil {
 		parsed, err := syntax.ParseSampleExpr(req.Selector)
 		if err != nil {
