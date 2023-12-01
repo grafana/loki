@@ -18,10 +18,10 @@ const (
 	QuantileSketchMatrixType = "QuantileSketchMatrix"
 )
 
-type QuantileSketchVector []quantileSketchSample
-type QuantileSketchMatrix []QuantileSketchVector
+type ProbabilisticQuantileVector []probabilisticQuantileSample
+type ProbabilisticQuantileMatrix []ProbabilisticQuantileVector
 
-func (q QuantileSketchVector) Merge(right QuantileSketchVector) (QuantileSketchVector, error) {
+func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (ProbabilisticQuantileVector, error) {
 	// labels hash to vector index map
 	groups := make(map[uint64]int)
 	for i, sample := range q {
@@ -44,15 +44,15 @@ func (q QuantileSketchVector) Merge(right QuantileSketchVector) (QuantileSketchV
 	return q, nil
 }
 
-func (QuantileSketchVector) SampleVector() promql.Vector {
+func (ProbabilisticQuantileVector) SampleVector() promql.Vector {
 	return promql.Vector{}
 }
 
-func (q QuantileSketchVector) QuantileSketchVec() QuantileSketchVector {
+func (q ProbabilisticQuantileVector) QuantileSketchVec() ProbabilisticQuantileVector {
 	return q
 }
 
-func (q QuantileSketchVector) ToProto() *logproto.QuantileSketchVector {
+func (q ProbabilisticQuantileVector) ToProto() *logproto.QuantileSketchVector {
 	samples := make([]*logproto.QuantileSketchSample, len(q))
 	for i, sample := range q {
 		samples[i] = sample.ToProto()
@@ -60,27 +60,27 @@ func (q QuantileSketchVector) ToProto() *logproto.QuantileSketchVector {
 	return &logproto.QuantileSketchVector{Samples: samples}
 }
 
-func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) (QuantileSketchVector, error) {
-	out := make([]quantileSketchSample, len(proto.Samples))
-	var s quantileSketchSample
+func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) (ProbabilisticQuantileVector, error) {
+	out := make([]probabilisticQuantileSample, len(proto.Samples))
+	var s probabilisticQuantileSample
 	var err error
 	for i, sample := range proto.Samples {
 		s, err = quantileSketchSampleFromProto(sample)
 		if err != nil {
-			return QuantileSketchVector{}, err
+			return ProbabilisticQuantileVector{}, err
 		}
 		out[i] = s
 	}
 	return out, nil
 }
 
-func (QuantileSketchMatrix) String() string {
+func (ProbabilisticQuantileMatrix) String() string {
 	return "QuantileSketchMatrix()"
 }
 
-func (QuantileSketchMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
+func (ProbabilisticQuantileMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
 
-func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
+func (m ProbabilisticQuantileMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	values := make([]*logproto.QuantileSketchVector, len(m))
 	for i, vec := range m {
 		values[i] = vec.ToProto()
@@ -88,14 +88,14 @@ func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	return &logproto.QuantileSketchMatrix{Values: values}
 }
 
-func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) (QuantileSketchMatrix, error) {
-	out := make([]QuantileSketchVector, len(proto.Values))
-	var s QuantileSketchVector
+func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) (ProbabilisticQuantileMatrix, error) {
+	out := make([]ProbabilisticQuantileVector, len(proto.Values))
+	var s ProbabilisticQuantileVector
 	var err error
 	for i, v := range proto.Values {
 		s, err = QuantileSketchVectorFromProto(v)
 		if err != nil {
-			return QuantileSketchMatrix{}, err
+			return ProbabilisticQuantileMatrix{}, err
 		}
 		out[i] = s
 	}
@@ -111,7 +111,7 @@ type QuantileSketchStepEvaluator struct {
 func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 	next := e.iter.Next()
 	if !next {
-		return false, 0, QuantileSketchVector{}
+		return false, 0, ProbabilisticQuantileVector{}
 	}
 	ts, r := e.iter.At()
 	vec := r.QuantileSketchVec()
@@ -119,7 +119,7 @@ func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 		// Errors are not allowed in metrics unless they've been specifically requested.
 		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			e.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, QuantileSketchVector{}
+			return false, 0, ProbabilisticQuantileVector{}
 		}
 	}
 	return true, ts, vec
@@ -159,14 +159,14 @@ func newQuantileSketchIterator(
 
 //batch
 
-type quantileSketchSample struct {
+type probabilisticQuantileSample struct {
 	T int64
 	F sketch.QuantileSketch
 
 	Metric labels.Labels
 }
 
-func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
+func (q probabilisticQuantileSample) ToProto() *logproto.QuantileSketchSample {
 	metric := make([]*logproto.LabelPair, len(q.Metric))
 	for i, m := range q.Metric {
 		metric[i] = &logproto.LabelPair{Name: m.Name, Value: m.Value}
@@ -181,12 +181,12 @@ func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
 	}
 }
 
-func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (quantileSketchSample, error) {
+func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (probabilisticQuantileSample, error) {
 	s, err := sketch.QuantileSketchFromProto(proto.F)
 	if err != nil {
-		return quantileSketchSample{}, err
+		return probabilisticQuantileSample{}, err
 	}
-	out := quantileSketchSample{
+	out := probabilisticQuantileSample{
 		T:      proto.TimestampMs,
 		F:      s,
 		Metric: make(labels.Labels, len(proto.Metric)),
@@ -201,24 +201,24 @@ func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (quanti
 
 type quantileSketchBatchRangeVectorIterator struct {
 	*batchRangeVectorIterator
-	at []quantileSketchSample
+	at []probabilisticQuantileSample
 }
 
 func (r *quantileSketchBatchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
-		r.at = make([]quantileSketchSample, 0, len(r.window))
+		r.at = make([]probabilisticQuantileSample, 0, len(r.window))
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
-		r.at = append(r.at, quantileSketchSample{
+		r.at = append(r.at, probabilisticQuantileSample{
 			F:      r.agg(series.Floats),
 			T:      ts,
 			Metric: series.Metric,
 		})
 	}
-	return ts, QuantileSketchVector(r.at)
+	return ts, ProbabilisticQuantileVector(r.at)
 }
 
 func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
@@ -238,7 +238,7 @@ func JoinQuantileSketchVector(next bool, _ int64, r StepResult, stepEvaluator St
 		return nil, stepEvaluator.Error()
 	}
 
-	result := make([]QuantileSketchVector, 0)
+	result := make([]ProbabilisticQuantileVector, 0)
 
 	for next {
 		result = append(result, vec)
@@ -250,7 +250,7 @@ func JoinQuantileSketchVector(next bool, _ int64, r StepResult, stepEvaluator St
 		}
 	}
 
-	return QuantileSketchMatrix(result), stepEvaluator.Error()
+	return ProbabilisticQuantileMatrix(result), stepEvaluator.Error()
 }
 
 // QuantileSketchMatrixStepEvaluator steps through a matrix of quantile sketch
@@ -258,10 +258,10 @@ func JoinQuantileSketchVector(next bool, _ int64, r StepResult, stepEvaluator St
 type QuantileSketchMatrixStepEvaluator struct {
 	start, end, ts time.Time
 	step           time.Duration
-	m              QuantileSketchMatrix
+	m              ProbabilisticQuantileMatrix
 }
 
-func NewQuantileSketchMatrixStepEvaluator(m QuantileSketchMatrix, params Params) *QuantileSketchMatrixStepEvaluator {
+func NewQuantileSketchMatrixStepEvaluator(m ProbabilisticQuantileMatrix, params Params) *QuantileSketchMatrixStepEvaluator {
 	var (
 		start = params.Start()
 		end   = params.End()
@@ -320,7 +320,7 @@ func NewQuantileSketchMergeStepEvaluator(evaluators []StepEvaluator) *QuantileSk
 
 func (e *QuantileSketchMergeStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.evaluators[0].Next()
-	var cur QuantileSketchVector
+	var cur ProbabilisticQuantileVector
 	if ok {
 		cur = r.QuantileSketchVec()
 	}

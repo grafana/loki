@@ -383,7 +383,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			if res.Data.Type() != QuantileSketchMatrixType {
 				return nil, fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
 			}
-			stepper := NewQuantileSketchMatrixStepEvaluator(res.Data.(QuantileSketchMatrix), params)
+			stepper := NewQuantileSketchMatrixStepEvaluator(res.Data.(ProbabilisticQuantileMatrix), params)
 			xs = append(xs, stepper)
 		}
 
