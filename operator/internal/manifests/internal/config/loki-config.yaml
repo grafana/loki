@@ -12,8 +12,8 @@ common:
     azure:
       environment: {{ .Env }}
       container_name: {{ .Container }}
-      account_name: {{ .AccountName }}
-      account_key: {{ .AccountKey }}
+      account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
+      account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
       {{- with .EndpointSuffix }}
       endpoint_suffix: {{ . }}
       {{- end }}

@@ -17,6 +17,10 @@ const (
 	EnvAWSAccessKeyID = "AWS_ACCESS_KEY_ID"
 	// EnvAWSAccessKeySecre is the environment variable to specify the AWS client secret to access S3.
 	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET"
+	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
+	EnvAzureStorageAccountName = "AZURE_ACCOUNT_NAME"
+	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
+	EnvAzureStorageAccountKey = "AZURE_ACCOUNT_KEY"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
 	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
 	// GCSFileName is the file containing the Google credentials for authentication
@@ -33,6 +37,8 @@ const (
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretAzure:
+		return configureDeployment(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretGCS:
 		return configureDeployment(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretS3:
@@ -54,6 +60,8 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretAzure:
+		return configureStatefulSet(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretGCS:
 		return configureStatefulSet(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretS3:
@@ -136,6 +144,31 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 
 	var objStoreEnvVar []corev1.EnvVar
 	switch t {
+	case lokiv1.ObjectStorageSecretAzure:
+		objStoreEnvVar = []corev1.EnvVar{
+			{
+				Name: EnvAzureStorageAccountName,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: "account_name", // TODO(@periklis): make this a constant
+					},
+				},
+			},
+			{
+				Name: EnvAzureStorageAccountKey,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: "account_key", // TODO(@periklis): make this a constant
+					},
+				},
+			},
+		}
 	case lokiv1.ObjectStorageSecretGCS:
 		objStoreEnvVar = []corev1.EnvVar{
 			{
