@@ -333,7 +333,7 @@ type addrsWithTokenRange struct {
 	minToken, maxToken uint32
 }
 
-func (s addrsWithTokenRange) Cmp(token uint32) v1.BoundsCheck {
+func (s addrsWithTokenRange) cmp(token uint32) v1.BoundsCheck {
 	if token < s.minToken {
 		return v1.Before
 	} else if token > s.maxToken {
@@ -351,15 +351,15 @@ func partitionFingerprintsByAddresses(fingerprints []*logproto.GroupedChunkRefs,
 	for _, instance := range addresses {
 
 		min := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.Cmp(uint32(fingerprints[i].Fingerprint)) > v1.Before
+			return instance.cmp(uint32(fingerprints[i].Fingerprint)) > v1.Before
 		})
 
 		max := sort.Search(len(fingerprints), func(i int) bool {
-			return instance.Cmp(uint32(fingerprints[i].Fingerprint)) == v1.After
+			return instance.cmp(uint32(fingerprints[i].Fingerprint)) == v1.After
 		})
 
 		// fingerprint is out of boundaries
-		if min == len(fingerprints) || max == 0 || min == max {
+		if min == len(fingerprints) || max == 0 {
 			continue
 		}
 
@@ -406,7 +406,7 @@ func groupByInstance(boundedFingerprints []instanceWithFingerprints) []instanceW
 	return result
 }
 
-// newInstanceSortMergeIterator creates an iterator that yields serverWithToken elements
+// newInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
 // where the token of the elements are sorted in ascending order.
 func newInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[instanceWithToken] {
 	it := &sortMergeIterator[ring.InstanceDesc, uint32, instanceWithToken]{
