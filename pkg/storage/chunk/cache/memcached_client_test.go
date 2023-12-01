@@ -9,6 +9,8 @@ import (
 type mockMemcache struct {
 	sync.RWMutex
 	contents map[string][]byte
+
+	getCalledCount int
 }
 
 func newMockMemcache() *mockMemcache {
@@ -20,6 +22,7 @@ func newMockMemcache() *mockMemcache {
 func (m *mockMemcache) GetMulti(keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
 	m.RLock()
 	defer m.RUnlock()
+	m.getCalledCount++
 	result := map[string]*memcache.Item{}
 	for _, k := range keys {
 		if c, ok := m.contents[k]; ok {

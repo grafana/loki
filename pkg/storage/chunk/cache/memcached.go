@@ -50,6 +50,13 @@ type Memcached struct {
 	// So that any writer goroutine wouldn't write to it after closing `intputCh`
 	closed chan struct{}
 
+	// stopped track if `inputCh` and `closed` chan need to closed. Reason being,
+	// there are two entry points that can close these channels, when client calls
+	// .Stop() explicitly, or passed context is cancelled.
+	// So `Stop()` will make sure it's not closing the channels that are already closed, which may cause a panic.
+	stopMu  sync.Mutex
+	stopped bool
+
 	logger log.Logger
 }
 
@@ -171,11 +178,13 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	resultsCh := make(chan *result)
 	batchSize := c.cfg.BatchSize
-
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
 			select {
+			case <-ctx.Done():
+				c.closeAndStop()
+				return
 			case <-c.closed:
 				return
 			default:
@@ -185,6 +194,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 					resultCh: resultsCh,
 					batchID:  j,
 				}
+
 				j++
 			}
 		}
@@ -206,8 +216,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		select {
 		case <-c.closed:
 			return
-		default:
-			result := <-resultsCh
+		case result := <-resultsCh:
 			results[result.batchID] = result
 		}
 	}
@@ -249,9 +258,22 @@ func (c *Memcached) Stop() {
 		return
 	}
 
-	close(c.inputCh)
-	close(c.closed)
+	c.closeAndStop()
 	c.wg.Wait()
+}
+
+// closeAndStop closes the `inputCh`, `closed` channel and update the `stopped` flag to true.
+// Assumes c.inputCh, c.closed channels are non-nil
+// Go routine safe and idempotent.
+func (c *Memcached) closeAndStop() {
+	c.stopMu.Lock()
+	defer c.stopMu.Unlock()
+
+	if !c.stopped {
+		close(c.inputCh)
+		close(c.closed)
+		c.stopped = true
+	}
 }
 
 func (c *Memcached) GetCacheType() stats.CacheType {
