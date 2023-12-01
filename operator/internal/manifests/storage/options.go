@@ -24,8 +24,6 @@ type Options struct {
 type AzureStorageConfig struct {
 	Env            string
 	Container      string
-	AccountName    string
-	AccountKey     string
 	EndpointSuffix string
 }
 
@@ -36,12 +34,10 @@ type GCSStorageConfig struct {
 
 // S3StorageConfig for S3 storage config
 type S3StorageConfig struct {
-	Endpoint        string
-	Region          string
-	Buckets         string
-	AccessKeyID     string
-	AccessKeySecret string
-	SSE             S3SSEConfig
+	Endpoint string
+	Region   string
+	Buckets  string
+	SSE      S3SSEConfig
 }
 
 type S3SSEType string
@@ -60,11 +56,9 @@ type S3SSEConfig struct {
 // SwiftStorageConfig for Swift storage config
 type SwiftStorageConfig struct {
 	AuthURL           string
-	Username          string
 	UserDomainName    string
 	UserDomainID      string
 	UserID            string
-	Password          string
 	DomainID          string
 	DomainName        string
 	ProjectID         string
@@ -77,10 +71,8 @@ type SwiftStorageConfig struct {
 
 // AlibabaCloudStorageConfig for AlibabaCloud storage config
 type AlibabaCloudStorageConfig struct {
-	Endpoint        string
-	Bucket          string
-	AccessKeyID     string
-	SecretAccessKey string
+	Endpoint string
+	Bucket   string
 }
 
 // TLSConfig for object storage endpoints. Currently supported only by:

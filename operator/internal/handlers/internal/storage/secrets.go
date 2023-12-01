@@ -62,8 +62,6 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 	return &storage.AzureStorageConfig{
 		Env:            string(env),
 		Container:      string(container),
-		AccountName:    string(name),
-		AccountKey:     string(key),
 		EndpointSuffix: string(endpointSuffix),
 	}, nil
 }
@@ -114,12 +112,10 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	}
 
 	return &storage.S3StorageConfig{
-		Endpoint:        string(endpoint),
-		Buckets:         string(buckets),
-		AccessKeyID:     string(id),
-		AccessKeySecret: string(secret),
-		Region:          string(region),
-		SSE:             sseCfg,
+		Endpoint: string(endpoint),
+		Buckets:  string(buckets),
+		Region:   string(region),
+		SSE:      sseCfg,
 	}, nil
 }
 
@@ -200,11 +196,9 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, er
 
 	return &storage.SwiftStorageConfig{
 		AuthURL:           string(url),
-		Username:          string(username),
 		UserDomainName:    string(userDomainName),
 		UserDomainID:      string(userDomainID),
 		UserID:            string(userID),
-		Password:          string(password),
 		DomainID:          string(domainID),
 		DomainName:        string(domainName),
 		ProjectID:         string(projectID),
@@ -237,9 +231,7 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 	}
 
 	return &storage.AlibabaCloudStorageConfig{
-		Endpoint:        string(endpoint),
-		Bucket:          string(bucket),
-		AccessKeyID:     string(id),
-		SecretAccessKey: string(secret),
+		Endpoint: string(endpoint),
+		Bucket:   string(bucket),
 	}, nil
 }
