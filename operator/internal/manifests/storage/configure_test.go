@@ -60,7 +60,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_id",
+													Key: KeyAlibabaCloudAccessKeyID,
 												},
 											},
 										},
@@ -71,7 +71,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "secret_access_key",
+													Key: KeyAlibabaCloudSecretAccessKey,
 												},
 											},
 										},
@@ -134,7 +134,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "account_name",
+													Key: KeyAzureStorageAccountName,
 												},
 											},
 										},
@@ -145,7 +145,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "account_key",
+													Key: KeyAzureStorageAccountKey,
 												},
 											},
 										},
@@ -264,7 +264,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_id",
+													Key: KeyAWSAccessKeyID,
 												},
 											},
 										},
@@ -275,7 +275,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_secret",
+													Key: KeyAWSAccessKeySecret,
 												},
 											},
 										},
@@ -338,7 +338,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "username",
+													Key: KeyOSSwiftUsername,
 												},
 											},
 										},
@@ -349,7 +349,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "password",
+													Key: KeyOSSwiftPassword,
 												},
 											},
 										},
@@ -434,7 +434,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_id",
+													Key: KeyAlibabaCloudAccessKeyID,
 												},
 											},
 										},
@@ -445,7 +445,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "secret_access_key",
+													Key: KeyAlibabaCloudSecretAccessKey,
 												},
 											},
 										},
@@ -508,7 +508,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "account_name",
+													Key: KeyAzureStorageAccountName,
 												},
 											},
 										},
@@ -519,7 +519,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "account_key",
+													Key: KeyAzureStorageAccountKey,
 												},
 											},
 										},
@@ -638,7 +638,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_id",
+													Key: KeyAWSAccessKeyID,
 												},
 											},
 										},
@@ -649,7 +649,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_secret",
+													Key: KeyAWSAccessKeySecret,
 												},
 											},
 										},
@@ -712,7 +712,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "username",
+													Key: KeyOSSwiftUsername,
 												},
 											},
 										},
@@ -723,7 +723,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "password",
+													Key: KeyOSSwiftPassword,
 												},
 											},
 										},
@@ -808,7 +808,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "username",
+													Key: KeyOSSwiftUsername,
 												},
 											},
 										},
@@ -819,7 +819,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "password",
+													Key: KeyOSSwiftPassword,
 												},
 											},
 										},
@@ -894,7 +894,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_id",
+													Key: KeyAWSAccessKeyID,
 												},
 											},
 										},
@@ -905,7 +905,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_secret",
+													Key: KeyAWSAccessKeySecret,
 												},
 											},
 										},
@@ -1003,7 +1003,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "username",
+													Key: KeyOSSwiftUsername,
 												},
 											},
 										},
@@ -1014,7 +1014,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "password",
+													Key: KeyOSSwiftPassword,
 												},
 											},
 										},
@@ -1089,7 +1089,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_id",
+													Key: KeyAWSAccessKeyID,
 												},
 											},
 										},
@@ -1100,7 +1100,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: "access_key_secret",
+													Key: KeyAWSAccessKeySecret,
 												},
 											},
 										},

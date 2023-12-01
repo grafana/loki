@@ -15,9 +15,10 @@ const (
 	EnvAzureStorageAccountKey = "AZURE_STORAGE_ACCOUNT_KEY"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
 	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
-
-	EnvOpenStackSwiftUsername = "OS_SWIFT_USERNAME"
+	// EnvOpenStackSwiftPassword is the environment variable to specify the OpenStack Swift password.
 	EnvOpenStackSwiftPassword = "OS_SWIFT_PASSWORD"
+	// EnvOpenStackSwiftUsername is the environment variable to specify the OpenStack Swift username.
+	EnvOpenStackSwiftUsername = "OS_SWIFT_USERNAME"
 
 	// KeyAlibabaCloudAccessKeyID is the secret data key for the AlibabaCloud client id to access S3.
 	KeyAlibabaCloudAccessKeyID = "access_key_id"

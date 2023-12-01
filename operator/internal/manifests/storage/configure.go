@@ -14,6 +14,7 @@ import (
 
 // ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
 // based on the object storage type. Currently supported amendments:
+// - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
@@ -21,11 +22,9 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
 		return configureDeployment(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretS3:
-		if err := configureDeployment(d, opts.SecretName, opts.SharedStore); err != nil {
+		err := configureDeployment(d, opts.SecretName, opts.SharedStore)
+		if err != nil {
 			return err
-		}
-		if opts.TLS == nil {
-			return nil
 		}
 		return configureDeploymentCA(d, opts.TLS)
 	default:
@@ -35,6 +34,7 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 
 // ConfigureStatefulSet appends additional pod volumes and container env vars, args, volume mounts
 // based on the object storage type. Currently supported amendments:
+// - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
@@ -44,9 +44,6 @@ func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	case lokiv1.ObjectStorageSecretS3:
 		if err := configureStatefulSet(d, opts.SecretName, opts.SharedStore); err != nil {
 			return err
-		}
-		if opts.TLS == nil {
-			return nil
 		}
 		return configureStatefulSetCA(d, opts.TLS)
 	default:
@@ -68,6 +65,10 @@ func configureDeployment(d *appsv1.Deployment, secretName string, t lokiv1.Objec
 
 // ConfigureDeploymentCA merges a S3 CA ConfigMap volume into the deployment spec.
 func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
+	if tls == nil {
+		return nil
+	}
+
 	p := ensureCAForS3(&d.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
@@ -91,6 +92,10 @@ func configureStatefulSet(s *appsv1.StatefulSet, secretName string, t lokiv1.Obj
 
 // ConfigureStatefulSetCA merges a S3 CA ConfigMap volume into the statefulset spec.
 func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
+	if tls == nil {
+		return nil
+	}
+
 	p := ensureCAForS3(&s.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {

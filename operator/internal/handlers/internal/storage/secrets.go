@@ -214,20 +214,19 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 	// Extract and validate mandatory fields
 	endpoint := s.Data[storage.KeyAlibabaCloudEndpoint]
 	if len(endpoint) == 0 {
-		return nil, kverrors.New("missing secret field", "field", "endpoint")
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudEndpoint)
 	}
 	bucket := s.Data[storage.KeyAlibabaCloudBucket]
 	if len(bucket) == 0 {
-		return nil, kverrors.New("missing secret field", "field", "bucket")
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudBucket)
 	}
-	// TODO buckets are comma-separated list
 	id := s.Data[storage.KeyAlibabaCloudAccessKeyID]
 	if len(id) == 0 {
-		return nil, kverrors.New("missing secret field", "field", "access_key_id")
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudAccessKeyID)
 	}
 	secret := s.Data[storage.KeyAlibabaCloudSecretAccessKey]
 	if len(secret) == 0 {
-		return nil, kverrors.New("missing secret field", "field", "secret_access_key")
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudSecretAccessKey)
 	}
 
 	return &storage.AlibabaCloudStorageConfig{
