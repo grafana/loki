@@ -82,7 +82,7 @@ func TestIndexStatsCache(t *testing.T) {
 	// should reuse part of the previous request and issue a new request for the remaining time till end.
 	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
 	*calls = 0
-	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd().Add(15*time.Minute)).(queryrangebase.Request)
+	req := statsReq.WithStartEnd(statsReq.GetStart().Add(15*time.Minute), statsReq.GetEnd().Add(15*time.Minute))
 	expectedStats := &IndexStatsResponse{
 		Response: &logproto.IndexStatsResponse{
 			Streams: 2,

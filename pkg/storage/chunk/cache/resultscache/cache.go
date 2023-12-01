@@ -323,7 +323,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 	for _, extent := range extents {
 		// If there is no overlap, ignore this extent.
-		if extent.GetEnd() < start || extent.Start > end {
+		if extent.GetEnd() < start || extent.GetStart() > end {
 			continue
 		}
 
@@ -339,7 +339,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 		// If there is a bit missing at the front, make a request for that.
 		if start < extent.Start {
-			r := req.WithStartEnd(time.UnixMilli(start), time.UnixMilli(extent.Start))
+			r := req.WithStartEndTime(time.UnixMilli(start), time.UnixMilli(extent.Start))
 			requests = append(requests, r)
 		}
 		res, err := extent.toResponse()
@@ -353,7 +353,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 	// Lastly, make a request for any data missing at the end.
 	if start < req.GetEnd().UnixMilli() {
-		r := req.WithStartEnd(time.UnixMilli(start), time.UnixMilli(end))
+		r := req.WithStartEndTime(time.UnixMilli(start), time.UnixMilli(end))
 		requests = append(requests, r)
 	}
 

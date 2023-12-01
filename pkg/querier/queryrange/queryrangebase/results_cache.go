@@ -133,26 +133,30 @@ func NewResultsCacheMiddleware(
 		c = cache.NewCacheGenNumMiddleware(c)
 	}
 
+	out := &resultsCache{
+		logger:               logger,
+		cacheGenNumberLoader: cacheGenNumberLoader,
+		metrics:              metrics,
+	}
+
 	return MiddlewareFunc(func(next Handler) Handler {
 		nextCacheWrapper := resultscache.HandlerFunc(func(ctx context.Context, req resultscache.Request) (resultscache.Response, error) {
 			return next.Do(ctx, req.(Request))
 		})
 
-		shouldCacheWrapper := func(ctx context.Context, req resultscache.Request) bool {
+		shouldCacheReqWrapper := func(ctx context.Context, req resultscache.Request) bool {
 			if shouldCache == nil {
 				return true
 			}
 			return shouldCache(ctx, req.(Request))
 		}
 
-		parallelismForReqWrapper := func(ctx context.Context, tenantIDs []string, req resultscache.Request) int {
-			return parallelismForReq(ctx, tenantIDs, req.(Request))
+		shouldCacheResWrapper := func(ctx context.Context, req resultscache.Request, res resultscache.Response, maxCacheTime int64) bool {
+			return out.shouldCacheResponse(ctx, req.(Request), res.(Response), maxCacheTime)
 		}
 
-		out := &resultsCache{
-			logger:               logger,
-			cacheGenNumberLoader: cacheGenNumberLoader,
-			metrics:              metrics,
+		parallelismForReqWrapper := func(ctx context.Context, tenantIDs []string, req resultscache.Request) int {
+			return parallelismForReq(ctx, tenantIDs, req.(Request))
 		}
 
 		out.cache = resultscache.NewResultsCache(
@@ -161,10 +165,10 @@ func NewResultsCacheMiddleware(
 			nextCacheWrapper,
 			keygen,
 			limits,
-			FromMergerToCacheResponseMerger(merger),
+			FromQueryResponseMergerToCacheResponseMerger(merger),
 			extractor,
-			shouldCacheWrapper,
-			out.shouldCacheResponse,
+			shouldCacheReqWrapper,
+			shouldCacheResWrapper,
 			parallelismForReqWrapper,
 			cacheGenNumberLoader,
 			retentionEnabled,
@@ -175,7 +179,7 @@ func NewResultsCacheMiddleware(
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
-	res, err := s.cache.Do(ctx, r)
+	res, err := s.cache.Do(ctx, r.(resultscache.Request))
 	if err != nil {
 		return nil, err
 	}
@@ -189,19 +193,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func (s resultsCache) shouldCacheResponse(ctx context.Context, cacheReq resultscache.Request, cacheRes resultscache.Response, maxCacheTime int64) bool {
-	req, ok := cacheReq.(Request)
-	if !ok {
-		level.Error(s.logger).Log("msg", "could not cast cache request to query request")
-		return false
-	}
-
-	r, ok := cacheRes.(Response)
-	if !ok {
-		level.Error(s.logger).Log("msg", "could not cast cache response to query response")
-		return false
-	}
-
+func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
 
 	user, _ := user.ExtractOrgID(ctx)

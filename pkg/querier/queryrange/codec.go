@@ -56,18 +56,15 @@ func (r *LokiRequest) GetStart() time.Time {
 	return r.StartTs
 }
 
-func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) resultscache.Request {
+func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
 	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
 	return &clone
 }
 
-func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
-	clone := *r
-	clone.StartTs = s
-	clone.EndTs = e
-	return &clone
+func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
@@ -95,7 +92,7 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
-func (*LokiRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
+func (r *LokiRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 func (r *LokiInstantRequest) GetStep() int64 {
 	return 0
@@ -109,10 +106,14 @@ func (r *LokiInstantRequest) GetStart() time.Time {
 	return r.TimeTs
 }
 
-func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) resultscache.Request {
+func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangebase.Request {
 	clone := *r
 	clone.TimeTs = s
 	return &clone
+}
+
+func (r *LokiInstantRequest) WithStartEndTime(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LokiInstantRequest) WithQuery(query string) queryrangebase.Request {
@@ -147,11 +148,15 @@ func (r *LokiSeriesRequest) GetStart() time.Time {
 	return r.StartTs
 }
 
-func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) resultscache.Request {
+func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
 	return &clone
+}
+
+func (r *LokiSeriesRequest) WithStartEndTime(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LokiSeriesRequest) WithQuery(_ string) queryrangebase.Request {
@@ -221,13 +226,17 @@ func (r *LabelRequest) GetStep() int64 {
 	return 0
 }
 
-func (r *LabelRequest) WithStartEnd(s, e time.Time) resultscache.Request {
+func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
 	tmp := s
 	clone.Start = &tmp
 	tmp = e
 	clone.End = &tmp
 	return &clone
+}
+
+func (r *LabelRequest) WithStartEndTime(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {

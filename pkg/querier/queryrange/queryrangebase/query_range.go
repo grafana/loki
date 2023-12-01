@@ -48,11 +48,16 @@ var (
 type prometheusCodec struct{}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
-func (q *PrometheusRequest) WithStartEnd(start, end time.Time) resultscache.Request {
+func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
 	clone := *q
 	clone.Start = start
 	clone.End = end
 	return &clone
+}
+
+func (q *PrometheusRequest) WithStartEndTime(s time.Time, e time.Time) resultscache.Request {
+	clone := q.WithStartEnd(s, e).(resultscache.Request)
+	return clone
 }
 
 // WithQuery clones the current `PrometheusRequest` with a new query.

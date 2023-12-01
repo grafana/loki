@@ -391,7 +391,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			t.Run(tc.name, func(t *testing.T) {
 				ctx := cache.InjectCacheGenNumber(context.Background(), tc.cacheGenNumberToInject)
-				ret := c.shouldCacheResponse(ctx, tc.request, tc.input, maxCacheTime)
+				ret := c.shouldCacheResponse(ctx, tc.request.(resultscache.Request), tc.input, maxCacheTime)
 				require.Equal(t, tc.expected, ret)
 			})
 		}
@@ -443,7 +443,7 @@ func TestResultsCache(t *testing.T) {
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing request with new end time should do one more query.
-	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd().Add(100*time.Millisecond)).(Request)
+	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd().Add(100*time.Millisecond))
 	_, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
@@ -472,7 +472,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	req := parsedRequest.WithStartEnd(time.Now().Add(-60*1e3*time.Millisecond), time.Now()).(Request)
+	req := parsedRequest.WithStartEnd(time.Now().Add(-60*1e3*time.Millisecond), time.Now())
 
 	calls := 0
 	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r Request) (Response, error) {
@@ -519,7 +519,7 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
-			if got := resultscache.ConstSplitter(tt.interval).GenerateCacheKey(context.Background(), "fake", tt.r); got != tt.want {
+			if got := resultscache.ConstSplitter(tt.interval).GenerateCacheKey(context.Background(), "fake", tt.r.(resultscache.Request)); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
 		})

@@ -77,6 +77,6 @@ func (m *queryMergerAsCacheResponseMerger) MergeResponse(responses ...resultscac
 	return response.(resultscache.Response), nil
 }
 
-func FromMergerToCacheResponseMerger(m Merger) resultscache.ResponseMerger {
+func FromQueryResponseMergerToCacheResponseMerger(m Merger) resultscache.ResponseMerger {
 	return &queryMergerAsCacheResponseMerger{m}
 }

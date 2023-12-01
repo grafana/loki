@@ -3,7 +3,9 @@ package definitions
 import (
 	"context"
 	"net/http"
+	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
@@ -32,7 +34,19 @@ type Merger interface {
 
 // Request represents a query range request that can be process by middlewares.
 type Request interface {
-	resultscache.Request
+	proto.Message
+	// GetStart returns the start timestamp of the request in milliseconds.
+	GetStart() time.Time
+	// GetEnd returns the end timestamp of the request in milliseconds.
+	GetEnd() time.Time
+	// GetStep returns the step of the request in milliseconds.
+	GetStep() int64
+	// GetQuery returns the query of the request.
+	GetQuery() string
+	// GetCachingOptions returns the caching options.
+	GetCachingOptions() resultscache.CachingOptions
+	// WithStartEnd clone the current request with different start and end timestamp.
+	WithStartEnd(start time.Time, end time.Time) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
 	// LogToSpan writes information about this request to an OpenTracing span
@@ -41,7 +55,7 @@ type Request interface {
 
 // Response represents a query range response.
 type Response interface {
-	resultscache.Response
+	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
 	GetHeaders() []*PrometheusResponseHeader
 

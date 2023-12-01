@@ -74,7 +74,7 @@ var statsCacheMiddlewareNowTimeFunc = model.Now
 // shouldCacheStats returns true if the request should be cached.
 // It returns false if:
 // - The request end time falls within the max_stats_cache_freshness duration.
-func shouldCacheStats(ctx context.Context, req resultscache.Request, lim Limits) (bool, error) {
+func shouldCacheStats(ctx context.Context, req queryrangebase.Request, lim Limits) (bool, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return false, err

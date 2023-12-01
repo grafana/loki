@@ -135,7 +135,7 @@ func TestVolumeCache(t *testing.T) {
 			},
 		}
 
-		resp, err = handler.Do(ctx, req.(queryrangebase.Request))
+		resp, err = handler.Do(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, 1, *calls)
 		require.Equal(t, expectedVol, resp)

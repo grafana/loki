@@ -171,7 +171,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 				"original", r.GetStart().String(),
 				"updated", minStartTime.String())
 
-			r = r.WithStartEnd(minStartTime, r.GetEnd()).(queryrangebase.Request)
+			r = r.WithStartEnd(minStartTime, r.GetEnd())
 		}
 	}
 
