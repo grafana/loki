@@ -20,7 +20,7 @@ import (
 )
 
 type compactorTokenizer interface {
-	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk)
+	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk) error
 }
 
 type chunkClient interface {

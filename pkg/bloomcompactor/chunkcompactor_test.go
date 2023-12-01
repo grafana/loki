@@ -129,8 +129,9 @@ type mockBloomTokenizer struct {
 	chunks []chunk.Chunk
 }
 
-func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(_ *v1.SeriesWithBloom, c []chunk.Chunk) {
+func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(_ *v1.SeriesWithBloom, c []chunk.Chunk) error {
 	mbt.chunks = c
+	return nil
 }
 
 type mockChunkClient struct{}
