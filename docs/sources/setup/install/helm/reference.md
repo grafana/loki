@@ -1218,6 +1218,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.clientMaxBodySize</td>
+			<td>string</td>
+			<td>Allows customizing the `client_max_body_size` directive</td>
+			<td><pre lang="json">
+"4m"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.customBackendUrl</td>
 			<td>string</td>
 			<td>Override Backend URL</td>
@@ -1259,6 +1268,15 @@ See values.yaml
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 "{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.locationSnippet</td>
+			<td>string</td>
+			<td>Allows appending custom configuration to the location block, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
