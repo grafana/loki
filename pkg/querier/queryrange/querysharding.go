@@ -41,7 +41,7 @@ func NewQueryShardMiddleware(
 	limits Limits,
 	maxShards int,
 	statsHandler queryrangebase.Handler,
-	shardQuantileOverTime bool,
+	shardAggregation []string,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -55,7 +55,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards, shardQuantileOverTime)
+		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -80,18 +80,18 @@ func newASTMapperware(
 	metrics *logql.MapperMetrics,
 	limits Limits,
 	maxShards int,
-	quantileOverTimeSharding bool,
+	shardAggregation []string,
 ) *astMapperware {
 	ast := &astMapperware{
-		confs:                    confs,
-		logger:                   log.With(logger, "middleware", "QueryShard.astMapperware"),
-		limits:                   limits,
-		next:                     next,
-		statsHandler:             next,
-		ng:                       logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
-		metrics:                  metrics,
-		maxShards:                maxShards,
-		quantileOverTimeSharding: quantileOverTimeSharding,
+		confs:            confs,
+		logger:           log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:           limits,
+		next:             next,
+		statsHandler:     next,
+		ng:               logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		metrics:          metrics,
+		maxShards:        maxShards,
+		shardAggregation: shardAggregation,
 	}
 
 	if statsHandler != nil {
@@ -111,9 +111,9 @@ type astMapperware struct {
 	metrics      *logql.MapperMetrics
 	maxShards    int
 
-	// Feature flag for sharding quantil_over_time range queries with
-	// probabilistic data structures.
-	quantileOverTimeSharding bool
+	// Feature flag for sharding range and vector aggregations such as
+	// quantile_ver_time with probabilistic data structures.
+	shardAggregation []string
 }
 
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
@@ -195,7 +195,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	mapper := logql.NewShardMapper(resolver, ast.metrics, ast.quantileOverTimeSharding)
+	mapper := logql.NewShardMapper(resolver, ast.metrics, ast.shardAggregation)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {

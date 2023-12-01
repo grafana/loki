@@ -25,17 +25,27 @@ type ConstantShards int
 func (s ConstantShards) Shards(_ syntax.Expr) (int, uint64, error)   { return int(s), 0, nil }
 func (s ConstantShards) GetStats(_ syntax.Expr) (stats.Stats, error) { return stats.Stats{}, nil }
 
+const (
+	ShardQuantileOverTime = "quantile_over_time"
+)
+
 type ShardMapper struct {
 	shards                   ShardResolver
 	metrics                  *MapperMetrics
 	quantileOverTimeSharding bool
 }
 
-func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics, QuantileOverTimeSharding bool) ShardMapper {
+func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
+	quantileOverTimeSharding := false
+	for _, a := range shardAggregation {
+		if a == ShardQuantileOverTime {
+			quantileOverTimeSharding = true
+		}
+	}
 	return ShardMapper{
 		shards:                   resolver,
 		metrics:                  metrics,
-		quantileOverTimeSharding: QuantileOverTimeSharding,
+		quantileOverTimeSharding: quantileOverTimeSharding,
 	}
 }
 

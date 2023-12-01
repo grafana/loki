@@ -51,7 +51,7 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, true)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 
 	for _, tc := range []struct {
 		in  syntax.SampleExpr
@@ -113,7 +113,7 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, true)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -418,7 +418,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, true)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 
 	for _, tc := range []struct {
 		in   string
@@ -1409,7 +1409,7 @@ func TestStringTrimming(t *testing.T) {
 		},
 	} {
 		t.Run(tc.expr.String(), func(t *testing.T) {
-			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics, true)
+			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))

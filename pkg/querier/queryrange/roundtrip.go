@@ -431,7 +431,7 @@ func NewLogFilterTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
-					cfg.ShardQuantileOverTime,
+					cfg.ShardAggregation,
 				),
 			)
 		} else {
@@ -656,7 +656,7 @@ func NewMetricTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
-					cfg.ShardQuantileOverTime,
+					cfg.ShardAggregation,
 				),
 			)
 		} else {
@@ -721,7 +721,7 @@ func NewInstantMetricTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
-					cfg.ShardQuantileOverTime,
+					cfg.ShardAggregation,
 				),
 			)
 		}
