@@ -12,7 +12,7 @@ import (
 func ValidateConfigCompatibility(c Config) error {
 	for _, fn := range []func(Config) error{
 		ensureInvertedIndexShardingCompatibility,
-		ensureProtobufEncodingForQuantileOverTimeSharding,
+		ensureProtobufEncodingForAggregationSharding,
 	} {
 		if err := fn(c); err != nil {
 			return err
@@ -44,7 +44,7 @@ func ensureInvertedIndexShardingCompatibility(c Config) error {
 	return nil
 }
 
-func ensureProtobufEncodingForQuantileOverTimeSharding(c Config) error {
+func ensureProtobufEncodingForAggregationSharding(c Config) error {
 	if len(c.QueryRange.ShardAggregation) > 0 && c.Frontend.FrontendV2.Encoding != frontend.EncodingProtobuf {
 		return errors.New("shard_aggregation requires frontend.encoding=protobuf")
 	}
