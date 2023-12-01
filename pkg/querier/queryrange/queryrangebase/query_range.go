@@ -55,7 +55,8 @@ func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
 	return &clone
 }
 
-func (q *PrometheusRequest) WithStartEndTime(s time.Time, e time.Time) resultscache.Request {
+// WithStartEndForCache implements resultscache.Request.
+func (q *PrometheusRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
 	clone := q.WithStartEnd(s, e).(resultscache.Request)
 	return clone
 }
