@@ -115,10 +115,7 @@ func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
 }
 
 func clearCache(cache map[string]interface{}) {
-	// TODO: Once we move Loki to Go 1.21, we can just use clear() here.
-	for k := range cache {
-		delete(cache, k)
-	}
+	clear(cache)
 }
 
 // prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
