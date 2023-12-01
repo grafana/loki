@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
@@ -33,18 +35,15 @@ func TestResultToResponse(t *testing.T) {
 			},
 		},
 		{
-			name: "porbabilistic quantile matrix",
+			name: "empty porbabilistic quantile matrix",
 			result: logqlmodel.Result{
-				Data: promql.Matrix(nil),
+				Data: logql.ProbabilisticQuantileMatrix([]logql.ProbabilisticQuantileVector{}),
 			},
-			response: &LokiPromResponse{
-				Response: &queryrangebase.PrometheusResponse{
-					Status: "success",
-					Data: queryrangebase.PrometheusData{
-						ResultType: loghttp.ResultTypeMatrix,
-						Result:     []queryrangebase.SampleStream{},
-					},
+			response: &QuantileSketchResponse{
+				Response: &logproto.QuantileSketchMatrix{
+					Values: []*logproto.QuantileSketchVector{},
 				},
+				Headers: []queryrangebase.PrometheusResponseHeader(nil),
 			},
 		},
 	}

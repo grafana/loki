@@ -231,7 +231,7 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
-// JoinQuantileSketchVector joins the results from stepEvaluator into a TDigestMatrix.
+// JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
 func JoinQuantileSketchVector(next bool, _ int64, r StepResult, stepEvaluator StepEvaluator, _ Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
