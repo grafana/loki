@@ -180,8 +180,9 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 		workerConfig: workerConfig{
-			maxWaitTime: 200 * time.Millisecond,
-			maxItems:    100,
+			maxWaitTime:               200 * time.Millisecond,
+			maxItems:                  100,
+			processBlocksSequentially: false,
 		},
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),

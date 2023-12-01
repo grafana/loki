@@ -3,6 +3,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -263,8 +264,12 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// replace store implementation and re-initialize workers and sub-services
 		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
 		gw.bloomStore = newMockBloomStore(bqs)
+		// randomize between sequentical processing and processing using callback
+		gw.workerConfig.processBlocksSequentially = rand.Float32() > 0.5
 		err = gw.initServices()
 		require.NoError(t, err)
+
+		t.Log("process blocks in worker sequentially", gw.workerConfig.processBlocksSequentially)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
 		require.NoError(t, err)
@@ -358,6 +363,8 @@ type mockBloomStore struct {
 	bqs []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
+var _ bloomshipper.Store = &mockBloomStore{}
+
 // GetBlockQueriersForBlockRefs implements bloomshipper.Store.
 func (s *mockBloomStore) GetBlockQueriersForBlockRefs(_ context.Context, _ string, _ []bloomshipper.BlockRef) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
 	return s.bqs, nil
@@ -384,6 +391,22 @@ func (s *mockBloomStore) GetBlockQueriers(_ context.Context, _ string, _, _ time
 }
 
 func (s *mockBloomStore) Stop() {}
+
+// ForEach implements bloomshipper.Store.
+func (s *mockBloomStore) ForEach(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
+	shuffled := make([]bloomshipper.BlockQuerierWithFingerprintRange, len(s.bqs))
+	_ = copy(shuffled, s.bqs)
+
+	rand.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+
+	for _, bq := range shuffled {
+		// ignore errors in the mock
+		_ = callback(bq.BlockQuerier, uint64(bq.MinFp), uint64(bq.MaxFp))
+	}
+	return nil
+}
 
 func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.SeriesWithBloom, nthSeries int) []*logproto.ChunkRef {
 	t.Helper()
