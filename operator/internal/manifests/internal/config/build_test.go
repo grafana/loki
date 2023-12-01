@@ -28,8 +28,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -245,11 +245,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -287,8 +285,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -580,11 +578,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -666,11 +662,9 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -702,8 +696,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -1020,11 +1014,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -1062,8 +1054,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -1381,11 +1373,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -1423,8 +1413,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -1772,11 +1762,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -1814,8 +1802,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -2109,11 +2097,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -2154,8 +2140,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -2533,11 +2519,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -2575,8 +2559,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -2881,11 +2865,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -2923,8 +2905,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -3379,11 +3361,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -3421,8 +3401,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -3641,11 +3621,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -3683,8 +3661,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -3905,11 +3883,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -3947,8 +3923,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -4167,11 +4143,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -4209,8 +4183,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       sse:
         type: SSE-KMS
         kms_key_id: test
@@ -4466,11 +4440,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
+
 				SSE: storage.S3SSEConfig{
 					Type:                 storage.SSEKMSType,
 					KMSKeyID:             "test",
@@ -4512,8 +4485,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       sse:
         type: SSE-S3
       s3forcepathstyle: true
@@ -4766,11 +4739,10 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
+
 				SSE: storage.S3SSEConfig{
 					Type:                 storage.SSES3Type,
 					KMSKeyID:             "test",
@@ -4812,8 +4784,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:
@@ -5025,11 +4997,9 @@ overrides:
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -5116,11 +5086,9 @@ func defaultOptions() Options {
 		ObjectStorage: storage.Options{
 			SharedStore: lokiv1.ObjectStorageSecretS3,
 			S3: &storage.S3StorageConfig{
-				Endpoint:        "http://test.default.svc.cluster.local.:9000",
-				Region:          "us-east",
-				Buckets:         "loki",
-				AccessKeyID:     "test",
-				AccessKeySecret: "test123",
+				Endpoint: "http://test.default.svc.cluster.local.:9000",
+				Region:   "us-east",
+				Buckets:  "loki",
 			},
 			Schemas: []lokiv1.ObjectStorageSchema{
 				{
@@ -5305,8 +5273,8 @@ common:
       s3: http://test.default.svc.cluster.local.:9000
       bucketnames: loki
       region: us-east
-      access_key_id: test
-      secret_access_key: test123
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:

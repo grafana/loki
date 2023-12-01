@@ -27,8 +27,8 @@ common:
       s3: {{ .Endpoint }}
       bucketnames: {{ .Buckets }}
       region: {{ .Region }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .AccessKeySecret }}
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
       {{- with .SSE }}
       {{- if .Type }}
       sse:
