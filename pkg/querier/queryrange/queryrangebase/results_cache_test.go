@@ -391,7 +391,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			t.Run(tc.name, func(t *testing.T) {
 				ctx := cache.InjectCacheGenNumber(context.Background(), tc.cacheGenNumberToInject)
-				ret := c.shouldCacheResponse(ctx, tc.request.(resultscache.Request), tc.input, maxCacheTime)
+				ret := c.shouldCacheResponse(ctx, tc.request, tc.input, maxCacheTime)
 				require.Equal(t, tc.expected, ret)
 			})
 		}
