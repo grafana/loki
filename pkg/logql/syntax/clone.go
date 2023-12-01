@@ -198,8 +198,13 @@ func cloneLabelFilterer(filter log.LabelFilterer) log.LabelFilterer {
 			Right: cloneLabelFilterer(concrete.Right),
 			And:   concrete.And,
 		}
-	case log.NoopLabelFilter:
-		return concrete
+	case *log.NoopLabelFilter:
+		copied := &log.NoopLabelFilter{}
+		if concrete.Matcher != nil {
+			copied.Matcher = mustNewMatcher(concrete.Type, concrete.Name, concrete.Value)
+		}
+
+		return copied
 	case *log.BytesLabelFilter:
 		return &log.BytesLabelFilter{
 			Name:  concrete.Name,

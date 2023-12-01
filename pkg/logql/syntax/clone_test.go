@@ -58,6 +58,9 @@ func TestClone(t *testing.T) {
 		"multiple post filters": {
 			query: `rate({app="foo"} | json | unwrap foo | latency >= 250ms or bytes > 42B or ( status_code < 500 and status_code > 200) or source = ip("") and user = "me" [1m])`,
 		},
+		"true filter": {
+			query: `{ foo = "bar" } | foo =~".*"`,
+		},
 	}
 
 	for name, test := range tests {
