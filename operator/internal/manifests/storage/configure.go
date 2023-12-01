@@ -13,6 +13,10 @@ import (
 )
 
 const (
+	// EnvAlibabaCloudAccessKeyID is the environment variable to specify the AlibabaCloud client id to access S3.
+	EnvAlibabaCloudAccessKeyID = "ALIBABA_CLOUD_ACCESS_KEY_ID"
+	// EnvAlibabaCloudAccessKeySecret is the environment variable to specify the AlibabaCloud client secret to access S3.
+	EnvAlibabaCloudAccessKeySecret = "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
 	// EnvAWSAccessKeyID is the environment variable to specify the AWS client id to access S3.
 	EnvAWSAccessKeyID = "AWS_ACCESS_KEY_ID"
 	// EnvAWSAccessKeySecre is the environment variable to specify the AWS client secret to access S3.
@@ -37,9 +41,7 @@ const (
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretAzure:
-		return configureDeployment(d, opts.SecretName, opts.SharedStore)
-	case lokiv1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS:
 		return configureDeployment(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretS3:
 		if err := configureDeployment(d, opts.SecretName, opts.SharedStore); err != nil {
@@ -60,9 +62,7 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretAzure:
-		return configureStatefulSet(d, opts.SecretName, opts.SharedStore)
-	case lokiv1.ObjectStorageSecretGCS:
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS:
 		return configureStatefulSet(d, opts.SecretName, opts.SharedStore)
 	case lokiv1.ObjectStorageSecretS3:
 		if err := configureStatefulSet(d, opts.SecretName, opts.SharedStore); err != nil {
@@ -144,6 +144,31 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 
 	var objStoreEnvVar []corev1.EnvVar
 	switch t {
+	case lokiv1.ObjectStorageSecretAlibabaCloud:
+		objStoreEnvVar = []corev1.EnvVar{
+			{
+				Name: EnvAlibabaCloudAccessKeyID,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: "access_key_id", // TODO(@periklis): make this a constant
+					},
+				},
+			},
+			{
+				Name: EnvAlibabaCloudAccessKeySecret,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: "secret_access_key", // TODO(@periklis): make this a constant
+					},
+				},
+			},
+		}
 	case lokiv1.ObjectStorageSecretAzure:
 		objStoreEnvVar = []corev1.EnvVar{
 			{

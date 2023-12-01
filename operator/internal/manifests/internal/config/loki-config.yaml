@@ -65,8 +65,8 @@ common:
     alibabacloud:
       bucket: {{ .Bucket }}
       endpoint: {{ .Endpoint }}
-      access_key_id: {{ .AccessKeyID }}
-      secret_access_key: {{ .SecretAccessKey }}
+      access_key_id: ${ALIBABA_CLOUD_ACCESS_KEY_ID}
+      secret_access_key: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET}
     {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
   {{- with .GossipRing }}
