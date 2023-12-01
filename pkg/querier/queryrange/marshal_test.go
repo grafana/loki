@@ -32,6 +32,21 @@ func TestResultToResponse(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "porbabilistic quantile matrix",
+			result: logqlmodel.Result{
+				Data: promql.Matrix(nil),
+			},
+			response: &LokiPromResponse{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: "success",
+					Data: queryrangebase.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     []queryrangebase.SampleStream{},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

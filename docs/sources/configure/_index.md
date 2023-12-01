@@ -842,10 +842,10 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
-# Perform query parallelisation for quantile_over_time range queries using
-# probabilistic data structures.
-# CLI flag: -querier.quantile-over-time-sharding
-[quantile_over_time_sharding: <boolean> | default = false]
+# A comma-separated list of LogQL vector and range aggregations that should be
+# sharded
+# CLI flag: -querier.shard-aggregation
+[shard_aggregation: <string> | default = ""]
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
