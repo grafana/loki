@@ -170,7 +170,8 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			Series: &series,
 		}
 
-		_ = bt.PopulateSeriesWithBloom(&swb, chunks)
+		err := bt.PopulateSeriesWithBloom(&swb, chunks)
+		require.NoError(b, err)
 	}
 }
 

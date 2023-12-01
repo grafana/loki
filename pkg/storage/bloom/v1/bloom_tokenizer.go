@@ -155,7 +155,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
 		)
 		if err != nil {
-			level.Info(util_log.Logger).Log("chunk iterator cannot be created")
+			level.Error(util_log.Logger).Log("msg", "chunk iterator cannot be created", "err", err)
 			return err
 		}
 
