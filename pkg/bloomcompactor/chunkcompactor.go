@@ -111,13 +111,13 @@ func buildBlockFromBlooms(
 
 	checksum, err := builder.BuildFrom(v1.NewSliceIter(blooms))
 	if err != nil {
-		level.Error(logger).Log("writing bloom", err)
+		level.Error(logger).Log("msg", "failed writing to bloom", "err", err)
 		return bloomshipper.Block{}, err
 	}
 
 	data, err := builder.Data()
 	if err != nil {
-		level.Error(logger).Log("reading bloom data", err)
+		level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
 		return bloomshipper.Block{}, err
 	}
 
@@ -176,7 +176,7 @@ func compactNewChunks(
 	// Build and upload bloomBlock to storage
 	block, err := buildBlockFromBlooms(ctx, logger, builder, blooms, job)
 	if err != nil {
-		level.Error(logger).Log("building bloomBlocks", err)
+		level.Error(logger).Log("msg", "building bloomBlocks", "err", err)
 		return bloomshipper.Block{}, err
 	}
 

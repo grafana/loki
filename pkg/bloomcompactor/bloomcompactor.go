@@ -460,28 +460,28 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		defer func() {
 			//clean up the bloom directory
 			if err := os.RemoveAll(localDst); err != nil {
-				level.Error(logger).Log(fmt.Sprintf("failed to remove block directory %s", localDst), err)
+				level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
 			}
 		}()
 
 		blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
-			level.Error(logger).Log("creating block builder", err)
+			level.Error(logger).Log("msg", "creating block builder", "err", err)
 			return err
 		}
 
 		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
 		storedBlock, err := compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
-			return level.Error(logger).Log("failed to compact new chunks", err)
+			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
 		// Do not change the signature of PutBlocks yet.
 		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
 		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
 		if err != nil {
-			level.Error(logger).Log("putting blocks to storage", err)
+			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
 			return err
 		}
 
@@ -522,7 +522,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	err = c.bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
-		level.Error(logger).Log("putting meta.json to storage", err)
+		level.Error(logger).Log("msg", "putting meta.json to storage", "err", err)
 		return err
 	}
 	return nil
