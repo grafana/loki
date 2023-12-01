@@ -65,7 +65,7 @@ func ProbabilisticQuantileVectorFromProto(proto *logproto.QuantileSketchVector) 
 	var s ProbabilisticQuantileSample
 	var err error
 	for i, sample := range proto.Samples {
-		s, err = quantileSketchSampleFromProto(sample)
+		s, err = probabilisticQuantileSampleFromProto(sample)
 		if err != nil {
 			return ProbabilisticQuantileVector{}, err
 		}
@@ -181,7 +181,7 @@ func (q ProbabilisticQuantileSample) ToProto() *logproto.QuantileSketchSample {
 	}
 }
 
-func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (ProbabilisticQuantileSample, error) {
+func probabilisticQuantileSampleFromProto(proto *logproto.QuantileSketchSample) (ProbabilisticQuantileSample, error) {
 	s, err := sketch.QuantileSketchFromProto(proto.F)
 	if err != nil {
 		return ProbabilisticQuantileSample{}, err
