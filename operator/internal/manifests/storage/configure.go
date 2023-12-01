@@ -12,32 +12,6 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-const (
-	// EnvAlibabaCloudAccessKeyID is the environment variable to specify the AlibabaCloud client id to access S3.
-	EnvAlibabaCloudAccessKeyID = "ALIBABA_CLOUD_ACCESS_KEY_ID"
-	// EnvAlibabaCloudAccessKeySecret is the environment variable to specify the AlibabaCloud client secret to access S3.
-	EnvAlibabaCloudAccessKeySecret = "ALIBABA_CLOUD_ACCESS_KEY_SECRET"
-	// EnvAWSAccessKeyID is the environment variable to specify the AWS client id to access S3.
-	EnvAWSAccessKeyID = "AWS_ACCESS_KEY_ID"
-	// EnvAWSAccessKeySecre is the environment variable to specify the AWS client secret to access S3.
-	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET"
-	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
-	EnvAzureStorageAccountName = "AZURE_ACCOUNT_NAME"
-	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
-	EnvAzureStorageAccountKey = "AZURE_ACCOUNT_KEY"
-	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
-	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
-
-	EnvOpenStackSwiftUsername = "OS_SWIFT_USERNAME"
-	EnvOpenStackSwiftPassword = "OS_SWIFT_PASSWORD"
-	// GCSFileName is the file containing the Google credentials for authentication
-	GCSFileName = "key.json"
-
-	secretDirectory  = "/etc/storage/secrets"
-	storageTLSVolume = "storage-tls"
-	caDirectory      = "/etc/storage/ca"
-)
-
 // ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
 // based on the object storage type. Currently supported amendments:
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
@@ -156,7 +130,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "access_key_id", // TODO(@periklis): make this a constant
+						Key: KeyAlibabaCloudAccessKeyID,
 					},
 				},
 			},
@@ -167,7 +141,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "secret_access_key", // TODO(@periklis): make this a constant
+						Key: KeyAlibabaCloudSecretAccessKey,
 					},
 				},
 			},
@@ -181,7 +155,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "account_name", // TODO(@periklis): make this a constant
+						Key: KeyAzureStorageAccountName,
 					},
 				},
 			},
@@ -192,7 +166,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "account_key", // TODO(@periklis): make this a constant
+						Key: KeyAzureStorageAccountKey,
 					},
 				},
 			},
@@ -201,7 +175,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 		objStoreEnvVar = []corev1.EnvVar{
 			{
 				Name:  EnvGoogleApplicationCredentials,
-				Value: path.Join(secretDirectory, GCSFileName),
+				Value: path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename),
 			},
 		}
 	case lokiv1.ObjectStorageSecretS3:
@@ -213,7 +187,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "access_key_id", // TODO(@periklis): make this a constant
+						Key: KeyAWSAccessKeyID,
 					},
 				},
 			},
@@ -224,7 +198,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "access_key_secret", // TODO(@periklis): make this a constant
+						Key: KeyAWSAccessKeySecret,
 					},
 				},
 			},
@@ -238,7 +212,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "username", // TODO(@periklis): make this a constant
+						Key: KeyOSSwiftUsername,
 					},
 				},
 			},
@@ -249,7 +223,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: "password", // TODO(@periklis): make this a constant
+						Key: KeyOSSwiftPassword,
 					},
 				},
 			},
