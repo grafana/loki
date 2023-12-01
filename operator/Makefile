@@ -126,6 +126,12 @@ deps: go.mod go.sum
 	go mod download
 	go mod verify
 
+.PHONY: deps-api
+deps-api: apis/loki/go.mod apis/loki/go.sum
+	@cd ./apis/loki/ && go mod tidy
+	@cd ./apis/loki/ && go mod download
+	@cd ./apis/loki/ && go mod verify
+
 .PHONY: cli
 cli: deps bin/loki-broker ## Build loki-broker CLI binary
 bin/loki-broker: $(GO_FILES) | generate
@@ -152,9 +158,13 @@ manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 	$(CONTROLLER_GEN) rbac:roleName=lokistack-manager crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: test
-test: deps generate go-generate lint lint-prometheus manifests ## Run tests
+test: deps deps-api generate go-generate lint lint-prometheus manifests test-unit-api ## Run tests
 test: $(GO_FILES)
 	go test ./... -coverprofile cover.out
+
+.PHONY: test-unit-api
+test-unit-api: $(GO_FILES)
+	@cd ./apis/loki/ && go test ./... -coverprofile cover.out
 
 .PHONY: test-unit-prometheus
 test-unit-prometheus: $(PROMTOOL) ## Run prometheus unit tests
