@@ -27,15 +27,12 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
 	// groupedChunksRefPool pooling slice of logproto.GroupedChunkRefs [64, 128, 256, ..., 65536]
 	groupedChunksRefPool = queue.NewSlicePool[*logproto.GroupedChunkRefs](1<<6, 1<<16, 2)
-	// chunkRefsByAddrsPool pooling slice of chunkRefsByAddrs [64, 128, 256, ..., 65536]
-	chunkRefsByAddrsPool = queue.NewSlicePool[chunkRefsByAddrs](1<<6, 1<<16, 2)
 	// ringGetBuffersPool pooling for ringGetBuffers to avoid calling ring.MakeBuffersForGet() for each request
 	ringGetBuffersPool = sync.Pool{
 		New: func() interface{} {
@@ -183,11 +180,7 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		return nil, err
 	}
 
-	// Group chunk refs by addresses of one or more bloom gateways.
-	// All chunk refs of series that belong to one and the same bloom gateway are set in one batch.
-	streamsByAddr := c.groupStreamsByAddr(groups, addrs)
-
-	filteredChunkRefs := groupedChunksRefPool.Get(len(fingerprints))
+	filteredChunkRefs := groupedChunksRefPool.Get(len(groups))
 	defer groupedChunksRefPool.Put(filteredChunkRefs)
 
 	for _, item := range streamsByInst {
@@ -212,55 +205,6 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 		}
 	}
 	return filteredChunkRefs, nil
-}
-
-// isEqualStringElements checks if two string slices contain the same elements.
-// The order of the elements is ignored.
-func isEqualStringElements(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for _, s := range a {
-		if !util.StringsContain(b, s) {
-			return false
-		}
-	}
-	return true
-}
-
-// listContainsAddrs checks if a slice of chunkRefAddrs contains an element
-// whos field addrs contains the same addresses as the given slice of
-// addresses.
-// It returns the index of the element, if found, and a boolean whether the
-// given list contains the given addrs.
-func listContainsAddrs(list []chunkRefsByAddrs, addrs []string) (int, bool) {
-	for i, r := range list {
-		if isEqualStringElements(r.addrs, addrs) {
-			return i, true
-		}
-	}
-	return -1, false
-}
-
-type chunkRefsByAddrs struct {
-	addrs []string
-	refs  []*logproto.GroupedChunkRefs
-}
-
-func (c *GatewayClient) groupStreamsByAddr(groups []*logproto.GroupedChunkRefs, addresses [][]string) []chunkRefsByAddrs {
-	res := chunkRefsByAddrsPool.Get(len(addresses))
-	defer chunkRefsByAddrsPool.Put(res)
-
-	for i := 0; i < len(addresses); i++ {
-		addrs := addresses[i]
-		refs := groups[i]
-		if idx, ok := listContainsAddrs(res, addrs); ok {
-			res[idx].refs = append(res[idx].refs, refs)
-		} else {
-			res = append(res, chunkRefsByAddrs{addrs: addrs, refs: []*logproto.GroupedChunkRefs{refs}})
-		}
-	}
-	return res
 }
 
 // doForAddrs sequetially calls the provided callback function fn for each
