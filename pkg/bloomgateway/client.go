@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -23,9 +24,40 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 )
+
+var (
+	// groupedChunksRefPool pooling slice of logproto.GroupedChunkRefs [64, 128, 256, ..., 65536]
+	groupedChunksRefPool = queue.NewSlicePool[*logproto.GroupedChunkRefs](1<<6, 1<<16, 2)
+	// chunkRefsByAddrsPool pooling slice of chunkRefsByAddrs [64, 128, 256, ..., 65536]
+	chunkRefsByAddrsPool = queue.NewSlicePool[chunkRefsByAddrs](1<<6, 1<<16, 2)
+	// ringGetBuffersPool pooling for ringGetBuffers to avoid calling ring.MakeBuffersForGet() for each request
+	ringGetBuffersPool = sync.Pool{
+		New: func() interface{} {
+			descs, hosts, zones := ring.MakeBuffersForGet()
+			return &ringGetBuffers{
+				Descs: descs,
+				Hosts: hosts,
+				Zones: zones,
+			}
+		},
+	}
+)
+
+type ringGetBuffers struct {
+	Descs []ring.InstanceDesc
+	Hosts []string
+	Zones []string
+}
+
+func (buf *ringGetBuffers) Reset() {
+	buf.Descs = buf.Descs[:0]
+	buf.Hosts = buf.Hosts[:0]
+	buf.Zones = buf.Zones[:0]
+}
 
 // GRPCPool represents a pool of gRPC connections to different bloom gateway instances.
 // Interfaces are inlined for simplicity to automatically satisfy interface functions.
@@ -148,8 +180,8 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	// All chunk refs of series that belong to one and the same bloom gateway are set in one batch.
 	streamsByAddr := c.groupStreamsByAddr(groups, addrs)
 
-	// TODO(chaudum): We might over-allocate for the filtered responses here?
-	filteredChunkRefs := make([]*logproto.GroupedChunkRefs, 0, len(fingerprints))
+	filteredChunkRefs := groupedChunksRefPool.Get(len(fingerprints))
+	defer groupedChunksRefPool.Put(filteredChunkRefs)
 
 	for _, item := range streamsByAddr {
 		// randomize order of addresses so we don't hotspot the first server in the list
@@ -209,7 +241,9 @@ type chunkRefsByAddrs struct {
 }
 
 func (c *GatewayClient) groupStreamsByAddr(groups []*logproto.GroupedChunkRefs, addresses [][]string) []chunkRefsByAddrs {
-	res := make([]chunkRefsByAddrs, 0, len(addresses))
+	res := chunkRefsByAddrsPool.Get(len(addresses))
+	defer chunkRefsByAddrsPool.Put(res)
+
 	for i := 0; i < len(addresses); i++ {
 		addrs := addresses[i]
 		refs := groups[i]
@@ -276,10 +310,16 @@ func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, groups []*lo
 
 	fingerprints := make([]uint64, numFingerprints)
 	addresses := make([][]string, numFingerprints)
-	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
+
+	buf := ringGetBuffersPool.Get().(*ringGetBuffers)
+	defer func() {
+		// Before returning the bufs to the pool, reset them to release them earlier for GC.
+		buf.Reset()
+		ringGetBuffersPool.Put(buf)
+	}()
 
 	for idx, key := range groups {
-		rs, err = subRing.Get(uint32(key.Fingerprint), BlocksRead, bufDescs, bufHosts, bufZones)
+		rs, err = subRing.Get(uint32(key.Fingerprint), BlocksRead, buf.Descs, buf.Hosts, buf.Zones)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "bloom gateway get ring")
 		}

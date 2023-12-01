@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [11319](https://github.com/grafana/loki/pull/11319) **someStrangerFromTheAbyss**: Helm: Add extraContainers to the write pods.
 * [11243](https://github.com/grafana/loki/pull/11243) **kavirajk**: Inflight-logging: Add extra metadata to inflight requests logging.
 * [11110](https://github.com/grafana/loki/pull/11003) **MichelHollands**: Change the default of the `metrics-namespace` flag to 'loki'.
 * [11086](https://github.com/grafana/loki/pull/11086) **kandrew5**: Helm: Allow topologySpreadConstraints
@@ -83,6 +84,8 @@
 #### FluentD
 
 #### Jsonnet
+
+* [11312](https://github.com/grafana/loki/pull/11312) **sentoz**: Loki ksonnet: Do not generate configMap for consul if you are using memberlist
 
 * [11020](https://github.com/grafana/loki/pull/11020) **ashwanthgoli**: Loki ksonnet: Do not generate table-manager manifests if shipper store is in-use.
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -33,9 +34,9 @@ type blockDownloader struct {
 	limits             Limits
 	activeUsersService *util.ActiveUsersCleanupService
 
-	ctx                  context.Context
-	manager              *services.Manager
-	onWorkerStopCallback func()
+	ctx     context.Context
+	manager *services.Manager
+	wg      sync.WaitGroup
 }
 
 func newBlockDownloader(config config.Config, blockClient BlockClient, limits Limits, logger log.Logger, reg prometheus.Registerer) (*blockDownloader, error) {
@@ -55,19 +56,20 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 	}
 
 	b := &blockDownloader{
-		ctx:                  ctx,
-		logger:               logger,
-		workingDirectory:     config.WorkingDirectory,
-		queueMetrics:         queueMetrics,
-		queue:                downloadingQueue,
-		blockClient:          blockClient,
-		activeUsersService:   activeUsersService,
-		limits:               limits,
-		manager:              manager,
-		onWorkerStopCallback: onWorkerStopNoopCallback,
+		ctx:                ctx,
+		logger:             logger,
+		workingDirectory:   config.WorkingDirectory,
+		queueMetrics:       queueMetrics,
+		queue:              downloadingQueue,
+		blockClient:        blockClient,
+		activeUsersService: activeUsersService,
+		limits:             limits,
+		manager:            manager,
+		wg:                 sync.WaitGroup{},
 	}
 
 	for i := 0; i < config.BlocksDownloadingQueue.WorkersCount; i++ {
+		b.wg.Add(1)
 		go b.serveDownloadingTasks(fmt.Sprintf("worker-%d", i))
 	}
 	return b, nil
@@ -91,17 +93,15 @@ func NewBlockDownloadingTask(ctx context.Context, block BlockRef, resCh chan<- b
 	}
 }
 
-// noop implementation
-var onWorkerStopNoopCallback = func() {}
-
 func (d *blockDownloader) serveDownloadingTasks(workerID string) {
+	// defer first, so it gets executed as last of the deferred functions
+	defer d.wg.Done()
+
 	logger := log.With(d.logger, "worker", workerID)
 	level.Debug(logger).Log("msg", "starting worker")
 
 	d.queue.RegisterConsumerConnection(workerID)
 	defer d.queue.UnregisterConsumerConnection(workerID)
-	//this callback is used only in the tests to assert that worker is stopped
-	defer d.onWorkerStopCallback()
 
 	idx := queue.StartIndexWithLocalQueue
 
@@ -203,6 +203,7 @@ func (d *blockDownloader) createBlockQuerier(directory string) *v1.BlockQuerier 
 
 func (d *blockDownloader) stop() {
 	_ = services.StopManagerAndAwaitStopped(d.ctx, d.manager)
+	d.wg.Wait()
 }
 
 func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {

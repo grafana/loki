@@ -74,6 +74,11 @@ const (
 	metricsSubsystem       = "bloom_gateway"
 )
 
+var (
+	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
+	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
+)
+
 type metrics struct {
 	queueDuration    prometheus.Histogram
 	inflightRequests prometheus.Summary
@@ -296,8 +301,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	requestCount := len(req.Refs)
-	// TODO(chaudum): Use pool
-	responses := make([]v1.Output, 0, requestCount)
+	responses := responsesPool.Get(requestCount)
+	defer responsesPool.Put(responses)
 
 	for {
 		select {
