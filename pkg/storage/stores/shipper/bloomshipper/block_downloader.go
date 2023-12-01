@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -36,6 +37,7 @@ type blockDownloader struct {
 	ctx                  context.Context
 	manager              *services.Manager
 	onWorkerStopCallback func()
+	wg                   sync.WaitGroup
 }
 
 func newBlockDownloader(config config.Config, blockClient BlockClient, limits Limits, logger log.Logger, reg prometheus.Registerer) (*blockDownloader, error) {
@@ -65,9 +67,11 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 		limits:               limits,
 		manager:              manager,
 		onWorkerStopCallback: onWorkerStopNoopCallback,
+		wg:                   sync.WaitGroup{},
 	}
 
 	for i := 0; i < config.BlocksDownloadingQueue.WorkersCount; i++ {
+		b.wg.Add(1)
 		go b.serveDownloadingTasks(fmt.Sprintf("worker-%d", i))
 	}
 	return b, nil
@@ -102,6 +106,7 @@ func (d *blockDownloader) serveDownloadingTasks(workerID string) {
 	defer d.queue.UnregisterConsumerConnection(workerID)
 	//this callback is used only in the tests to assert that worker is stopped
 	defer d.onWorkerStopCallback()
+	defer d.wg.Done()
 
 	idx := queue.StartIndexWithLocalQueue
 
@@ -203,6 +208,7 @@ func (d *blockDownloader) createBlockQuerier(directory string) *v1.BlockQuerier 
 
 func (d *blockDownloader) stop() {
 	_ = services.StopManagerAndAwaitStopped(d.ctx, d.manager)
+	d.wg.Wait()
 }
 
 func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
