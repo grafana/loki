@@ -405,9 +405,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
-	var commonPrefixesSet map[string]bool
-
-	commonPrefixesSet = make(map[string]bool)
+	var commonPrefixesSet = make(map[string]bool)
 
 	for i := range a.bucketNames {
 		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
