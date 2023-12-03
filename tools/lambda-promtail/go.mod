@@ -1,6 +1,8 @@
 module main
 
-go 1.19
+go 1.21
+
+toolchain go1.21.4
 
 require (
 	github.com/aws/aws-lambda-go v1.26.0
@@ -10,8 +12,8 @@ require (
 	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
-	github.com/grafana/dskit v0.0.0-20231017083947-7b512eb54d47
-	github.com/grafana/loki v1.6.2-0.20231025205147-7fa2f6ea9ef4
+	github.com/grafana/dskit v0.0.0-20231120170505-765e343eda4f
+	github.com/grafana/loki v1.6.2-0.20231202074712-489ac8d529ec
 	github.com/prometheus/common v0.44.0
 	github.com/stretchr/testify v1.8.4
 )
@@ -33,22 +35,28 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.1 // indirect
 	github.com/aws/smithy-go v1.11.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/c2h5oh/datasize v0.0.0-20220606134207-859f65c6625b // indirect
+	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dennwc/varint v1.0.0 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/status v1.1.1 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/grafana/loki/pkg/push v0.0.0-20231023154132-0a7737e7c7eb // indirect
+	github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586 // indirect
+	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
 	github.com/hashicorp/consul/api v1.25.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -86,6 +94,7 @@ require (
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
+	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
@@ -99,7 +108,7 @@ require (
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/oauth2 v0.10.0 // indirect
+	golang.org/x/oauth2 v0.11.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
@@ -107,9 +116,9 @@ require (
 	golang.org/x/tools v0.11.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230913181813-007df8e322eb // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230822172742-b8732ec3820d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230920204549-e6e6cdab5c13 // indirect
-	google.golang.org/grpc v1.58.2 // indirect
+	google.golang.org/grpc v1.59.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
