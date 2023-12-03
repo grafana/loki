@@ -9,12 +9,13 @@ weight:
 
 # geoip
 
-The `geoip` stage is a parsing stage that reads an ip address and populates the labelset with geoip fields. [Maxmind's GeoIP2 database](https://www.maxmind.com/en/home) is used for the lookup.
+The `geoip` stage is a parsing stage that reads an ip address and populates the labelset with geoip fields. [Maxmind's GeoIP2](https://www.maxmind.com/en/home) or [GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) databases must be used for the lookup.
 
 Populated fields for City db:
 
 - geoip_city_name
 - geoip_country_name
+- geoip_country_code
 - geoip_continent_name
 - geoip_continent_code
 - geoip_location_latitude
@@ -29,6 +30,13 @@ Populated fields for ASN (Autonomous System Number) db:
 - geoip_autonomous_system_number
 - geoip_autonomous_system_organization
 
+Populated fields for Country db:
+
+- geoip_country_name
+- geoip_country_code
+- geoip_continent_name
+- geoip_continent_code
+
 ## Schema
 
 ```yaml
@@ -39,7 +47,7 @@ geoip:
   # IP from extracted data to parse.
   [source: <string>]
 
-  # Maxmind DB type. Allowed values are "city", "asn"
+  # Maxmind DB type. Allowed values are "city", "country", "asn"
   [db_type: <string>]
 ```
 
@@ -66,6 +74,7 @@ The `regex` stage parses the log line and `ip` is extracted. Then the extracted 
 
 - `geoip_city_name`: `Kansas City`
 - `geoip_country_name`: `United States`
+- `geoip_country_code`: `US`
 - `geoip_continent_name`: `North America`
 - `geoip_continent_code`: `NA`
 - `geoip_location_latitude`: `"39.1027`
@@ -135,3 +144,21 @@ The `regex` stage parses the log line and `ip` is extracted. Then the extracted 
 
 For more information and real life example, see [Protect PII and add geolocation data: Monitoring legacy systems with Grafana
 ](/blog/2023/03/14/protect-pii-and-add-geolocation-data-monitoring-legacy-systems-with-grafana/) which has real-life examples on how to infuse dashboards with geo-location data.
+
+## GeoIP with Country database example
+
+```yaml
+- regex:
+    expression: "^(?P<ip>\S+) .*"
+- geoip:
+    db: "/path/to/GeoIP2-Country.mmdb"
+    source: "ip"
+    db_type: "country"
+```
+
+The `geoip` stage performs a lookup on the `ip` and populates the following labels:
+
+- `geoip_country_name`: `United States`
+- `geoip_country_code`: `US`
+- `geoip_continent_name`: `North America`
+- `geoip_continent_code`: `NA`

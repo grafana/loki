@@ -26,6 +26,7 @@ type GeoIPFields int
 const (
 	CITYNAME GeoIPFields = iota
 	COUNTRYNAME
+	COUNTRYCODE
 	CONTINENTNAME
 	CONTINENTCODE
 	LOCATION
@@ -38,6 +39,7 @@ const (
 var fields = map[GeoIPFields]string{
 	CITYNAME:        "geoip_city_name",
 	COUNTRYNAME:     "geoip_country_name",
+	COUNTRYCODE:     "geoip_country_code",
 	CONTINENTNAME:   "geoip_continent_name",
 	CONTINENTCODE:   "geoip_continent_code",
 	LOCATION:        "geoip_location",
@@ -150,6 +152,13 @@ func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interfa
 			return
 		}
 		g.populateLabelsWithCityData(labels, record)
+	case "country":
+		record, err := g.db.Country(ip)
+		if err != nil {
+			level.Error(g.logger).Log("msg", "unable to get Country record for the ip", "err", err, "ip", ip)
+			return
+		}
+		g.populateLabelsWithCountryData(labels, record)
 	case "asn":
 		record, err := g.db.ASN(ip)
 		if err != nil {
@@ -180,6 +189,11 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 			contryName := record.Country.Names["en"]
 			if contryName != "" {
 				labels[model.LabelName(label)] = model.LabelValue(contryName)
+			}
+		case COUNTRYCODE:
+			contryCode := record.Country.IsoCode
+			if contryCode != "" {
+				labels[model.LabelName(label)] = model.LabelValue(contryCode)
 			}
 		case CONTINENTNAME:
 			continentName := record.Continent.Names["en"]
@@ -222,6 +236,35 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 				if subdivisionCode != "" {
 					labels[model.LabelName(label)] = model.LabelValue(subdivisionCode)
 				}
+			}
+		default:
+			level.Error(g.logger).Log("msg", "unknown geoip field")
+		}
+	}
+}
+
+func (g *geoIPStage) populateLabelsWithCountryData(labels model.LabelSet, record *geoip2.Country) {
+	for field, label := range fields {
+		switch field {
+		case COUNTRYNAME:
+			contryName := record.Country.Names["en"]
+			if contryName != "" {
+				labels[model.LabelName(label)] = model.LabelValue(contryName)
+			}
+		case COUNTRYCODE:
+			contryCode := record.Country.IsoCode
+			if contryCode != "" {
+				labels[model.LabelName(label)] = model.LabelValue(contryCode)
+			}
+		case CONTINENTNAME:
+			continentName := record.Continent.Names["en"]
+			if continentName != "" {
+				labels[model.LabelName(label)] = model.LabelValue(continentName)
+			}
+		case CONTINENTCODE:
+			continentCode := record.Continent.Code
+			if continentCode != "" {
+				labels[model.LabelName(label)] = model.LabelValue(continentCode)
 			}
 		default:
 			level.Error(g.logger).Log("msg", "unknown geoip field")
