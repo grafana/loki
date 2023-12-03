@@ -12,14 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package unit // import "go.opentelemetry.io/otel/metric/unit"
+package semconv // import "go.opentelemetry.io/otel/semconv/v1.17.0"
 
-// Unit is a determinate standard quantity of measurement.
-type Unit string
-
-// Units defined by OpenTelemetry.
 const (
-	Dimensionless Unit = "1"
-	Bytes         Unit = "By"
-	Milliseconds  Unit = "ms"
+	// ExceptionEventName is the name of the Span event representing an exception.
+	ExceptionEventName = "exception"
 )
