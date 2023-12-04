@@ -11,12 +11,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestBloomGatewayClient(t *testing.T) {
-
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
@@ -30,33 +30,6 @@ func TestBloomGatewayClient(t *testing.T) {
 		_, err := NewGatewayClient(cfg, l, reg, logger, "loki", nil, false)
 		require.NoError(t, err)
 	})
-}
-
-func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
-	input := []ring.InstanceDesc{
-		{Id: "1", Tokens: []uint32{6, 5, 2, 9}},
-		{Id: "2", Tokens: []uint32{3, 4, 7}},
-		{Id: "3", Tokens: []uint32{1, 8, 0}},
-	}
-	expected := []instanceWithToken{
-		{instance: input[2], token: 0},
-		{instance: input[2], token: 1},
-		{instance: input[0], token: 2},
-		{instance: input[1], token: 3},
-		{instance: input[1], token: 4},
-		{instance: input[0], token: 5},
-		{instance: input[0], token: 6},
-		{instance: input[1], token: 7},
-		{instance: input[2], token: 8},
-		{instance: input[0], token: 9},
-	}
-
-	var i int
-	it := newInstanceSortMergeIterator(input)
-	for it.Next() {
-		require.Equal(t, expected[i], it.At())
-		i++
-	}
 }
 
 func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
@@ -203,9 +176,9 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 		{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{2014002871, 315617625, 1036168527}},
 	}
 
-	it := newInstanceSortMergeIterator(instances)
+	it := bloomutils.NewInstanceSortMergeIterator(instances)
 	for it.Next() {
-		t.Log(it.At().token, it.At().instance.Addr)
+		t.Log(it.At().MaxToken, it.At().Instance.Addr)
 	}
 
 	testCases := []struct {
@@ -327,8 +300,8 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 var _ ring.ReadRing = &mockRing{}
 
 func newMockRing(instances []ring.InstanceDesc) *mockRing {
-	it := newInstanceSortMergeIterator(instances)
-	ranges := make([]instanceWithToken, 0)
+	it := bloomutils.NewInstanceSortMergeIterator(instances)
+	ranges := make([]bloomutils.InstanceWithTokenRange, 0)
 	for it.Next() {
 		ranges = append(ranges, it.At())
 	}
@@ -340,21 +313,21 @@ func newMockRing(instances []ring.InstanceDesc) *mockRing {
 
 type mockRing struct {
 	instances []ring.InstanceDesc
-	ranges    []instanceWithToken
+	ranges    []bloomutils.InstanceWithTokenRange
 }
 
 // Get implements ring.ReadRing.
 func (r *mockRing) Get(key uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	idx, _ := sort.Find(len(r.ranges), func(i int) int {
-		if r.ranges[i].token < key {
+		if r.ranges[i].MaxToken < key {
 			return 1
 		}
-		if r.ranges[i].token > key {
+		if r.ranges[i].MaxToken > key {
 			return -1
 		}
 		return 0
 	})
-	return ring.ReplicationSet{Instances: []ring.InstanceDesc{r.ranges[idx].instance}}, nil
+	return ring.ReplicationSet{Instances: []ring.InstanceDesc{r.ranges[idx].Instance}}, nil
 }
 
 // GetAllHealthy implements ring.ReadRing.
