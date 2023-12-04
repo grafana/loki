@@ -11,7 +11,8 @@ const (
 func reassemble(buf []rune, ln, pos int, result []byte) []byte {
 	result = result[:0] // Reset the result slice
 	for i := 0; i < ln; i++ {
-		cur := (pos + i) % len(buf)
+		cur := pos % len(buf)
+		pos++
 		result = utf8.AppendRune(result, buf[cur])
 	}
 	return result

@@ -801,7 +801,9 @@ func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
 // Placeholder limits type to pass to cortex frontend
 type disabledShuffleShardingLimits struct{}
 
-func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) int { return 0 }
+func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) uint { return 0 }
+
+func (disabledShuffleShardingLimits) MaxQueryCapacity(_ string) float64 { return 0 }
 
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")

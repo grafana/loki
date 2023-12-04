@@ -115,9 +115,7 @@ func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
 }
 
 func clearCache(cache map[string]interface{}) {
-	for k := range cache {
-		delete(cache, k)
-	}
+	clear(cache)
 }
 
 // prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
@@ -138,7 +136,7 @@ func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
 }
 
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
-func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) {
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) error {
 	startTime := time.Now().UnixMilli()
 
 	clearCache(bt.cache)
@@ -149,7 +147,6 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
 		chunkTotalUncompressedSize += lc.UncompressedSize()
 
-		// TODO: error handling
 		itr, err := lc.Iterator(
 			context.Background(),
 			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
@@ -158,8 +155,8 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
 		)
 		if err != nil {
-			level.Info(util_log.Logger).Log("chunk iterator cannot be created")
-			return
+			level.Error(util_log.Logger).Log("msg", "chunk iterator cannot be created", "err", err)
+			return err
 		}
 
 		defer itr.Close()
@@ -218,6 +215,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 	bt.metrics.bloomSize.Observe(float64(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity() / eightBits))
 	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
 	bt.metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
+	return nil
 }
 
 // n ≈ −m ln(1 − p).

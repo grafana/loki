@@ -14,6 +14,7 @@ import (
 	strings "strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -62,11 +63,9 @@ func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Requ
 	return &clone
 }
 
-func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
-	clone := *r
-	clone.StartTs = s
-	clone.EndTs = e
-	return &clone
+// WithStartEndForCache implements resultscache.Request.
+func (r *LokiRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
@@ -114,6 +113,11 @@ func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangeba
 	return &clone
 }
 
+// WithStartEndForCache implements resultscache.Request.
+func (r *LokiInstantRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
+}
+
 func (r *LokiInstantRequest) WithQuery(query string) queryrangebase.Request {
 	clone := *r
 	clone.Query = query
@@ -151,6 +155,11 @@ func (r *LokiSeriesRequest) WithStartEnd(s, e time.Time) queryrangebase.Request 
 	clone.StartTs = s
 	clone.EndTs = e
 	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *LokiSeriesRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LokiSeriesRequest) WithQuery(_ string) queryrangebase.Request {
@@ -227,6 +236,11 @@ func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	tmp = e
 	clone.End = &tmp
 	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (r *LabelRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
 }
 
 func (r *LabelRequest) WithQuery(query string) queryrangebase.Request {
