@@ -42,6 +42,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
@@ -343,6 +344,12 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	bt, _ := v1.NewBloomTokenizer(c.reg, NGramLength, NGramSkip)
 
 	errs := multierror.New()
+	rs, err := c.sharding.GetTenantSubRing(tenant).GetAllHealthy(RingOp)
+	if err != nil {
+		return err
+	}
+	tokenRanges := bloomutils.GetInstancesWithTokenRanges(c.cfg.Ring.InstanceID, rs.Instances)
+
 	_ = sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 		if isMultiTenantIndex {
 			// Skip multi-tenant indexes
@@ -367,15 +374,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-				// TODO: Inefficient as is, calls the ring per fingerprint. Refactor to make the call once per compaction fingerprint bounds.
-				ownsFingerprint, err := c.sharding.OwnsFingerprint(tenant, uint64(fingerprint))
-
-				if err != nil {
-					level.Error(logger).Log("msg", "failed to check if compactor owns fp", "err", err)
-					errs.Add(err)
-					return
-				}
-				if !ownsFingerprint {
+				if !tokenRanges.Contains(uint32(fingerprint)) {
 					return
 				}
 
