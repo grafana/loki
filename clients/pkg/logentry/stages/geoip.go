@@ -241,8 +241,6 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 					labels[model.LabelName(label)] = model.LabelValue(subdivisionCode)
 				}
 			}
-		default:
-			level.Error(g.logger).Log("msg", "unknown geoip field")
 		}
 	}
 }
@@ -270,8 +268,6 @@ func (g *geoIPStage) populateLabelsWithCountryData(labels model.LabelSet, record
 			if continentCode != "" {
 				labels[model.LabelName(label)] = model.LabelValue(continentCode)
 			}
-		default:
-			level.Error(g.logger).Log("msg", "unknown geoip field")
 		}
 	}
 }
@@ -289,8 +285,6 @@ func (g *geoIPStage) populateLabelsWithASNData(labels model.LabelSet, record *ge
 			if autonomousSystemOrganization != "" {
 				labels[model.LabelName(label)] = model.LabelValue(autonomousSystemOrganization)
 			}
-		default:
-			level.Error(g.logger).Log("msg", "unknown geoip field")
 		}
 	}
 }
