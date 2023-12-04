@@ -4,12 +4,13 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // List returns a slice of AlertingRules and a slice of RecordingRules for the given spec or an error. Three cases apply:

@@ -10,20 +10,21 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func setupFrontend(t *testing.T, config Config) *Frontend {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, limits{queriers: 3}, logger, nil)
+	frontend, err := New(config, mockLimits{queriers: 3}, logger, nil, constants.Loki)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

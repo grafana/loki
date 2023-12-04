@@ -21,7 +21,7 @@ import (
 	"time"
 
 	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
-	fmpb "google.golang.org/genproto/protobuf/field_mask"
+	fmpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

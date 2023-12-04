@@ -3,8 +3,8 @@ package server
 import (
 	"net/http"
 
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/middleware"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/middleware"
 )
 
 // NewPrepopulateMiddleware creates a middleware which will parse incoming http forms.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,7 +22,6 @@ import (
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
@@ -202,7 +202,7 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
 			for k := range clt.Headers {
-				if strings.ToLower(user.OrgIDHeaderName) == strings.ToLower(strings.TrimSpace(k)) {
+				if strings.EqualFold(user.OrgIDHeaderName, strings.TrimSpace(k)) {
 					delete(clt.Headers, k)
 				}
 			}

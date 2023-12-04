@@ -5,13 +5,13 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
-
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 const (
@@ -60,17 +60,30 @@ func ConfigureGatewayDeployment(
 	mode lokiv1.ModeType,
 	secretVolumeName, tlsDir string,
 	minTLSVersion, ciphers string,
-	withTLS bool,
+	withTLS bool, adminGroups []string,
 ) error {
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
-			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS),
+			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS, adminGroups),
 		},
 	}
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
+	}
+
+	if mode == lokiv1.OpenshiftLogging {
+		// enable extraction of namespace selector
+		for i, c := range d.Spec.Template.Spec.Containers {
+			if c.Name != "gateway" {
+				continue
+			}
+
+			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
+				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatcher),
+			)
+		}
 	}
 
 	return nil

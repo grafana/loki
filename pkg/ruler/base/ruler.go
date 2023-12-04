@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -29,7 +30,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/dskit/tenant"
@@ -178,7 +178,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ShardingAlgo, "ruler.sharding-algo", util.ShardingAlgoByGroup, fmt.Sprintf("The sharding algorithm to use for deciding how rules & groups are sharded. Supported values are: %s.", strings.Join(supportedShardingAlgos, ", ")))
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "File path to store temporary rule files.")
-	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler API.")
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
 	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than the grace period.`)
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
@@ -188,6 +187,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics.")
+
+	f.BoolVar(&cfg.EnableAPI, "ruler.enable-api", true, "Enable the ruler API.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -253,38 +254,42 @@ type Ruler struct {
 
 	allowedTenants *util.AllowedTenants
 
-	registry prometheus.Registerer
-	logger   log.Logger
+	registry         prometheus.Registerer
+	logger           log.Logger
+	metricsNamespace string
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
-	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg))
+func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, metricsNamespace string) (*Ruler, error) {
+	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg, metricsNamespace), metricsNamespace)
 }
 
-func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
+func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool, metricsNamespace string) (*Ruler, error) {
 	if err := cfg.Validate(logger); err != nil {
 		return nil, fmt.Errorf("invalid ruler config: %w", err)
 	}
 
 	ruler := &Ruler{
-		cfg:            cfg,
-		store:          ruleStore,
-		manager:        manager,
-		registry:       reg,
-		logger:         logger,
-		limits:         limits,
-		clientsPool:    clientPool,
-		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		cfg:              cfg,
+		store:            ruleStore,
+		manager:          manager,
+		registry:         reg,
+		logger:           logger,
+		limits:           limits,
+		clientsPool:      clientPool,
+		allowedTenants:   util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		metricsNamespace: metricsNamespace,
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ruler_ring_check_errors_total",
-			Help: "Number of errors that have occurred when checking the ring for ownership",
+			Namespace: metricsNamespace,
+			Name:      "ruler_ring_check_errors_total",
+			Help:      "Number of errors that have occurred when checking the ring for ownership",
 		}),
 
 		rulerSync: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ruler_sync_rules_total",
-			Help: "Total number of times the ruler sync operation triggered.",
+			Namespace: metricsNamespace,
+			Name:      "ruler_sync_rules_total",
+			Help:      "Total number of times the ruler sync operation triggered.",
 		}, []string{"reason"}),
 	}
 
@@ -299,7 +304,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		ringStore, err := kv.NewClient(
 			cfg.Ring.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), "ruler"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg), "ruler"),
 			logger,
 		)
 		if err != nil {
@@ -328,12 +333,12 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
 	rulerRingName := "ruler"
-	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ringKey, ringStore, delegate, r.logger, prometheus.WrapRegistererWithPrefix("cortex_", r.registry))
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ringKey, ringStore, delegate, r.logger, prometheus.WrapRegistererWithPrefix(r.metricsNamespace+"_", r.registry))
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r.registry), r.logger)
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix(r.metricsNamespace+"_", r.registry), r.logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}
@@ -828,6 +833,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				Namespace: decodedNamespace,
 				Interval:  interval,
 				User:      userID,
+				Limit:     int64(group.Limit()),
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),

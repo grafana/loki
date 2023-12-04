@@ -8,33 +8,31 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
-	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
-	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/handlers"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
-	"github.com/grafana/loki/operator/internal/status"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
+	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/handlers"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/status"
 )
 
 var (
@@ -207,8 +205,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
-		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
-		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
+		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
+		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -221,19 +219,18 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	}
 
 	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
-		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
+		bld = bld.Watches(&openshiftconfigv1.APIServer{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
 	}
 
 	if r.FeatureGates.OpenShift.ClusterProxy {
-		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.Proxy{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
+		bld = bld.Watches(&openshiftconfigv1.Proxy{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
 	}
 
 	return bld.Complete(r)
 }
 
 func (r *LokiStackReconciler) enqueueAllLokiStacksHandler() handler.EventHandler {
-	ctx := context.TODO()
-	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
 		if err := r.Client.List(ctx, lokiStacks); err != nil {
 			r.Log.Error(err, "Error getting LokiStack resources in event handler")
@@ -269,8 +266,7 @@ func statusDifferent(e event.UpdateEvent) bool {
 }
 
 func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHandler {
-	ctx := context.TODO()
-	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
 		if err := r.Client.List(ctx, lokiStacks); err != nil {
 			r.Log.Error(err, "Error getting LokiStack resources in event handler")
@@ -302,8 +298,7 @@ func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHand
 }
 
 func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
-	ctx := context.TODO()
-	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
 		if err := r.Client.List(ctx, lokiStacks); err != nil {
 			r.Log.Error(err, "Error getting LokiStack resources in event handler")

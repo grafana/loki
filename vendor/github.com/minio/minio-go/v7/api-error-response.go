@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 /* **** SAMPLE ERROR RESPONSE ****
@@ -186,6 +187,15 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 				BucketName: bucketName,
 			}
 		}
+	}
+
+	code := resp.Header.Get("x-minio-error-code")
+	if code != "" {
+		errResp.Code = code
+	}
+	desc := resp.Header.Get("x-minio-error-desc")
+	if desc != "" {
+		errResp.Message = strings.Trim(desc, `"`)
 	}
 
 	// Save hostID, requestID and region information

@@ -11,6 +11,10 @@ import (
 const (
 	MatchAny     = "{}"
 	DefaultLimit = 100
+	Series       = "series"
+	Labels       = "labels"
+
+	DefaultAggregateBy = Series
 
 	ErrVolumeMaxSeriesHit = "the query hit the max number of series limit (limit: %d series)"
 )
@@ -47,7 +51,7 @@ func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
 	acc.lock.RLock()
 	defer acc.lock.RUnlock()
 
-	return MapToSeriesVolumeResponse(acc.volumes, int(acc.limit))
+	return MapToVolumeResponse(acc.volumes, int(acc.limit))
 }
 
 func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeResponse {
@@ -63,10 +67,10 @@ func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeRe
 		}
 	}
 
-	return MapToSeriesVolumeResponse(mergedVolumes, int(limit))
+	return MapToVolumeResponse(mergedVolumes, int(limit))
 }
 
-func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.VolumeResponse {
+func MapToVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.VolumeResponse {
 	volumes := make([]logproto.Volume, 0, len(mergedVolumes))
 	for name, size := range mergedVolumes {
 		volumes = append(volumes, logproto.Volume{
@@ -91,4 +95,19 @@ func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int) *logp
 		Volumes: volumes,
 		Limit:   int32(limit),
 	}
+}
+
+func ValidateAggregateBy(aggregateBy string) bool {
+	switch aggregateBy {
+	case Labels:
+		return true
+	case Series:
+		return true
+	default:
+		return false
+	}
+}
+
+func AggregateBySeries(aggregateBy string) bool {
+	return aggregateBy == Series
 }

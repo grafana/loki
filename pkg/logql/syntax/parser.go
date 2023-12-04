@@ -99,6 +99,14 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	return p.Parse()
 }
 
+func MustParseExpr(input string) Expr {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		panic(err)
+	}
+	return expr
+}
+
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
@@ -121,14 +129,24 @@ func validateMatchers(matchers []*labels.Matcher) error {
 
 // ParseMatchers parses a string and returns labels matchers, if the expression contains
 // anything else it will return an error.
-func ParseMatchers(input string) ([]*labels.Matcher, error) {
-	expr, err := ParseExpr(input)
+func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
+	var (
+		expr Expr
+		err  error
+	)
+
+	if validate {
+		expr, err = ParseExpr(input)
+	} else {
+		expr, err = ParseExprWithoutValidation(input)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, errors.New("only label matchers is supported")
+		return nil, logqlmodel.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }

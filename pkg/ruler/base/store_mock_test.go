@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 )
@@ -19,6 +20,7 @@ type mockRuleStore struct {
 var (
 	delim               = "/"
 	interval, _         = time.ParseDuration("1m")
+	limit               = int64(10)
 	mockRulesNamespaces = map[string]rulespb.RuleGroupList{
 		"user1": {
 			&rulespb.RuleGroupDesc{
@@ -36,6 +38,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 			&rulespb.RuleGroupDesc{
 				Name:      "fail",
@@ -52,6 +55,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -72,6 +76,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 		"user2": {
@@ -83,6 +88,41 @@ var (
 					{
 						Record: "UP_RULE",
 						Expr:   "up",
+					},
+				},
+				Interval: interval,
+				Limit:    limit,
+			},
+		},
+		"user3": {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "test",
+				User:      "user3",
+				Rules: []*rulespb.RuleDesc{
+					{
+						Record: "UP_RULE",
+						Expr:   "up",
+					},
+					{
+						Alert: "UP_ALERT",
+						Expr:  "up < 1",
+						Labels: []logproto.LabelAdapter{
+							{
+								Name:  "foo",
+								Value: "bar",
+							},
+						},
+					},
+					{
+						Alert: "DOWN_ALERT",
+						Expr:  "down < 1",
+						Labels: []logproto.LabelAdapter{
+							{
+								Name:  "namespace",
+								Value: "delta",
+							},
+						},
 					},
 				},
 				Interval: interval,
@@ -107,6 +147,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -141,6 +182,7 @@ func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rulespb
 				Name:      r.Name,
 				User:      k,
 				Interval:  r.Interval,
+				Limit:     r.Limit,
 				Rules:     r.Rules,
 			})
 		}
@@ -164,6 +206,7 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 			Name:      r.Name,
 			User:      userID,
 			Interval:  r.Interval,
+			Limit:     r.Limit,
 			Rules:     r.Rules,
 		})
 	}

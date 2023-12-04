@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -246,6 +247,7 @@ type mockWalStorage struct {
 func (s *mockWalStorage) Directory() string                          { return s.directory }
 func (s *mockWalStorage) StartTime() (int64, error)                  { return 0, nil }
 func (s *mockWalStorage) WriteStalenessMarkers(_ func() int64) error { return nil }
+func (s *mockWalStorage) SetWriteNotified(_ wlog.WriteNotified)      {}
 func (s *mockWalStorage) Close() error                               { return nil }
 func (s *mockWalStorage) Truncate(_ int64) error                     { return nil }
 

@@ -17,39 +17,36 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
-	"github.com/minio/minio-go/v7/pkg/signer"
+	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	awscommon "github.com/weaveworks/common/aws"
-	"github.com/weaveworks/common/instrument"
 
 	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
 
 const (
 	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
 )
 
 var (
-	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
+	supportedSignatureVersions     = []string{SignatureVersionV4}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 )
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "s3_request_duration_seconds",
 	Help:      "Time spent doing S3 requests.",
 	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
@@ -75,7 +72,6 @@ type S3Config struct {
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
 	SessionToken     flagext.Secret      `yaml:"session_token"`
 	Insecure         bool                `yaml:"insecure"`
-	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
 	StorageClass     string              `yaml:"storage_class"`
@@ -112,9 +108,6 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
-
-	// TODO Remove in Cortex 1.10.0
-	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -184,36 +177,7 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 		return NewSSEParsedConfig(cfg.SSEConfig)
 	}
 
-	// deprecated, but if used it assumes SSE-S3 type
-	if cfg.SSEEncryption {
-		return NewSSEParsedConfig(bucket_s3.SSEConfig{
-			Type: bucket_s3.SSES3,
-		})
-	}
-
 	return nil, nil
-}
-
-func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
-	return request.NamedHandler{
-		Name: "v2.SignRequestHandler",
-		Fn: func(req *request.Request) {
-			credentials, err := req.Config.Credentials.GetWithContext(req.Context())
-			if err != nil {
-				if err != nil {
-					req.Error = err
-					return
-				}
-			}
-
-			req.HTTPRequest = signer.SignV2(
-				*req.HTTPRequest,
-				credentials.AccessKeyID,
-				credentials.SecretAccessKey,
-				!cfg.S3ForcePathStyle,
-			)
-		},
-	}
 }
 
 func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
@@ -313,10 +277,6 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 
 	s3Client := s3.New(sess)
 
-	if cfg.SignatureVersion == SignatureVersionV2 {
-		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
-	}
-
 	return s3Client, nil
 }
 
@@ -339,6 +299,23 @@ func buckets(cfg S3Config) ([]string, error) {
 
 // Stop fulfills the chunk.ObjectClient interface
 func (a *S3ObjectClient) Stop() {}
+
+func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	err := instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		headObjectInput := &s3.HeadObjectInput{
+			Bucket: aws.String(a.bucketFromKey(objectKey)),
+			Key:    aws.String(objectKey),
+		}
+		_, err := a.S3.HeadObject(headObjectInput)
+		return err
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
@@ -428,6 +405,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
+	var commonPrefixesSet = make(map[string]bool)
 
 	for i := range a.bucketNames {
 		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
@@ -451,7 +429,10 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 				}
 
 				for _, commonPrefix := range output.CommonPrefixes {
-					commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
+					if !commonPrefixesSet[aws.StringValue(commonPrefix.Prefix)] {
+						commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
+						commonPrefixesSet[aws.StringValue(commonPrefix.Prefix)] = true
+					}
 				}
 
 				if output.IsTruncated == nil || !*output.IsTruncated {
@@ -483,3 +464,6 @@ func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (a *S3ObjectClient) IsRetryableErr(error) bool { return false }

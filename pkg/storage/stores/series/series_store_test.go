@@ -4,21 +4,22 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/test"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/test"
-	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -26,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -35,7 +37,7 @@ const userID = "1"
 
 var (
 	ctx     = user.InjectOrgID(context.Background(), userID)
-	schemas = []string{"v9", "v10", "v11", "v12"}
+	schemas = []string{"v9", "v10", "v11", "v12", "v13"}
 	stores  = []struct {
 		name     string
 		configFn configFactory
@@ -53,9 +55,7 @@ var (
 			configFn: func() config.ChunkStoreConfig {
 				var storeCfg config.ChunkStoreConfig
 				flagext.DefaultValues(&storeCfg)
-				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
-					MaxSizeItems: 500,
-				}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
+				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 500}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
 				return storeCfg
 			},
 		},
@@ -90,9 +90,9 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 	}, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
+	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
-	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
+	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	_ = tm.SyncTables(context.Background())
 	return store
@@ -123,13 +123,6 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 		"bar", "baz",
 		"toms", "code",
 	)
-
-	fooChunk1 := dummyChunkFor(now, fooMetric1)
-	fooChunk2 := dummyChunkFor(now, fooMetric2)
-	fooChunk3 := dummyChunkFor(now, fooMetric3)
-
-	barChunk1 := dummyChunkFor(now, barMetric1)
-	barChunk2 := dummyChunkFor(now, barMetric2)
 
 	for _, tc := range []struct {
 		metricName, labelName string
@@ -174,8 +167,16 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
+					store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
+
+					chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
+
+					fooChunk1 := dummyChunkWithFormat(t, now, fooMetric1, chunkFmt, headBlockFmt)
+					fooChunk2 := dummyChunkWithFormat(t, now, fooMetric2, chunkFmt, headBlockFmt)
+					fooChunk3 := dummyChunkWithFormat(t, now, fooMetric3, chunkFmt, headBlockFmt)
+					barChunk1 := dummyChunkWithFormat(t, now, barMetric1, chunkFmt, headBlockFmt)
+					barChunk2 := dummyChunkWithFormat(t, now, barMetric2, chunkFmt, headBlockFmt)
 
 					if err := store.Put(ctx, []chunk.Chunk{
 						fooChunk1,
@@ -242,14 +243,6 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 		"toms", "code",
 	)
 
-	fooChunk1 := dummyChunkFor(now, fooMetric1)
-	fooChunk2 := dummyChunkFor(now, fooMetric2)
-	fooChunk3 := dummyChunkFor(now, fooMetric3)
-	fooChunk4 := dummyChunkFor(now.Add(-time.Hour), fooMetric1) // same series but different chunk
-
-	barChunk1 := dummyChunkFor(now, barMetric1)
-	barChunk2 := dummyChunkFor(now, barMetric2)
-
 	for _, tc := range []struct {
 		metricName string
 		expect     []string
@@ -268,8 +261,18 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 				t.Run(fmt.Sprintf("%s / %s / %s ", tc.metricName, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running labelNames with metricName", tc.metricName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
+					store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
+
+					chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
+
+					fooChunk1 := dummyChunkWithFormat(t, now, fooMetric1, chunkFmt, headBlockFmt)
+					fooChunk2 := dummyChunkWithFormat(t, now, fooMetric2, chunkFmt, headBlockFmt)
+					fooChunk3 := dummyChunkWithFormat(t, now, fooMetric3, chunkFmt, headBlockFmt)
+					fooChunk4 := dummyChunkWithFormat(t, now.Add(-time.Hour), fooMetric1, chunkFmt, headBlockFmt) // same series but different chunk
+
+					barChunk1 := dummyChunkWithFormat(t, now, barMetric1, chunkFmt, headBlockFmt)
+					barChunk2 := dummyChunkWithFormat(t, now, barMetric2, chunkFmt, headBlockFmt)
 
 					if err := store.Put(ctx, []chunk.Chunk{
 						fooChunk1,
@@ -313,62 +316,6 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 
 // TestChunkStore_getMetricNameChunks tests if chunks are fetched correctly when we have the metric name
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
-	now := model.Now()
-	chunk1 := dummyChunkFor(now, labels.FromStrings(labels.MetricName, "foo",
-		"bar", "baz",
-		"flip", "flop",
-		"toms", "code",
-	))
-	chunk2 := dummyChunkFor(now, labels.FromStrings(labels.MetricName, "foo",
-		"bar", "beep",
-		"toms", "code",
-	))
-
-	testCases := []struct {
-		query  string
-		expect []chunk.Chunk
-	}{
-		{
-			`foo`,
-			[]chunk.Chunk{chunk1, chunk2},
-		},
-		{
-			`foo{flip=""}`,
-			[]chunk.Chunk{chunk2},
-		},
-		{
-			`foo{bar="baz"}`,
-			[]chunk.Chunk{chunk1},
-		},
-		{
-			`foo{bar="beep"}`,
-			[]chunk.Chunk{chunk2},
-		},
-		{
-			`foo{toms="code"}`,
-			[]chunk.Chunk{chunk1, chunk2},
-		},
-		{
-			`foo{bar!="baz"}`,
-			[]chunk.Chunk{chunk2},
-		},
-		{
-			`foo{bar=~"beep|baz"}`,
-			[]chunk.Chunk{chunk1, chunk2},
-		},
-		{
-			`foo{bar=~"beeping|baz"}`,
-			[]chunk.Chunk{chunk1},
-		},
-		{
-			`foo{toms="code", bar=~"beep|baz"}`,
-			[]chunk.Chunk{chunk1, chunk2},
-		},
-		{
-			`foo{toms="code", bar="baz"}`,
-			[]chunk.Chunk{chunk1},
-		},
-	}
 	for _, schema := range schemas {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
@@ -376,8 +323,67 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
+			chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
+
+			now := model.Now()
+			chunk1 := dummyChunkWithFormat(t, now, labels.FromStrings(labels.MetricName, "foo",
+				"bar", "baz",
+				"flip", "flop",
+				"toms", "code",
+			), chunkFmt, headBlockFmt)
+			chunk2 := dummyChunkWithFormat(t, now, labels.FromStrings(labels.MetricName, "foo",
+				"bar", "beep",
+				"toms", "code",
+			), chunkFmt, headBlockFmt)
+
 			if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
 				t.Fatal(err)
+			}
+
+			testCases := []struct {
+				query  string
+				expect []chunk.Chunk
+			}{
+				{
+					`foo`,
+					[]chunk.Chunk{chunk1, chunk2},
+				},
+				{
+					`foo{flip=""}`,
+					[]chunk.Chunk{chunk2},
+				},
+				{
+					`foo{bar="baz"}`,
+					[]chunk.Chunk{chunk1},
+				},
+				{
+					`foo{bar="beep"}`,
+					[]chunk.Chunk{chunk2},
+				},
+				{
+					`foo{toms="code"}`,
+					[]chunk.Chunk{chunk1, chunk2},
+				},
+				{
+					`foo{bar!="baz"}`,
+					[]chunk.Chunk{chunk2},
+				},
+				{
+					`foo{bar=~"beep|baz"}`,
+					[]chunk.Chunk{chunk1, chunk2},
+				},
+				{
+					`foo{bar=~"beeping|baz"}`,
+					[]chunk.Chunk{chunk1},
+				},
+				{
+					`foo{toms="code", bar=~"beep|baz"}`,
+					[]chunk.Chunk{chunk1, chunk2},
+				},
+				{
+					`foo{toms="code", bar="baz"}`,
+					[]chunk.Chunk{chunk1},
+				},
 			}
 
 			for _, tc := range testCases {
@@ -388,20 +394,12 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					chunks, fetchers, err := store.GetChunkRefs(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, matchers...)
 					require.NoError(t, err)
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
 						for _, cs := range chunks {
-							keys := make([]string, 0, len(cs))
-							sort.Slice(chunks, func(i, j int) bool {
-								return schemaCfg.ExternalKey(cs[i].ChunkRef) < schemaCfg.ExternalKey(cs[j].ChunkRef)
-							})
-
-							for _, c := range cs {
-								keys = append(keys, schemaCfg.ExternalKey(c.ChunkRef))
-							}
-							cks, err := f.FetchChunks(ctx, cs, keys)
+							cks, err := f.FetchChunks(ctx, cs)
 							if err != nil {
 								t.Fatal(err)
 							}
@@ -441,12 +439,10 @@ func Test_GetSeries(t *testing.T) {
 		"flip", "flop",
 		"toms", "code",
 	)
-	chunk1 := dummyChunkFor(now, ch1lbs)
 	ch2lbs := labels.FromStrings(labels.MetricName, "foo",
 		"bar", "beep",
 		"toms", "code",
 	)
-	chunk2 := dummyChunkFor(now, ch2lbs)
 
 	testCases := []struct {
 		query  string
@@ -509,8 +505,12 @@ func Test_GetSeries(t *testing.T) {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
 
-			store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
+			store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
+
+			chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
+			chunk1 := dummyChunkWithFormat(t, now, ch1lbs, chunkFmt, headBlockFmt)
+			chunk2 := dummyChunkWithFormat(t, now, ch2lbs, chunkFmt, headBlockFmt)
 
 			if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
 				t.Fatal(err)
@@ -540,12 +540,10 @@ func Test_GetSeriesShard(t *testing.T) {
 		"flip", "flop",
 		"toms", "code",
 	)
-	chunk1 := dummyChunkFor(now, ch1lbs)
 	ch2lbs := labels.FromStrings(labels.MetricName, "foo",
 		"bar", "beep",
 		"toms", "code",
 	)
-	chunk2 := dummyChunkFor(now, ch2lbs)
 
 	testCases := []struct {
 		query  string
@@ -563,8 +561,12 @@ func Test_GetSeriesShard(t *testing.T) {
 	for _, storeCase := range stores {
 		storeCfg := storeCase.configFn()
 
-		store, _ := newTestChunkStoreConfig(t, "v12", storeCfg)
+		store, schemaCfg := newTestChunkStoreConfig(t, "v12", storeCfg)
 		defer store.Stop()
+
+		chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
+		chunk1 := dummyChunkWithFormat(t, now, ch1lbs, chunkFmt, headBlockFmt)
+		chunk2 := dummyChunkWithFormat(t, now, ch2lbs, chunkFmt, headBlockFmt)
 
 		if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
 			t.Fatal(err)
@@ -596,10 +598,12 @@ func BenchmarkIndexCaching(b *testing.B) {
 	storeMaker := stores[1]
 	storeCfg := storeMaker.configFn()
 
-	store, _ := newTestChunkStoreConfig(b, "v9", storeCfg)
+	store, schemaCfg := newTestChunkStoreConfig(b, "v9", storeCfg)
 	defer store.Stop()
 
-	fooChunk1 := dummyChunkFor(model.Time(0).Add(15*time.Second), BenchmarkLabels)
+	chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
+
+	fooChunk1 := dummyChunkWithFormat(b, model.Time(0).Add(15*time.Second), BenchmarkLabels, chunkFmt, headBlockFmt)
 
 	b.ResetTimer()
 
@@ -650,7 +654,7 @@ func TestChunkStoreError(t *testing.T) {
 				require.NoError(t, err)
 
 				// Query with ordinary time-range
-				_, _, err = store.GetChunkRefs(ctx, userID, tc.from, tc.through, matchers...)
+				_, _, err = store.GetChunks(ctx, userID, tc.from, tc.through, matchers...)
 				require.EqualError(t, err, tc.err)
 			})
 		}
@@ -673,9 +677,6 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 		"env", "prod",
 		"class", "secret",
 	)
-
-	fooChunk1 := dummyChunkFor(now, fooMetric1)
-	fooChunk2 := dummyChunkFor(now, fooMetric2)
 
 	for _, tc := range []struct {
 		metricName, labelName string
@@ -708,8 +709,12 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 				t.Run(fmt.Sprintf("%s / %s / %s / %s", tc.metricName, tc.labelName, schema, storeCase.name), func(t *testing.T) {
 					t.Log("========= Running labelValues with metricName", tc.metricName, "with labelName", tc.labelName, "with schema", schema)
 					storeCfg := storeCase.configFn()
-					store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
+					store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
+
+					chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
+					fooChunk1 := dummyChunkWithFormat(t, now, fooMetric1, chunkFmt, headBlockFmt)
+					fooChunk2 := dummyChunkWithFormat(t, now, fooMetric2, chunkFmt, headBlockFmt)
 
 					if err := store.Put(ctx, []chunk.Chunk{
 						fooChunk1,
@@ -733,39 +738,32 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 	}
 }
 
-func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) chunk.Chunk {
-	c, _ := chunk.NewForEncoding(chunk.Bigchunk)
+func dummyChunkWithFormat(t testing.TB, now model.Time, metric labels.Labels, format byte, headfmt chunkenc.HeadBlockFmt) chunk.Chunk {
+	t.Helper()
+
+	samples := 1
 	chunkStart := now.Add(-time.Hour)
 
+	chk := chunkenc.NewMemChunk(format, chunkenc.EncGZIP, headfmt, 256*1024, 0)
 	for i := 0; i < samples; i++ {
-		t := time.Duration(i) * 15 * time.Second
-		nc, err := c.Add(model.SamplePair{Timestamp: chunkStart.Add(t), Value: model.SampleValue(i)})
-		if err != nil {
-			panic(err)
-		}
-		if nc != nil {
-			panic("returned chunk was not nil")
-		}
+		ts := time.Duration(i) * 15 * time.Second
+		err := chk.Append(&logproto.Entry{Timestamp: chunkStart.Time().Add(ts), Line: fmt.Sprintf("line %d", i)})
+		require.NoError(t, err)
 	}
 
 	chunk := chunk.NewChunk(
 		userID,
 		client.Fingerprint(metric),
 		metric,
-		c,
+		chunkenc.NewFacade(chk, 0, 0),
 		chunkStart,
 		now,
 	)
 	// Force checksum calculation.
-	err := chunk.Encode()
-	if err != nil {
-		panic(err)
+	if err := chunk.Encode(); err != nil {
+		t.Fatal(err)
 	}
 	return chunk
-}
-
-func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
-	return dummyChunkForEncoding(now, metric, 1)
 }
 
 // BenchmarkLabels is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated

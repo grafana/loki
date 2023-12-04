@@ -2,11 +2,9 @@ package manifests
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-
+	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
-
-	"github.com/imdario/mergo"
 )
 
 func configurePodSpecForRestrictedStandard(podSpec *corev1.PodSpec) error {

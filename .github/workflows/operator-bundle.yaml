@@ -27,5 +27,6 @@ jobs:
     - name: Install make
       run: sudo apt-get install make
     - name: make bundle
-      run: make bundle
+      run: |
+        make bundle-all && git diff --exit-code -I'^    createdAt: '
       working-directory: ./operator

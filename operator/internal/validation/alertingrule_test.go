@@ -232,7 +232,7 @@ func TestAlertingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.AlertingRuleValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -257,7 +257,7 @@ func TestAlertingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.AlertingRuleValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.AlertingRule{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.AlertingRule{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

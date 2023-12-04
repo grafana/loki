@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/stretchr/testify/assert"
-	"github.com/weaveworks/common/logging"
 )
 
 func TestLevelHandler(t *testing.T) {
-	var lvl logging.Level
+	var lvl dslog.Level
 	err := lvl.Set("info")
 	assert.NoError(t, err)
 	plogger = &prometheusLogger{

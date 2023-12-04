@@ -27,6 +27,10 @@ func TestBuild_StaticMode(t *testing.T) {
 						Secret: &lokiv1.TenantSecretSpec{
 							Name: "test",
 						},
+						IssuerCA: &lokiv1.CASpec{
+							CA:    "my-custom-ca",
+							CAKey: "special-ca.crt",
+						},
 						IssuerURL:     "https://127.0.0.1:5556/dex",
 						RedirectURL:   "https://localhost:8443/oidc/test-a/callback",
 						GroupClaim:    "test",
@@ -40,7 +44,7 @@ func TestBuild_StaticMode(t *testing.T) {
 					OIDC: &OIDC{
 						ClientID:     "test",
 						ClientSecret: "test123",
-						IssuerCAPath: "/tmp/ca/path",
+						IssuerCAPath: "/var/run/tenants-ca/test-a/special-ca.crt",
 					},
 				},
 			},
@@ -73,7 +77,7 @@ tenants:
   oidc:
     clientID: test
     clientSecret: test123
-    issuerCAPath: /tmp/ca/path
+    issuerCAPath: /var/run/tenants-ca/test-a/special-ca.crt
     issuerURL: https://127.0.0.1:5556/dex
     redirectURL: https://localhost:8443/oidc/test-a/callback
     usernameClaim: test
@@ -120,7 +124,7 @@ roles:
 				{
 					TenantName: "test-a",
 					MTLS: &MTLS{
-						CAPath: "/var/run/tls/tenants/test-a/special-ca.crt",
+						CAPath: "/var/run/tenants-ca/test-a/special-ca.crt",
 					},
 				},
 			},
@@ -151,7 +155,7 @@ tenants:
 - name: test-a
   id: test
   mTLS:
-    caPath: /var/run/tls/tenants/test-a/special-ca.crt
+    caPath: /var/run/tenants-ca/test-a/special-ca.crt
   opa:
     query: data.lokistack.allow
     paths:
@@ -216,6 +220,10 @@ func TestBuild_DynamicMode(t *testing.T) {
 						Secret: &lokiv1.TenantSecretSpec{
 							Name: "test",
 						},
+						IssuerCA: &lokiv1.CASpec{
+							CA:    "my-custom-ca",
+							CAKey: "special-ca.crt",
+						},
 						IssuerURL:     "https://127.0.0.1:5556/dex",
 						RedirectURL:   "https://localhost:8443/oidc/test-a/callback",
 						GroupClaim:    "test",
@@ -229,7 +237,7 @@ func TestBuild_DynamicMode(t *testing.T) {
 					OIDC: &OIDC{
 						ClientID:     "test",
 						ClientSecret: "test123",
-						IssuerCAPath: "/tmp/ca/path",
+						IssuerCAPath: "/var/run/tenants-ca/test-a/special-ca.crt",
 					},
 				},
 			},
@@ -240,7 +248,7 @@ tenants:
   oidc:
     clientID: test
     clientSecret: test123
-    issuerCAPath: /tmp/ca/path
+    issuerCAPath: /var/run/tenants-ca/test-a/special-ca.crt
     issuerURL: https://127.0.0.1:5556/dex
     redirectURL: https://localhost:8443/oidc/test-a/callback
     usernameClaim: test
@@ -267,7 +275,7 @@ tenants:
 				{
 					TenantName: "test-a",
 					MTLS: &MTLS{
-						CAPath: "/var/run/tls/tenants/test-a/special-ca.crt",
+						CAPath: "/var/run/tenants-ca/test-a/special-ca.crt",
 					},
 				},
 			},
@@ -276,7 +284,7 @@ tenants:
 - name: test-a
   id: test
   mTLS:
-    caPath: /var/run/tls/tenants/test-a/special-ca.crt
+    caPath: /var/run/tenants-ca/test-a/special-ca.crt
   opa:
     url: http://127.0.0.1:8181/v1/data/observatorium/allow
 `,

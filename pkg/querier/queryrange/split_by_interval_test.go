@@ -11,13 +11,15 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 )
@@ -57,25 +59,31 @@ var testSchemasTSDB = func() []config.PeriodConfig {
 func Test_splitQuery(t *testing.T) {
 	buildLokiRequest := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
-			Query:     "foo",
+			Query:     `{app="foo"}`,
 			Limit:     1,
 			Step:      2,
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
 			Path:      "/path",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{app="foo"}`),
+			},
 		}
 	}
 
 	buildLokiRequestWithInterval := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
-			Query:     "foo",
+			Query:     `{app="foo"}`,
 			Limit:     1,
 			Interval:  2,
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
 			Path:      "/path",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{app="foo"}`),
+			},
 		}
 	}
 
@@ -90,11 +98,7 @@ func Test_splitQuery(t *testing.T) {
 	}
 
 	buildLokiLabelNamesRequest := func(start, end time.Time) queryrangebase.Request {
-		return &LokiLabelNamesRequest{
-			StartTs: start,
-			EndTs:   end,
-			Path:    "/labels",
-		}
+		return NewLabelRequest(start, end, "", "", "/lables")
 	}
 
 	type interval struct {
@@ -863,7 +867,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		).Wrap(next)
 	}
 
-	t.Run("series volumes", func(t *testing.T) {
+	t.Run("volumes", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 
@@ -902,7 +906,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		})
 	})
 
-	t.Run("series volumes with limits", func(t *testing.T) {
+	t.Run("volumes with limits", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -944,7 +948,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	// This will never happen because we hardcode 24h spit by for this code path
 	// in the middleware. However, that split by is not validated here, so we either
 	// need to support this case or error.
-	t.Run("series volumes with a query split by of 0", func(t *testing.T) {
+	t.Run("volumes with a query split by of 0", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {

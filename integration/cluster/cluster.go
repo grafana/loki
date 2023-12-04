@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/integration/util"
 
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -61,6 +62,7 @@ limits_config:
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 50
   reject_old_samples: false
+  allow_structured_metadata: true
 
 storage_config:
   named_stores:
@@ -77,6 +79,7 @@ storage_config:
 compactor:
   working_directory: {{.dataPath}}/retention
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false
@@ -142,6 +145,7 @@ type Cluster struct {
 	initedAt      model.Time
 	periodCfgs    []string
 	overridesFile string
+	schemaVer     string
 }
 
 func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
@@ -166,6 +170,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 		sharedPath:    sharedPath,
 		initedAt:      model.Now(),
 		overridesFile: overridesFile,
+		schemaVer:     "v11",
 	}
 
 	for _, opt := range opts {
@@ -173,6 +178,11 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	return cluster
+}
+
+// SetSchemaVer sets a schema version for all the schemas
+func (c *Cluster) SetSchemaVer(schemaVer string) {
+	c.schemaVer = schemaVer
 }
 
 func (c *Cluster) Run() error {
@@ -201,6 +211,8 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
+	// cleanup singleton boltdb shipper client instances
+	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 
@@ -360,6 +372,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 			Execute(&buf, map[string]interface{}{
 				"curPeriodStart":        periodStart.String(),
 				"additionalPeriodStart": additionalPeriodStart.String(),
+				"schemaVer":             c.cluster.schemaVer,
 			}); err != nil {
 			return nil, errors.New("error building schema_config")
 		}

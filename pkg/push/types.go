@@ -22,15 +22,41 @@ type Stream struct {
 
 // Entry is a log entry with a timestamp.
 type Entry struct {
-	Timestamp        time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line             string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	NonIndexedLabels LabelsAdapter `protobuf:"bytes,3,opt,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
+	Timestamp          time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line               string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	StructuredMetadata LabelsAdapter `protobuf:"bytes,3,opt,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
+	Parsed             LabelsAdapter `protobuf:"bytes,4,opt,name=parsed,proto3" json:"parsed,omitempty"`
+}
+
+// MarshalJSON implements json.Marshaler.
+// In Loki, this method should only be used by the
+// Legacy encoder used when hitting the deprecated /api/promt/query endpoint.
+// We will ignore the categorized labels and only return the stream labels.
+func (m *Stream) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Labels  string  `json:"labels"`
+		Entries []Entry `json:"entries"`
+	}{
+		Labels:  m.Labels,
+		Entries: m.Entries,
+	})
+}
+
+// MarshalJSON implements json.Marshaler.
+// In Loki, this method should only be used by the
+// Legacy encoder used when hitting the deprecated /api/promt/query endpoint.
+// We will ignore the structured metadata.
+func (m *Entry) MarshalJSON() ([]byte, error) {
+	type raw Entry
+	e := raw(*m)
+	e.StructuredMetadata = nil
+	return json.Marshal(e)
 }
 
 // LabelAdapter should be a copy of the Prometheus labels.Label type.
 // We cannot import Prometheus in this package because it would create many dependencies
 // in other projects importing this package. Instead, we copy the definition here, which should
-// be kept in sync with the original so it can be casted to the prometheus type.
+// be kept in sync with the original, so it can be cast to the prometheus type.
 type LabelAdapter struct {
 	Name, Value string
 }
@@ -61,7 +87,7 @@ func (ls *LabelsAdapter) UnmarshalJSON(b []byte) error {
 	for k, v := range m {
 		*ls = append(*ls, LabelAdapter{Name: k, Value: v})
 	}
-	slices.SortFunc(*ls, func(a, b LabelAdapter) bool { return a.Name < b.Name })
+	slices.SortFunc(*ls, func(a, b LabelAdapter) int { return strings.Compare(a.Name, b.Name) })
 
 	return nil
 }
@@ -172,10 +198,24 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.NonIndexedLabels) > 0 {
-		for iNdEx := len(m.NonIndexedLabels) - 1; iNdEx >= 0; iNdEx-- {
+	if len(m.Parsed) > 0 {
+		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
 			{
-				size, err := (*LabelAdapter)(&m.NonIndexedLabels[iNdEx]).MarshalToSizedBuffer(dAtA[:i])
+				size, err := m.Parsed[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.StructuredMetadata) > 0 {
+		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := (*LabelAdapter)(&m.StructuredMetadata[iNdEx]).MarshalToSizedBuffer(dAtA[:i])
 				if err != nil {
 					return 0, err
 				}
@@ -235,7 +275,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -439,7 +479,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -466,8 +506,42 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NonIndexedLabels = append(m.NonIndexedLabels, LabelAdapter{})
-			if err := m.NonIndexedLabels[len(m.NonIndexedLabels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.StructuredMetadata = append(m.StructuredMetadata, LabelAdapter{})
+			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Parsed", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Parsed = append(m.Parsed, LabelAdapter{})
+			if err := m.Parsed[len(m.Parsed)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -655,8 +729,14 @@ func (m *Entry) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
-	if len(m.NonIndexedLabels) > 0 {
-		for _, e := range m.NonIndexedLabels {
+	if len(m.StructuredMetadata) > 0 {
+		for _, e := range m.StructuredMetadata {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	if len(m.Parsed) > 0 {
+		for _, e := range m.Parsed {
 			l = e.Size()
 			n += 1 + l + sovPush(uint64(l))
 		}
@@ -711,7 +791,10 @@ func (m *Stream) Equal(that interface{}) bool {
 			return false
 		}
 	}
-	return m.Hash == that1.Hash
+	if m.Hash != that1.Hash {
+		return false
+	}
+	return true
 }
 
 func (m *Entry) Equal(that interface{}) bool {
@@ -739,8 +822,19 @@ func (m *Entry) Equal(that interface{}) bool {
 	if m.Line != that1.Line {
 		return false
 	}
-	for i := range m.NonIndexedLabels {
-		if !m.NonIndexedLabels[i].Equal(that1.NonIndexedLabels[i]) {
+	if len(m.StructuredMetadata) != len(that1.StructuredMetadata) {
+		return false
+	}
+	for i := range m.StructuredMetadata {
+		if !m.StructuredMetadata[i].Equal(that1.StructuredMetadata[i]) {
+			return false
+		}
+	}
+	if len(m.Parsed) != len(that1.Parsed) {
+		return false
+	}
+	for i := range m.Parsed {
+		if !m.Parsed[i].Equal(that1.Parsed[i]) {
 			return false
 		}
 	}

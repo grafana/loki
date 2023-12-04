@@ -29,7 +29,7 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
 	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*fetcher.Fetcher), args.Error(2)
 }
@@ -39,7 +39,7 @@ func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return args.Get(0).(*fetcher.Fetcher)
 }
 
-func (s *storeMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *storeMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(userID, from, through, targetLabels, matchers)
 
 	if args.Get(0) == nil {
@@ -63,7 +63,7 @@ func (i *ingesterQuerierMock) GetChunkIDs(ctx context.Context, from, through mod
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (i *ingesterQuerierMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (i *ingesterQuerierMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := i.Called(userID, from, through, targetLabels, matchers)
 
 	if args.Get(0) == nil {
@@ -77,18 +77,24 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	now := time.Now()
 	var chunks []chunk.Chunk
 
+	periodConfig := config.PeriodConfig{
+
+		From:      config.DayTime{Time: 0},
+		Schema:    "v11",
+		RowShards: 16,
+	}
+
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
+			periodConfig,
 		},
 	}
 
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
 	for i := 0; i < num; i++ {
-		chk := newChunk(buildTestStreams(fooLabelsWithName, timeRange{
+		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, timeRange{
 			from: now.Add(time.Duration(i) * time.Minute),
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))
@@ -227,7 +233,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStoreMock()
-			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
 			store.On("GetChunkFetcher", mock.Anything).Return(tc.ingesterFetcher)
 
 			ingesterQuerier := newIngesterQuerierMock()
@@ -236,7 +242,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			asyncStoreCfg := AsyncStoreCfg{IngesterQuerier: ingesterQuerier}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			chunks, fetchers, err := asyncStore.GetChunkRefs(context.Background(), "fake", model.Now(), model.Now(), nil)
+			chunks, fetchers, err := asyncStore.GetChunks(context.Background(), "fake", model.Now(), model.Now(), nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedChunks, chunks)
@@ -287,7 +293,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			store := newStoreMock()
-			store.On("GetChunkRefs", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
 
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
@@ -298,7 +304,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 			}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			_, _, err := asyncStore.GetChunkRefs(context.Background(), "fake", tc.queryFrom, tc.queryThrough, nil)
+			_, _, err := asyncStore.GetChunks(context.Background(), "fake", tc.queryFrom, tc.queryThrough, nil)
 			require.NoError(t, err)
 
 			expectedNumCalls := 0
@@ -310,9 +316,9 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	}
 }
 
-func TestSeriesVolume(t *testing.T) {
+func TestVolume(t *testing.T) {
 	store := newStoreMock()
-	store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+	store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{Name: `{foo="bar"}`, Volume: 38},
@@ -321,7 +327,7 @@ func TestSeriesVolume(t *testing.T) {
 		}, nil)
 
 	ingesterQuerier := newIngesterQuerierMock()
-	ingesterQuerier.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{
+	ingesterQuerier.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
 			{Name: `{bar="baz"}`, Volume: 38},
 		},
@@ -334,7 +340,7 @@ func TestSeriesVolume(t *testing.T) {
 	}
 	asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-	vol, err := asyncStore.SeriesVolume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil, nil...)
+	vol, err := asyncStore.Volume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil, "labels", nil...)
 	require.NoError(t, err)
 
 	require.Equal(t, &logproto.VolumeResponse{

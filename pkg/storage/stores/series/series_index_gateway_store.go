@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
@@ -22,7 +21,7 @@ type IndexGatewayClientStore struct {
 	logger log.Logger
 }
 
-func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) index.ReaderWriter {
+func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) *IndexGatewayClientStore {
 	return &IndexGatewayClientStore{
 		client: client,
 		logger: logger,
@@ -30,10 +29,19 @@ func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.L
 }
 
 func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+	return c.GetChunkRefsFiltered(ctx, "", from, through, nil, allMatchers...)
+}
+
+func (c *IndexGatewayClientStore) GetChunkRefsFiltered(ctx context.Context, _ string, from, through model.Time, filters []syntax.LineFilterExpr, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+	lineFilters := make([]*logproto.LineFilterExpression, 0, len(filters))
+	for _, filter := range filters {
+		lineFilters = append(lineFilters, &logproto.LineFilterExpression{Operator: int64(filter.Ty), Match: filter.Match})
+	}
 	response, err := c.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{
 		From:     from,
 		Through:  through,
 		Matchers: (&syntax.MatchersExpr{Mts: allMatchers}).String(),
+		Filters:  lineFilters,
 	})
 	if err != nil {
 		return nil, err
@@ -100,13 +108,14 @@ func (c *IndexGatewayClientStore) Stats(ctx context.Context, _ string, from, thr
 	})
 }
 
-func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	return c.client.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return c.client.GetVolume(ctx, &logproto.VolumeRequest{
 		From:         from,
 		Through:      through,
 		Matchers:     (&syntax.MatchersExpr{Mts: matchers}).String(),
 		Limit:        limit,
 		TargetLabels: targetLabels,
+		AggregateBy:  aggregateBy,
 	})
 }
 

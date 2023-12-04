@@ -54,8 +54,8 @@ func (n AbortIncompleteMultipartUpload) MarshalXML(e *xml.Encoder, start xml.Sta
 // specific period in the object's lifetime.
 type NoncurrentVersionExpiration struct {
 	XMLName                 xml.Name       `xml:"NoncurrentVersionExpiration" json:"-"`
-	NoncurrentDays          ExpirationDays `xml:"NoncurrentDays,omitempty"`
-	NewerNoncurrentVersions int            `xml:"NewerNoncurrentVersions,omitempty"`
+	NoncurrentDays          ExpirationDays `xml:"NoncurrentDays,omitempty" json:"NoncurrentDays,omitempty"`
+	NewerNoncurrentVersions int            `xml:"NewerNoncurrentVersions,omitempty" json:"NewerNoncurrentVersions,omitempty"`
 }
 
 // MarshalXML if n is non-empty, i.e has a non-zero NoncurrentDays or NewerNoncurrentVersions.
@@ -308,19 +308,27 @@ func (eDate ExpirationDate) MarshalXML(e *xml.Encoder, startElement xml.StartEle
 }
 
 // ExpireDeleteMarker represents value of ExpiredObjectDeleteMarker field in Expiration XML element.
-type ExpireDeleteMarker bool
+type ExpireDeleteMarker ExpirationBoolean
+
+// IsEnabled returns true if the auto delete-marker expiration is enabled
+func (e ExpireDeleteMarker) IsEnabled() bool {
+	return bool(e)
+}
+
+// ExpirationBoolean represents an XML version of 'bool' type
+type ExpirationBoolean bool
 
 // MarshalXML encodes delete marker boolean into an XML form.
-func (b ExpireDeleteMarker) MarshalXML(e *xml.Encoder, startElement xml.StartElement) error {
+func (b ExpirationBoolean) MarshalXML(e *xml.Encoder, startElement xml.StartElement) error {
 	if !b {
 		return nil
 	}
-	type expireDeleteMarkerWrapper ExpireDeleteMarker
-	return e.EncodeElement(expireDeleteMarkerWrapper(b), startElement)
+	type booleanWrapper ExpirationBoolean
+	return e.EncodeElement(booleanWrapper(b), startElement)
 }
 
-// IsEnabled returns true if the auto delete-marker expiration is enabled
-func (b ExpireDeleteMarker) IsEnabled() bool {
+// IsEnabled returns true if the expiration boolean is enabled
+func (b ExpirationBoolean) IsEnabled() bool {
 	return bool(b)
 }
 
@@ -330,6 +338,7 @@ type Expiration struct {
 	Date         ExpirationDate     `xml:"Date,omitempty" json:"Date,omitempty"`
 	Days         ExpirationDays     `xml:"Days,omitempty" json:"Days,omitempty"`
 	DeleteMarker ExpireDeleteMarker `xml:"ExpiredObjectDeleteMarker,omitempty" json:"ExpiredObjectDeleteMarker,omitempty"`
+	DeleteAll    ExpirationBoolean  `xml:"ExpiredObjectAllVersions,omitempty" json:"ExpiredObjectAllVersions,omitempty"`
 }
 
 // MarshalJSON customizes json encoding by removing empty day/date specification.
@@ -338,10 +347,12 @@ func (e Expiration) MarshalJSON() ([]byte, error) {
 		Date         *ExpirationDate    `json:"Date,omitempty"`
 		Days         *ExpirationDays    `json:"Days,omitempty"`
 		DeleteMarker ExpireDeleteMarker `json:"ExpiredObjectDeleteMarker,omitempty"`
+		DeleteAll    ExpirationBoolean  `json:"ExpiredObjectAllVersions,omitempty"`
 	}
 
 	newexp := expiration{
 		DeleteMarker: e.DeleteMarker,
+		DeleteAll:    e.DeleteAll,
 	}
 	if !e.IsDaysNull() {
 		newexp.Days = &e.Days

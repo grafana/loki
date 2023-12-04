@@ -4,20 +4,18 @@ import (
 	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-
 	"github.com/imdario/mergo"
+	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
-
-	routev1 "github.com/openshift/api/route/v1"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ApplyGatewayDefaultOptions applies defaults on the LokiStackSpec depending on selected
@@ -65,16 +63,16 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureGatewayDeploymentForMode(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec, fg configv1.FeatureGates, minTLSVersion string, ciphers string) error {
+func configureGatewayDeploymentForMode(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec, fg configv1.FeatureGates, minTLSVersion string, ciphers string, adminGroups []string) error {
 	switch tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		if tenants != nil {
-			return configureMTLS(d, tenants)
+			return configureCAVolumes(d, tenants)
 		}
 		return nil
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
-		return openshift.ConfigureGatewayDeployment(d, tenants.Mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption)
+		return openshift.ConfigureGatewayDeployment(d, tenants.Mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption, adminGroups)
 	}
 
 	return nil
@@ -194,9 +192,30 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	return nil
 }
 
-// configureMTLS will mount CA bundles and fix CLI arguments for the gateway container
-// if any tenant configured mTLS authentication
-func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
+// configureCAVolumes will mount CA bundles for both OIDC and mTLS. Furthermore
+// if a user configures mTLS it will also update the arg --tls.client-auth-type
+func configureCAVolumes(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
+	if tenants.Authentication == nil {
+		return nil // nothing to do
+	}
+
+	mountCAConfigMap := func(container *corev1.Container, volumes *[]corev1.Volume, tennantName, configmapName string) {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      tenantCAVolumeName(tennantName),
+			MountPath: tenantCADir(tennantName),
+		})
+		*volumes = append(*volumes, corev1.Volume{
+			Name: tenantCAVolumeName(tennantName),
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: configmapName,
+					},
+				},
+			},
+		})
+	}
+
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
 		if c.Name == gatewayContainerName {
@@ -211,38 +230,29 @@ func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 
 	mTLS := false
 	for _, tenant := range tenants.Authentication {
-		if tenant.MTLS != nil {
-			gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
-				Name:      tenantMTLSVolumeName(tenant.TenantName),
-				MountPath: tenantMTLSCADir(tenant.TenantName),
-			})
-			gwVolumes = append(gwVolumes, corev1.Volume{
-				Name: tenantMTLSVolumeName(tenant.TenantName),
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: tenant.MTLS.CA.CA,
-						},
-					},
-				},
-			})
+		switch {
+		case tenant.OIDC != nil:
+			if tenant.OIDC.IssuerCA != nil {
+				mountCAConfigMap(gwContainer, &gwVolumes, tenant.TenantName, tenant.OIDC.IssuerCA.CA)
+			}
+		case tenant.MTLS != nil:
+			mountCAConfigMap(gwContainer, &gwVolumes, tenant.TenantName, tenant.MTLS.CA.CA)
 			mTLS = true
 		}
 	}
-	if !mTLS {
-		return nil // nothing to configure
-	}
 
-	// Remove old tls.client-auth-type
-	for i, arg := range gwArgs {
-		if strings.HasPrefix(arg, "--tls.client-auth-type=") {
-			gwArgs = append(gwArgs[:i], gwArgs[i+1:]...)
-			break
+	if mTLS {
+		// Remove old tls.client-auth-type
+		for i, arg := range gwArgs {
+			if strings.HasPrefix(arg, "--tls.client-auth-type=") {
+				gwArgs = append(gwArgs[:i], gwArgs[i+1:]...)
+				break
+			}
 		}
+		gwArgs = append(gwArgs, "--tls.client-auth-type=RequestClientCert")
+		gwContainer.Args = gwArgs
 	}
-	gwArgs = append(gwArgs, "--tls.client-auth-type=RequestClientCert")
 
-	gwContainer.Args = gwArgs
 	p := corev1.PodSpec{
 		Containers: []corev1.Container{
 			*gwContainer,

@@ -2,7 +2,7 @@ package util
 
 import "github.com/prometheus/prometheus/model/labels"
 
-// PrepareLabelsAndMatchers is used by the ingester and index gateway to service series volume requests.
+// PrepareLabelsAndMatchers is used by the ingester and index gateway to service volume requests.
 // It returns a map of labels to aggregate into, a list of matchers to match streams against,
 // as well a boolean to indicate if a match all selector was provided.
 //

@@ -151,42 +151,43 @@ func TestStreams_ToProto(t *testing.T) {
 			"some",
 			[]Stream{
 				{
-					Labels: map[string]string{"foo": "bar"},
+					Labels: map[string]string{"job": "fake"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						}},
 					},
 				},
 				{
-					Labels: map[string]string{"foo": "bar", "lvl": "error"},
+					Labels: map[string]string{"job": "fake", "lvl": "error"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: labels.Labels{
-							{Name: "foo", Value: "a"},
-							{Name: "bar", Value: "b"},
-						}},
+						{Timestamp: time.Unix(0, 4), Line: "4",
+							StructuredMetadata: labels.Labels{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							}},
 					},
 				},
 			},
 			[]logproto.Stream{
 				{
-					Labels: `{foo="bar"}`,
+					Labels: `{job="fake"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: []logproto.LabelAdapter{
+						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: []logproto.LabelAdapter{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						}},
 					},
 				},
 				{
-					Labels: `{foo="bar", lvl="error"}`,
+					Labels: `{job="fake", lvl="error"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: []logproto.LabelAdapter{
+						{Timestamp: time.Unix(0, 4), Line: "4", StructuredMetadata: []logproto.LabelAdapter{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						}},
@@ -223,7 +224,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "1"},
-							{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+							{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							}},
@@ -246,7 +247,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "log line 1"},
-							{Timestamp: time.Unix(0, 2), Line: "some log line 2", NonIndexedLabels: labels.Labels{
+							{Timestamp: time.Unix(0, 2), Line: "some log line 2", StructuredMetadata: labels.Labels{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							}},
@@ -259,7 +260,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
-							{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+							{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							}},
@@ -291,7 +292,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 	}
 }
 
-func Test_ParseSeriesVolumeInstantQuery(t *testing.T) {
+func Test_ParseVolumeInstantQuery(t *testing.T) {
 	req := &http.Request{
 		URL: mustParseURL(`?query={foo="bar"}` +
 			`&start=2017-06-10T21:42:24.760738998Z` +
@@ -304,20 +305,52 @@ func Test_ParseSeriesVolumeInstantQuery(t *testing.T) {
 	err := req.ParseForm()
 	require.NoError(t, err)
 
-	actual, err := ParseSeriesVolumeInstantQuery(req)
+	actual, err := ParseVolumeInstantQuery(req)
 	require.NoError(t, err)
 
-	expected := &SeriesVolumeInstantQuery{
+	expected := &VolumeInstantQuery{
 		Start:        time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
 		End:          time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC),
 		Query:        `{foo="bar"}`,
 		Limit:        1000,
 		TargetLabels: []string{"foo", "bar"},
+		AggregateBy:  "series",
 	}
 	require.Equal(t, expected, actual)
+
+	t.Run("aggregate by", func(t *testing.T) {
+		url := `?query={foo="bar"}` +
+			`&start=2017-06-10T21:42:24.760738998Z` +
+			`&end=2017-07-10T21:42:24.760738998Z` +
+			`&limit=1000` +
+			`&step=3600` +
+			`&targetLabels=foo,bar`
+
+		t.Run("labels", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=labels`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			actual, err := ParseVolumeInstantQuery(req)
+			require.NoError(t, err)
+
+			require.Equal(t, "labels", actual.AggregateBy)
+		})
+
+		t.Run("invalid", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=invalid`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			_, err = ParseVolumeInstantQuery(req)
+			require.EqualError(t, err, "invalid aggregation option")
+		})
+	})
 }
 
-func Test_ParseSeriesVolumeRangeQuery(t *testing.T) {
+func Test_ParseVolumeRangeQuery(t *testing.T) {
 	req := &http.Request{
 		URL: mustParseURL(`?query={foo="bar"}` +
 			`&start=2017-06-10T21:42:24.760738998Z` +
@@ -331,16 +364,48 @@ func Test_ParseSeriesVolumeRangeQuery(t *testing.T) {
 	err := req.ParseForm()
 	require.NoError(t, err)
 
-	actual, err := ParseSeriesVolumeRangeQuery(req)
+	actual, err := ParseVolumeRangeQuery(req)
 	require.NoError(t, err)
 
-	expected := &SeriesVolumeRangeQuery{
+	expected := &VolumeRangeQuery{
 		Start:        time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
 		End:          time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC),
 		Query:        `{foo="bar"}`,
 		Limit:        1000,
 		Step:         time.Hour,
 		TargetLabels: []string{"foo", "bar"},
+		AggregateBy:  "series",
 	}
 	require.Equal(t, expected, actual)
+
+	t.Run("aggregate by", func(t *testing.T) {
+		url := `?query={foo="bar"}` +
+			`&start=2017-06-10T21:42:24.760738998Z` +
+			`&end=2017-07-10T21:42:24.760738998Z` +
+			`&limit=1000` +
+			`&step=3600` +
+			`&targetLabels=foo,bar`
+
+		t.Run("labels", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=labels`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			actual, err := ParseVolumeRangeQuery(req)
+			require.NoError(t, err)
+
+			require.Equal(t, "labels", actual.AggregateBy)
+		})
+
+		t.Run("invalid", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=invalid`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			_, err = ParseVolumeRangeQuery(req)
+			require.EqualError(t, err, "invalid aggregation option")
+		})
+	})
 }

@@ -151,12 +151,12 @@ func (d *decoder) decodeFromType(
 	result reflect.Value,
 	depth int,
 ) (uint, error) {
-	result = d.indirect(result)
+	result = indirect(result)
 
 	// For these types, size has a special meaning
 	switch dtype {
 	case _Bool:
-		return d.unmarshalBool(size, offset, result)
+		return unmarshalBool(size, offset, result)
 	case _Map:
 		return d.unmarshalMap(size, offset, result, depth)
 	case _Pointer:
@@ -203,7 +203,7 @@ func (d *decoder) decodeFromTypeToDeserializer(
 	// For these types, size has a special meaning
 	switch dtype {
 	case _Bool:
-		v, offset := d.decodeBool(size, offset)
+		v, offset := decodeBool(size, offset)
 		return offset, dser.Bool(v)
 	case _Map:
 		return d.decodeMapToDeserializer(size, offset, dser, depth)
@@ -255,14 +255,14 @@ func (d *decoder) decodeFromTypeToDeserializer(
 	}
 }
 
-func (d *decoder) unmarshalBool(size, offset uint, result reflect.Value) (uint, error) {
+func unmarshalBool(size, offset uint, result reflect.Value) (uint, error) {
 	if size > 1 {
 		return 0, newInvalidDatabaseError(
 			"the MaxMind DB file's data section contains bad data (bool size of %v)",
 			size,
 		)
 	}
-	value, newOffset := d.decodeBool(size, offset)
+	value, newOffset := decodeBool(size, offset)
 
 	switch result.Kind() {
 	case reflect.Bool:
@@ -281,7 +281,7 @@ func (d *decoder) unmarshalBool(size, offset uint, result reflect.Value) (uint, 
 // heavily based on encoding/json as my original version had a subtle
 // bug. This method should be considered to be licensed under
 // https://golang.org/LICENSE
-func (d *decoder) indirect(result reflect.Value) reflect.Value {
+func indirect(result reflect.Value) reflect.Value {
 	for {
 		// Load value from interface, but only if the result will be
 		// usefully addressable.
@@ -415,7 +415,7 @@ func (d *decoder) unmarshalMap(
 	result reflect.Value,
 	depth int,
 ) (uint, error) {
-	result = d.indirect(result)
+	result = indirect(result)
 	switch result.Kind() {
 	default:
 		return 0, newUnmarshalTypeError("map", result.Type())
@@ -425,7 +425,7 @@ func (d *decoder) unmarshalMap(
 		return d.decodeMap(size, offset, result, depth)
 	case reflect.Interface:
 		if result.NumMethod() == 0 {
-			rv := reflect.ValueOf(make(map[string]interface{}, size))
+			rv := reflect.ValueOf(make(map[string]any, size))
 			newOffset, err := d.decodeMap(size, offset, rv, depth)
 			result.Set(rv)
 			return newOffset, err
@@ -458,7 +458,7 @@ func (d *decoder) unmarshalSlice(
 		return d.decodeSlice(size, offset, result, depth)
 	case reflect.Interface:
 		if result.NumMethod() == 0 {
-			a := []interface{}{}
+			a := []any{}
 			rv := reflect.ValueOf(&a).Elem()
 			newOffset, err := d.decodeSlice(size, offset, rv, depth)
 			result.Set(rv)
@@ -551,7 +551,7 @@ func (d *decoder) unmarshalUint128(size, offset uint, result reflect.Value) (uin
 	return newOffset, newUnmarshalTypeError(value, result.Type())
 }
 
-func (d *decoder) decodeBool(size, offset uint) (bool, uint) {
+func decodeBool(size, offset uint) (bool, uint) {
 	return size != 0, offset
 }
 

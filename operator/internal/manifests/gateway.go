@@ -9,9 +9,6 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
-
-	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -20,13 +17,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 )
 
 const (
 	tlsSecretVolume = "tls-secret"
 )
 
-var logsEndpointRe = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
+var (
+	logsEndpointRe     = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
+	defaultAdminGroups = []string{
+		"system:cluster-admins",
+		"cluster-admin",
+		"dedicated-admin",
+	}
+)
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
 func BuildGateway(opts Options) ([]client.Object, error) {
@@ -76,7 +82,12 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Stack.Tenants != nil {
-		if err := configureGatewayDeploymentForMode(dpl, opts.Stack.Tenants, opts.Gates, minTLSVersion, ciphers); err != nil {
+		adminGroups := defaultAdminGroups
+		if opts.Stack.Tenants.Openshift != nil && opts.Stack.Tenants.Openshift.AdminGroups != nil {
+			adminGroups = opts.Stack.Tenants.Openshift.AdminGroups
+		}
+
+		if err := configureGatewayDeploymentForMode(dpl, opts.Stack.Tenants, opts.Gates, minTLSVersion, ciphers, adminGroups); err != nil {
 			return nil, err
 		}
 
