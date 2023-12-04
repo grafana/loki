@@ -4,6 +4,9 @@ description: "Technical documentation for Grafana Loki"
 aliases:
   - /docs/loki/
 weight: 100
+cascade:
+  GRAFANA_VERSION: latest
+  LOKI_VERSION: latest
 ---
 
 # Grafana Loki documentation
