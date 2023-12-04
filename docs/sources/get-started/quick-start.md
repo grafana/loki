@@ -121,7 +121,7 @@ Once you have collected logs, you will want to view them.  You can view your log
 
     1. Calculate the number of logs per second where the JSON field "status" is "404":
         ```bash
-        rate({container="evaluate-loki-flog-1"} | json | status=`404` [1m])
+        sum by(container) (rate({container="evaluate-loki-flog-1"} | json | status=`404` [$__auto]))        
         ```
     The final query above is a metric query which returns a time series. This will trigger Grafana to draw a graph of the results.  You can change the type of graph for a different view of the data.  Click **Bars** to view a bar graph of the data.
 
