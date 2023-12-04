@@ -1,7 +1,9 @@
 package bloomgateway
 
 import (
+	"context"
 	"flag"
+	"time"
 
 	"github.com/grafana/loki/pkg/util/ring"
 )
@@ -38,6 +40,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type Limits interface {
+	MaxCacheFreshness(ctx context.Context, tenantID string) time.Duration
+	BloomGatewayCacheKeyInterval(tenantID string) time.Duration
 	BloomGatewayShardSize(tenantID string) int
 	BloomGatewayEnabled(tenantID string) bool
 	BloomGatewayBlocksDownloadingParallelism(tenantID string) int

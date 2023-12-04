@@ -1838,6 +1838,18 @@ client:
   # CLI flag: -bloom-gateway-client.log-gateway-requests
   [log_gateway_requests: <boolean> | default = false]
 
+  cache:
+    # The cache block configures the cache backend.
+    # The CLI flags prefix for this block configuration is:
+    # store.index-cache-read
+    [cache: <cache_config>]
+
+    [compression: <string> | default = ""]
+
+    [parallelism: <int>]
+
+  [cache_results: <boolean>]
+
 # Number of workers to use for filtering chunks concurrently.
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
@@ -3027,6 +3039,10 @@ shard_streams:
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism
 [bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
+
+# Interval for computing the cache key in the Bloom Gateway.
+# CLI flag: -bloom-gateway.cache-key-interval
+[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata

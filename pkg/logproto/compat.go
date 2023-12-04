@@ -1,8 +1,10 @@
 package logproto
 
 import (
+	"bytes"
 	stdjson "encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -10,6 +12,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -333,4 +336,72 @@ func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("start", timestamp.Time(int64(m.From)).String()),
 		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
+}
+
+// Satisfy definitions.Request for FilterChunkRefRequest
+
+// GetStart returns the start timestamp of the request in milliseconds.
+func (m *FilterChunkRefRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
+}
+
+// GetEnd returns the end timestamp of the request in milliseconds.
+func (m *FilterChunkRefRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
+}
+
+// GetStep returns the step of the request in milliseconds. Always 0.
+func (m *FilterChunkRefRequest) GetStep() int64 {
+	return 0
+}
+
+// GetQuery returns the query of the request.
+// The query is the hash for the input chunks refs and the filter expressions.
+func (m *FilterChunkRefRequest) GetQuery() string {
+	var chunksHash uint64
+	if len(m.Refs) > 0 {
+		h := xxhash.New()
+		for _, ref := range m.Refs {
+			_, _ = h.WriteString(fmt.Sprintf("%s-%d", ref.Tenant, ref.Fingerprint))
+		}
+		chunksHash = h.Sum64()
+	}
+
+	// Short circuit if there are no filters.
+	if len(m.Filters) == 0 {
+		return fmt.Sprintf("%d-[]", chunksHash)
+	}
+
+	var buf bytes.Buffer
+	s := jsoniter.ConfigFastest.BorrowStream(io.Writer(&buf))
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteArrayStart()
+	for i, filter := range m.Filters {
+		if i > 0 {
+			s.WriteMore()
+		}
+
+		s.WriteObjectStart()
+		s.WriteObjectField("op")
+		s.WriteInt64(filter.Operator)
+		s.WriteMore()
+		s.WriteObjectField("match")
+		s.WriteString(filter.Match)
+		s.WriteObjectEnd()
+	}
+	s.WriteArrayEnd()
+	_ = s.Flush()
+
+	return fmt.Sprintf("%d-%s", chunksHash, buf.String())
+}
+
+// GetCachingOptions returns the caching options.
+func (m *FilterChunkRefRequest) GetCachingOptions() (res resultscache.CachingOptions) { return }
+
+// WithStartEndForCache implements resultscache.Request.
+func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	clone := *m
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	return &clone
 }
