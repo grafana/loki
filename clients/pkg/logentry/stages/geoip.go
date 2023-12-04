@@ -34,6 +34,8 @@ const (
 	TIMEZONE
 	SUBDIVISIONNAME
 	SUBDIVISIONCODE
+	ASN
+	ASNORG
 )
 
 var fields = map[GeoIPFields]string{
@@ -47,6 +49,8 @@ var fields = map[GeoIPFields]string{
 	TIMEZONE:        "geoip_timezone",
 	SUBDIVISIONNAME: "geoip_subdivision_name",
 	SUBDIVISIONCODE: "geoip_subdivision_code",
+	ASN:             "geoip_autonomous_system_number",
+	ASNORG:          "geoip_autonomous_system_organization",
 }
 
 // GeoIPConfig represents GeoIP stage config
@@ -273,12 +277,20 @@ func (g *geoIPStage) populateLabelsWithCountryData(labels model.LabelSet, record
 }
 
 func (g *geoIPStage) populateLabelsWithASNData(labels model.LabelSet, record *geoip2.ASN) {
-	autonomousSystemNumber := record.AutonomousSystemNumber
-	autonomousSystemOrganization := record.AutonomousSystemOrganization
-	if autonomousSystemNumber != 0 {
-		labels[model.LabelName("geoip_autonomous_system_number")] = model.LabelValue(fmt.Sprint(autonomousSystemNumber))
-	}
-	if autonomousSystemOrganization != "" {
-		labels[model.LabelName("geoip_autonomous_system_organization")] = model.LabelValue(autonomousSystemOrganization)
+	for field, label := range fields {
+		switch field {
+		case ASN:
+			autonomousSystemNumber := record.AutonomousSystemNumber
+			if autonomousSystemNumber != 0 {
+				labels[model.LabelName(label)] = model.LabelValue(fmt.Sprint(autonomousSystemNumber))
+			}
+		case ASNORG:
+			autonomousSystemOrganization := record.AutonomousSystemOrganization
+			if autonomousSystemOrganization != "" {
+				labels[model.LabelName(label)] = model.LabelValue(autonomousSystemOrganization)
+			}
+		default:
+			level.Error(g.logger).Log("msg", "unknown geoip field")
+		}
 	}
 }
