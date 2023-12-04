@@ -12,7 +12,7 @@ type Metrics struct {
 	frontendClientsGauge          prometheus.Gauge
 }
 
-func NewMetrics(conf Config, r prometheus.Registerer) *Metrics {
+func NewMetrics(_ Config, r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		concurrentWorkers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_querier_worker_concurrency",

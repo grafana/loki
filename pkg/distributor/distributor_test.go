@@ -14,17 +14,17 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/util/constants"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -52,50 +53,80 @@ func TestDistributor(t *testing.T) {
 	for i, tc := range []struct {
 		lines            int
 		maxLineSize      uint64
-		mangleLabels     bool
+		streams          int
+		mangleLabels     int
 		expectedResponse *logproto.PushResponse
-		expectedError    error
+		expectedErrors   []error
 	}{
 		{
 			lines:            10,
+			streams:          1,
 			expectedResponse: success,
 		},
 		{
-			lines:         100,
-			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000),
+			lines:          100,
+			streams:        1,
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000)},
 		},
 		{
 			lines:            100,
+			streams:          1,
 			maxLineSize:      1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10),
+			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, "100 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10))},
 		},
 		{
 			lines:            100,
-			mangleLabels:     true,
+			streams:          1,
+			mangleLabels:     1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string"),
+			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")},
+		},
+		{
+			lines:            10,
+			streams:          2,
+			mangleLabels:     1,
+			maxLineSize:      1,
+			expectedResponse: success,
+			expectedErrors: []error{
+				httpgrpc.Errorf(http.StatusBadRequest, ""),
+				fmt.Errorf("1 errors like: %s", fmt.Sprintf(validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")),
+				fmt.Errorf("10 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10)),
+			},
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
-			request := makeWriteRequest(tc.lines, 10)
-
-			if tc.mangleLabels {
-				request.Streams[0].Labels = `{ab"`
+			var request logproto.PushRequest
+			for i := 0; i < tc.streams; i++ {
+				req := makeWriteRequest(tc.lines, 10)
+				request.Streams = append(request.Streams, req.Streams[0])
 			}
 
-			response, err := distributors[i%len(distributors)].Push(ctx, request)
+			for i := 0; i < tc.mangleLabels; i++ {
+				request.Streams[i].Labels = `{ab"`
+			}
+
+			response, err := distributors[i%len(distributors)].Push(ctx, &request)
 			assert.Equal(t, tc.expectedResponse, response)
-			assert.Equal(t, tc.expectedError, err)
+			if len(tc.expectedErrors) > 0 {
+				for _, expectedError := range tc.expectedErrors {
+					if len(tc.expectedErrors) == 1 {
+						assert.Equal(t, err, expectedError)
+					} else {
+						assert.Contains(t, err.Error(), expectedError.Error())
+					}
+				}
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
@@ -327,6 +358,34 @@ func Test_IncrementTimestamp(t *testing.T) {
 				},
 			},
 		},
+		"incrementing enabled, no dupes, out of order": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -434,7 +493,6 @@ func TestDistributorPushErrors(t *testing.T) {
 func Test_SortLabelsOnPush(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.EnforceMetricName = false
 	ingester := &mockIngester{}
 	distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
@@ -450,7 +508,6 @@ func Test_TruncateLogLines(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 
-		limits.EnforceMetricName = false
 		limits.MaxLineSize = 5
 		limits.MaxLineSizeTruncate = true
 		return limits, &mockIngester{}
@@ -718,7 +775,6 @@ func BenchmarkShardStream(b *testing.B) {
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.EnforceMetricName = false
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
@@ -739,7 +795,6 @@ func Benchmark_Push(b *testing.B) {
 	limits.IngestionBurstSizeMB = math.MaxInt32
 	limits.CardinalityLimit = math.MaxInt32
 	limits.IngestionRateMB = math.MaxInt32
-	limits.EnforceMetricName = false
 	limits.MaxLineSize = math.MaxInt32
 	limits.RejectOldSamples = true
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
@@ -912,7 +967,6 @@ func TestShardCountFor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
@@ -1004,7 +1058,6 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.IngestionRateStrategy = testData.ingestionRateStrategy
 			limits.IngestionRateMB = testData.ingestionRateMB
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
@@ -1089,17 +1142,18 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		distributorConfig.DistributorRing.KVStore.Mock = kvStore
 		distributorConfig.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
-		distributorConfig.factory = factory
-		if factory == nil {
-			distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
+		factoryWrap := ring_client.PoolAddrFunc(factory)
+		distributorConfig.factory = factoryWrap
+		if factoryWrap == nil {
+			distributorConfig.factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 				return ingesterByAddr[addr], nil
-			}
+			})
 		}
 
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -1161,7 +1215,7 @@ type mockIngester struct {
 	pushed       []*logproto.PushRequest
 }
 
-func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
+func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...grpc.CallOption) (*logproto.PushResponse, error) {
 	if i.failAfter > 0 {
 		time.Sleep(i.failAfter)
 		return nil, fmt.Errorf("push request failed")
@@ -1177,7 +1231,7 @@ func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts 
 	return nil, nil
 }
 
-func (i *mockIngester) GetStreamRates(ctx context.Context, in *logproto.StreamRatesRequest, opts ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
+func (i *mockIngester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest, _ ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
 	return &logproto.StreamRatesResponse{}, nil
 }
 

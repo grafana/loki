@@ -28,22 +28,22 @@ type fakeLimits struct {
 	requiredLabels []string
 }
 
-func (f fakeLimits) MaxQuerySeries(ctx context.Context, userID string) int {
+func (f fakeLimits) MaxQuerySeries(_ context.Context, _ string) int {
 	return f.maxSeries
 }
 
-func (f fakeLimits) MaxQueryRange(ctx context.Context, userID string) time.Duration {
+func (f fakeLimits) MaxQueryRange(_ context.Context, _ string) time.Duration {
 	return f.rangeLimit
 }
 
-func (f fakeLimits) QueryTimeout(ctx context.Context, userID string) time.Duration {
+func (f fakeLimits) QueryTimeout(_ context.Context, _ string) time.Duration {
 	return f.timeout
 }
 
-func (f fakeLimits) BlockedQueries(ctx context.Context, userID string) []*validation.BlockedQuery {
+func (f fakeLimits) BlockedQueries(_ context.Context, _ string) []*validation.BlockedQuery {
 	return f.blockedQueries
 }
 
-func (f fakeLimits) RequiredLabels(ctx context.Context, userID string) []string {
+func (f fakeLimits) RequiredLabels(_ context.Context, _ string) []string {
 	return f.requiredLabels
 }

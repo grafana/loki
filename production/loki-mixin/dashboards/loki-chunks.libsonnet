@@ -63,7 +63,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Flush Stats')
                           .addPanel(
                             $.panel('Queue Length') +
-                            $.queryPanel('cortex_ingester_flush_queue_length{%s}' % dashboards['loki-chunks.json'].labelsSelector, '{{pod}}'),
+                            $.queryPanel('loki_ingester_flush_queue_length{%(label)s} or cortex_ingester_flush_queue_length{%(label)s}' % { label: dashboards['loki-chunks.json'].labelsSelector }, '{{pod}}'),
                           )
                           .addPanel(
                             $.panel('Flush Rate') +

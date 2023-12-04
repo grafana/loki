@@ -21,6 +21,9 @@ type runtimeConfigValues struct {
 	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
 	TenantConfig map[string]*runtime.Config    `yaml:"configs"`
 
+	// DefaultConfig defines the default runtime configuration. Used if a tenant runtime configuration wasn't given.
+	DefaultConfig *runtime.Config `yaml:"default"`
+
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
 
@@ -91,7 +94,10 @@ func tenantConfigFromRuntimeConfig(c *runtimeconfig.Manager) runtime.TenantConfi
 		if !ok || cfg == nil {
 			return nil
 		}
-		return cfg.TenantConfig[userID]
+		if tenantCfg, ok := cfg.TenantConfig[userID]; ok {
+			return tenantCfg
+		}
+		return cfg.DefaultConfig
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,7 +97,7 @@ func TestBuildQueryFrontend_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestNewQueryFrontendDeployment_TopologySpreadConstraints(t *testing.T) {
-	depl := NewQueryFrontendDeployment(Options{
+	obj, _ := BuildQueryFrontend(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -121,6 +122,7 @@ func TestNewQueryFrontendDeployment_TopologySpreadConstraints(t *testing.T) {
 		},
 	})
 
+	depl := obj[0].(*appsv1.Deployment)
 	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           1,

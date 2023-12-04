@@ -19,6 +19,17 @@
           {{ end }}
         </ul>
       </div>
+      {{ if .Form.Action }}
+      <div>
+      <form action="{{ .Form.Action}}">
+      {{ range .Form.Inputs }}
+      <label>{{ .Label }}:</label>&nbsp;<input type="{{ .Type }}" name="{{ .Name }}" placeholder="{{ .Placeholder }}" value="{{ .Value }}"><br>
+      {{ end }}
+      <input type="submit" value="Submit">
+      </form>
+      </div>
+      {{ end }}
+      {{ .ExtraHTML }}
     </main>
   </body>
 </html>

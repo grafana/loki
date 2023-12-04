@@ -58,9 +58,9 @@ func (p *BufferPool) Put(s *bytes.Buffer) {
 	if s == nil {
 		return
 	}
-	cap := s.Cap()
+	capt := s.Cap()
 	for i, size := range p.sizes {
-		if cap > size {
+		if capt > size {
 			continue
 		}
 		p.buckets[i].Put(s)

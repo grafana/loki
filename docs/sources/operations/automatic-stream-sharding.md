@@ -2,7 +2,7 @@
 title: Automatic stream sharding
 menuTitle: Automatic stream sharding
 description: Automatic stream sharding can control issues around the per-stream rate limit
-weight: 110
+weight: 
 ---
 
 # Automatic stream sharding
@@ -12,7 +12,7 @@ existing streams. When properly tuned, this should eliminate issues where log pr
 per-stream rate limit.
 
 **To enable automatic stream sharding:**
-1. Edit the global [limits_config]({{<relref "../configuration#limits_config">}}) of the Loki configuration file:
+1. Edit the global [limits_config]({{< relref "../configure#limits_config" >}}) of the Loki configuration file:
    ```yaml
    limits_config:
      shard_streams:

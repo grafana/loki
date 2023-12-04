@@ -14,7 +14,6 @@ import (
 const (
 	secondsInDay      = int64(24 * time.Hour / time.Second)
 	millisecondsInDay = int64(24 * time.Hour / time.Millisecond)
-	v12               = "v12"
 )
 
 var (
@@ -35,25 +34,31 @@ func CreateSchema(cfg config.PeriodConfig) (SeriesStoreSchema, error) {
 		return nil, errInvalidTablePeriod
 	}
 
-	switch cfg.Schema {
-	case "v9":
+	v, err := cfg.VersionAsInt()
+	if err != nil {
+		return nil, err
+	}
+
+	if v == 9 {
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11", v12:
+	}
+	if v >= 10 {
 		if cfg.RowShards == 0 {
 			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
-
 		v10 := v10Entries{rowShards: cfg.RowShards}
-		if cfg.Schema == "v10" {
+		switch cfg.Schema {
+		case "v10":
 			return newSeriesStoreSchema(buckets, v10), nil
-		} else if cfg.Schema == "v11" {
+		case "v11":
 			return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
-		} else { // v12
+		case "v12":
 			return newSeriesStoreSchema(buckets, v12Entries{v11Entries{v10}}), nil
+		case "v13":
+			return newSeriesStoreSchema(buckets, v13Entries{v12Entries{v11Entries{v10}}}), nil
 		}
-	default:
-		return nil, errInvalidSchemaVersion
 	}
+	return nil, errInvalidSchemaVersion
 }
 
 // Bucket describes a range of time with a tableName and hashKey

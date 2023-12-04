@@ -1,16 +1,17 @@
 ---
-title: Troubleshooting
+title: Troubleshooting Loki
+menuTitle:  Troubleshooting
 description: Troubleshooting Grafana Loki
-weight: 80
+weight: 
 aliases:
     - /docs/loki/latest/getting-started/troubleshooting/
 ---
-# Troubleshooting
+# Troubleshooting Loki
 
 ## "Loki: Bad Gateway. 502"
 
 This error can appear in Grafana when Grafana Loki is added as a
-datasource, indicating that Grafana in unable to connect to Loki. There may
+data source, indicating that Grafana in unable to connect to Loki. There may
 one of many root causes:
 
 - If Loki is deployed with Docker, and Grafana and Loki are not running in the
@@ -23,7 +24,7 @@ one of many root causes:
 
 ## "Data source connected, but no labels received. Verify that Loki and Promtail is configured properly."
 
-This error can appear in Grafana when Loki is added as a datasource, indicating
+This error can appear in Grafana when Loki is added as a data source, indicating
 that although Grafana has connected to Loki, Loki hasn't received any logs from
 Promtail yet. There may be one of many root causes:
 
@@ -61,7 +62,7 @@ can have many possible causes.
 If you have a reverse proxy in front of Loki, that is, between Loki and Grafana, then check any configured timeouts, such as an NGINX proxy read timeout.
 
 - Other causes.  To determine if the issue is related to Loki itself or another system such as Grafana or a client-side error,
-attempt to run a [LogCLI]({{<relref "../query/logcli">}}) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
+attempt to run a [LogCLI]({{< relref "../query/logcli" >}}) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
 
     - Adjust the [Grafana dataproxy timeout](/docs/grafana/latest/administration/configuration/#dataproxy). Configure Grafana with a large enough dataproxy timeout.
     - Check timeouts for reverse proxies or load balancers between your client and Grafana. Queries to Grafana are made from the your local browser with Grafana serving as a proxy (a dataproxy). Therefore, connections from your client to Grafana must have their timeout configured as well.
@@ -99,8 +100,10 @@ port (`9080` or `3101` if using Helm) locally:
 
 ```bash
 $ kubectl port-forward loki-promtail-jrfg7 9080
-# Then, in a web browser, visit http://localhost:9080/service-discovery
 ```
+
+Then, in a web browser, visit [http://localhost:9080/service-discovery](http://localhost:9080/service-discovery)
+
 
 ## Debug output
 
@@ -170,7 +173,11 @@ Jaeger is running.
 If you deploy with Helm, use the following command:
 
 ```bash
-$ helm upgrade --install loki loki/loki --set "loki.tracing.jaegerAgentHost=YOUR_JAEGER_AGENT_HOST"
+$ helm upgrade --install loki loki/loki --set "loki.tracing.enabled=true"
+  --set "read.extraEnv[0].name=JAEGER_AGENT_HOST"    --set "read.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "write.extraEnv[0].name=JAEGER_AGENT_HOST"   --set "write.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "backend.extraEnv[0].name=JAEGER_AGENT_HOST" --set "backend.extraEnv[0].value=<JAEGER_AGENT_HOST>"
+  --set "gateway.extraEnv[0].name=JAEGER_AGENT_HOST" --set "gateway.extraEnv[0].value=<JAEGER_AGENT_HOST>"
 ```
 
 ## Running Loki with Istio Sidecars

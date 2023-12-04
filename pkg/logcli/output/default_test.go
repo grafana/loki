@@ -183,9 +183,9 @@ func findMaxLabelsLength(labelsList []loghttp.LabelSet) int {
 	maxLabelsLen := 0
 
 	for _, lbls := range labelsList {
-		len := len(lbls.String())
-		if maxLabelsLen < len {
-			maxLabelsLen = len
+		length := len(lbls.String())
+		if maxLabelsLen < length {
+			maxLabelsLen = length
 		}
 	}
 

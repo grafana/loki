@@ -2,12 +2,12 @@
 title: Query fairness within tenants
 menuTitle: Query fairness
 description: The scheduler can guarantee query fairness across multiple actors within a single tenant.
-weight: 101
+weight:
 ---
 
 # Query fairness within tenants
 
-Loki uses [shuffle sharding]({{<relref "../shuffle-sharding/_index.md">}})
+Loki uses [shuffle sharding]({{< relref "../shuffle-sharding/_index.md" >}})
 to minimize impact across tenants in case of querier failures or misbehaving
 neighboring tenants.
 
@@ -20,7 +20,7 @@ In that case, as an operator, you would also want to ensure some sort of query
 fairness across these actors within the tenants. An actor could be a Grafana user,
 a CLI user, or an application accessing the API. To achieve that, Loki
 introduces hierarchical scheduler queues in version 2.9 based on
-[LID 0003: Query fairness across users within tenants]({{<relref "../../community/lids/0003-QueryFairnessInScheduler.md">}})
+[LID 0003: Query fairness across users within tenants]({{< relref "../../community/lids/0003-QueryFairnessInScheduler.md" >}})
 and they are enabled by default.
 
 ## What are hierarchical queues and how do they work
@@ -113,9 +113,9 @@ In the examples above the client that invoked the query directly against Loki al
 HTTP header that controls where in the queue tree the sub-queries are enqueued. However, as an operator,
 you would usually want to avoid this scenario and control yourself where the header is set.
 
-When using Grafana as the Loki user interface, you can, for example, create multiple datasources
+When using Grafana as the Loki user interface, you can, for example, create multiple data sources
 with the same tenant, but with a different additional HTTP header
-`X-Loki-Scope-Actor` and restrict which Grafana user can use which datasource.
+`X-Loki-Scope-Actor` and restrict which Grafana user can use which data source.
 
 Alternatively, if you have a proxy for authentication in front of Loki, you can
 pass the (hashed) user from the authentication as downstream header to Loki.

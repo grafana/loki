@@ -11,17 +11,18 @@ import (
 
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
 
 func TestPullTarget_RunStop(t *testing.T) {
-	t.Run("it sends messages to the promclient and stopps when Stop() is called", func(t *testing.T) {
+	t.Run("it sends messages to the promclient and stops when Stop() is called", func(t *testing.T) {
 		tc := testPullTarget(t)
 
 		runErr := make(chan error)

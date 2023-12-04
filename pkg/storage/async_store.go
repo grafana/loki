@@ -5,6 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
@@ -22,6 +28,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -35,13 +42,13 @@ type AsyncStoreCfg struct {
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
-	Store
+	stores.Store
 	scfg                 config.SchemaConfig
 	ingesterQuerier      IngesterQuerier
 	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(cfg AsyncStoreCfg, store Store, scfg config.SchemaConfig) *AsyncStore {
+func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConfig) *AsyncStore {
 	return &AsyncStore{
 		Store:                store,
 		scfg:                 scfg,
@@ -56,7 +63,7 @@ func (a *AsyncStore) shouldQueryIngesters(through, now model.Time) bool {
 	return a.queryIngestersWithin == 0 || through.After(now.Add(-a.queryIngestersWithin))
 }
 
-func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (a *AsyncStore) GetChunks(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	spanLogger := spanlogger.FromContext(ctx)
 
 	errs := make(chan error)
@@ -65,7 +72,7 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var fetchers []*fetcher.Fetcher
 	go func() {
 		var err error
-		storeChunks, fetchers, err = a.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
+		storeChunks, fetchers, err = a.Store.GetChunks(ctx, userID, from, through, matchers...)
 		errs <- err
 	}()
 
@@ -156,6 +163,62 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 	//         chunks that are already in the store but also still in the ingesters.
 	merged := stats.MergeStats(resps...)
 	return &merged, nil
+}
+
+func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.Volume")
+	defer sp.Finish()
+
+	logger := util_log.WithContext(ctx, util_log.Logger)
+	matchersStr := syntax.MatchersString(matchers)
+	type f func() (*logproto.VolumeResponse, error)
+	var jobs []f
+
+	if a.shouldQueryIngesters(through, model.Now()) {
+		jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
+			vols, err := a.ingesterQuerier.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+			level.Debug(logger).Log(
+				"msg", "queried label volumes",
+				"matchers", matchersStr,
+				"source", "ingesters",
+			)
+			return vols, err
+		})
+	}
+	jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
+		vols, err := a.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		level.Debug(logger).Log(
+			"msg", "queried label volume",
+			"matchers", matchersStr,
+			"source", "store",
+		)
+		return vols, err
+	})
+
+	resps := make([]*logproto.VolumeResponse, len(jobs))
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		len(jobs),
+		func(ctx context.Context, i int) error {
+			resp, err := jobs[i]()
+			resps[i] = resp
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	sp.LogKV(
+		"user", userID,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"limit", limit,
+	)
+
+	merged := seriesvolume.Merge(resps, limit)
+	return merged, nil
 }
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {

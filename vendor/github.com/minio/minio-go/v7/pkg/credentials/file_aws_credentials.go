@@ -64,7 +64,7 @@ type FileAWSCredentials struct {
 
 // NewFileAWSCredentials returns a pointer to a new Credentials object
 // wrapping the Profile file provider.
-func NewFileAWSCredentials(filename string, profile string) *Credentials {
+func NewFileAWSCredentials(filename, profile string) *Credentials {
 	return New(&FileAWSCredentials{
 		Filename: filename,
 		Profile:  profile,

@@ -12,22 +12,24 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
+	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -48,23 +50,7 @@ var (
 	ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
 )
 
-// Limits extends the cortex limits interface with support for per tenant splitby parameters
-type Limits interface {
-	queryrangebase.Limits
-	logql.Limits
-	QuerySplitDuration(string) time.Duration
-	MaxQuerySeries(context.Context, string) int
-	MaxEntriesLimitPerQuery(context.Context, string) int
-	MinShardingLookback(string) time.Duration
-	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
-	// frontend will process in parallel for TSDB queries.
-	TSDBMaxQueryParallelism(context.Context, string) int
-	RequiredLabels(context.Context, string) []string
-	RequiredNumberLabels(context.Context, string) int
-	MaxQueryBytesRead(context.Context, string) int
-	MaxQuerierBytesRead(context.Context, string) int
-	MaxStatsCacheFreshness(context.Context, string) time.Duration
-}
+type Limits queryrange_limits.Limits
 
 type limits struct {
 	Limits
@@ -118,12 +104,12 @@ type cacheKeyLimits struct {
 	transformer UserIDTransformer
 }
 
-func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
+func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	split := l.QuerySplitDuration(userID)
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
-		currentInterval = r.GetStart() / denominator
+		currentInterval = r.GetStart().UnixMilli() / denominator
 	}
 
 	if l.transformer != nil {
@@ -164,26 +150,26 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// Clamp the time range based on the max query lookback.
 	lookbackCapture := func(id string) time.Duration { return l.MaxQueryLookback(ctx, id) }
 	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture); maxQueryLookback > 0 {
-		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
+		minStartTime := time.Now().Add(-maxQueryLookback)
 
-		if r.GetEnd() < minStartTime {
+		if r.GetEnd().Before(minStartTime) {
 			// The request is fully outside the allowed range, so we can return an
 			// empty response.
 			level.Debug(log).Log(
 				"msg", "skipping the execution of the query because its time range is before the 'max query lookback' setting",
-				"reqStart", util.FormatTimeMillis(r.GetStart()),
-				"redEnd", util.FormatTimeMillis(r.GetEnd()),
+				"reqStart", r.GetStart().String(),
+				"redEnd", r.GetEnd().String(),
 				"maxQueryLookback", maxQueryLookback)
 
 			return NewEmptyResponse(r)
 		}
 
-		if r.GetStart() < minStartTime {
+		if r.GetStart().Before(minStartTime) {
 			// Replace the start time in the request.
 			level.Debug(log).Log(
 				"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-				"original", util.FormatTimeMillis(r.GetStart()),
-				"updated", util.FormatTimeMillis(minStartTime))
+				"original", r.GetStart().String(),
+				"updated", minStartTime.String())
 
 			r = r.WithStartEnd(minStartTime, r.GetEnd())
 		}
@@ -192,7 +178,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// Enforce the max query length.
 	lengthCapture := func(id string) time.Duration { return l.MaxQueryLength(ctx, id) }
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
-		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
+		queryLen := timestamp.Time(r.GetEnd().UnixMilli()).Sub(timestamp.Time(r.GetStart().UnixMilli()))
 		if queryLen > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength))
 		}
@@ -295,7 +281,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart()), model.Time(r.GetEnd()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
+	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
 	if err != nil {
 		return 0, err
 	}
@@ -323,8 +309,8 @@ func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.Period
 		return config.PeriodConfig{}, errors.New("failed to get range-vector and offset duration: " + err.Error())
 	}
 
-	adjustedStart := int64(model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset))
-	adjustedEnd := int64(model.Time(r.GetEnd()).Add(-maxOffset))
+	adjustedStart := int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset))
+	adjustedEnd := int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset))
 
 	return ShardingConfigs(q.cfg).ValidRange(adjustedStart, adjustedEnd)
 }
@@ -448,64 +434,60 @@ func (sl *seriesLimiter) isLimitReached() bool {
 
 type limitedRoundTripper struct {
 	configs []config.PeriodConfig
-	next    http.RoundTripper
+	next    queryrangebase.Handler
 	limits  Limits
 
-	codec      queryrangebase.Codec
 	middleware queryrangebase.Middleware
 }
 
+var _ queryrangebase.Handler = limitedRoundTripper{}
+
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
-func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) http.RoundTripper {
+func NewLimitedRoundTripper(next queryrangebase.Handler, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) queryrangebase.Handler {
 	transport := limitedRoundTripper{
 		configs:    configs,
 		next:       next,
-		codec:      codec,
 		limits:     limits,
 		middleware: queryrangebase.MergeMiddlewares(middlewares...),
 	}
 	return transport
 }
 
-type work struct {
-	req    queryrangebase.Request
-	ctx    context.Context
-	result chan result
+type SemaphoreWithTiming struct {
+	sem *semaphore.Weighted
 }
 
-type result struct {
-	response queryrangebase.Response
-	err      error
-}
-
-func newWork(ctx context.Context, req queryrangebase.Request) work {
-	return work{
-		req:    req,
-		ctx:    ctx,
-		result: make(chan result, 1),
+func NewSemaphoreWithTiming(max int64) *SemaphoreWithTiming {
+	return &SemaphoreWithTiming{
+		sem: semaphore.NewWeighted(max),
 	}
 }
 
-func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+// acquires the semaphore and records the time it takes.
+func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (time.Duration, error) {
+	start := time.Now()
+
+	if err := s.sem.Acquire(ctx, n); err != nil {
+		return 0, err
+	}
+
+	return time.Since(start), nil
+}
+
+func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	var (
-		wg           sync.WaitGroup
-		intermediate = make(chan work)
-		ctx, cancel  = context.WithCancel(r.Context())
+		ctx, cancel = context.WithCancel(c)
 	)
 	defer func() {
 		cancel()
-		wg.Wait()
 	}()
 
-	// Do not forward any request header.
-	request, err := rt.codec.DecodeRequest(ctx, r, nil)
-	if err != nil {
-		return nil, err
-	}
+	span := opentracing.SpanFromContext(ctx)
 
-	if span := opentracing.SpanFromContext(ctx); span != nil {
+	if span != nil {
 		request.LogToSpan(span)
 	}
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -516,71 +498,42 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		tenantIDs,
 		rt.configs,
 		rt.limits,
-		model.Time(request.GetStart()),
-		model.Time(request.GetEnd()),
+		model.Time(request.GetStart().UnixMilli()),
+		model.Time(request.GetEnd().UnixMilli()),
 	)
 
 	if parallelism < 1 {
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
 	}
 
-	for i := 0; i < parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case w := <-intermediate:
-					resp, err := rt.do(w.ctx, w.req)
-					w.result <- result{response: resp, err: err}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
+	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))
 
-	response, err := rt.middleware.Wrap(
+	return rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-			w := newWork(ctx, r)
-			select {
-			case intermediate <- w:
-			case <-ctx.Done():
-				return nil, ctx.Err()
+			// This inner handler is called multiple times by
+			// sharding outer middlewares such as the downstreamer.
+			// The number of concurrent calls to `next.RoundTrip` should
+			// be limited, because the downstream calls can be in
+			// the thousands.
+			// Note: It is the responsibility of the caller to run
+			// the handler in parallel.
+			elapsed, err := semWithTiming.Acquire(ctx, int64(1))
+
+			if err != nil {
+				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
-			select {
-			case response := <-w.result:
-				return response.response, response.err
-			case <-ctx.Done():
-				return nil, ctx.Err()
+
+			if span != nil {
+				span.LogFields(
+					otlog.String("wait_time", elapsed.String()),
+					otlog.Int64("max_parallelism", int64(parallelism)),
+				)
 			}
+
+			defer semWithTiming.sem.Release(int64(1))
+
+			return rt.next.Do(ctx, r)
 		})).Do(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	return rt.codec.EncodeResponse(ctx, response)
-}
-
-func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
-	defer sp.Finish()
-
-	request, err := rt.codec.EncodeRequest(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	response, err := rt.next.RoundTrip(request)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	return rt.codec.DecodeResponse(ctx, response, r)
 }
 
 // WeightedParallelism will calculate the request parallelism to use
@@ -717,13 +670,13 @@ func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []c
 }
 
 // validates log entries limits
-func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	tenantIDs, err := tenant.TenantIDs(req.Context())
+func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limits) error {
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
+	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(ctx, id) }
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
@@ -732,8 +685,8 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 	return nil
 }
 
-func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Matcher) error {
-	tenants, err := tenant.TenantIDs(req.Context())
+func validateMatchers(ctx context.Context, limits Limits, matchers []*labels.Matcher) error {
+	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return err
 	}
@@ -747,7 +700,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 
 	// Enforce RequiredLabels limit
 	for _, tenant := range tenants {
-		required := limits.RequiredLabels(req.Context(), tenant)
+		required := limits.RequiredLabels(ctx, tenant)
 		var missing []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {
@@ -764,7 +717,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 	// The reason to enforce this one after RequiredLabels is to avoid users
 	// from adding enough label matchers to pass the RequiredNumberLabels limit but then
 	// having to modify them to use the ones required by RequiredLabels.
-	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(req.Context(), id) }
+	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(ctx, id) }
 	if requiredNumberLabels := validation.SmallestPositiveNonZeroIntPerTenant(tenants, requiredNumberLabelsCapture); requiredNumberLabels > 0 {
 		if len(present) < requiredNumberLabels {
 			return fmt.Errorf(requiredNumberLabelsErrTmpl, strings.Join(present, ", "), len(present), requiredNumberLabels)

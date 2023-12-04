@@ -50,4 +50,7 @@ pkg/loki/wal
 .vscode
 
 # nix
-result
+nix/result
+
+# snyk
+.dccache

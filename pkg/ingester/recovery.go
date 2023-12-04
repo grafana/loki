@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type WALReader interface {
@@ -31,13 +31,13 @@ func (NoopWALReader) Err() error     { return nil }
 func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
-func newCheckpointReader(dir string) (WALReader, io.Closer, error) {
+func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, error) {
 	lastCheckpointDir, idx, err := lastCheckpoint(dir)
 	if err != nil {
 		return nil, nil, err
 	}
 	if idx < 0 {
-		level.Info(util_log.Logger).Log("msg", "no checkpoint found, treating as no-op")
+		level.Info(logger).Log("msg", "no checkpoint found, treating as no-op")
 		var reader NoopWALReader
 		return reader, reader, nil
 	}
@@ -59,17 +59,18 @@ type Recoverer interface {
 
 type ingesterRecoverer struct {
 	// basically map[userID]map[fingerprint]*stream
-	users sync.Map
-	ing   *Ingester
-
-	done chan struct{}
+	users  sync.Map
+	ing    *Ingester
+	logger log.Logger
+	done   chan struct{}
 }
 
 func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
 
 	return &ingesterRecoverer{
-		ing:  i,
-		done: make(chan struct{}),
+		ing:    i,
+		done:   make(chan struct{}),
+		logger: i.logger,
 	}
 }
 
@@ -210,9 +211,9 @@ func (r *ingesterRecoverer) Close() {
 			s.unorderedWrites = isAllowed
 
 			if !isAllowed && old {
-				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(isAllowed))
+				err := s.chunks[len(s.chunks)-1].chunk.ConvertHead(headBlockType(s.chunkFormat, isAllowed))
 				if err != nil {
-					level.Warn(util_log.Logger).Log(
+					level.Warn(r.logger).Log(
 						"msg", "error converting headblock",
 						"err", err.Error(),
 						"stream", s.labels.String(),
@@ -295,7 +296,7 @@ func RecoverWAL(reader WALReader, recoverer Recoverer) error {
 }
 
 func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
-	dispatch := func(recoverer Recoverer, b []byte, inputs []chan recoveryInput) error {
+	dispatch := func(_ Recoverer, b []byte, inputs []chan recoveryInput) error {
 		s := &Series{}
 		if err := decodeCheckpointRecord(b, s); err != nil {
 			return err

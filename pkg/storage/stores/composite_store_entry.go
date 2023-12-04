@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
+
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -38,11 +42,11 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunkRefs")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunks")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
@@ -115,7 +119,18 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 }
 
 func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Stats")
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
+}
+
+func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Volume")
 	defer sp.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
@@ -125,7 +140,17 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 		return nil, nil
 	}
 
-	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
+	sp.LogKV(
+		"user", userID,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"err", err,
+		"limit", limit,
+		"aggregateBy", aggregateBy,
+	)
+
+	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
@@ -157,7 +182,7 @@ func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, 
 	return false, nil
 }
 
-func (c *storeEntry) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (c *storeEntry) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return c.fetcher
 }
 

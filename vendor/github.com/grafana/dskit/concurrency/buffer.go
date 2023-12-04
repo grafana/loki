@@ -24,3 +24,10 @@ func (sb *SyncBuffer) String() string {
 
 	return sb.buf.String()
 }
+
+func (sb *SyncBuffer) Reset() {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	sb.buf.Reset()
+}

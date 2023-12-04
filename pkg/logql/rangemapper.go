@@ -2,6 +2,7 @@ package logql
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -55,17 +56,19 @@ var splittableRangeVectorOp = map[string]struct{}{
 type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
+	stats           *MapperStats
 }
 
 // NewRangeMapper creates a new RangeMapper instance with the given duration as
 // split interval. The interval must be greater than 0.
-func NewRangeMapper(interval time.Duration, metrics *MapperMetrics) (RangeMapper, error) {
+func NewRangeMapper(interval time.Duration, metrics *MapperMetrics, stats *MapperStats) (RangeMapper, error) {
 	if interval <= 0 {
 		return RangeMapper{}, fmt.Errorf("cannot create RangeMapper with splitByInterval <= 0; got %s", interval)
 	}
 	return RangeMapper{
 		splitByInterval: interval,
 		metrics:         metrics,
+		stats:           stats,
 	}, nil
 }
 
@@ -78,10 +81,10 @@ func NewRangeMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
 // be executed by the downstream engine.
 // It returns a boolean indicating whether a rewrite was possible, the
 // rewritten sample expression, and an error in case the rewrite failed.
-func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
-	origExpr, err := syntax.ParseSampleExpr(query)
-	if err != nil {
-		return true, nil, err
+func (m RangeMapper) Parse(expr syntax.Expr) (bool, syntax.Expr, error) {
+	origExpr, ok := expr.(syntax.SampleExpr)
+	if !ok {
+		return true, nil, errors.New("only sample expression supported")
 	}
 
 	recorder := m.metrics.downstreamRecorder()
@@ -99,6 +102,8 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 
 	noop := origExpr.String() == modExpr.String()
 	if noop {
+		// reset split queries counter if the query is a noop
+		m.stats.resetSplitQueries()
 		m.metrics.ParsedQueries.WithLabelValues(NoopKey).Inc()
 	} else {
 		m.metrics.ParsedQueries.WithLabelValues(SuccessKey).Inc()
@@ -172,7 +177,7 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 // Example: expression `count_over_time({app="foo"}[10m])` returns 10m
 func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 	var rangeInterval time.Duration
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			rangeInterval = concrete.Left.Interval
@@ -185,12 +190,14 @@ func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 // such as `| json` or `| logfmt`, that would result in an exploding amount of series in downstream queries.
 func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 	found := false
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
+		case *syntax.LogfmtParserExpr:
+			found = true
 		case *syntax.LabelParserExpr:
 			// It will **not** return true for `regexp`, `unpack` and `pattern`, since these label extraction
 			// stages can control how many labels, and therefore the resulting amount of series, are extracted.
-			if concrete.Op == syntax.OpParserTypeJSON || concrete.Op == syntax.OpParserTypeLogfmt {
+			if concrete.Op == syntax.OpParserTypeJSON {
 				found = true
 			}
 		}
@@ -271,12 +278,12 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
 	sampleExpr := clone(expr)
-	sampleExpr.Walk(func(e interface{}) {
+	sampleExpr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			concrete.Left.Interval = interval
 			if offset != 0 {
-				concrete.Left.Offset += offset
+				concrete.Left.Offset = offset
 			}
 		}
 	})
@@ -289,29 +296,63 @@ func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, int
 	return downstreams
 }
 
+func getOffsets(expr syntax.SampleExpr) []time.Duration {
+	// Expect to always find at most 1 offset, so preallocate it accordingly
+	offsets := make([]time.Duration, 0, 1)
+
+	expr.Walk(func(e syntax.Expr) {
+		switch concrete := e.(type) {
+		case *syntax.RangeAggregationExpr:
+			offsets = append(offsets, concrete.Left.Offset)
+		}
+	})
+	return offsets
+}
+
+// getOriginalOffset returns the offset specified in the input expr
+// Note that the returned offset can be zero or negative
+func (m RangeMapper) getOriginalOffset(expr syntax.SampleExpr) (offset time.Duration, err error) {
+	offsets := getOffsets(expr)
+	if len(offsets) == 0 {
+		return time.Duration(0), nil
+	}
+	if len(offsets) > 1 {
+		return time.Duration(0), fmt.Errorf("found %d offsets while expecting at most 1", len(offsets))
+	}
+
+	return offsets[0], nil
+}
+
 // mapConcatSampleExpr transform expr in multiple downstream subexpressions split by offset range interval
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
-	splitCount := int(rangeInterval / m.splitByInterval)
-
-	if splitCount == 0 {
+	splitCount := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval)))
+	if splitCount <= 1 {
 		return expr
 	}
 
-	var split int
-	var downstreams *ConcatSampleExpr
-	for split = 0; split < splitCount; split++ {
-		downstreams = appendDownstream(downstreams, expr, m.splitByInterval, time.Duration(split)*m.splitByInterval)
+	originalOffset, err := m.getOriginalOffset(expr)
+	if err != nil {
+		return expr
 	}
-	recorder.Add(splitCount, MetricsKey)
 
-	// Add the remainder offset interval
-	if rangeInterval%m.splitByInterval != 0 {
-		offset := time.Duration(split) * m.splitByInterval
-		downstreams = appendDownstream(downstreams, expr, rangeInterval-offset, offset)
-		recorder.Add(1, MetricsKey)
+	var downstreams *ConcatSampleExpr
+	for split := 0; split < splitCount; split++ {
+		splitOffset := time.Duration(split) * m.splitByInterval
+		// The range interval of the last downstream query can be smaller than the split interval
+		splitRangeInterval := m.splitByInterval
+		if splitOffset+splitRangeInterval > rangeInterval {
+			splitRangeInterval = rangeInterval - splitOffset
+		}
+		// The offset of downstream queries is always the original offset + a multiple of the split interval
+		splitOffset += originalOffset
+		downstreams = appendDownstream(downstreams, expr, splitRangeInterval, splitOffset)
 	}
+
+	// Update stats and metrics
+	m.stats.AddSplitQueries(splitCount)
+	recorder.Add(splitCount, MetricsKey)
 
 	return downstreams
 }

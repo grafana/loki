@@ -140,8 +140,11 @@ func blocking(
 		m.signal.Broadcast() // main loop might miss this signal
 	}()
 
-	m.Lock()
-	defer m.Unlock()
+	if !ctx.nested {
+		// this is a call via Lua's .call(). It's already locked.
+		m.Lock()
+		defer m.Unlock()
+	}
 	for {
 		if c.Closed() {
 			return

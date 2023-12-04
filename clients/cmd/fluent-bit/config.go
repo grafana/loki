@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/log"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/clients/pkg/logentry/logql"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -45,7 +45,7 @@ const (
 type config struct {
 	clientConfig         client.Config
 	bufferConfig         bufferConfig
-	logLevel             logging.Level
+	logLevel             log.Level
 	autoKubernetesLabels bool
 	removeKeys           []string
 	labelKeys            []string
@@ -152,7 +152,7 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 	if logLevel == "" {
 		logLevel = "info"
 	}
-	var level logging.Level
+	var level log.Level
 	if err := level.Set(logLevel); err != nil {
 		return nil, fmt.Errorf("invalid log level: %v", logLevel)
 	}

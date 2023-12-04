@@ -18,7 +18,7 @@ func NewTableClient(directory string) (index.TableClient, error) {
 	return &TableClient{directory: directory}, nil
 }
 
-func (c *TableClient) ListTables(ctx context.Context) ([]string, error) {
+func (c *TableClient) ListTables(_ context.Context) ([]string, error) {
 	boltDbFiles := []string{}
 	err := filepath.Walk(c.directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -35,7 +35,7 @@ func (c *TableClient) ListTables(ctx context.Context) ([]string, error) {
 	return boltDbFiles, nil
 }
 
-func (c *TableClient) CreateTable(ctx context.Context, desc config.TableDesc) error {
+func (c *TableClient) CreateTable(_ context.Context, desc config.TableDesc) error {
 	file, err := os.OpenFile(filepath.Join(c.directory, desc.Name), os.O_CREATE|os.O_RDONLY, 0o666)
 	if err != nil {
 		return err
@@ -44,17 +44,17 @@ func (c *TableClient) CreateTable(ctx context.Context, desc config.TableDesc) er
 	return file.Close()
 }
 
-func (c *TableClient) DeleteTable(ctx context.Context, name string) error {
+func (c *TableClient) DeleteTable(_ context.Context, name string) error {
 	return os.Remove(filepath.Join(c.directory, name))
 }
 
-func (c *TableClient) DescribeTable(ctx context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
+func (c *TableClient) DescribeTable(_ context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
 	return config.TableDesc{
 		Name: name,
 	}, true, nil
 }
 
-func (c *TableClient) UpdateTable(ctx context.Context, current, expected config.TableDesc) error {
+func (c *TableClient) UpdateTable(_ context.Context, _, _ config.TableDesc) error {
 	return nil
 }
 

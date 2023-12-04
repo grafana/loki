@@ -12,7 +12,7 @@ type testCfg struct {
 	v int
 }
 
-func (cfg *testCfg) RegisterFlags(f *flag.FlagSet) {
+func (cfg *testCfg) RegisterFlags(_ *flag.FlagSet) {
 	cfg.v++
 }
 

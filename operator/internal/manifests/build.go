@@ -1,14 +1,14 @@
 package manifests
 
 import (
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal"
-
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
@@ -61,7 +61,6 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	res = append(res, BuildLokiGossipRingService(opts.Name))
 
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
-
 		rulesCMShards, err := RulesConfigMapShards(&opts)
 		if err != nil {
 			return nil, err

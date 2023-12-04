@@ -3,8 +3,7 @@ title: Metric queries
 menuTItle:  
 description: Metric queries extend log queries by applying a function to log query results. This powerful feature creates metrics from logs.
 aliases: 
-- /docs/loki/latest/logql
-- /docs/loki/latest/query
+- ../logql/metric_queries/
 weight: 20  
 ---
 
@@ -58,9 +57,18 @@ Examples:
     sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
     ```
 
+#### Offset modifier
+The offset modifier allows changing the time offset for individual range vectors in a query.
+
+For example, the following expression counts all the logs within the last ten minutes to five minutes rather than last five minutes for the MySQL job. Note that the `offset` modifier always needs to follow the range vector selector immediately.
+```logql
+count_over_time({job="mysql"}[5m] offset 5m) // GOOD
+count_over_time({job="mysql"}[5m]) offset 5m // INVALID
+```
+
 ### Unwrapped range aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors]({{<relref "./#pipeline-errors">}}).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors]({{< relref ".#pipeline-errors" >}}).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
@@ -96,7 +104,7 @@ Which can be used to aggregate over distinct labels dimensions by including a `w
 
 `without` removes the listed labels from the result vector, while all other labels are preserved the output. `by` does the opposite and drops labels that are not listed in the `by` clause, even if their label values are identical between all elements of the vector.
 
-See [Unwrap examples]({{<relref "query_examples/#unwrap-examples">}}) for query examples that use the unwrap expression.
+See [Unwrap examples]({{< relref "./query_examples#unwrap-examples" >}}) for query examples that use the unwrap expression.
 
 ## Built-in aggregation operators
 
@@ -127,7 +135,7 @@ The aggregation operators can either be used to aggregate over all label values 
 The `without` clause removes the listed labels from the resulting vector, keeping all others.
 The `by` clause does the opposite, dropping labels that are not listed in the clause, even if their label values are identical between all elements of the vector.
 
-See [vector aggregation examples]({{<relref "query_examples/#vector-aggregation-examples">}}) for query examples that use vector aggregation expressions.
+See [vector aggregation examples]({{< relref "./query_examples#vector-aggregation-examples" >}}) for query examples that use vector aggregation expressions.
 
 ## Functions
 

@@ -38,6 +38,32 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=region="<AWS_REGION_YOUR_BUCKET_LIVES_IN>"
     ```
 
+    or with `SSE-KMS` encryption
+
+    ```console
+    kubectl create secret generic lokistack-dev-s3 \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
+      --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
+      --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
+      --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
+      --from-literal=sse_type="SSE-KMS" \
+      --from-literal=sse_kms_key_id="<AWS_SSE_KMS_KEY_ID>" \
+      --from-literal=sse_kms_encryption_context="<OPTIONAL_AWS_SSE_KMS_ENCRYPTION_CONTEXT_JSON>"
+    ```
+    
+    See also official docs on [AWS KMS Key ID](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#key-id) and [AWS KMS Encryption Context](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#encrypt_context).
+
+    or with `SSE-S3` encryption
+
+    ```console
+    kubectl create secret generic lokistack-dev-s3 \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
+      --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
+      --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
+      --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
+      --from-literal=sse_type="SSE-S3"
+    ```
+
     where `lokistack-dev-s3` is the secret name.
 
 * Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:
@@ -67,7 +93,8 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=container="<AZURE_CONTAINER_NAME>" \
       --from-literal=environment="<AZURE_ENVIRONMENTs>" \
       --from-literal=account_name="<AZURE_ACCOUNT_NAME>" \
-      --from-literal=account_key="<AZURE_ACCOUNT_KEY>"
+      --from-literal=account_key="<AZURE_ACCOUNT_KEY>" \
+      --from-literal=endpoint_suffix="<OPTIONAL_AZURE_ENDPOINT_SUFFIX>"
     ```
 
     where `lokistack-dev-azure` is the secret name.

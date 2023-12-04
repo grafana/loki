@@ -5,12 +5,12 @@ help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-45s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
 .PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
-.PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
+.PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image build-image-push
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-drone-drift, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
@@ -37,12 +37,14 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.28.3
+BUILD_IMAGE_VERSION ?= 0.31.2
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-IMAGE_TAG := $(shell ./tools/image-tag)
+BUILD_IMAGE_PREFIX ?= grafana
+
+IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
@@ -50,7 +52,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
@@ -85,8 +87,8 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 DOC_SOURCES_PATH := docs/sources
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configuration/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configuration/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
 
 ##########
 # Docker #
@@ -101,17 +103,15 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
-DOCKER_BUILDKIT=1
-OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
-BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+DOCKER_BUILDKIT ?= 1
+BUILD_IMAGE = BUILD_IMAGE=$(BUILD_IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+PUSH_OCI=docker push
+TAG_OCI=docker tag
 ifeq ($(CI), true)
-	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=img push
-	TAG_OCI=img tag
+	OCI_PLATFORMS=--platform=linux/amd64,linux/arm64
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 else
-	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=docker push
-	TAG_OCI=docker tag
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg $(BUILD_IMAGE)
 endif
 
 binfmt:
@@ -169,6 +169,15 @@ loki-canary: cmd/loki-canary/loki-canary ## build loki-canary executable
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
+
+###############
+# Loki-Canary (BoringCrypto)#
+###############
+.PHONY: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto
+loki-canary-boringcrypto: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto ## build loki-canary (BoringCrypto) executable
+
+cmd/loki-canary-boringcrypto/loki-canary-boringcrypto:
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(GOARCH) GOEXPERIMENT=boringcrypto go build $(GO_FLAGS) -o $@ ./$(@D)/../loki-canary
 ###############
 # Helm #
 ###############
@@ -307,7 +316,7 @@ lint: ## run linters
 
 test: all ## run the unit tests
 	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
-
+	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee lambda_promtail_test_results.txt
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
@@ -418,7 +427,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -465,8 +474,10 @@ fluent-bit-plugin: ## build the fluent-bit plugin
 
 fluent-bit-image: ## build the fluent-bit plugin docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
+fluent-bit-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 
-fluent-bit-push: ## push the fluent-bit plugin docker image
+fluent-bit-push: fluent-bit-image-cross ## push the fluent-bit plugin docker image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
@@ -554,7 +565,6 @@ promtail-image: ## build the promtail docker image
 promtail-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
-promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image: ## build the promtail debug docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
 
@@ -567,7 +577,6 @@ loki-image: ## build the loki docker image
 loki-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
-loki-debug-image: OCI_PLATFORMS=
 loki-debug-image: ## build the debug loki docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
@@ -579,8 +588,12 @@ loki-canary-image: ## build the loki canary docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
 loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
+loki-canary-image-cross-boringcrypto:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+loki-canary-push-boringcrypto: loki-canary-image-cross-boringcrypto
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
 helm-test-image: ## build the helm test image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
 helm-test-push: helm-test-image ## push the helm test image
@@ -605,17 +618,23 @@ logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 
 
-# build-image (only amd64)
-build-image: OCI_PLATFORMS=
-build-image: ## build the docker build image
+# build-image
+ensure-buildx-builder:
+ifeq ($(CI),true)
+	./tools/ensure-buildx-builder.sh
+else
+	@echo "skipping buildx setup"
+endif
+
+build-image: ensure-buildx-builder
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
-	$(call push,loki-build-image,latest)
+	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
+	$(SUDO) $(BUILD_OCI) -o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 
 # loki-operator
 loki-operator-image:
@@ -631,8 +650,8 @@ loki-operator-push: loki-operator-image-cross
 
 documentation-helm-reference-check:
 	@echo "Checking diff"
-	$(MAKE) -BC docs sources/installation/helm/reference.md
-	@git diff --exit-code -- docs/sources/installation/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+	$(MAKE) -BC docs sources/setup/install/helm/reference.md
+	@git diff --exit-code -- docs/sources/setup/install/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/setup/install/helm/reference.md'" && false)
 
 ########
 # Misc #
@@ -748,9 +767,9 @@ test-fuzz:
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec gofmt -w -s {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
 
 
 GIT_TARGET_BRANCH ?= main
@@ -771,30 +790,34 @@ check-doc: doc
 ###################
 # Example Configs #
 ###################
+EXAMPLES_DOC_PATH := $(DOC_SOURCES_PATH)/configure/examples
+EXAMPLES_DOC_OUTPUT_PATH := $(EXAMPLES_DOC_PATH)/configuration-examples.md
+EXAMPLES_YAML_PATH := $(EXAMPLES_DOC_PATH)/yaml
+EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 
-# Validate the example configurations that we provide in ./docs/sources/configuration/examples
+# Validate the example configurations that we provide in ./docs/sources/configure/examples
+# We run the validation only for complete examples, not snippets.
+# Complete examples should contain "Example" in their file name.
 validate-example-configs: loki
-	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
-# Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
+# Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configuration)
-	$(eval CONFIG_EXAMPLES_PATH=$(CONFIG_DOC_PATH)/examples)
-	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
+	echo "Removing existing doc at $(EXAMPLES_DOC_OUTPUT_PATH) and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > $(CONFIG_DOC_PATH)/examples.md
+	echo -e "---\ntitle: Configuration\ndescription: Loki Configuration Examples and Snippets\nweight:  100\n---\n# Configuration" > $(EXAMPLES_DOC_OUTPUT_PATH)
 	# Append each configuration and its file name to examples.md
-	for f in $$(find $(CONFIG_EXAMPLES_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
-		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(CONFIG_DOC_PATH)/examples.md; \
-		cat $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
-		echo -e "\n\`\`\`\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+	for f in $$(find $(EXAMPLES_YAML_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
+		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		grep -v $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/$$f >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		echo -e "\n\`\`\`\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
 	done
 
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+	@if ! (git diff --exit-code $(EXAMPLES_DOC_OUTPUT_PATH)); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
@@ -810,3 +833,17 @@ dev-k3d-enterprise-logs:
 
 dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
+
+# Trivy is used to scan images for vulnerabilities
+.PHONY: trivy
+trivy: loki-image
+	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+
+# Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
+.PHONY: snyk
+snyk: loki-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	snyk code test
+
+.PHONY: scan-vulnerabilities
+scan-vulnerabilities: trivy snyk

@@ -35,17 +35,17 @@ func TestCopy(t *testing.T) {
 		"y": "z",
 	}
 
-	copy := CopyMap(base)
-	require.EqualValues(t, base, copy)
-	require.NotSame(t, base, copy)
+	cp := CopyMap(base)
+	require.EqualValues(t, base, cp)
+	require.NotSame(t, base, cp)
 }
 
 func TestNilCopy(t *testing.T) {
 	var base map[string]string
 
-	copy := CopyMap(base)
-	require.EqualValues(t, base, copy)
-	require.NotSame(t, base, copy)
+	cp := CopyMap(base)
+	require.EqualValues(t, base, cp)
+	require.NotSame(t, base, cp)
 }
 
 func TestNilBase(t *testing.T) {

@@ -1,7 +1,5 @@
 auth_enabled: true
 
-http_prefix:
-
 server:
   http_listen_address: 0.0.0.0
   grpc_listen_address: 0.0.0.0
@@ -10,6 +8,7 @@ server:
   log_level: info
 
 common:
+  path_prefix: /loki
   storage:
     s3:
       endpoint: minio:9000
@@ -19,6 +18,7 @@ common:
       secret_access_key: supersecret
       s3forcepathstyle: true
   compactor_address: http://loki-write:3100
+  replication_factor: 3
 
 memberlist:
   join_members: ["loki-read", "loki-write"]
@@ -51,13 +51,14 @@ ingester:
 
 ruler:
   enable_api: true
+  enable_sharding: true  
   wal:
-    dir: /tmp/ruler-wal
+    dir: /loki/ruler-wal
   storage:
     type: local
     local:
       directory: /loki/rules
-  rule_path: /tmp/prom-rules
+  rule_path: /loki/prom-rules
   remote_write:
     enabled: true
     clients:
@@ -77,26 +78,24 @@ schema_config:
     index:
       prefix: index_
       period: 24h
-
-storage_config:
-  boltdb_shipper:
-    shared_store: s3
-    active_index_directory: /tmp/index
-    cache_location: /tmp/boltdb-cache
+  - from: 2023-07-11
+    store: tsdb
+    object_store: s3
+    schema: v12
+    index:
+      prefix: index_
+      period: 24h
 
 
 limits_config:
   max_cache_freshness_per_query: '10m'
-  enforce_metric_name: false
   reject_old_samples: true
   reject_old_samples_max_age: 30m
   ingestion_rate_mb: 10
   ingestion_burst_size_mb: 20
   # parallelize queries in 15min intervals
   split_queries_by_interval: 15m
-
-chunk_store_config:
-  max_look_back_period: 336h
+  volume_enabled: true
 
 table_manager:
   retention_deletes_enabled: true
@@ -122,4 +121,3 @@ querier:
 
 compactor:
   working_directory: /tmp/compactor
-  shared_store: s3

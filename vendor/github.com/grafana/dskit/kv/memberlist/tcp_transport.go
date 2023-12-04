@@ -39,7 +39,7 @@ const colonColon = "::"
 
 // TCPTransportConfig is a configuration structure for creating new TCPTransport.
 type TCPTransportConfig struct {
-	// BindAddrs is a list of addresses to bind to.
+	// BindAddrs is a list of IP addresses to bind to.
 	BindAddrs flagext.StringSlice `yaml:"bind_addr"`
 
 	// BindPort is the port to listen on, for each address above.
@@ -56,8 +56,7 @@ type TCPTransportConfig struct {
 	TransportDebug bool `yaml:"-" category:"advanced"`
 
 	// Where to put custom metrics. nil = don't register.
-	MetricsRegisterer prometheus.Registerer `yaml:"-"`
-	MetricsNamespace  string                `yaml:"-"`
+	MetricsNamespace string `yaml:"-"`
 
 	TLSEnabled bool               `yaml:"tls_enabled" category:"advanced"`
 	TLS        dstls.ClientConfig `yaml:",inline"`
@@ -113,7 +112,7 @@ type TCPTransport struct {
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
 // success all the network listeners will be created and listening.
-func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTransport, error) {
+func NewTCPTransport(config TCPTransportConfig, logger log.Logger, registerer prometheus.Registerer) (*TCPTransport, error) {
 	if len(config.BindAddrs) == 0 {
 		config.BindAddrs = []string{zeroZeroZeroZero}
 	}
@@ -135,7 +134,7 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		}
 	}
 
-	t.registerMetrics(config.MetricsRegisterer)
+	t.registerMetrics(registerer)
 
 	// Clean up listeners if there's an error.
 	defer func() {
@@ -148,6 +147,9 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 	port := config.BindPort
 	for _, addr := range config.BindAddrs {
 		ip := net.ParseIP(addr)
+		if ip == nil {
+			return nil, fmt.Errorf("could not parse bind addr %q as IP address", addr)
+		}
 
 		tcpAddr := &net.TCPAddr{IP: ip, Port: port}
 

@@ -1,11 +1,12 @@
 package distributor
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/go-kit/log/level"
-	"github.com/weaveworks/common/httpgrpc"
+	"github.com/grafana/dskit/httpgrpc"
 
 	"github.com/grafana/loki/pkg/util"
 
@@ -18,6 +19,14 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
+	d.pushHandler(w, r, push.ParseLokiRequest)
+}
+
+func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
+	d.pushHandler(w, r, push.ParseOTLPRequest)
+}
+
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
@@ -25,7 +34,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention)
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, pushRequestParser)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -34,7 +43,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err,
 			)
 		}
-		d.writeFailuresManager.Log(tenantID, err)
+		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -61,8 +70,6 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
-	d.writeFailuresManager.Log(tenantID, err)
 
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {

@@ -55,8 +55,9 @@ an Azure AD access token. See [Credential Types](#credential-types "Credential T
 ![DefaultAzureCredential authentication flow](img/mermaidjs/DefaultAzureCredentialAuthFlow.svg)
 
 1. **Environment** - `DefaultAzureCredential` will read account information specified via [environment variables](#environment-variables) and use it to authenticate.
-2. **Managed Identity** - If the app is deployed to an Azure host with managed identity enabled, `DefaultAzureCredential` will authenticate with it.
-3. **Azure CLI** - If a user or service principal has authenticated via the Azure CLI `az login` command, `DefaultAzureCredential` will authenticate that identity.
+1. **Workload Identity** - If the app is deployed on Kubernetes with environment variables set by the workload identity webhook, `DefaultAzureCredential` will authenticate the configured identity.
+1. **Managed Identity** - If the app is deployed to an Azure host with managed identity enabled, `DefaultAzureCredential` will authenticate with it.
+1. **Azure CLI** - If a user or service principal has authenticated via the Azure CLI `az login` command, `DefaultAzureCredential` will authenticate that identity.
 
 > Note: `DefaultAzureCredential` is intended to simplify getting started with the SDK by handling common scenarios with reasonable default behaviors. Developers who want more control or whose scenario isn't served by the default settings should use other credential types.
 
@@ -128,12 +129,13 @@ client := armresources.NewResourceGroupsClient("subscription ID", chain, nil)
 |[ChainedTokenCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ChainedTokenCredential)|Define custom authentication flows, composing multiple credentials
 |[EnvironmentCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#EnvironmentCredential)|Authenticate a service principal or user configured by environment variables
 |[ManagedIdentityCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ManagedIdentityCredential)|Authenticate the managed identity of an Azure resource
+|[WorkloadIdentityCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#WorkloadIdentityCredential)|Authenticate a workload identity on Kubernetes
 
 ### Authenticating Service Principals
 
 |Credential|Usage
 |-|-
-|[ClientAssertionCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity@v1.2.0-beta.2#ClientAssertionCredential)|Authenticate a service principal with a signed client assertion
+|[ClientAssertionCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ClientAssertionCredential)|Authenticate a service principal with a signed client assertion
 |[ClientCertificateCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ClientCertificateCredential)|Authenticate a service principal with a certificate
 |[ClientSecretCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ClientSecretCredential)|Authenticate a service principal with a secret
 

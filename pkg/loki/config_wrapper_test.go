@@ -24,11 +24,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	loki_net "github.com/grafana/loki/pkg/util/net"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 )
 
 // Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.
@@ -277,7 +276,6 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
-				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -336,7 +334,6 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
-				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -723,66 +720,12 @@ storage_config:
 			assert.EqualValues(t, 27, config.StorageConfig.GCSConfig.ChunkBufferSize)
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
-
-		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
-			configString := `common:
-  storage:
-    s3:
-      s3: s3://foo-bucket/example
-      access_key_id: abc123
-      secret_access_key: def789
-compactor:
-  shared_store: gcs`
-			config, _ := testContext(configString, nil)
-
-			assert.Equal(t, "gcs", config.CompactorConfig.SharedStoreType)
-		})
 	})
 
-	t.Run("when using boltdb storage type", func(t *testing.T) {
-		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
+	t.Run("boltdb shipper apply common path prefix", func(t *testing.T) {
+		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {
+
 			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-
-storage_config:
-  boltdb_shipper:
-    shared_store: s3
-
-compactor:
-  shared_store: s3`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
-		})
-
-		t.Run("shared store types provided via command line take precedence", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
-		})
-
-		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {})
-		const boltdbSchemaConfig = `---
 common:
   path_prefix: /opt/loki
 schema_config:
@@ -794,14 +737,14 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+			config, _ := testContext(boltdbSchemaConfig, nil)
 
-		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
-	})
+			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+		})
 
-	t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
-		const boltdbSchemaConfig = `---
+		t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
 common:
   path_prefix: /opt/loki/
 schema_config:
@@ -813,10 +756,12 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+			config, _ := testContext(boltdbSchemaConfig, nil)
 
-		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+
+		})
 	})
 
 	t.Run("ingester final sleep config", func(t *testing.T) {
@@ -841,10 +786,6 @@ ingester:
 	})
 
 	t.Run("embedded-cache setting is applied to result caches", func(t *testing.T) {
-		// ensure they are all false by default
-		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-
 		configFileString := `---
 query_range:
   results_cache:
@@ -852,15 +793,21 @@ query_range:
       embedded_cache:
         enabled: true`
 
-		config, _ = testContext(configFileString, nil)
-
+		config, _ := testContext(configFileString, nil)
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 	})
 }
 
-func TestDefaultFIFOCacheBehavior(t *testing.T) {
+const defaultResulsCacheString = `---
+query_range:
+  results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+func TestDefaultEmbeddedCacheBehavior(t *testing.T) {
 	t.Run("for the chunk cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   chunk_cache_config:
@@ -869,10 +816,10 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.ChunkCacheConfig.Redis.Endpoint)
-			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   chunk_cache_config:
@@ -881,17 +828,17 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EnableFifoCache)
+			assert.True(t, config.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the write dedupe cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   write_dedupe_cache_config:
@@ -900,10 +847,10 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.Redis.Endpoint)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 chunk_store_config:
   write_dedupe_cache_config:
@@ -912,17 +859,17 @@ chunk_store_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache is enabled by default even if no other cache is set", func(t *testing.T) {
+		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EnableFifoCache)
+			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the index queries cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 storage_config:
   index_queries_cache_config:
@@ -931,10 +878,10 @@ storage_config:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "endpoint.redis.org", config.StorageConfig.IndexQueriesCacheConfig.Redis.Endpoint)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 storage_config:
   index_queries_cache_config:
@@ -944,17 +891,17 @@ storage_config:
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 
 			assert.EqualValues(t, "host.memcached.org", config.StorageConfig.IndexQueriesCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache is enabled by default even if no other cache is set", func(t *testing.T) {
+		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EnableFifoCache)
+			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the query range results cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   results_cache:
@@ -964,30 +911,23 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
-			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      memcached_client:
-        host: memcached.host.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.ResultsCacheConfig.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 
 	t.Run("for the index stats results cache config", func(t *testing.T) {
-		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   index_stats_results_cache:
@@ -997,10 +937,10 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.StatsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
-			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
 query_range:
   index_stats_results_cache:
@@ -1010,12 +950,57 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
-		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+	})
+
+	t.Run("for the volume results cache config", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  volume_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, config.QueryRange.VolumeCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  volume_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 }
@@ -1051,8 +1036,8 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
 		assert.Equal(t, 13,
-			reflect.TypeOf(util.RingConfig{}).NumField(),
-			fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
+			reflect.TypeOf(lokiring.RingConfig{}).NumField(),
+			fmt.Sprintf(msgf, reflect.TypeOf(lokiring.RingConfig{}).String()))
 	})
 
 	t.Run("compactor and scheduler tokens file should not be configured if persist_tokens is false", func(t *testing.T) {

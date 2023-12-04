@@ -100,32 +100,47 @@ func (req *Request) OperationValue(value interface{}) bool {
 	return req.values.get(value)
 }
 
-// SetBody sets the specified ReadSeekCloser as the HTTP request body.
+// SetBody sets the specified ReadSeekCloser as the HTTP request body, and sets Content-Type and Content-Length
+// accordingly. If the ReadSeekCloser is nil or empty, Content-Length won't be set. If contentType is "",
+// Content-Type won't be set.
+// Use streaming.NopCloser to turn an io.ReadSeeker into an io.ReadSeekCloser.
 func (req *Request) SetBody(body io.ReadSeekCloser, contentType string) error {
-	// Set the body and content length.
-	size, err := body.Seek(0, io.SeekEnd) // Seek to the end to get the stream's size
-	if err != nil {
-		return err
+	var err error
+	var size int64
+	if body != nil {
+		size, err = body.Seek(0, io.SeekEnd) // Seek to the end to get the stream's size
+		if err != nil {
+			return err
+		}
 	}
 	if size == 0 {
-		body.Close()
-		return nil
+		// treat an empty stream the same as a nil one: assign req a nil body
+		body = nil
+		// RFC 9110 specifies a client shouldn't set Content-Length on a request containing no content
+		// (Del is a no-op when the header has no value)
+		req.req.Header.Del(shared.HeaderContentLength)
+	} else {
+		_, err = body.Seek(0, io.SeekStart)
+		if err != nil {
+			return err
+		}
+		req.req.Header.Set(shared.HeaderContentLength, strconv.FormatInt(size, 10))
+		req.Raw().GetBody = func() (io.ReadCloser, error) {
+			_, err := body.Seek(0, io.SeekStart) // Seek back to the beginning of the stream
+			return body, err
+		}
 	}
-	_, err = body.Seek(0, io.SeekStart)
-	if err != nil {
-		return err
-	}
-	req.Raw().GetBody = func() (io.ReadCloser, error) {
-		_, err := body.Seek(0, io.SeekStart) // Seek back to the beginning of the stream
-		return body, err
-	}
-	// keep a copy of the original body.  this is to handle cases
+	// keep a copy of the body argument.  this is to handle cases
 	// where req.Body is replaced, e.g. httputil.DumpRequest and friends.
 	req.body = body
 	req.req.Body = body
 	req.req.ContentLength = size
-	req.req.Header.Set(shared.HeaderContentType, contentType)
-	req.req.Header.Set(shared.HeaderContentLength, strconv.FormatInt(size, 10))
+	if contentType == "" {
+		// Del is a no-op when the header has no value
+		req.req.Header.Del(shared.HeaderContentType)
+	} else {
+		req.req.Header.Set(shared.HeaderContentType, contentType)
+	}
 	return nil
 }
 
@@ -153,4 +168,15 @@ func (req *Request) Clone(ctx context.Context) *Request {
 	r2 := *req
 	r2.req = req.req.Clone(ctx)
 	return &r2
+}
+
+// not exported but dependent on Request
+
+// PolicyFunc is a type that implements the Policy interface.
+// Use this type when implementing a stateless policy as a first-class function.
+type PolicyFunc func(*Request) (*http.Response, error)
+
+// Do implements the Policy interface on policyFunc.
+func (pf PolicyFunc) Do(req *Request) (*http.Response, error) {
+	return pf(req)
 }

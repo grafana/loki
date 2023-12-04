@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -23,7 +24,7 @@ func TestMappingEquivalence(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
@@ -51,6 +52,8 @@ func TestMappingEquivalence(t *testing.T) {
 		{`max(count(rate({a=~".+"}[1s])))`, false},
 		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false},
 		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -67,7 +70,7 @@ func TestMappingEquivalence(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
-			params := NewLiteralParams(
+			params, err := NewLiteralParams(
 				tc.query,
 				start,
 				end,
@@ -77,14 +80,16 @@ func TestMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
+			require.NoError(t, err)
+
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			_, _, mapped, err := mapper.Parse(tc.query)
+			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.Nil(t, err)
 
-			shardedQry := sharded.Query(ctx, params, mapped)
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped})
 
 			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
@@ -106,7 +111,7 @@ func TestShardCounter(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, false)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
@@ -133,7 +138,7 @@ func TestShardCounter(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
-			params := NewLiteralParams(
+			params, err := NewLiteralParams(
 				tc.query,
 				start,
 				end,
@@ -143,13 +148,14 @@ func TestShardCounter(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
+			require.NoError(t, err)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			noop, _, mapped, err := mapper.Parse(tc.query)
-			require.Nil(t, err)
+			noop, _, mapped, err := mapper.Parse(params.GetExpression())
+			require.NoError(t, err)
 
-			shardedQry := sharded.Query(ctx, params, mapped)
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped})
 
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.Nil(t, err)
@@ -168,7 +174,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, false)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
@@ -370,6 +376,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		// range with offset
 		{`rate({a=~".+"}[2s] offset 2s)`, time.Second},
+		{`rate({a=~".+"}[4s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[5s] offset 0s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset -1s)`, 2 * time.Second},
 
 		// label_replace
 		{`label_replace(sum by (a) (count_over_time({a=~".+"}[3s])), "", "", "", "")`, time.Second},
@@ -387,7 +397,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			params := NewLiteralParams(
+			params, err := NewLiteralParams(
 				tc.query,
 				start,
 				end,
@@ -397,6 +407,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
+			require.NoError(t, err)
 
 			// Regular engine
 			qry := regularEngine.Query(params)
@@ -404,14 +415,14 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
 			require.Nil(t, err)
-			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
+			noop, rangeExpr, err := rangeMapper.Parse(syntax.MustParseExpr(tc.query))
 			require.Nil(t, err)
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 
-			rangeQry := downstreamEngine.Query(ctx, params, rangeExpr)
+			rangeQry := downstreamEngine.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: rangeExpr})
 			rangeRes, err := rangeQry.Exec(ctx)
 			require.Nil(t, err)
 
@@ -423,13 +434,13 @@ func TestRangeMappingEquivalence(t *testing.T) {
 // approximatelyEquals ensures two responses are approximately equal,
 // up to 6 decimals precision per sample
 func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
-	require.Equal(t, len(as), len(bs))
+	require.Len(t, bs, len(as))
 
 	for i := 0; i < len(as); i++ {
 		a := as[i]
 		b := bs[i]
 		require.Equal(t, a.Metric, b.Metric)
-		require.Equal(t, len(a.Floats), len(b.Floats))
+		require.Lenf(t, b.Floats, len(a.Floats), "at step %d", i)
 
 		for j := 0; j < len(a.Floats); j++ {
 			aSample := &a.Floats[j]
@@ -437,6 +448,6 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 			bSample := &b.Floats[j]
 			bSample.F = math.Round(bSample.F*1e6) / 1e6
 		}
-		require.Equal(t, a, b)
+		require.Equalf(t, a, b, "metric %s differs from %s at %d", a.Metric, b.Metric, i)
 	}
 }

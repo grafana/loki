@@ -67,19 +67,19 @@ func (m *matcher) Matches(in []byte) [][]byte {
 			}
 			return captures
 		}
-		cap := expr[0].(capture)
+		capt := expr[0].(capture)
 		ls := expr[1].(literals)
 		expr = expr[2:]
 		i := bytes.Index(in, ls)
 		if i == -1 {
 			// if a capture is missed we return up to the end as the capture.
-			if !cap.isUnamed() {
+			if !capt.isUnamed() {
 				captures = append(captures, in)
 			}
 			return captures
 		}
 
-		if cap.isUnamed() {
+		if capt.isUnamed() {
 			in = in[len(ls)+i:]
 			continue
 		}

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -48,47 +49,6 @@ func ToWriteRequest(lbls []labels.Labels, samples []LegacySample, metadata []*Me
 // doesn't enforce that. If input is not sorted, output will be wrong.
 func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
 	return *(*labels.Labels)(unsafe.Pointer(&ls))
-}
-
-// FromLabelAdaptersToLabelsWithCopy converts []LabelAdapter to labels.Labels.
-// Do NOT use unsafe to convert between data types because this function may
-// get in input labels whose data structure is reused.
-func FromLabelAdaptersToLabelsWithCopy(input []LabelAdapter) labels.Labels {
-	return CopyLabels(FromLabelAdaptersToLabels(input))
-}
-
-// Efficiently copies labels input slice. To be used in cases where input slice
-// can be reused, but long-term copy is needed.
-func CopyLabels(input []labels.Label) labels.Labels {
-	result := make(labels.Labels, len(input))
-
-	size := 0
-	for _, l := range input {
-		size += len(l.Name)
-		size += len(l.Value)
-	}
-
-	// Copy all strings into the buffer, and use 'yoloString' to convert buffer
-	// slices to strings.
-	buf := make([]byte, size)
-
-	for i, l := range input {
-		result[i].Name, buf = copyStringToBuffer(l.Name, buf)
-		result[i].Value, buf = copyStringToBuffer(l.Value, buf)
-	}
-	return result
-}
-
-// Copies string to buffer (which must be big enough), and converts buffer slice containing
-// the string copy into new string.
-func copyStringToBuffer(in string, buf []byte) (string, []byte) {
-	l := len(in)
-	c := copy(buf, in)
-	if c != l {
-		panic("not copied full string")
-	}
-
-	return yoloString(buf[0:l]), buf[l:]
 }
 
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
@@ -273,13 +233,13 @@ func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) 
 // Satisfy definitions.Request
 
 // GetStart returns the start timestamp of the request in milliseconds.
-func (m *IndexStatsRequest) GetStart() int64 {
-	return int64(m.From)
+func (m *IndexStatsRequest) GetStart() time.Time {
+	return time.Unix(0, m.From.UnixNano())
 }
 
 // GetEnd returns the end timestamp of the request in milliseconds.
-func (m *IndexStatsRequest) GetEnd() int64 {
-	return int64(m.Through)
+func (m *IndexStatsRequest) GetEnd() time.Time {
+	return time.Unix(0, m.Through.UnixNano())
 }
 
 // GetStep returns the step of the request in milliseconds.
@@ -294,25 +254,83 @@ func (m *IndexStatsRequest) GetQuery() string {
 func (m *IndexStatsRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
 
 // WithStartEnd clone the current request with different start and end timestamp.
-func (m *IndexStatsRequest) WithStartEnd(startTime int64, endTime int64) definitions.Request {
-	new := *m
-	new.From = model.TimeFromUnixNano(startTime * int64(time.Millisecond))
-	new.Through = model.TimeFromUnixNano(endTime * int64(time.Millisecond))
-	return &new
+func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (m *IndexStatsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
 }
 
 // WithQuery clone the current request with a different query.
 func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
-	new := *m
-	new.Matchers = query
-	return &new
+	clone := *m
+	clone.Matchers = query
+	return &clone
 }
 
 // LogToSpan writes information about this request to an OpenTracing span
 func (m *IndexStatsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", m.GetQuery()),
-		otlog.String("start", timestamp.Time(m.GetStart()).String()),
-		otlog.String("end", timestamp.Time(m.GetEnd()).String()),
+		otlog.String("start", timestamp.Time(int64(m.From)).String()),
+		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
+	)
+}
+
+func (i *IndexStatsResponse) GetHeaders() []*definitions.PrometheusResponseHeader {
+	return nil
+}
+
+// Satisfy definitions.Request for Volume
+
+// GetStart returns the start timestamp of the request in milliseconds.
+func (m *VolumeRequest) GetStart() time.Time {
+	return time.UnixMilli(int64(m.From))
+}
+
+// GetEnd returns the end timestamp of the request in milliseconds.
+func (m *VolumeRequest) GetEnd() time.Time {
+	return time.UnixMilli(int64(m.Through))
+}
+
+// GetQuery returns the query of the request.
+func (m *VolumeRequest) GetQuery() string {
+	return m.Matchers
+}
+
+// GetCachingOptions returns the caching options.
+func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+// WithStartEnd clone the current request with different start and end timestamp.
+func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.From = model.TimeFromUnixNano(start.UnixNano())
+	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (m *VolumeRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
+// WithQuery clone the current request with a different query.
+func (m *VolumeRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Matchers = query
+	return &clone
+}
+
+// LogToSpan writes information about this request to an OpenTracing span
+func (m *VolumeRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("query", m.GetQuery()),
+		otlog.String("start", timestamp.Time(int64(m.From)).String()),
+		otlog.String("end", timestamp.Time(int64(m.Through)).String()),
 	)
 }

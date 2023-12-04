@@ -11,74 +11,9 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
-
-func TestRequest(t *testing.T) {
-	// Create a Copy parsedRequest to assign the expected headers to the request without affecting other tests using the global.
-	// The test below adds a Test-Header header to the request and expects it back once the encode/decode of request is done via PrometheusCodec
-	parsedRequestWithHeaders := *parsedRequest
-	parsedRequestWithHeaders.Headers = reqHeaders
-	for i, tc := range []struct {
-		url         string
-		expected    Request
-		expectedErr error
-	}{
-		{
-			url:      query,
-			expected: &parsedRequestWithHeaders,
-		},
-		{
-			url:         "api/v1/query_range?start=foo",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid timestamp"),
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=bar",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid timestamp"),
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=0",
-			expectedErr: errEndBeforeStart,
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=456&step=baz",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"step\"; cannot parse \"baz\" to a valid duration"),
-		},
-		{
-			url:         "api/v1/query_range?start=123&end=456&step=-1",
-			expectedErr: errNegativeStep,
-		},
-		{
-			url:         "api/v1/query_range?start=0&end=11001&step=1",
-			expectedErr: errStepTooSmall,
-		},
-	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			r, err := http.NewRequest("GET", tc.url, nil)
-			require.NoError(t, err)
-			r.Header.Add("Test-Header", "test")
-
-			ctx := user.InjectOrgID(context.Background(), "1")
-
-			// Get a deep copy of the request with Context changed to ctx
-			r = r.Clone(ctx)
-
-			req, err := PrometheusCodec.DecodeRequest(ctx, r, []string{"Test-Header"})
-			if err != nil {
-				require.EqualValues(t, tc.expectedErr, err)
-				return
-			}
-			require.EqualValues(t, tc.expected, req)
-
-			rdash, err := PrometheusCodec.EncodeRequest(context.Background(), req)
-			require.NoError(t, err)
-			require.EqualValues(t, tc.url, rdash.RequestURI)
-		})
-	}
-}
 
 func TestResponse(t *testing.T) {
 	r := *parsedResponse
@@ -109,7 +44,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 				ContentLength: int64(len(tc.body)),
 			}
-			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), nil, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})

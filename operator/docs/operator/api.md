@@ -820,7 +820,22 @@ OIDCSpec
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>OIDC defines the spec for the OIDC tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>mTLS</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-MTLSSpec">
+MTLSSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TLSConfig defines the spec for the mTLS tenant&rsquo;s authentication.</p>
 </td>
 </tr>
 </tbody>
@@ -882,6 +897,150 @@ OPASpec
 <td>
 <em>(Optional)</em>
 <p>RoleBindings defines configuration to bind a set of roles to a set of subjects.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## BlockedQuerySpec { #loki-grafana-com-v1-BlockedQuerySpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
+</p>
+<div>
+<p>BlockedQuerySpec defines the rule spec for queries to be blocked.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>hash</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Hash is a 32-bit FNV-1 hash of the query string.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>pattern</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Pattern defines the pattern matching the queries to be blocked.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Regex defines if the pattern is a regular expression. If false the pattern will be used only for exact matches.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>types</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-BlockedQueryTypes">
+BlockedQueryTypes
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Types defines the list of query types that should be considered for blocking.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## BlockedQueryType { #loki-grafana-com-v1-BlockedQueryType }
+(<code>string</code> alias)
+<div>
+<p>BlockedQueryType defines which type of query a blocked query should apply to.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;filter&#34;</p></td>
+<td><p>BlockedQueryFilter is used, when the blocked query should apply to queries using a log filter.</p>
+</td>
+</tr><tr><td><p>&#34;limited&#34;</p></td>
+<td><p>BlockedQueryLimited is used, when the blocked query should apply to queries without a filter or a metric aggregation.</p>
+</td>
+</tr><tr><td><p>&#34;metric&#34;</p></td>
+<td><p>BlockedQueryMetric is used, when the blocked query should apply to queries with an aggregation.</p>
+</td>
+</tr></tbody>
+</table>
+
+## BlockedQueryTypes { #loki-grafana-com-v1-BlockedQueryTypes }
+(<code>[]github.com/grafana/loki/operator/apis/loki/v1.BlockedQueryType</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-BlockedQuerySpec">BlockedQuerySpec</a>)
+</p>
+<div>
+<p>BlockedQueryTypes defines a slice of BlockedQueryType values to be used for a blocked query.</p>
+</div>
+
+## CASpec { #loki-grafana-com-v1-CASpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-MTLSSpec">MTLSSpec</a>, <a href="#loki-grafana-com-v1-OIDCSpec">OIDCSpec</a>, <a href="#loki-grafana-com-v1-ObjectStorageTLSSpec">ObjectStorageTLSSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>caKey</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Key is the data key of a ConfigMap containing a CA certificate.
+It needs to be in the same namespace as the LokiStack custom resource.
+If empty, it defaults to &ldquo;service-ca.crt&rdquo;.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>caName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>CA is the name of a ConfigMap containing a CA certificate.
+It needs to be in the same namespace as the LokiStack custom resource.</p>
 </td>
 </tr>
 </tbody>
@@ -1009,7 +1168,7 @@ MemberListSpec
 
 ## IngestionLimitSpec { #loki-grafana-com-v1-IngestionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
 <p>IngestionLimitSpec defines the limits applied at the ingestion path.</p>
@@ -1114,6 +1273,19 @@ int32
 </tr>
 <tr>
 <td>
+<code>perStreamDesiredRate</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+target applying automatic stream sharding. Units MB.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>perStreamRateLimit</code><br/>
 <em>
 int32
@@ -1197,8 +1369,8 @@ LimitsTemplateSpec
 <td>
 <code>tenants</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-LimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.LimitsTemplateSpec
+<a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">
+map[string]github.com/grafana/loki/operator/apis/loki/v1.PerTenantLimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -1548,6 +1720,9 @@ PodStatusMap
 </tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
+</tr><tr><td><p>&#34;InvalidGatewayTenantConfigMap&#34;</p></td>
+<td><p>ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidGatewayTenantSecret&#34;</p></td>
 <td><p>ReasonInvalidGatewayTenantSecret when the format of the secret is invalid.</p>
 </td>
@@ -1570,8 +1745,15 @@ with the select cluster size.</p>
 </tr><tr><td><p>&#34;InvalidTenantsConfiguration&#34;</p></td>
 <td><p>ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.</p>
 </td>
+</tr><tr><td><p>&#34;MissingGatewayTenantAuthenticationConfig&#34;</p></td>
+<td><p>ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config</p>
+</td>
 </tr><tr><td><p>&#34;MissingGatewayOpenShiftBaseDomain&#34;</p></td>
 <td><p>ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.</p>
+</td>
+</tr><tr><td><p>&#34;MissingGatewayTenantConfigMap&#34;</p></td>
+<td><p>ReasonMissingGatewayTenantConfigMap when the required tenant configmap
+for authentication is missing.</p>
 </td>
 </tr><tr><td><p>&#34;MissingGatewayTenantSecret&#34;</p></td>
 <td><p>ReasonMissingGatewayTenantSecret when the required tenant secret
@@ -1597,6 +1779,12 @@ for the ruler is missing.</p>
 </td>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
+</td>
+</tr><tr><td><p>&#34;ReasonZoneAwareEmptyLabel&#34;</p></td>
+<td><p>ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.</p>
+</td>
+</tr><tr><td><p>&#34;ReasonZoneAwareNodesMissing&#34;</p></td>
+<td><p>ReasonZoneAwareNodesMissing when the cluster does not contain any nodes with the labels needed for zone-awareness.</p>
 </td>
 </tr></tbody>
 </table>
@@ -2083,6 +2271,37 @@ LokiComponentSpec
 </tbody>
 </table>
 
+## MTLSSpec { #loki-grafana-com-v1-MTLSSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthenticationSpec">AuthenticationSpec</a>)
+</p>
+<div>
+<p>MTLSSpec specifies mTLS configuration parameters.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ca</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CASpec">
+CASpec
+</a>
+</em>
+</td>
+<td>
+<p>CA defines the spec for the custom CA for tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## ManagementStateType { #loki-grafana-com-v1-ManagementStateType }
 (<code>string</code> alias)
 <p>
@@ -2139,6 +2358,20 @@ InstanceAddrType
 Defaults to the first address from any private network interfaces of the current pod.
 Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
 are not available.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>enableIPv6</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>EnableIPv6 enables IPv6 support for the memberlist based hash ring.</p>
+<p>Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+for the memberlist.</p>
 </td>
 </tr>
 </tbody>
@@ -2200,7 +2433,21 @@ TenantSecretSpec
 </em>
 </td>
 <td>
-<p>Secret defines the spec for the clientID, clientSecret and issuerCAPath for tenant&rsquo;s authentication.</p>
+<p>Secret defines the spec for the clientID and clientSecret for tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>issuerCA</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CASpec">
+CASpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IssuerCA defines the spec for the issuer CA for tenant&rsquo;s authentication.</p>
 </td>
 </tr>
 <tr>
@@ -2350,6 +2597,9 @@ used with the Loki cluster.</p>
 </td>
 </tr><tr><td><p>&#34;v12&#34;</p></td>
 <td><p>ObjectStorageSchemaV12 when using v12 for the storage schema</p>
+</td>
+</tr><tr><td><p>&#34;v13&#34;</p></td>
+<td><p>ObjectStorageSchemaV13 when using v13 for the storage schema</p>
 </td>
 </tr></tbody>
 </table>
@@ -2534,6 +2784,145 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tbody>
 </table>
 
+## OpenshiftTenantSpec { #loki-grafana-com-v1-OpenshiftTenantSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>OpenshiftTenantSpec defines the configuration specific to Openshift modes.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>adminGroups</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
+Setting this to an empty array disables admin groups.</p>
+<p>By default the following groups are considered admin-groups:
+- system:cluster-admins
+- cluster-admin
+- dedicated-admin</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## PerTenantLimitsTemplateSpec { #loki-grafana-com-v1-PerTenantLimitsTemplateSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsSpec">LimitsSpec</a>)
+</p>
+<div>
+<p>LimitsTemplateSpec defines the limits  applied at ingestion or query path.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ingestion</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-IngestionLimitSpec">
+IngestionLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IngestionLimits defines the limits applied on ingested log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>queries</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">
+PerTenantQueryLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>retention</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-RetentionLimitSpec">
+RetentionLimitSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Retention defines how long logs are kept in storage.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## PerTenantQueryLimitSpec { #loki-grafana-com-v1-PerTenantQueryLimitSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
+</p>
+<div>
+<p>PerTenantQueryLimitSpec defines the limits applied to per tenant query path.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>QueryLimitSpec</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-QueryLimitSpec">
+QueryLimitSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+<tr>
+<td>
+<code>blocked</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-BlockedQuerySpec">
+[]BlockedQuerySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Blocked defines the list of rules to block matching queries.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## PermissionType { #loki-grafana-com-v1-PermissionType }
 (<code>string</code> alias)
 <p>
@@ -2578,7 +2967,7 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 
 ## QueryLimitSpec { #loki-grafana-com-v1-QueryLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantQueryLimitSpec">PerTenantQueryLimitSpec</a>)
 </p>
 <div>
 <p>QueryLimitSpec defines the limits applies at the query path.</p>
@@ -2625,7 +3014,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>
@@ -2639,6 +3028,18 @@ string
 <td>
 <em>(Optional)</em>
 <p>Timeout when querying ingesters or storage during the execution of a query request.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cardinalityLimit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CardinalityLimit defines the cardinality limit for index queries.</p>
 </td>
 </tr>
 </tbody>
@@ -2804,6 +3205,18 @@ string
 <p>The LogQL expression to evaluate. Every evaluation cycle this is
 evaluated at the current time, and all resultant time series become
 pending/firing alerts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>labels</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Labels to add to each recording rule.</p>
 </td>
 </tr>
 </tbody>
@@ -3380,7 +3793,7 @@ IMPORTANT: Make sure that the replication factor defined is less than or equal t
 
 ## RetentionLimitSpec { #loki-grafana-com-v1-RetentionLimitSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
 <p>RetentionLimitSpec controls how long logs will be kept in storage.</p>
@@ -4005,6 +4418,20 @@ AuthorizationSpec
 <td>
 <em>(Optional)</em>
 <p>Authorization defines the lokistack-gateway component authorization configuration spec per tenant.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>openshift</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OpenshiftTenantSpec">
+OpenshiftTenantSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Openshift defines the configuration specific to Openshift modes.</p>
 </td>
 </tr>
 </tbody>
@@ -5457,7 +5884,7 @@ are degraded or the cluster cannot connect to object storage.</p>
 <td><p>ConditionFailed defines the condition that components in the Loki deployment failed to roll out.</p>
 </td>
 </tr><tr><td><p>&#34;Pending&#34;</p></td>
-<td><p>ConditionPending defines the conditioin that some or all components are in pending state.</p>
+<td><p>ConditionPending defines the condition that some or all components are in pending state.</p>
 </td>
 </tr><tr><td><p>&#34;Ready&#34;</p></td>
 <td><p>ConditionReady defines the condition that all components in the Loki deployment are ready.</p>
@@ -6356,7 +6783,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>

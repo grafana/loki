@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/imdario/mergo"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -54,11 +53,9 @@ func configureHashRingEnv(p *corev1.PodSpec, opts Options) error {
 		return nil
 	}
 
-	switch hashRing.MemberList.InstanceAddrType {
-	case "", lokiv1.InstanceAddrDefault:
+	memberList := hashRing.MemberList
+	if !memberList.EnableIPv6 && memberList.InstanceAddrType != lokiv1.InstanceAddrPodIP {
 		return nil
-	default:
-		// Proceed with appending env var
 	}
 
 	src := corev1.Container{

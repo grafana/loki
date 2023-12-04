@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/instrument"
 )
 
 // InstrumentMiddleware can be inserted into the middleware chain to expose timing information.
@@ -39,10 +39,10 @@ type InstrumentMiddlewareMetrics struct {
 }
 
 // NewInstrumentMiddlewareMetrics makes a new InstrumentMiddlewareMetrics.
-func NewInstrumentMiddlewareMetrics(registerer prometheus.Registerer) *InstrumentMiddlewareMetrics {
+func NewInstrumentMiddlewareMetrics(registerer prometheus.Registerer, metricsNamespace string) *InstrumentMiddlewareMetrics {
 	return &InstrumentMiddlewareMetrics{
 		duration: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex",
+			Namespace: metricsNamespace,
 			Name:      "frontend_query_range_duration_seconds",
 			Help:      "Total time spent in seconds doing query range requests.",
 			Buckets:   prometheus.DefBuckets,
@@ -58,7 +58,7 @@ type NoopCollector struct{}
 func (c *NoopCollector) Register() {}
 
 // Before implements instrument.Collector.
-func (c *NoopCollector) Before(ctx context.Context, method string, start time.Time) {}
+func (c *NoopCollector) Before(_ context.Context, _ string, _ time.Time) {}
 
 // After implements instrument.Collector.
-func (c *NoopCollector) After(ctx context.Context, method, statusCode string, start time.Time) {}
+func (c *NoopCollector) After(_ context.Context, _, _ string, _ time.Time) {}

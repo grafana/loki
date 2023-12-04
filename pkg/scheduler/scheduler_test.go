@@ -2,8 +2,10 @@ package scheduler
 
 import (
 	"context"
+	"os"
 	"testing"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -63,6 +65,54 @@ func TestScheduler_setRunState(t *testing.T) {
 
 }
 
+func TestProtobufBackwardsCompatibility(t *testing.T) {
+	t.Run("SchedulerToQuerier", func(t *testing.T) {
+		expected := &schedulerpb.SchedulerToQuerier{
+			QueryID: 42,
+			UserID:  "100",
+			Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
+				HttpRequest: &httpgrpc.HTTPRequest{
+					Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
+					Body:    []byte("Hello echo!"),
+				},
+			},
+			StatsEnabled: true,
+		}
+
+		b, err := os.ReadFile("testdata/scheduler_to_querier_k173.bin")
+		assert.NoError(t, err)
+
+		actual := &schedulerpb.SchedulerToQuerier{}
+		err = actual.Unmarshal(b)
+		assert.NoError(t, err)
+
+		assert.IsType(t, &schedulerpb.SchedulerToQuerier_HttpRequest{}, actual.Request)
+		assert.EqualValues(t, expected, actual)
+	})
+
+	t.Run("FrontendToScheduler", func(t *testing.T) {
+		expected := &schedulerpb.FrontendToScheduler{
+			QueryID: 42,
+			UserID:  "100",
+			Request: &schedulerpb.FrontendToScheduler_HttpRequest{
+				HttpRequest: &httpgrpc.HTTPRequest{
+					Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
+					Body:    []byte("Hello echo!"),
+				},
+			},
+		}
+		b, err := os.ReadFile("testdata/frontend_to_scheduler_k173.bin")
+		assert.NoError(t, err)
+
+		actual := &schedulerpb.FrontendToScheduler{}
+		err = actual.Unmarshal(b)
+		assert.NoError(t, err)
+
+		assert.IsType(t, &schedulerpb.FrontendToScheduler_HttpRequest{}, actual.Request)
+		assert.EqualValues(t, expected, actual)
+	})
+}
+
 type mockSchedulerForFrontendFrontendLoopServer struct {
 	msg *schedulerpb.SchedulerToFrontend
 }
@@ -76,15 +126,15 @@ func (m mockSchedulerForFrontendFrontendLoopServer) Recv() (*schedulerpb.Fronten
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SetHeader(md metadata.MD) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) SetHeader(_ metadata.MD) error {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SendHeader(md metadata.MD) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) SendHeader(_ metadata.MD) error {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SetTrailer(md metadata.MD) {
+func (m mockSchedulerForFrontendFrontendLoopServer) SetTrailer(_ metadata.MD) {
 	panic("implement me")
 }
 
@@ -92,10 +142,10 @@ func (m mockSchedulerForFrontendFrontendLoopServer) Context() context.Context {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SendMsg(msg interface{}) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) SendMsg(_ interface{}) error {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) RecvMsg(msg interface{}) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) RecvMsg(_ interface{}) error {
 	panic("implement me")
 }

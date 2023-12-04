@@ -8,18 +8,18 @@ import (
 	"github.com/alecthomas/units"
 )
 
-// Bytes is a data type which supports yaml serialization/deserialization
-// with units.
+// Bytes is a data type which supports use as a flag and yaml
+// serialization/deserialization with units.
 type Bytes uint64
 
-func (b *Bytes) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var value string
-	err := unmarshal(&value)
-	if err != nil {
-		return err
-	}
+// String implements flag.Value
+func (b *Bytes) String() string {
+	return units.Base2Bytes(*b).String()
+}
 
-	bytes, err := units.ParseBase2Bytes(value)
+// Set implements flag.Value
+func (b *Bytes) Set(s string) error {
+	bytes, err := units.ParseBase2Bytes(s)
 	if err != nil {
 		return err
 	}
@@ -28,6 +28,15 @@ func (b *Bytes) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func (b *Bytes) MarshalYAML() (interface{}, error) {
-	return units.Base2Bytes(*b).String(), nil
+func (b *Bytes) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var value string
+	if err := unmarshal(&value); err != nil {
+		return err
+	}
+
+	return b.Set(value)
+}
+
+func (b Bytes) MarshalYAML() (interface{}, error) {
+	return b.String(), nil
 }

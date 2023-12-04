@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/util"
 )

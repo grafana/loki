@@ -2,8 +2,7 @@
 title: Promtail Push API
 description: Promtail Push API
 aliases: 
-- /docs/loki/latest/design-documents/
-- /docs/loki/latest/community/design-documents/
+- ../../design-documents/2020-02-promtail-push-api/
 weight: 20
 ---
 # Promtail Push API
@@ -61,7 +60,7 @@ rejected pushes. Users are recommended to do one of the following:
 
 1. Have a dedicated Promtail instance for receiving pushes. This also applies to
    using the syslog target.
-1. Have a separatee k8s service that always resolves to the same Promtail pod,
+1. Have a separate Kubernetes service that always resolves to the same Promtail pod,
    bypassing the load balancing issue.
 
 ## Implementation

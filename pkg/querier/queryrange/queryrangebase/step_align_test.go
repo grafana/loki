@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -14,26 +15,26 @@ func TestStepAlign(t *testing.T) {
 	}{
 		{
 			input: &PrometheusRequest{
-				Start: 0,
-				End:   100,
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(100),
 				Step:  10,
 			},
 			expected: &PrometheusRequest{
-				Start: 0,
-				End:   100,
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(100),
 				Step:  10,
 			},
 		},
 
 		{
 			input: &PrometheusRequest{
-				Start: 2,
-				End:   102,
+				Start: time.UnixMilli(2),
+				End:   time.UnixMilli(102),
 				Step:  10,
 			},
 			expected: &PrometheusRequest{
-				Start: 0,
-				End:   100,
+				Start: time.UnixMilli(0),
+				End:   time.UnixMilli(100),
 				Step:  10,
 			},
 		},

@@ -447,7 +447,7 @@ type QueryLimitSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Chunk per Query"
 	MaxChunksPerQuery int32 `json:"maxChunksPerQuery,omitempty"`
 
-	// MaxQuerySeries defines the the maximum of unique series
+	// MaxQuerySeries defines the maximum of unique series
 	// that is returned by a metric query.
 	//
 	// + optional
@@ -651,7 +651,7 @@ const (
 	// ConditionReady defines the condition that all components in the Loki deployment are ready.
 	ConditionReady LokiStackConditionType = "Ready"
 
-	// ConditionPending defines the conditioin that some or all components are in pending state.
+	// ConditionPending defines the condition that some or all components are in pending state.
 	ConditionPending LokiStackConditionType = "Pending"
 
 	// ConditionFailed defines the condition that components in the Loki deployment failed to roll out.
@@ -866,7 +866,9 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 	var storageTLS *v1.ObjectStorageTLSSpec
 	if src.Spec.Storage.TLS != nil {
 		storageTLS = &v1.ObjectStorageTLSSpec{
-			CA: src.Spec.Storage.TLS.CA,
+			CASpec: v1.CASpec{
+				CA: src.Spec.Storage.TLS.CA,
+			},
 		}
 	}
 
@@ -931,11 +933,11 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 		}
 
 		if len(src.Spec.Limits.Tenants) > 0 {
-			dst.Spec.Limits.Tenants = make(map[string]v1.LimitsTemplateSpec)
+			dst.Spec.Limits.Tenants = make(map[string]v1.PerTenantLimitsTemplateSpec)
 		}
 
 		for tenant, srcSpec := range src.Spec.Limits.Tenants {
-			dstSpec := v1.LimitsTemplateSpec{}
+			dstSpec := v1.PerTenantLimitsTemplateSpec{}
 
 			if srcSpec.IngestionLimits != nil {
 				dstSpec.IngestionLimits = &v1.IngestionLimitSpec{
@@ -950,10 +952,12 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 			}
 
 			if srcSpec.QueryLimits != nil {
-				dstSpec.QueryLimits = &v1.QueryLimitSpec{
-					MaxEntriesLimitPerQuery: srcSpec.QueryLimits.MaxEntriesLimitPerQuery,
-					MaxChunksPerQuery:       srcSpec.QueryLimits.MaxChunksPerQuery,
-					MaxQuerySeries:          srcSpec.QueryLimits.MaxQuerySeries,
+				dstSpec.QueryLimits = &v1.PerTenantQueryLimitSpec{
+					QueryLimitSpec: v1.QueryLimitSpec{
+						MaxEntriesLimitPerQuery: srcSpec.QueryLimits.MaxEntriesLimitPerQuery,
+						MaxChunksPerQuery:       srcSpec.QueryLimits.MaxChunksPerQuery,
+						MaxQuerySeries:          srcSpec.QueryLimits.MaxQuerySeries,
+					},
 				}
 			}
 

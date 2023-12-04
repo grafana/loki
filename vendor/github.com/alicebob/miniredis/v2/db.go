@@ -468,6 +468,16 @@ func (db *RedisDB) ssetScore(key, member string) float64 {
 	return ss[member]
 }
 
+// ssetMScore returns multiple scores of a list of members in a sorted set.
+func (db *RedisDB) ssetMScore(key string, members []string) []float64 {
+	scores := make([]float64, 0, len(members))
+	ss := db.sortedsetKeys[key]
+	for _, member := range members {
+		scores = append(scores, ss[member])
+	}
+	return scores
+}
+
 // ssetRem is sorted set key delete.
 func (db *RedisDB) ssetRem(key, member string) bool {
 	ss := db.sortedsetKeys[key]

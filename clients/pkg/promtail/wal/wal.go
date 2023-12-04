@@ -37,7 +37,7 @@ type wrapper struct {
 func New(cfg Config, log log.Logger, registerer prometheus.Registerer) (WAL, error) {
 	// TODO: We should fine-tune the WAL instantiated here to allow some buffering of written entries, but not written to disk
 	// yet. This will attest for the lack of buffering in the channel Writer exposes.
-	tsdbWAL, err := wlog.NewSize(log, registerer, cfg.Dir, wlog.DefaultSegmentSize, false)
+	tsdbWAL, err := wlog.NewSize(log, registerer, cfg.Dir, wlog.DefaultSegmentSize, wlog.CompressionNone)
 	if err != nil {
 		return nil, fmt.Errorf("failde to create tsdb WAL: %w", err)
 	}
@@ -86,10 +86,7 @@ func (w *wrapper) logBatched(record *wal.Record) error {
 	*seriesBuf = record.EncodeSeries(*seriesBuf)
 	*entriesBuf = record.EncodeEntries(wal.CurrentEntriesRec, *entriesBuf)
 	// Always write series then entries
-	if err := w.wal.Log(*seriesBuf, *entriesBuf); err != nil {
-		return err
-	}
-	return nil
+	return w.wal.Log(*seriesBuf, *entriesBuf)
 }
 
 // logSingle logs to the WAL series and records in separate WAL operation. This causes a page flush after each operation.

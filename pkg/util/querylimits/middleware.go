@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/weaveworks/common/middleware"
+	"github.com/grafana/dskit/middleware"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )

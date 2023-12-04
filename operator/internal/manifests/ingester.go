@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -16,6 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildIngester builds the k8s objects required to run Loki Ingester
@@ -55,6 +55,10 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 	}
 
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIngesterComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
@@ -145,10 +149,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
 		podSpec.Tolerations = opts.Stack.Template.Ingester.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{

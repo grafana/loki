@@ -19,7 +19,7 @@ type server struct {
 }
 
 // indexClient RPCs
-func (s server) WriteIndex(ctx context.Context, writes *WriteIndexRequest) (*empty.Empty, error) {
+func (s server) WriteIndex(_ context.Context, writes *WriteIndexRequest) (*empty.Empty, error) {
 	rangeValue := "JSI0YbyRLVmLKkLBiAKf5ctf8mWtn9U6CXCzuYmWkMk 5f3DoSEa2cDzymQ7u8VZ6c/ku1HlYIdMWqdg1QKCYh4  8"
 	value := "localhost:9090"
 	if writes.Writes[0].TableName == "index_2625" &&
@@ -31,7 +31,7 @@ func (s server) WriteIndex(ctx context.Context, writes *WriteIndexRequest) (*emp
 	return &empty.Empty{}, err
 }
 
-func (s server) QueryIndex(query *QueryIndexRequest, pagesServer GrpcStore_QueryIndexServer) error {
+func (s server) QueryIndex(query *QueryIndexRequest, _ GrpcStore_QueryIndexServer) error {
 	if query.TableName == "table" && query.HashValue == "foo" {
 		return nil
 	}
@@ -39,7 +39,7 @@ func (s server) QueryIndex(query *QueryIndexRequest, pagesServer GrpcStore_Query
 	return err
 }
 
-func (s server) DeleteIndex(ctx context.Context, deletes *DeleteIndexRequest) (*empty.Empty, error) {
+func (s server) DeleteIndex(_ context.Context, deletes *DeleteIndexRequest) (*empty.Empty, error) {
 	if deletes.Deletes[0].TableName == "index_2625" && deletes.Deletes[0].HashValue == "fake:d18381:5f3DoSEa2cDzymQ7u8VZ6c/ku1HlYIdMWqdg1QKCYh4" &&
 		string(deletes.Deletes[0].RangeValue) == "JSI0YbyRLVmLKkLBiAKf5ctf8mWtn9U6CXCzuYmWkMk 5f3DoSEa2cDzymQ7u8VZ6c/ku1HlYIdMWqdg1QKCYh4  8" {
 		return &empty.Empty{}, nil
@@ -51,15 +51,15 @@ func (s server) DeleteIndex(ctx context.Context, deletes *DeleteIndexRequest) (*
 // storageClient RPCs
 //
 // Support new and old chunk key formats
-func (s server) PutChunks(ctx context.Context, request *PutChunksRequest) (*empty.Empty, error) {
-	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:e5e91607") {
+func (s server) PutChunks(_ context.Context, request *PutChunksRequest) (*empty.Empty, error) {
+	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:e6a518a") {
 		return &empty.Empty{}, nil
 	}
 	err := errors.New("putChunks from storageClient request doesn't match with test from gRPC client")
 	return &empty.Empty{}, err
 }
 
-func (s server) GetChunks(request *GetChunksRequest, chunksServer GrpcStore_GetChunksServer) error {
+func (s server) GetChunks(request *GetChunksRequest, _ GrpcStore_GetChunksServer) error {
 	if request.Chunks[0].TableName == "" && (request.Chunks[0].Key == "fake/ddf337b84e835f32:171bc00155a:171bc00155a:d9a103b5") &&
 		request.Chunks[0].Encoded == nil {
 		return nil
@@ -68,7 +68,7 @@ func (s server) GetChunks(request *GetChunksRequest, chunksServer GrpcStore_GetC
 	return err
 }
 
-func (s server) DeleteChunks(ctx context.Context, id *ChunkID) (*empty.Empty, error) {
+func (s server) DeleteChunks(_ context.Context, id *ChunkID) (*empty.Empty, error) {
 	if id.ChunkID == "" {
 		return &empty.Empty{}, nil
 	}
@@ -77,13 +77,13 @@ func (s server) DeleteChunks(ctx context.Context, id *ChunkID) (*empty.Empty, er
 }
 
 // tableClient RPCs
-func (s server) ListTables(ctx context.Context, empty *empty.Empty) (*ListTablesResponse, error) {
+func (s server) ListTables(_ context.Context, _ *empty.Empty) (*ListTablesResponse, error) {
 	return &ListTablesResponse{
 		TableNames: []string{"chunk_2604, chunk_2613, index_2594, index_2603"},
 	}, nil
 }
 
-func (s server) CreateTable(ctx context.Context, createTableRequest *CreateTableRequest) (*empty.Empty, error) {
+func (s server) CreateTable(_ context.Context, createTableRequest *CreateTableRequest) (*empty.Empty, error) {
 	if createTableRequest.Desc.Name == "chunk_2607" && !createTableRequest.Desc.UseOnDemandIOMode && createTableRequest.Desc.ProvisionedRead == 300 && createTableRequest.Desc.ProvisionedWrite == 1 && createTableRequest.Desc.Tags == nil {
 		return &empty.Empty{}, nil
 	}
@@ -92,7 +92,7 @@ func (s server) CreateTable(ctx context.Context, createTableRequest *CreateTable
 }
 
 // nolint
-func (s server) DeleteTable(ctx context.Context, name *DeleteTableRequest) (*empty.Empty, error) {
+func (s server) DeleteTable(_ context.Context, name *DeleteTableRequest) (*empty.Empty, error) {
 	if name.TableName == "chunk_2591" {
 		return &empty.Empty{}, nil
 	}
@@ -100,7 +100,7 @@ func (s server) DeleteTable(ctx context.Context, name *DeleteTableRequest) (*emp
 	return &empty.Empty{}, err
 }
 
-func (s server) DescribeTable(ctx context.Context, name *DescribeTableRequest) (*DescribeTableResponse, error) {
+func (s server) DescribeTable(_ context.Context, name *DescribeTableRequest) (*DescribeTableResponse, error) {
 	if name.TableName == "chunk_2591" {
 		return &DescribeTableResponse{
 			Desc: &TableDesc{
@@ -117,7 +117,7 @@ func (s server) DescribeTable(ctx context.Context, name *DescribeTableRequest) (
 	return &DescribeTableResponse{}, err
 }
 
-func (s server) UpdateTable(ctx context.Context, request *UpdateTableRequest) (*empty.Empty, error) {
+func (s server) UpdateTable(_ context.Context, request *UpdateTableRequest) (*empty.Empty, error) {
 	if request.Current.Name == "chunk_2591" && !request.Current.UseOnDemandIOMode && request.Current.ProvisionedWrite == 0 &&
 		request.Current.ProvisionedRead == 0 && request.Current.Tags == nil && request.Expected.Name == "chunk_2591" &&
 		!request.Expected.UseOnDemandIOMode && request.Expected.ProvisionedWrite == 1 &&

@@ -374,6 +374,7 @@ func BenchmarkRegexStage(b *testing.B) {
 			in := make(chan Entry)
 			out := stage.Run(in)
 			go func() {
+				//nolint:revive
 				for range out {
 				}
 			}()

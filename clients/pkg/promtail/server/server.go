@@ -17,11 +17,11 @@ import (
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	serverww "github.com/grafana/dskit/server"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
-	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/server/ui"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
@@ -89,6 +89,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	registerMetrics := cfg.RegisterInstrumentation && !cfg.ProfilingEnabled
 	cfg.RegisterInstrumentation = cfg.ProfilingEnabled
 
+	cfg.Config.Log = log
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
 		return nil, err
@@ -253,7 +254,7 @@ func (s *PromtailServer) targets(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (s *PromtailServer) reload(rw http.ResponseWriter, req *http.Request) {
+func (s *PromtailServer) reload(rw http.ResponseWriter, _ *http.Request) {
 	rc := make(chan error)
 	s.reloadCh <- rc
 	if err := <-rc; err != nil {

@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.3
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: lokistacks.loki.grafana.com
 spec:
   group: loki.grafana.com
@@ -44,6 +43,11 @@ spec:
                   memberlist:
                     description: MemberList configuration spec
                     properties:
+                      enableIPv6:
+                        description: "EnableIPv6 enables IPv6 support for the memberlist
+                          based hash ring. \n Currently this also forces the instanceAddrType
+                          to podIP to avoid local address lookup for the memberlist."
+                        type: boolean
                       instanceAddrType:
                         description: InstanceAddrType defines the type of address
                           to use to advertise to the ring. Defaults to the first address
@@ -113,6 +117,12 @@ spec:
                               on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
+                          perStreamDesiredRate:
+                            description: PerStreamDesiredRate defines the desired
+                              ingestion rate per second that LokiStack should target
+                              applying automatic stream sharding. Units MB.
+                            format: int32
+                            type: integer
                           perStreamRateLimit:
                             description: PerStreamRateLimit defines the maximum byte
                               rate per second per stream. Units MB.
@@ -128,6 +138,11 @@ spec:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
                         properties:
+                          cardinalityLimit:
+                            description: CardinalityLimit defines the cardinality
+                              limit for index queries.
+                            format: int32
+                            type: integer
                           maxChunksPerQuery:
                             description: MaxChunksPerQuery defines the maximum number
                               of chunks that can be fetched by a single query.
@@ -139,8 +154,8 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
-                              unique series that is returned by a metric query.
+                            description: MaxQuerySeries defines the maximum of unique
+                              series that is returned by a metric query.
                             format: int32
                             type: integer
                           queryTimeout:
@@ -235,6 +250,12 @@ spec:
                                 on ingestion path. Units in Bytes.
                               format: int32
                               type: integer
+                            perStreamDesiredRate:
+                              description: PerStreamDesiredRate defines the desired
+                                ingestion rate per second that LokiStack should target
+                                applying automatic stream sharding. Units MB.
+                              format: int32
+                              type: integer
                             perStreamRateLimit:
                               description: PerStreamRateLimit defines the maximum
                                 byte rate per second per stream. Units MB.
@@ -250,6 +271,48 @@ spec:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
+                            blocked:
+                              description: Blocked defines the list of rules to block
+                                matching queries.
+                              items:
+                                description: BlockedQuerySpec defines the rule spec
+                                  for queries to be blocked.
+                                minProperties: 1
+                                properties:
+                                  hash:
+                                    description: Hash is a 32-bit FNV-1 hash of the
+                                      query string.
+                                    format: int32
+                                    type: integer
+                                  pattern:
+                                    description: Pattern defines the pattern matching
+                                      the queries to be blocked.
+                                    type: string
+                                  regex:
+                                    description: Regex defines if the pattern is a
+                                      regular expression. If false the pattern will
+                                      be used only for exact matches.
+                                    type: boolean
+                                  types:
+                                    description: Types defines the list of query types
+                                      that should be considered for blocking.
+                                    items:
+                                      description: BlockedQueryType defines which
+                                        type of query a blocked query should apply
+                                        to.
+                                      enum:
+                                      - filter
+                                      - limited
+                                      - metric
+                                      type: string
+                                    type: array
+                                type: object
+                              type: array
+                            cardinalityLimit:
+                              description: CardinalityLimit defines the cardinality
+                                limit for index queries.
+                              format: int32
+                              type: integer
                             maxChunksPerQuery:
                               description: MaxChunksPerQuery defines the maximum number
                                 of chunks that can be fetched by a single query.
@@ -262,8 +325,8 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
-                                of unique series that is returned by a metric query.
+                              description: MaxQuerySeries defines the maximum of unique
+                                series that is returned by a metric query.
                               format: int32
                               type: integer
                             queryTimeout:
@@ -484,6 +547,7 @@ spec:
                 description: Size defines one of the support Loki deployment scale
                   out sizes.
                 enum:
+                - 1x.demo
                 - 1x.extra-small
                 - 1x.small
                 - 1x.medium
@@ -512,6 +576,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
@@ -3631,6 +3696,31 @@ spec:
                       description: AuthenticationSpec defines the oidc configuration
                         per tenant for lokiStack Gateway component.
                       properties:
+                        mTLS:
+                          description: TLSConfig defines the spec for the mTLS tenant's
+                            authentication.
+                          properties:
+                            ca:
+                              description: CA defines the spec for the custom CA for
+                                tenant's authentication.
+                              properties:
+                                caKey:
+                                  description: Key is the data key of a ConfigMap
+                                    containing a CA certificate. It needs to be in
+                                    the same namespace as the LokiStack custom resource.
+                                    If empty, it defaults to "service-ca.crt".
+                                  type: string
+                                caName:
+                                  description: CA is the name of a ConfigMap containing
+                                    a CA certificate. It needs to be in the same namespace
+                                    as the LokiStack custom resource.
+                                  type: string
+                              required:
+                              - caName
+                              type: object
+                          required:
+                          - ca
+                          type: object
                         oidc:
                           description: OIDC defines the spec for the OIDC tenant's
                             authentication.
@@ -3638,6 +3728,24 @@ spec:
                             groupClaim:
                               description: Group claim field from ID Token
                               type: string
+                            issuerCA:
+                              description: IssuerCA defines the spec for the issuer
+                                CA for tenant's authentication.
+                              properties:
+                                caKey:
+                                  description: Key is the data key of a ConfigMap
+                                    containing a CA certificate. It needs to be in
+                                    the same namespace as the LokiStack custom resource.
+                                    If empty, it defaults to "service-ca.crt".
+                                  type: string
+                                caName:
+                                  description: CA is the name of a ConfigMap containing
+                                    a CA certificate. It needs to be in the same namespace
+                                    as the LokiStack custom resource.
+                                  type: string
+                              required:
+                              - caName
+                              type: object
                             issuerURL:
                               description: IssuerURL defines the URL for issuer.
                               type: string
@@ -3645,8 +3753,8 @@ spec:
                               description: RedirectURL defines the URL for redirect.
                               type: string
                             secret:
-                              description: Secret defines the spec for the clientID,
-                                clientSecret and issuerCAPath for tenant's authentication.
+                              description: Secret defines the spec for the clientID
+                                and clientSecret for tenant's authentication.
                               properties:
                                 name:
                                   description: Name of a secret in the namespace configured
@@ -3669,7 +3777,6 @@ spec:
                           description: TenantName defines the name of the tenant.
                           type: string
                       required:
-                      - oidc
                       - tenantId
                       - tenantName
                       type: object
@@ -3771,6 +3878,21 @@ spec:
                     - openshift-logging
                     - openshift-network
                     type: string
+                  openshift:
+                    description: Openshift defines the configuration specific to Openshift
+                      modes.
+                    properties:
+                      adminGroups:
+                        description: "AdminGroups defines a list of groups, whose
+                          members are considered to have admin-privileges by the Loki
+                          Operator. Setting this to an empty array disables admin
+                          groups. \n By default the following groups are considered
+                          admin-groups: - system:cluster-admins - cluster-admin -
+                          dedicated-admin"
+                        items:
+                          type: string
+                        type: array
+                    type: object
                 required:
                 - mode
                 type: object
@@ -3942,6 +4064,7 @@ spec:
                           enum:
                           - v11
                           - v12
+                          - v13
                           type: string
                       required:
                       - effectiveDate
@@ -4040,8 +4163,8 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
-                              unique series that is returned by a metric query.
+                            description: MaxQuerySeries defines the maximum of unique
+                              series that is returned by a metric query.
                             format: int32
                             type: integer
                         type: object
@@ -4111,8 +4234,8 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
-                                of unique series that is returned by a metric query.
+                              description: MaxQuerySeries defines the maximum of unique
+                                series that is returned by a metric query.
                               format: int32
                               type: integer
                           type: object

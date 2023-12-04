@@ -31,7 +31,7 @@ func (s *StorageClient) NewWriteBatch() index.WriteBatch {
 	return &WriteBatch{}
 }
 
-func (s *StorageClient) BatchWrite(c context.Context, batch index.WriteBatch) error {
+func (s *StorageClient) BatchWrite(_ context.Context, batch index.WriteBatch) error {
 	writeBatch := batch.(*WriteBatch)
 	batchWrites := &WriteIndexRequest{Writes: writeBatch.Writes}
 	_, err := s.client.WriteIndex(context.Background(), batchWrites)

@@ -12,10 +12,10 @@ func newStrategy(burst int, rate float64) *strategy {
 	}
 }
 
-func (s *strategy) Burst(tenantID string) int {
+func (s *strategy) Burst(_ string) int {
 	return s.burst
 }
 
-func (s *strategy) Limit(tenantID string) float64 {
+func (s *strategy) Limit(_ string) float64 {
 	return s.rate
 }

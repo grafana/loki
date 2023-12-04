@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
+
 	"github.com/grafana/loki/pkg/push"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )

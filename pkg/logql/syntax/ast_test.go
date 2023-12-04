@@ -34,16 +34,18 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | pattern "<foo> bar <buzz>" | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b>=10GB`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1")`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict b="foo" | b=ip("127.0.0.1") | level="error"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty b="foo" | b=ip("127.0.0.1") | level="error"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error" | c=ip("::1")`, true}, // chain inside label filters.
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
-		{`{foo="bar"} | distinct id`, true},
-		{`{foo="bar"} | distinct id,time`, true},
 	}
 
 	for _, tt := range tests {
@@ -84,7 +86,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"} | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | json [5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
-		`sum(count_over_time({job="mysql"} | logfmt [5m] offset 10m))`,
+		`sum(count_over_time({job="mysql"} | logfmt --strict [5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | pattern "<foo> bar <buzz>" | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | unpack | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
@@ -175,10 +177,10 @@ func Test_SampleExpr_String(t *testing.T) {
 		)
 		`,
 		`(((
-			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) 
-				or on ()  
-				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60)) 
-				or on ()  
+			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60)
+				or on ()
+				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60))
+				or on ()
 				((sum by(typename,pool,commandname,colo) (sum_over_time({_namespace_="appspace", _schema_="appspace-1h", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) / 60))`,
 		`{app="foo"} | logfmt code="response.code", IPAddress="host"`,
 	} {
@@ -375,11 +377,46 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"duration=5m total_bytes=5kB", true}, {"duration=1s total_bytes=256B", false}, {"duration=0s", false}},
 		},
 		{
-			`{app="foo"} | logfmt | distinct id`,
+			`{app="foo"} |= "foo" or "bar"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
-			[]linecheck{{"id=foo", true}, {"id=foo", false}, {"id=bar", true}},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} != "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} |~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} !~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}, {"127.0.0.2", false}, {"127.0.0.1", true}},
+		},
+		{
+			`{app="foo"} != ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
 		},
 	} {
 		tt := tt
@@ -399,6 +436,25 @@ func Test_FilterMatcher(t *testing.T) {
 					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
+		})
+	}
+}
+
+func TestOrLineFilterTypes(t *testing.T) {
+	for _, tt := range []struct {
+		ty labels.MatchType
+	}{
+		{labels.MatchEqual},
+		{labels.MatchNotEqual},
+		{labels.MatchRegexp},
+		{labels.MatchNotRegexp},
+	} {
+		t.Run("right inherits left's type", func(t *testing.T) {
+			left := &LineFilterExpr{Ty: tt.ty, Match: "something"}
+			right := &LineFilterExpr{Ty: labels.MatchEqual, Match: "something"}
+
+			_ = newOrLineFilter(left, right)
+			require.Equal(t, tt.ty, right.Ty)
 		})
 	}
 }
@@ -431,6 +487,42 @@ func TestStringer(t *testing.T) {
 		{
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
 			out: `(0 > count_over_time({foo="bar"}[1m]))`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar"`,
+			out: `{app="foo"} |= "foo" or "bar"`,
+		},
+		{
+			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
+			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+			out: `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+		},
+		{
+			in:  `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+		},
+		{ // !(A || B) == !A && !B
+			in:  `{app="foo"} != "foo" or "bar"`,
+			out: `{app="foo"} != "foo" != "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar"`,
+			out: `{app="foo"} !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} != ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} != ip("127.0.0.1") != "foo"`,
+		},
+		{
+			in:  `{app="foo"} !~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} !~ ip("127.0.0.1") !~ "foo"`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -518,7 +610,6 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}{
 		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
-		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false, false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true, true},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false, false},
@@ -558,7 +649,6 @@ func Test_parserExpr_String(t *testing.T) {
 		{"empty regexp", OpParserTypeRegexp, "", `| regexp ""`},
 		{"valid pattern", OpParserTypePattern, "buzz", `| pattern "buzz"`},
 		{"empty pattern", OpParserTypePattern, "", `| pattern ""`},
-		{"valid logfmt", OpParserTypeLogfmt, "", `| logfmt`},
 		{"valid json", OpParserTypeJSON, "", `| json`},
 	}
 
@@ -630,6 +720,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 		OpTypeGT,
 		&promql.Sample{F: 2},
 		&promql.Sample{F: 0},
+		false,
 		true,
 		true,
 	)
@@ -649,6 +740,16 @@ func TestFilterReodering(t *testing.T) {
 		stages := l.(*PipelineExpr).MultiStages.reorderStages()
 		require.Len(t, stages, 5)
 		require.Equal(t, `|= "foo" |= "next" |= "bar" |= "baz" | logfmt | line_format "{{.foo}}" |= "1" |= "2" |= "3" | logfmt`, MultiStageExpr(stages).String())
+	})
+
+	t.Run("unpack test", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 5)
+		require.Equal(t, `|= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`, MultiStageExpr(stages).String())
 	})
 }
 
@@ -699,7 +800,7 @@ func TestGroupingString(t *testing.T) {
 		Groups:  nil,
 		Without: false,
 	}
-	require.Equal(t, "", g.String())
+	require.Equal(t, " by ()", g.String())
 
 	g = Grouping{
 		Groups:  []string{"a", "b"},
@@ -717,5 +818,5 @@ func TestGroupingString(t *testing.T) {
 		Groups:  nil,
 		Without: true,
 	}
-	require.Equal(t, "", g.String())
+	require.Equal(t, " without ()", g.String())
 }

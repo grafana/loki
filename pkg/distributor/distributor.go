@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -10,38 +11,41 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/ingester"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
+	"google.golang.org/grpc/codes"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/compactor/retention"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/pkg/distributor/writefailures"
+	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -88,6 +92,7 @@ type Distributor struct {
 	services.Service
 
 	cfg              Config
+	logger           log.Logger
 	clientCfg        client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
@@ -117,7 +122,7 @@ type Distributor struct {
 
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
-	ingesterAppendFailures *prometheus.CounterVec
+	ingesterAppendTimeouts *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
 }
@@ -130,12 +135,14 @@ func New(
 	ingestersRing ring.ReadRing,
 	overrides Limits,
 	registerer prometheus.Registerer,
+	metricsNamespace string,
+	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
-		factory = func(addr string) (ring_client.PoolClient, error) {
+		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 			return client.New(clientCfg, addr)
-		}
+		})
 	}
 
 	internalFactory := func(addr string) (ring_client.PoolClient, error) {
@@ -164,43 +171,44 @@ func New(
 
 	d := &Distributor{
 		cfg:                   cfg,
+		logger:                logger,
 		clientCfg:             clientCfg,
 		tenantConfigs:         configs,
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		pool:                  clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, logger, metricsNamespace),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
 			Help:      "The total number of batch appends sent to ingesters.",
 		}, []string{"ingester"}),
-		ingesterAppendFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
-			Name:      "distributor_ingester_append_failures_total",
-			Help:      "The total number of failed batch appends sent to ingesters.",
+		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_ingester_append_timeouts_total",
+			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
 		}, []string{"ingester"}),
 		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
 		}),
 		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
-		writeFailuresManager: writefailures.NewManager(util_log.Logger, cfg.WriteFailuresLogging, configs),
+		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
-		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer)
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, logger, registerer, metricsNamespace)
 		if err != nil {
 			return nil, err
 		}
@@ -223,10 +231,12 @@ func New(
 		d.cfg.RateStore,
 		ingestersRing,
 		clientpool.NewPool(
+			"rate-store",
 			clientCfg.PoolConfig,
 			ingestersRing,
-			internalFactory,
-			util_log.Logger,
+			ring_client.PoolAddrFunc(internalFactory),
+			logger,
+			metricsNamespace,
 		),
 		overrides,
 		registerer,
@@ -300,7 +310,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedLineSize := 0
 	validatedLineCount := 0
 
-	var validationErr error
+	var validationErrors util.GroupedErrors
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
 	func() {
@@ -322,7 +332,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 			if err != nil {
-				validationErr = err
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
 				bytes := 0
 				for _, e := range stream.Entries {
@@ -334,9 +345,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			n := 0
 			pushSize := 0
+			prevTs := stream.Entries[0].Timestamp
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
-					validationErr = err
+					d.writeFailuresManager.Log(tenantID, err)
+					validationErrors.Add(err)
 					continue
 				}
 
@@ -345,12 +358,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 				// since Loki will accept out of order writes it doesn't account for separate
 				// pushes with overlapping time ranges having entries with duplicate timestamps
+
 				if validationContext.incrementDuplicateTimestamps && n != 0 {
 					// Traditional logic for Loki is that 2 lines with the same timestamp and
 					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
 					// To maintain this behavior, only increment the timestamp if the log content is different
-					if stream.Entries[n-1].Line != entry.Line {
-						stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
+					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp == prevTs || entry.Timestamp == stream.Entries[n-1].Timestamp) {
+						stream.Entries[n].Timestamp = stream.Entries[n-1].Timestamp.Add(1 * time.Nanosecond)
+					} else {
+						prevTs = entry.Timestamp
 					}
 				}
 
@@ -367,11 +383,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				keys = append(keys, derivedKeys...)
 				streams = append(streams, derivedStreams...)
 			} else {
-				keys = append(keys, util.TokenFor(tenantID, stream.Labels))
+				keys = append(keys, lokiring.TokenFor(tenantID, stream.Labels))
 				streams = append(streams, streamTracker{stream: stream})
 			}
 		}
 	}()
+
+	var validationErr error
+	if validationErrors.Err() != nil {
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
+	}
 
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
@@ -383,7 +404,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+		d.writeFailuresManager.Log(tenantID, err)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -453,11 +477,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The number of shards is limited by the number of entries.
 func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) ([]uint32, []streamTracker) {
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
-	logger := log.With(util_log.WithUserID(tenantID, util_log.Logger), "stream", stream.Labels)
+	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []uint32{util.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
+		return []uint32{lokiring.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
 	}
 
 	d.streamShardCount.Inc()
@@ -482,7 +506,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 
 func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) ([]uint32, []streamTracker) {
 	var (
-		streamLabels   = labelTemplate(stream.Labels)
+		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
 		derivedKeys    = make([]uint32, 0, totalShards)
 		derivedStreams = make([]streamTracker, 0, totalShards)
@@ -491,7 +515,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 	)
 
 	if totalShards <= 0 {
-		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
+		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
 		return derivedKeys, derivedStreams
 	}
 
@@ -501,11 +525,11 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		shardNum := (startShard + i) % totalShards
 		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 
-		derivedKeys = append(derivedKeys, util.TokenFor(tenantID, shard.Labels))
+		derivedKeys = append(derivedKeys, lokiring.TokenFor(tenantID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
 
 		if shardStreamsCfg.LoggingEnabled {
-			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
+			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
 	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+streamCount)
@@ -522,10 +546,10 @@ func streamCount(totalShards int, stream logproto.Stream) int {
 
 // labelTemplate returns a label set that includes the dummy label to be replaced
 // To avoid allocations, this slice is reused when we know the stream value
-func labelTemplate(lbls string) labels.Labels {
+func labelTemplate(lbls string, logger log.Logger) labels.Labels {
 	baseLbls, err := syntax.ParseLabels(lbls)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
+		level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
 		return nil
 	}
 
@@ -631,7 +655,12 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
-		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+		if e, ok := status.FromError(err); ok {
+			switch e.Code() {
+			case codes.DeadlineExceeded:
+				d.ingesterAppendTimeouts.WithLabelValues(ingester.Addr).Inc()
+			}
+		}
 	}
 	return err
 }
@@ -649,7 +678,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", 0, httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
+		return "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
@@ -708,7 +737,7 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 }
 
 // newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates
-func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer) (*ring.Ring, *ring.BasicLifecycler, error) {
+func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer, metricsNamespace string) (*ring.Ring, *ring.BasicLifecycler, error) {
 	kvStore, err := kv.NewClient(cfg.KVStore, ring.GetCodec(), kv.RegistererWithKVName(reg, "distributor-lifecycler"), logger)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' KV store")
@@ -725,12 +754,12 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
 	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.HeartbeatTimeout, delegate, logger)
 
-	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg))
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' lifecycler")
 	}
 
-	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg))
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' ring client")
 	}

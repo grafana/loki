@@ -220,6 +220,11 @@ type ObjectInfo struct {
 	ChecksumSHA1   string
 	ChecksumSHA256 string
 
+	Internal *struct {
+		K int // Data blocks
+		M int // Parity blocks
+	} `xml:"Internal"`
+
 	// Error
 	Err error `json:"-"`
 }

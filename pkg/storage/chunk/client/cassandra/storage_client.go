@@ -670,6 +670,10 @@ func (s *ObjectClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
+func (s *ObjectClient) IsRetryableErr(_ error) bool {
+	return false
+}
+
 // Stop implement chunk.ObjectClient.
 func (s *ObjectClient) Stop() {
 	s.readSession.Close()
@@ -687,4 +691,4 @@ func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
 }
 
 // Implementats gocql.ConvictionPolicy.
-func (noopConvictionPolicy) Reset(host *gocql.HostInfo) {}
+func (noopConvictionPolicy) Reset(_ *gocql.HostInfo) {}

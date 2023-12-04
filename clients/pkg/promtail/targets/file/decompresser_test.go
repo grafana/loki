@@ -35,7 +35,7 @@ func newNoopClient() *noopClient {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		for range c.noopChan {
+		for range c.noopChan { //nolint:revive
 			// noop
 		}
 	}()
