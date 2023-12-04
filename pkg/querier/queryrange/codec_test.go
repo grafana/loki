@@ -25,8 +25,10 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -63,6 +65,9 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{foo="bar"}`),
+			},
 		}, false},
 		{"query_range", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
@@ -76,6 +81,9 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{foo="bar"}`),
+			},
 		}, false},
 		{"legacy query_range with refexp", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
@@ -89,6 +97,9 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/api/prom/query",
 			StartTs:   start,
 			EndTs:     end,
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{foo="bar"} |~ "foo"`),
+			},
 		}, false},
 		{"series", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
@@ -559,7 +570,13 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 	}
 	codec := RequestProtobufCodec{}
 	for i, queryTest := range queryTests {
-		u := &url.URL{Path: "/loki/api/v1/query_range"}
+		params := url.Values{
+			"query": []string{`{app="foo"}`},
+		}
+		u := &url.URL{
+			Path:     "/loki/api/v1/query_range",
+			RawQuery: params.Encode(),
+		}
 		httpReq := &http.Request{
 			Method:     "GET",
 			RequestURI: u.String(),
@@ -1721,7 +1738,7 @@ var (
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line"],
+						[ "123456789012345", "super line", {}],
 						[ "123456789012346", "super line2", {
 							"structuredMetadata": {
 								"x": "a",

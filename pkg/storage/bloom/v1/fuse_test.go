@@ -7,43 +7,10 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/concurrency"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 )
-
-func TestPartitionFingerprintRange(t *testing.T) {
-	seriesPerBound := 100
-	bounds := []FingerprintBounds{
-		{0, 99},
-		{100, 199},
-		{200, 299},
-		{300, 399}, // one out of bounds block
-	}
-
-	nReqs := 4
-	nSeries := 300
-	reqs := make([][]model.Fingerprint, nReqs)
-	for i := 0; i < nSeries; i++ {
-		reqs[i%4] = append(reqs[i%nReqs], model.Fingerprint(i))
-	}
-
-	results := partitionFingerprintRange(reqs, bounds)
-	require.Equal(t, 3, len(results)) // ensure we only return bounds in range
-	for _, res := range results {
-		// ensure we have the right number of requests per bound
-		for i := 0; i < nReqs; i++ {
-			require.Equal(t, seriesPerBound/nReqs, len(res.reqs[i]))
-		}
-	}
-
-	// ensure bound membership
-	for i := 0; i < nSeries; i++ {
-		require.Equal(t, model.Fingerprint(i), results[i/seriesPerBound].reqs[i%nReqs][i%seriesPerBound/nReqs])
-	}
-
-}
 
 func TestFusedQuerier(t *testing.T) {
 	// references for linking in memory reader+writer
@@ -74,37 +41,39 @@ func TestFusedQuerier(t *testing.T) {
 	querier := NewBlockQuerier(block)
 
 	nReqs := 10
-	var inputs [][]request
+	var inputs [][]Request
+	var resChans []chan Output
 	for i := 0; i < nReqs; i++ {
-		ch := make(chan output)
-		var reqs []request
+		ch := make(chan Output)
+		var reqs []Request
 		// find 2 series for each
 		for j := 0; j < 2; j++ {
 			idx := numSeries/nReqs*i + j
-			reqs = append(reqs, request{
-				fp:       data[idx].Series.Fingerprint,
-				chks:     data[idx].Series.Chunks,
-				response: ch,
+			reqs = append(reqs, Request{
+				Fp:       data[idx].Series.Fingerprint,
+				Chks:     data[idx].Series.Chunks,
+				Response: ch,
 			})
 		}
 		inputs = append(inputs, reqs)
+		resChans = append(resChans, ch)
 	}
 
-	var itrs []PeekingIterator[request]
+	var itrs []PeekingIterator[Request]
 	for _, reqs := range inputs {
-		itrs = append(itrs, NewPeekingIter[request](NewSliceIter[request](reqs)))
+		itrs = append(itrs, NewPeekingIter[Request](NewSliceIter[Request](reqs)))
 	}
 
-	resps := make([][]output, nReqs)
+	resps := make([][]Output, nReqs)
 	var g sync.WaitGroup
 	g.Add(1)
 	go func() {
 		require.Nil(t, concurrency.ForEachJob(
 			context.Background(),
-			len(resps),
-			len(resps),
+			len(resChans),
+			len(resChans),
 			func(_ context.Context, i int) error {
-				for v := range inputs[i][0].response {
+				for v := range resChans[i] {
 					resps[i] = append(resps[i], v)
 				}
 				return nil
@@ -117,7 +86,7 @@ func TestFusedQuerier(t *testing.T) {
 
 	require.Nil(t, fused.Run())
 	for _, input := range inputs {
-		close(input[0].response)
+		close(input[0].Response)
 	}
 	g.Wait()
 
@@ -126,9 +95,9 @@ func TestFusedQuerier(t *testing.T) {
 			resp := resps[i][j]
 			require.Equal(
 				t,
-				output{
-					fp:       req.fp,
-					removals: nil,
+				Output{
+					Fp:       req.Fp,
+					Removals: nil,
 				},
 				resp,
 			)
@@ -136,7 +105,7 @@ func TestFusedQuerier(t *testing.T) {
 	}
 }
 
-func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]request) {
+func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Output) {
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -165,11 +134,12 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]request) {
 
 	numRequestChains := 100
 	seriesPerRequest := 100
-	var requestChains [][]request
+	var requestChains [][]Request
+	var responseChans []chan Output
 	for i := 0; i < numRequestChains; i++ {
-		var reqs []request
+		var reqs []Request
 		// ensure they use the same channel
-		ch := make(chan output)
+		ch := make(chan Output)
 		// evenly spread out the series queried within a single request chain
 		// to mimic series distribution across keyspace
 		for j := 0; j < seriesPerRequest; j++ {
@@ -178,21 +148,22 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]request) {
 			if idx >= numSeries {
 				idx = numSeries - 1
 			}
-			reqs = append(reqs, request{
-				fp:       data[idx].Series.Fingerprint,
-				chks:     data[idx].Series.Chunks,
-				response: ch,
+			reqs = append(reqs, Request{
+				Fp:       data[idx].Series.Fingerprint,
+				Chks:     data[idx].Series.Chunks,
+				Response: ch,
 			})
 		}
 		requestChains = append(requestChains, reqs)
+		responseChans = append(responseChans, ch)
 	}
 
-	return querier, requestChains
+	return querier, requestChains, responseChans
 }
 
 func BenchmarkBlockQuerying(b *testing.B) {
 	b.StopTimer()
-	querier, requestChains := setupBlockForBenchmark(b)
+	querier, requestChains, responseChans := setupBlockForBenchmark(b)
 	// benchmark
 	b.StartTimer()
 
@@ -200,7 +171,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			for _, chain := range requestChains {
 				for _, req := range chain {
-					_, _ = querier.CheckChunksForSeries(req.fp, req.chks, nil)
+					_, _ = querier.CheckChunksForSeries(req.Fp, req.Chks, nil)
 				}
 			}
 		}
@@ -211,22 +182,22 @@ func BenchmarkBlockQuerying(b *testing.B) {
 		go func() {
 			require.Nil(b, concurrency.ForEachJob(
 				context.Background(),
-				len(requestChains), len(requestChains),
+				len(responseChans), len(responseChans),
 				func(_ context.Context, idx int) error {
 					// nolint:revive
-					for range requestChains[idx][0].response {
+					for range responseChans[idx] {
 					}
 					return nil
 				},
 			))
 		}()
 
-		var itrs []PeekingIterator[request]
+		var itrs []PeekingIterator[Request]
 
 		for i := 0; i < b.N; i++ {
 			itrs = itrs[:0]
 			for _, reqs := range requestChains {
-				itrs = append(itrs, NewPeekingIter[request](NewSliceIter[request](reqs)))
+				itrs = append(itrs, NewPeekingIter[Request](NewSliceIter[Request](reqs)))
 			}
 			fused := querier.Fuse(itrs)
 			_ = fused.Run()

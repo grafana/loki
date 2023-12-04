@@ -4,10 +4,15 @@ import (
 	"unicode/utf8"
 )
 
+const (
+	MaxRuneLen = 4
+)
+
 func reassemble(buf []rune, ln, pos int, result []byte) []byte {
 	result = result[:0] // Reset the result slice
 	for i := 0; i < ln; i++ {
-		cur := (pos + i) % len(buf)
+		cur := pos % len(buf)
+		pos++
 		result = utf8.AppendRune(result, buf[cur])
 	}
 	return result
@@ -29,7 +34,7 @@ func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 		N:      n,
 		Skip:   skip,
 		buffer: make([]rune, n+skip),
-		res:    make([]byte, 0, n*4), // maximum 4 bytes per rune
+		res:    make([]byte, 0, n*MaxRuneLen), // maximum 4 bytes per rune
 	}
 
 	return t
@@ -89,20 +94,20 @@ func (t *NGramTokenIter) Err() error {
 }
 
 type PrefixedTokenIter struct {
-	prefix    []byte
+	buf       []byte
 	prefixLen int
 
 	NGramTokenIter
 }
 
 func (t *PrefixedTokenIter) At() []byte {
-	return append(t.prefix[:t.prefixLen], t.NGramTokenIter.At()...)
+	return append(t.buf[:t.prefixLen], t.NGramTokenIter.At()...)
 }
 
-func NewPrefixedTokenIter(prefix []byte, iter NGramTokenIter) *PrefixedTokenIter {
+func NewPrefixedTokenIter(buf []byte, prefixLn int, iter NGramTokenIter) *PrefixedTokenIter {
 	return &PrefixedTokenIter{
-		prefix:         prefix,
-		prefixLen:      len(prefix),
+		buf:            buf,
+		prefixLen:      prefixLn,
 		NGramTokenIter: iter,
 	}
 }

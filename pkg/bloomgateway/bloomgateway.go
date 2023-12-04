@@ -23,6 +23,10 @@ of line filter expressions.
 			             |
 			      bloomgateway.Gateway
 			             |
+			       queue.RequestQueue
+			             |
+			       bloomgateway.Worker
+			             |
 			       bloomshipper.Store
 			             |
 			      bloomshipper.Shipper
@@ -56,6 +60,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
@@ -63,13 +68,15 @@ import (
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
-var errInvalidTenant = errors.New("invalid tenant in chunk refs")
 
-// TODO(chaudum): Make these configurable
 const (
-	numWorkers             = 4
-	maxTasksPerTenant      = 1024
 	pendingTasksInitialCap = 1024
+	metricsSubsystem       = "bloom_gateway"
+)
+
+var (
+	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
+	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
 )
 
 type metrics struct {
@@ -77,17 +84,17 @@ type metrics struct {
 	inflightRequests prometheus.Summary
 }
 
-func newMetrics(subsystem string, registerer prometheus.Registerer) *metrics {
+func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
 	return &metrics{
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
+			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "queue_duration_seconds",
 			Help:      "Time spent by tasks in queue before getting picked up by a worker.",
 			Buckets:   prometheus.DefBuckets,
 		}),
 		inflightRequests: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Namespace:  constants.Loki,
+			Namespace:  namespace,
 			Subsystem:  subsystem,
 			Name:       "inflight_tasks",
 			Help:       "Number of inflight tasks (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight tasks over the last 60s.",
@@ -96,40 +103,6 @@ func newMetrics(subsystem string, registerer prometheus.Registerer) *metrics {
 			AgeBuckets: 6,
 		}),
 	}
-}
-
-// Task is the data structure that is enqueued to the internal queue and queued by query workers
-type Task struct {
-	// ID is a lexcographically sortable unique identifier of the task
-	ID ulid.ULID
-	// Tenant is the tenant ID
-	Tenant string
-	// Request is the original request
-	Request *logproto.FilterChunkRefRequest
-	// ErrCh is a send-only channel to write an error to
-	ErrCh chan<- error
-	// ResCh is a send-only channel to write partial responses to
-	ResCh chan<- *logproto.GroupedChunkRefs
-}
-
-// newTask returns a new Task that can be enqueued to the task queue.
-// As additional arguments, it returns a result and an error channel, as well
-// as an error if the instantiation fails.
-func newTask(tenantID string, req *logproto.FilterChunkRefRequest) (Task, chan *logproto.GroupedChunkRefs, chan error, error) {
-	key, err := ulid.New(ulid.Now(), nil)
-	if err != nil {
-		return Task{}, nil, nil, err
-	}
-	errCh := make(chan error, 1)
-	resCh := make(chan *logproto.GroupedChunkRefs, 1)
-	task := Task{
-		ID:      key,
-		Tenant:  tenantID,
-		Request: req,
-		ErrCh:   errCh,
-		ResCh:   resCh,
-	}
-	return task, resCh, errCh, nil
 }
 
 // SyncMap is a map structure which can be synchronized using the RWMutex
@@ -169,14 +142,16 @@ func makePendingTasks(n int) *pendingTasks {
 type Gateway struct {
 	services.Service
 
-	cfg     Config
-	logger  log.Logger
-	metrics *metrics
+	cfg    Config
+	logger log.Logger
 
-	queue        *queue.RequestQueue
-	queueMetrics *queue.Metrics
-	activeUsers  *util.ActiveUsersCleanupService
-	bloomStore   bloomshipper.Store
+	metrics       *metrics
+	workerMetrics *workerMetrics
+	queueMetrics  *queue.Metrics
+
+	queue       *queue.RequestQueue
+	activeUsers *util.ActiveUsersCleanupService
+	bloomStore  bloomshipper.Store
 
 	sharding ShardingStrategy
 
@@ -184,20 +159,36 @@ type Gateway struct {
 
 	serviceMngr    *services.Manager
 	serviceWatcher *services.FailureWatcher
+
+	workerConfig workerConfig
+}
+
+type fixedQueueLimits struct {
+	maxConsumers int
+}
+
+func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
+	return l.maxConsumers
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
 		cfg:          cfg,
 		logger:       logger,
-		metrics:      newMetrics("bloom_gateway", reg),
+		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
 		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
+		workerConfig: workerConfig{
+			maxWaitTime:               200 * time.Millisecond,
+			maxItems:                  100,
+			processBlocksSequentially: false,
+		},
+		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
+		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
 
-	g.queueMetrics = queue.NewMetrics(reg, constants.Loki, "bloom_gateway")
-	g.queue = queue.NewRequestQueue(maxTasksPerTenant, time.Minute, g.queueMetrics)
+	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{100}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
 	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
@@ -205,7 +196,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		return nil, err
 	}
 
-	bloomShipper, err := bloomshipper.NewShipper(client, storageCfg.BloomShipperConfig, logger)
+	bloomShipper, err := bloomshipper.NewShipper(client, storageCfg.BloomShipperConfig, overrides, logger, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -215,19 +206,32 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		return nil, err
 	}
 
+	// We need to keep a reference to be able to call Stop() on shutdown of the gateway.
 	g.bloomStore = bloomStore
 
-	svcs := []services.Service{g.queue, g.activeUsers}
-	g.serviceMngr, err = services.NewManager(svcs...)
-	if err != nil {
+	if err := g.initServices(); err != nil {
 		return nil, err
 	}
-	g.serviceWatcher = services.NewFailureWatcher()
-	g.serviceWatcher.WatchManager(g.serviceMngr)
-
 	g.Service = services.NewBasicService(g.starting, g.running, g.stopping).WithName("bloom-gateway")
 
 	return g, nil
+}
+
+func (g *Gateway) initServices() error {
+	var err error
+	svcs := []services.Service{g.queue, g.activeUsers}
+	for i := 0; i < g.cfg.WorkerConcurrency; i++ {
+		id := fmt.Sprintf("bloom-query-worker-%d", i)
+		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
+		svcs = append(svcs, w)
+	}
+	g.serviceMngr, err = services.NewManager(svcs...)
+	if err != nil {
+		return err
+	}
+	g.serviceWatcher = services.NewFailureWatcher()
+	g.serviceWatcher.WatchManager(g.serviceMngr)
+	return nil
 }
 
 func (g *Gateway) starting(ctx context.Context) error {
@@ -243,10 +247,6 @@ func (g *Gateway) starting(ctx context.Context) error {
 
 	if err := services.StartManagerAndAwaitHealthy(ctx, g.serviceMngr); err != nil {
 		return errors.Wrap(err, "unable to start bloom gateway subservices")
-	}
-
-	for i := 0; i < numWorkers; i++ {
-		go g.startWorker(ctx, fmt.Sprintf("worker-%d", i))
 	}
 
 	return nil
@@ -278,52 +278,6 @@ func (g *Gateway) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
-// This is just a dummy implementation of the worker!
-// TODO(chaudum): Implement worker that dequeues multiple pending tasks and
-// multiplexes them prior to execution.
-func (g *Gateway) startWorker(_ context.Context, id string) error {
-	level.Info(g.logger).Log("msg", "starting worker", "worker", id)
-
-	g.queue.RegisterConsumerConnection(id)
-	defer g.queue.UnregisterConsumerConnection(id)
-
-	idx := queue.StartIndexWithLocalQueue
-
-	for {
-		ctx := context.Background()
-		item, newIdx, err := g.queue.Dequeue(ctx, idx, id)
-		if err != nil {
-			if err != queue.ErrStopped {
-				level.Error(g.logger).Log("msg", "failed to dequeue task", "worker", id, "err", err)
-				continue
-			}
-			level.Info(g.logger).Log("msg", "stopping worker", "worker", id)
-			return err
-		}
-		task, ok := item.(Task)
-		if !ok {
-			level.Error(g.logger).Log("msg", "failed to cast to Task", "item", item)
-			continue
-		}
-
-		idx = newIdx
-		level.Info(g.logger).Log("msg", "dequeued task", "worker", id, "task", task.ID)
-		g.pendingTasks.Delete(task.ID)
-
-		r := task.Request
-		if len(r.Filters) > 0 {
-			r.Refs, err = g.bloomStore.FilterChunkRefs(ctx, task.Tenant, r.From.Time(), r.Through.Time(), r.Refs, r.Filters...)
-		}
-		if err != nil {
-			task.ErrCh <- err
-		} else {
-			for _, ref := range r.Refs {
-				task.ResCh <- ref
-			}
-		}
-	}
-}
-
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
@@ -331,10 +285,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
-	for _, ref := range req.Refs {
-		if ref.Tenant != tenantID {
-			return nil, errors.Wrapf(errInvalidTenant, "expected chunk refs from tenant %s, got tenant %s", tenantID, ref.Tenant)
-		}
+	// Shortcut if request does not contain filters
+	if len(req.Filters) == 0 {
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: req.Refs,
+		}, nil
 	}
 
 	// Sort ChunkRefs by fingerprint in ascending order
@@ -342,31 +297,73 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	task, resCh, errCh, err := newTask(tenantID, req)
+	task, resCh, errCh, err := NewTask(tenantID, req)
 	if err != nil {
 		return nil, err
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID)
-	g.queue.Enqueue(tenantID, []string{}, task, 100, func() {
+	g.queue.Enqueue(tenantID, []string{}, task, func() {
 		// When enqueuing, we also add the task to the pending tasks
 		g.pendingTasks.Add(task.ID, task)
 	})
 
-	response := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
+	requestCount := len(req.Refs)
+	responses := responsesPool.Get(requestCount)
+	defer responsesPool.Put(responses)
+
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, errors.Wrap(ctx.Err(), "waiting for results")
 		case err := <-errCh:
-			return nil, err
+			return nil, errors.Wrap(err, "waiting for results")
 		case res := <-resCh:
-			level.Info(g.logger).Log("msg", "got result", "task", task.ID, "tenant", tenantID, "res", res)
+			responses = append(responses, res)
+			// log line is helpful for debugging tests
+			// level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", uint64(res.Fp), "chunks", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
 			// wait for all parts of the full response
-			response = append(response, res)
-			if len(response) == len(req.Refs) {
-				return &logproto.FilterChunkRefResponse{ChunkRefs: response}, nil
+			if len(responses) == requestCount {
+				for _, o := range responses {
+					if res.Removals.Len() == 0 {
+						continue
+					}
+					// we must not remove items from req.Refs as long as the worker may iterater over them
+					g.removeNotMatchingChunks(req, o)
+				}
+				return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+			}
+		}
+	}
+}
+
+func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) {
+	// binary search index of fingerprint
+	idx := sort.Search(len(req.Refs), func(i int) bool {
+		return req.Refs[i].Fingerprint >= uint64(res.Fp)
+	})
+
+	// fingerprint not found
+	if idx >= len(req.Refs) {
+		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
+		return
+	}
+
+	// if all chunks of a fingerprint are are removed
+	// then remove the whole group from the response
+	if len(req.Refs[idx].Refs) == res.Removals.Len() {
+		req.Refs[idx] = nil // avoid leaking pointer
+		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
+		return
+	}
+
+	for i := range res.Removals {
+		toRemove := res.Removals[i]
+		for j := range req.Refs[idx].Refs {
+			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
+				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
+				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
 			}
 		}
 	}
