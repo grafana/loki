@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
@@ -28,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	queryrange_limits "github.com/grafana/loki/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -104,7 +104,7 @@ type cacheKeyLimits struct {
 	transformer UserIDTransformer
 }
 
-func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
+func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	split := l.QuerySplitDuration(userID)
 
 	var currentInterval int64

@@ -3,6 +3,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -254,74 +255,89 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 
 	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
-		require.NoError(t, err)
+		for _, tc := range []struct {
+			name  string
+			value bool
+		}{
+			{"sequentially", true},
+			{"callback", false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
 
-		now := mktime("2023-10-03 10:00")
+				reg := prometheus.NewRegistry()
+				gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+				require.NoError(t, err)
 
-		// replace store implementation and re-initialize workers and sub-services
-		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
-		gw.bloomStore = newMockBloomStore(bqs)
-		err = gw.initServices()
-		require.NoError(t, err)
+				now := mktime("2023-10-03 10:00")
 
-		err = services.StartAndAwaitRunning(context.Background(), gw)
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			err = services.StopAndAwaitTerminated(context.Background(), gw)
-			require.NoError(t, err)
-		})
+				// replace store implementation and re-initialize workers and sub-services
+				bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
+				gw.bloomStore = newMockBloomStore(bqs)
+				gw.workerConfig.processBlocksSequentially = tc.value
+				err = gw.initServices()
+				require.NoError(t, err)
 
-		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+				t.Log("process blocks in worker sequentially", gw.workerConfig.processBlocksSequentially)
 
-		t.Run("no match - return empty response", func(t *testing.T) {
-			inputChunkRefs := groupRefs(t, chunkRefs)
-			req := &logproto.FilterChunkRefRequest{
-				From:    now.Add(-8 * time.Hour),
-				Through: now,
-				Refs:    inputChunkRefs,
-				Filters: []*logproto.LineFilterExpression{
-					{Operator: 1, Match: "does not match"},
-				},
-			}
-			ctx := user.InjectOrgID(context.Background(), tenantID)
-			res, err := gw.FilterChunkRefs(ctx, req)
-			require.NoError(t, err)
+				err = services.StartAndAwaitRunning(context.Background(), gw)
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					err = services.StopAndAwaitTerminated(context.Background(), gw)
+					require.NoError(t, err)
+				})
 
-			expectedResponse := &logproto.FilterChunkRefResponse{
-				ChunkRefs: []*logproto.GroupedChunkRefs{},
-			}
-			require.Equal(t, expectedResponse, res)
-		})
+				chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
 
-		t.Run("match - return filtered", func(t *testing.T) {
-			inputChunkRefs := groupRefs(t, chunkRefs)
-			// hack to get indexed key for a specific series
-			// the indexed key range for a series is defined as
-			// i * keysPerSeries ... i * keysPerSeries + keysPerSeries - 1
-			// where i is the nth series in a block
-			// fortunately, i is also used as Checksum for the single chunk of a series
-			// see mkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
-			key := inputChunkRefs[0].Refs[0].Checksum*1000 + 500
+				t.Run("no match - return empty response", func(t *testing.T) {
+					inputChunkRefs := groupRefs(t, chunkRefs)
+					req := &logproto.FilterChunkRefRequest{
+						From:    now.Add(-8 * time.Hour),
+						Through: now,
+						Refs:    inputChunkRefs,
+						Filters: []*logproto.LineFilterExpression{
+							{Operator: 1, Match: "does not match"},
+						},
+					}
+					ctx := user.InjectOrgID(context.Background(), tenantID)
+					res, err := gw.FilterChunkRefs(ctx, req)
+					require.NoError(t, err)
 
-			req := &logproto.FilterChunkRefRequest{
-				From:    now.Add(-8 * time.Hour),
-				Through: now,
-				Refs:    inputChunkRefs,
-				Filters: []*logproto.LineFilterExpression{
-					{Operator: 1, Match: fmt.Sprint(key)},
-				},
-			}
-			ctx := user.InjectOrgID(context.Background(), tenantID)
-			res, err := gw.FilterChunkRefs(ctx, req)
-			require.NoError(t, err)
+					expectedResponse := &logproto.FilterChunkRefResponse{
+						ChunkRefs: []*logproto.GroupedChunkRefs{},
+					}
+					require.Equal(t, expectedResponse, res)
+				})
 
-			expectedResponse := &logproto.FilterChunkRefResponse{
-				ChunkRefs: inputChunkRefs[:1],
-			}
-			require.Equal(t, expectedResponse, res)
-		})
+				t.Run("match - return filtered", func(t *testing.T) {
+					inputChunkRefs := groupRefs(t, chunkRefs)
+					// hack to get indexed key for a specific series
+					// the indexed key range for a series is defined as
+					// i * keysPerSeries ... i * keysPerSeries + keysPerSeries - 1
+					// where i is the nth series in a block
+					// fortunately, i is also used as Checksum for the single chunk of a series
+					// see mkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
+					key := inputChunkRefs[0].Refs[0].Checksum*1000 + 500
+
+					req := &logproto.FilterChunkRefRequest{
+						From:    now.Add(-8 * time.Hour),
+						Through: now,
+						Refs:    inputChunkRefs,
+						Filters: []*logproto.LineFilterExpression{
+							{Operator: 1, Match: fmt.Sprint(key)},
+						},
+					}
+					ctx := user.InjectOrgID(context.Background(), tenantID)
+					res, err := gw.FilterChunkRefs(ctx, req)
+					require.NoError(t, err)
+
+					expectedResponse := &logproto.FilterChunkRefResponse{
+						ChunkRefs: inputChunkRefs[:1],
+					}
+					require.Equal(t, expectedResponse, res)
+				})
+
+			})
+		}
 
 	})
 }
@@ -358,6 +374,8 @@ type mockBloomStore struct {
 	bqs []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
+var _ bloomshipper.Store = &mockBloomStore{}
+
 // GetBlockQueriersForBlockRefs implements bloomshipper.Store.
 func (s *mockBloomStore) GetBlockQueriersForBlockRefs(_ context.Context, _ string, _ []bloomshipper.BlockRef) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
 	return s.bqs, nil
@@ -384,6 +402,22 @@ func (s *mockBloomStore) GetBlockQueriers(_ context.Context, _ string, _, _ time
 }
 
 func (s *mockBloomStore) Stop() {}
+
+// ForEach implements bloomshipper.Store.
+func (s *mockBloomStore) ForEach(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
+	shuffled := make([]bloomshipper.BlockQuerierWithFingerprintRange, len(s.bqs))
+	_ = copy(shuffled, s.bqs)
+
+	rand.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+
+	for _, bq := range shuffled {
+		// ignore errors in the mock
+		_ = callback(bq.BlockQuerier, uint64(bq.MinFp), uint64(bq.MaxFp))
+	}
+	return nil
+}
 
 func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.SeriesWithBloom, nthSeries int) []*logproto.ChunkRef {
 	t.Helper()

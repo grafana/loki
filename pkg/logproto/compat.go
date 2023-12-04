@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -260,6 +261,11 @@ func (m *IndexStatsRequest) WithStartEnd(start, end time.Time) definitions.Reque
 	return &clone
 }
 
+// WithStartEndForCache implements resultscache.Request.
+func (m *IndexStatsRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
 // WithQuery clone the current request with a different query.
 func (m *IndexStatsRequest) WithQuery(query string) definitions.Request {
 	clone := *m
@@ -306,6 +312,11 @@ func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone.From = model.TimeFromUnixNano(start.UnixNano())
 	clone.Through = model.TimeFromUnixNano(end.UnixNano())
 	return &clone
+}
+
+// WithStartEndForCache implements resultscache.Request.
+func (m *VolumeRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
 }
 
 // WithQuery clone the current request with a different query.

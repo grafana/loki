@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -24,7 +25,7 @@ type VolumeSplitter struct {
 }
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (i VolumeSplitter) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
+func (i VolumeSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
 
 	volumeReq := r.(*logproto.VolumeRequest)
@@ -38,7 +39,7 @@ type VolumeExtractor struct{}
 
 // Extract favors the ability to cache over exactness of results. It assumes a constant distribution
 // of log volumes over a range and will extract subsets proportionally.
-func (p VolumeExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (p VolumeExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	factor := util.GetFactorOfTime(start, end, resStart, resEnd)
 
 	volumeRes := res.(*VolumeResponse)
@@ -101,7 +102,7 @@ func NewVolumeCacheMiddleware(
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
 	shouldCache queryrangebase.ShouldCacheFn,
-	parallelismForReq func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int,
+	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
 	transformer UserIDTransformer,
 	metrics *queryrangebase.ResultsCacheMetrics,
