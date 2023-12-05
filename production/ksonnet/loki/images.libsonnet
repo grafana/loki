@@ -16,5 +16,6 @@
     compactor:: self.loki,
     index_gateway:: self.loki,
     overrides_exporter:: self.loki,
+    bloom_gateway:: self.loki,
   },
 }
