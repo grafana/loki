@@ -1655,8 +1655,8 @@ func (e *batchEntryIterator) Entries() []logproto.Entry {
 	timestamps := array.NewTimestampData(e.cur.Column(0).Data())
 	lines := array.NewStringData(e.cur.Column(4).Data())
 
-	output := make([]logproto.Entry, 0, e.cur.NumCols())
-	for i := 0; i < int(e.cur.NumCols()); i++ {
+	output := make([]logproto.Entry, 0, e.cur.NumRows())
+	for i := 0; i < int(e.cur.NumRows()); i++ {
 		output = append(output, logproto.Entry{
 			Timestamp: timestamps.Value(i).ToTime(arrow.Nanosecond),
 			Line:      lines.Value(i),

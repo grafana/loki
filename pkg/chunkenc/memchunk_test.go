@@ -1979,3 +1979,101 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 		})
 	}
 }
+
+func TestBatchedEntryIterator(t *testing.T) {
+	chk := newMemChunkWithFormat(ChunkFormatV4, EncGZIP, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	entries := []struct {
+		ts  int64
+		str string
+		lbs []logproto.LabelAdapter
+		cut bool
+	}{
+		{
+			ts:  1,
+			str: "hello, world!",
+		},
+		{
+			ts:  2,
+			str: "hello, world2!",
+			lbs: []logproto.LabelAdapter{
+				{Name: "app", Value: "myapp"},
+			},
+		},
+		{
+			ts:  3,
+			str: "hello, world3!",
+			lbs: []logproto.LabelAdapter{
+				{Name: "a", Value: "a"},
+				{Name: "b", Value: "b"},
+			},
+		},
+		{
+			ts:  4,
+			str: "hello, world4!",
+		},
+		{
+			ts:  5,
+			str: "hello, world5!",
+		},
+		{
+			ts:  6,
+			str: "hello, world6!",
+		},
+		{
+			ts:  7,
+			str: "hello, world7!",
+		},
+		{
+			ts:  8,
+			str: "hello, worl\nd8!",
+		},
+		{
+			ts:  8,
+			str: "hello, world 8, 2!",
+		},
+		{
+			ts:  8,
+			str: "hello, world 8, 3!",
+		},
+		{
+			ts:  9,
+			str: "",
+		},
+		{
+			ts:  10,
+			str: "hello, world10!",
+			lbs: []logproto.LabelAdapter{
+				{Name: "a", Value: "a2"},
+				{Name: "b", Value: "b"},
+			},
+		},
+	}
+
+	for _, c := range entries {
+		require.NoError(t, chk.Append(logprotoEntryWithStructuredMetadata(c.ts, c.str, c.lbs)))
+	}
+	chk.cut()
+
+	var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
+
+	require.Equal(t, len(chk.blocks), 1)
+
+	it := newBatchEntryIterator(context.Background(), GetReaderPool(chk.Encoding()), chk.blocks[0].b, noopStreamPipeline, chk.format, chk.symbolizer)
+	require.True(t, it.Next())
+
+	got := it.Entries()
+	require.Equal(t, len(entries), len(got))
+
+	for idx, entry := range got {
+		require.Equal(t, entries[idx].ts, entry.Timestamp.UnixNano())
+		require.Equal(t, entries[idx].str, entry.Line)
+
+		// assert labels
+
+		idx++
+	}
+
+	require.False(t, it.Next())
+	require.NoError(t, it.Error())
+	require.NoError(t, it.Close())
+}
