@@ -1849,7 +1849,9 @@ client:
     # CLI flag: -bloom-gateway-client.cache.compression
     [compression: <string> | default = ""]
 
-  [cache_results: <boolean>]
+  # Flag to control whether to cache bloom gateway client requests/responses.
+  # CLI flag: -bloom-gateway-client.cache_results
+  [cache_results: <boolean> | default = false]
 
 # Number of workers to use for filtering chunks concurrently.
 # CLI flag: -bloom-gateway.worker-concurrency

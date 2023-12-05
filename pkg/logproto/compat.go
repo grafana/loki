@@ -1,10 +1,8 @@
 package logproto
 
 import (
-	"bytes"
 	stdjson "encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -369,30 +367,20 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 
 	// Short circuit if there are no filters.
 	if len(m.Filters) == 0 {
-		return fmt.Sprintf("%d-[]", chunksHash)
+		return fmt.Sprintf("%d", chunksHash)
 	}
 
-	var buf bytes.Buffer
-	s := jsoniter.ConfigFastest.BorrowStream(io.Writer(&buf))
-	defer jsoniter.ConfigFastest.ReturnStream(s)
-	s.WriteArrayStart()
+	var sb strings.Builder
 	for i, filter := range m.Filters {
 		if i > 0 {
-			s.WriteMore()
+			sb.WriteString(",")
 		}
-
-		s.WriteObjectStart()
-		s.WriteObjectField("op")
-		s.WriteInt64(filter.Operator)
-		s.WriteMore()
-		s.WriteObjectField("match")
-		s.WriteString(filter.Match)
-		s.WriteObjectEnd()
+		sb.WriteString(strconv.Itoa(int(filter.Operator)))
+		sb.WriteString("-")
+		sb.WriteString(filter.Match)
 	}
-	s.WriteArrayEnd()
-	_ = s.Flush()
 
-	return fmt.Sprintf("%d-%s", chunksHash, buf.String())
+	return fmt.Sprintf("%d/%s", chunksHash, sb.String())
 }
 
 // GetCachingOptions returns the caching options.
