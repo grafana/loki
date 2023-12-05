@@ -146,8 +146,9 @@ func NewBloomGatewayClientCacheMiddleware(
 	cacheGen resultscache.CacheGenNumberLoader,
 	retentionEnabled bool,
 ) *ClientCache {
-	nextAsHandler := resultscache.HandlerFunc(func(ctx context.Context, req resultscache.Request) (resultscache.Response, error) {
-		return next.FilterChunkRefs(ctx, req.(*logproto.FilterChunkRefRequest))
+	nextAsHandler := resultscache.HandlerFunc(func(ctx context.Context, cacheReq resultscache.Request) (resultscache.Response, error) {
+		req := cacheReq.(requestWithGrpcCallOptions)
+		return next.FilterChunkRefs(ctx, req.FilterChunkRefRequest, req.grpcCallOptions...)
 	})
 
 	resultsCache := resultscache.NewResultsCache(
@@ -174,11 +175,27 @@ func NewBloomGatewayClientCacheMiddleware(
 	}
 }
 
-func (c *ClientCache) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest, _ ...grpc.CallOption) (*logproto.FilterChunkRefResponse, error) {
-	res, err := c.cache.Do(ctx, req)
+func (c *ClientCache) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest, opts ...grpc.CallOption) (*logproto.FilterChunkRefResponse, error) {
+	cacheReq := requestWithGrpcCallOptions{
+		FilterChunkRefRequest: req,
+		grpcCallOptions:       opts,
+	}
+	res, err := c.cache.Do(ctx, cacheReq)
 	if err != nil {
 		return nil, err
 	}
 
 	return res.(*logproto.FilterChunkRefResponse), nil
+}
+
+type requestWithGrpcCallOptions struct {
+	*logproto.FilterChunkRefRequest
+	grpcCallOptions []grpc.CallOption
+}
+
+func (r requestWithGrpcCallOptions) WithStartEndForCache(start time.Time, end time.Time) resultscache.Request {
+	return requestWithGrpcCallOptions{
+		FilterChunkRefRequest: r.FilterChunkRefRequest.WithStartEndForCache(start, end).(*logproto.FilterChunkRefRequest),
+		grpcCallOptions:       r.grpcCallOptions,
+	}
 }
