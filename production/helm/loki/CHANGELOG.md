@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.40.1
+
+- [BUGFIX] Fix typo in read-deployment causing `read` annotations to be ignored
+
 ## 5.40.0
 
 - [CHANGE] Add extraContainers parameter for the write pod
@@ -28,9 +32,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.37.0
 
 - [FEATURE] Add support for enabling tracing.
-## 5.36.3
-## 5.36.4
-- [BUGFIX] Fix typo in read-deployment causing `read` annotations to be ignored
 
 ## 5.36.2
 
