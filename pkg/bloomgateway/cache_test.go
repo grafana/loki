@@ -242,6 +242,27 @@ func TestMerge(t *testing.T) {
 						},
 					},
 				},
+				{
+					ChunkRefs: []*logproto.GroupedChunkRefs{
+						// Same FP as in previous input and diff chunks
+						{
+							Fingerprint: 2,
+							Tenant:      "fake",
+							Refs: []*logproto.ShortRef{
+								{
+									From:     700,
+									Through:  1000,
+									Checksum: 40,
+								},
+								{
+									From:     2000,
+									Through:  2700,
+									Checksum: 50,
+								},
+							},
+						},
+					},
+				},
 			},
 			expected: &logproto.FilterChunkRefResponse{
 				ChunkRefs: []*logproto.GroupedChunkRefs{
@@ -279,6 +300,16 @@ func TestMerge(t *testing.T) {
 								From:     2000,
 								Through:  2500,
 								Checksum: 30,
+							},
+							{
+								From:     700,
+								Through:  1000,
+								Checksum: 40,
+							},
+							{
+								From:     2000,
+								Through:  2700,
+								Checksum: 50,
 							},
 						},
 					},
