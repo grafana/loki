@@ -1,19 +1,20 @@
 package log
 
 import (
-	"fmt"
+	"context"
 	"testing"
 
 	"github.com/apache/arrow/go/v14/arrow"
 	"github.com/apache/arrow/go/v14/arrow/array"
-	//"github.com/apache/arrow/go/v14/arrow/compute"
+
+	"github.com/apache/arrow/go/v14/arrow/compute"
 	"github.com/apache/arrow/go/v14/arrow/memory"
 	memmem "github.com/jeschkies/go-memmem/pkg/search"
 	"github.com/stretchr/testify/require"
 )
 
 func TestStringFilter(t *testing.T) {
-	//ctx := context.Background()
+	ctx := context.Background()
 	//extractor := &frameSampleExtractor{}
 
 	// test data
@@ -28,7 +29,7 @@ func TestStringFilter(t *testing.T) {
 		b.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(i))
 
 		v := "foobar"
-		if i %3 == 0 {
+		if i%3 == 0 {
 			v = "bar"
 		}
 
@@ -36,21 +37,48 @@ func TestStringFilter(t *testing.T) {
 	}
 	batch := b.NewRecord()
 
-	require.Equal(t, batch.NumRows(), int64(10))
+	require.Equal(t, int64(10), batch.NumRows())
 
 	lines, ok := batch.Column(1).(*array.String)
 	require.True(t, ok)
-	Filter(lines, "foo")
+	f := Filter(lines, "won't find", pool)
+	require.Equal(t, 10, f.Len())
 
-	//filtered, err := compute.FilterRecordBatch(ctx, batch, f, nil)
-	//require.NoError(t, err)
+	f = Filter(lines, "foo", pool)
+	require.Equal(t, 10, f.Len())
+	require.Equal(t, 4, f.NullN())
+
+	filtered, err := compute.FilterRecordBatch(ctx, batch, f, compute.DefaultFilterOptions())
+	require.NoError(t, err)
+	require.Equal(t, int64(6), filtered.NumRows())
 }
 
-func Filter(data *array.String, needle string, pool *memory.GoAllocator) {
+func Filter(data *array.String, needle string, pool *memory.GoAllocator) arrow.Array {
 
-	fb := array.NewInt8Builder(pool)
-	for _, offset := range data.ValueOffsets() {
-		pos := memmem.Index(data.ValueBytes(), needle)
+	fb := array.NewBooleanBuilder(pool)
+	for i := 0; i < data.Len(); i++ {
+		beg := data.ValueOffset64(i)
+		end := data.ValueOffset64(i + 1)
+		offset := memmem.Index(data.ValueBytes()[beg:], []byte(needle))
+
+		// Nothing was found
+		if offset == -1 {
+			// Fill rest with nulls
+			fb.AppendNulls(data.Len() - i)
+			break
+		}
+
+		pos := beg + offset
+		// Append nulls until offset is found
+		for pos >= end {
+			fb.AppendNull()
+			beg = end
+			i++
+			end = data.ValueOffset64(i + 1)
+		}
+
+		fb.Append(true)
 	}
 
+	return fb.NewArray()
 }

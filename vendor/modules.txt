@@ -214,6 +214,9 @@ github.com/IBM/ibm-cos-sdk-go/private/protocol/restxml
 github.com/IBM/ibm-cos-sdk-go/private/protocol/xml/xmlutil
 github.com/IBM/ibm-cos-sdk-go/service/s3
 github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface
+# github.com/JohnCGriffin/overflow v0.0.0-20211019200055-46fa312c352c
+## explicit
+github.com/JohnCGriffin/overflow
 # github.com/Masterminds/goutils v1.1.1
 ## explicit
 github.com/Masterminds/goutils
@@ -264,17 +267,25 @@ github.com/aliyun/aliyun-oss-go-sdk/oss
 ## explicit; go 1.20
 github.com/apache/arrow/go/v14/arrow
 github.com/apache/arrow/go/v14/arrow/array
+github.com/apache/arrow/go/v14/arrow/arrio
 github.com/apache/arrow/go/v14/arrow/bitutil
+github.com/apache/arrow/go/v14/arrow/compute
+github.com/apache/arrow/go/v14/arrow/compute/exec
+github.com/apache/arrow/go/v14/arrow/compute/internal/kernels
 github.com/apache/arrow/go/v14/arrow/decimal128
 github.com/apache/arrow/go/v14/arrow/decimal256
 github.com/apache/arrow/go/v14/arrow/encoded
 github.com/apache/arrow/go/v14/arrow/endian
 github.com/apache/arrow/go/v14/arrow/float16
+github.com/apache/arrow/go/v14/arrow/internal
 github.com/apache/arrow/go/v14/arrow/internal/debug
+github.com/apache/arrow/go/v14/arrow/internal/dictutils
 github.com/apache/arrow/go/v14/arrow/internal/flatbuf
+github.com/apache/arrow/go/v14/arrow/ipc
 github.com/apache/arrow/go/v14/arrow/memory
 github.com/apache/arrow/go/v14/arrow/memory/internal/cgoalloc
 github.com/apache/arrow/go/v14/arrow/memory/mallocator
+github.com/apache/arrow/go/v14/arrow/scalar
 github.com/apache/arrow/go/v14/internal/bitutils
 github.com/apache/arrow/go/v14/internal/hashing
 github.com/apache/arrow/go/v14/internal/json
@@ -1072,7 +1083,7 @@ github.com/jcmturner/gokrb5/v8/types
 ## explicit; go 1.13
 github.com/jcmturner/rpc/v2/mstypes
 github.com/jcmturner/rpc/v2/ndr
-# github.com/jeschkies/go-memmem v0.1.0
+# github.com/jeschkies/go-memmem v0.1.1-0.20231205164920-8fa966129fa7
 ## explicit; go 1.20
 github.com/jeschkies/go-memmem/pkg/search
 # github.com/jmespath/go-jmespath v0.4.0
@@ -1630,6 +1641,7 @@ golang.org/x/crypto/sha3
 # golang.org/x/exp v0.0.0-20231006140011-7918f672742d
 ## explicit; go 1.20
 golang.org/x/exp/constraints
+golang.org/x/exp/maps
 golang.org/x/exp/slices
 # golang.org/x/mod v0.13.0
 ## explicit; go 1.18
