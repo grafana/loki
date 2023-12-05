@@ -400,8 +400,29 @@ func (m *FilterChunkRefRequest) GetCachingOptions() (res resultscache.CachingOpt
 
 // WithStartEndForCache implements resultscache.Request.
 func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	// We Remove the chunks that are not within the given time range.
+	chunkRefs := make([]*GroupedChunkRefs, 0, len(m.Refs))
+	for _, chunkRef := range m.Refs {
+		refs := make([]*ShortRef, 0, len(chunkRef.Refs))
+		for _, ref := range chunkRef.Refs {
+			if end.Before(ref.From.Time()) || ref.Through.Time().Before(start) {
+				continue
+			}
+			refs = append(refs, ref)
+		}
+		if len(refs) > 0 {
+			chunkRefs = append(chunkRefs, &GroupedChunkRefs{
+				Fingerprint: chunkRef.Fingerprint,
+				Tenant:      chunkRef.Tenant,
+				Refs:        refs,
+			})
+		}
+	}
+
 	clone := *m
 	clone.From = model.TimeFromUnixNano(start.UnixNano())
 	clone.Through = model.TimeFromUnixNano(end.UnixNano())
+	clone.Refs = chunkRefs
+
 	return &clone
 }
