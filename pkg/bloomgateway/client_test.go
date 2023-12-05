@@ -27,7 +27,7 @@ func TestBloomGatewayClient(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 
 	t.Run("", func(t *testing.T) {
-		_, err := NewGatewayClient(cfg, l, reg, logger, "loki")
+		_, err := NewGatewayClient(cfg, l, reg, logger, "loki", nil, false)
 		require.NoError(t, err)
 	})
 }
@@ -194,7 +194,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
-	c, err := NewGatewayClient(cfg, l, reg, logger, "loki")
+	c, err := NewGatewayClient(cfg, l, reg, logger, "loki", nil, false)
 	require.NoError(t, err)
 
 	instances := []ring.InstanceDesc{

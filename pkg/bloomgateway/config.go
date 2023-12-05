@@ -38,6 +38,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type Limits interface {
+	CacheLimits
 	BloomGatewayShardSize(tenantID string) int
 	BloomGatewayEnabled(tenantID string) bool
 	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
