@@ -1179,7 +1179,9 @@ func (b encBlock) BatchSampleIterator(ctx context.Context, extractor log.StreamS
 		return iter.NoopBatchIterator
 	}
 
-	return newBatchSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	// commenting this out to fix the build. Kavi's next commit should fix this
+	// newBatchSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	return nil
 }
 
 func (b block) Offset() int {
@@ -1674,9 +1676,9 @@ func (e *batchEntryIterator) Entries() []logproto.Entry {
 }
 
 func (e *batchEntryIterator) Labels() []string {
-	lbls := make([]string, 0, e.cur.NumCols())
+	lbls := make([]string, 0, e.cur.NumRows())
 	lblColumn := e.cur.Column(1)
-	for i := 0; i < int(e.cur.NumCols()); i++ {
+	for i := 0; i < int(e.cur.NumRows()); i++ {
 		lbls = append(lbls, lblColumn.ValueStr(i))
 	}
 	return lbls

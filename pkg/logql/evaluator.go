@@ -193,9 +193,21 @@ type DefaultEvaluator struct {
 	querier           Querier
 }
 
+type BatchEvaluator struct {
+	querier           Querier
+	maxLookBackPeriod time.Duration
+}
+
 // NewDefaultEvaluator constructs a DefaultEvaluator
 func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *DefaultEvaluator {
 	return &DefaultEvaluator{
+		querier:           querier,
+		maxLookBackPeriod: maxLookBackPeriod,
+	}
+}
+
+func NewBatchEvaluator(querier Querier, maxLookBackPeriod time.Duration) *BatchEvaluator {
+	return &BatchEvaluator{
 		querier:           querier,
 		maxLookBackPeriod: maxLookBackPeriod,
 	}
@@ -273,6 +285,34 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
+}
+
+func (ev *BatchEvaluator) NewIterator(ctx context.Context, expr syntax.LogSelectorExpr, q Params) (iter.BatchEntryIterator, error) {
+	params := SelectLogParams{
+		QueryRequest: &logproto.QueryRequest{
+			Start:     q.Start(),
+			End:       q.End(),
+			Limit:     q.Limit(),
+			Direction: q.Direction(),
+			Selector:  expr.String(),
+			Shards:    q.Shards(),
+		},
+	}
+
+	if GetRangeType(q) == InstantType {
+		params.Start = params.Start.Add(-ev.maxLookBackPeriod)
+	}
+
+	return ev.querier.SelectLogsBatch(ctx, params)
+}
+
+func (ev *BatchEvaluator) NewStepEvaluator(
+	ctx context.Context,
+	nextEvFactory SampleEvaluatorFactory,
+	expr syntax.SampleExpr,
+	q Params,
+) (StepEvaluator, error) {
+	panic("TODO: implement me")
 }
 
 func newVectorAggEvaluator(

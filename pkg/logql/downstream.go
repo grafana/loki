@@ -237,7 +237,15 @@ func (errorQuerier) SelectLogs(_ context.Context, _ SelectLogParams) (iter.Entry
 	return nil, errors.New("unimplemented")
 }
 
+func (errorQuerier) SelectLogsBatch(_ context.Context, _ SelectLogParams) (iter.BatchEntryIterator, error) {
+	return nil, errors.New("unimplemented")
+}
+
 func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
+	return nil, errors.New("unimplemented")
+}
+
+func (errorQuerier) SelectSamplesBatch(_ context.Context, _ SelectSampleParams) (iter.BatchSampleIterator, error) {
 	return nil, errors.New("unimplemented")
 }
 

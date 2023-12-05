@@ -131,6 +131,24 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limit
 	}, nil
 }
 
+func (q *SingleTenantQuerier) SelectLogsBatch(ctx context.Context, params logql.SelectLogParams) (iter.BatchEntryIterator, error) {
+	var err error
+	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	params.QueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	if err != nil {
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
+	}
+
+	// TODO: only calling store to keep this simple
+
+	return q.store.SelectLogsBatch(ctx, params)
+
+}
+
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
 	var err error
@@ -231,6 +249,10 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		iters = append(iters, storeIter)
 	}
 	return iter.NewMergeSampleIterator(ctx, iters), nil
+}
+
+func (q *SingleTenantQuerier) SelectSamplesBatch(ctx context.Context, params logql.SelectSampleParams) (iter.BatchSampleIterator, error) {
+	panic("TODO: implement me")
 }
 
 func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT time.Time) ([]*logproto.Delete, error) {

@@ -111,6 +111,8 @@ func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
 type Querier interface {
 	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogsBatch(context.Context, SelectLogParams) (iter.BatchEntryIterator, error)
+	SelectSamplesBatch(context.Context, SelectSampleParams) (iter.BatchSampleIterator, error)
 }
 
 // EngineOpts is the list of options to use with the LogQL query engine.
@@ -139,6 +141,7 @@ func (opts *EngineOpts) applyDefault() {
 type Engine struct {
 	logger           log.Logger
 	evaluatorFactory EvaluatorFactory
+	batchEvaluator   *BatchEvaluator
 	limits           Limits
 	opts             EngineOpts
 }
@@ -152,6 +155,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 	return &Engine{
 		logger:           logger,
 		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		batchEvaluator:   NewBatchEvaluator(q, opts.MaxLookBackPeriod),
 		limits:           l,
 		opts:             opts,
 	}
@@ -160,12 +164,13 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (ng *Engine) Query(params Params) Query {
 	return &query{
-		logger:       ng.logger,
-		params:       params,
-		evaluator:    ng.evaluatorFactory,
-		record:       true,
-		logExecQuery: ng.opts.LogExecutingQuery,
-		limits:       ng.limits,
+		logger:         ng.logger,
+		params:         params,
+		evaluator:      ng.evaluatorFactory,
+		batchEvaluator: ng.batchEvaluator,
+		record:         true,
+		logExecQuery:   ng.opts.LogExecutingQuery,
+		limits:         ng.limits,
 	}
 }
 
@@ -176,12 +181,14 @@ type Query interface {
 }
 
 type query struct {
-	logger       log.Logger
-	params       Params
-	limits       Limits
-	evaluator    EvaluatorFactory
-	record       bool
-	logExecQuery bool
+	logger         log.Logger
+	params         Params
+	limits         Limits
+	evaluator      EvaluatorFactory
+	batchEvaluator *BatchEvaluator
+	record         bool
+	logExecQuery   bool
+	batch          bool
 }
 
 func (q *query) resultLength(res promql_parser.Value) int {
@@ -269,6 +276,17 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case syntax.LogSelectorExpr:
+		if q.batch {
+			itr, err := q.batchEvaluator.NewIterator(ctx, e, q.params)
+			if err != nil {
+				return nil, err
+			}
+
+			defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
+			streams, err := readStreamsInBatches(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
+			return streams, err
+		}
+
 		itr, err := q.evaluator.NewIterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
@@ -519,6 +537,42 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 			lastEntry = i.Entry().Timestamp
 			respSize++
 		}
+	}
+
+	result := make(logqlmodel.Streams, 0, len(streams))
+	for _, stream := range streams {
+		result = append(result, *stream)
+	}
+	sort.Sort(result)
+	return result, i.Error()
+}
+
+func readStreamsInBatches(i iter.BatchEntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
+	streams := map[string]*logproto.Stream{}
+	respSize := uint32(0)
+	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
+	// value here because many unit tests start at time.Unix(0,0)
+	for respSize < size && i.Next() {
+		entries, labels := i.Entries(), i.Labels()
+
+		// TODO: always tries to fetch upto size entries even if the entry ts is beyond the interval
+		// TODO: directly use data frame here
+
+		var i int
+		for respSize < size && i < len(entries) {
+			streamLabels := labels[i]
+
+			stream, ok := streams[streamLabels]
+			if !ok {
+				stream = &logproto.Stream{
+					Labels: streamLabels,
+				}
+				streams[streamLabels] = stream
+			}
+			stream.Entries = append(stream.Entries, entries[i])
+		}
+
+		respSize++
 	}
 
 	result := make(logqlmodel.Streams, 0, len(streams))
