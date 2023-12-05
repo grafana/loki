@@ -344,8 +344,8 @@ Please refer to [official migration guide](https://kubernetes.io/docs/reference/
 
 ###### Resource type changed for read target in Simple Scalable deployment mode
 
-The inroduction of the `backend` target allows for the `read` target to run as Kubernetes Deployment resource.
-The new jsonnet files reflect this change, thus upgrading might result in coexisting Deplpyment and StatefulSet for the `read` component, so be sure to do a clean-up.
+The introduction of the `backend` target allows for the `read` target to run as Kubernetes Deployment resource.
+The new jsonnet files reflect this change, thus upgrading might result in coexisting Deployment and StatefulSet for the `read` component, so be sure to do a clean-up.
 
 ## 2.8.0
 
