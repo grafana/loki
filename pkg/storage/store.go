@@ -50,6 +50,8 @@ var (
 type SelectStore interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSamplesBatch(ctx context.Context, req logql.SelectSampleParams) (iter.BatchSampleIterator, error)
+	SelectLogsBatch(ctx context.Context, req logql.SelectLogParams) (iter.BatchEntryIterator, error)
 	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 }
 
@@ -537,6 +539,14 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	}
 
 	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+}
+
+func (s *LokiStore) SelectSamplesBatch(ctx context.Context, req logql.SelectSampleParams) (iter.BatchSampleIterator, error) {
+	panic("TODO: implement me")
+}
+
+func (s *LokiStore) SelectLogsBatch(ctx context.Context, req logql.SelectLogParams) (iter.BatchEntryIterator, error) {
+	panic("TODO: call arrow version of LogBatchIterator")
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {

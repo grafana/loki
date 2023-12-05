@@ -1674,9 +1674,9 @@ func (e *batchEntryIterator) Entries() []logproto.Entry {
 }
 
 func (e *batchEntryIterator) Labels() []string {
-	lbls := make([]string, 0, e.cur.NumCols())
+	lbls := make([]string, 0, e.cur.NumRows())
 	lblColumn := e.cur.Column(1)
-	for i := 0; i < int(e.cur.NumCols()); i++ {
+	for i := 0; i < int(e.cur.NumRows()); i++ {
 		lbls = append(lbls, lblColumn.ValueStr(i))
 	}
 	return lbls
@@ -1729,6 +1729,13 @@ func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format by
 		extractor:        extractor,
 	}
 	return it
+}
+
+func newBatchSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.BatchSampleIterator {
+	return &batchSampleIterator{
+		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
+		extractor:        extractor,
+	}
 }
 
 type sampleBufferedIterator struct {
