@@ -12,6 +12,9 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/apache/arrow/go/v14/arrow"
+	"github.com/apache/arrow/go/v14/arrow/array"
+	"github.com/apache/arrow/go/v14/arrow/memory"
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -1156,6 +1159,14 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	return newEntryIterator(ctx, GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
+func (b encBlock) BatchIterator(ctx context.Context, pipeline log.StreamPipeline) iter.BatchEntryIterator {
+	if len(b.b) == 0 {
+		return iter.NoopBatchIterator
+	}
+	// TODO: Pass in how many rows we have in this block and use that to avoid allocations in Arrow.
+	return newBatchEntryIterator(ctx, GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
+}
+
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
@@ -1622,6 +1633,86 @@ func (e *entryBufferedIterator) Next() bool {
 		return true
 	}
 	return false
+}
+
+func newBatchEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.BatchEntryIterator {
+	return &batchEntryIterator{
+		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
+		pipeline:         pipeline,
+	}
+}
+
+type batchEntryIterator struct {
+	*bufferedIterator
+	pipeline log.StreamPipeline
+
+	// Arrow internal format:
+	// timestamp | labels | structured_metadata | parsed_labels | line content
+	cur arrow.Record
+}
+
+func (e *batchEntryIterator) Entries() []logproto.Entry {
+	timestamps := array.NewTimestampData(e.cur.Column(0).Data())
+	lines := array.NewStringData(e.cur.Column(4).Data())
+
+	output := make([]logproto.Entry, 0, e.cur.NumCols())
+	for i := 0; i < int(e.cur.NumCols()); i++ {
+		output = append(output, logproto.Entry{
+			Timestamp: timestamps.Value(i).ToTime(arrow.Nanosecond),
+			Line:      lines.Value(i),
+		})
+	}
+	return output
+}
+
+func (e *batchEntryIterator) Labels() []string {
+	lbls := make([]string, 0, e.cur.NumCols())
+	lblColumn := e.cur.Column(1)
+	for i := 0; i < int(e.cur.NumCols()); i++ {
+		lbls = append(lbls, lblColumn.ValueStr(i))
+	}
+	return lbls
+}
+
+func (e *batchEntryIterator) StreamHash() uint64 { return e.pipeline.BaseLabels().Hash() }
+
+func (e *batchEntryIterator) Next() bool {
+	pool := memory.NewGoAllocator()
+	fields := []arrow.Field{
+		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
+		{Name: "labels", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
+		{Name: "structured_metadata", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
+		{Name: "parsed_labels", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
+		{Name: "line", Type: &arrow.StringType{}},
+	}
+	schema := arrow.NewSchema(fields, &arrow.Metadata{})
+	b := array.NewRecordBuilder(pool, schema)
+	// TODO: Release resources.
+	for i := 0; e.bufferedIterator.Next() && i < 1000; i++ {
+		// TODO: Do the process pipeline after we create the arrow batch and update the record.
+		newLine, lbls, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		if !matches {
+			continue
+		}
+
+		e.stats.AddPostFilterLines(1)
+
+		b.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(e.currTs))
+		addLabelsToBuilder(b.Field(1).(*array.MapBuilder), lbls.Labels())
+		addLabelsToBuilder(b.Field(2).(*array.MapBuilder), lbls.StructuredMetadata())
+		addLabelsToBuilder(b.Field(3).(*array.MapBuilder), lbls.Parsed())
+		b.Field(4).(*array.StringBuilder).Append(string(newLine))
+	}
+	e.cur = b.NewRecord()
+	return e.cur.NumRows() > 0
+}
+
+func addLabelsToBuilder(bldr *array.MapBuilder, lbls labels.Labels) {
+	bldr.Append(true)
+	for _, label := range lbls {
+		bldr.KeyBuilder().(*array.StringBuilder).Append(label.Name)
+		bldr.ItemBuilder().(*array.StringBuilder).Append(label.Value)
+	}
 }
 
 func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {

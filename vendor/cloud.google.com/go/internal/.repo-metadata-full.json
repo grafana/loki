@@ -349,6 +349,26 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/bigquery/biglake/apiv1": {
+    "api_shortname": "biglake",
+    "distribution_name": "cloud.google.com/go/bigquery/biglake/apiv1",
+    "description": "BigLake API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/biglake/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/bigquery/biglake/apiv1alpha1": {
+    "api_shortname": "biglake",
+    "distribution_name": "cloud.google.com/go/bigquery/biglake/apiv1alpha1",
+    "description": "BigLake API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/biglake/apiv1alpha1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/bigquery/connection/apiv1": {
     "api_shortname": "bigqueryconnection",
     "distribution_name": "cloud.google.com/go/bigquery/connection/apiv1",
@@ -656,6 +676,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/confidentialcomputing/latest/apiv1alpha1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/config/apiv1": {
+    "api_shortname": "config",
+    "distribution_name": "cloud.google.com/go/config/apiv1",
+    "description": "Infrastructure Manager API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/config/latest/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -1249,6 +1279,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/language/apiv2": {
+    "api_shortname": "language",
+    "distribution_name": "cloud.google.com/go/language/apiv2",
+    "description": "Cloud Natural Language API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/language/latest/apiv2",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/lifesciences/apiv2beta": {
     "api_shortname": "lifesciences",
     "distribution_name": "cloud.google.com/go/lifesciences/apiv2beta",
@@ -1509,6 +1549,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/notebooks/apiv2": {
+    "api_shortname": "notebooks",
+    "distribution_name": "cloud.google.com/go/notebooks/apiv2",
+    "description": "Notebooks API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/notebooks/latest/apiv2",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/optimization/apiv1": {
     "api_shortname": "cloudoptimization",
     "distribution_name": "cloud.google.com/go/optimization/apiv1",
@@ -1637,6 +1687,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/policytroubleshooter/latest/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/policytroubleshooter/iam/apiv3": {
+    "api_shortname": "policytroubleshooter",
+    "distribution_name": "cloud.google.com/go/policytroubleshooter/iam/apiv3",
+    "description": "Policy Troubleshooter API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/policytroubleshooter/latest/iam/apiv3",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/privatecatalog/apiv1beta1": {

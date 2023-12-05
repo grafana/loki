@@ -19,6 +19,12 @@ type EntryIterator interface {
 	Entry() logproto.Entry
 }
 
+// BatchEntryIterator returns batches of entries alongside a batch of labels for each.
+type BatchEntryIterator interface {
+	BatchIterator
+	Entries() []logproto.Entry
+}
+
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i      int

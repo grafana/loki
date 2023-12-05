@@ -188,9 +188,23 @@ func TestBlock(t *testing.T) {
 				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 
+				// TODO: Test batch iterators in a more robust manner.
+				batchEntries := []logproto.Entry{}
+				for _, block := range chk.blocks {
+					batchIt := newBatchEntryIterator(context.Background(), GetReaderPool(chk.Encoding()), block.b, noopStreamPipeline, chk.format, chk.symbolizer)
+
+					for batchIt.Next() {
+						batchEntries = append(batchEntries, batchIt.Entries()...)
+					}
+					require.NoError(t, batchIt.Error())
+				}
+				require.NotEmpty(t, batchEntries)
+
 				idx := 0
+				allEntries := []logproto.Entry{}
 				for it.Next() {
 					e := it.Entry()
+					allEntries = append(allEntries, e)
 					require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 					require.Equal(t, cases[idx].str, e.Line)
 					if chunkFormat < ChunkFormatV4 {
@@ -206,6 +220,7 @@ func TestBlock(t *testing.T) {
 					}
 					idx++
 				}
+				// require.Equal(t, allEntries, batchEntries)
 
 				require.NoError(t, it.Error())
 				require.NoError(t, it.Close())
