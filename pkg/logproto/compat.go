@@ -356,11 +356,13 @@ func (m *FilterChunkRefRequest) GetStep() int64 {
 // GetQuery returns the query of the request.
 // The query is the hash for the input chunks refs and the filter expressions.
 func (m *FilterChunkRefRequest) GetQuery() string {
+	var encodeBuf []byte
 	var chunksHash uint64
 	if len(m.Refs) > 0 {
 		h := xxhash.New()
 		for _, ref := range m.Refs {
-			_, _ = h.WriteString(fmt.Sprintf("%s-%d", ref.Tenant, ref.Fingerprint))
+			encodeBuf = encodeBuf[:0]
+			_, _ = h.Write(fmt.Appendf(encodeBuf, "%d", ref.Fingerprint))
 		}
 		chunksHash = h.Sum64()
 	}
@@ -375,7 +377,8 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		sb.WriteString(strconv.Itoa(int(filter.Operator)))
+		encodeBuf = encodeBuf[:0]
+		sb.WriteString(string(fmt.Appendf(encodeBuf, "%d", filter.Operator)))
 		sb.WriteString("-")
 		sb.WriteString(filter.Match)
 	}

@@ -298,7 +298,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 					},
 				},
 			},
-			expected: `10379275979514026197`,
+			expected: `13237225503670494420`,
 		},
 		{
 			desc: "request with filters but no chunks",
@@ -336,7 +336,7 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 					},
 				},
 			},
-			expected: `8320232433975427174/0-uuid,1-trace`,
+			expected: `6080128442901703586/0-uuid,1-trace`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
