@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"flag"
 	"testing"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 // Range is 1000-4000
@@ -123,7 +121,7 @@ func TestExtract(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			e := NewExtractor()
+			e := newExtractor()
 			actual := e.Extract(tc.start, tc.end, tc.input, 0, 0)
 			require.Equal(t, tc.expected, actual)
 		})
@@ -310,7 +308,7 @@ func TestMerge(t *testing.T) {
 				input = append(input, i)
 			}
 
-			m := NewMerger()
+			m := newMerger()
 			actual, err := m.MergeResponse(input...)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, actual)
@@ -321,11 +319,7 @@ func TestMerge(t *testing.T) {
 func TestCache(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	var l validation.Limits
-	l.RegisterFlags(flag.NewFlagSet("limits", flag.PanicOnError))
-	overrides, _ := validation.NewOverrides(l, nil)
 	limits := mockLimits{
-		Overrides:     overrides,
 		cacheInterval: 15 * time.Minute,
 	}
 
@@ -335,7 +329,6 @@ func TestCache(t *testing.T) {
 				Cache: cache.NewMockCache(),
 			},
 		},
-		Parallelism: 1,
 	}
 	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.BloomFilterCache, constants.Loki)
 	require.NoError(t, err)
@@ -371,7 +364,6 @@ func TestCache(t *testing.T) {
 	server, calls := newMockServer(expectedRes)
 
 	cacheMiddleware := NewBloomGatewayClientCacheMiddleware(
-		cfg,
 		log.NewNopLogger(),
 		server,
 		c,
@@ -458,7 +450,6 @@ func (s *mockServer) FilterChunkRefs(_ context.Context, _ *logproto.FilterChunkR
 }
 
 type mockLimits struct {
-	*validation.Overrides
 	cacheFreshness time.Duration
 	cacheInterval  time.Duration
 }

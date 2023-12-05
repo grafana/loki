@@ -104,7 +104,7 @@ type ClientConfig struct {
 	Ring ring.ReadRing `yaml:"-"`
 
 	// Cache configures the cache used to store the results of the Bloom Gateway server.
-	Cache        CacheConfig `yaml:"cache,omitempty" doc:""`
+	Cache        CacheConfig `yaml:"results_cache,omitempty"`
 	CacheResults bool        `yaml:"cache_results"`
 }
 
@@ -116,6 +116,7 @@ func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags for the Bloom Gateway client configuration with a common prefix.
 func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
+	i.Cache.RegisterFlagsWithPrefix(f, prefix+"cache.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
 }
 
@@ -176,7 +177,6 @@ func NewGatewayClient(
 
 		if cfg.CacheResults {
 			pool.BloomGatewayClient = NewBloomGatewayClientCacheMiddleware(
-				cfg.Cache,
 				logger,
 				pool.BloomGatewayClient,
 				c,

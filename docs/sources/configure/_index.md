@@ -1838,12 +1838,15 @@ client:
   # CLI flag: -bloom-gateway-client.log-gateway-requests
   [log_gateway_requests: <boolean> | default = false]
 
-  cache:
+  results_cache:
     # The cache block configures the cache backend.
     # The CLI flags prefix for this block configuration is:
-    # store.index-cache-read
+    # bloom-gateway-client.cache
     [cache: <cache_config>]
 
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -bloom-gateway-client.cache.compression
     [compression: <string> | default = ""]
 
     [parallelism: <int>]
@@ -4249,6 +4252,7 @@ The TLS configuration.
 
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.volume-results-cache`

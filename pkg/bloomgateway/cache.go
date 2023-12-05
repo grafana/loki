@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"sort"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
@@ -15,32 +16,39 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
+const (
+	cacheParalellism = 1
+)
+
 type CacheConfig struct {
 	resultscache.Config `yaml:",inline"`
-	Parallelism         int `yaml:"parallelism"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *CacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(f, "bloom-gateway.cache.")
-	f.IntVar(&cfg.Parallelism, "bloom-gateway.cache.parallelism", 1, "Maximum number fo concurrent requests to gateway server.")
+}
+
+type CacheLimits interface {
+	resultscache.Limits
+	BloomGatewayCacheKeyInterval(tenantID string) time.Duration
 }
 
 type keyGen struct {
-	Limits
+	CacheLimits
 }
 
-func NewCacheKeyGen(limits Limits) resultscache.KeyGenerator {
+func newCacheKeyGen(limits CacheLimits) keyGen {
 	return keyGen{limits}
 }
 
-func (k keyGen) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
-	return resultscache.ConstSplitter(k.BloomGatewayCacheKeyInterval(userID)).GenerateCacheKey(ctx, userID, r)
+func (k keyGen) GenerateCacheKey(ctx context.Context, tenant string, r resultscache.Request) string {
+	return resultscache.ConstSplitter(k.BloomGatewayCacheKeyInterval(tenant)).GenerateCacheKey(ctx, tenant, r)
 }
 
 type extractor struct{}
 
-func NewExtractor() resultscache.Extractor {
+func newExtractor() extractor {
 	return extractor{}
 }
 
@@ -74,7 +82,7 @@ func (e extractor) Extract(start, end int64, r resultscache.Response, _, _ int64
 
 type merger struct{}
 
-func NewMerger() resultscache.ResponseMerger {
+func newMerger() merger {
 	return merger{}
 }
 
@@ -124,21 +132,20 @@ func mergeShortRefs(refs []*logproto.ShortRef) []*logproto.ShortRef {
 	})
 }
 
-type bloomQuerierCache struct {
+type ClientCache struct {
 	cache  *resultscache.ResultsCache
-	limits Limits
+	limits CacheLimits
 	logger log.Logger
 }
 
 func NewBloomGatewayClientCacheMiddleware(
-	cfg CacheConfig,
 	logger log.Logger,
 	next logproto.BloomGatewayClient,
 	c cache.Cache,
-	limits Limits,
+	limits CacheLimits,
 	cacheGen resultscache.CacheGenNumberLoader,
 	retentionEnabled bool,
-) logproto.BloomGatewayClient {
+) *ClientCache {
 	nextAsHandler := resultscache.HandlerFunc(func(ctx context.Context, req resultscache.Request) (resultscache.Response, error) {
 		return next.FilterChunkRefs(ctx, req.(*logproto.FilterChunkRefRequest))
 	})
@@ -147,27 +154,27 @@ func NewBloomGatewayClientCacheMiddleware(
 		logger,
 		c,
 		nextAsHandler,
-		NewCacheKeyGen(limits),
+		newCacheKeyGen(limits),
 		limits,
-		NewMerger(),
-		NewExtractor(),
+		newMerger(),
+		newExtractor(),
 		nil,
 		nil,
 		func(_ context.Context, _ []string, _ resultscache.Request) int {
-			return cfg.Parallelism
+			return cacheParalellism
 		},
 		cacheGen,
 		retentionEnabled,
 	)
 
-	return &bloomQuerierCache{
+	return &ClientCache{
 		cache:  resultsCache,
 		limits: limits,
 		logger: logger,
 	}
 }
 
-func (c *bloomQuerierCache) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest, _ ...grpc.CallOption) (*logproto.FilterChunkRefResponse, error) {
+func (c *ClientCache) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest, _ ...grpc.CallOption) (*logproto.FilterChunkRefResponse, error) {
 	res, err := c.cache.Do(ctx, req)
 	if err != nil {
 		return nil, err
