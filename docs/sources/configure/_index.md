@@ -1849,8 +1849,6 @@ client:
     # CLI flag: -bloom-gateway-client.cache.compression
     [compression: <string> | default = ""]
 
-    [parallelism: <int>]
-
   [cache_results: <boolean>]
 
 # Number of workers to use for filtering chunks concurrently.
