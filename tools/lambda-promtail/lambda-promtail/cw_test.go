@@ -36,7 +36,8 @@ func Test_parseCWEvent(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		// https://github.com/aws/aws-lambda-go/blob/main/events/cloudwatch_logs_test.go
+		// Docs: https://docs.aws.amazon.com/lambda/latest/dg/services-cloudwatchlogs.html
+		// Example CloudWatchLogEvent copied from https://github.com/aws/aws-lambda-go/blob/main/events/cloudwatch_logs_test.go
 		cwevent := &events.CloudwatchLogsEvent{
 			AWSLogs: events.CloudwatchLogsRawData{
 				Data: "H4sIAAAAAAAAAHWPwQqCQBCGX0Xm7EFtK+smZBEUgXoLCdMhFtKV3akI8d0bLYmibvPPN3wz00CJxmQnTO41whwWQRIctmEcB6sQbFC3CjW3XW8kxpOpP+OC22d1Wml1qZkQGtoMsScxaczKN3plG8zlaHIta5KqWsozoTYw3/djzwhpLwivWFGHGpAFe7DL68JlBUk+l7KSN7tCOEJ4M3/qOI49vMHj+zCKdlFqLaU2ZHV2a4Ct/an0/ivdX8oYc1UVX860fQDQiMdxRQEAAA==",
