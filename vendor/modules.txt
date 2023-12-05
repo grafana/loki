@@ -1072,6 +1072,9 @@ github.com/jcmturner/gokrb5/v8/types
 ## explicit; go 1.13
 github.com/jcmturner/rpc/v2/mstypes
 github.com/jcmturner/rpc/v2/ndr
+# github.com/jeschkies/go-memmem v0.1.0
+## explicit; go 1.20
+github.com/jeschkies/go-memmem/pkg/search
 # github.com/jmespath/go-jmespath v0.4.0
 ## explicit; go 1.14
 github.com/jmespath/go-jmespath
