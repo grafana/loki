@@ -120,6 +120,20 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
 }
 
+func (i *ClientConfig) Validate() error {
+	if err := i.GRPCClientConfig.Validate(); err != nil {
+		return errors.Wrap(err, "grpc client config")
+	}
+
+	if i.CacheResults {
+		if err := i.Cache.Validate(); err != nil {
+			return errors.Wrap(err, "cache config")
+		}
+	}
+
+	return nil
+}
+
 type Client interface {
 	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...*logproto.LineFilterExpression) ([]*logproto.GroupedChunkRefs, error)
 }
@@ -156,10 +170,6 @@ func NewGatewayClient(
 
 	var c cache.Cache
 	if cfg.CacheResults {
-		if !cache.IsCacheConfigured(cfg.Cache.CacheConfig) {
-			return nil, errors.New("cache is not configured")
-		}
-
 		c, err = cache.New(cfg.Cache.CacheConfig, registerer, logger, stats.BloomFilterCache, constants.Loki)
 		if err != nil {
 			return nil, errors.Wrap(err, "new bloom gateway cache")
