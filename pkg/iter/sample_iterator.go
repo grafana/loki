@@ -19,6 +19,12 @@ type SampleIterator interface {
 	Sample() logproto.Sample
 }
 
+// BatchSamepleIterator returns batches of samples alongside a batch of labels for each.
+type BatchSampleIterator interface {
+	BatchIterator
+	Samples() []logproto.Sample
+}
+
 // PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.
 type PeekingSampleIterator interface {
 	SampleIterator

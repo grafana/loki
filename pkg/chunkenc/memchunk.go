@@ -1174,6 +1174,14 @@ func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSample
 	return newSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
 
+func (b encBlock) BatchSampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.BatchSampleIterator {
+	if len(b.b) == 0 {
+		return iter.NoopBatchIterator
+	}
+
+	return newBatchSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+}
+
 func (b block) Offset() int {
 	return b.offset
 }
@@ -1753,4 +1761,57 @@ func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLa
 
 func (e *sampleBufferedIterator) Sample() logproto.Sample {
 	return e.cur
+}
+
+type batchSampleIterator struct {
+	*bufferedIterator
+
+	extractor log.StreamSampleExtractor
+
+	// Arrow internal format:
+	// timestamp | labels | line_hash | sample_value
+	cur arrow.Record
+}
+
+func (s *batchSampleIterator) Next() bool {
+	pool := memory.NewGoAllocator()
+	fields := []arrow.Field{
+		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
+		{Name: "labels", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
+		{Name: "line_hash", Type: &arrow.Uint64Type{}},
+		{Name: "sample_value", Type: &arrow.Float64Type{}},
+	}
+	schema := arrow.NewSchema(fields, &arrow.Metadata{})
+	b := array.NewRecordBuilder(pool, schema)
+
+	// TODO: release the pool resource
+	// NOTE: So we are basically going through all the samples? when it's Next() is called once?. Feel like something wrong.
+	for s.bufferedIterator.Next() {
+		val, lbls, ok := s.extractor.Process(s.currTs, s.currLine, s.currStructuredMetadata...)
+		if !ok {
+			continue
+		}
+		s.stats.AddPostFilterLines(1)
+
+		b.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(s.currTs))
+		addLabelsToBuilder(b.Field(1).(*array.MapBuilder), lbls.Labels())
+		b.Field(2).(*array.Uint64Builder).Append(xxhash.Sum64(s.currLine))
+		b.Field(3).(*array.Float64Builder).Append(val)
+	}
+
+	s.cur = b.NewRecord()
+
+	return s.cur.NumRows() > 0
+}
+
+func (b *batchSampleIterator) Labels() []string {
+	return nil
+}
+
+func (b *batchSampleIterator) StreamHash() uint64 {
+	return 0
+}
+
+func (b *batchSampleIterator) Samples() []logproto.Sample {
+	return nil
 }
