@@ -26,7 +26,11 @@ type CacheConfig struct {
 
 // RegisterFlags registers flags.
 func (cfg *CacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix(f, "bloom-gateway.cache.")
+	cfg.RegisterFlagsWithPrefix("bloom-gateway-client.cache.", f)
+}
+
+func (cfg *CacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(f, prefix)
 }
 
 type CacheLimits interface {

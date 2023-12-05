@@ -116,7 +116,7 @@ func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags for the Bloom Gateway client configuration with a common prefix.
 func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
-	i.Cache.RegisterFlagsWithPrefix(f, prefix+"cache.")
+	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
 	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
 }
