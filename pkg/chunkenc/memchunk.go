@@ -1769,7 +1769,7 @@ type batchSampleIterator struct {
 	extractor log.StreamSampleExtractor
 
 	// Arrow internal format:
-	// timestamp | labels | line_hash | sample_value
+	// timestamp | labels | sample_value
 	cur arrow.Record
 }
 
@@ -1778,7 +1778,6 @@ func (s *batchSampleIterator) Next() bool {
 	fields := []arrow.Field{
 		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
 		{Name: "labels", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
-		{Name: "line_hash", Type: &arrow.Uint64Type{}},
 		{Name: "sample_value", Type: &arrow.Float64Type{}},
 	}
 	schema := arrow.NewSchema(fields, &arrow.Metadata{})
@@ -1795,8 +1794,7 @@ func (s *batchSampleIterator) Next() bool {
 
 		b.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(s.currTs))
 		addLabelsToBuilder(b.Field(1).(*array.MapBuilder), lbls.Labels())
-		b.Field(2).(*array.Uint64Builder).Append(xxhash.Sum64(s.currLine))
-		b.Field(3).(*array.Float64Builder).Append(val)
+		b.Field(2).(*array.Float64Builder).Append(val)
 	}
 
 	s.cur = b.NewRecord()
@@ -1805,13 +1803,30 @@ func (s *batchSampleIterator) Next() bool {
 }
 
 func (b *batchSampleIterator) Labels() []string {
-	return nil
+	lbls := make([]string, 0, b.cur.NumCols())
+	lblColumn := b.cur.Column(1)
+	for i := 0; i < int(b.cur.NumCols()); i++ {
+		lbls = append(lbls, lblColumn.ValueStr(i))
+	}
+	return lbls
 }
 
 func (b *batchSampleIterator) StreamHash() uint64 {
-	return 0
+	return b.extractor.BaseLabels().Hash()
 }
 
 func (b *batchSampleIterator) Samples() []logproto.Sample {
-	return nil
+	timestamps := array.NewTimestampData(b.cur.Column(0).Data())
+	samples := array.NewFloat64Data(b.cur.Column(2).Data())
+
+	output := make([]logproto.Sample, 0, b.cur.NumRows())
+
+	for i := 0; i < int(b.cur.NumRows()); i++ {
+		output = append(output, logproto.Sample{
+			Timestamp: timestamps.Value(i).ToTime(arrow.Nanosecond).UnixNano(),
+			Value:     samples.Value(i),
+		})
+	}
+
+	return output
 }
