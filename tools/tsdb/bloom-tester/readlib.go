@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"

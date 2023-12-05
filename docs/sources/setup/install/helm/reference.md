@@ -4555,6 +4555,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the write pods</td>

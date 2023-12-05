@@ -1838,6 +1838,21 @@ client:
   # CLI flag: -bloom-gateway-client.log-gateway-requests
   [log_gateway_requests: <boolean> | default = false]
 
+  results_cache:
+    # The cache block configures the cache backend.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-gateway-client.cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -bloom-gateway-client.cache.compression
+    [compression: <string> | default = ""]
+
+  # Flag to control whether to cache bloom gateway client requests/responses.
+  # CLI flag: -bloom-gateway-client.cache_results
+  [cache_results: <boolean> | default = false]
+
 # Number of workers to use for filtering chunks concurrently.
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
@@ -2768,6 +2783,22 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
+# How much of the available query capacity ("querier" components in distributed
+# mode, "read" components in SSD mode) can be used by a single tenant. Allowed
+# values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant
+# to use half of the available queriers for processing the query workload. If
+# set to 0, query capacity is determined by frontend.max-queriers-per-tenant.
+# When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are
+# configured, smaller value of the resulting querier replica count is
+# considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas *
+# frontend.max-query-capacity)). *All* queriers will handle requests for the
+# tenant if neither limits are applied. This option only works with queriers
+# connecting to the query-frontend / query-scheduler, not when using downstream
+# URL. Use this feature in a multi-tenant setup where you need to limit query
+# capacity for certain tenants.
+# CLI flag: -frontend.max-query-capacity
+[max_query_capacity: <float> | default = 0]
+
 # Number of days of index to be kept always downloaded for queries. Applies only
 # to per user index in boltdb-shipper index store. 0 to disable.
 # CLI flag: -store.query-ready-index-num-days
@@ -3011,6 +3042,10 @@ shard_streams:
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism
 [bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
+
+# Interval for computing the cache key in the Bloom Gateway.
+# CLI flag: -bloom-gateway.cache-key-interval
+[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
@@ -4217,6 +4252,7 @@ The TLS configuration.
 
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.volume-results-cache`
