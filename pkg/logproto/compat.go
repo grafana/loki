@@ -1,6 +1,7 @@
 package logproto
 
 import (
+	"encoding/binary"
 	stdjson "encoding/json"
 	"fmt"
 	"math"
@@ -361,8 +362,7 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 	if len(m.Refs) > 0 {
 		h := xxhash.New()
 		for _, ref := range m.Refs {
-			encodeBuf = encodeBuf[:0]
-			_, _ = h.Write(fmt.Appendf(encodeBuf, "%d", ref.Fingerprint))
+			_, _ = h.Write(binary.AppendUvarint(encodeBuf[:0], ref.Fingerprint))
 		}
 		chunksHash = h.Sum64()
 	}
@@ -377,8 +377,7 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		encodeBuf = encodeBuf[:0]
-		sb.WriteString(string(fmt.Appendf(encodeBuf, "%d", filter.Operator)))
+		sb.Write(fmt.Appendf(encodeBuf[:0], "%d", filter.Operator))
 		sb.WriteString("-")
 		sb.WriteString(filter.Match)
 	}
