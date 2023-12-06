@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"hash/fnv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -54,10 +56,15 @@ type Memcached struct {
 	// there are two entry points that can close these channels, when client calls
 	// .Stop() explicitly, or passed context is cancelled.
 	// So `Stop()` will make sure it's not closing the channels that are already closed, which may cause a panic.
-	stopMu  sync.Mutex
-	stopped bool
+	stopped atomic.Bool
 
 	logger log.Logger
+
+	// only used it tests to test the cancellation behaviour in different go-routines
+	// We needed a way to cancel the passed context in middle of each batch fetch deterministically
+	// this `fetchDelayForTest` used to sleep for this duration before doing actual fetch.
+	// So know for sure, control is on this particular `select` case before cancelling.
+	fetchDelayForTest chan struct{}
 }
 
 // NewMemcached makes a new Memcached.
@@ -101,7 +108,9 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 					batchID: input.batchID,
 				}
 				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
+				fmt.Println("Am i here? before")
 				input.resultCh <- res
+				fmt.Println("Am i here? after")
 			}
 
 		}()
@@ -184,10 +193,16 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 			select {
 			case <-ctx.Done():
 				c.closeAndStop()
+				fmt.Println("exit from done")
 				return
 			case <-c.closed:
 				return
 			default:
+				// Only used in tests.
+				if c.fetchDelayForTest != nil {
+					<-c.fetchDelayForTest
+				}
+
 				c.inputCh <- &work{
 					keys:     batchKeys,
 					ctx:      ctx,
@@ -208,18 +223,23 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 	// We need to order found by the input keys order.
 	results := make([]*result, numResults)
+	fmt.Println("Am using numResults", numResults)
 	for i := 0; i < numResults; i++ {
 		// NOTE: Without this check, <-resultCh may wait forever as work is
 		// interrupted (by other goroutine by calling `Stop()`) and there may not be `numResults`
 		// values to read from `resultsCh` in that case.
 		// Also we do close(resultsCh) in the same goroutine so <-resultCh may never return.
+		fmt.Println("looping results", i)
 		select {
 		case <-c.closed:
 			return
 		case result := <-resultsCh:
 			results[result.batchID] = result
+		default:
+			fmt.Println("At the default case in reading the results")
 		}
 	}
+	fmt.Println("Am I closing the resultsCh")
 	close(resultsCh)
 
 	for _, result := range results {
@@ -257,7 +277,6 @@ func (c *Memcached) Stop() {
 	if c.inputCh == nil {
 		return
 	}
-
 	c.closeAndStop()
 	c.wg.Wait()
 }
@@ -266,18 +285,19 @@ func (c *Memcached) Stop() {
 // Assumes c.inputCh, c.closed channels are non-nil
 // Go routine safe and idempotent.
 func (c *Memcached) closeAndStop() {
-	c.stopMu.Lock()
-	defer c.stopMu.Unlock()
-
-	if !c.stopped {
+	if !c.stopped.Load() {
 		close(c.inputCh)
 		close(c.closed)
-		c.stopped = true
+		c.stopped.Store(true)
 	}
 }
 
 func (c *Memcached) GetCacheType() stats.CacheType {
 	return c.cacheType
+}
+
+func (c *Memcached) SetFetchDelayForTest(ch chan struct{}) {
+	c.fetchDelayForTest = ch
 }
 
 // HashKey hashes key into something you can store in memcached.
