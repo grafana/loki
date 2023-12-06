@@ -542,7 +542,41 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 }
 
 func (s *LokiStore) SelectSamplesBatch(ctx context.Context, req logql.SelectSampleParams) (iter.BatchSampleIterator, error) {
-	panic("TODO: implement me")
+	matchers, from, through, err := decodeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lazyChunks) == 0 {
+		return iter.NoopBatchIterator, nil
+	}
+
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
+	if err != nil {
+		return nil, err
+	}
+
+	var chunkFilterer chunk.Filterer
+	if s.chunkFilterer != nil {
+		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
+	}
+
+	return newSampleBatchIteratorArrow(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
 }
 
 func (s *LokiStore) SelectLogsBatch(ctx context.Context, req logql.SelectLogParams) (iter.BatchEntryIterator, error) {

@@ -34,6 +34,65 @@ type MockQuerier struct {
 	streams []logproto.Stream
 }
 
+func (q MockQuerier) SelectLogsBatch(ctx context.Context, req SelectLogParams) (iter.BatchEntryIterator, error) {
+	panic("TODO")
+}
+
+func (q MockQuerier) SelectSamplesBatch(ctx context.Context, req SelectSampleParams) (iter.BatchSampleIterator, error) {
+	selector, err := req.LogSelector()
+	if err != nil {
+		return nil, err
+	}
+
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	matchers := selector.Matchers()
+
+	var shard *astmapper.ShardAnnotation
+	if len(req.Shards) > 0 {
+		shards, err := ParseShards(req.Shards)
+		if err != nil {
+			return nil, err
+		}
+		shard = &shards[0]
+	}
+
+	var matched []logproto.Stream
+
+outer:
+	for _, stream := range q.streams {
+		ls := mustParseLabels(stream.Labels)
+
+		// filter by shard if requested
+		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+			continue
+		}
+
+		for _, matcher := range matchers {
+			if !matcher.Matches(ls.Get(matcher.Name)) {
+				continue outer
+			}
+		}
+		matched = append(matched, stream)
+	}
+
+	filtered := processSeries(matched, extractor)
+
+	return iter.NewTimeRangedBatchSampleIterator(
+		iter.NewMultiSeriesBatchIterator(filtered),
+		req.Start.UnixNano(),
+		req.End.UnixNano()+1,
+	), nil
+}
+
 func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {

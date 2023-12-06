@@ -306,13 +306,31 @@ func (ev *BatchEvaluator) NewIterator(ctx context.Context, expr syntax.LogSelect
 	return ev.querier.SelectLogsBatch(ctx, params)
 }
 
+// NOTE(kavi): Currrently make it work only with basic range aggregation.
+// ex: count_over_time({foo="bar"}[5m]). Ignore everything else
 func (ev *BatchEvaluator) NewStepEvaluator(
 	ctx context.Context,
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	panic("TODO: implement me")
+	switch e := expr.(type) {
+	case *syntax.RangeAggregationExpr:
+		it, err := ev.querier.SelectSamplesBatch(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
+				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				End:      q.End().Add(-e.Left.Offset),
+				Selector: expr.String(),
+				Shards:   q.Shards(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return newRangeAggEvaluator(iter.NewPeekingSampleBatchIterator(it), e, q, e.Left.Offset)
+	default:
+		panic("unsupported aggregation")
+	}
 }
 
 func newVectorAggEvaluator(

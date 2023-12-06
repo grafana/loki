@@ -3,10 +3,11 @@ package iter
 import (
 	"container/heap"
 	"context"
-	"github.com/apache/arrow/go/v14/arrow"
-	"github.com/apache/arrow/go/v14/arrow/array"
 	"io"
 	"sync"
+
+	"github.com/apache/arrow/go/v14/arrow"
+	"github.com/apache/arrow/go/v14/arrow/array"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -34,8 +35,7 @@ type PeekingSampleIterator interface {
 }
 
 type peekingSampleIterator struct {
-	iter SampleIterator
-
+	iter  SampleIterator
 	cache *sampleWithLabels
 	next  *sampleWithLabels
 }
@@ -128,6 +128,97 @@ func (it *peekingSampleIterator) Peek() (string, logproto.Sample, bool) {
 }
 
 func (it *peekingSampleIterator) Error() error {
+	return it.iter.Error()
+}
+
+// PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.
+type PeekingSampleBatchIterator interface {
+	BatchSampleIterator
+	Peek() (string, logproto.Sample, bool)
+}
+
+type peekingSampleBatchIterator struct {
+	iter  BatchSampleIterator
+	cache *sampleWithLabels
+	next  *sampleWithLabels
+}
+
+func NewPeekingSampleBatchIterator(iter BatchSampleIterator) PeekingSampleIterator {
+	// initialize the next entry so we can peek right from the start.
+	var cache *sampleWithLabels
+	next := &sampleWithLabels{}
+	if iter.Next() {
+		cache = &samplesWithLabels{
+			samples:    iter.Samples(),
+			labels:     iter.Labels(),
+			streamHash: iter.StreamHash(),
+		}
+		next.Sample = cache.Sample
+		next.labels = cache.labels
+	}
+	return &peekingSampleBatchIterator{
+		iter:  iter,
+		cache: cache,
+		next:  next,
+	}
+}
+
+func (it *peekingSampleBatchIterator) Close() error {
+	return it.iter.Close()
+}
+
+func (it *peekingSampleBatchIterator) Labels() string {
+	if it.next != nil {
+		return it.next.labels
+	}
+	return ""
+}
+
+func (it *peekingSampleBatchIterator) StreamHash() uint64 {
+	if it.next != nil {
+		return it.next.streamHash
+	}
+	return 0
+}
+
+func (it *peekingSampleBatchIterator) Next() bool {
+	if it.cache != nil {
+		it.next.Sample = it.cache.Sample
+		it.next.labels = it.cache.labels
+		it.next.streamHash = it.cache.streamHash
+		it.cacheNext()
+		return true
+	}
+	return false
+}
+
+// cacheNext caches the next element if it exists.
+func (it *peekingSampleBatchIterator) cacheNext() {
+	if it.iter.Next() {
+		it.cache.Sample = it.iter.Sample()
+		it.cache.labels = it.iter.Labels()
+		it.cache.streamHash = it.iter.StreamHash()
+		return
+	}
+	// nothing left removes the cached entry
+	it.cache = nil
+}
+
+func (it *peekingSampleBatchIterator) Sample() logproto.Sample {
+	if it.next != nil {
+		return it.next.Sample
+	}
+	return logproto.Sample{}
+}
+
+func (it *peekingSampleBatchIterator) Peek() (string, logproto.Sample, bool) {
+	if it.cache != nil {
+		return it.cache.labels, it.cache.Sample, true
+	}
+	return "", logproto.Sample{}, false
+}
+
+func (it *peekingSampleBatchIterator) Error() error {
 	return it.iter.Error()
 }
 
@@ -955,6 +1046,54 @@ func (i *seriesIterator) Sample() logproto.Sample {
 }
 
 func (i *seriesIterator) Close() error {
+	return nil
+}
+
+// NewMultiSeriesIterator returns an iterator over multiple logproto.Series
+func NewMultiSeriesBatchIterator(series []logproto.Series) BatchSampleIterator {
+	is := make([]BatchSampleIterator, 0, len(series))
+	for i := range series {
+		is = append(is, NewSeriesBatchIterator(series[i]))
+	}
+	return NewSortSampleBatchIterator(is)
+}
+
+func NewSeriesBatchIterator(series logproto.Series) BatchSampleIterator {
+	return &seriesBatchIterator{
+		i:      -1,
+		series: series,
+	}
+}
+
+type seriesBatchIterator struct {
+	i      int
+	series logproto.Series
+}
+
+func (i *seriesBatchIterator) Next() bool {
+	i.i++
+	return i.i < len(i.series.Samples)
+}
+
+func (i *seriesBatchIterator) Error() error {
+	return nil
+}
+
+func (i *seriesBatchIterator) Labels() []string {
+	return []string{i.series.Labels}
+}
+
+func (i *seriesBatchIterator) StreamHash() uint64 {
+	return i.series.StreamHash
+}
+
+func (i *seriesBatchIterator) Samples() arrow.Record {
+	// TODO: convert []logprot.Samples to arrow.Record.
+	// return i.series.Samples
+	return arrow.Record{}
+}
+
+func (i *seriesBatchIterator) Close() error {
 	return nil
 }
 

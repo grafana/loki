@@ -453,6 +453,36 @@ func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through
 	return iter.NewMergeEntryIterator(it.ctx, result, it.direction), nil
 }
 
+type sampleBatchIteratorArrow struct {
+	*batchChunkIterator
+	curr iter.BatchSampleIterator
+	err  error
+
+	ctx       context.Context
+	cancel    context.CancelFunc
+	extractor syntax.SampleExtractor
+}
+
+func newSampleBatchIteratorArrow(
+	ctx context.Context,
+	schemas config.SchemaConfig,
+	metrics *ChunkMetrics,
+	chunks []*LazyChunk,
+	batchSize int,
+	matchers []*labels.Matcher,
+	extractor syntax.SampleExtractor,
+	start, end time.Time,
+	chunkFilterer chunk.Filterer,
+) (iter.BatchSampleIterator, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	return &sampleBatchIteratorArrow{
+		extractor:          extractor,
+		ctx:                ctx,
+		cancel:             cancel,
+		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
+	}, nil
+}
+
 type sampleBatchIterator struct {
 	*batchChunkIterator
 	curr iter.SampleIterator

@@ -252,7 +252,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 }
 
 func (q *SingleTenantQuerier) SelectSamplesBatch(ctx context.Context, params logql.SelectSampleParams) (iter.BatchSampleIterator, error) {
-	panic("TODO: implement me")
+	panic("TODO")
 }
 
 func (q *SingleTenantQuerier) deletesForUser(ctx context.Context, startT, endT time.Time) ([]*logproto.Delete, error) {

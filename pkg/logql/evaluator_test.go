@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
@@ -329,6 +331,48 @@ func TestLiteralStepEvaluator(t *testing.T) {
 			assert.Equal(t, tc.expected, gotSamples)
 		})
 	}
+}
+
+func TestBatchStepEvaluatorCorrectness(t *testing.T) {
+	testTime := time.Now()
+
+	testStreams := []logproto.Stream{
+		{
+			Labels: `{foo="bar"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: testTime.Add(-1 * time.Minute), Line: "line1"},
+				{Timestamp: testTime.Add(-2 * time.Minute), Line: "line2"},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	q := NewMockQuerier(0, testStreams)
+	query := `count_over_time({foo="bar"}[5m])`
+
+	expr, err := syntax.ParseSampleExpr(query)
+	require.NoError(t, err)
+	qparams, err := NewLiteralParams(query, testTime.Add(-1*time.Hour), testTime.Add(1*time.Hour), 20*time.Second, 0, logproto.BACKWARD, 0, nil)
+	require.NoError(t, err)
+
+	normal := NewDefaultEvaluator(q, 10*time.Hour)
+
+	batch := NewBatchEvaluator(q, 10*time.Hour)
+
+	se, err := normal.NewStepEvaluator(ctx, nil, expr, qparams)
+	require.NoError(t, err)
+
+	se2, err := batch.NewStepEvaluator(ctx, nil, expr, qparams)
+	require.NoError(t, err)
+
+	ok, ts1, result1 := se.Next()
+	assert.True(t, ok)
+
+	ok, ts2, result2 := se2.Next()
+	assert.True(t, ok)
+
+	assert.Equal(t, ts1, ts2)
+	assert.Equal(t, result1, result2)
 }
 
 type emptyEvaluator struct{}
