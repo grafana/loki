@@ -23,11 +23,11 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 	// compute value size such that 10 entries account to exactly 1MB.
 	// adding one more entry to the cache would result in eviction when MaxSizeMB is configured to a value of 1.
 	// value cap = target size of each entry (0.1MB) - size of cache entry with empty value.
-	valueCap := (1e6 / cnt) - sizeOf(&CacheEntry[string, []byte]{
+	valueCap := (1e6 / cnt) - sizeOf(&Entry[string, []byte]{
 		Key: "00",
 	})
 
-	itemTemplate := &CacheEntry[string, []byte]{
+	itemTemplate := &Entry[string, []byte]{
 		Key:   "00",
 		Value: make([]byte, 0, valueCap),
 	}
@@ -176,9 +176,9 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	key1, key2, key3, key4 := "01", "02", "03", "04"
 	data1, data2, data3, data4 := genBytes(32), genBytes(64), genBytes(128), genBytes(32)
 
-	memorySz := sizeOf(&CacheEntry[string, []byte]{Key: key1, Value: data1}) +
-		sizeOf(&CacheEntry[string, []byte]{Key: key2, Value: data2}) +
-		sizeOf(&CacheEntry[string, []byte]{Key: key3, Value: data3})
+	memorySz := sizeOf(&Entry[string, []byte]{Key: key1, Value: data1}) +
+		sizeOf(&Entry[string, []byte]{Key: key2, Value: data2}) +
+		sizeOf(&Entry[string, []byte]{Key: key3, Value: data3})
 
 	cfg := EmbeddedCacheConfig{
 		MaxSizeItems:  3,

@@ -58,7 +58,7 @@ type EmbeddedCache[K comparable, V any] struct {
 	memoryBytes     prometheus.Gauge
 }
 
-type CacheEntry[K comparable, V any] struct {
+type Entry[K comparable, V any] struct {
 	updated time.Time
 	Key     K
 	Value   V
@@ -91,7 +91,7 @@ func (cfg *EmbeddedCacheConfig) IsEnabled() bool {
 	return cfg.Enabled
 }
 
-type cacheEntrySizeCalculator[K comparable, V any] func(entry *CacheEntry[K, V]) uint64
+type cacheEntrySizeCalculator[K comparable, V any] func(entry *Entry[K, V]) uint64
 
 // NewEmbeddedCache returns a new initialised EmbeddedCache where the key is a string and the value is a slice of bytes.
 func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *EmbeddedCache[string, []byte] {
@@ -195,7 +195,7 @@ func (c *EmbeddedCache[K, V]) pruneExpiredItems(ttl time.Duration) {
 	defer c.lock.Unlock()
 
 	for k, v := range c.entries {
-		entry := v.Value.(*CacheEntry[K, V])
+		entry := v.Value.(*Entry[K, V])
 		if time.Since(entry.updated) > ttl {
 			c.remove(k, v, expiredReason)
 		}
@@ -248,7 +248,7 @@ func (c *EmbeddedCache[K, V]) GetCacheType() stats.CacheType {
 }
 
 func (c *EmbeddedCache[K, V]) remove(key K, element *list.Element, reason string) {
-	entry := c.lru.Remove(element).(*CacheEntry[K, V])
+	entry := c.lru.Remove(element).(*Entry[K, V])
 	delete(c.entries, key)
 	if c.onEntryRemoved != nil {
 		c.onEntryRemoved(entry.Key, entry.Value)
@@ -266,7 +266,7 @@ func (c *EmbeddedCache[K, V]) put(key K, value V) {
 		c.remove(key, element, replacedReason)
 	}
 
-	entry := &CacheEntry[K, V]{
+	entry := &Entry[K, V]{
 		updated: time.Now(),
 		Key:     key,
 		Value:   value,
@@ -289,7 +289,7 @@ func (c *EmbeddedCache[K, V]) put(key K, value V) {
 		if lastElement == nil {
 			break
 		}
-		entryToRemove := lastElement.Value.(*CacheEntry[K, V])
+		entryToRemove := lastElement.Value.(*Entry[K, V])
 		c.remove(entryToRemove.Key, lastElement, fullReason)
 	}
 
@@ -310,15 +310,15 @@ func (c *EmbeddedCache[K, V]) Get(_ context.Context, key K) (V, bool) {
 
 	element, ok := c.entries[key]
 	if ok {
-		entry := element.Value.(*CacheEntry[K, V])
+		entry := element.Value.(*Entry[K, V])
 		return entry.Value, true
 	}
 	var empty V
 	return empty, false
 }
 
-func sizeOf(item *CacheEntry[string, []byte]) uint64 {
-	return uint64(int(unsafe.Sizeof(*item)) + // size of CacheEntry
+func sizeOf(item *Entry[string, []byte]) uint64 {
+	return uint64(int(unsafe.Sizeof(*item)) + // size of Entry
 		len(item.Key) + // size of Key
 		cap(item.Value) + // size of Value
 		elementSize + // size of the element in linked list

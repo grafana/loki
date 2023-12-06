@@ -343,7 +343,7 @@ func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.
 		})
 }
 
-func calculateBlockDirectorySize(entry *cache.CacheEntry[string, *cachedBlock]) uint64 {
+func calculateBlockDirectorySize(entry *cache.Entry[string, *cachedBlock]) uint64 {
 	value := entry.Value
 	bloomFileStats, _ := os.Lstat(path.Join(value.blockDirectory, v1.BloomFileName))
 	seriesFileStats, _ := os.Lstat(path.Join(value.blockDirectory, v1.SeriesFileName))
@@ -372,10 +372,11 @@ const defaultActiveQueriersCheckInterval = 100 * time.Millisecond
 func (b *cachedBlock) removeDirectoryAsync() {
 	go func() {
 		timeout := time.After(b.removeDirectoryTimeout)
-		tick := time.Tick(b.activeQueriersCheckInterval)
+		ticker := time.NewTicker(b.activeQueriersCheckInterval)
+		defer ticker.Stop()
 		for {
 			select {
-			case <-tick:
+			case <-ticker.C:
 				if b.activeQueriers.Load() == 0 {
 					err := deleteFolder(b.blockDirectory)
 					if err == nil {
