@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/apache/arrow/go/v14/arrow"
 	"github.com/apache/arrow/go/v14/arrow/array"
@@ -79,6 +80,48 @@ func (f *bytesBatchStage) Process(ctx context.Context, batch arrow.Record) (arro
 	}
 
 	batch.SetColumn(f.out, f.fb.NewFloat64Array())
+
+	return batch, nil
+}
+
+// unwrapBatchStage adds a column with the value of the unwrapped label value
+type unwrapBatchStage struct {
+	in    int
+	label string
+	out   int
+	fb    *array.Float64Builder
+}
+
+func (u *unwrapBatchStage) Process(ctx context.Context, batch arrow.Record) (arrow.Record, error) {
+
+	// TODO: check ok
+	labels, _ := batch.Column(u.in).(*array.Map)
+
+	offsets := labels.Offsets()
+	keys := labels.Keys().(*array.String)
+	items := labels.Items().(*array.String)
+
+OUTER:
+	for i := 0; i < labels.Len(); i++ {
+		for j := offsets[i]; j < offsets[i+1]; j++ {
+			key := keys.Value(int(j))
+			if key == u.label {
+				value := items.Value(int(j))
+				f, err := strconv.ParseFloat(value, 64)
+				if err != nil {
+					u.fb.AppendNull()
+				} else {
+					u.fb.Append(f)
+				}
+				continue OUTER
+			}
+		}
+		// Label was not found.
+		u.fb.AppendNull()
+	}
+
+
+	batch.SetColumn(u.out, u.fb.NewFloat64Array())
 
 	return batch, nil
 }
