@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -76,15 +77,22 @@ func getDayTime(ts model.Time) time.Time {
 	return time.Date(ts.Time().Year(), ts.Time().Month(), ts.Time().Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// TODO(chaudum): Fix Through time calculation
 // getFromThrough assumes a list of ShortRefs sorted by From time
-// However, it does also assume that the last item has the highest
-// Through time, which might not be the case!
 func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 	if len(refs) == 0 {
 		return model.Earliest, model.Latest
 	}
-	return refs[0].From, refs[len(refs)-1].Through
+
+	maxItem := slices.MaxFunc(refs, func(a, b *logproto.ShortRef) int {
+		if a.Through > b.Through {
+			return 1
+		} else if a.Through < b.Through {
+			return -1
+		}
+		return 0
+	})
+
+	return refs[0].From, maxItem.Through
 }
 
 // convertToSearches converts a list of line filter expressions to a list of
