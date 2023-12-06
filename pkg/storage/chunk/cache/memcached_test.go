@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -87,19 +88,64 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 				require.NoError(t, err)
 				<-wait                            // wait before fetching
 				_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
-				require.NoError(t, err)
+				require.ErrorIs(t, err, context.Canceled)
 			})
 		}()
 
 		ctxCancel() // cancel even before single fetch is done.
 		close(wait) // start the fetching
 		wg.Wait()
-		require.Equal(t, 0, client.getCalledCount) // client.GetMulti shouldn't have called because context is cancelled before.
-		m.Stop()                                   // cancelation and Stop() should be able to work.
+		require.Equal(t, 0, client.keysFetchedCount) // client.GetMulti shouldn't have called because context is cancelled before.
+		m.Stop()                                     // cancelation and Stop() should be able to work.
+
+	})
+
+	t.Run("stop fetching in-between, when context cancelled", func(t *testing.T) {
+		client := newMockMemcache()
+		m := cache.NewMemcached(cache.MemcachedConfig{
+			BatchSize:   2, // Less batch size to create interleving between each batch
+			Parallelism: 3, // means it starts 3 go routines to fetch whatever number of keys we give, fetching 2 keys in each fetch.
+		}, client, "test", nil, log.NewNopLogger(), "test")
+
+		var (
+			wg               sync.WaitGroup
+			wait             = make(chan struct{})
+			ctx, ctxCancel   = context.WithCancel(context.Background())
+			numKeys          = 1500
+			waitBeforeCancel = 2 * time.Millisecond
+		)
+
+		wg.Add(1)
+
+		// This goroutine is going to do some real "work" (writing to `c.inputCh`). We then cancel passed context closing `c.inputCh`.
+		// We assert there shouldn't be any panics and it stopped fetching keys.
+		go func() {
+			defer wg.Done()
+			assert.NotPanics(t, func() {
+				// these many keys, because we have
+				// BatchSize: 2 and Paralleslism: 3
+				// it starts 3 go routines to fetch 15 keys in total, fetching 2 keys in each fetch.
+				keys, values := genKeysValues(numKeys)
+				err := m.Store(ctx, keys, values)
+				require.NoError(t, err)
+				<-wait                            // wait before fetching
+				_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
+				require.ErrorIs(t, err, context.Canceled)
+			})
+		}()
+
+		close(wait)                                               // start the fetching
+		go func() { time.Sleep(waitBeforeCancel); ctxCancel() }() // cancel after fetching begins
+		wg.Wait()
+		require.NotEqual(t, client.keysFetchedCount, 0)   // should have fetched some keys.
+		require.Less(t, client.keysFetchedCount, numKeys) // but not all the keys because ctx cancelled in-between.
+		m.Stop()
 
 	})
 
 	t.Run("stop fetching when context timeout", func(t *testing.T) {
+		cancelTimeout := 100 * time.Millisecond
+
 		client := newMockMemcache()
 		m := cache.NewMemcached(cache.MemcachedConfig{
 			BatchSize:   10,
@@ -109,7 +155,7 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 		var (
 			wg             sync.WaitGroup
 			wait           = make(chan struct{})
-			ctx, ctxCancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+			ctx, ctxCancel = context.WithTimeout(context.Background(), cancelTimeout)
 		)
 		wg.Add(1)
 
@@ -124,16 +170,16 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 				require.NoError(t, err)
 				<-wait                            // wait before fetching
 				_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
-				require.NoError(t, err)
+				require.ErrorIs(t, err, context.DeadlineExceeded)
 			})
 		}()
 
-		time.Sleep(105 * time.Millisecond) // wait till context timeout
-		close(wait)                        // start the fetching
+		time.Sleep(cancelTimeout + (5 * time.Millisecond)) // wait till context timeout
+		close(wait)                                        // start the fetching
 		wg.Wait()
-		require.Equal(t, 0, client.getCalledCount) // client.GetMulti shouldn't have called because context is timedout before.
-		m.Stop()                                   // cancelation and Stop() should be able to work.
-		ctxCancel()                                // finally cancel context for cleanup sake
+		require.Equal(t, 0, client.keysFetchedCount) // client.GetMulti shouldn't have called because context is timedout before.
+		m.Stop()                                     // cancelation and Stop() should be able to work.
+		ctxCancel()                                  // finally cancel context for cleanup sake
 
 	})
 }
@@ -281,4 +327,18 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 			require.True(t, ok, "key missing %s", key)
 		}
 	}
+}
+
+// generate `n` keys values with numerical value from 1-n (inclusive)
+func genKeysValues(n int) ([]string, [][]byte) {
+	keys := make([]string, 0, n)
+	values := make([][]byte, 0, n)
+
+	for i := 0; i < n; i++ {
+		s := strconv.Itoa(i + 1)
+		keys = append(keys, s)
+		values = append(values, []byte(s))
+	}
+
+	return keys, values
 }

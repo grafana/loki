@@ -6,17 +6,23 @@ import (
 	"flag"
 	"hash/fnv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
 	instr "github.com/grafana/dskit/instrument"
 	"github.com/grafana/gomemcache/memcache"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
+)
+
+var (
+	ErrMemcachedClosed = errors.New("memcached is closed")
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -54,8 +60,7 @@ type Memcached struct {
 	// there are two entry points that can close these channels, when client calls
 	// .Stop() explicitly, or passed context is cancelled.
 	// So `Stop()` will make sure it's not closing the channels that are already closed, which may cause a panic.
-	stopMu  sync.Mutex
-	stopped bool
+	stopped atomic.Bool
 
 	logger log.Logger
 }
@@ -101,7 +106,12 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 					batchID: input.batchID,
 				}
 				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
-				input.resultCh <- res
+				// NOTE: This check is needed because goutines submitting work via `inputCh` may exit in-between because of context cancellation or timeout. This helps to close these worker goroutines to exit without hanging around.
+				select {
+				case <-c.closed:
+					return
+				case input.resultCh <- res:
+				}
 			}
 
 		}()
@@ -177,16 +187,20 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	resultsCh := make(chan *result)
+	var workerErr error // any error (timeout, context cancel) happened in worker go routine that we start in this method?
+
 	batchSize := c.cfg.BatchSize
+
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
 			select {
 			case <-ctx.Done():
 				c.closeAndStop()
+				workerErr = ctx.Err()
 				return
 			case <-c.closed:
-				return
+				workerErr = ErrMemcachedClosed
 			default:
 				c.inputCh <- &work{
 					keys:     batchKeys,
@@ -215,6 +229,9 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		// Also we do close(resultsCh) in the same goroutine so <-resultCh may never return.
 		select {
 		case <-c.closed:
+			if workerErr != nil {
+				err = workerErr
+			}
 			return
 		case result := <-resultsCh:
 			results[result.batchID] = result
@@ -229,6 +246,10 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		if result.err != nil {
 			err = result.err
 		}
+	}
+
+	if workerErr != nil {
+		err = workerErr
 	}
 
 	return
@@ -257,7 +278,6 @@ func (c *Memcached) Stop() {
 	if c.inputCh == nil {
 		return
 	}
-
 	c.closeAndStop()
 	c.wg.Wait()
 }
@@ -266,13 +286,10 @@ func (c *Memcached) Stop() {
 // Assumes c.inputCh, c.closed channels are non-nil
 // Go routine safe and idempotent.
 func (c *Memcached) closeAndStop() {
-	c.stopMu.Lock()
-	defer c.stopMu.Unlock()
-
-	if !c.stopped {
+	if !c.stopped.Load() {
 		close(c.inputCh)
 		close(c.closed)
-		c.stopped = true
+		c.stopped.Store(true)
 	}
 }
 
