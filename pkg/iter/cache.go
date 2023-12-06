@@ -1,6 +1,8 @@
 package iter
 
 import (
+	"github.com/apache/arrow/go/v14/arrow"
+	"github.com/apache/arrow/go/v14/arrow/array"
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -107,6 +109,12 @@ type CacheSampleIterator interface {
 	Reset()
 }
 
+type CacheBatchSampleIterator interface {
+	BatchSampleIterator
+	Wrapped() BatchSampleIterator
+	Reset()
+}
+
 // cachedIterator is an iterator that caches iteration to be replayed later on.
 type cachedSampleIterator struct {
 	cache   []sampleWithLabels
@@ -193,6 +201,97 @@ func (it *cachedSampleIterator) StreamHash() uint64 {
 func (it *cachedSampleIterator) Error() error { return it.iterErr }
 
 func (it *cachedSampleIterator) Close() error {
+	it.Reset()
+	return it.closeErr
+}
+
+// cachedIterator is an iterator that caches iteration to be replayed later on.
+type cacheBatchSampleIterator struct {
+	cache []samplesWithLabels
+
+	wrapped BatchSampleIterator
+
+	curr int
+
+	closeErr error
+	iterErr  error
+}
+
+// NewCachedSampleIterator creates an iterator that cache iteration result and can be iterated again
+// after closing it without re-using the underlaying iterator `it`.
+func NewCacheBatchSampleIterator(it BatchSampleIterator, cap int) CacheBatchSampleIterator {
+	c := &cacheBatchSampleIterator{
+		wrapped: it,
+		cache:   make([]samplesWithLabels, 0, cap),
+		curr:    -1,
+	}
+	return c
+}
+
+func (it *cacheBatchSampleIterator) Wrapped() BatchSampleIterator {
+	return it.wrapped
+}
+
+func (it *cacheBatchSampleIterator) Reset() {
+	it.curr = -1
+}
+
+func (it *cacheBatchSampleIterator) consumeWrapped() bool {
+	if it.Wrapped() == nil {
+		return false
+	}
+	ok := it.Wrapped().Next()
+	// we're done with the base iterator.
+	if !ok {
+		it.closeErr = it.Wrapped().Close()
+		it.iterErr = it.Wrapped().Error()
+		it.wrapped = nil
+		return false
+	}
+	// we're caching entries
+	it.cache = append(it.cache, samplesWithLabels{samples: it.Wrapped().Samples(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash()})
+	it.curr++
+	return true
+}
+
+func (it *cacheBatchSampleIterator) Next() bool {
+	if len(it.cache) == 0 && it.Wrapped() == nil {
+		return false
+	}
+	if it.curr+1 >= len(it.cache) {
+		if it.Wrapped() != nil {
+			return it.consumeWrapped()
+		}
+		return false
+	}
+	it.curr++
+	return true
+}
+
+func (it *cacheBatchSampleIterator) Samples() arrow.Record {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
+		return array.NewRecord(nil, nil, 0)
+	}
+	return it.cache[it.curr].samples
+}
+
+func (it *cacheBatchSampleIterator) Labels() []string {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
+		return []string{""}
+	}
+	return it.cache[it.curr].labels
+}
+
+func (it *cacheBatchSampleIterator) StreamHash() uint64 {
+	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
+		return 0
+	}
+	return it.cache[it.curr].streamHash
+}
+
+func (it *cacheBatchSampleIterator) Error() error { return it.iterErr }
+
+func (it *cacheBatchSampleIterator) Close() error {
 	it.Reset()
 	return it.closeErr
 }

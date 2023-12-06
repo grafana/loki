@@ -1423,7 +1423,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 
 			it, err := newSampleBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)
 			require.NoError(t, err)
-			series, _, err := iter.ReadSampleBatch(it, 1000)
+			series, _, err := iter.ReadBatchIteratorSampleBatch(it, 1000)
 			_ = it.Close()
 			if err != nil {
 				t.Fatalf("error reading batch %s", err)

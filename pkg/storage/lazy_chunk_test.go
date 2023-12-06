@@ -212,6 +212,10 @@ func (fakeBlock) SampleIterator(context.Context, log.StreamSampleExtractor) iter
 	return nil
 }
 
+func (fakeBlock) BatchSampleIterator(context.Context, log.StreamSampleExtractor) iter.BatchSampleIterator {
+	return nil
+}
+
 func blockWithBounds(mint, maxt int64) chunkenc.Block {
 	return &fakeBlock{
 		maxt: maxt,
