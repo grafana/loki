@@ -119,7 +119,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 }
 
 // process loops processing requests on an established stream.
-func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient, address string, inflightQuery *atomic.Bool, workerId string) error {
+func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient, address string, inflightQuery *atomic.Bool, workerID string) error {
 	// Build a child context so we can cancel a query when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
@@ -131,7 +131,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			return err
 		}
 
-		level.Debug(sp.log).Log("msg", "received query", "worker", workerId, "wait_time_sec", time.Since(start).Seconds())
+		level.Debug(sp.log).Log("msg", "received query", "worker", workerID, "wait_time_sec", time.Since(start).Seconds())
 
 		inflightQuery.Store(true)
 
