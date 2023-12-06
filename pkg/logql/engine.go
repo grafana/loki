@@ -84,6 +84,9 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
+	if s.QueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
 	expr, ok := s.QueryRequest.Plan.AST.(syntax.LogSelectorExpr)
 	if !ok {
 		return nil, errors.New("only log selector is supported")
