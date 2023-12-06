@@ -1,6 +1,9 @@
 package iter
 
-import "github.com/grafana/loki/pkg/logproto"
+import (
+	"github.com/apache/arrow/go/v14/arrow"
+	"github.com/grafana/loki/pkg/logproto"
+)
 
 type baseIterator interface {
 	// Returns true if there is more data to iterate.
@@ -40,10 +43,10 @@ type noOpBatchIterator struct{}
 
 var NoopBatchIterator = noOpBatchIterator{}
 
-func (noOpBatchIterator) Next() bool                 { return false }
-func (noOpBatchIterator) Error() error               { return nil }
-func (noOpBatchIterator) Labels() []string           { return nil }
-func (noOpBatchIterator) StreamHash() uint64         { return 0 }
-func (noOpBatchIterator) Entries() []logproto.Entry  { return nil }
-func (noOpBatchIterator) Samples() []logproto.Sample { return nil }
-func (noOpBatchIterator) Close() error               { return nil }
+func (noOpBatchIterator) Next() bool                { return false }
+func (noOpBatchIterator) Error() error              { return nil }
+func (noOpBatchIterator) Labels() []string          { return nil }
+func (noOpBatchIterator) StreamHash() uint64        { return 0 }
+func (noOpBatchIterator) Entries() []logproto.Entry { return nil }
+func (noOpBatchIterator) Samples() arrow.Record     { return nil }
+func (noOpBatchIterator) Close() error              { return nil }

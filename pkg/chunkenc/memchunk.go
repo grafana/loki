@@ -48,6 +48,15 @@ const (
 	chunkStructuredMetadataSectionIdx = 2
 )
 
+var (
+	entryFields = []arrow.Field{
+		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
+		{Name: "labels", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
+		{Name: "sample_value", Type: &arrow.Float64Type{}},
+	}
+	entrySchema = arrow.NewSchema(entryFields, &arrow.Metadata{})
+)
+
 var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithStructuredMetadataHeadBlockFmt}
 
 type HeadBlockFmt byte
@@ -1732,7 +1741,7 @@ func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format by
 }
 
 func newBatchSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.BatchSampleIterator {
-	return &batchSampleIterator{
+	return &batchSampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractor,
 	}
@@ -1770,7 +1779,7 @@ func (e *sampleBufferedIterator) Sample() logproto.Sample {
 	return e.cur
 }
 
-type batchSampleIterator struct {
+type batchSampleBufferedIterator struct {
 	*bufferedIterator
 
 	extractor log.StreamSampleExtractor
@@ -1780,15 +1789,9 @@ type batchSampleIterator struct {
 	cur arrow.Record
 }
 
-func (s *batchSampleIterator) Next() bool {
+func (s *batchSampleBufferedIterator) Next() bool {
 	pool := memory.NewGoAllocator()
-	fields := []arrow.Field{
-		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
-		{Name: "labels", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
-		{Name: "sample_value", Type: &arrow.Float64Type{}},
-	}
-	schema := arrow.NewSchema(fields, &arrow.Metadata{})
-	b := array.NewRecordBuilder(pool, schema)
+	b := array.NewRecordBuilder(pool, entrySchema)
 
 	// TODO: release the pool resource
 	// NOTE: So we are basically going through all the samples? when it's Next() is called once?. Feel like something wrong.
@@ -1809,7 +1812,7 @@ func (s *batchSampleIterator) Next() bool {
 	return s.cur.NumRows() > 0
 }
 
-func (b *batchSampleIterator) Labels() []string {
+func (b *batchSampleBufferedIterator) Labels() []string {
 	lbls := make([]string, 0, b.cur.NumCols())
 	lblColumn := b.cur.Column(1)
 	for i := 0; i < int(b.cur.NumCols()); i++ {
@@ -1818,11 +1821,16 @@ func (b *batchSampleIterator) Labels() []string {
 	return lbls
 }
 
-func (b *batchSampleIterator) StreamHash() uint64 {
+func (b *batchSampleBufferedIterator) StreamHash() uint64 {
 	return b.extractor.BaseLabels().Hash()
 }
 
-func (b *batchSampleIterator) Samples() []logproto.Sample {
+func (b *batchSampleBufferedIterator) Samples() arrow.Record {
+	return b.cur
+}
+
+// in case we need it for sanity check purposes
+func (b *batchSampleBufferedIterator) SamplesSlice() []logproto.Sample {
 	timestamps := array.NewTimestampData(b.cur.Column(0).Data())
 	samples := array.NewFloat64Data(b.cur.Column(2).Data())
 
