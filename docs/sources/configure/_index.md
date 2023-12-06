@@ -1838,6 +1838,21 @@ client:
   # CLI flag: -bloom-gateway-client.log-gateway-requests
   [log_gateway_requests: <boolean> | default = false]
 
+  results_cache:
+    # The cache block configures the cache backend.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-gateway-client.cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -bloom-gateway-client.cache.compression
+    [compression: <string> | default = ""]
+
+  # Flag to control whether to cache bloom gateway client requests/responses.
+  # CLI flag: -bloom-gateway-client.cache_results
+  [cache_results: <boolean> | default = false]
+
 # Number of workers to use for filtering chunks concurrently.
 # CLI flag: -bloom-gateway.worker-concurrency
 [worker_concurrency: <int> | default = 4]
@@ -3027,6 +3042,10 @@ shard_streams:
 # Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
 # CLI flag: -bloom-gateway.blocks-downloading-parallelism
 [bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
+
+# Interval for computing the cache key in the Bloom Gateway.
+# CLI flag: -bloom-gateway.cache-key-interval
+[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
@@ -4233,6 +4252,7 @@ The TLS configuration.
 
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.volume-results-cache`

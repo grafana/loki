@@ -25,8 +25,11 @@ import (
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
@@ -99,6 +102,10 @@ type ClientConfig struct {
 	// Ring is the Bloom Gateway ring used to find the appropriate Bloom Gateway instance
 	// this client should talk to.
 	Ring ring.ReadRing `yaml:"-"`
+
+	// Cache configures the cache used to store the results of the Bloom Gateway server.
+	Cache        CacheConfig `yaml:"results_cache,omitempty"`
+	CacheResults bool        `yaml:"cache_results"`
 }
 
 // RegisterFlags registers flags for the Bloom Gateway client configuration.
@@ -109,7 +116,23 @@ func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags for the Bloom Gateway client configuration with a common prefix.
 func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
+	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
+	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+"log-gateway-requests", false, "Flag to control whether requests sent to the gateway should be logged or not.")
+}
+
+func (i *ClientConfig) Validate() error {
+	if err := i.GRPCClientConfig.Validate(); err != nil {
+		return errors.Wrap(err, "grpc client config")
+	}
+
+	if i.CacheResults {
+		if err := i.Cache.Validate(); err != nil {
+			return errors.Wrap(err, "cache config")
+		}
+	}
+
+	return nil
 }
 
 type Client interface {
@@ -124,7 +147,15 @@ type GatewayClient struct {
 	ring   ring.ReadRing
 }
 
-func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+func NewGatewayClient(
+	cfg ClientConfig,
+	limits Limits,
+	registerer prometheus.Registerer,
+	logger log.Logger,
+	metricsNamespace string,
+	cacheGen resultscache.CacheGenNumberLoader,
+	retentionEnabled bool,
+) (*GatewayClient, error) {
 	latency := promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Subsystem: "bloom_gateway",
@@ -138,22 +169,43 @@ func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Reg
 		return nil, err
 	}
 
+	var c cache.Cache
+	if cfg.CacheResults {
+		c, err = cache.New(cfg.Cache.CacheConfig, registerer, logger, stats.BloomFilterCache, constants.Loki)
+		if err != nil {
+			return nil, errors.Wrap(err, "new bloom gateway cache")
+		}
+		if cfg.Cache.Compression == "snappy" {
+			c = cache.NewSnappy(c, logger)
+		}
+	}
+
 	poolFactory := func(addr string) (ringclient.PoolClient, error) {
 		pool, err := NewBloomGatewayGRPCPool(addr, dialOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "new bloom gateway grpc pool")
 		}
+
+		if cfg.CacheResults {
+			pool.BloomGatewayClient = NewBloomGatewayClientCacheMiddleware(
+				logger,
+				pool.BloomGatewayClient,
+				c,
+				limits,
+				cacheGen,
+				retentionEnabled,
+			)
+		}
+
 		return pool, nil
 	}
 
-	c := &GatewayClient{
+	return &GatewayClient{
 		cfg:    cfg,
 		logger: logger,
 		limits: limits,
 		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
-	}
-
-	return c, nil
+	}, nil
 }
 
 func shuffleAddrs(addrs []string) []string {
