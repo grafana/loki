@@ -59,6 +59,30 @@ func (f *containsFilterBatchStage) Filter(data *array.String, needle []byte) arr
 	return f.fb.NewArray()
 }
 
+// bytesBatchStage adds a column with the bytes in an entry
+type bytesBatchStage struct {
+	in  int
+	out int
+	fb     *array.Float64Builder
+}
+
+func (f *bytesBatchStage) Process(ctx context.Context, batch arrow.Record) (arrow.Record, error) {
+
+	// TODO: check ok
+	lines, _ := batch.Column(f.in).(*array.String)
+
+	for i := 0; i < lines.Len(); i++ {
+		beg := lines.ValueOffset64(i)
+		end := lines.ValueOffset64(i + 1)
+
+		f.fb.Append(float64(end-beg))
+	}
+
+	batch.SetColumn(f.out, f.fb.NewFloat64Array())
+
+	return batch, nil
+}
+
 type batchSampleExtractor struct {
 	stages  []BatchStage
 }
