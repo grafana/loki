@@ -427,7 +427,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
