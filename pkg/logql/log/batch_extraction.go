@@ -13,17 +13,18 @@ import (
 // A Stage implementation should never mutate the line passed, but instead either
 // return the line unchanged or allocate a new line.
 type BatchStage interface {
-	Process(batch arrow.Record, column int) arrow.Record
+	Process(context.Context, arrow.Record) (arrow.Record, error)
 }
 
 type containsFilterBatchStage struct {
+	column int
 	needle []byte
 	fb     *array.BooleanBuilder
 }
 
-func (f *containsFilterBatchStage) Process(ctx context.Context, batch arrow.Record, column int) (arrow.Record, error) {
+func (f *containsFilterBatchStage) Process(ctx context.Context, batch arrow.Record) (arrow.Record, error) {
 	// TODO: check ok
-	lines, _ := batch.Column(1).(*array.String)
+	lines, _ := batch.Column(f.column).(*array.String)
 
 	mask := f.Filter(lines, f.needle)
 	return compute.FilterRecordBatch(ctx, batch, mask, compute.DefaultFilterOptions())
@@ -59,11 +60,16 @@ func (f *containsFilterBatchStage) Filter(data *array.String, needle []byte) arr
 }
 
 type batchSampleExtractor struct {
-	LineExtractor
-	builder *LabelsBuilder
 	stages  []BatchStage
 }
 
-func (l *batchSampleExtractor) Process(batch arrow.Record) (arrow.Record, bool) {
-	return nil, false
+func (e *batchSampleExtractor) Process(ctx context.Context, batch arrow.Record) (arrow.Record, error) {
+	var err error
+	for _, stage := range e.stages {
+		batch, err = stage.Process(ctx, batch)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return batch, nil
 }

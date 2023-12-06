@@ -10,12 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestContainsFilterStage(t *testing.T) {
-	ctx := context.Background()
-	//extractor := &frameSampleExtractor{}
-
-	// test data
-	pool := memory.NewGoAllocator()
+func createTestBatch(pool *memory.GoAllocator) arrow.Record {
 	fields := []arrow.Field{
 		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
 		{Name: "line", Type: &arrow.StringType{}},
@@ -32,16 +27,47 @@ func TestContainsFilterStage(t *testing.T) {
 
 		b.Field(1).(*array.StringBuilder).Append(v)
 	}
-	batch := b.NewRecord()
+
+	return b.NewRecord()
+}
+
+func TestContainsFilterStage(t *testing.T) {
+	ctx := context.Background()
+
+	pool := memory.NewGoAllocator()
+	batch := createTestBatch(pool)
+	defer batch.Release()
 
 	require.Equal(t, int64(10), batch.NumRows())
 
 	stage := containsFilterBatchStage{
+		column: 1,
 		needle: []byte("foo"),
 		fb:     array.NewBooleanBuilder(pool),
 	}
-	filtered, err := stage.Process(ctx, batch, 1)
+	filtered, err := stage.Process(ctx, batch)
 
+	require.NoError(t, err)
+	require.Equal(t, int64(6), filtered.NumRows())
+}
+
+func TestBatchExtractor(t *testing.T) {
+	ctx := context.Background()
+
+	pool := memory.NewGoAllocator()
+	batch := createTestBatch(pool)
+	defer batch.Release()
+
+	extractor := &batchSampleExtractor{
+		stages: []BatchStage{
+			&containsFilterBatchStage{
+				column: 1,
+				needle: []byte("foo"),
+				fb:     array.NewBooleanBuilder(pool),
+			},
+		},
+	}
+	filtered, err := extractor.Process(ctx, batch)
 	require.NoError(t, err)
 	require.Equal(t, int64(6), filtered.NumRows())
 }
