@@ -845,7 +845,7 @@ results_cache:
 # A comma-separated list of LogQL vector and range aggregations that should be
 # sharded
 # CLI flag: -querier.shard-aggregation
-[shard_aggregation: <string> | default = ""]
+[shard_aggregations: <string> | default = ""]
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results

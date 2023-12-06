@@ -45,7 +45,7 @@ func ensureInvertedIndexShardingCompatibility(c Config) error {
 }
 
 func ensureProtobufEncodingForAggregationSharding(c Config) error {
-	if len(c.QueryRange.ShardAggregation) > 0 && c.Frontend.FrontendV2.Encoding != frontend.EncodingProtobuf {
+	if len(c.QueryRange.ShardAggregations) > 0 && c.Frontend.FrontendV2.Encoding != frontend.EncodingProtobuf {
 		return errors.New("shard_aggregation requires frontend.encoding=protobuf")
 	}
 	return nil
