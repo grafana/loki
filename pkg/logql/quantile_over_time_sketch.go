@@ -357,7 +357,7 @@ func (e *QuantileSketchMergeStepEvaluator) Error() error { return e.err }
 
 func (e *QuantileSketchMergeStepEvaluator) Explain(parent Node) {
 	b := parent.Child("QuantileSketchMerge")
-	if len(e.evaluators) < 3 {
+	if len(e.evaluators) < MaxChildrenDisplay {
 		for _, child := range e.evaluators {
 			child.Explain(b)
 		}

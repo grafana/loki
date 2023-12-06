@@ -80,7 +80,7 @@ func TestClone(t *testing.T) {
 	}
 }
 
-func TestCLoneStringLabelFilter(t *testing.T) {
+func TestCloneStringLabelFilter(t *testing.T) {
 	expr := newPipelineExpr(
 		newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 		MultiStageExpr{
