@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/plan"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
@@ -46,11 +47,13 @@ var (
 			MaxRetries:           3,
 			CacheResults:         true,
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -59,22 +62,26 @@ var (
 		CacheIndexStatsResults: true,
 		StatsCacheConfig: IndexStatsCacheConfig{
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
 		},
 		VolumeCacheConfig: VolumeCacheConfig{
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -665,10 +672,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									MaxSizeMB: 1,
+									Enabled:   true,
+								},
 							},
 						},
 					},
@@ -684,10 +693,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									MaxSizeMB: 1,
+									Enabled:   true,
+								},
 							},
 						},
 					},
@@ -703,10 +714,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 2000,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 2000,
+								},
 							},
 						},
 					},
@@ -714,10 +727,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				CacheIndexStatsResults: true,
 				StatsCacheConfig: IndexStatsCacheConfig{
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 1000,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
 							},
 						},
 					},

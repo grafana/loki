@@ -404,6 +404,20 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
 		},
+		{
+			`{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}, {"127.0.0.2", false}, {"127.0.0.1", true}},
+		},
+		{
+			`{app="foo"} != ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
@@ -473,6 +487,42 @@ func TestStringer(t *testing.T) {
 		{
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
 			out: `(0 > count_over_time({foo="bar"}[1m]))`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar"`,
+			out: `{app="foo"} |= "foo" or "bar"`,
+		},
+		{
+			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
+			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+			out: `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+		},
+		{
+			in:  `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+		},
+		{ // !(A || B) == !A && !B
+			in:  `{app="foo"} != "foo" or "bar"`,
+			out: `{app="foo"} != "foo" != "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar"`,
+			out: `{app="foo"} !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} != ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} != ip("127.0.0.1") != "foo"`,
+		},
+		{
+			in:  `{app="foo"} !~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} !~ ip("127.0.0.1") !~ "foo"`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
