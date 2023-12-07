@@ -15,6 +15,7 @@ import (
 var defaultConfig = Config{
 	ContainerName: "loki",
 	MaxRetries:    20,
+	MaxRetryDelay: 500000000,
 	HTTP: HTTPConfig{
 		Config: http.Config{
 			IdleConnTimeout:       90 * time.Second,
@@ -50,6 +51,7 @@ connection_string: test-connection-string
 container_name: test-container-name
 endpoint_suffix: test-endpoint-suffix
 max_retries: 1
+max_retry_delay: 500000000
 http:
   idle_conn_timeout: 2s
   response_header_timeout: 3s
@@ -65,8 +67,9 @@ http:
 				StorageAccountKey:       flagext.SecretWithValue("test-account-key"),
 				StorageConnectionString: flagext.SecretWithValue("test-connection-string"),
 				ContainerName:           "test-container-name",
-				EndpointSuffix:          "test-endpoint-suffix",
+				Endpoint:                "test-endpoint-suffix",
 				MaxRetries:              1,
+				MaxRetryDelay: 500000000,
 				HTTP: HTTPConfig{
 					Config: http.Config{
 						IdleConnTimeout:       2 * time.Second,
