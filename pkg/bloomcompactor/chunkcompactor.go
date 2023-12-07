@@ -20,7 +20,7 @@ import (
 )
 
 type compactorTokenizer interface {
-	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk)
+	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk) error
 }
 
 type chunkClient interface {
@@ -92,7 +92,7 @@ func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compa
 	}
 
 	// Tokenize data into n-grams
-	tokenizer.PopulateSeriesWithBloom(&bloomForChks, chunks)
+	_ = tokenizer.PopulateSeriesWithBloom(&bloomForChks, chunks)
 	return bloomForChks
 }
 

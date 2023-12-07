@@ -278,6 +278,74 @@ func TestMergeSeriesResponses(t *testing.T) {
 	}
 }
 
+func TestFilterChunkRefRequestGetQuery(t *testing.T) {
+	for _, tc := range []struct {
+		desc     string
+		request  FilterChunkRefRequest
+		expected string
+	}{
+		{
+			desc:     "empty request",
+			expected: `0`,
+		},
+		{
+			desc: "request no filters",
+			request: FilterChunkRefRequest{
+				Refs: []*GroupedChunkRefs{
+					{
+						Fingerprint: 1,
+						Tenant:      "test",
+					},
+				},
+			},
+			expected: `9962287286179718960`,
+		},
+		{
+			desc: "request with filters but no chunks",
+			request: FilterChunkRefRequest{
+				Filters: []*LineFilterExpression{
+					{
+						Operator: 0,
+						Match:    "uuid",
+					},
+				},
+			},
+			expected: `0/0-uuid`,
+		},
+		{
+			desc: "request with filters and chunks",
+			request: FilterChunkRefRequest{
+				Refs: []*GroupedChunkRefs{
+					{
+						Fingerprint: 1,
+						Tenant:      "test",
+					},
+					{
+						Fingerprint: 2,
+						Tenant:      "test",
+					},
+				},
+				Filters: []*LineFilterExpression{
+					{
+						Operator: 0,
+						Match:    "uuid",
+					},
+					{
+						Operator: 1,
+						Match:    "trace",
+					},
+				},
+			},
+			expected: `8827404902424034886/0-uuid,1-trace`,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			actual := tc.request.GetQuery()
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 func benchmarkMergeLabelResponses(b *testing.B, responses []*LabelResponse) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
