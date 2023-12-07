@@ -43,3 +43,26 @@ func TestResultToResponse(t *testing.T) {
 		})
 	}
 }
+
+func TestResponseWrap(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		respone  queryrangebase.Response
+		expected isQueryResponse_Response
+	}{
+		{"volume", &VolumeResponse{}, &QueryResponse_Volume{}},
+		{"series", &LokiSeriesResponse{}, &QueryResponse_Series{}},
+		{"label", &LokiLabelNamesResponse{}, &QueryResponse_Labels{}},
+		{"stats", &IndexStatsResponse{}, &QueryResponse_Stats{}},
+		{"prom", &LokiPromResponse{}, &QueryResponse_Prom{}},
+		{"streams", &LokiResponse{}, &QueryResponse_Streams{}},
+		{"topk", &TopKSketchesResponse{}, &QueryResponse_TopkSketches{}},
+		{"quantile", &QuantileSketchResponse{}, &QueryResponse_QuantileSketches{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, err := QueryResponseWrap(tt.respone)
+			require.NoError(t, err)
+			require.IsType(t, tt.expected, actual.Response)
+		})
+	}
+}
