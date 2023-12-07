@@ -4189,7 +4189,7 @@ common:
         type: SSE-KMS
         kms_key_id: test
         kms_encryption_context: |
-          {"key": "value", "another":"value1"}
+          ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
       s3forcepathstyle: true
   compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
   ring:

@@ -9,6 +9,8 @@ const (
 	EnvAWSAccessKeyID = "AWS_ACCESS_KEY_ID"
 	// EnvAWSAccessKeySecret is the environment variable to specify the AWS client secret to access S3.
 	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET"
+	// EnvAWSSseKmsEncryptionContext is the environment variable to specity the AWS KMS encryption context when using type SSE-KMS.
+	EnvAWSSseKmsEncryptionContext = "AWS_SSE_KMS_ENCRYPTION_CONTEXT"
 	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
 	EnvAzureStorageAccountName = "AZURE_STORAGE_ACCOUNT_NAME"
 	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
