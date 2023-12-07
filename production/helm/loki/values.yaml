@@ -120,7 +120,6 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
       {{ include "loki.enableWriteZoneAwareness" . | nindent 4 }}
-    
 
     {{- if .Values.loki.commonConfig}}
     common:
@@ -856,13 +855,13 @@ write:
   terminationGracePeriodSeconds: 300
   # -- Affinity for write pods. Passed through `tpl` and, thus, to be configured as string
   # @default -- Hard node and soft zone anti-affinity
-  affinity: {} #|
-  #   podAntiAffinity:
-  #     requiredDuringSchedulingIgnoredDuringExecution:
-  #       - labelSelector:
-  #           matchLabels:
-  #             {{- include "loki.writeSelectorLabels" . | nindent 10 }}
-  #         topologyKey: kubernetes.io/hostname
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.selectorLabels" (dict "ctx" . "component" "write") | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
   # -- Node selector for write pods
