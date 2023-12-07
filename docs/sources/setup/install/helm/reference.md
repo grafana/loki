@@ -261,11 +261,40 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.whenDeleted</td>
+			<td>string</td>
+			<td>Enable StatefulSetAutoDeletePVC feature https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.whenScaled</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for backend pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
 </pre>
 </td>
 		</tr>
@@ -338,6 +367,17 @@ null
 			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.statefulStrategy</td>
+			<td>object</td>
+			<td>updateStrategy of the write statefulset.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
 </pre>
 </td>
 		</tr>
@@ -1308,6 +1348,17 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.podLabels</td>
 			<td>object</td>
 			<td>Additional labels for gateway pods</td>
@@ -2017,7 +2068,9 @@ null
 			<td>object</td>
 			<td>Optional ingester configuration</td>
 			<td><pre lang="json">
-{}
+{
+  "concurrent_flushes": 20
+}
 </pre>
 </td>
 		</tr>
@@ -2664,6 +2717,23 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.podSecurityContext</td>
+			<td>object</td>
+			<td>podSecurityContext is the pod security context for the rollout operator. When installing on OpenShift, override podSecurityContext settings with  rollout_operator:   podSecurityContext:     fsGroup: null     runAsGroup: null     runAsUser: null</td>
+			<td><pre lang="json">
+{
+  "fsGroup": 10001,
+  "runAsGroup": 10001,
+  "runAsNonRoot": true,
+  "runAsUser": 10001,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
@@ -2723,6 +2793,33 @@ true
 			<td>Alternative namespace to create PrometheusRule resources in</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.securityContext.allowPrivilegeEscalation</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.securityContext.capabilities.drop[0]</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"ALL"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.securityContext.readOnlyRootFilesystem</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -3194,6 +3291,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.useExistingRole</td>
+			<td>bool</td>
+			<td>Use custom clusterrole for ruler/backend</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.affinity</td>
 			<td>string</td>
 			<td>Affinity for read pods. Passed through `tpl` and, thus, to be configured as string</td>
@@ -3419,6 +3525,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.podLabels</td>
 			<td>object</td>
 			<td>Additional labels for each `read` pod</td>
@@ -3491,6 +3608,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.statefulStrategy</td>
+			<td>object</td>
+			<td>updateStrategy of the write statefulset.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the read</td>
@@ -3523,6 +3651,26 @@ null
 			<td>Topology Spread Constraints for read pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>rollout_operator</td>
+			<td>object</td>
+			<td>Setting for the Grafana Rollout Operator https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>rollout_operator.enabled</td>
+			<td>bool</td>
+			<td>This should be true if write.zoneAwareReplication.enabled=true</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -3995,6 +4143,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.podLabels</td>
 			<td>object</td>
 			<td>Additional labels for each `single binary` pod</td>
@@ -4054,6 +4213,17 @@ null
 			<td>Additional labels for single binary Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.statefulStrategy</td>
+			<td>object</td>
+			<td>updateStrategy of the write statefulset.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
 </pre>
 </td>
 		</tr>
@@ -4429,7 +4599,7 @@ null
 		</tr>
 		<tr>
 			<td>write.affinity</td>
-			<td>string</td>
+			<td>object</td>
 			<td>Affinity for write pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
@@ -4719,11 +4889,40 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.whenDeleted</td>
+			<td>string</td>
+			<td>Enable StatefulSetAutoDeletePVC feature https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.whenScaled</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
 </pre>
 </td>
 		</tr>
@@ -4800,6 +4999,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.statefulStrategy</td>
+			<td>object</td>
+			<td>updateStrategy of the write statefulset. This is ignored when write.zoneAwareReplication.enabled=true.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the write</td>
@@ -4832,6 +5042,295 @@ null
 			<td>Topology Spread Constraints for write pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication</td>
+			<td>object</td>
+			<td>Options to configure zone-aware replication for write path Example configuration with full geographical redundancy: rollout_operator:   enabled: true write:   zoneAwareReplication:     enabled: true     topologyKey: 'kubernetes.io/hostname'  # This generates default anti-affinity rules     zones:  # Zone list has to be fully redefined for modification. Update with you actual zones or skip to use logical zones only.     - name: zone-a       nodeSelector:         topology.kubernetes.io/zone: us-central1-a       storageClass: storage-class-us-central1-a     - name: zone-a       nodeSelector:         topology.kubernetes.io/zone: us-central1-b       storageClass: storage-class-us-central1-b     - name: zone-c       nodeSelector:         topology.kubernetes.io/zone: us-central1-c       storageClass: storage-class-us-central1-c </td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "maxUnavailable": 10,
+  "migration": {
+    "enabled": false,
+    "excludeDefaultZone": false,
+    "readPath": false,
+    "replicas": 0,
+    "scaleDownDefaultZone": false,
+    "writePath": false
+  },
+  "topologyKey": null,
+  "zones": [
+    {
+      "extraAffinity": {},
+      "name": "zone-a",
+      "nodeSelector": null,
+      "storageClass": null
+    },
+    {
+      "extraAffinity": {},
+      "name": "zone-b",
+      "nodeSelector": null,
+      "storageClass": null
+    },
+    {
+      "extraAffinity": {},
+      "name": "zone-c",
+      "nodeSelector": null,
+      "storageClass": null
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.enabled</td>
+			<td>bool</td>
+			<td>Enable zone-aware replication for write path</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.maxUnavailable</td>
+			<td>int</td>
+			<td>Maximum number of write pods that can be unavailable per zone during rollout</td>
+			<td><pre lang="json">
+10
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.migration</td>
+			<td>object</td>
+			<td>Auxiliary values for migration, see https://grafana.com/docs/loki/latest/setup/migrate/migrate-from-single-zone-with-helm/</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "excludeDefaultZone": false,
+  "readPath": false,
+  "replicas": 0,
+  "scaleDownDefaultZone": false,
+  "writePath": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.migration.enabled</td>
+			<td>bool</td>
+			<td>Indicate if migration is ongoing for multi zone write</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.migration.excludeDefaultZone</td>
+			<td>bool</td>
+			<td>Exclude default zone on write path</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.migration.readPath</td>
+			<td>bool</td>
+			<td>Enable zone-awareness, read path only</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.migration.replicas</td>
+			<td>int</td>
+			<td>Total number of replicas to start in availability zones when migration is enabled</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.migration.scaleDownDefaultZone</td>
+			<td>bool</td>
+			<td>Scale default zone write pods to 0</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.migration.writePath</td>
+			<td>bool</td>
+			<td>Enable zone-awareness, write path only</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.topologyKey</td>
+			<td>string</td>
+			<td>topologyKey to use in pod anti-affinity. If unset, no anti-affinity rules are generated. If set, the generated anti-affinity rule makes sure that pods from different zones do not mix. E.g.: topologyKey: 'kubernetes.io/hostname'</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones</td>
+			<td>list</td>
+			<td>Zone definitions for write zones. Note: you have to redefine the whole list to change parts as YAML does not allow to modify parts of a list.</td>
+			<td><pre lang="json">
+[
+  {
+    "extraAffinity": {},
+    "name": "zone-a",
+    "nodeSelector": null,
+    "storageClass": null
+  },
+  {
+    "extraAffinity": {},
+    "name": "zone-b",
+    "nodeSelector": null,
+    "storageClass": null
+  },
+  {
+    "extraAffinity": {},
+    "name": "zone-c",
+    "nodeSelector": null,
+    "storageClass": null
+  }
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[0]</td>
+			<td>object</td>
+			<td>Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/</td>
+			<td><pre lang="json">
+{
+  "extraAffinity": {},
+  "name": "zone-a",
+  "nodeSelector": null,
+  "storageClass": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[0].extraAffinity</td>
+			<td>object</td>
+			<td>extraAffinity adds user defined custom affinity rules (merged with generated rules)</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[0].nodeSelector</td>
+			<td>string</td>
+			<td>nodeselector to restrict where pods of this zone can be placed. E.g.: nodeSelector:   topology.kubernetes.io/zone: zone-a</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[0].storageClass</td>
+			<td>string</td>
+			<td>write data Persistent Volume Storage Class If defined, storageClassName: <storageClass> If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning If undefined or set to null (the default), then fall back to the value of `write.persistentVolume.storageClass`.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[1]</td>
+			<td>object</td>
+			<td>Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/</td>
+			<td><pre lang="json">
+{
+  "extraAffinity": {},
+  "name": "zone-b",
+  "nodeSelector": null,
+  "storageClass": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[1].extraAffinity</td>
+			<td>object</td>
+			<td>extraAffinity adds user defined custom affinity rules (merged with generated rules)</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[1].nodeSelector</td>
+			<td>string</td>
+			<td>nodeselector to restrict where pods of this zone can be placed. E.g.: nodeSelector:   topology.kubernetes.io/zone: zone-b</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[1].storageClass</td>
+			<td>string</td>
+			<td>write data Persistent Volume Storage Class If defined, storageClassName: <storageClass> If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning If undefined or set to null (the default), then fall back to the value of `write.persistentVolume.storageClass`.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[2]</td>
+			<td>object</td>
+			<td>Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/</td>
+			<td><pre lang="json">
+{
+  "extraAffinity": {},
+  "name": "zone-c",
+  "nodeSelector": null,
+  "storageClass": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[2].extraAffinity</td>
+			<td>object</td>
+			<td>extraAffinity adds user defined custom affinity rules (merged with generated rules)</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[2].nodeSelector</td>
+			<td>string</td>
+			<td>nodeselector to restrict where pods of this zone can be placed. E.g.: nodeSelector:   topology.kubernetes.io/zone: zone-c</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.zoneAwareReplication.zones[2].storageClass</td>
+			<td>string</td>
+			<td>write data Persistent Volume Storage Class If defined, storageClassName: <storageClass> If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning If undefined or set to null (the default), then fall back to the value of `write.persistentVolume.storageClass`.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
