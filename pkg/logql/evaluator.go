@@ -327,7 +327,7 @@ func (ev *BatchEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newRangeAggEvaluator(iter.NewPeekingSampleBatchIterator(it), e, q, e.Left.Offset)
+		return newRangeBatchAggEvaluator(iter.NewPeekingSampleBatchIterator(it), e, q, e.Left.Offset)
 	default:
 		panic("unsupported aggregation")
 	}
@@ -623,6 +623,68 @@ func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
 func (r *RangeVectorEvaluator) Close() error { return r.iter.Close() }
 
 func (r *RangeVectorEvaluator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
+	return r.iter.Error()
+}
+
+func newRangeBatchAggEvaluator(
+	it iter.PeekingSampleBatchIterator,
+	expr *syntax.RangeAggregationExpr,
+	q Params,
+	o time.Duration,
+) (StepEvaluator, error) {
+
+	iter, err := newRangeVectorBatchIterator(
+		it, expr,
+		expr.Left.Interval.Nanoseconds(),
+		q.Step().Nanoseconds(),
+		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if expr.Operation == syntax.OpRangeTypeAbsent {
+		absentLabels, err := absentLabels(expr)
+		if err != nil {
+			return nil, err
+		}
+		return &AbsentRangeVectorEvaluator{
+			iter: iter,
+			lbs:  absentLabels,
+		}, nil
+	}
+	return &RangeVectorEvaluator{
+		iter: iter,
+	}, nil
+}
+
+type RangeVectorBatchEvaluator struct {
+	iter RangeVectorIterator
+
+	err error
+}
+
+func (r *RangeVectorBatchEvaluator) Next() (bool, int64, StepResult) {
+	next := r.iter.Next()
+	if !next {
+		return false, 0, SampleVector{}
+	}
+	ts, vec := r.iter.At()
+	for _, s := range vec.SampleVector() {
+		// Errors are not allowed in metrics unless they've been specifically requested.
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
+			r.err = logqlmodel.NewPipelineErr(s.Metric)
+			return false, 0, SampleVector{}
+		}
+	}
+	return true, ts, vec
+}
+
+func (r *RangeVectorBatchEvaluator) Close() error { return r.iter.Close() }
+
+func (r *RangeVectorBatchEvaluator) Error() error {
 	if r.err != nil {
 		return r.err
 	}

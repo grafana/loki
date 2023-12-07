@@ -134,26 +134,26 @@ func (it *peekingSampleIterator) Error() error {
 // PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.
 type PeekingSampleBatchIterator interface {
 	BatchSampleIterator
-	Peek() (string, logproto.Sample, bool)
+	Peek() (string, arrow.Record, bool)
 }
 
 type peekingSampleBatchIterator struct {
 	iter  BatchSampleIterator
-	cache *sampleWithLabels
-	next  *sampleWithLabels
+	cache *samplesWithLabels
+	next  *samplesWithLabels
 }
 
-func NewPeekingSampleBatchIterator(iter BatchSampleIterator) PeekingSampleIterator {
+func NewPeekingSampleBatchIterator(iter BatchSampleIterator) PeekingSampleBatchIterator {
 	// initialize the next entry so we can peek right from the start.
-	var cache *sampleWithLabels
-	next := &sampleWithLabels{}
+	var cache *samplesWithLabels
+	next := &samplesWithLabels{}
 	if iter.Next() {
 		cache = &samplesWithLabels{
 			samples:    iter.Samples(),
 			labels:     iter.Labels(),
 			streamHash: iter.StreamHash(),
 		}
-		next.Sample = cache.Sample
+		next.samples = cache.samples
 		next.labels = cache.labels
 	}
 	return &peekingSampleBatchIterator{
@@ -167,11 +167,11 @@ func (it *peekingSampleBatchIterator) Close() error {
 	return it.iter.Close()
 }
 
-func (it *peekingSampleBatchIterator) Labels() string {
+func (it *peekingSampleBatchIterator) Labels() []string {
 	if it.next != nil {
 		return it.next.labels
 	}
-	return ""
+	return nil
 }
 
 func (it *peekingSampleBatchIterator) StreamHash() uint64 {
@@ -183,7 +183,7 @@ func (it *peekingSampleBatchIterator) StreamHash() uint64 {
 
 func (it *peekingSampleBatchIterator) Next() bool {
 	if it.cache != nil {
-		it.next.Sample = it.cache.Sample
+		it.next.samples = it.cache.samples
 		it.next.labels = it.cache.labels
 		it.next.streamHash = it.cache.streamHash
 		it.cacheNext()
@@ -195,7 +195,7 @@ func (it *peekingSampleBatchIterator) Next() bool {
 // cacheNext caches the next element if it exists.
 func (it *peekingSampleBatchIterator) cacheNext() {
 	if it.iter.Next() {
-		it.cache.Sample = it.iter.Sample()
+		it.cache.samples = it.iter.Samples()
 		it.cache.labels = it.iter.Labels()
 		it.cache.streamHash = it.iter.StreamHash()
 		return
@@ -204,18 +204,18 @@ func (it *peekingSampleBatchIterator) cacheNext() {
 	it.cache = nil
 }
 
-func (it *peekingSampleBatchIterator) Sample() logproto.Sample {
+func (it *peekingSampleBatchIterator) Samples() arrow.Record {
 	if it.next != nil {
-		return it.next.Sample
+		return it.next.samples
 	}
-	return logproto.Sample{}
+	return array.NewRecord(nil, nil, 0)
 }
 
-func (it *peekingSampleBatchIterator) Peek() (string, logproto.Sample, bool) {
+func (it *peekingSampleBatchIterator) Peek() ([]string, arrow.Record, bool) {
 	if it.cache != nil {
-		return it.cache.labels, it.cache.Sample, true
+		return it.cache.labels, it.cache.samples, true
 	}
-	return "", logproto.Sample{}, false
+	return []string{}, array.NewRecord(nil, nil, 0), false
 }
 
 func (it *peekingSampleBatchIterator) Error() error {
@@ -1090,7 +1090,7 @@ func (i *seriesBatchIterator) StreamHash() uint64 {
 func (i *seriesBatchIterator) Samples() arrow.Record {
 	// TODO: convert []logprot.Samples to arrow.Record.
 	// return i.series.Samples
-	return arrow.Record{}
+	return array.NewRecord(nil, nil, 0)
 }
 
 func (i *seriesBatchIterator) Close() error {
