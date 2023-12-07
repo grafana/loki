@@ -53,8 +53,8 @@ func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 
 // ConfigureDeployment merges the object storage secret volume into the deployment spec.
 // With this, the deployment will expose credentials specific environment variables.
-func configureDeployment(d *appsv1.Deployment, secretName string, t lokiv1.ObjectStorageSecretType) error {
-	p := ensureObjectStoreCredentials(&d.Spec.Template.Spec, secretName, t)
+func configureDeployment(d *appsv1.Deployment, secretName string, storeType lokiv1.ObjectStorageSecretType) error {
+	p := ensureObjectStoreCredentials(&d.Spec.Template.Spec, secretName, storeType)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
@@ -80,8 +80,8 @@ func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
 
 // ConfigureStatefulSet merges a the object storage secrect volume into the statefulset spec.
 // With this, the statefulset will expose credentials specific environment variable.
-func configureStatefulSet(s *appsv1.StatefulSet, secretName string, t lokiv1.ObjectStorageSecretType) error {
-	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, secretName, t)
+func configureStatefulSet(s *appsv1.StatefulSet, secretName string, storeType lokiv1.ObjectStorageSecretType) error {
+	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, secretName, storeType)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
@@ -105,7 +105,7 @@ func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 	return nil
 }
 
-func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1.ObjectStorageSecretType) corev1.PodSpec {
+func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, storeType lokiv1.ObjectStorageSecretType) corev1.PodSpec {
 	container := p.Containers[0].DeepCopy()
 	volumes := p.Volumes
 
@@ -125,7 +125,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 	})
 
 	var objStoreEnvVar []corev1.EnvVar
-	switch t {
+	switch storeType {
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
 		objStoreEnvVar = []corev1.EnvVar{
 			{
@@ -211,24 +211,24 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, secretName string, t lokiv1
 	case lokiv1.ObjectStorageSecretSwift:
 		objStoreEnvVar = []corev1.EnvVar{
 			{
-				Name: EnvOpenStackSwiftUsername,
+				Name: EnvSwiftUsername,
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: KeyOSSwiftUsername,
+						Key: KeySwiftUsername,
 					},
 				},
 			},
 			{
-				Name: EnvOpenStackSwiftPassword,
+				Name: EnvSwiftPassword,
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{
 							Name: secretName,
 						},
-						Key: KeyOSSwiftPassword,
+						Key: KeySwiftPassword,
 					},
 				},
 			},

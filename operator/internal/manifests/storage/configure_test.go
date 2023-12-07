@@ -332,24 +332,24 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: EnvOpenStackSwiftUsername,
+											Name: EnvSwiftUsername,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftUsername,
+													Key: KeySwiftUsername,
 												},
 											},
 										},
 										{
-											Name: EnvOpenStackSwiftPassword,
+											Name: EnvSwiftPassword,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftPassword,
+													Key: KeySwiftPassword,
 												},
 											},
 										},
@@ -706,24 +706,24 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: EnvOpenStackSwiftUsername,
+											Name: EnvSwiftUsername,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftUsername,
+													Key: KeySwiftUsername,
 												},
 											},
 										},
 										{
-											Name: EnvOpenStackSwiftPassword,
+											Name: EnvSwiftPassword,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftPassword,
+													Key: KeySwiftPassword,
 												},
 											},
 										},
@@ -802,24 +802,24 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: EnvOpenStackSwiftUsername,
+											Name: EnvSwiftUsername,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftUsername,
+													Key: KeySwiftUsername,
 												},
 											},
 										},
 										{
-											Name: EnvOpenStackSwiftPassword,
+											Name: EnvSwiftPassword,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftPassword,
+													Key: KeySwiftPassword,
 												},
 											},
 										},
@@ -997,24 +997,24 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: EnvOpenStackSwiftUsername,
+											Name: EnvSwiftUsername,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftUsername,
+													Key: KeySwiftUsername,
 												},
 											},
 										},
 										{
-											Name: EnvOpenStackSwiftPassword,
+											Name: EnvSwiftPassword,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyOSSwiftPassword,
+													Key: KeySwiftPassword,
 												},
 											},
 										},

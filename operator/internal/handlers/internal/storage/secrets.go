@@ -104,7 +104,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	}
 
 	// Extract and validate optional fields
-	region := s.Data["region"]
+	region := s.Data[storage.KeyAWSRegion]
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
 	if err != nil {
@@ -127,10 +127,10 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 
 	switch sseType = storage.S3SSEType(d[storage.KeyAWSSSEType]); sseType {
 	case storage.SSEKMSType:
-		kmsEncryptionCtx = string(d[storage.KeyAWSSSEKMSEncryptionContext])
-		kmsKeyId = string(d[storage.KeyAWSSSEKMSKeyID])
+		kmsEncryptionCtx = string(d[storage.KeyAWSSseKmsEncryptionContext])
+		kmsKeyId = string(d[storage.KeyAWSSseKmsKeyID])
 		if kmsKeyId == "" {
-			return storage.S3SSEConfig{}, kverrors.New("missing secret field", "field", storage.KeyAWSSSEKMSKeyID)
+			return storage.S3SSEConfig{}, kverrors.New("missing secret field", "field", storage.KeyAWSSseKmsKeyID)
 		}
 
 	case storage.SSES3Type:
@@ -138,7 +138,7 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 		return storage.S3SSEConfig{}, nil
 
 	default:
-		return storage.S3SSEConfig{}, kverrors.New("unsupported secret field value (Supported: SSE-KMS, SSE-S3)", "field", "sse_type", "value", sseType)
+		return storage.S3SSEConfig{}, kverrors.New("unsupported secret field value (Supported: SSE-KMS, SSE-S3)", "field", storage.KeyAWSSSEType, "value", sseType)
 	}
 
 	return storage.S3SSEConfig{
@@ -150,49 +150,49 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 
 func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, error) {
 	// Extract and validate mandatory fields
-	url := s.Data[storage.KeyOSSwiftAuthURL]
+	url := s.Data[storage.KeySwiftAuthURL]
 	if len(url) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftAuthURL)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftAuthURL)
 	}
-	username := s.Data[storage.KeyOSSwiftUsername]
+	username := s.Data[storage.KeySwiftUsername]
 	if len(username) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftUsername)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUsername)
 	}
-	userDomainName := s.Data[storage.KeyOSSwiftUserDomainName]
+	userDomainName := s.Data[storage.KeySwiftUserDomainName]
 	if len(userDomainName) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftUserDomainName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainName)
 	}
-	userDomainID := s.Data[storage.KeyOSSwiftUserDomainID]
+	userDomainID := s.Data[storage.KeySwiftUserDomainID]
 	if len(userDomainID) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftUserDomainID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainID)
 	}
-	userID := s.Data[storage.KeyOSSwiftUserID]
+	userID := s.Data[storage.KeySwiftUserID]
 	if len(userID) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftUserID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserID)
 	}
-	password := s.Data[storage.KeyOSSwiftPassword]
+	password := s.Data[storage.KeySwiftPassword]
 	if len(password) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftPassword)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftPassword)
 	}
-	domainID := s.Data[storage.KeyOSSwiftDomainID]
+	domainID := s.Data[storage.KeySwiftDomainID]
 	if len(domainID) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftDomainID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftDomainID)
 	}
-	domainName := s.Data[storage.KeyOSSwiftDomainName]
+	domainName := s.Data[storage.KeySwiftDomainName]
 	if len(domainName) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftDomainName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftDomainName)
 	}
-	containerName := s.Data[storage.KeyOSSwiftContainerName]
+	containerName := s.Data[storage.KeySwiftContainerName]
 	if len(containerName) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyOSSwiftContainerName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftContainerName)
 	}
 
 	// Extract and validate optional fields
-	projectID := s.Data[storage.KeyOSSwiftProjectID]
-	projectName := s.Data[storage.KeyOSSwiftProjectName]
-	projectDomainID := s.Data[storage.KeyOSSwiftProjectDomainId]
-	projectDomainName := s.Data[storage.KeyOSSwiftProjectDomainName]
-	region := s.Data[storage.KeyOSSwiftRegion]
+	projectID := s.Data[storage.KeySwiftProjectID]
+	projectName := s.Data[storage.KeySwiftProjectName]
+	projectDomainID := s.Data[storage.KeySwiftProjectDomainId]
+	projectDomainName := s.Data[storage.KeySwiftProjectDomainName]
+	region := s.Data[storage.KeySwiftRegion]
 
 	return &storage.SwiftStorageConfig{
 		AuthURL:           string(url),
