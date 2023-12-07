@@ -17,7 +17,7 @@ artificial log lines,
 such that Loki Canary forms information about the performance of the Loki cluster.
 The information is available as Prometheus time series metrics.
 
-{{< figure max-width="75%" src="./loki-canary-block.png">}}
+{{< figure max-width="75%" src="./loki-canary-block.png" alt="Loki canary">}}
 
 Loki Canary writes a log to a file and stores the timestamp in an internal
 array. The contents look something like this:
