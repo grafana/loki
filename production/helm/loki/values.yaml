@@ -853,15 +853,8 @@ write:
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
-  # -- Affinity for write pods. Passed through `tpl` and, thus, to be configured as string
-  # @default -- Hard node and soft zone anti-affinity
-  affinity: |
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              {{- include "loki.selectorLabels" (dict "ctx" . "component" "write") | nindent 10 }}
-          topologyKey: kubernetes.io/hostname
+  # -- Pod Affinity for write pods. This is ignored when write.zoneAwareReplication.enabled=true.
+  affinity: {}
   # -- DNS config for write pods
   dnsConfig: {}
   # -- Node selector for write pods

@@ -148,16 +148,13 @@ spec:
       dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
-      {{- if $zoneName }}
+      {{- with $rolloutZone.nodeSelector }}
       nodeSelector:
-        {{- $rolloutZone.nodeSelector | toYaml | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $rolloutZone.affinity }}
       affinity:
-        {{- $rolloutZone.affinity | toYaml | nindent 8 }}
-      {{- else }}
-      nodeSelector:
-        {{- .Values.write.nodeSelector | toYaml | nindent 8 }}
-      affinity:
-        {{- .Values.write.affinity | toYaml | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.write.topologySpreadConstraints }}
       topologySpreadConstraints:
