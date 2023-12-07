@@ -121,9 +121,7 @@ OUTER:
 	}
 
 
-	batch.SetColumn(u.out, u.fb.NewFloat64Array())
-
-	return batch, nil
+	return batch.SetColumn(u.out, u.fb.NewFloat64Array())
 }
 
 type batchSampleExtractor struct {

@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/apache/arrow/go/v14/arrow"
@@ -14,6 +15,8 @@ func createTestBatch(pool *memory.GoAllocator) arrow.Record {
 	fields := []arrow.Field{
 		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
 		{Name: "line", Type: &arrow.StringType{}},
+		{Name: "labels", Type: arrow.MapOf(&arrow.StringType{}, &arrow.StringType{})},
+		{Name: "out", Type: &arrow.Float64Type{}},
 	}
 	schema := arrow.NewSchema(fields, &arrow.Metadata{})
 	b := array.NewRecordBuilder(pool, schema)
@@ -26,6 +29,16 @@ func createTestBatch(pool *memory.GoAllocator) arrow.Record {
 		}
 
 		b.Field(1).(*array.StringBuilder).Append(v)
+
+		l := b.Field(2).(*array.MapBuilder)
+		l.Append(true)
+		l.KeyBuilder().(*array.StringBuilder).Append("first")
+		l.ItemBuilder().(*array.StringBuilder).Append("label")
+
+		l.KeyBuilder().(*array.StringBuilder).Append("value")
+		l.ItemBuilder().(*array.StringBuilder).Append(strconv.Itoa(i))
+
+		b.Field(3).(*array.Float64Builder).AppendNull()
 	}
 
 	return b.NewRecord()
@@ -49,6 +62,25 @@ func TestContainsFilterStage(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, int64(6), filtered.NumRows())
+}
+
+func TestUnwrapStage(t *testing.T) {
+	ctx := context.Background()
+
+	pool := memory.NewGoAllocator()
+	batch := createTestBatch(pool)
+	defer batch.Release()
+
+	stage := unwrapBatchStage{
+		in:  2,
+		out: 3,
+		label: "value",
+		fb:     array.NewFloat64Builder(pool),
+	}
+	updated, err := stage.Process(ctx, batch)
+	require.NoError(t, err)
+
+	require.Equal(t, "[0 1 2 3 4 5 6 7 8 9]", updated.Column(3).String())
 }
 
 func TestBatchExtractor(t *testing.T) {
