@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.41.0
+
+- [CHANGE] Make changes to how labels, annotations, resource names and priorityclassnames are created - matches how it is done in mimir-distributed helm chart.
+- [FEATURE] Add support for zone aware deployment of write component and usage of rollout-operator.
+
 ## 5.40.0
 
 - [CHANGE] Add extraContainers parameter for the write pod
