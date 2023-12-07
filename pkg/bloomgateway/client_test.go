@@ -1,6 +1,7 @@
 package bloomgateway
 
 import (
+	"math"
 	"sort"
 	"testing"
 	"time"
@@ -156,6 +157,37 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 	})
 }
 
+func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
+	testCases := map[string]struct {
+		instances []ring.InstanceDesc
+		expected  []addrsWithTokenRange
+	}{
+		"MinUint32 and MaxUint32 are actual tokens in the ring": {
+			instances: []ring.InstanceDesc{
+				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{0, math.MaxUint32 / 3 * 2}},
+				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 3 * 1, math.MaxUint32}},
+			},
+			expected: []addrsWithTokenRange{
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: 0},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: 1, maxToken: math.MaxUint32 / 3},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: math.MaxUint32/3*1 + 1, maxToken: math.MaxUint32 / 3 * 2},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: math.MaxUint32/3*2 + 1, maxToken: math.MaxUint32},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			subRing := newMockRing(tc.instances)
+			res, err := serverAddressesWithTokenRanges(subRing, tc.instances)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, res)
+		})
+	}
+
+}
+
 func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 
 	logger := log.NewNopLogger()
@@ -230,7 +262,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 			},
 		},
 		{
-			name: "fingerprints with token ranges of a multiple instance are grouped",
+			name: "fingerprints with token ranges of multiple instances are grouped",
 			chunks: []*logproto.GroupedChunkRefs{
 				// instance 1
 				{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},

@@ -8,10 +8,10 @@ import (
 
 // sortMergeIterator implements v1.Iterator
 type sortMergeIterator[T any, C comparable, R any] struct {
-	curr      R
+	curr      *R
 	heap      *v1.HeapIterator[v1.IndexedValue[C]]
 	items     []T
-	transform func(T, C, R) R
+	transform func(T, C, *R) *R
 	err       error
 }
 
@@ -29,7 +29,7 @@ func (it *sortMergeIterator[T, C, R]) Next() bool {
 }
 
 func (it *sortMergeIterator[T, C, R]) At() R {
-	return it.curr
+	return *it.curr
 }
 
 func (it *sortMergeIterator[T, C, R]) Err() error {

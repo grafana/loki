@@ -284,6 +284,15 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 }
 
 func (c *GatewayClient) groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, subRing ring.ReadRing, instances []ring.InstanceDesc) ([]instanceWithFingerprints, error) {
+	servers, err := serverAddressesWithTokenRanges(subRing, instances)
+	if err != nil {
+		return nil, err
+	}
+	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
+	return groupByInstance(boundedFingerprints), nil
+}
+
+func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithTokenRange, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
 	servers := make([]addrsWithTokenRange, 0, len(instances))
@@ -303,7 +312,7 @@ func (c *GatewayClient) groupFingerprintsByServer(groups []*logproto.GroupedChun
 		})
 	}
 
-	if len(servers) > 0 {
+	if len(servers) > 0 && servers[len(servers)-1].maxToken < math.MaxUint32 {
 		// append the instance for the token range between the greates token and MaxUint32
 		servers = append(servers, addrsWithTokenRange{
 			id:       servers[0].id,
@@ -312,9 +321,7 @@ func (c *GatewayClient) groupFingerprintsByServer(groups []*logproto.GroupedChun
 			maxToken: math.MaxUint32,
 		})
 	}
-
-	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
-	return groupByInstance(boundedFingerprints), nil
+	return servers, nil
 }
 
 type instanceWithToken struct {

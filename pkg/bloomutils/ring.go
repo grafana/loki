@@ -68,12 +68,12 @@ func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) Insta
 func NewInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[InstanceWithTokenRange] {
 	it := &sortMergeIterator[ring.InstanceDesc, uint32, InstanceWithTokenRange]{
 		items: instances,
-		transform: func(item ring.InstanceDesc, val uint32, prev InstanceWithTokenRange) InstanceWithTokenRange {
-			prevToken := prev.MaxToken + 1
-			if prev.MaxToken == 0 {
-				prevToken = 0
+		transform: func(item ring.InstanceDesc, val uint32, prev *InstanceWithTokenRange) *InstanceWithTokenRange {
+			var prevToken uint32
+			if prev != nil {
+				prevToken = prev.MaxToken + 1
 			}
-			return InstanceWithTokenRange{Instance: item, MinToken: prevToken, MaxToken: val}
+			return &InstanceWithTokenRange{Instance: item, MinToken: prevToken, MaxToken: val}
 		},
 	}
 	sequences := make([]v1.PeekingIterator[v1.IndexedValue[uint32]], 0, len(instances))
