@@ -158,7 +158,7 @@ func (s ResultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime in
 		return nil, nil, err
 	}
 
-	if !s.shouldCacheRes(ctx, r, response, maxCacheTime) {
+	if s.shouldCacheRes != nil && !s.shouldCacheRes(ctx, r, response, maxCacheTime) {
 		return response, []Extent{}, nil
 	}
 
