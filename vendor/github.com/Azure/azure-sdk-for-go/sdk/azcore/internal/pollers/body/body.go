@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/poller"
 )
 
 // Kind is the identifier of this type in a resume token.
@@ -72,9 +73,9 @@ func New[T any](pl exported.Pipeline, resp *http.Response) (*Poller[T], error) {
 	}
 	// default initial state to InProgress.  depending on the HTTP
 	// status code and provisioning state, we might change the value.
-	curState := pollers.StatusInProgress
-	provState, err := pollers.GetProvisioningState(resp)
-	if err != nil && !errors.Is(err, pollers.ErrNoBody) {
+	curState := poller.StatusInProgress
+	provState, err := poller.GetProvisioningState(resp)
+	if err != nil && !errors.Is(err, poller.ErrNoBody) {
 		return nil, err
 	}
 	if resp.StatusCode == http.StatusCreated && provState != "" {
@@ -85,37 +86,37 @@ func New[T any](pl exported.Pipeline, resp *http.Response) (*Poller[T], error) {
 			curState = provState
 		} else if provState == "" {
 			// for a 200, absense of provisioning state indicates success
-			curState = pollers.StatusSucceeded
+			curState = poller.StatusSucceeded
 		}
 	} else if resp.StatusCode == http.StatusNoContent {
-		curState = pollers.StatusSucceeded
+		curState = poller.StatusSucceeded
 	}
 	p.CurState = curState
 	return p, nil
 }
 
 func (p *Poller[T]) Done() bool {
-	return pollers.IsTerminalState(p.CurState)
+	return poller.IsTerminalState(p.CurState)
 }
 
 func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 	err := pollers.PollHelper(ctx, p.PollURL, p.pl, func(resp *http.Response) (string, error) {
-		if !pollers.StatusCodeValid(resp) {
+		if !poller.StatusCodeValid(resp) {
 			p.resp = resp
 			return "", exported.NewResponseError(resp)
 		}
 		if resp.StatusCode == http.StatusNoContent {
 			p.resp = resp
-			p.CurState = pollers.StatusSucceeded
+			p.CurState = poller.StatusSucceeded
 			return p.CurState, nil
 		}
-		state, err := pollers.GetProvisioningState(resp)
-		if errors.Is(err, pollers.ErrNoBody) {
+		state, err := poller.GetProvisioningState(resp)
+		if errors.Is(err, poller.ErrNoBody) {
 			// a missing response body in non-204 case is an error
 			return "", err
 		} else if state == "" {
 			// a response body without provisioning state is considered terminal success
-			state = pollers.StatusSucceeded
+			state = poller.StatusSucceeded
 		} else if err != nil {
 			return "", err
 		}
@@ -130,5 +131,5 @@ func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 }
 
 func (p *Poller[T]) Result(ctx context.Context, out *T) error {
-	return pollers.ResultHelper(p.resp, pollers.Failed(p.CurState), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), out)
 }

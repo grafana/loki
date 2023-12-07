@@ -1,17 +1,19 @@
 ---
 title: Write Ahead Log
-description: Write Ahead Log
+menuTitle:  
+description: Describes the Loki Write Ahead Log (WAL).
+weight:  500
 ---
 
 # Write Ahead Log
 
 Ingesters temporarily store data in memory. In the event of a crash, there could be data loss. The Write Ahead Log (WAL) helps fill this gap in reliability.
 
-The WAL in Grafana Loki records incoming data and stores it on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash. Upon restart, Loki will "replay" all of the data in the log before registering itself as ready for subsequent writes. This allows Loki to maintain the performance & cost benefits of buffering data in memory _and_ durability benefits (it won't lose data once a write has been acknowledged).
+The WAL in Grafana Loki records incoming data and stores it on the local file system in order to guarantee persistence of acknowledged data in the event of a process crash. Upon restart, Loki will "replay" all of the data in the log before registering itself as ready for subsequent writes. This allows Loki to maintain the performance and cost benefits of buffering data in memory _and_ durability benefits (it won't lose data once a write has been acknowledged).
 
 This section will use Kubernetes as a reference deployment paradigm in the examples.
 
-## Disclaimer & WAL nuances
+## Disclaimer and WAL nuances
 
 The Write Ahead Log in Loki takes a few particular tradeoffs compared to other WALs you may be familiar with. The WAL aims to add additional durability guarantees, but _not at the expense of availability_. Particularly, there are two scenarios where the WAL sacrifices these guarantees.
 
@@ -83,7 +85,7 @@ When scaling down, we must ensure existing data on the leaving ingesters are flu
 
 Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are `ingester-3` and then `ingester-2`.
 
-Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/flush_shutdown`]({{< relref "../../reference/api#post-ingesterflush_shutdown" >}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
+Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/shutdown?flush=true`]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
 
 After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters to 2.
 

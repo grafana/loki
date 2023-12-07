@@ -1,0 +1,50 @@
+# This file should contain a list fo deleted config options.
+#
+# The syntax for this file is the same as the syntax for deprecated-config.yaml.
+
+ingester:
+  max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
+
+querier:
+  engine:
+    timeout: "Use global or per-tenant query_timeout configuration from limits_config."
+
+query_range:
+  split_queries_by_interval: "Configure global or per-tenant split_queries_by_interval limit"
+  forward_headers_list: "This setting is removed without an alternative"
+
+frontend_worker:
+  parallelism: "Configure querier.max_concurrent to limit the max concurrent requests processed by the queriers."
+  match_max_concurrent: "Configure querier.max_concurrent to limit the max concurrent requests processed by the queriers."
+
+common:
+  storage:
+    s3: &s3_deletes
+      sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
+
+ruler:
+  storage:
+    s3: *s3_deletes
+
+storage_config:
+  boltdb_shipper:
+    shared_store: "object_store setting in the period_config will be used to configure the store for the index."
+    shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
+    use_boltdb_shipper_as_backup: "Since TSDB is now stable and the recommended index type, the setting has become irrelevant and therefore was removed. The previous default value false is applied."
+  tsdb_shipper:
+    shared_store: "object_store setting in the period_config will be used to configure the store for the index."
+    shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
+  aws: *s3_deletes
+  s3: *s3_deletes
+
+compactor:
+  deletion_mode: "Use global or per-tenant deletion_mode configuration from limits_config."
+  shared_store: "Compactor will now operate on all the object stores configured in period config where the index type is either tsdb or boltdb-shipper. -compactor.delete-request-store to configure the store for delete requests is now a required field."
+  shared_store_key_prefix: "Use -compactor.delete-request-store.key-prefix to configure the path prefix under which the delete requests are stored."
+
+chunk_store_config:
+  max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
+
+limits_config:
+  ruler_evaluation_delay_duration: "This setting is removed."
+  enforce_metric_name: "This setting is removed."

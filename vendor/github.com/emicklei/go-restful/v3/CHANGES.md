@@ -1,5 +1,10 @@
 # Change history of go-restful
 
+## [v3.10.2] - 2023-03-09
+
+- introduced MergePathStrategy to be able to revert behaviour of path concatenation to 3.9.0
+  see comment in Readme how to customize this behaviour.
+
 ## [v3.10.1] - 2022-11-19
 
 - fix broken 3.10.0 by using path package for joining paths

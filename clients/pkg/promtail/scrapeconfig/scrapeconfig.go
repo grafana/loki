@@ -8,6 +8,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/dskit/server"
 	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
@@ -25,7 +26,6 @@ import (
 	"github.com/prometheus/prometheus/discovery/triton"
 	"github.com/prometheus/prometheus/discovery/zookeeper"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
@@ -379,7 +379,10 @@ type CloudflareConfig struct {
 	// - minimal
 	// - extended
 	// - all
+	// - custom
 	FieldsType string `yaml:"fields_type"`
+	// The additional list of fields to supplement those provided via fields_type.
+	AdditionalFields []string `yaml:"additional_fields"`
 }
 
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.

@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -50,7 +52,7 @@ func (m *MemoryWALReader) Err() error { return nil }
 
 func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
 
-func buildMemoryReader(users, totalStreams, entriesPerStream int, withNonIndexedLabels bool) (*MemoryWALReader, []*wal.Record) {
+func buildMemoryReader(users, totalStreams, entriesPerStream int, withStructuredMetadata bool) (*MemoryWALReader, []*wal.Record) {
 	var recs []*wal.Record
 	reader := &MemoryWALReader{}
 	for i := 0; i < totalStreams; i++ {
@@ -77,8 +79,8 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int, withNonIndexed
 				Line:      fmt.Sprintf("%d", j),
 			}
 
-			if withNonIndexedLabels {
-				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+			if withStructuredMetadata {
+				entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 					"traceID", strings.Repeat(fmt.Sprintf("%d", j), 10),
 					"userID", strings.Repeat(fmt.Sprintf("%d", j), 10),
 				))
@@ -172,8 +174,8 @@ func (r *MemRecoverer) Close() { close(r.done) }
 func (r *MemRecoverer) Done() <-chan struct{} { return r.done }
 
 func Test_InMemorySegmentRecover(t *testing.T) {
-	for _, withNonIndexedLabels := range []bool{true, false} {
-		t.Run(fmt.Sprintf("nonIndexedLabels=%t", withNonIndexedLabels), func(t *testing.T) {
+	for _, withStructuredMetadata := range []bool{true, false} {
+		t.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(t *testing.T) {
 			var (
 				users            = 10
 				streamsCt        = 1000
@@ -182,9 +184,9 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 
 			// TODO: remove once we set v3 as current
 			if wal.CurrentEntriesRec < wal.WALRecordEntriesV3 {
-				withNonIndexedLabels = false
+				withStructuredMetadata = false
 			}
-			reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream, withNonIndexedLabels)
+			reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream, withStructuredMetadata)
 
 			recoverer := NewMemRecoverer()
 
@@ -226,7 +228,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -260,7 +262,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
+	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 
 	// recover the checkpointed series

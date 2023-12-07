@@ -1,4 +1,4 @@
-local apps = ['loki', 'loki-canary', 'logcli'];
+local apps = ['loki', 'loki-canary', 'loki-canary-boringcrypto', 'logcli'];
 local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
@@ -160,14 +160,14 @@ local promtail_win() = pipeline('promtail-windows') {
   steps: [
     {
       name: 'identify-runner',
-      image: 'golang:1.19-windowsservercore-1809',
+      image: 'golang:1.21.3-windowsservercore-1809',
       commands: [
         'Write-Output $env:DRONE_RUNNER_NAME',
       ],
     },
     {
       name: 'test',
-      image: 'golang:1.19-windowsservercore-1809',
+      image: 'golang:1.21.3-windowsservercore-1809',
       commands: [
         'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
       ],
@@ -363,7 +363,6 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   depends_on: ['check'],
 };
 
-
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
@@ -497,40 +496,73 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
+local build_image_tag = '0.32.0';
 [
-  pipeline('loki-build-image') {
-    local build_image_tag = '0.29.3-golangci.1.51.2',
+  pipeline('loki-build-image-' + arch) {
     workspace: {
       base: '/src',
       path: 'loki',
     },
+    platform: {
+      os: 'linux',
+      arch: arch,
+    },
     steps: [
       {
-        name: 'test-image',
+        name: 'test',
         image: 'plugins/docker',
         when: onPRs + onPath('loki-build-image/**'),
+        environment: {
+          DOCKER_BUILDKIT: 1,
+        },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_tag],
+          tags: [build_image_tag + '-' + arch],
           dry_run: true,
         },
       },
       {
-        name: 'push-image',
+        name: 'push',
         image: 'plugins/docker',
         when: onTagOrMain + onPath('loki-build-image/**'),
+        environment: {
+          DOCKER_BUILDKIT: 1,
+        },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
+          tags: [build_image_tag + '-' + arch],
           dry_run: false,
         },
       },
+    ],
+  }
+  for arch in ['amd64', 'arm64']
+] + [
+  pipeline('loki-build-image-publish') {
+    steps: [
+      {
+        name: 'manifest',
+        image: 'plugins/manifest:1.4.0',
+        when: onTagOrMain + onPath('loki-build-image/**'),
+        settings: {
+          // the target parameter is abused for the app's name, as it is unused in spec mode.
+          target: 'loki-build-image:' + build_image_tag,
+          spec: '.drone/docker-manifest-build-image.tmpl',
+          ignore_missing: false,
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+        },
+      },
+    ],
+    depends_on: [
+      'loki-build-image-%s' % arch
+      for arch in ['amd64', 'arm64']
     ],
   },
   pipeline('helm-test-image') {
@@ -611,7 +643,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
         name: 'build-docs-website',
-        image: 'grafana/docs-base:latest',
+        image: 'grafana/docs-base:e6ef023f8b8',
         commands: [
           'mkdir -p /hugo/content/docs/loki/latest',
           'cp -r docs/sources/* /hugo/content/docs/loki/latest/',
@@ -695,7 +727,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary', 'fluent-bit']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'loki-canary-boringcrypto', 'fluent-bit-plugin-loki']) {
     trigger+: onTagOrMain,
   },
   manifest_operator('loki-operator') {
@@ -917,6 +949,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
         },
         commands: [
+          'git fetch origin --tags',
           'make docker-driver-push',
         ],
         volumes: [

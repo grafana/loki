@@ -6,9 +6,10 @@ https://docs.docker.com/engine/api/
 
 # Usage
 
-You use the library by creating a client object and calling methods on it. The
-client can be created either from environment variables with NewClientWithOpts(client.FromEnv),
-or configured manually with NewClient().
+You use the library by constructing a client object using [NewClientWithOpts]
+and calling methods on it. The client can be configured from environment
+variables by passing the [FromEnv] option, or configured manually by passing any
+of the other available [Opts].
 
 For example, to list running containers (the equivalent of "docker ps"):
 
@@ -54,6 +55,36 @@ import (
 	"github.com/docker/go-connections/sockets"
 	"github.com/pkg/errors"
 )
+
+// DummyHost is a hostname used for local communication.
+//
+// It acts as a valid formatted hostname for local connections (such as "unix://"
+// or "npipe://") which do not require a hostname. It should never be resolved,
+// but uses the special-purpose ".localhost" TLD (as defined in [RFC 2606, Section 2]
+// and [RFC 6761, Section 6.3]).
+//
+// [RFC 7230, Section 5.4] defines that an empty header must be used for such
+// cases:
+//
+//	If the authority component is missing or undefined for the target URI,
+//	then a client MUST send a Host header field with an empty field-value.
+//
+// However, [Go stdlib] enforces the semantics of HTTP(S) over TCP, does not
+// allow an empty header to be used, and requires req.URL.Scheme to be either
+// "http" or "https".
+//
+// For further details, refer to:
+//
+//   - https://github.com/docker/engine-api/issues/189
+//   - https://github.com/golang/go/issues/13624
+//   - https://github.com/golang/go/issues/61076
+//   - https://github.com/moby/moby/issues/45935
+//
+// [RFC 2606, Section 2]: https://www.rfc-editor.org/rfc/rfc2606.html#section-2
+// [RFC 6761, Section 6.3]: https://www.rfc-editor.org/rfc/rfc6761#section-6.3
+// [RFC 7230, Section 5.4]: https://datatracker.ietf.org/doc/html/rfc7230#section-5.4
+// [Go stdlib]: https://github.com/golang/go/blob/6244b1946bc2101b01955468f1be502dbadd6807/src/net/http/transport.go#L558-L569
+const DummyHost = "api.moby.localhost"
 
 // ErrRedirect is the error returned by checkRedirect when the request is non-GET.
 var ErrRedirect = errors.New("unexpected redirect in response")
@@ -125,7 +156,12 @@ func CheckRedirect(req *http.Request, via []*http.Request) error {
 //		client.WithAPIVersionNegotiation(),
 //	)
 func NewClientWithOpts(ops ...Opt) (*Client, error) {
-	client, err := defaultHTTPClient(DefaultDockerHost)
+	hostURL, err := ParseHostURL(DefaultDockerHost)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := defaultHTTPClient(hostURL)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +169,8 @@ func NewClientWithOpts(ops ...Opt) (*Client, error) {
 		host:    DefaultDockerHost,
 		version: api.DefaultVersion,
 		client:  client,
-		proto:   defaultProto,
-		addr:    defaultAddr,
+		proto:   hostURL.Scheme,
+		addr:    hostURL.Host,
 	}
 
 	for _, op := range ops {
@@ -160,13 +196,12 @@ func NewClientWithOpts(ops ...Opt) (*Client, error) {
 	return c, nil
 }
 
-func defaultHTTPClient(host string) (*http.Client, error) {
-	hostURL, err := ParseHostURL(host)
+func defaultHTTPClient(hostURL *url.URL) (*http.Client, error) {
+	transport := &http.Transport{}
+	err := sockets.ConfigureTransport(transport, hostURL.Scheme, hostURL.Host)
 	if err != nil {
 		return nil, err
 	}
-	transport := &http.Transport{}
-	_ = sockets.ConfigureTransport(transport, hostURL.Scheme, hostURL.Host)
 	return &http.Client{
 		Transport:     transport,
 		CheckRedirect: CheckRedirect,
@@ -282,13 +317,12 @@ func (cli *Client) HTTPClient() *http.Client {
 // ParseHostURL parses a url string, validates the string is a host url, and
 // returns the parsed URL
 func ParseHostURL(host string) (*url.URL, error) {
-	protoAddrParts := strings.SplitN(host, "://", 2)
-	if len(protoAddrParts) == 1 {
+	proto, addr, ok := strings.Cut(host, "://")
+	if !ok || addr == "" {
 		return nil, errors.Errorf("unable to parse docker host `%s`", host)
 	}
 
 	var basePath string
-	proto, addr := protoAddrParts[0], protoAddrParts[1]
 	if proto == "tcp" {
 		parsed, err := url.Parse("tcp://" + addr)
 		if err != nil {

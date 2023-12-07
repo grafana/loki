@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/weaveworks/common/middleware"
+	"github.com/grafana/dskit/middleware"
 )
 
 type headerContextKey string
@@ -45,4 +45,8 @@ func ExtractActorPath(ctx context.Context) []string {
 		return nil
 	}
 	return strings.Split(value, LokiActorPathDelimiter)
+}
+
+func InjectActorPath(ctx context.Context, value string) context.Context {
+	return context.WithValue(ctx, headerContextKey(LokiActorPathHeader), value)
 }

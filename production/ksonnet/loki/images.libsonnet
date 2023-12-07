@@ -2,9 +2,9 @@
   _images+:: {
     // Various third-party images.
     memcached: 'memcached:1.5.17-alpine',
-    memcachedExporter: 'prom/memcached-exporter:v0.6.0',
+    memcachedExporter: 'prom/memcached-exporter:v0.11.3',
 
-    loki: 'grafana/loki:2.8.1',
+    loki: 'grafana/loki:2.9.2',
 
     distributor:: self.loki,
     ingester:: self.loki,

@@ -74,6 +74,11 @@ func (p *PrefixedBucket) IsObjNotFoundErr(err error) bool {
 	return p.bkt.IsObjNotFoundErr(err)
 }
 
+// IsAccessDeniedErr returns true if access to object is denied.
+func (p *PrefixedBucket) IsAccessDeniedErr(err error) bool {
+	return p.bkt.IsAccessDeniedErr(err)
+}
+
 // Attributes returns information about the specified object.
 func (p PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	return p.bkt.Attributes(ctx, conditionalPrefix(p.prefix, name))

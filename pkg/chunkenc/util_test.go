@@ -15,11 +15,11 @@ func logprotoEntry(ts int64, line string) *logproto.Entry {
 	}
 }
 
-func logprotoEntryWithNonIndexedLabels(ts int64, line string, nonIndexedLabels []logproto.LabelAdapter) *logproto.Entry {
+func logprotoEntryWithStructuredMetadata(ts int64, line string, structuredMetadata []logproto.LabelAdapter) *logproto.Entry {
 	return &logproto.Entry{
-		Timestamp:        time.Unix(0, ts),
-		Line:             line,
-		NonIndexedLabels: nonIndexedLabels,
+		Timestamp:          time.Unix(0, ts),
+		Line:               line,
+		StructuredMetadata: structuredMetadata,
 	}
 }
 
@@ -30,7 +30,7 @@ func generateData(enc Encoding, chunksCount, blockSize, targetSize int) ([]Chunk
 
 	for n := 0; n < chunksCount; n++ {
 		entry := logprotoEntry(0, testdata.LogString(0))
-		c := NewMemChunk(enc, DefaultHeadBlockFmt, blockSize, targetSize)
+		c := NewMemChunk(ChunkFormatV4, enc, UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 		for c.SpaceFor(entry) {
 			size += uint64(len(entry.Line))
 			_ = c.Append(entry)

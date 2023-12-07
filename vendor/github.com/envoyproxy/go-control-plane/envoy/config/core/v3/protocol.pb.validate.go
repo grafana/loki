@@ -1162,6 +1162,37 @@ func (m *Http1ProtocolOptions) validate(all bool) error {
 
 	// no validation rules for SendFullyQualifiedUrl
 
+	if all {
+		switch v := interface{}(m.GetUseBalsaParser()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Http1ProtocolOptionsValidationError{
+					field:  "UseBalsaParser",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Http1ProtocolOptionsValidationError{
+					field:  "UseBalsaParser",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetUseBalsaParser()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return Http1ProtocolOptionsValidationError{
+				field:  "UseBalsaParser",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for AllowCustomMethods
+
 	if len(errors) > 0 {
 		return Http1ProtocolOptionsMultiError(errors)
 	}
@@ -1765,6 +1796,35 @@ func (m *Http2ProtocolOptions) validate(all bool) error {
 		if err := v.Validate(); err != nil {
 			return Http2ProtocolOptionsValidationError{
 				field:  "ConnectionKeepalive",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetUseOghttp2Codec()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, Http2ProtocolOptionsValidationError{
+					field:  "UseOghttp2Codec",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, Http2ProtocolOptionsValidationError{
+					field:  "UseOghttp2Codec",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetUseOghttp2Codec()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return Http2ProtocolOptionsValidationError{
+				field:  "UseOghttp2Codec",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}

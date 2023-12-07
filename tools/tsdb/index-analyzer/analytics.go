@@ -7,13 +7,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []string) error {
+func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants []string) error {
 
 	var (
 		series             int
@@ -25,7 +25,7 @@ func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []stri
 	)
 	for _, tenant := range tenants {
 		fmt.Printf("analyzing tenant %s\n", tenant)
-		err := shipper.ForEach(
+		err := indexShipper.ForEach(
 			context.Background(),
 			tableName,
 			tenant,

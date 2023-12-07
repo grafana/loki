@@ -207,6 +207,11 @@ func (b *InMemBucket) IsObjNotFoundErr(err error) bool {
 	return errors.Is(err, errNotFound)
 }
 
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *InMemBucket) IsAccessDeniedErr(err error) bool {
+	return false
+}
+
 func (b *InMemBucket) Close() error { return nil }
 
 // Name returns the bucket name.

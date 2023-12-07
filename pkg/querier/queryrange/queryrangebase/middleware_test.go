@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
 
 	"github.com/stretchr/testify/assert"
 )

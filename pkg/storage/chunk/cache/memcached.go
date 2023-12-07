@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	instr "github.com/grafana/dskit/instrument"
 	"github.com/grafana/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
 )
 
@@ -29,8 +30,8 @@ type MemcachedConfig struct {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.Expiration, prefix+"memcached.expiration", 0, description+"How long keys stay in the memcache.")
-	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 1024, description+"How many keys to fetch in each batch.")
-	f.IntVar(&cfg.Parallelism, prefix+"memcached.parallelism", 100, description+"Maximum active requests to memcache.")
+	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 256, description+"How many keys to fetch in each batch.")
+	f.IntVar(&cfg.Parallelism, prefix+"memcached.parallelism", 10, description+"Maximum active requests to memcache.")
 }
 
 // Memcached type caches chunks in memcached
@@ -62,7 +63,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 		cacheType: cacheType,
 		requestDuration: instr.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace: "loki",
+				Namespace: constants.Loki,
 				Name:      "memcache_request_duration_seconds",
 				Help:      "Total time spent in seconds doing memcache requests.",
 				// 16us, 64us, 256us, 1.024ms, 4.096ms, 16.384ms, 65.536ms, 150ms, 250ms, 500ms, 1s

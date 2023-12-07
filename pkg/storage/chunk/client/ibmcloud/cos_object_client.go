@@ -23,12 +23,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -46,7 +47,7 @@ var (
 )
 
 var cosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "cos_request_duration_seconds",
 	Help:      "Time spent doing cos requests.",
 	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
@@ -316,6 +317,24 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 	})
 }
 
+func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	bucket := c.bucketFromKey(objectKey)
+	err := instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var requestErr error
+		_, requestErr = c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
+			Bucket: ibm.String(bucket),
+			Key:    ibm.String(objectKey),
+		})
+		return requestErr
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 
@@ -423,3 +442,6 @@ func (c *COSObjectClient) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (c *COSObjectClient) IsRetryableErr(error) bool { return false }

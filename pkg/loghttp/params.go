@@ -10,13 +10,16 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 const (
 	defaultQueryLimit = 100
 	defaultSince      = 1 * time.Hour
+	defaultDirection  = logproto.BACKWARD
 )
 
 func limit(r *http.Request) (uint32, error) {
@@ -39,7 +42,7 @@ func ts(r *http.Request) (time.Time, error) {
 }
 
 func direction(r *http.Request) (logproto.Direction, error) {
-	return parseDirection(r.Form.Get("direction"), logproto.BACKWARD)
+	return parseDirection(r.Form.Get("direction"), defaultDirection)
 }
 
 func shards(r *http.Request) []string {
@@ -177,4 +180,23 @@ func parseSecondsOrDuration(value string) (time.Duration, error) {
 		return time.Duration(d), nil
 	}
 	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
+}
+
+// parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
+// This is used only to keep regexp query string support until it gets fully deprecated.
+func parseRegexQuery(httpRequest *http.Request) (string, error) {
+	query := httpRequest.Form.Get("query")
+	regexp := httpRequest.Form.Get("regexp")
+	if regexp != "" {
+		expr, err := syntax.ParseLogSelector(query, true)
+		if err != nil {
+			return "", err
+		}
+		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
+		if err != nil {
+			return "", err
+		}
+		query = newExpr.String()
+	}
+	return query, nil
 }

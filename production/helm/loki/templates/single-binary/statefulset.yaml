@@ -9,6 +9,7 @@ metadata:
   labels:
     {{- include "loki.singleBinaryLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.singleBinary.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -16,6 +17,7 @@ metadata:
     {{- with .Values.singleBinary.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- end }}
 spec:
   replicas: {{ include "loki.singleBinaryReplicas" . }}
   podManagementPolicy: Parallel
@@ -135,6 +137,10 @@ spec:
       affinity:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
+      {{- with .Values.singleBinary.dnsConfig }}
+      dnsConfig:
+        {{- tpl . $ | nindent 8 }}
+      {{- end }}
       {{- with .Values.singleBinary.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -170,7 +176,9 @@ spec:
         {{- end }}
   {{- if .Values.singleBinary.persistence.enabled }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1	
+      kind: PersistentVolumeClaim
+      metadata:
         name: storage
       spec:
         accessModes:

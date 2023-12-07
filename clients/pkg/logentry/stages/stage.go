@@ -16,32 +16,34 @@ import (
 )
 
 const (
-	StageTypeJSON             = "json"
-	StageTypeLogfmt           = "logfmt"
-	StageTypeRegex            = "regex"
-	StageTypeReplace          = "replace"
-	StageTypeMetric           = "metrics"
-	StageTypeLabel            = "labels"
-	StageTypeLabelDrop        = "labeldrop"
-	StageTypeTimestamp        = "timestamp"
-	StageTypeOutput           = "output"
-	StageTypeDocker           = "docker"
-	StageTypeCRI              = "cri"
-	StageTypeMatch            = "match"
-	StageTypeTemplate         = "template"
-	StageTypePipeline         = "pipeline"
-	StageTypeTenant           = "tenant"
-	StageTypeDrop             = "drop"
-	StageTypeSampling         = "sampling"
-	StageTypeLimit            = "limit"
-	StageTypeMultiline        = "multiline"
-	StageTypePack             = "pack"
-	StageTypeLabelAllow       = "labelallow"
-	StageTypeStaticLabels     = "static_labels"
-	StageTypeDecolorize       = "decolorize"
-	StageTypeEventLogMessage  = "eventlogmessage"
-	StageTypeGeoIP            = "geoip"
-	StageTypeNonIndexedLabels = "non_indexed_labels"
+	StageTypeJSON            = "json"
+	StageTypeLogfmt          = "logfmt"
+	StageTypeRegex           = "regex"
+	StageTypeReplace         = "replace"
+	StageTypeMetric          = "metrics"
+	StageTypeLabel           = "labels"
+	StageTypeLabelDrop       = "labeldrop"
+	StageTypeTimestamp       = "timestamp"
+	StageTypeOutput          = "output"
+	StageTypeDocker          = "docker"
+	StageTypeCRI             = "cri"
+	StageTypeMatch           = "match"
+	StageTypeTemplate        = "template"
+	StageTypePipeline        = "pipeline"
+	StageTypeTenant          = "tenant"
+	StageTypeDrop            = "drop"
+	StageTypeSampling        = "sampling"
+	StageTypeLimit           = "limit"
+	StageTypeMultiline       = "multiline"
+	StageTypePack            = "pack"
+	StageTypeLabelAllow      = "labelallow"
+	StageTypeStaticLabels    = "static_labels"
+	StageTypeDecolorize      = "decolorize"
+	StageTypeEventLogMessage = "eventlogmessage"
+	StageTypeGeoIP           = "geoip"
+	// Deprecated. Renamed to `structured_metadata`. Will be removed after the migration.
+	StageTypeNonIndexedLabels   = "non_indexed_labels"
+	StageTypeStructuredMetadata = "structured_metadata"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -205,7 +207,8 @@ func initCreators() {
 		StageTypeGeoIP: func(params StageCreationParams) (Stage, error) {
 			return newGeoIPStage(params.logger, params.config)
 		},
-		StageTypeNonIndexedLabels: newNonIndexedLabelsStage,
+		StageTypeNonIndexedLabels:   newStructuredMetadataStage,
+		StageTypeStructuredMetadata: newStructuredMetadataStage,
 	}
 }
 

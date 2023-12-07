@@ -84,6 +84,11 @@ func (b *PrefixedBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExp
 	return b.WithExpectedErrs(fn)
 }
 
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *PrefixedBucketClient) IsAccessDeniedErr(err error) bool {
+	return b.bucket.IsAccessDeniedErr(err)
+}
+
 // ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
 // thanos_objstore_bucket_operation_failures_total metric.
 func (b *PrefixedBucketClient) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {

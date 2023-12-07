@@ -11,11 +11,11 @@ kind: LokiStack
 metadata:
   name: lokistack-dev
 spec:
-  size: 1x.extra-small
+  size: 1x.demo
   storage:
     schemas:
-    - version: v12
-      effectiveDate: 2022-06-01
+    - version: v13
+      effectiveDate: 2023-10-15
     secret:
       name: test
       type: s3

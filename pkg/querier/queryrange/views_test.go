@@ -217,7 +217,6 @@ func TestMergedViewMaterialize(t *testing.T) {
 	}
 	expected := []string{`{baz="woof", i="1"}`, `{baz="woof", i="3"}`, `{foo="bar", i="2"}`}
 	require.ElementsMatch(t, series, expected)
-
 }
 
 func TestMergedViewJSON(t *testing.T) {
@@ -246,10 +245,7 @@ func TestMergedViewJSON(t *testing.T) {
 	actual := b.String()
 	b.Reset()
 
-	result := logproto.SeriesResponse{
-		Series: response.Data,
-	}
-	err = marshal.WriteSeriesResponseJSON(result, &b)
+	err = marshal.WriteSeriesResponseJSON(response.Data, &b)
 	require.NoError(t, err)
 	expected := b.String()
 

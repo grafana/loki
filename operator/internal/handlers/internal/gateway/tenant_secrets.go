@@ -5,16 +5,15 @@ import (
 	"fmt"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
-
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // GetTenantSecrets returns the list to gateway tenant secrets for a tenant mode.

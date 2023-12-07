@@ -81,17 +81,6 @@ func (m *RegexMatcher) validate(all bool) error {
 			errors = append(errors, err)
 		}
 
-		if m.GetGoogleRe2() == nil {
-			err := RegexMatcherValidationError{
-				field:  "GoogleRe2",
-				reason: "value is required",
-			}
-			if !all {
-				return err
-			}
-			errors = append(errors, err)
-		}
-
 		if all {
 			switch v := interface{}(m.GetGoogleRe2()).(type) {
 			case interface{ ValidateAll() error }:
