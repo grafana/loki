@@ -21,6 +21,11 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -194,4 +199,24 @@ session_token: session token
 	require.Equal(t, underTest.SecretAccessKey.String(), "secret access key")
 	require.Equal(t, underTest.SessionToken.String(), "session token")
 
+}
+
+type testCommonPrefixesS3Client struct {
+	s3iface.S3API
+}
+
+func (m *testCommonPrefixesS3Client) ListObjectsV2WithContext(aws.Context, *s3.ListObjectsV2Input, ...request.Option) (*s3.ListObjectsV2Output, error) {
+	var commonPrefixes []*s3.CommonPrefix
+	commonPrefix := "common-prefix-repeated/"
+	for i := 0; i < 2; i++ {
+		commonPrefixes = append(commonPrefixes, &s3.CommonPrefix{Prefix: aws.String(commonPrefix)})
+	}
+	return &s3.ListObjectsV2Output{CommonPrefixes: commonPrefixes, IsTruncated: aws.Bool(false)}, nil
+}
+
+func TestCommonPrefixes(t *testing.T) {
+	s3 := S3ObjectClient{S3: &testCommonPrefixesS3Client{}, bucketNames: []string{"bucket"}}
+	_, CommonPrefixes, err := s3.List(context.Background(), "", "/")
+	require.Equal(t, nil, err)
+	require.Equal(t, 1, len(CommonPrefixes))
 }

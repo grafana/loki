@@ -138,6 +138,9 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.write.resources | nindent 12 }}
+        {{- with .Values.write.extraContainers }}
+        {{- toYaml . | nindent 8}}
+        {{- end }}
       {{- with .Values.write.affinity }}
       affinity:
         {{- tpl . $ | nindent 8 }}
