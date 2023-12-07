@@ -1,14 +1,14 @@
+{{- $args := dict "ctx" . "component" "single-binary" "memberlist" true -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- if $isSingleBinary }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "loki.singleBinaryFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
-    app.kubernetes.io/part-of: memberlist
+    {{- include "loki.labels" $args | nindent 4 }}
   {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.singleBinary.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
@@ -22,8 +22,7 @@ spec:
   replicas: {{ include "loki.singleBinaryReplicas" . }}
   podManagementPolicy: Parallel
   updateStrategy:
-    rollingUpdate:
-      partition: 0
+    {{- toYaml .Values.singleBinary.statefulStrategy | nindent 4 }}
   serviceName: {{ include "loki.singleBinaryFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.singleBinary.persistence.enableStatefulSetAutoDeletePVC) (.Values.singleBinary.persistence.enabled) }}
@@ -37,29 +36,13 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "loki.singleBinarySelectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" $args | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
-        {{- with .Values.loki.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.singleBinary.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- include "loki.podAnnotations" $args | nindent 8 }}
       labels:
-        {{- include "loki.singleBinarySelectorLabels" . | nindent 8 }}
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.singleBinary.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.singleBinary.selectorLabels }}
-        {{- tpl (toYaml .) $ | nindent 8 }}
-        {{- end }}
-        app.kubernetes.io/part-of: memberlist
+        {{- include "loki.podLabels" $args | nindent 8 }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
@@ -68,7 +51,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.singleBinaryPriorityClassName" . | nindent 6 }}
+      {{- include "loki.priorityClassName" $args | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.singleBinary.terminationGracePeriodSeconds }}

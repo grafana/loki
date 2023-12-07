@@ -1,3 +1,4 @@
+{{- $args := dict "ctx" . "component" "single-binary" "memberlist" true -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- $usingObjectStorage := eq (include "loki.isUsingObjectStorage" .) "true" }}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
@@ -9,14 +10,14 @@ apiVersion: autoscaling/v2beta1
 {{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "loki.singleBinaryFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   labels:
-    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: StatefulSet
-    name: {{ include "loki.singleBinaryFullname" . }}
+    name: {{ include "loki.resourceName" $args }}
   minReplicas: {{ .Values.singleBinary.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.singleBinary.autoscaling.maxReplicas }}
   {{- with .Values.singleBinary.autoscaling.behavior }}

@@ -3,11 +3,11 @@ Client definition for LogsInstance
 */}}
 {{- define "loki.logsInstanceClient" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
-{{- $url := printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.writeFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- $url := printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.resourceName" (dict "ctx" $ "component" "write")) .Release.Namespace .Values.global.clusterDomain }}
 {{- if $isSingleBinary  }}
-  {{- $url = printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "http://%s.%s.svc.%s:3100/loki/api/v1/push" (include "loki.resourceName" (dict "ctx" $ "component" "single-binary")) .Release.Namespace .Values.global.clusterDomain }}
 {{- else if .Values.gateway.enabled -}}
-  {{- $url = printf "http://%s.%s.svc.%s/loki/api/v1/push" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "http://%s.%s.svc.%s/loki/api/v1/push" (include "loki.resourceName" (dict "ctx" $ "component" "gateway")) .Release.Namespace .Values.global.clusterDomain }}
 {{- end -}}
 - url: {{ $url }}
   externalLabels:
@@ -33,15 +33,5 @@ Convert a recording rule group to yaml
 - name: {{ .name }}
   rules:
     {{- toYaml .rules | nindent 4 }}
-{{- end }}
-{{- end }}
-
-{{/*
-GrafanaAgent priority class name
-*/}}
-{{- define "grafana-agent.priorityClassName" -}}
-{{- $pcn := coalesce .Values.global.priorityClassName .Values.monitoring.selfMonitoring.grafanaAgent.priorityClassName -}}
-{{- if $pcn }}
-priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}

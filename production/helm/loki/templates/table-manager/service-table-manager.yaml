@@ -1,17 +1,17 @@
+{{- $args := dict "ctx" . "component" "table-manager" -}}
 {{- if .Values.tableManager.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.fullname" . }}-table-manager
+  name: {{ include "loki.resourceName" $args }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
     {{- with .Values.loki.serviceLabels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
     {{- with .Values.tableManager.service.labels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
-    app.kubernetes.io/component: table-manager
   annotations:
     {{- with .Values.loki.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
@@ -31,6 +31,5 @@ spec:
       targetPort: grpc
       protocol: TCP
   selector:
-    {{- include "loki.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: table-manager
+    {{- include "loki.selectorLabels" $args | nindent 4 }}
 {{- end }}

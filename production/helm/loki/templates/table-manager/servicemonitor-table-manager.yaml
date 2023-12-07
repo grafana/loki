@@ -1,10 +1,11 @@
+{{- $args := dict "ctx" . "component" "table-manager" -}}
 {{- if .Values.tableManager.enabled }}
 {{- with .Values.serviceMonitor }}
 {{- if .enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "loki.tableManagerFullname" $ }}
+  name: {{ include "loki.resourceName" $args }}
   {{- with .namespace }}
   namespace: {{ . }}
   {{- end }}
@@ -13,10 +14,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    {{- include "loki.tableManagerLabels" $ | nindent 4 }}
-    {{- with .labels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- include "loki.labels" $args | nindent 4 }}
 spec:
   {{- with .namespaceSelector }}
   namespaceSelector:
@@ -24,7 +22,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "loki.tableManagerSelectorLabels" $ | nindent 6 }}
+      {{- include "loki.selectorLabels" $args | nindent 6 }}
   endpoints:
     - port: http-metrics
       {{- with .interval }}

@@ -1,17 +1,18 @@
+{{- $args := dict "ctx" . "component" "canary" -}}
 {{- with .Values.monitoring.lokiCanary -}}
 {{- if .enabled -}}
 ---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "loki-canary.fullname" $ }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki-canary.labels" $ | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
+      {{- include "loki.selectorLabels" $args | nindent 6 }}
   {{- with .updateStrategy }}
   updateStrategy:
     {{- toYaml . | nindent 4 }}
@@ -23,22 +24,22 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "loki-canary.selectorLabels" $ | nindent 8 }}
+        {{- include "loki.selectorLabels" $args | nindent 6 }}
         {{- with .podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ include "loki-canary.fullname" $ }}
+      serviceAccountName: {{ include "loki.resourceName" $args }}
       {{- with $.Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki-canary.priorityClassName" $ | nindent 6 }}
+      {{- include "loki.priorityClassName" $args | nindent 6 }}
       securityContext:
         {{- toYaml $.Values.loki.podSecurityContext | nindent 8 }}
       containers:
         - name: loki-canary
-          image: {{ include "loki-canary.image" $ }}
+          image: {{ include "loki.baseImage" (dict "service" $.Values.monitoring.lokiCanary.image "global" $.Values.global.image "defaultVersion" $.Chart.AppVersion) }}
           imagePullPolicy: {{ $.Values.loki.image.pullPolicy }}
           args:
             - -addr={{- include "loki.host" $ }}

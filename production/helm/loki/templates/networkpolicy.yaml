@@ -6,7 +6,7 @@ metadata:
   name: {{ include "loki.name" . }}-namespace-only
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 spec:
   policyTypes:
     - Ingress
@@ -26,13 +26,13 @@ metadata:
   name: {{ include "loki.name" . }}-egress-dns
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 spec:
   policyTypes:
     - Egress
   podSelector:
     matchLabels:
-      {{- include "loki.selectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" (dict "ctx" .) | nindent 6 }}
   egress:
     - ports:
         - port: dns
@@ -63,7 +63,7 @@ spec:
           - write
         {{- end }}
     matchLabels:
-      {{- include "loki.selectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" (dict "ctx" .) | nindent 6 }}
   ingress:
     - ports:
         - port: http
@@ -91,7 +91,7 @@ spec:
     - Ingress
   podSelector:
     matchLabels:
-      {{- include "loki.selectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" (dict "ctx" .) | nindent 6 }}
   ingress:
     - ports:
         - port: http-metrics
@@ -156,7 +156,7 @@ spec:
     - Egress
   podSelector:
     matchLabels:
-      {{- include "loki.selectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" (dict "ctx" .) | nindent 6 }}
   egress:
     - ports:
       {{- range $port := .Values.networkPolicy.externalStorage.ports }}
@@ -188,7 +188,7 @@ spec:
     - Egress
   podSelector:
     matchLabels:
-      {{- include "loki.selectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" (dict "ctx" .) | nindent 6 }}
   egress:
     - ports:
         - port: {{ .Values.networkPolicy.discovery.port }}

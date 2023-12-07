@@ -119,24 +119,114 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Resource labels
+Params:
+  ctx = . context
+  component = component name (optional)
+  rolloutZoneName = rollout zone name (optional)
 */}}
 {{- define "loki.labels" -}}
-helm.sh/chart: {{ include "loki.chart" . }}
-{{ include "loki.selectorLabels" . }}
-{{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
-app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
+helm.sh/chart: {{ include "loki.chart" .ctx }}
+app.kubernetes.io/name: {{ include "loki.name" .ctx }}
+app.kubernetes.io/instance: {{ .ctx.Release.Name }}
+{{- if .component }}
+app.kubernetes.io/component: {{ .component }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .memberlist }}
+app.kubernetes.io/part-of: memberlist
+{{- end }}
+{{- if .ctx.Chart.AppVersion }}
+app.kubernetes.io/version: {{ .ctx.Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .ctx.Release.Service }}
+{{- end }}
+{{- if .rolloutZoneName }}
+{{-   if not .component }}
+{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
+{{-   end }}
+name: "{{ .component }}-{{ .rolloutZoneName }}" {{- /* Currently required for rollout-operator. https://github.com/grafana/rollout-operator/issues/15 */}}
+rollout-group: {{ .component }}
+zone: {{ .rolloutZoneName }}
 {{- end }}
 
 {{/*
-Selector labels
+Service selector labels
+Params:
+  ctx = . context
+  component = name of the component
+  rolloutZoneName = rollout zone name (optional)
 */}}
 {{- define "loki.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "loki.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/name: {{ include "loki.name" .ctx }}
+app.kubernetes.io/instance: {{ .ctx.Release.Name }}
+{{- if .component }}
+app.kubernetes.io/component: {{ .component }}
 {{- end }}
+{{- if .rolloutZoneName }}
+{{-   if not .component }}
+{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
+{{-   end }}
+rollout-group: {{ .component }}
+zone: {{ .rolloutZoneName }}
+{{- end }}
+{{- end -}}
+
+
+{{/*
+POD labels
+Params:
+  ctx = . context
+  component = name of the component
+  memberlist = true if part of memberlist gossip ring
+  rolloutZoneName = rollout zone name (optional)
+*/}}
+{{- define "loki.podLabels" -}}
+{{ with .ctx.Values.loki.podLabels -}}
+{{ toYaml . }}
+{{ end }}
+helm.sh/chart: {{ include "loki.chart" .ctx }}
+app.kubernetes.io/name: {{ include "loki.name" .ctx }}
+app.kubernetes.io/instance: {{ .ctx.Release.Name }}
+app.kubernetes.io/version: {{ .ctx.Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .ctx.Release.Service }}
+{{- if .component }}
+app.kubernetes.io/component: {{ .component }}
+{{- end }}
+{{- if .memberlist }}
+app.kubernetes.io/part-of: memberlist
+{{- end }}
+{{- $componentSection := include "loki.componentSectionFromName" . | fromYaml }}
+{{- with ($componentSection).podLabels }}
+{{ toYaml . }}
+{{- end }}
+{{- if .rolloutZoneName }}
+{{-   if not .component }}
+{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
+{{-   end }}
+name: "{{ .component }}-{{ .rolloutZoneName }}" {{- /* Currently required for rollout-operator. https://github.com/grafana/rollout-operator/issues/15 */}}
+rollout-group: {{ .component }}
+zone: {{ .rolloutZoneName }}
+{{- end }}
+{{- end -}}
+
+{{/*
+POD annotations
+Params:
+  ctx = . context
+  component = name of the component
+*/}}
+{{- define "loki.podAnnotations" -}}
+checksum/config: {{ include (print .ctx.Template.BasePath "/config.yaml") .ctx | sha256sum }}
+{{- with .ctx.Values.loki.podAnnotations }}
+{{ toYaml . }}
+{{- end }}
+{{- if .component }}
+{{- $componentSection := include "loki.componentSectionFromName" . | fromYaml }}
+{{- with ($componentSection).podAnnotations }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+{{- end -}}
 
 {{/*
 Create the name of the service account to use
@@ -567,7 +657,7 @@ Params:
 */}}
 {{- define "loki.ingress.serviceName" -}}
 {{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.singleBinaryFullname" .ctx) }}
+{{- printf "%s" (include "loki.resourceName" (dict "ctx" . "component" "single-binary")) }}
 {{- else }}
 {{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
 {{- end -}}
@@ -595,9 +685,9 @@ Create the service endpoint including port for MinIO.
 {{/* Determine the public host for the Loki cluster */}}
 {{- define "loki.host" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
-{{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
+{{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.resourceName" (dict "ctx" $ "component" "gateway")) .Release.Namespace .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
 {{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
-  {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+  {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.resourceName" (dict "ctx" $ "component" "single-binary")) .Release.Namespace .Values.global.clusterDomain }}
 {{- end }}
 {{- printf "%s" $url -}}
 {{- end -}}
@@ -694,18 +784,18 @@ http {
       auth_basic off;
     }
 
-    {{- $backendHost := include "loki.backendFullname" .}}
-    {{- $readHost := include "loki.readFullname" .}}
-    {{- $writeHost := include "loki.writeFullname" .}}
+    {{- $backendHost := include "loki.resourceName" (dict "ctx" . "component" "backend") }}
+    {{- $readHost := include "loki.resourceName" (dict "ctx" . "component" "read") }}
+    {{- $writeHost := include "loki.resourceName" (dict "ctx" . "component" "write") }}
 
     {{- if .Values.read.legacyReadTarget }}
-    {{- $backendHost = include "loki.readFullname" . }}
+    {{- $backendHost = include "loki.resourceName" (dict "ctx" . "component" "read") }}
     {{- end }}
 
     {{- if gt (int .Values.singleBinary.replicas) 0 }}
-    {{- $backendHost = include "loki.singleBinaryFullname" . }}
-    {{- $readHost = include "loki.singleBinaryFullname" .}}
-    {{- $writeHost = include "loki.singleBinaryFullname" .}}
+    {{- $backendHost = include "loki.resourceName" (dict "ctx" . "component" "single-binary") }}
+    {{- $readHost = include "loki.resourceName" (dict "ctx" . "component" "single-binary") }}
+    {{- $writeHost = include "loki.resourceName" (dict "ctx" . "component" "single-binary") }}
     {{- end }}
 
     {{- $writeUrl    := printf "http://%s.%s.svc.%s:3100" $writeHost   .Release.Namespace .Values.global.clusterDomain }}
@@ -862,13 +952,13 @@ enableServiceLinks: false
 {{/* Determine compactor address based on target configuration */}}
 {{- define "loki.compactorAddress" -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- $compactorAddress := include "loki.backendFullname" . -}}
+{{- $compactorAddress := include "loki.resourceName" (dict "ctx" . "component" "backend") -}}
 {{- if and $isSimpleScalable .Values.read.legacyReadTarget -}}
 {{/* 2 target configuration */}}
-{{- $compactorAddress = include "loki.readFullname" . -}}
+{{- $compactorAddress = include "loki.resourceName" (dict "ctx" . "component" "read") -}}
 {{- else if (not $isSimpleScalable) -}}
 {{/* single binary */}}
-{{- $compactorAddress = include "loki.singleBinaryFullname" . -}}
+{{- $compactorAddress = include "loki.resourceName" (dict "ctx" . "component" "single-binary") -}}
 {{- end -}}
 {{- printf "%s" $compactorAddress }}
 {{- end }}
@@ -881,4 +971,169 @@ enableServiceLinks: false
 {{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
+{{- end }}
+
+{{/*
+loki.componentSectionFromName returns the sections from the user .Values in YAML
+that corresponds to the requested component. loki.componentSectionFromName takes two arguments
+  .ctx = the root context of the chart
+  .component = the name of the component. loki.componentSectionFromName uses an internal mapping to know
+                which component lives where in the values.yaml
+Examples:
+  $componentSection := include "loki.componentSectionFromName" (dict "ctx" . "component" "store-gateway") | fromYaml
+  $componentSection.podLabels ...
+*/}}
+{{- define "loki.componentSectionFromName" -}}
+{{- $componentsMap := dict
+  "single-binary" "singleBinary"
+  "read" "read"
+  "write" "write"
+  "backend" "backend"
+  "gateway" "gateway"
+  "table-manager" "tableManager"
+  "canary" "monitoring.lokiCanary"
+  "grafana-agent" "monitoring.selfMonitoring.grafanaAgent"
+-}}
+{{- $componentSection := index $componentsMap .component -}}
+{{- if not $componentSection -}}{{- printf "No component section mapping for %s not found in values; submit a bug report if you are a user, edit loki.componentSectionFromName if you are a contributor" .component | fail -}}{{- end -}}
+{{- $section := .ctx.Values -}}
+{{- range regexSplit "\\." $componentSection -1 -}}
+  {{- $section = index $section . -}}
+  {{- if not $section -}}{{- printf "Component section %s not found in values; values: %s" . ($.ctx.Values | toJson | abbrev 100) | fail -}}{{- end -}}
+{{- end -}}
+{{- $section | toYaml -}}
+{{- end -}}
+
+{{/* Get API Versions */}}
+{{- define "loki.podDisruptionBudget.apiVersion" -}}
+  {{- if semverCompare ">= 1.21-0" .Capabilities.KubeVersion.Version -}}
+    {{- print "policy/v1" -}}
+  {{- else -}}
+    {{- print "policy/v1beta1" -}}
+  {{- end -}}
+{{- end -}}
+
+{{/*
+Creates dict for zone-aware replication configuration
+Params:
+  ctx = . context
+  component = component name
+Return value:
+  {
+    zoneName: {
+      affinity: <affinity>,
+      nodeSelector: <nodeSelector>,
+      replicas: <N>,
+      storageClass: <S>
+    },
+    ...
+  }
+During migration there is a special case where an extra "zone" is generated with zonaName == "" empty string.
+The empty string evaluates to false in boolean expressions so it is treated as the default (non zone-aware) zone,
+which allows us to keep generating everything for the default zone.
+*/}}
+{{- define "loki.zoneAwareReplicationMap" -}}
+{{- $zonesMap := (dict) -}}
+{{- $componentSection := include "loki.componentSectionFromName" . | fromYaml -}}
+{{- $defaultZone := (dict "affinity" $componentSection.affinity "nodeSelector" $componentSection.nodeSelector "replicas" $componentSection.replicas "storageClass" $componentSection.storageClass) -}}
+
+{{- if $componentSection.zoneAwareReplication.enabled -}}
+{{- $numberOfZones := len $componentSection.zoneAwareReplication.zones -}}
+{{- if lt $numberOfZones 3 -}}
+{{- fail "When zone-awareness is enabled, you must have at least 3 zones defined." -}}
+{{- end -}}
+
+{{- $requestedReplicas := $componentSection.replicas -}}
+{{- if and (has .component (list "write")) $componentSection.zoneAwareReplication.migration.enabled (not $componentSection.zoneAwareReplication.migration.writePath) -}}
+{{- $requestedReplicas = $componentSection.zoneAwareReplication.migration.replicas }}
+{{- end -}}
+{{- $replicaPerZone := div (add $requestedReplicas $numberOfZones -1) $numberOfZones -}}
+
+{{- range $idx, $rolloutZone := $componentSection.zoneAwareReplication.zones -}}
+{{- $_ := set $zonesMap $rolloutZone.name (dict
+  "affinity" (($rolloutZone.extraAffinity | default (dict)) | mergeOverwrite (include "loki.zoneAntiAffinity" (dict "component" $.component "rolloutZoneName" $rolloutZone.name "topologyKey" $componentSection.zoneAwareReplication.topologyKey ) | fromYaml ) )
+  "nodeSelector" ($rolloutZone.nodeSelector | default (dict) )
+  "replicas" $replicaPerZone
+  "storageClass" $rolloutZone.storageClass
+  ) -}}
+{{- end -}}
+{{- if $componentSection.zoneAwareReplication.migration.enabled -}}
+{{- if $componentSection.zoneAwareReplication.migration.scaleDownDefaultZone -}}
+{{- $_ := set $defaultZone "replicas" 0 -}}
+{{- end -}}
+{{- $_ := set $zonesMap "" $defaultZone -}}
+{{- end -}}
+
+{{- else -}}
+{{- $_ := set $zonesMap "" $defaultZone -}}
+{{- end -}}
+{{- $zonesMap | toYaml }}
+
+{{- end -}}
+
+{{/*
+Calculate anti-affinity for a zone
+Params:
+  component = component name
+  rolloutZoneName = name of the rollout zone
+  topologyKey = topology key
+*/}}
+{{- define "loki.zoneAntiAffinity" -}}
+{{- if .topologyKey -}}
+podAntiAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+          - key: rollout-group
+            operator: In
+            values:
+              - {{ .component }}
+          - key: zone
+            operator: NotIn
+            values:
+              - {{ .rolloutZoneName }}
+      topologyKey: {{ .topologyKey | quote }}
+{{- else -}}
+{}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Calculate annotations with zone-awareness
+Params:
+  ctx = . context
+  component = component name
+  rolloutZoneName = rollout zone name (optional)
+*/}}
+{{- define "loki.componentAnnotations" -}}
+{{- $componentSection := include "loki.componentSectionFromName" . | fromYaml -}}
+{{- if and (or $componentSection.zoneAwareReplication.enabled $componentSection.zoneAwareReplication.migration.enabled) .rolloutZoneName }}
+{{- $map := dict "rollout-max-unavailable" ($componentSection.zoneAwareReplication.maxUnavailable | toString) -}}
+{{- toYaml (deepCopy $map | mergeOverwrite $componentSection.annotations) }}
+{{- else -}}
+{{ toYaml $componentSection.annotations }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Calculate PriorityClassName for component
+Params:
+  ctx = . context
+  component = component name
+*/}}
+{{- define "loki.priorityClassName" -}}
+{{- $componentSection := include "loki.componentSectionFromName" . | fromYaml -}}
+{{- $pcn := coalesce .ctx.Values.global.priorityClassName $componentSection.priorityClassName -}}
+{{- if $pcn }}
+priorityClassName: {{ $pcn }}
+{{- end }}
+{{- end }}
+
+{{/* Configure write zone awareness */}}
+{{- define "loki.enableWriteZoneAwareness" -}}
+{{- if .Values.write.zoneAwareReplication.enabled }}
+zone_awareness_enabled: true
+{{- else }}
+zone_awareness_enabled: false
+{{- end }}
 {{- end }}

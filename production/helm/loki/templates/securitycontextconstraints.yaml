@@ -4,7 +4,7 @@ kind: SecurityContextConstraints
 metadata:
   name: {{ include "loki.name" . }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 allowHostDirVolumePlugin: false
 allowHostIPC: false
 allowHostNetwork: false

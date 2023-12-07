@@ -115,10 +115,12 @@ loki:
         {{- end }}
     {{- end }}
 
-    {{- with .Values.loki.ingester }}
     ingester:
+    {{- with .Values.loki.ingester }}
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+      {{ include "loki.enableWriteZoneAwareness" . | nindent 4 }}
+    
 
     {{- if .Values.loki.commonConfig}}
     common:
@@ -357,7 +359,8 @@ loki:
   # --  Optional querier configuration
   querier: {}
   # --  Optional ingester configuration
-  ingester: {}
+  ingester:
+    concurrent_flushes: 20
   # --  Optional index gateway configuration
   index_gateway:
     mode: ring
@@ -539,6 +542,8 @@ rbac:
   # apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
   # -- Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.
   namespaced: false
+  # -- Use custom clusterrole for ruler/backend
+  useExistingRole: false
 # -- Section for configuring optional Helm test
 test:
   enabled: true
@@ -732,6 +737,35 @@ monitoring:
       type: RollingUpdate
       rollingUpdate:
         maxUnavailable: 1
+
+  # -- podSecurityContext is the pod security context for the rollout operator.
+  # When installing on OpenShift, override podSecurityContext settings with
+  #
+  # rollout_operator:
+  #   podSecurityContext:
+  #     fsGroup: null
+  #     runAsGroup: null
+  #     runAsUser: null
+  podSecurityContext:
+    fsGroup: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Set the container security context
+  securityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+    allowPrivilegeEscalation: false
+
+# -- Setting for the Grafana Rollout Operator https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator
+rollout_operator:
+  # -- This should be true if write.zoneAwareReplication.enabled=true
+  enabled: false
+
 # Configuration for the write pod(s)
 write:
   # -- Number of replicas for the write
@@ -776,6 +810,9 @@ write:
   podAnnotations: {}
   # -- Additional labels for each `write` pod
   podLabels: {}
+  # -- Pod Disruption Budget
+  podDisruptionBudget:
+    maxUnavailable: 1
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
   service:
@@ -810,19 +847,22 @@ write:
   extraVolumeClaimTemplates: []
   # -- Resource requests and limits for the write
   resources: {}
+  # -- updateStrategy of the write statefulset. This is ignored when write.zoneAwareReplication.enabled=true.
+  statefulStrategy:
+    type: RollingUpdate
   # -- Grace period to allow the write to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
   # -- Affinity for write pods. Passed through `tpl` and, thus, to be configured as string
   # @default -- Hard node and soft zone anti-affinity
-  affinity: |
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              {{- include "loki.writeSelectorLabels" . | nindent 10 }}
-          topologyKey: kubernetes.io/hostname
+  affinity: {} #|
+  #   podAntiAffinity:
+  #     requiredDuringSchedulingIgnoredDuringExecution:
+  #       - labelSelector:
+  #           matchLabels:
+  #             {{- include "loki.writeSelectorLabels" . | nindent 10 }}
+  #         topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
   # -- Node selector for write pods
@@ -851,6 +891,98 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Enable StatefulSetAutoDeletePVC feature
+    # https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention
+    whenDeleted: Delete
+    whenScaled: Delete
+
+
+  # -- Options to configure zone-aware replication for write path
+  # Example configuration with full geographical redundancy:
+  # rollout_operator:
+  #   enabled: true
+  # write:
+  #   zoneAwareReplication:
+  #     enabled: true
+  #     topologyKey: 'kubernetes.io/hostname'  # This generates default anti-affinity rules
+  #     zones:  # Zone list has to be fully redefined for modification. Update with you actual zones or skip to use logical zones only.
+  #     - name: zone-a
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-a
+  #       storageClass: storage-class-us-central1-a
+  #     - name: zone-a
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-b
+  #       storageClass: storage-class-us-central1-b
+  #     - name: zone-c
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-c
+  #       storageClass: storage-class-us-central1-c
+  #
+  zoneAwareReplication:
+    # -- Enable zone-aware replication for write path
+    enabled: false
+    # -- Maximum number of write pods that can be unavailable per zone during rollout
+    maxUnavailable: 10
+    # -- topologyKey to use in pod anti-affinity. If unset, no anti-affinity rules are generated. If set, the generated anti-affinity rule makes sure that pods from different zones do not mix.
+    # E.g.: topologyKey: 'kubernetes.io/hostname'
+    topologyKey: null
+    # -- Auxiliary values for migration, see https://grafana.com/docs/loki/latest/setup/migrate/migrate-from-single-zone-with-helm/
+    migration:
+      # -- Indicate if migration is ongoing for multi zone write
+      enabled: false
+      # -- Exclude default zone on write path
+      excludeDefaultZone: false
+      # -- Enable zone-awareness, write path only
+      writePath: false
+      # -- Enable zone-awareness, read path only
+      readPath: false
+      # -- Total number of replicas to start in availability zones when migration is enabled
+      replicas: 0
+      # -- Scale default zone write pods to 0
+      scaleDownDefaultZone: false
+    # -- Zone definitions for write zones. Note: you have to redefine the whole list to change parts as YAML does not allow to modify parts of a list.
+    zones:
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-a
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-a
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- write data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `write.persistentVolume.storageClass`.
+        storageClass: null
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-b
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-b
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- write data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `write.persistentVolume.storageClass`.
+        storageClass: null
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-c
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-c
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- write data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `write.persistentVolume.storageClass`.
+        storageClass: null
+
 # Configuration for the table-manager
 tableManager:
   # -- Specifies whether the table-manager should be enabled
@@ -963,6 +1095,9 @@ read:
   podAnnotations: {}
   # -- Additional labels for each `read` pod
   podLabels: {}
+  # -- Pod Disruption Budget
+  podDisruptionBudget:
+    maxUnavailable: 1
   # -- Additional selector labels for each `read` pod
   selectorLabels: {}
   service:
@@ -990,6 +1125,9 @@ read:
   extraVolumes: []
   # -- Resource requests and limits for the read
   resources: {}
+  # -- updateStrategy of the write statefulset.
+  statefulStrategy:
+    type: RollingUpdate
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for read pods. Passed through `tpl` and, thus, to be configured as string
@@ -999,7 +1137,7 @@ read:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.readSelectorLabels" . | nindent 10 }}
+              {{- include "loki.selectorLabels" (dict "ctx" . "component" "read") | nindent 10 }}
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
@@ -1068,6 +1206,9 @@ backend:
   podAnnotations: {}
   # -- Additional labels for each `backend` pod
   podLabels: {}
+  # -- Pod Disruption Budget
+  podDisruptionBudget:
+    maxUnavailable: 1
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
   service:
@@ -1091,6 +1232,9 @@ backend:
   extraVolumes: []
   # -- Resource requests and limits for the backend
   resources: {}
+  # -- updateStrategy of the write statefulset.
+  statefulStrategy:
+    type: RollingUpdate
   # -- Grace period to allow the backend to shutdown before it is killed. Especially for the ingester,
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
@@ -1102,7 +1246,7 @@ backend:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.backendSelectorLabels" . | nindent 10 }}
+              {{- include "loki.selectorLabels" (dict "ctx" . "component" "backend") | nindent 10 }}
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
@@ -1132,6 +1276,10 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Enable StatefulSetAutoDeletePVC feature
+    # https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention
+    whenDeleted: Delete
+    whenScaled: Delete
 # Configuration for the single binary node(s)
 singleBinary:
   # -- Number of replicas for the single binary
@@ -1162,6 +1310,9 @@ singleBinary:
   podAnnotations: {}
   # -- Additional labels for each `single binary` pod
   podLabels: {}
+  # -- Pod Disruption Budget
+  podDisruptionBudget:
+    maxUnavailable: 1
   # -- Additional selector labels for each `single binary` pod
   selectorLabels: {}
   service:
@@ -1187,6 +1338,9 @@ singleBinary:
   extraVolumes: []
   # -- Resource requests and limits for the single binary
   resources: {}
+  # -- updateStrategy of the write statefulset.
+  statefulStrategy:
+    type: RollingUpdate
   # -- Grace period to allow the single binary to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for single binary pods. Passed through `tpl` and, thus, to be configured as string
@@ -1196,7 +1350,7 @@ singleBinary:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.singleBinarySelectorLabels" . | nindent 10 }}
+              {{- include "loki.selectorLabels" (dict "ctx" . "component" "single-binary") | nindent 10 }}
           topologyKey: kubernetes.io/hostname
   # -- DNS config for single binary pods
   dnsConfig: {}
@@ -1324,6 +1478,9 @@ gateway:
   podAnnotations: {}
   # -- Additional labels for gateway pods
   podLabels: {}
+  # -- Pod Disruption Budget
+  podDisruptionBudget:
+    maxUnavailable: 1
   # -- Additional CLI args for the gateway
   extraArgs: []
   # -- Environment variables to add to the gateway pods
@@ -1362,7 +1519,7 @@ gateway:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              {{- include "loki.gatewaySelectorLabels" . | nindent 10 }}
+              {{- include "loki.selectorLabels" (dict "ctx" . "component" "gateway") | nindent 10 }}
           topologyKey: kubernetes.io/hostname
   # -- DNS config for gateway pods
   dnsConfig: {}

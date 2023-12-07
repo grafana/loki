@@ -1,3 +1,4 @@
+{{- $args := dict "ctx" . "component" "single-binary" "memberlist" true -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- if $isSingleBinary }}
 ---
@@ -7,7 +8,7 @@ metadata:
   name: {{ include "loki.name" . }}-headless
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
     {{- with .Values.loki.serviceLabels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
@@ -31,5 +32,5 @@ spec:
       targetPort: http-metrics
       protocol: TCP
   selector:
-    {{- include "loki.selectorLabels" . | nindent 4 }}
+    {{- include "loki.selectorLabels" $args | nindent 4 }}
 {{- end }}

@@ -1,32 +1,34 @@
+{{- $args := dict "ctx" . "component" "write" "memberlist" true -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if $isSimpleScalable }}
----
+{{- $zonesMap := include "loki.zoneAwareReplicationMap" $args | fromYaml -}}
+{{- range $zoneName, $rolloutZone := $zonesMap }}
+{{- with $ -}}
+{{- $_ := set $args "rolloutZoneName" $zoneName -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "loki.writeFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.writeLabels" . | nindent 4 }}
-    app.kubernetes.io/part-of: memberlist
-  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
+    {{- include "loki.labels" $args | nindent 4 }}
   annotations:
+    {{- include "loki.componentAnnotations" $args | nindent 4 }}
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    {{- with .Values.write.annotations }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-  {{- end }}
 spec:
-{{- if not .Values.write.autoscaling.enabled }}
-  replicas: {{ .Values.write.replicas }}
+{{- if or (not .Values.write.autoscaling.enabled) (.Values.write.zoneAwareReplication.enabled) }}
+  replicas: {{ $rolloutZone.replicas }}
 {{- end }}
   podManagementPolicy: {{ .Values.write.podManagementPolicy }}
   updateStrategy:
-    rollingUpdate:
-      partition: 0
-  serviceName: {{ include "loki.writeFullname" . }}-headless
+    {{- if $zoneName }}
+    type: OnDelete
+    {{- else }}
+    {{- toYaml .Values.write.statefulStrategy | nindent 4 }}
+    {{- end }}
+  serviceName: {{ include "loki.name" . }}-write-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.write.persistence.enableStatefulSetAutoDeletePVC) (.Values.write.persistence.volumeClaimsEnabled) }}
   {{/*
@@ -34,34 +36,18 @@ spec:
     operation easier, and will rely on re-fetching data when needed.
   */}}
   persistentVolumeClaimRetentionPolicy:
-    whenDeleted: Delete
-    whenScaled: Delete
+    whenDeleted: {{ .Values.write.persistence.whenDeleted }}
+    whenScaled: {{ .Values.write.persistence.whenScaled }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "loki.writeSelectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" $args | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
-        {{- with .Values.loki.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.write.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- include "loki.podAnnotations" $args | nindent 8 }}
       labels:
-        {{- include "loki.writeSelectorLabels" . | nindent 8 }}
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.write.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.write.selectorLabels }}
-        {{- tpl (toYaml .) $ | nindent 8 }}
-        {{- end }}
-        app.kubernetes.io/part-of: memberlist
+        {{- include "loki.podLabels" $args | nindent 8 }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
@@ -70,7 +56,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.writePriorityClassName" . | nindent 6 }}
+      {{- include "loki.priorityClassName" $args | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.write.terminationGracePeriodSeconds }}
@@ -87,6 +73,23 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.write.targetModule }}
+            {{- if $zoneName }}
+            - "-ingester.availability-zone={{ $zoneName }}"
+            {{- else }}
+            - "-ingester.availability-zone=zone-default"
+            {{- if .Values.write.zoneAwareReplication.migration.enabled }}
+            - "-ingester.flush-on-shutdown=true"
+            - "-ingester.unregister-on-shutdown=true"
+            {{- end }}
+            {{- end }}
+          {{- if .Values.write.zoneAwareReplication.migration.enabled }}
+            {{- if not .Values.write.zoneAwareReplication.migration.writePath }}
+            - "-distributor.zone-awareness-enabled=false"
+            {{- end }}
+            {{- if .Values.write.zoneAwareReplication.migration.excludeDefaultZone }}
+            - "-distributor.excluded-zones=zone-default"
+            {{- end }}
+          {{- end }}
             {{- with .Values.write.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -115,7 +118,7 @@ spec:
           {{- if .Values.write.lifecycle }}
           lifecycle:
             {{- toYaml .Values.write.lifecycle | nindent 12 }}
-          {{- else if .Values.write.autoscaling.enabled }}
+          {{- else if and (.Values.write.autoscaling.enabled) (not .Values.write.zoneAwareReplication.enabled) }}
           lifecycle:
             preStop:
               httpGet:
@@ -141,17 +144,20 @@ spec:
         {{- with .Values.write.extraContainers }}
         {{- toYaml . | nindent 8}}
         {{- end }}
-      {{- with .Values.write.affinity }}
-      affinity:
-        {{- tpl . $ | nindent 8 }}
-      {{- end }}
       {{- with .Values.write.dnsConfig }}
       dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.write.nodeSelector }}
+      {{- if $zoneName }}
       nodeSelector:
-        {{- toYaml . | nindent 8 }}
+        {{- $rolloutZone.nodeSelector | toYaml | nindent 8 }}
+      affinity:
+        {{- $rolloutZone.affinity | toYaml | nindent 8 }}
+      {{- else }}
+      nodeSelector:
+        {{- .Values.write.nodeSelector | toYaml | nindent 8 }}
+      affinity:
+        {{- .Values.write.affinity | toYaml | nindent 8 }}
       {{- end }}
       {{- with .Values.write.topologySpreadConstraints }}
       topologySpreadConstraints:
@@ -197,8 +203,13 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        {{- with .Values.write.persistence.storageClass }}
-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- $storageClass := default .Values.write.persistence.storageClass $rolloutZone.storageClass }}
+        {{- if $storageClass }}
+        {{- if (eq "-" $storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: {{ $storageClass }}
+        {{- end }}
         {{- end }}
         resources:
           requests:
@@ -211,4 +222,7 @@ spec:
     {{- toYaml . | nindent 4 }}
     {{- end }}
   {{- end }}
+---
+{{- end }}
+{{- end }}
 {{- end }}

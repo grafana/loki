@@ -5,7 +5,7 @@ metadata:
   name: {{ include "loki.memberlist" . }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 spec:
   type: ClusterIP
   clusterIP: None
@@ -18,5 +18,5 @@ spec:
   publishNotReadyAddresses: {{ . }}
   {{- end }}
   selector:
-    {{- include "loki.selectorLabels" . | nindent 4 }}
+    {{- include "loki.selectorLabels" (dict "ctx" .) | nindent 4 }}
     app.kubernetes.io/part-of: memberlist

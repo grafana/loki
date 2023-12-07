@@ -4,7 +4,7 @@ kind: PodSecurityPolicy
 metadata:
   name: {{ include "loki.name" . }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 {{- if .Values.rbac.pspAnnotations }}
   annotations:
 {{ toYaml .Values.rbac.pspAnnotations | indent 4 }}

@@ -1,10 +1,11 @@
+{{- $args := dict "ctx" . "component" "table-manager" -}}
 {{- if .Values.tableManager.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "loki.tableManagerFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   labels:
-    {{- include "loki.tableManagerLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -17,32 +18,20 @@ spec:
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   selector:
     matchLabels:
-      {{- include "loki.tableManagerSelectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" $args | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
-        {{- with .Values.loki.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.tableManager.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- include "loki.podAnnotations" $args | nindent 8 }}
       labels:
-        {{- include "loki.tableManagerSelectorLabels" . | nindent 8 }}
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.tableManager.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- include "loki.podLabels" $args | nindent 8 }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.tableManagerPriorityClassName" . | nindent 6 }}
+      {{- include "loki.priorityClassName" $args | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.tableManager.terminationGracePeriodSeconds }}

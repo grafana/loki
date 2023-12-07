@@ -4,7 +4,7 @@ metadata:
   name: {{ include "loki.name" . }}-runtime
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 data:
   runtime-config.yaml: |
     {{- tpl (toYaml .Values.loki.runtimeConfig) . | nindent 4 }}

@@ -1,11 +1,12 @@
+{{- $args := dict "ctx" . "component" "gateway" -}}
 {{- if and .Values.gateway.enabled  }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "loki.gatewayFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
 data:
   nginx.conf: |
     {{- tpl .Values.gateway.nginxConfig.file . | indent 2 }}

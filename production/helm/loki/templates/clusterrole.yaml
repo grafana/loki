@@ -3,12 +3,12 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
-{{- with .Values.annotations }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
+{{- with .Values.loki.annotations }}
   annotations:
 {{ toYaml . | indent 4 }}
 {{- end }}
-  name: {{ template "loki.fullname" . }}-clusterrole
+  name: {{ include "loki.name" . }}-clusterrole
 {{- if .Values.sidecar.rules.enabled }}
 rules:
 - apiGroups: [""] # "" indicates the core API group

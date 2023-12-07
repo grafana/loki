@@ -1,3 +1,4 @@
+{{- $args := dict "ctx" . "component" "gateway" -}}
 {{- if and .Values.gateway.enabled -}}
 {{- if .Values.gateway.ingress.enabled -}}
 {{- $ingressApiIsStable := eq (include "loki.ingress.isStable" .) "true" -}}
@@ -6,10 +7,10 @@
 apiVersion: {{ include "loki.ingress.apiVersion" . }}
 kind: Ingress
 metadata:
-  name: {{ include "loki.gatewayFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
     {{- range $labelKey, $labelValue := .Values.gateway.ingress.labels }}
     {{ $labelKey }}: {{ $labelValue | toYaml }}
     {{- end }}
@@ -46,11 +47,11 @@ spec:
             backend:
               {{- if $ingressApiIsStable }}
               service:
-                name: {{ include "loki.gatewayFullname" $ }}
+                name: {{ include "loki.resourceName" $args }}
                 port:
                   number: {{ $.Values.gateway.service.port }}
               {{- else }}
-              serviceName: {{ include "loki.gatewayFullname" $ }}
+              serviceName: {{ include "loki.resourceName" $args }}
               servicePort: {{ $.Values.gateway.service.port }}
               {{- end }}
           {{- end }}

@@ -1,3 +1,4 @@
+{{- $args := dict "ctx" . "component" "backend" "memberlist" true -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
 {{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) ( .Values.backend.autoscaling.enabled ) }}
@@ -8,14 +9,14 @@ apiVersion: autoscaling/v2beta1
 {{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "loki.backendFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   labels:
-    {{- include "loki.backendLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: StatefulSet
-    name: {{ include "loki.backendFullname" . }}   
+    name: {{ include "loki.resourceName" $args }}   
   minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
   {{- with .Values.backend.autoscaling.behavior }}

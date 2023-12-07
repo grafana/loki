@@ -1,13 +1,14 @@
+{{- $args := dict "ctx" . "component" "backend" "memberlist" true -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.backendFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.backendLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
     {{- with .Values.loki.serviceLabels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
@@ -33,5 +34,5 @@ spec:
       targetPort: grpc
       protocol: TCP
   selector:
-    {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+    {{- include "loki.selectorLabels" $args | nindent 4 }}
 {{- end }}

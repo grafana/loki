@@ -5,7 +5,7 @@ metadata:
   name: {{ include "loki.name" . }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 {{- if .Values.rbac.pspEnabled }}
 rules:
   - apiGroups:

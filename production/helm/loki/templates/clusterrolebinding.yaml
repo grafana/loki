@@ -2,10 +2,10 @@
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ template "loki.fullname" . }}-clusterrolebinding
+  name: {{ include "loki.name" . }}-clusterrolebinding
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
-{{- with .Values.annotations }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
+{{- with .Values.loki.annotations }}
   annotations:
 {{ toYaml . | indent 4 }}
 {{- end }}
@@ -16,7 +16,7 @@ subjects:
 roleRef:
   kind: ClusterRole
 {{- if (not .Values.rbac.useExistingRole) }}
-  name: {{ template "loki.fullname" . }}-clusterrole
+  name: {{ include "loki.name" . }}-clusterrole
 {{- else }}
   name: {{ .Values.rbac.useExistingRole }}
 {{- end }}
