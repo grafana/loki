@@ -47,7 +47,7 @@ func TestResultToResponse(t *testing.T) {
 func TestResponseWrap(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
-		response  queryrangebase.Response
+		response queryrangebase.Response
 		expected isQueryResponse_Response
 	}{
 		{"volume", &VolumeResponse{}, &QueryResponse_Volume{}},
