@@ -162,7 +162,20 @@ func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
 		instances []ring.InstanceDesc
 		expected  []addrsWithTokenRange
 	}{
-		"MinUint32 and MaxUint32 are actual tokens in the ring": {
+		"one token per instance": {
+			instances: []ring.InstanceDesc{
+				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{math.MaxUint32 / 6 * 1}},
+				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 6 * 3}},
+				{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{math.MaxUint32 / 6 * 5}},
+			},
+			expected: []addrsWithTokenRange{
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: math.MaxUint32 / 6 * 1},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: math.MaxUint32/6*1 + 1, maxToken: math.MaxUint32 / 6 * 3},
+				{id: "instance-3", addrs: []string{"10.0.0.3"}, minToken: math.MaxUint32/6*3 + 1, maxToken: math.MaxUint32 / 6 * 5},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: math.MaxUint32/6*5 + 1, maxToken: math.MaxUint32},
+			},
+		},
+		"MinUint32 and MaxUint32 are tokens in the ring": {
 			instances: []ring.InstanceDesc{
 				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{0, math.MaxUint32 / 3 * 2}},
 				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 3 * 1, math.MaxUint32}},
