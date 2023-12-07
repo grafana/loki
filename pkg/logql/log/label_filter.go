@@ -54,15 +54,20 @@ func (f LabelFilterType) String() string {
 }
 
 // LabelFilterer can filter extracted labels.
+//
+//sumtype:decl
 type LabelFilterer interface {
 	Stage
 	fmt.Stringer
+
+	// Seal trait
+	isLabelFilterer()
 }
 
 type BinaryLabelFilter struct {
 	Left  LabelFilterer
 	Right LabelFilterer
-	and   bool
+	And   bool
 }
 
 // NewAndLabelFilter creates a new LabelFilterer from a and binary operation of two LabelFilterer.
@@ -70,7 +75,7 @@ func NewAndLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilt
 	return &BinaryLabelFilter{
 		Left:  left,
 		Right: right,
-		and:   true,
+		And:   true,
 	}
 }
 
@@ -84,15 +89,17 @@ func NewOrLabelFilter(left LabelFilterer, right LabelFilterer) *BinaryLabelFilte
 
 func (b *BinaryLabelFilter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	line, lok := b.Left.Process(ts, line, lbs)
-	if !b.and && lok {
+	if !b.And && lok {
 		return line, true
 	}
 	line, rok := b.Right.Process(ts, line, lbs)
-	if !b.and {
+	if !b.And {
 		return line, lok || rok
 	}
 	return line, lok && rok
 }
+
+func (b *BinaryLabelFilter) isLabelFilterer() {}
 
 func (b *BinaryLabelFilter) RequiredLabelNames() []string {
 	var names []string
@@ -105,7 +112,7 @@ func (b *BinaryLabelFilter) String() string {
 	var sb strings.Builder
 	sb.WriteString("( ")
 	sb.WriteString(b.Left.String())
-	if b.and {
+	if b.And {
 		sb.WriteString(" , ")
 	} else {
 		sb.WriteString(" or ")
@@ -122,6 +129,9 @@ type NoopLabelFilter struct {
 func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
+
+func (NoopLabelFilter) isLabelFilterer() {}
+
 func (NoopLabelFilter) RequiredLabelNames() []string { return []string{} }
 
 func (f NoopLabelFilter) String() string {
@@ -197,6 +207,8 @@ func (d *BytesLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]
 	}
 }
 
+func (d *BytesLabelFilter) isLabelFilterer() {}
+
 func (d *BytesLabelFilter) RequiredLabelNames() []string {
 	return []string{d.Name}
 }
@@ -207,7 +219,7 @@ func (d *BytesLabelFilter) String() string {
 			return -1
 		}
 		return r
-	}, humanize.Bytes(d.Value))
+	}, humanize.Bytes(d.Value)) // TODO: discuss whether this should just be bytes, B, to be more accurate.
 	return fmt.Sprintf("%s%s%s", d.Name, d.Type, b)
 }
 
@@ -261,6 +273,8 @@ func (d *DurationLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) 
 		return line, true
 	}
 }
+
+func (d *DurationLabelFilter) isLabelFilterer() {}
 
 func (d *DurationLabelFilter) RequiredLabelNames() []string {
 	return []string{d.Name}
@@ -323,6 +337,8 @@ func (n *NumericLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) (
 
 }
 
+func (n *NumericLabelFilter) isLabelFilterer() {}
+
 func (n *NumericLabelFilter) RequiredLabelNames() []string {
 	return []string{n.Name}
 }
@@ -348,7 +364,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 		return &NoopLabelFilter{m}
 	}
 
-	return &lineFilterLabelFilter{
+	return &LineFilterLabelFilter{
 		Matcher: m,
 		filter:  f,
 	}
@@ -358,22 +374,36 @@ func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([
 	return line, s.Matches(labelValue(s.Name, lbs))
 }
 
+func (s *StringLabelFilter) isLabelFilterer() {}
+
 func (s *StringLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
 }
 
-// lineFilterLabelFilter filters the desired label using an optimized line filter
-type lineFilterLabelFilter struct {
+// LineFilterLabelFilter filters the desired label using an optimized line filter
+type LineFilterLabelFilter struct {
 	*labels.Matcher
 	filter Filterer
 }
 
-func (s *lineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+// overrides the matcher.String() function in case there is a regexpFilter
+func (s *LineFilterLabelFilter) String() string {
+	if unwrappedFilter, ok := s.filter.(regexpFilter); ok {
+		rStr := unwrappedFilter.String()
+		str := fmt.Sprintf("%s%s`%s`", s.Matcher.Name, s.Matcher.Type, rStr)
+		return str
+	}
+	return s.Matcher.String()
+}
+
+func (s *LineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	v := labelValue(s.Name, lbs)
 	return line, s.filter.Filter(unsafeGetBytes(v))
 }
 
-func (s *lineFilterLabelFilter) RequiredLabelNames() []string {
+func (s *LineFilterLabelFilter) isLabelFilterer() {}
+
+func (s *LineFilterLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
 }
 

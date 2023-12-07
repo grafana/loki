@@ -3,8 +3,7 @@ title: Get started
 weight: 200
 description: How to create and use a simple Loki cluster for testing and evaluation purposes.
 aliases:
-    - ../getting-started/get-logs-into-loki/
-    - ../getting-started/
+    - ./getting-started
 ---
 
 # Get started
@@ -64,11 +63,11 @@ The write component returns `ready` when you point a web browser at http://local
 ## Use Grafana and the test environment
 
 Use [Grafana](/docs/grafana/latest/) to query and observe the log lines captured in the Loki cluster by navigating a browser to http://localhost:3000.
-The Grafana instance has Loki configured as a [datasource](/docs/grafana/latest/datasources/loki/).
+The Grafana instance has Loki configured as a [data source](/docs/grafana/latest/datasources/loki/).
 
 Click on the Grafana instance's [Explore](/docs/grafana/latest/explore/) icon to bring up the explore pane.
 
-Use the Explore dropdown menu to choose the Loki datasource and bring up the Loki query browser.
+Use the Explore dropdown menu to choose the Loki data source and bring up the Loki query browser.
 
 Try some queries.
 Enter your query into the **Log browser** box, and click on the blue **Run query** button.

@@ -14,17 +14,17 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
+	"github.com/grafana/loki/pkg/util/constants"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -97,7 +98,6 @@ func TestDistributor(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
@@ -493,7 +493,6 @@ func TestDistributorPushErrors(t *testing.T) {
 func Test_SortLabelsOnPush(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.EnforceMetricName = false
 	ingester := &mockIngester{}
 	distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
@@ -509,7 +508,6 @@ func Test_TruncateLogLines(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 
-		limits.EnforceMetricName = false
 		limits.MaxLineSize = 5
 		limits.MaxLineSizeTruncate = true
 		return limits, &mockIngester{}
@@ -777,7 +775,6 @@ func BenchmarkShardStream(b *testing.B) {
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.EnforceMetricName = false
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
@@ -798,7 +795,6 @@ func Benchmark_Push(b *testing.B) {
 	limits.IngestionBurstSizeMB = math.MaxInt32
 	limits.CardinalityLimit = math.MaxInt32
 	limits.IngestionRateMB = math.MaxInt32
-	limits.EnforceMetricName = false
 	limits.MaxLineSize = math.MaxInt32
 	limits.RejectOldSamples = true
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
@@ -971,7 +967,6 @@ func TestShardCountFor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
@@ -1063,7 +1058,6 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.EnforceMetricName = false
 			limits.IngestionRateStrategy = testData.ingestionRateStrategy
 			limits.IngestionRateMB = testData.ingestionRateMB
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
@@ -1148,17 +1142,18 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		distributorConfig.DistributorRing.KVStore.Mock = kvStore
 		distributorConfig.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorConfig.DistributorRing.InstanceInterfaceNames = []string{loopbackName}
-		distributorConfig.factory = factory
-		if factory == nil {
-			distributorConfig.factory = func(addr string) (ring_client.PoolClient, error) {
+		factoryWrap := ring_client.PoolAddrFunc(factory)
+		distributorConfig.factory = factoryWrap
+		if factoryWrap == nil {
+			distributorConfig.factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 				return ingesterByAddr[addr], nil
-			}
+			})
 		}
 
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d

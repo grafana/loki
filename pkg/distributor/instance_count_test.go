@@ -102,6 +102,8 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	delegate = &sentryDelegate{BasicLifecyclerDelegate: delegate, calls: sentry2} // sentry delegate AFTER newHealthyInstancesDelegate
 
 	ringCfg := &RingConfig{}
+	ringCfg.InstanceAddr = "localhost"
+
 	logger := log.With(util_log.Logger, "component", "lifecycler")
 	lifecyclerCfg, err := ringCfg.ToBasicLifecyclerConfig(logger)
 	require.NoError(t, err)
@@ -125,7 +127,9 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	require.Equal(t, 1, sentry1["Heartbeat"])
 	require.Equal(t, 1, sentry2["Heartbeat"])
 
-	delegate.OnRingInstanceRegister(lifecycler, *ingesters, true, "ingester-0", ring.InstanceDesc{})
+	cfg := ring.BasicLifecyclerConfig{}
+	l, _ := ring.NewBasicLifecycler(cfg, "", "", nil, nil, nil, nil)
+	delegate.OnRingInstanceRegister(l, *ingesters, true, "ingester-0", ring.InstanceDesc{})
 	require.Equal(t, 1, sentry1["Register"])
 	require.Equal(t, 1, sentry2["Register"])
 

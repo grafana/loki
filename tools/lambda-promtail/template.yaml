@@ -76,6 +76,7 @@ Resources:
             - logs:CreateLogGroup
             - logs:CreateLogStream
             - logs:PutLogEvents
+            - logs:PutSubscriptionFilter
             Resource: arn:aws:logs:*:*:*
       RoleName: iam_for_lambda
   LambdaPromtailFunction:
@@ -123,6 +124,7 @@ Resources:
   # additional CloudWatch Log Groups.
   MainLambdaPromtailSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
+    DependsOn: LambdaPromtailPermissions
     Properties:
       DestinationArn: !GetAtt LambdaPromtailFunction.Arn
       FilterPattern: ""

@@ -186,3 +186,7 @@ func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID 
 func (s *bigtableObjectClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
+
+func (s *bigtableObjectClient) IsRetryableErr(_ error) bool {
+	return false
+}

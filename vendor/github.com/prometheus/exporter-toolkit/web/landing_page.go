@@ -31,8 +31,27 @@ type LandingConfig struct {
 	CSS         string         // CSS style tag for the landing page.
 	Name        string         // The name of the exporter, generally suffixed by _exporter.
 	Description string         // A short description about the exporter.
+	Form        LandingForm    // A POST form.
 	Links       []LandingLinks // Links displayed on the landing page.
+	ExtraHTML   string         // Additional HTML to be embedded.
+	ExtraCSS    string         // Additional CSS to be embedded.
 	Version     string         // The version displayed.
+}
+
+// LandingForm provides a configuration struct for creating a POST form on the landing page.
+type LandingForm struct {
+	Action string
+	Inputs []LandingFormInput
+	Width  float64
+}
+
+// LandingFormInput represents a single form input field.
+type LandingFormInput struct {
+	Label       string
+	Type        string
+	Name        string
+	Placeholder string
+	Value       string
 }
 
 type LandingLinks struct {
@@ -54,6 +73,15 @@ var (
 
 func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 	var buf bytes.Buffer
+
+	length := 0
+	for _, input := range c.Form.Inputs {
+		inputLength := len(input.Label)
+		if inputLength > length {
+			length = inputLength
+		}
+	}
+	c.Form.Width = (float64(length) + 1) / 2
 	if c.CSS == "" {
 		if c.HeaderColor == "" {
 			// Default to Prometheus orange.
@@ -78,5 +106,6 @@ func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 }
 
 func (h *LandingPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/html; charset=UTF-8")
 	w.Write(h.landingPage)
 }

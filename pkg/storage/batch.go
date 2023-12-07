@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -46,25 +47,25 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 
 	return &ChunkMetrics{
 		refs: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Subsystem: "index",
 			Name:      "chunk_refs_total",
 			Help:      "Number of chunks refs downloaded, partitioned by whether they intersect the query bounds.",
 		}, []string{"status"}),
 		series: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Subsystem: "store",
 			Name:      "series_total",
 			Help:      "Number of series referenced by a query, partitioned by whether they satisfy matchers.",
 		}, []string{"status"}),
 		chunks: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Subsystem: "store",
 			Name:      "chunks_downloaded_total",
 			Help:      "Number of chunks referenced or downloaded, partitioned by if they satisfy matchers.",
 		}, []string{"status"}),
 		batches: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Subsystem: "store",
 			Name:      "chunks_per_batch",
 			Help:      "The chunk batch size, partitioned by if they satisfy matchers.",
@@ -701,21 +702,15 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 	errChan := make(chan error)
 	for f, chunks := range chksByFetcher {
 		go func(fetcher *fetcher.Fetcher, chunks []*LazyChunk) {
-			keys := make([]string, 0, len(chunks))
 			chks := make([]chunk.Chunk, 0, len(chunks))
 			index := make(map[string]*LazyChunk, len(chunks))
 
-			// FetchChunks requires chunks to be ordered by external key.
-			sort.Slice(chunks, func(i, j int) bool {
-				return s.ExternalKey(chunks[i].Chunk.ChunkRef) < s.ExternalKey(chunks[j].Chunk.ChunkRef)
-			})
 			for _, chk := range chunks {
 				key := s.ExternalKey(chk.Chunk.ChunkRef)
-				keys = append(keys, key)
 				chks = append(chks, chk.Chunk)
 				index[key] = chk
 			}
-			chks, err := fetcher.FetchChunks(ctx, chks, keys)
+			chks, err := fetcher.FetchChunks(ctx, chks)
 			if ctx.Err() != nil {
 				errChan <- nil
 				return

@@ -231,14 +231,14 @@ More details: <a href="https://grafana.com/docs/loki/latest/release-notes/v2-5/#
 </tr>
 <tr>
 <td>
-<code>runtimeSeccompProfile</code><br/>
+<code>restrictedPodSecurityStandard</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
-<p>RuntimeSeccompProfile enables the restricted seccomp profile on all
-Lokistack components.</p>
+<p>RestrictedPodSecurityStandard enables compliance with the restrictive pod security standard.
+More details: <a href="https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted">https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted</a></p>
 </td>
 </tr>
 <tr>
@@ -401,6 +401,17 @@ bool
 More details: <a href="https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy">https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy</a></p>
 </td>
 </tr>
+<tr>
+<td>
+<code>dashboards</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Dashboards enables the loki-mixin dashboards into the OpenShift Console</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -508,7 +519,7 @@ K8S Controller-runtime v1alpha1.ControllerMetrics
 </td>
 <td>
 <em>(Optional)</em>
-<p>Metrics contains thw controller metrics configuration</p>
+<p>Metrics contains the controller metrics configuration</p>
 </td>
 </tr>
 <tr>

@@ -3,12 +3,12 @@ package state
 import (
 	"context"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
-
 	"github.com/ViaQ/logerr/v2/kverrors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // IsManaged checks if the custom resource is configured with ManagementState Managed.

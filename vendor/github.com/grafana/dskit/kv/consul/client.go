@@ -14,8 +14,9 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
+
+	"github.com/grafana/dskit/instrument"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"

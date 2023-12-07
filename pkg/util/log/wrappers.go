@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
-	"github.com/weaveworks/common/tracing"
+	"github.com/grafana/dskit/tracing"
 
 	"github.com/grafana/dskit/tenant"
 )

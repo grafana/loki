@@ -8,21 +8,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/compactor/deletion"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -117,7 +119,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Tail(ctx, &request)
+	_, err = q.Tail(ctx, &request, false)
 	require.NoError(t, err)
 
 	calls := ingesterClient.GetMockedCallsByMethod("Query")
@@ -243,7 +245,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -259,7 +261,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -272,7 +274,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			mkReq([]string{`{a="1"}`}),
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -290,7 +292,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "3"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "4"}},
 					{Labels: map[string]string{"a": "1", "b": "5"}},
 				}, nil)
@@ -315,7 +317,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "2"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "2"}},
 					{Labels: map[string]string{"a": "1", "b": "3"}},
 				}, nil)
@@ -424,6 +426,7 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 			require.Nil(t, err)
 
 			// since streams are loaded lazily, force iterators to exhaust
+			//nolint:revive
 			for res.Next() {
 			}
 			queryClient.AssertExpectations(t)
@@ -511,7 +514,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
-			_, err = q.Tail(ctx, &request)
+			_, err = q.Tail(ctx, &request, false)
 			assert.Equal(t, testData.expectedError, err)
 		})
 	}
@@ -825,7 +828,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 		},
 		"Series": {
 			ingesterMethod: "Series",
-			storeMethod:    "Series",
+			storeMethod:    "SelectSeries",
 		},
 	}
 
@@ -1100,7 +1103,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
-	store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 		{Labels: map[string]string{"foo": "1"}},
 	}, nil)
 
@@ -1136,7 +1139,7 @@ func Test_validateQueryTimeRangeLimits(t *testing.T) {
 	nowFunc = func() time.Time { return now }
 	tests := []struct {
 		name        string
-		limits      timeRangeLimits
+		limits      TimeRangeLimits
 		from        time.Time
 		through     time.Time
 		wantFrom    time.Time
@@ -1285,12 +1288,12 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 }
 
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {
-	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory)
+	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory, constants.Loki)
 	if err != nil {
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, nil)
+	return New(cfg, store, iq, limits, dg, nil, log.NewNopLogger())
 }
 
 type mockDeleteGettter struct {

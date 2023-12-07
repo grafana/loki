@@ -15,15 +15,14 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/exported"
 )
 
 // Payload reads and returns the response body or an error.
 // On a successful read, the response body is cached.
 // Subsequent reads will access the cached value.
 func Payload(resp *http.Response) ([]byte, error) {
-	return exported.Payload(resp)
+	return exported.Payload(resp, nil)
 }
 
 // HasStatusCode returns true if the Response's status code is one of the specified values.
@@ -92,14 +91,14 @@ func Drain(resp *http.Response) {
 
 // removeBOM removes any byte-order mark prefix from the payload if present.
 func removeBOM(resp *http.Response) error {
-	payload, err := Payload(resp)
+	_, err := exported.Payload(resp, &exported.PayloadOptions{
+		BytesModifier: func(b []byte) []byte {
+			// UTF8
+			return bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+		},
+	})
 	if err != nil {
 		return err
-	}
-	// UTF8
-	trimmed := bytes.TrimPrefix(payload, []byte("\xef\xbb\xbf"))
-	if len(trimmed) < len(payload) {
-		resp.Body.(shared.BytesSetter).Set(trimmed)
 	}
 	return nil
 }

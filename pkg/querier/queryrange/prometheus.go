@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
 var (
@@ -25,7 +26,7 @@ var (
 type PrometheusExtractor struct{}
 
 // Extract wraps the original prometheus cache extractor
-func (PrometheusExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (PrometheusExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	response := extractor.Extract(start, end, res.(*LokiPromResponse).Response, resStart, resEnd)
 	return &LokiPromResponse{
 		Response: response.(*queryrangebase.PrometheusResponse),
@@ -43,6 +44,28 @@ func (PrometheusExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) 
 // encode encodes a Prometheus response and injects Loki stats.
 func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 	sp := opentracing.SpanFromContext(ctx)
+	var buf bytes.Buffer
+
+	err := p.encodeTo(&buf)
+	if err != nil {
+		return nil, err
+	}
+
+	if sp != nil {
+		sp.LogFields(otlog.Int("bytes", buf.Len()))
+	}
+
+	resp := http.Response{
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+		Body:       io.NopCloser(&buf),
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
+}
+
+func (p *LokiPromResponse) encodeTo(w io.Writer) error {
 	var (
 		b   []byte
 		err error
@@ -57,21 +80,11 @@ func (p *LokiPromResponse) encode(ctx context.Context) (*http.Response, error) {
 		b, err = p.marshalScalar()
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	if sp != nil {
-		sp.LogFields(otlog.Int("bytes", len(b)))
-	}
-
-	resp := http.Response{
-		Header: http.Header{
-			"Content-Type": []string{"application/json"},
-		},
-		Body:       io.NopCloser(bytes.NewBuffer(b)),
-		StatusCode: http.StatusOK,
-	}
-	return &resp, nil
+	_, err = w.Write(b)
+	return err
 }
 
 func (p *LokiPromResponse) marshalVector() ([]byte, error) {
@@ -113,6 +126,12 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 }
 
 func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
+
+	// Make sure nil is not encoded as null.
+	if p.Response.Data.Result == nil {
+		p.Response.Data.Result = []queryrangebase.SampleStream{}
+	}
+
 	// embed response and add statistics.
 	return jsonStd.Marshal(struct {
 		Status string `json:"status"`

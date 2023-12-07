@@ -5,7 +5,7 @@ description: Learn how the rule evaluates queries for alerting.
 aliases:
   - ./rules/
   - ./alerting/
-weight: 850
+weight: 800
 keywords:
   - loki
   - alert
@@ -106,6 +106,43 @@ This query (`expr`) will be executed every 1 minute (`interval`), the result of 
 name we have defined (`record`). This metric named `nginx:requests:rate1m` can now be sent to Prometheus, where it will be stored
 just like any other metric.
 
+
+### Limiting Alerts and Recording Rule Samples
+
+Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), you can configure a limit for alerts produced by alerting rules and samples produced by recording rules. This limit can be configured per-group. Using limits can prevent a faulty rule from generating a large number of alerts or recording samples. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it is an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. The default value for limit is `0` meaning no limit.
+
+#### Example
+
+Here is an example of a rule group along with its limit configured.
+
+
+
+```yaml
+groups:
+  - name: production_rules
+    limit: 10
+    interval: 1m
+    rules:
+      - alert: HighPercentageError
+        expr: |
+          sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+            /
+          sum(rate({app="foo", env="production"}[5m])) by (job)
+            > 0.05
+        for: 10m
+        labels:
+            severity: page
+        annotations:
+            summary: High request latency
+      - record: nginx:requests:rate1m
+        expr: |
+          sum(
+            rate({container="nginx"}[1m])
+          )
+        labels:
+          cluster: "us-central1"
+```
+
 ### Remote-Write
 
 With recording rules, you can run these metric queries continually on an interval, and have the resulting metrics written
@@ -118,7 +155,7 @@ At the time of writing, these are the compatible backends that support this:
 - [Grafana Mimir](/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
-Here is an example remote-write configuration for sending to a local Prometheus instance:
+Here is an example of a remote-write configuration for sending data to a local Prometheus instance:
 
 ```yaml
 ruler:
@@ -169,6 +206,7 @@ Creating these alerts in LogQL is attractive because these metrics can be extrac
 
 ## Interacting with the Ruler
 
+### Cortextool
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but it works with both Loki and Cortex. Pass the `--backend=loki` option when using it with Loki.
 
 > **Note:** Not all commands in cortextool currently support Loki.
@@ -191,6 +229,7 @@ cortextool rules sync --rule-dirs=./output --backend=loki
 cortextool rules print --backend=loki
 ```
 
+### Cortextool Github Actions
 There is also a [github action](https://github.com/grafana/cortex-rules-action) available for `cortex-tool`, so you can add it into your CI/CD pipelines!
 
 For instance, you can sync rules on master builds via
@@ -232,6 +271,58 @@ jobs:
         uses: grafana/cortex-rules-action@v0.4.0
         env:
           ACTION: 'print'
+```
+### Terraform
+
+With the [Terraform provider for Loki](https://registry.terraform.io/providers/fgouteroux/loki/latest), you can manage alerts and recording rules in Terraform HCL format:
+
+```tf
+terraform {
+  required_providers {
+    loki = {
+      source = "fgouteroux/loki"
+    }
+  }
+}
+
+# Provider config
+provider "loki" {
+  uri = "http://127.0.0.1:3100"
+  org_id = "mytenant"
+}
+
+# Create an alert rule
+resource "loki_rule_group_alerting" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    alert       = "HighPercentageError"
+    expr        = <<EOT
+sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+  /
+sum(rate({app="foo", env="production"}[5m])) by (job)
+  > 0.05
+EOT
+    for         = "10m"
+    labels      = {
+      severity = "warning"
+    }
+    annotations = {
+      summary = "High request latency"
+    }
+  }
+}
+
+# Create a recording rule
+resource "loki_rule_group_recording" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    expr   = "sum by (job) (http_inprogress_requests)"
+    record = "job:http_inprogress_requests:sum"
+  }
+}
+
 ```
 
 ## Scheduling and best practices
@@ -282,9 +373,8 @@ Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs
 
 There are a few things coming to increase the robustness of this service. In no particular order:
 
-- WAL for recording rule.
 - Backend metric stores adapters for generated alert rule data.
 
 ## Misc Details: Metrics backends vs in-memory
 
-Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
+Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing and performance benefits.

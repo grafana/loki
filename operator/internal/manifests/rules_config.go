@@ -3,11 +3,12 @@ package manifests
 import (
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type RuleName struct {
@@ -16,7 +17,7 @@ type RuleName struct {
 	filename string
 }
 
-// RulesConfigMap returns a ConfigMap resource that contains
+// RulesConfigMapShards returns a ConfigMap resource that contains
 // all loki alerting and recording rules as YAML data.
 // If the size of the data is more than 1MB, the ConfigMap will
 // be split into multiple shards, and this function will return

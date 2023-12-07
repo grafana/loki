@@ -71,7 +71,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(1000, 0),
 								Line:      "first",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "123",
 									"userID", "a",
 								)),
@@ -79,7 +79,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(2000, 0),
 								Line:      "second",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "456",
 									"userID", "b",
 								)),
@@ -92,7 +92,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(3000, 0),
 								Line:      "third",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "789",
 									"userID", "c",
 								)),
@@ -100,7 +100,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(4000, 0),
 								Line:      "fourth",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "123",
 									"userID", "d",
 								)),
@@ -124,7 +124,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(1000, 0),
 								Line:      "first",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "123",
 									"userID", "a",
 								)),
@@ -132,7 +132,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(2000, 0),
 								Line:      "second",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "456",
 									"userID", "b",
 								)),
@@ -146,7 +146,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(3000, 0),
 								Line:      "third",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "789",
 									"userID", "c",
 								)),
@@ -154,7 +154,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(4000, 0),
 								Line:      "fourth",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "123",
 									"userID", "d",
 								)),
@@ -178,7 +178,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(1000, 0),
 								Line:      "first",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "123",
 									"userID", "a",
 								)),
@@ -186,7 +186,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(2000, 0),
 								Line:      "second",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "456",
 									"userID", "b",
 								)),
@@ -200,7 +200,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(3000, 0),
 								Line:      "third",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "789",
 									"userID", "c",
 								)),
@@ -208,7 +208,7 @@ func Test_Encoding_Entries(t *testing.T) {
 							{
 								Timestamp: time.Unix(4000, 0),
 								Line:      "fourth",
-								NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 									"traceID", "123",
 									"userID", "d",
 								)),
@@ -226,12 +226,12 @@ func Test_Encoding_Entries(t *testing.T) {
 			err := DecodeRecord(buf, decoded)
 			require.Nil(t, err)
 
-			// If the version is less than v3, we need to remove the non-indexed labels.
+			// If the version is less than v3, we need to remove the structured metadata.
 			expectedRecords := tc.rec
 			if tc.version < WALRecordEntriesV3 {
 				for i := range expectedRecords.RefEntries {
 					for j := range expectedRecords.RefEntries[i].Entries {
-						expectedRecords.RefEntries[i].Entries[j].NonIndexedLabels = nil
+						expectedRecords.RefEntries[i].Entries[j].StructuredMetadata = nil
 					}
 				}
 			}
@@ -242,8 +242,8 @@ func Test_Encoding_Entries(t *testing.T) {
 }
 
 func Benchmark_EncodeEntries(b *testing.B) {
-	for _, withNonIndexedLabels := range []bool{true, false} {
-		b.Run(fmt.Sprintf("nonIndexedLabels=%t", withNonIndexedLabels), func(b *testing.B) {
+	for _, withStructuredMetadata := range []bool{true, false} {
+		b.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(b *testing.B) {
 			var entries []logproto.Entry
 			for i := int64(0); i < 10000; i++ {
 				entry := logproto.Entry{
@@ -251,8 +251,8 @@ func Benchmark_EncodeEntries(b *testing.B) {
 					Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
 				}
 
-				if withNonIndexedLabels {
-					entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+				if withStructuredMetadata {
+					entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 						"traceID", strings.Repeat(fmt.Sprintf("%d", i), 10),
 						"userID", strings.Repeat(fmt.Sprintf("%d", i), 10),
 					))
@@ -287,8 +287,8 @@ func Benchmark_EncodeEntries(b *testing.B) {
 }
 
 func Benchmark_DecodeWAL(b *testing.B) {
-	for _, withNonIndexedLabels := range []bool{true, false} {
-		b.Run(fmt.Sprintf("nonIndexedLabels=%t", withNonIndexedLabels), func(b *testing.B) {
+	for _, withStructuredMetadata := range []bool{true, false} {
+		b.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(b *testing.B) {
 			var entries []logproto.Entry
 			for i := int64(0); i < 10000; i++ {
 				entry := logproto.Entry{
@@ -296,8 +296,8 @@ func Benchmark_DecodeWAL(b *testing.B) {
 					Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
 				}
 
-				if withNonIndexedLabels {
-					entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+				if withStructuredMetadata {
+					entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 						"traceID", strings.Repeat(fmt.Sprintf("%d", i), 10),
 						"userID", strings.Repeat(fmt.Sprintf("%d", i), 10),
 					))

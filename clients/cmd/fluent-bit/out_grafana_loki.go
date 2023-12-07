@@ -10,8 +10,8 @@ import (
 	"github.com/fluent/fluent-bit-go/output"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/logging"
 
 	_ "github.com/grafana/loki/pkg/util/build"
 )
@@ -28,7 +28,7 @@ var (
 )
 
 func init() {
-	var logLevel logging.Level
+	var logLevel dslog.Level
 	_ = logLevel.Set("info")
 	logger = newLogger(logLevel)
 }
@@ -63,7 +63,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 
 	level.Info(logger).Log("[flb-go]", "Starting fluent-bit-go-loki", "version", version.Info())
 	paramLogger := log.With(logger, "[flb-go]", "provided parameter")
-	level.Info(paramLogger).Log("URL", conf.clientConfig.URL)
+	level.Info(paramLogger).Log("URL", conf.clientConfig.URL.Redacted())
 	level.Info(paramLogger).Log("TenantID", conf.clientConfig.TenantID)
 	level.Info(paramLogger).Log("BatchWait", fmt.Sprintf("%.3fs", conf.clientConfig.BatchWait.Seconds()))
 	level.Info(paramLogger).Log("BatchSize", conf.clientConfig.BatchSize)

@@ -11,10 +11,12 @@ type MockCache interface {
 	Cache
 	NumKeyUpdates() int
 	GetInternal() map[string][]byte
+	KeysRequested() int
 }
 
 type mockCache struct {
 	numKeyUpdates int
+	keysRequested int
 	sync.Mutex
 	cache map[string][]byte
 }
@@ -33,6 +35,7 @@ func (m *mockCache) Fetch(_ context.Context, keys []string) (found []string, buf
 	m.Lock()
 	defer m.Unlock()
 	for _, key := range keys {
+		m.keysRequested++
 		buf, ok := m.cache[key]
 		if ok {
 			found = append(found, key)
@@ -57,6 +60,10 @@ func (m *mockCache) NumKeyUpdates() int {
 
 func (m *mockCache) GetInternal() map[string][]byte {
 	return m.cache
+}
+
+func (m *mockCache) KeysRequested() int {
+	return m.keysRequested
 }
 
 // NewMockCache makes a new MockCache.

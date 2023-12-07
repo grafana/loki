@@ -41,6 +41,10 @@ type validationContext struct {
 
 	incrementDuplicateTimestamps bool
 
+	allowStructuredMetadata    bool
+	maxStructuredMetadataSize  int
+	maxStructuredMetadataCount int
+
 	userID string
 }
 
@@ -56,6 +60,9 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		maxLabelNameLength:           v.MaxLabelNameLength(userID),
 		maxLabelValueLength:          v.MaxLabelValueLength(userID),
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
+		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
+		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
+		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
 	}
 }
 
@@ -88,6 +95,32 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, ctx.userID).Add(float64(len(entry.Line)))
 		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
+	}
+
+	if len(entry.StructuredMetadata) > 0 {
+		if !ctx.allowStructuredMetadata {
+			validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Add(float64(len(entry.Line)))
+			return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
+		}
+
+		var structuredMetadataSizeBytes, structuredMetadataCount int
+		for _, metadata := range entry.StructuredMetadata {
+			structuredMetadataSizeBytes += len(metadata.Name) + len(metadata.Value)
+			structuredMetadataCount++
+		}
+
+		if maxSize := ctx.maxStructuredMetadataSize; maxSize != 0 && structuredMetadataSizeBytes > maxSize {
+			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Add(float64(len(entry.Line)))
+			return fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, labels, structuredMetadataSizeBytes, ctx.maxStructuredMetadataSize)
+		}
+
+		if maxCount := ctx.maxStructuredMetadataCount; maxCount != 0 && structuredMetadataCount > maxCount {
+			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Add(float64(len(entry.Line)))
+			return fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, labels, structuredMetadataCount, ctx.maxStructuredMetadataCount)
+		}
 	}
 
 	return nil
