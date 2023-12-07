@@ -585,7 +585,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 	}{
 		{
 			name: "logs query touching just the active schema config",
-			req:  defaultReq().WithStartEndTime(now.Add(-time.Hour).Time(), now.Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEnd(now.Add(-time.Hour).Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -596,7 +596,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "logs query touching just the prev schema config",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), confs[0].From.Time.Add(time.Hour).Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), confs[0].From.Time.Add(time.Hour).Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -607,7 +607,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query touching just the active schema config",
-			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -624,7 +624,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query touching just the prev schema config",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Add(time.Hour).Time(), confs[0].From.Time.Add(2*time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Add(time.Hour).Time(), confs[0].From.Time.Add(2*time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -641,7 +641,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "logs query covering both schemas",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -652,7 +652,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query covering both schemas",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -669,7 +669,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough range to cover previous schema too",
-			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -686,7 +686,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough offset to shift it to previous schema",
-			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m] offset 12h)`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m] offset 12h)`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,

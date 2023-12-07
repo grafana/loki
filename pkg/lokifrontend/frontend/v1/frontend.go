@@ -21,9 +21,9 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/queue"
+	"github.com/grafana/loki/pkg/scheduler/limits"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
@@ -42,7 +42,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Limits interface {
 	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	MaxQueriersPerUser(user string) int
+	MaxQueriersPerUser(user string) uint
+
+	// MaxQueryCapacity returns how much of the available query capacity can be used by this user.
+	MaxQueryCapacity(user string) float64
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -80,12 +83,12 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, metricsNamespace string) (*Frontend, error) {
+func New(cfg Config, frontendLimits Limits, log log.Logger, registerer prometheus.Registerer, metricsNamespace string) (*Frontend, error) {
 	queueMetrics := queue.NewMetrics(registerer, metricsNamespace, "query_frontend")
 	f := &Frontend{
 		cfg:          cfg,
 		log:          log,
-		limits:       limits,
+		limits:       frontendLimits,
 		queueMetrics: queueMetrics,
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
@@ -95,7 +98,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, limits.NewQueueLimits(frontendLimits), queueMetrics)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	var err error
@@ -312,13 +315,10 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.enqueueTime = now
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
-	// aggregate the max queriers limit in the case of a multi tenant query
-	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
-
 	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
 	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)
 
-	err = f.requestQueue.Enqueue(joinedTenantID, nil, req, maxQueriers, nil)
+	err = f.requestQueue.Enqueue(joinedTenantID, nil, req, nil)
 	if err == queue.ErrTooManyRequests {
 		return errTooManyRequest
 	}
