@@ -1132,8 +1132,12 @@ priorityClassName: {{ $pcn }}
 {{/* Configure write zone awareness */}}
 {{- define "loki.enableWriteZoneAwareness" -}}
 {{- if .Values.write.zoneAwareReplication.enabled }}
-zone_awareness_enabled: true
+lifecycler:
+  ring:
+    zone_awareness_enabled: true
 {{- else }}
-zone_awareness_enabled: false
+lifecycler:
+  ring:
+    zone_awareness_enabled: false
 {{- end }}
 {{- end }}

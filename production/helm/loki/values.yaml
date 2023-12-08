@@ -358,8 +358,7 @@ loki:
   # --  Optional querier configuration
   querier: {}
   # --  Optional ingester configuration
-  ingester:
-    concurrent_flushes: 20
+  ingester: {}
   # --  Optional index gateway configuration
   index_gateway:
     mode: ring
