@@ -62,6 +62,7 @@ func Test_ValidateConfigs(t *testing.T) {
 /*
 	NOTE:
 	database schema: https://github.com/maxmind/MaxMind-DB/tree/main/source-data
+	Script used to build the minimal binaries: https://github.com/vimt/MaxMind-DB-Writer-python
 */
 
 func Test_MaxmindAsn(t *testing.T) {

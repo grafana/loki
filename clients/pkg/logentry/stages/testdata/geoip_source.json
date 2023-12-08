@@ -1,0 +1,14 @@
+[
+    {
+        "type": "GeoLite2-ASN",
+        "data": {"192.0.2.0/24": {"autonomous_system_number": 1337, "autonomous_system_organization": "Just a Test"}}
+    },
+    {
+        "type": "GeoIP2-Country",
+        "data": {"192.0.2.0/24": {"continent": {"code": "NA", "geoname_id": 6255149, "names": {"de": "Nordamerika", "en": "North America", "es": "Norteam\u00e9rica", "fr": "Am\u00e9rique du Nord", "ja": "\u5317\u30a2\u30e1\u30ea\u30ab", "pt-BR": "Am\u00e9rica do Norte", "ru": "\u0421\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u0410\u043c\u0435\u0440\u0438\u043a", "zh-CN": "\u5317\u7f8e\u6d32"}}, "country": {"geoname_id": 6252001, "is_in_european_union": false, "iso_code": "US", "names": {"de": "Vereinigte Staaten", "en": "United States", "es": "Estados Unidos", "fr": "\u00c9tats Unis", "ja": "\u30a2\u30e1\u30ea\u30ab", "pt-BR": "EUA", "ru": "\u0421\u0428\u0410", "zh-CN": "\u7f8e\u56fd"}}, "registered_country": {"geoname_id": 6252001, "is_in_european_union": false, "iso_code": "US", "names": {"de": "Vereinigte Staaten", "en": "United States", "es": "Estados Unidos", "fr": "\u00c9tats Unis", "ja": "\u30a2\u30e1\u30ea\u30ab", "pt-BR": "EUA", "ru": "\u0421\u0428\u0410", "zh-CN": "\u7f8e\u56fd"}}, "traits": {"is_anonymous_proxy": true, "is_satellite_provider": true, "is_anycast": true}}}
+    },
+    {
+        "type": "GeoIP2-City",
+        "data": {"192.0.2.0/24": {"continent": {"code": "EU", "geoname_id": 6255148, "names": {"de": "Europa", "en": "Europe", "es": "Europa", "fr": "Europe", "ja": "\u30e8\u30fc\u30ed\u30c3\u30d1", "pt-BR": "Europa", "ru": "\u0415\u0432\u0440\u043e\u043f\u0430", "zh-CN": "\u6b27\u6d32"}}, "country": {"geoname_id": 2635167, "is_in_european_union": false, "iso_code": "GB", "names": {"de": "Vereinigtes K\u00f6nigreich", "en": "United Kingdom", "es": "Reino Unido", "fr": "Royaume-Uni", "ja": "\u30a4\u30ae\u30ea\u30b9", "pt-BR": "Reino Unido", "ru": "\u0412\u0435\u043b\u0438\u043a\u043e\u0431\u0440\u0438\u0442\u0430\u043d\u0438\u044f", "zh-CN": "\u82f1\u56fd"}}, "registered_country": {"geoname_id": 6252001, "is_in_european_union": false, "iso_code": "US", "names": {"de": "USA", "en": "United States", "es": "Estados Unidos", "fr": "\u00c9tats-Unis", "ja": "\u30a2\u30e1\u30ea\u30ab\u5408\u8846\u56fd", "pt-BR": "Estados Unidos", "ru": "\u0421\u0428\u0410", "zh-CN": "\u7f8e\u56fd"}}, "traits": {"is_anonymous_proxy": true, "is_satellite_provider": true, "is_anycast": true}, "location": {"accuracy_radius": 100, "latitude": 51.5142, "longitude": -0.0931, "time_zone": "Europe/London"}, "postal": {"code": "OX1"}, "city": {"geoname_id": 2643743, "names": {"de": "London", "en": "London", "es": "Londres", "fr": "Londres", "ja": "\u30ed\u30f3\u30c9\u30f3", "pt-BR": "Londres", "ru": "\u041b\u043e\u043d\u0434\u043e\u043d"}}, "subdivisions": [{"geoname_id": 6269131, "iso_code": "ENG", "names": {"en": "England", "es": "Inglaterra", "fr": "Angleterre", "pt-BR": "Inglaterra"}}]}}
+    }
+]
