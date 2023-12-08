@@ -24,7 +24,7 @@ type BlocksCacheConfig struct {
 func (c *BlocksCacheConfig) RegisterFlagsWithPrefixAndDefaults(prefix string, f *flag.FlagSet) {
 	c.EmbeddedCacheConfig.RegisterFlagsWithPrefixAndDefaults(prefix, "", f, 0)
 	f.DurationVar(&c.RemoveDirectoryGracefulPeriod, prefix+"remove-directory-graceful-period", 5*time.Minute,
-		"During this period the process waits until the directory becomes not used and only after this it will be deleted. If the timeout reached, the directory force deleted.")
+		"During this period the process waits until the directory becomes not used and only after this it will be deleted. If the timeout is reached, the directory is force deleted.")
 }
 
 type DownloadingQueueConfig struct {

@@ -2300,8 +2300,8 @@ bloom_shipper:
     [ttl: <duration> | default = 0s]
 
     # During this period the process waits until the directory becomes not used
-    # and only after this it will be deleted. If the timeout reached, the
-    # directory force deleted.
+    # and only after this it will be deleted. If the timeout is reached, the
+    # directory is force deleted.
     # CLI flag: -blocks-cache.remove-directory-graceful-period
     [remove_directory_graceful_period: <duration> | default = 5m]
 ```

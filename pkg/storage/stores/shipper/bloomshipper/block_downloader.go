@@ -32,10 +32,9 @@ import (
 type blockDownloader struct {
 	logger log.Logger
 
-	workingDirectory   string
-	queueMetrics       *queue.Metrics
-	queue              *queue.RequestQueue
-	blockClient        BlockClient
+	queueMetrics *queue.Metrics
+	queue        *queue.RequestQueue
+
 	limits             Limits
 	activeUsersService *util.ActiveUsersCleanupService
 
@@ -43,9 +42,7 @@ type blockDownloader struct {
 	manager *services.Manager
 	wg      sync.WaitGroup
 
-	blocksCache *cache.EmbeddedCache[string, *cachedBlock]
-	cfg         config.Config
-	keyMutex    keymutex.KeyMutex
+	strategy downloadingStrategy
 }
 
 type queueLimits struct {
@@ -72,24 +69,17 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 		return nil, fmt.Errorf("error starting service manager: %w", err)
 	}
 
-	var blocksCache *cache.EmbeddedCache[string, *cachedBlock]
-	if config.BlocksCache.EmbeddedCacheConfig.Enabled {
-		blocksCache = NewBlocksCache(config, reg, logger)
-	}
+	strategy := createDownloadingStrategy(config, blockClient, reg, logger)
 	b := &blockDownloader{
 		ctx:                ctx,
 		logger:             logger,
-		workingDirectory:   config.WorkingDirectory,
 		queueMetrics:       queueMetrics,
 		queue:              downloadingQueue,
-		blockClient:        blockClient,
+		strategy:           strategy,
 		activeUsersService: activeUsersService,
 		limits:             limits,
 		manager:            manager,
 		wg:                 sync.WaitGroup{},
-		blocksCache:        blocksCache,
-		cfg:                config,
-		keyMutex:           keymutex.NewHashed(config.BlocksDownloadingQueue.WorkersCount),
 	}
 
 	for i := 0; i < config.BlocksDownloadingQueue.WorkersCount; i++ {
@@ -146,36 +136,53 @@ func (d *blockDownloader) serveDownloadingTasks(workerID string) {
 		}
 
 		idx = newIdx
-		if d.blocksCache != nil {
-			result, err := d.downloadBlockUsingCache(task, logger)
-			if err != nil {
-				task.ErrCh <- err
-				continue
-			}
-			task.ResultsCh <- result
-			continue
-		}
-
-		// otherwise download without cache
-		directory, err := downloadBlockToDirectory(logger, task, d.workingDirectory, d.blockClient)
+		result, err := d.strategy.downloadBlock(task, logger)
 		if err != nil {
 			task.ErrCh <- err
 			continue
 		}
-		task.ResultsCh <- blockWithQuerier{
-			BlockRef:             task.block,
-			closableBlockQuerier: newBlockQuerierFromFS(directory),
-		}
+		task.ResultsCh <- result
+		continue
 	}
 }
 
-func (d *blockDownloader) downloadBlockUsingCache(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
+func createDownloadingStrategy(cfg config.Config, blockClient BlockClient, reg prometheus.Registerer, logger log.Logger) downloadingStrategy {
+	if cfg.BlocksCache.EmbeddedCacheConfig.Enabled {
+		blocksCache := NewBlocksCache(cfg, reg, logger)
+		return &cacheDownloadingStrategy{
+			config:           cfg,
+			workingDirectory: cfg.WorkingDirectory,
+			blockClient:      blockClient,
+			blocksCache:      blocksCache,
+			keyMutex:         keymutex.NewHashed(cfg.BlocksDownloadingQueue.WorkersCount),
+		}
+	}
+	return &storageDownloadingStrategy{
+		workingDirectory: cfg.WorkingDirectory,
+		blockClient:      blockClient,
+	}
+}
+
+type downloadingStrategy interface {
+	downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error)
+	close()
+}
+
+type cacheDownloadingStrategy struct {
+	config           config.Config
+	workingDirectory string
+	blockClient      BlockClient
+	blocksCache      *cache.EmbeddedCache[string, *cachedBlock]
+	keyMutex         keymutex.KeyMutex
+}
+
+func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
 	blockPath := task.block.BlockPath
-	d.keyMutex.LockKey(blockPath)
+	s.keyMutex.LockKey(blockPath)
 	defer func() {
-		_ = d.keyMutex.UnlockKey(blockPath)
+		_ = s.keyMutex.UnlockKey(blockPath)
 	}()
-	blockFromCache, exists := d.blocksCache.Get(task.ctx, task.block.BlockPath)
+	blockFromCache, exists := s.blocksCache.Get(task.ctx, task.block.BlockPath)
 	if exists {
 		return blockWithQuerier{
 			BlockRef:             task.block,
@@ -183,12 +190,12 @@ func (d *blockDownloader) downloadBlockUsingCache(task *BlockDownloadingTask, lo
 		}, nil
 	}
 
-	directory, err := downloadBlockToDirectory(logger, task, d.workingDirectory, d.blockClient)
+	directory, err := downloadBlockToDirectory(logger, task, s.workingDirectory, s.blockClient)
 	if err != nil {
 		return blockWithQuerier{}, err
 	}
-	blockFromCache = newCachedBlock(directory, d.cfg.BlocksCache.RemoveDirectoryGracefulPeriod, d.logger)
-	err = d.blocksCache.Store(task.ctx, []string{task.block.BlockPath}, []*cachedBlock{blockFromCache})
+	blockFromCache = newCachedBlock(directory, s.config.BlocksCache.RemoveDirectoryGracefulPeriod, logger)
+	err = s.blocksCache.Store(task.ctx, []string{task.block.BlockPath}, []*cachedBlock{blockFromCache})
 	if err != nil {
 		level.Error(logger).Log("msg", "error storing the block in the cache", "block", blockPath, "err", err)
 		return blockWithQuerier{}, fmt.Errorf("error storing the block %s in the cache : %w", blockPath, err)
@@ -197,6 +204,30 @@ func (d *blockDownloader) downloadBlockUsingCache(task *BlockDownloadingTask, lo
 		BlockRef:             task.block,
 		closableBlockQuerier: newBlockQuerierFromCache(blockFromCache),
 	}, nil
+}
+
+func (s *cacheDownloadingStrategy) close() {
+	s.blocksCache.Stop()
+}
+
+type storageDownloadingStrategy struct {
+	workingDirectory string
+	blockClient      BlockClient
+}
+
+func (s *storageDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
+	directory, err := downloadBlockToDirectory(logger, task, s.workingDirectory, s.blockClient)
+	if err != nil {
+		return blockWithQuerier{}, err
+	}
+	return blockWithQuerier{
+		BlockRef:             task.block,
+		closableBlockQuerier: newBlockQuerierFromFS(directory),
+	}, nil
+}
+
+func (s *storageDownloadingStrategy) close() {
+	// noop implementation
 }
 
 func downloadBlockToDirectory(logger log.Logger, task *BlockDownloadingTask, workingDirectory string, blockClient BlockClient) (string, error) {
@@ -255,10 +286,9 @@ func extractBlock(block *Block, ts time.Time, workingDirectory string, logger lo
 	}
 	defer func() {
 		err = os.Remove(archivePath)
-		if err == nil {
-			return
+		if err != nil {
+			level.Error(logger).Log("msg", "error removing temp archive file", "err", err)
 		}
-		level.Error(logger).Log("msg", "error removing temp archive file", "err", err)
 	}()
 	err = extractArchive(archivePath, workingDirectoryPath)
 	if err != nil {
@@ -270,9 +300,7 @@ func extractBlock(block *Block, ts time.Time, workingDirectory string, logger lo
 func (d *blockDownloader) stop() {
 	_ = services.StopManagerAndAwaitStopped(d.ctx, d.manager)
 	d.wg.Wait()
-	if d.blocksCache != nil {
-		d.blocksCache.Stop()
-	}
+	d.strategy.close()
 }
 
 func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {

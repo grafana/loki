@@ -153,8 +153,10 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls)
 		})
 	}
+}
 
-	dedupTests := map[string]struct {
+func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
+	tests := map[string]struct {
 		cacheEnabled                bool
 		expectedTotalGetBlocksCalls int
 	}{
@@ -167,7 +169,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			expectedTotalGetBlocksCalls: 10,
 		},
 	}
-	for name, testData := range dedupTests {
+	for name, testData := range tests {
 		t.Run(name, func(t *testing.T) {
 
 			overrides, err := validation.NewOverrides(validation.Limits{BloomGatewayBlocksDownloadingParallelism: 20}, nil)
@@ -230,16 +232,16 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 
 func Test_cachedBlock(t *testing.T) {
 	tests := map[string]struct {
-		releaseQierier                   bool
+		releaseQuerier                   bool
 		expectDirectoryToBeDeletedWithin time.Duration
 	}{
 		"expected block directory to be removed once all queriers are released": {
-			releaseQierier: true,
+			releaseQuerier: true,
 			// four times grater than activeQueriersCheckInterval
 			expectDirectoryToBeDeletedWithin: 200 * time.Millisecond,
 		},
 		"expected block directory to be force removed after timeout": {
-			releaseQierier: false,
+			releaseQuerier: false,
 			// four times grater than removeDirectoryTimeout
 			expectDirectoryToBeDeletedWithin: 2 * time.Second,
 		},
@@ -265,7 +267,7 @@ func Test_cachedBlock(t *testing.T) {
 				return directoryDoesNotExist(extractedBlockDirectory)
 			}, 200*time.Millisecond, 50*time.Millisecond)
 
-			if testData.releaseQierier {
+			if testData.releaseQuerier {
 				cached.activeQueriers.Dec()
 			}
 			//ensure directory does not exist
