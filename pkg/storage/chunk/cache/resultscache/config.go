@@ -33,6 +33,10 @@ func (cfg *Config) Validate() error {
 		return errors.Errorf("unsupported compression type: %s", cfg.Compression)
 	}
 
+	if !cache.IsCacheConfigured(cfg.CacheConfig) {
+		return errors.New("no cache configured")
+	}
+
 	return nil
 }
 
