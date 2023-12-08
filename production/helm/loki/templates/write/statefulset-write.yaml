@@ -154,7 +154,11 @@ spec:
       {{- end }}
       {{- with $rolloutZone.affinity }}
       affinity:
+        {{- if $zoneName }}
         {{- toYaml . | nindent 8 }}
+        {{- else }}
+        {{- tpl . $ | nindent 8 }}
+        {{- end }}
       {{- end }}
       {{- with .Values.write.topologySpreadConstraints }}
       topologySpreadConstraints:

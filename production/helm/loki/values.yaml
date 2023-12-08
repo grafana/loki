@@ -854,14 +854,12 @@ write:
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
   # -- Pod Affinity for write pods. This is ignored when write.zoneAwareReplication.enabled=true.
-  affinity:
+  affinity: |
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              app.kubernetes.io/name: loki
-              app.kubernetes.io/instance: loki
-              app.kubernetes.io/component: write
+              {{- include "loki.selectorLabels" (dict "ctx" . "component" "write") | nindent 10 }}
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
