@@ -49,7 +49,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Help:      "Time (in seconds) spent in applying retention",
 		}),
 		applyRetentionLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_boltdb_shipper",
+			Namespace: "loki_compactor",
 			Name:      "apply_retention_last_successful_run_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful retention run",
 		}),
