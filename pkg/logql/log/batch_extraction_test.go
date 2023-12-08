@@ -72,10 +72,10 @@ func TestUnwrapStage(t *testing.T) {
 	defer batch.Release()
 
 	stage := unwrapBatchStage{
-		in:  2,
-		out: 3,
+		in:    2,
+		out:   3,
 		label: "value",
-		fb:     array.NewFloat64Builder(pool),
+		fb:    array.NewFloat64Builder(pool),
 	}
 	updated, err := stage.Process(ctx, batch)
 	require.NoError(t, err)
@@ -102,4 +102,70 @@ func TestBatchExtractor(t *testing.T) {
 	filtered, err := extractor.Process(ctx, batch)
 	require.NoError(t, err)
 	require.Equal(t, int64(6), filtered.NumRows())
+}
+
+func BenchmarkContainsFilterStage(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		ctx := context.Background()
+
+		pool := memory.NewGoAllocator()
+		batch := createTestBatch(pool)
+		defer batch.Release()
+
+		require.Equal(b, int64(10), batch.NumRows())
+
+		stage := containsFilterBatchStage{
+			column: 1,
+			needle: []byte("foo"),
+			fb:     array.NewBooleanBuilder(pool),
+		}
+		filtered, err := stage.Process(ctx, batch)
+
+		require.NoError(b, err)
+		require.Equal(b, int64(6), filtered.NumRows())
+	}
+}
+
+func BenchmarkUnwrapStage(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		ctx := context.Background()
+
+		pool := memory.NewGoAllocator()
+		batch := createTestBatch(pool)
+		defer batch.Release()
+
+		stage := unwrapBatchStage{
+			in:    2,
+			out:   3,
+			label: "value",
+			fb:    array.NewFloat64Builder(pool),
+		}
+		updated, err := stage.Process(ctx, batch)
+		require.NoError(b, err)
+
+		require.Equal(b, "[0 1 2 3 4 5 6 7 8 9]", updated.Column(3).String())
+	}
+}
+
+func BenchmarkBatchExtractor(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		ctx := context.Background()
+
+		pool := memory.NewGoAllocator()
+		batch := createTestBatch(pool)
+		defer batch.Release()
+
+		extractor := &batchSampleExtractor{
+			stages: []BatchStage{
+				&containsFilterBatchStage{
+					column: 1,
+					needle: []byte("foo"),
+					fb:     array.NewBooleanBuilder(pool),
+				},
+			},
+		}
+		filtered, err := extractor.Process(ctx, batch)
+		require.NoError(b, err)
+		require.Equal(b, int64(6), filtered.NumRows())
+	}
 }
