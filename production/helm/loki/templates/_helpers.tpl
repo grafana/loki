@@ -129,16 +129,16 @@ Params:
 helm.sh/chart: {{ include "loki.chart" .ctx }}
 app.kubernetes.io/name: {{ include "loki.name" .ctx }}
 app.kubernetes.io/instance: {{ .ctx.Release.Name }}
+{{- if .ctx.Chart.AppVersion }}
+app.kubernetes.io/version: {{ .ctx.Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .ctx.Release.Service }}
 {{- if .component }}
 app.kubernetes.io/component: {{ .component }}
 {{- end }}
 {{- if .memberlist }}
 app.kubernetes.io/part-of: memberlist
 {{- end }}
-{{- if .ctx.Chart.AppVersion }}
-app.kubernetes.io/version: {{ .ctx.Chart.AppVersion | quote }}
-{{- end }}
-app.kubernetes.io/managed-by: {{ .ctx.Release.Service }}
 {{- end }}
 {{- if .rolloutZoneName }}
 {{-   if not .component }}
@@ -183,7 +183,7 @@ Params:
 {{- define "loki.podLabels" -}}
 {{ with .ctx.Values.loki.podLabels -}}
 {{ toYaml . }}
-{{ end }}
+{{ end -}}
 helm.sh/chart: {{ include "loki.chart" .ctx }}
 app.kubernetes.io/name: {{ include "loki.name" .ctx }}
 app.kubernetes.io/instance: {{ .ctx.Release.Name }}
