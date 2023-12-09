@@ -257,7 +257,7 @@ func (p *Promtail) watchConfig() {
 	}
 	switch srv := p.server.(type) {
 	case *server.NoopServer:
-		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail server disabled")
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail server is disabled")
 		return
 	case *server.PromtailServer:
 		level.Warn(p.logger).Log("msg", "enable watchConfig")
