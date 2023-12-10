@@ -38,17 +38,18 @@ var (
 	})
 )
 
+// Writer implements ChunkWriter
 type Writer struct {
-	schemaCfg                 config.SchemaConfig
+	periodCfg                 config.PeriodConfig
 	DisableIndexDeduplication bool
 
 	indexWriter index.Writer
 	fetcher     *fetcher.Fetcher
 }
 
-func NewChunkWriter(fetcher *fetcher.Fetcher, schemaCfg config.SchemaConfig, indexWriter index.Writer, disableIndexDeduplication bool) ChunkWriter {
+func NewChunkWriter(fetcher *fetcher.Fetcher, periodCfg config.PeriodConfig, indexWriter index.Writer, disableIndexDeduplication bool) *Writer {
 	return &Writer{
-		schemaCfg:                 schemaCfg,
+		periodCfg:                 periodCfg,
 		DisableIndexDeduplication: disableIndexDeduplication,
 		fetcher:                   fetcher,
 		indexWriter:               indexWriter,
@@ -83,7 +84,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 	}
 
 	// If this chunk is in cache it must already be in the database so we don't need to write it again
-	found, _, _, _ := c.fetcher.Cache().Fetch(ctx, []string{c.schemaCfg.ExternalKey(chk.ChunkRef)})
+	found, _, _, _ := c.fetcher.Cache().Fetch(ctx, []string{c.periodCfg.ExternalKey(chk.ChunkRef)})
 
 	if len(found) > 0 && !overlap {
 		writeChunk = false

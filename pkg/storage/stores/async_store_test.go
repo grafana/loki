@@ -1,4 +1,4 @@
-package storage
+package stores
 
 import (
 	"context"
@@ -18,9 +18,14 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
+var (
+	fooLabelsWithName = labels.Labels{{Name: "foo", Value: "bar"}, {Name: "__name__", Value: "logs"}}
+)
+
 // storeMock is a mockable version of Loki's storage, used in querier unit tests
 // to control the behaviour of the store without really hitting any storage backend
 type storeMock struct {
+	// inherit store.Store to "guarantee explicit implementation"
 	Store
 	util.ExtendedMock
 }
@@ -94,10 +99,10 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	require.NoError(t, err)
 
 	for i := 0; i < num; i++ {
-		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, timeRange{
-			from: now.Add(time.Duration(i) * time.Minute),
-			to:   now.Add(time.Duration(i+1) * time.Minute),
-		}))
+		chk := NewTestChunk(chunkfmt, headfmt, BuildTestStream(fooLabelsWithName,
+			now.Add(time.Duration(i)*time.Minute),
+			now.Add(time.Duration(i+1)*time.Minute),
+		))
 
 		chunkRef, err := chunk.ParseExternalKey(chk.UserID, s.ExternalKey(chk.ChunkRef))
 		require.NoError(t, err)
@@ -316,7 +321,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	}
 }
 
-func TestVolume(t *testing.T) {
+func TestAsyncStore_Volume(t *testing.T) {
 	store := newStoreMock()
 	store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&logproto.VolumeResponse{

@@ -340,8 +340,8 @@ type Config struct {
 
 	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
-	EnableAsyncStore bool          `yaml:"-"`
-	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
+	EnableAsyncStore bool                 `yaml:"-"`
+	AsyncStoreConfig stores.AsyncStoreCfg `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.

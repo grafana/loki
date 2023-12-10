@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -29,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -221,6 +223,91 @@ func getLocalStore(cm ClientMetrics) Store {
 	}
 	return store
 }
+
+var streamsFixture = []*logproto.Stream{
+	{
+		Labels: "{foo=\"bar\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from,
+				Line:      "1",
+			},
+
+			{
+				Timestamp: from.Add(time.Millisecond),
+				Line:      "2",
+			},
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+		},
+	},
+	{
+		Labels: "{foo=\"bar\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+			{
+				Timestamp: from.Add(3 * time.Millisecond),
+				Line:      "4",
+			},
+
+			{
+				Timestamp: from.Add(4 * time.Millisecond),
+				Line:      "5",
+			},
+			{
+				Timestamp: from.Add(5 * time.Millisecond),
+				Line:      "6",
+			},
+		},
+	},
+	{
+		Labels: "{foo=\"bazz\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from,
+				Line:      "1",
+			},
+
+			{
+				Timestamp: from.Add(time.Millisecond),
+				Line:      "2",
+			},
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+		},
+	},
+	{
+		Labels: "{foo=\"bazz\"}",
+		Entries: []logproto.Entry{
+			{
+				Timestamp: from.Add(2 * time.Millisecond),
+				Line:      "3",
+			},
+			{
+				Timestamp: from.Add(3 * time.Millisecond),
+				Line:      "4",
+			},
+
+			{
+				Timestamp: from.Add(4 * time.Millisecond),
+				Line:      "5",
+			},
+			{
+				Timestamp: from.Add(5 * time.Millisecond),
+				Line:      "6",
+			},
+		},
+	},
+}
+
+var storeFixture = stores.NewMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, streamsFixture)
 
 func Test_store_SelectLogs(t *testing.T) {
 	tests := []struct {
@@ -487,7 +574,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &LokiStore{
-				Store: storeFixture,
+				store: storeFixture,
 				cfg: Config{
 					MaxChunkBatchSize: 10,
 				},
@@ -506,7 +593,7 @@ func Test_store_SelectLogs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error reading batch %s", err)
 			}
-			assertStream(t, tt.expected, streams.Streams)
+			AssertStream(t, tt.expected, streams.Streams)
 		})
 	}
 }
@@ -811,7 +898,7 @@ func Test_store_SelectSample(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &LokiStore{
-				Store: storeFixture,
+				store: storeFixture,
 				cfg: Config{
 					MaxChunkBatchSize: 10,
 				},
@@ -830,7 +917,7 @@ func Test_store_SelectSample(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error reading batch %s", err)
 			}
-			assertSeries(t, tt.expected, series.Series)
+			AssertSeries(t, tt.expected, series.Series)
 		})
 	}
 }
@@ -847,7 +934,7 @@ func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 
 func Test_ChunkFilterer(t *testing.T) {
 	s := &LokiStore{
-		Store: storeFixture,
+		store: storeFixture,
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -937,7 +1024,7 @@ func Test_store_GetSeries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &LokiStore{
-				Store: newMockChunkStore(chunkfmt, headfmt, streamsFixture),
+				store: stores.NewMockChunkStore(chunkfmt, headfmt, streamsFixture),
 				cfg: Config{
 					MaxChunkBatchSize: tt.batchSize,
 				},
@@ -1074,7 +1161,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
-		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
+		chk := stores.NewTestChunk(chunkfmt, headfmt, stores.BuildTestStream(fooLabelsWithName, tr.from, tr.to))
 
 		err = store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
@@ -1144,7 +1231,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
-		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
+		chk := stores.NewTestChunk(chunkfmt, headfmt, stores.BuildTestStream(fooLabelsWithName, tr.from, tr.to))
 
 		err = store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
@@ -1268,7 +1355,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 				chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 				require.NoError(t, err)
 
-				chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
+				chk := stores.NewTestChunk(chunkfmt, headfmt, stores.BuildTestStream(fooLabelsWithName, tr.from, tr.to))
 
 				err = store.PutOne(ctx, chk.From, chk.Through, chk)
 				require.NoError(t, err)
@@ -1324,23 +1411,6 @@ func parseDate(in string) time.Time {
 	return t
 }
 
-func buildTestStreams(labels labels.Labels, tr timeRange) logproto.Stream {
-	stream := logproto.Stream{
-		Labels:  labels.String(),
-		Hash:    labels.Hash(),
-		Entries: []logproto.Entry{},
-	}
-
-	for from := tr.from; from.Before(tr.to); from = from.Add(time.Second) {
-		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: from,
-			Line:      from.String(),
-		})
-	}
-
-	return stream
-}
-
 func timeToModelTime(t time.Time) model.Time {
 	return model.TimeFromUnixNano(t.UnixNano())
 }
@@ -1355,14 +1425,14 @@ func Test_OverlappingChunks(t *testing.T) {
 	require.NoError(t, err)
 
 	chunks := []chunk.Chunk{
-		newChunk(chunkfmt, headfmt, logproto.Stream{
+		stores.NewTestChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 1), Line: "1"},
 				{Timestamp: time.Unix(0, 4), Line: "4"},
 			},
 		}),
-		newChunk(chunkfmt, headfmt, logproto.Stream{
+		stores.NewTestChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 2), Line: "2"},
@@ -1371,7 +1441,7 @@ func Test_OverlappingChunks(t *testing.T) {
 		}),
 	}
 	s := &LokiStore{
-		Store: &mockChunkStore{chunks: chunks, client: &mockChunkStoreClient{chunks: chunks}},
+		store: stores.NewMockChunkStoreWithChunks(chunks),
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -1413,7 +1483,7 @@ func Test_GetSeries(t *testing.T) {
 
 	var (
 		store = &LokiStore{
-			Store: newMockChunkStore(chunkfmt, headfmt, []*logproto.Stream{
+			store: stores.NewMockChunkStore(chunkfmt, headfmt, []*logproto.Stream{
 				{
 					Labels: `{foo="bar",buzz="boo"}`,
 					Entries: []logproto.Entry{
@@ -1599,7 +1669,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
-		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
+		chk := stores.NewTestChunk(chunkfmt, headfmt, stores.BuildTestStream(fooLabelsWithName, tr.from, tr.to))
 
 		err = store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)

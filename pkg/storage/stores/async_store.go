@@ -1,4 +1,4 @@
-package storage
+package stores
 
 import (
 	"context"
@@ -7,19 +7,17 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -42,15 +40,17 @@ type AsyncStoreCfg struct {
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
-	stores.Store
+	store                Store
 	scfg                 config.SchemaConfig
 	ingesterQuerier      IngesterQuerier
 	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConfig) *AsyncStore {
+var _ Store = &AsyncStore{}
+
+func NewAsyncStore(cfg AsyncStoreCfg, store Store, scfg config.SchemaConfig) *AsyncStore {
 	return &AsyncStore{
-		Store:                store,
+		store:                store,
 		scfg:                 scfg,
 		ingesterQuerier:      cfg.IngesterQuerier,
 		queryIngestersWithin: cfg.QueryIngestersWithin,
@@ -72,7 +72,7 @@ func (a *AsyncStore) GetChunks(ctx context.Context, userID string, from, through
 	var fetchers []*fetcher.Fetcher
 	go func() {
 		var err error
-		storeChunks, fetchers, err = a.Store.GetChunks(ctx, userID, from, through, matchers...)
+		storeChunks, fetchers, err = a.store.GetChunks(ctx, userID, from, through, matchers...)
 		errs <- err
 	}()
 
@@ -131,7 +131,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		}))
 	}
 	jobs = append(jobs, f(func() (*stats.Stats, error) {
-		stats, err := a.Store.Stats(ctx, userID, from, through, matchers...)
+		stats, err := a.store.Stats(ctx, userID, from, through, matchers...)
 		level.Debug(logger).Log(
 			append(
 				stats.LoggingKeyValues(),
@@ -148,7 +148,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -186,7 +186,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		})
 	}
 	jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
-		vols, err := a.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		vols, err := a.store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 		level.Debug(logger).Log(
 			"msg", "queried label volume",
 			"matchers", matchersStr,
@@ -200,7 +200,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -221,6 +221,46 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 	return merged, nil
 }
 
+// GetChunkFetcher implements stores.Store.
+func (a *AsyncStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+	return a.store.GetChunkFetcher(tm)
+}
+
+// GetSeries implements stores.Store.
+func (a *AsyncStore) GetSeries(ctx context.Context, userID string, from model.Time, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	return a.store.GetSeries(ctx, userID, from, through, matchers...)
+}
+
+// LabelNamesForMetricName implements stores.Store.
+func (a *AsyncStore) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string) ([]string, error) {
+	return a.store.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+}
+
+// LabelValuesForMetricName implements stores.Store.
+func (a *AsyncStore) LabelValuesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	return a.store.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+}
+
+// Put implements stores.Store.
+func (*AsyncStore) Put(_ context.Context, _ []chunk.Chunk) error {
+	panic("unimplemented: AsyncStore is a read-only store and must not write chunks")
+}
+
+// PutOne implements stores.Store.
+func (*AsyncStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	panic("unimplemented: AsyncStore is a read-only store and must not write chunks")
+}
+
+// SetChunkFilterer implements stores.Store.
+func (a *AsyncStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	a.store.SetChunkFilterer(chunkFilter)
+}
+
+// Stop implements stores.Store.
+func (a *AsyncStore) Stop() {
+	a.store.Stop()
+}
+
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	ingesterChunkIDs = filterDuplicateChunks(a.scfg, storeChunks, ingesterChunkIDs)
 	level.Debug(util_log.Logger).Log("msg", "post-filtering ingester chunks", "count", len(ingesterChunkIDs))
@@ -238,7 +278,7 @@ func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]
 		}
 
 		// ToDo(Sandeep) possible optimization: Keep the chunk fetcher reference handy after first call since it is expected to stay the same.
-		fetcher := a.Store.GetChunkFetcher(chk.Through)
+		fetcher := a.GetChunkFetcher(chk.Through)
 		if fetcher == nil {
 			return nil, nil, fmt.Errorf("got a nil fetcher for chunk %s", a.scfg.ExternalKey(chk.ChunkRef))
 		}

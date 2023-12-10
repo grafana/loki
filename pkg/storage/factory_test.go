@@ -161,6 +161,7 @@ func TestNamedStores(t *testing.T) {
 
 	t.Run("period config referring to unrecognized store", func(t *testing.T) {
 		schemaConfig := schemaConfig
+		cfg := cfg
 		schemaConfig.Configs[0].ObjectType = "not-found"
 		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
 		require.Error(t, err)
