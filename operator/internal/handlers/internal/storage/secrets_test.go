@@ -10,6 +10,57 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
+func TestHashSecretData(t *testing.T) {
+	tt := []struct {
+		desc     string
+		data     map[string][]byte
+		wantHash string
+	}{
+		{
+			desc:     "nil",
+			data:     nil,
+			wantHash: "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+		},
+		{
+			desc:     "empty",
+			data:     map[string][]byte{},
+			wantHash: "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+		},
+		{
+			desc: "single entry",
+			data: map[string][]byte{
+				"key": []byte("value"),
+			},
+			wantHash: "a8973b2094d3af1e43931132dee228909bf2b02a",
+		},
+		{
+			desc: "multiple entries",
+			data: map[string][]byte{
+				"key":  []byte("value"),
+				"key3": []byte("value3"),
+				"key2": []byte("value2"),
+			},
+			wantHash: "a3341093891ad4df9f07db586029be48e9e6e884",
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			s := &corev1.Secret{
+				Data: tc.data,
+			}
+
+			hash, err := hashSecretData(s)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantHash, hash)
+		})
+	}
+}
+
 func TestAzureExtract(t *testing.T) {
 	type test struct {
 		name    string

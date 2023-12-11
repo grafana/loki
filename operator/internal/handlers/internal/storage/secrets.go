@@ -1,9 +1,9 @@
 package storage
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"fmt"
+	"sort"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
@@ -16,23 +16,28 @@ var hashSeparator = []byte(",")
 
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
 func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
-	var err error
+	hash, err := hashSecretData(s)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
+	}
+
 	storageOpts := storage.Options{
 		SecretName:  s.Name,
+		SecretSHA1:  hash,
 		SharedStore: secretType,
 	}
 
 	switch secretType {
 	case lokiv1.ObjectStorageSecretAzure:
-		storageOpts.Azure, storageOpts.SecretSHA1, err = extractAzureConfigSecret(s)
+		storageOpts.Azure, err = extractAzureConfigSecret(s)
 	case lokiv1.ObjectStorageSecretGCS:
-		storageOpts.GCS, storageOpts.SecretSHA1, err = extractGCSConfigSecret(s)
+		storageOpts.GCS, err = extractGCSConfigSecret(s)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, storageOpts.SecretSHA1, err = extractS3ConfigSecret(s)
+		storageOpts.S3, err = extractS3ConfigSecret(s)
 	case lokiv1.ObjectStorageSecretSwift:
-		storageOpts.Swift, storageOpts.SecretSHA1, err = extractSwiftConfigSecret(s)
+		storageOpts.Swift, err = extractSwiftConfigSecret(s)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
-		storageOpts.AlibabaCloud, storageOpts.SecretSHA1, err = extractAlibabaCloudConfigSecret(s)
+		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
 	default:
 		return nil, kverrors.New("unknown secret type", "type", secretType)
 	}
@@ -43,88 +48,99 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 	return &storageOpts, nil
 }
 
-func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, string, error) {
+func hashSecretData(s *corev1.Secret) (string, error) {
+	keys := make([]string, 0, len(s.Data))
+	for k := range s.Data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	h := sha1.New()
+	for _, k := range keys {
+		if _, err := h.Write([]byte(k)); err != nil {
+			return "", err
+		}
+
+		if _, err := h.Write(hashSeparator); err != nil {
+			return "", err
+		}
+
+		if _, err := h.Write(s.Data[k]); err != nil {
+			return "", err
+		}
+
+		if _, err := h.Write(hashSeparator); err != nil {
+			return "", err
+		}
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, error) {
 	// Extract and validate mandatory fields
 	env := s.Data[storage.KeyAzureEnvironmentName]
 	if len(env) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAzureEnvironmentName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureEnvironmentName)
 	}
 	container := s.Data[storage.KeyAzureStorageContainerName]
 	if len(container) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAzureStorageContainerName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageContainerName)
 	}
 	name := s.Data[storage.KeyAzureStorageAccountName]
 	if len(name) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountName)
 	}
 	key := s.Data[storage.KeyAzureStorageAccountKey]
 	if len(key) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountKey)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountKey)
 	}
 
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 
-	contents := bytes.Join([][]byte{env, container, name, key, endpointSuffix}, hashSeparator)
-
-	h := sha1.New()
-	_, err := h.Write([]byte(contents))
-	if err != nil {
-		return nil, "", kverrors.Wrap(err, "failed hashing azure secret contents")
-	}
-	sha1C := fmt.Sprintf("%x", h.Sum(nil))
-
 	return &storage.AzureStorageConfig{
 		Env:            string(env),
 		Container:      string(container),
 		EndpointSuffix: string(endpointSuffix),
-	}, sha1C, nil
+	}, nil
 }
 
-func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, string, error) {
+func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {
 	// Extract and validate mandatory fields
 	bucket := s.Data[storage.KeyGCPStorageBucketName]
 	if len(bucket) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyGCPStorageBucketName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyGCPStorageBucketName)
 	}
 
 	// Check if google authentication credentials is provided
 	keyJSON := s.Data[storage.KeyGCPServiceAccountKeyFilename]
 	if len(keyJSON) == 0 {
-		return nil, "", kverrors.New("missing google authentication credentials", "field", storage.KeyGCPServiceAccountKeyFilename)
+		return nil, kverrors.New("missing google authentication credentials", "field", storage.KeyGCPServiceAccountKeyFilename)
 	}
-
-	contents := bytes.Join([][]byte{bucket, keyJSON}, hashSeparator)
-
-	h := sha1.New()
-	_, err := h.Write([]byte(contents))
-	if err != nil {
-		return nil, "", kverrors.Wrap(err, "failed hashing gcs secret contents")
-	}
-	sha1C := fmt.Sprintf("%x", h.Sum(nil))
 
 	return &storage.GCSStorageConfig{
 		Bucket: string(bucket),
-	}, sha1C, nil
+	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, string, error) {
+func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	endpoint := s.Data[storage.KeyAWSEndpoint]
 	if len(endpoint) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAWSEndpoint)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSEndpoint)
 	}
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAWSBucketNames)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSBucketNames)
 	}
 	id := s.Data[storage.KeyAWSAccessKeyID]
 	if len(id) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeyID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeyID)
 	}
 	secret := s.Data[storage.KeyAWSAccessKeySecret]
 	if len(secret) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
 	}
 
 	// Extract and validate optional fields
@@ -132,29 +148,15 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, string, 
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-
-	contents := bytes.Join([][]byte{
-		endpoint, buckets, id, secret, region,
-		[]byte(sseCfg.Type),
-		[]byte(sseCfg.KMSKeyID),
-		[]byte(sseCfg.KMSEncryptionContext),
-	}, hashSeparator)
-
-	h := sha1.New()
-	_, err = h.Write(contents)
-	if err != nil {
-		return nil, "", kverrors.Wrap(err, "failed hashing s3 secret contents")
-	}
-	sha1C := fmt.Sprintf("%x", h.Sum(nil))
 
 	return &storage.S3StorageConfig{
 		Endpoint: string(endpoint),
 		Buckets:  string(buckets),
 		Region:   string(region),
 		SSE:      sseCfg,
-	}, sha1C, nil
+	}, nil
 }
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
@@ -186,43 +188,43 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 	}, nil
 }
 
-func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, string, error) {
+func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, error) {
 	// Extract and validate mandatory fields
 	url := s.Data[storage.KeySwiftAuthURL]
 	if len(url) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftAuthURL)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftAuthURL)
 	}
 	username := s.Data[storage.KeySwiftUsername]
 	if len(username) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftUsername)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUsername)
 	}
 	userDomainName := s.Data[storage.KeySwiftUserDomainName]
 	if len(userDomainName) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainName)
 	}
 	userDomainID := s.Data[storage.KeySwiftUserDomainID]
 	if len(userDomainID) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainID)
 	}
 	userID := s.Data[storage.KeySwiftUserID]
 	if len(userID) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftUserID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserID)
 	}
 	password := s.Data[storage.KeySwiftPassword]
 	if len(password) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftPassword)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftPassword)
 	}
 	domainID := s.Data[storage.KeySwiftDomainID]
 	if len(domainID) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftDomainID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftDomainID)
 	}
 	domainName := s.Data[storage.KeySwiftDomainName]
 	if len(domainName) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftDomainName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftDomainName)
 	}
 	containerName := s.Data[storage.KeySwiftContainerName]
 	if len(containerName) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeySwiftContainerName)
+		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftContainerName)
 	}
 
 	// Extract and validate optional fields
@@ -231,22 +233,6 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, st
 	projectDomainID := s.Data[storage.KeySwiftProjectDomainId]
 	projectDomainName := s.Data[storage.KeySwiftProjectDomainName]
 	region := s.Data[storage.KeySwiftRegion]
-
-	contents := bytes.Join(
-		[][]byte{
-			url, username, userDomainName, userDomainID,
-			userID, password, domainID, domainName, containerName,
-			projectID, projectName, projectDomainID, projectDomainName, region,
-		},
-		hashSeparator,
-	)
-
-	h := sha1.New()
-	_, err := h.Write(contents)
-	if err != nil {
-		return nil, "", kverrors.Wrap(err, "failed hashing swift secret contents")
-	}
-	sha1C := fmt.Sprintf("%x", h.Sum(nil))
 
 	return &storage.SwiftStorageConfig{
 		AuthURL:           string(url),
@@ -261,39 +247,30 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, st
 		ProjectDomainName: string(projectDomainName),
 		Region:            string(region),
 		Container:         string(containerName),
-	}, sha1C, nil
+	}, nil
 }
 
-func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudStorageConfig, string, error) {
+func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudStorageConfig, error) {
 	// Extract and validate mandatory fields
 	endpoint := s.Data[storage.KeyAlibabaCloudEndpoint]
 	if len(endpoint) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudEndpoint)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudEndpoint)
 	}
 	bucket := s.Data[storage.KeyAlibabaCloudBucket]
 	if len(bucket) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudBucket)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudBucket)
 	}
 	id := s.Data[storage.KeyAlibabaCloudAccessKeyID]
 	if len(id) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudAccessKeyID)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudAccessKeyID)
 	}
 	secret := s.Data[storage.KeyAlibabaCloudSecretAccessKey]
 	if len(secret) == 0 {
-		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudSecretAccessKey)
+		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudSecretAccessKey)
 	}
-
-	contents := bytes.Join([][]byte{endpoint, bucket, id, secret}, hashSeparator)
-
-	h := sha1.New()
-	_, err := h.Write(contents)
-	if err != nil {
-		return nil, "", kverrors.Wrap(err, "failed hashing alibabacloud secret contents")
-	}
-	sha1C := fmt.Sprintf("%x", h.Sum(nil))
 
 	return &storage.AlibabaCloudStorageConfig{
 		Endpoint: string(endpoint),
 		Bucket:   string(bucket),
-	}, sha1C, nil
+	}, nil
 }
