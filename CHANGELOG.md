@@ -5,7 +5,7 @@
 #### Loki
 
 ##### Enhancements
-
+* [11432](https://github.com/grafana/loki/pull/11432) **andresperezl**: Ingester: Add support for `GET` method on `/ingester/shutdown` endpoint
 * [11319](https://github.com/grafana/loki/pull/11319) **someStrangerFromTheAbyss**: Helm: Add extraContainers to the write pods.
 * [11243](https://github.com/grafana/loki/pull/11243) **kavirajk**: Inflight-logging: Add extra metadata to inflight requests logging.
 * [11110](https://github.com/grafana/loki/pull/11003) **MichelHollands**: Change the default of the `metrics-namespace` flag to 'loki'.
@@ -46,7 +46,7 @@
 * [11195](https://github.com/grafana/loki/pull/11195) **canuteson** Generate tsdb_shipper storage_config even if using_boltdb_shipper is false
 
 ##### Changes
-
+* [11432](https://github.com/grafana/loki/pull/11432) **andresperezl**: Helm: Use `/ingester/shutdown?terminate=false` for write pod lifecycle preStop hook.
 * [10366](https://github.com/grafana/loki/pull/10366) **shantanualsi** Upgrade thanos objstore, dskit and other modules
 * [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
 * [10814](https://github.com/grafana/loki/pull/10814) **shantanualsi,kaviraj** Upgrade prometheus to v0.47.1 and dskit
