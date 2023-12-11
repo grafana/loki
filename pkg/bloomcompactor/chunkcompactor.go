@@ -30,7 +30,7 @@ type chunkClient interface {
 
 type blockBuilder interface {
 	BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error)
-	Data() (io.ReadCloser, error)
+	Data() (io.ReadSeekCloser, error)
 }
 
 type PersistentBlockBuilder struct {
@@ -55,7 +55,7 @@ func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) 
 	return p.builder.BuildFrom(itr)
 }
 
-func (p *PersistentBlockBuilder) Data() (io.ReadCloser, error) {
+func (p *PersistentBlockBuilder) Data() (io.ReadSeekCloser, error) {
 	blockFile, err := os.Open(filepath.Join(p.localDst, v1.BloomFileName))
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func buildBlockFromBlooms(
 	ctx context.Context,
 	logger log.Logger,
 	builder blockBuilder,
-	blooms []v1.SeriesWithBloom,
+	blooms v1.Iterator[v1.SeriesWithBloom],
 	job Job,
 ) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
@@ -109,7 +109,7 @@ func buildBlockFromBlooms(
 		return bloomshipper.Block{}, err
 	}
 
-	checksum, err := builder.BuildFrom(v1.NewSliceIter(blooms))
+	checksum, err := builder.BuildFrom(blooms)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed writing to bloom", "err", err)
 		return bloomshipper.Block{}, err
