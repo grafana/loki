@@ -50,8 +50,6 @@ These instructions assume you are using the SSD `loki` helm chart deployment.
     zoneAwareReplication:
       enabled: true
       maxUnavailable: <N>
-      migration:
-        enabled: true
       topologyKey: 'kubernetes.io/hostname'
       zones:
         - name: <ZONE-A>
@@ -63,7 +61,8 @@ These instructions assume you are using the SSD `loki` helm chart deployment.
         - name: <ZONE-C>
           nodeSelector:
             topology.kubernetes.io/zone: <ZONE-C>
-
+      migration:
+        enabled: true
   ```
   > **Note**: replace `<N>` with 1/3 of the current replicas.
   > **Note**: replace `<ZONE-[A-C]>` with your real zones.
@@ -72,18 +71,53 @@ These instructions assume you are using the SSD `loki` helm chart deployment.
 
 1. Scale up the new write StatefulSets to match the old write StatefulSet.
   ```yaml
+  rollout_operator:
+    enabled: true
+
   write:
     zoneAwareReplication:
+      enabled: true
+      maxUnavailable: <N>
+      topologyKey: 'kubernetes.io/hostname'
+      zones:
+        - name: <ZONE-A>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-A>
+        - name: <ZONE-B>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-B>
+        - name: <ZONE-C>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-C>
       migration:
+        enabled: true
         replicas: <N>
   ```
   > **Note**: replace `<N>` with the number of replicas in the old write StatefulSet - `<N>` will be divided by 3, so if `<N>` is set to 3 then each new StatefulSet replica will be set to 1.
 
 1. Enable zone-awareness on the write path.
   ```yaml
+  rollout_operator:
+    enabled: true
+
   write:
     zoneAwareReplication:
+      enabled: true
+      maxUnavailable: <N>
+      topologyKey: 'kubernetes.io/hostname'
+      zones:
+        - name: <ZONE-A>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-A>
+        - name: <ZONE-B>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-B>
+        - name: <ZONE-C>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-C>
       migration:
+        enabled: true
+        replicas: <N>
         writePath: true
   ```
   1. Check that all the write pods have restarted properly.
@@ -100,27 +134,87 @@ These instructions assume you are using the SSD `loki` helm chart deployment.
 
 1. Enable zone-awareness on the read path.
   ```yaml
+  rollout_operator:
+    enabled: true
+
   write:
     zoneAwareReplication:
+      enabled: true
+      maxUnavailable: <N>
+      topologyKey: 'kubernetes.io/hostname'
+      zones:
+        - name: <ZONE-A>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-A>
+        - name: <ZONE-B>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-B>
+        - name: <ZONE-C>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-C>
       migration:
+        enabled: true
+        replicas: <N>
+        writePath: true
         readPath: true
   ```
   1. Check that queries are still executing correctly, for example look at `loki_logql_querystats_latency_seconds_count` to see that you don’t have a big increase in latency or error count for a specific query type.
 
 1. Exclude the non zone-aware write pods from the write path.
   ```yaml
+  rollout_operator:
+    enabled: true
+
   write:
     zoneAwareReplication:
+      enabled: true
+      maxUnavailable: <N>
+      topologyKey: 'kubernetes.io/hostname'
+      zones:
+        - name: <ZONE-A>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-A>
+        - name: <ZONE-B>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-B>
+        - name: <ZONE-C>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-C>
       migration:
+        enabled: true
+        replicas: <N>
+        writePath: true
+        readPath: true
         excludeDefaultZone: true
   ```
   It's a good idea to check rules evaluations again at this point, and also that the zone aware write StatefulSets is now receiving all the write traffic, you can compare `sum(loki_ingester_memory_streams{cluster="<cluster>",job=~"(<namespace>)/loki-write"})` to `sum(loki_ingester_memory_streams{cluster="<cluster>",job=~"(<namespace>)/loki-write-zone.*"})`
 
 1. Scale down the non zone-aware write StatefulSet to 0.
   ```yaml
+  rollout_operator:
+    enabled: true
+
   write:
     zoneAwareReplication:
+      enabled: true
+      maxUnavailable: <N>
+      topologyKey: 'kubernetes.io/hostname'
+      zones:
+        - name: <ZONE-A>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-A>
+        - name: <ZONE-B>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-B>
+        - name: <ZONE-C>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-C>
       migration:
+        enabled: true
+        replicas: <N>
+        writePath: true
+        readPath: true
+        excludeDefaultZone: true
         scaleDownDefaultZone: true
   ```
 
@@ -128,10 +222,25 @@ These instructions assume you are using the SSD `loki` helm chart deployment.
 
 1. Remove all values for used for migration, causing defaults to be used, which removes the old write StatefulSet.
   ```yaml
+  rollout_operator:
+    enabled: true
+
   write:
     zoneAwareReplication:
-      migration:
-        # removed from value overrides. 
+      enabled: true
+      maxUnavailable: <N>
+      topologyKey: 'kubernetes.io/hostname'
+      zones:
+        - name: <ZONE-A>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-A>
+        - name: <ZONE-B>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-B>
+        - name: <ZONE-C>
+          nodeSelector:
+            topology.kubernetes.io/zone: <ZONE-C>
+      # migration: removed from value overrides. 
   ```
 
 1. Wait atleast the `chunk_idle_period` configured hours/minutes, by default this is 30m.
