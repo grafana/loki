@@ -2,6 +2,8 @@ package queryrangebase
 
 import (
 	"context"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
 // RequestResponse contains a request response and the respective request that was used.
@@ -57,4 +59,24 @@ func DoRequests(ctx context.Context, downstream Handler, reqs []Request, paralle
 	}
 
 	return resps, firstErr
+}
+
+type queryMergerAsCacheResponseMerger struct {
+	Merger
+}
+
+func (m *queryMergerAsCacheResponseMerger) MergeResponse(responses ...resultscache.Response) (resultscache.Response, error) {
+	cacheResponses := make([]Response, 0, len(responses))
+	for _, r := range responses {
+		cacheResponses = append(cacheResponses, r.(Response))
+	}
+	response, err := m.Merger.MergeResponse(cacheResponses...)
+	if err != nil {
+		return nil, err
+	}
+	return response.(resultscache.Response), nil
+}
+
+func FromQueryResponseMergerToCacheResponseMerger(m Merger) resultscache.ResponseMerger {
+	return &queryMergerAsCacheResponseMerger{m}
 }

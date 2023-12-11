@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -11,14 +12,17 @@ import (
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
 
-	"testing"
-
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 
 	"github.com/prometheus/client_golang/prometheus"
+)
+
+const (
+	DefaultNGramLength = 4
+	DefaultNGramSkip   = 0
 )
 
 var (
@@ -69,7 +73,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 }
 
 func TestSetLineTokenizer(t *testing.T) {
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
 
 	// Validate defaults
 	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
@@ -83,7 +87,7 @@ func TestSetLineTokenizer(t *testing.T) {
 
 func TestPopulateSeriesWithBloom(t *testing.T) {
 	var testLine = "this is a log line"
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
 
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 	var lbsList []labels.Labels
@@ -118,7 +122,8 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 		Series: &series,
 	}
 
-	bt.PopulateSeriesWithBloom(&swb, chunks)
+	err := bt.PopulateSeriesWithBloom(&swb, chunks)
+	require.NoError(t, err)
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	itr := tokenizer.Tokens(testLine)
 	for itr.Next() {
@@ -127,10 +132,53 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 	}
 }
 
-func BenchmarkMapClear(b *testing.B) {
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		for k := 0; k < CacheSize; k++ {
+		var testLine = lorem + lorem + lorem
+		bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
+
+		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
+		var lbsList []labels.Labels
+		lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
+
+		var fpList []model.Fingerprint
+		for i := range lbsList {
+			fpList = append(fpList, model.Fingerprint(lbsList[i].Hash()))
+		}
+
+		var memChunks = make([]*chunkenc.MemChunk, 0)
+		memChunk0 := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+		_ = memChunk0.Append(&push.Entry{
+			Timestamp: time.Unix(0, 1),
+			Line:      testLine,
+		})
+		memChunks = append(memChunks, memChunk0)
+
+		var chunks = make([]chunk.Chunk, 0)
+		for i := range memChunks {
+			chunks = append(chunks, chunk.NewChunk("user", fpList[i], lbsList[i], chunkenc.NewFacade(memChunks[i], 256000, 1500000), model.TimeFromUnixNano(0), model.TimeFromUnixNano(1)))
+		}
+
+		bloom := Bloom{
+			ScalableBloomFilter: *sbf,
+		}
+		series := Series{
+			Fingerprint: model.Fingerprint(lbsList[0].Hash()),
+		}
+		swb := SeriesWithBloom{
+			Bloom:  &bloom,
+			Series: &series,
+		}
+
+		err := bt.PopulateSeriesWithBloom(&swb, chunks)
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkMapClear(b *testing.B) {
+	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
+	for i := 0; i < b.N; i++ {
+		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
 		}
 
@@ -139,12 +187,12 @@ func BenchmarkMapClear(b *testing.B) {
 }
 
 func BenchmarkNewMap(b *testing.B) {
-	bt, _ := NewBloomTokenizer(prometheus.DefaultRegisterer)
+	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
 	for i := 0; i < b.N; i++ {
-		for k := 0; k < CacheSize; k++ {
+		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
 		}
 
-		bt.cache = make(map[string]interface{}, CacheSize)
+		bt.cache = make(map[string]interface{}, cacheSize)
 	}
 }

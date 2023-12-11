@@ -6,11 +6,17 @@
 package queue
 
 import (
+	"fmt"
 	"math/rand"
 	"sort"
 	"time"
 
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type intPointerMap map[string]*int
@@ -67,6 +73,8 @@ type tenantQueues struct {
 
 	// sortedConsumer list of consumer IDs, used when creating per-user shard.
 	sortedConsumers []string
+
+	limits Limits
 }
 
 type Queue interface {
@@ -87,16 +95,15 @@ type tenantQueue struct {
 	*TreeQueue
 
 	// If not nil, only these consumers can handle user requests. If nil, all consumers can.
-	// We set this to nil if number of available consumers <= maxQueriers.
-	consumers   map[string]struct{}
-	maxQueriers int
+	// We set this to nil if number of available consumers <= MaxConsumers.
+	consumers map[string]struct{}
 
 	// Seed for shuffle sharding of consumers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
 	seed int64
 }
 
-func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQueues {
+func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits) *tenantQueues {
 	mm := &Mapping[*tenantQueue]{}
 	mm.Init(64)
 	return &tenantQueues{
@@ -106,6 +113,7 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 		forgetDelay:      forgetDelay,
 		consumers:        map[string]*consumer{},
 		sortedConsumers:  nil,
+		limits:           limits,
 	}
 }
 
@@ -118,37 +126,42 @@ func (q *tenantQueues) deleteQueue(tenant string) {
 }
 
 // Returns existing or new queue for a tenant.
-// MaxQueriers is used to compute which consumers should handle requests for this tenant.
-// If maxQueriers is <= 0, all consumers can handle this tenant's requests.
-// If maxQueriers has changed since the last call, consumers for this are recomputed.
-func (q *tenantQueues) getOrAddQueue(tenant string, path []string, maxQueriers int) Queue {
+func (q *tenantQueues) getOrAddQueue(tenantID string, path []string) (Queue, error) {
 	// Empty tenant is not allowed, as that would break our tenants list ("" is used for free spot).
-	if tenant == "" {
-		return nil
+	if tenantID == "" {
+		return nil, fmt.Errorf("empty tenant is not allowed")
 	}
 
-	if maxQueriers < 0 {
-		maxQueriers = 0
+	// extract tenantIDs to compute limits for multi-tenant queries
+	tenantIDs, err := tenant.TenantIDsFromOrgID(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("extract tenant ids: %w", err)
 	}
 
-	uq := q.mapping.GetByKey(tenant)
+	uq := q.mapping.GetByKey(tenantID)
 	if uq == nil {
 		uq = &tenantQueue{
-			seed: util.ShuffleShardSeed(tenant, ""),
+			seed: util.ShuffleShardSeed(tenantID, ""),
 		}
-		uq.TreeQueue = newTreeQueue(q.maxUserQueueSize, tenant)
-		q.mapping.Put(tenant, uq)
+		uq.TreeQueue = newTreeQueue(q.maxUserQueueSize, tenantID)
+		q.mapping.Put(tenantID, uq)
 	}
 
-	if uq.maxQueriers != maxQueriers {
-		uq.maxQueriers = maxQueriers
-		uq.consumers = shuffleConsumersForTenants(uq.seed, maxQueriers, q.sortedConsumers, nil)
+	consumersToSelect := validation.SmallestPositiveNonZeroIntPerTenant(
+		tenantIDs,
+		func(tenantID string) int {
+			return q.limits.MaxConsumers(tenantID, len(q.sortedConsumers))
+		},
+	)
+
+	if len(uq.consumers) != consumersToSelect {
+		uq.consumers = shuffleConsumersForTenants(uq.seed, consumersToSelect, q.sortedConsumers, nil)
 	}
 
 	if len(path) == 0 {
-		return uq
+		return uq, nil
 	}
-	return uq.add(path)
+	return uq.add(path), nil
 }
 
 // Finds next queue for the consumer. To support fair scheduling between users, client is expected
@@ -294,8 +307,23 @@ func (q *tenantQueues) forgetDisconnectedConsumers(now time.Time) int {
 func (q *tenantQueues) recomputeUserConsumers() {
 	scratchpad := make([]string, 0, len(q.sortedConsumers))
 
-	for _, uq := range q.mapping.Values() {
-		uq.consumers = shuffleConsumersForTenants(uq.seed, uq.maxQueriers, q.sortedConsumers, scratchpad)
+	for _, tenantID := range q.mapping.Keys() {
+		if uq := q.mapping.GetByKey(tenantID); uq != nil {
+			tenantIDs, err := tenant.TenantIDsFromOrgID(tenantID)
+			if err != nil {
+				// this is unlikely to happen since we do tenantID validation when creating the queue.
+				level.Error(util_log.Logger).Log("msg", "failed to shuffle consumers because of errors in tenantID extraction", "tenant", tenantID, "error", err)
+				continue
+			}
+
+			consumersToSelect := validation.SmallestPositiveNonZeroIntPerTenant(
+				tenantIDs,
+				func(tenantID string) int {
+					return q.limits.MaxConsumers(tenantID, len(q.sortedConsumers))
+				},
+			)
+			uq.consumers = shuffleConsumersForTenants(uq.seed, consumersToSelect, q.sortedConsumers, scratchpad)
+		}
 	}
 }
 
