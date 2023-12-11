@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
@@ -66,7 +67,19 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	)
 	require.NoError(t, clu.Run())
 
-	// finally, run the query-frontend and querier.
+	// the run querier.
+	var (
+		tQuerier = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend.
 	var (
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
@@ -76,13 +89,8 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-querier.per-request-limits-enabled=true",
 			"-frontend.encoding=protobuf",
-		)
-		_ = clu.AddComponent(
-			"querier",
-			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-querier.shard-aggregations=quantile_over_time",
+			"-frontend.tail-proxy-url="+tQuerier.HTTPURL(),
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -145,6 +153,19 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 
 		_, err := cliQueryFrontendLimited.LabelNames(context.Background())
 		require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
+	})
+
+	t.Run("tail", func(t *testing.T) {
+		ctx, cancelFunc := context.WithCancel(context.Background())
+		defer cancelFunc()
+
+		out := make(chan loghttp.TailResponse)
+		err := cliQueryFrontend.Tail(ctx, `{job="fake"}`, out)
+		require.NoError(t, err)
+
+		for resp := range out {
+			require.Len(t, resp.Streams, 100_000)
+		}
 	})
 }
 
