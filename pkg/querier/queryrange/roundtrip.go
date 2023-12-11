@@ -256,6 +256,10 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"query_hash", queryHash,
 		)
 
+		if op.Plan == nil {
+			return nil, errors.New("query plan is empty")
+		}
+
 		switch e := op.Plan.AST.(type) {
 		case syntax.SampleExpr:
 			// The error will be handled later.
