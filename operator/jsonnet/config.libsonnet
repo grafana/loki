@@ -144,7 +144,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
 
     grafanaDashboards+: {
       'loki-retention.json'+: {
-        local dropList = ['Logs'],
+        local dropList = ['Logs', 'Number of times Tables were skipped during Compaction', 'Retention'],
         local replacements = [
           { from: 'cluster=~"$cluster",', to: '' },
           { from: 'container="compactor"', to: 'container=~".+-compactor"' },
