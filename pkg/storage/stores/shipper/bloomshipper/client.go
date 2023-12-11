@@ -191,10 +191,11 @@ func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime,
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", timestamp)
 }
+
 func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
 	if err != nil {
-		return fmt.Errorf("error updloading meta file: %w", err)
+		return err
 	}
 	key := createMetaObjectKey(meta.MetaRef.Ref)
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
