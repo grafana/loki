@@ -174,7 +174,7 @@ func compactNewChunks(
 	}
 
 	// Build and upload bloomBlock to storage
-	block, err := buildBlockFromBlooms(ctx, logger, builder, blooms, job)
+	block, err := buildBlockFromBlooms(ctx, logger, builder, v1.NewSliceIter(blooms), job)
 	if err != nil {
 		level.Error(logger).Log("msg", "building bloomBlocks", "err", err)
 		return bloomshipper.Block{}, err
