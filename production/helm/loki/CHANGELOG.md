@@ -18,6 +18,10 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Make changes to how labels, annotations, resource names and priorityclassnames are created - matches how it is done in mimir-distributed helm chart.
 - [FEATURE] Add support for zone aware deployment of write component and usage of rollout-operator.
 
+## 5.40.1
+
+- [BUGFIX] Remove ruler enabled condition in networkpolicies.
+
 ## 5.40.0
 
 - [CHANGE] Add extraContainers parameter for the write pod
