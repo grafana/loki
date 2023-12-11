@@ -41,7 +41,7 @@ func TestNewIngesterStatefulSet_HasTemplateObjectStoreHashAnnotation(t *testing.
 		Name:      "abcd",
 		Namespace: "efgh",
 		ObjectStorage: storage.Options{
-			SecretHash: "deadbeef",
+			SecretSHA1: "deadbeef",
 		},
 		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",

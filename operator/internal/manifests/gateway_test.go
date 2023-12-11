@@ -63,7 +63,7 @@ func TestNewGatewayDeployment_HasNotTemplateObjectStoreHashAnnotation(t *testing
 		Name:      "abcd",
 		Namespace: "efgh",
 		ObjectStorage: storage.Options{
-			SecretHash: "deadbeef",
+			SecretSHA1: "deadbeef",
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{

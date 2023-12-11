@@ -38,7 +38,7 @@ func TestNewIndexGatewayStatefulSet_HasTemplateObjectStoreHashAnnotation(t *test
 		Name:      "abcd",
 		Namespace: "efgh",
 		ObjectStorage: storage.Options{
-			SecretHash: "deadbeef",
+			SecretSHA1: "deadbeef",
 		},
 		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",

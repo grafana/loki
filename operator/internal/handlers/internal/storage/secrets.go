@@ -24,15 +24,15 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 
 	switch secretType {
 	case lokiv1.ObjectStorageSecretAzure:
-		storageOpts.Azure, storageOpts.SecretHash, err = extractAzureConfigSecret(s)
+		storageOpts.Azure, storageOpts.SecretSHA1, err = extractAzureConfigSecret(s)
 	case lokiv1.ObjectStorageSecretGCS:
-		storageOpts.GCS, storageOpts.SecretHash, err = extractGCSConfigSecret(s)
+		storageOpts.GCS, storageOpts.SecretSHA1, err = extractGCSConfigSecret(s)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, storageOpts.SecretHash, err = extractS3ConfigSecret(s)
+		storageOpts.S3, storageOpts.SecretSHA1, err = extractS3ConfigSecret(s)
 	case lokiv1.ObjectStorageSecretSwift:
-		storageOpts.Swift, storageOpts.SecretHash, err = extractSwiftConfigSecret(s)
+		storageOpts.Swift, storageOpts.SecretSHA1, err = extractSwiftConfigSecret(s)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
-		storageOpts.AlibabaCloud, storageOpts.SecretHash, err = extractAlibabaCloudConfigSecret(s)
+		storageOpts.AlibabaCloud, storageOpts.SecretSHA1, err = extractAlibabaCloudConfigSecret(s)
 	default:
 		return nil, kverrors.New("unknown secret type", "type", secretType)
 	}

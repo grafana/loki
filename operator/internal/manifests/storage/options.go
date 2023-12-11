@@ -17,7 +17,7 @@ type Options struct {
 	AlibabaCloud *AlibabaCloudStorageConfig
 
 	SecretName string
-	SecretHash string
+	SecretSHA1 string
 	TLS        *TLSConfig
 }
 

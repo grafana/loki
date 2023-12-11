@@ -88,7 +88,7 @@ func TestAzureExtract(t *testing.T) {
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
-				require.NotEmpty(t, opts.SecretHash)
+				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretAzure)
 			}
 			if tst.wantErr {
@@ -279,7 +279,7 @@ func TestS3Extract(t *testing.T) {
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
-				require.NotEmpty(t, opts.SecretHash)
+				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
 			}
 			if tst.wantErr {
@@ -428,7 +428,7 @@ func TestSwiftExtract(t *testing.T) {
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
-				require.NotEmpty(t, opts.SecretHash)
+				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretSwift)
 			}
 			if tst.wantErr {
@@ -502,7 +502,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
-				require.NotEmpty(t, opts.SecretHash)
+				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretAlibabaCloud)
 			}
 			if tst.wantErr {

@@ -60,7 +60,7 @@ func TestNewCompactorStatefulSet_HasTemplateObjectStorageHashAnnotation(t *testi
 		Name:      "abcd",
 		Namespace: "efgh",
 		ObjectStorage: storage.Options{
-			SecretHash: "deadbeef",
+			SecretSHA1: "deadbeef",
 		},
 		Stack: lokiv1.LokiStackSpec{
 			StorageClassName: "standard",
