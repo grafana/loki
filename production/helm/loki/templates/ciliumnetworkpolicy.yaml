@@ -113,7 +113,7 @@ metadata:
 spec:
   endpointSelector:
     matchLabels:
-      {{- include "loki.rulerSelectorLabels" . | nindent 6 }}
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
   egress:
   - toPorts:
     - port: {{ .Values.networkPolicy.alertmanager.port }}
