@@ -1,5 +1,7 @@
 ## Unreleased
 
+## 2.9.3 (2023-10-16)
+
 ### All Changes
 
 #### Loki
@@ -7,6 +9,8 @@
 ##### Fixes
 
 * [10375](https://github.com/grafana/loki/pull/10375) **trevorwhitney**: Fix ingester query when getting label values by passing matchers
+* [11433](https://github.com/grafana/loki/pull/11433) Upgrade otelhttp from 0.40.0 -> 0.44.0 and base alpine image from 3.18.3 -> 3.18.5 to fix a few CVES (CVE-2023-45142, CVE-2022-21698, CVE-2023-5363).
+
 
 ##### Changes
 

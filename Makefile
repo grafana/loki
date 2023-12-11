@@ -825,3 +825,17 @@ dev-k3d-enterprise-logs:
 
 dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
+
+# Trivy is used to scan images for vulnerabilities
+.PHONY: trivy
+trivy: loki-image
+	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+
+# Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
+.PHONY: snyk
+snyk: loki-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	snyk code test
+
+.PHONY: scan-vulnerabilities
+scan-vulnerabilities: trivy snyk
