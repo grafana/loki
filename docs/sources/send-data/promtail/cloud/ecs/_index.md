@@ -130,13 +130,18 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
     "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-            "Name": "grafana-loki",
-            "Url": "https://<userid>:<grafancloud apikey>@<grafanacloud host>/loki/api/v1/push",
+            "Name": "loki",
+            "Host": "<grafanacloud host>",
+            "Http_User": "<userid>", 
             "Labels": "{job=\"firelens\"}",
             "RemoveKeys": "container_id,ecs_task_arn",
             "LabelKeys": "container_name,ecs_task_definition,source,ecs_cluster",
             "LineFormat": "key_value"
-        }
+        },
+        "secretOptions": [{
+            "name": "Http_Passwd",
+            "valueFrom": "data.aws_secretsmanager_secret.grafana_cloud_loki_http_password.id"
+        }]
     },
     "name": "sample-app"
 }
@@ -144,7 +149,7 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
 
 The second container is our `sample-app`, a simple [alpine][alpine] container that prints to stdout welcoming messages. To send those logs to Loki, we will configure this container to use the log driver `awsfirelens`.
 
-Go ahead and replace the `Url` property with your [GrafanaCloud][GrafanaCloud] credentials, you can find them in your [account][grafanacloud account] in the Loki instance page. If you're running your own Loki instance replace completely the URL (e.g `http://my-loki.com:3100/loki/api/v1/push`).
+Go ahead and replace the `Host` and `HTTP_User` property with your [GrafanaCloud][GrafanaCloud] credentials, you can find them in your [account][grafanacloud account] in the Loki instance page. If you're running your own Loki instance replace completely the URL (for example, `http://my-loki.com:3100/loki/api/v1/push`).
 
 We include plain text credentials in `options` for simplicity. However, this exposes credentials in your ECS task definition and in any version-controlled configuration. Mitigate this issue by using a secret store such as [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html), combined with the `secretOptions` configuration option for [injecting sensitive data in a log configuration](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data-secrets.html#secrets-logconfig).
 

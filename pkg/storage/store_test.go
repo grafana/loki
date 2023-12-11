@@ -25,7 +25,9 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -494,6 +496,10 @@ func Test_store_SelectLogs(t *testing.T) {
 				chunkMetrics: NilMetrics,
 			}
 
+			tt.req.Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tt.req.Selector),
+			}
+
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: tt.req})
 			if err != nil {
@@ -816,6 +822,10 @@ func Test_store_SelectSample(t *testing.T) {
 					MaxChunkBatchSize: 10,
 				},
 				chunkMetrics: NilMetrics,
+			}
+
+			tt.req.Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tt.req.Selector),
 			}
 
 			ctx = user.InjectOrgID(context.Background(), "test-user")
@@ -1385,6 +1395,9 @@ func Test_OverlappingChunks(t *testing.T) {
 		Direction: logproto.BACKWARD,
 		Start:     time.Unix(0, 0),
 		End:       time.Unix(0, 10),
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{foo="bar"}`),
+		},
 	}})
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
@@ -1497,6 +1510,15 @@ func Test_GetSeries(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.req.Selector != "" {
+				tt.req.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tt.req.Selector),
+				}
+			} else {
+				tt.req.Plan = &plan.QueryPlan{
+					AST: nil,
+				}
+			}
 			series, err := store.SelectSeries(ctx, tt.req)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedSeries, series)

@@ -3,6 +3,7 @@ package querier
 import (
 	"fmt"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -52,6 +53,7 @@ func (cfg WorkerServiceConfig) QuerierRunningStandalone() bool {
 //     HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
 //     as a http.Handler to the frontend worker.
 func InitWorkerService(
+	logger log.Logger,
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
 	handler queryrangebase.Handler,
@@ -76,7 +78,7 @@ func InitWorkerService(
 			*(cfg.QuerierWorkerConfig),
 			cfg.SchedulerRing,
 			handler,
-			util_log.Logger,
+			logger,
 			reg,
 			codec,
 		)
@@ -102,7 +104,7 @@ func InitWorkerService(
 		*(cfg.QuerierWorkerConfig),
 		cfg.SchedulerRing,
 		handler,
-		util_log.Logger,
+		logger,
 		reg,
 		codec,
 	)

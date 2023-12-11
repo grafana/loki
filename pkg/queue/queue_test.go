@@ -47,7 +47,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 
 			queues := make([]*RequestQueue, 0, b.N)
 			for n := 0; n < b.N; n++ {
-				queue := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
+				queue := NewRequestQueue(maxOutstandingPerTenant, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 				queues = append(queues, queue)
 
 				for ix := 0; ix < queriers; ix++ {
@@ -57,7 +57,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				for i := 0; i < maxOutstandingPerTenant; i++ {
 					for j := 0; j < numTenants; j++ {
 						userID := strconv.Itoa(j)
-						err := queue.Enqueue(userID, benchCase.fn(j), "request", 0, nil)
+						err := queue.Enqueue(userID, benchCase.fn(j), "request", nil)
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -105,7 +105,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]string, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
+		q := NewRequestQueue(maxOutstandingPerTenant, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 
 		for ix := 0; ix < queriers; ix++ {
 			q.RegisterConsumerConnection(fmt.Sprintf("querier-%d", ix))
@@ -123,7 +123,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < maxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
-				err := queues[n].Enqueue(users[j], nil, requests[j], 0, nil)
+				err := queues[n].Enqueue(users[j], nil, requests[j], nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -135,7 +135,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
 	const forgetDelay = 3 * time.Second
 
-	queue := NewRequestQueue(1, forgetDelay, NewMetrics(nil, constants.Loki, "query_scheduler"))
+	queue := NewRequestQueue(1, forgetDelay, &mockQueueLimits{maxConsumers: 1}, NewMetrics(nil, constants.Loki, "query_scheduler"))
 
 	// Start the queue service.
 	ctx := context.Background()
@@ -162,7 +162,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Enqueue a request from an user which would be assigned to querier-1.
 	// NOTE: "user-1" hash falls in the querier-1 shard.
-	require.NoError(t, queue.Enqueue("user-1", nil, "request", 1, nil))
+	require.NoError(t, queue.Enqueue("user-1", nil, "request", nil))
 
 	startTime := time.Now()
 	querier2wg.Wait()
@@ -306,17 +306,17 @@ func TestContextCond(t *testing.T) {
 func TestMaxQueueSize(t *testing.T) {
 	t.Run("queue size is tracked per tenant", func(t *testing.T) {
 		maxSize := 3
-		queue := NewRequestQueue(maxSize, 0, NewMetrics(nil, constants.Loki, "query_scheduler"))
+		queue := NewRequestQueue(maxSize, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 		queue.RegisterConsumerConnection("querier")
 
 		// enqueue maxSize items with different actors
 		// different actors have individual channels with maxSize length
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 1, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 2, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-c"}, 3, nil))
 
 		// max queue length per tenant is tracked globally for all actors within a tenant
-		err := queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil)
+		err := queue.Enqueue("tenant", []string{"user-a"}, 4, nil)
 		assert.Equal(t, err, ErrTooManyRequests)
 
 		// dequeue and enqueue some items
@@ -325,10 +325,10 @@ func TestMaxQueueSize(t *testing.T) {
 		_, _, err = queue.Dequeue(context.Background(), StartIndexWithLocalQueue, "querier")
 		assert.NoError(t, err)
 
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, 0, nil))
-		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, 0, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-a"}, 4, nil))
+		assert.NoError(t, queue.Enqueue("tenant", []string{"user-b"}, 5, nil))
 
-		err = queue.Enqueue("tenant", []string{"user-c"}, 6, 0, nil)
+		err = queue.Enqueue("tenant", []string{"user-c"}, 6, nil)
 		assert.Equal(t, err, ErrTooManyRequests)
 	})
 }

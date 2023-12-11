@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/plan"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -537,7 +538,9 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	ctx := context.Background()
 
 	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
-	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil, 10)
+	expr, err := syntax.ParseLogSelector(`{namespace="foo",pod="bar",instance=~"10.*"}`, true)
+	require.NoError(b, err)
+	t, err := newTailer("foo", expr, nil, 10)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
 		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{
@@ -596,6 +599,9 @@ func Test_Iterator(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{job="3"} | logfmt`),
+				},
 			},
 		},
 	)
@@ -648,6 +654,9 @@ func Test_ChunkFilter(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{job="3"}`),
+				},
 			},
 		},
 	)
@@ -690,6 +699,9 @@ func Test_QueryWithDelete(t *testing.T) {
 						End:      10 * 1e6,
 					},
 				},
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{job="3"}`),
+				},
 			},
 		},
 	)
@@ -729,6 +741,9 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 						Start:    0,
 						End:      10 * 1e6,
 					},
+				},
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`count_over_time({job="3"}[5m])`),
 				},
 			},
 		},

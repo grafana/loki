@@ -1,6 +1,7 @@
 ## Main
 
 - [11330](https://github.com/grafana/loki/pull/11330) **JoaoBraveCoding**: Update loki-mixins, reworked retention dashboard, new structure metadata write dashboard 
+- [11393](https://github.com/grafana/loki/pull/11393) **periklis**: Add infra annotations for OpenShift based deployments
 - [11094](https://github.com/grafana/loki/pull/11094) **periklis**: Add support for blocking queries per tenant
 - [11288](https://github.com/grafana/loki/pull/11288) **periklis**: Fix custom CA for object-store in ruler component
 - [11091](https://github.com/grafana/loki/pull/11091) **periklis**: Add automatic stream sharding support

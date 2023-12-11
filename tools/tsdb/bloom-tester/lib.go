@@ -357,8 +357,10 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											Bloom:  &bloom,
 											Series: &series,
 										}
-										bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
-
+										err := bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
+										if err != nil {
+											level.Error(util_log.Logger).Log("msg", "failed populating SeriesWithBloom", "err", err)
+										}
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
 											metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))

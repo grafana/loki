@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/plan"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
@@ -46,11 +47,13 @@ var (
 			MaxRetries:           3,
 			CacheResults:         true,
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -59,22 +62,26 @@ var (
 		CacheIndexStatsResults: true,
 		StatsCacheConfig: IndexStatsCacheConfig{
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
 		},
 		VolumeCacheConfig: VolumeCacheConfig{
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -192,6 +199,9 @@ func TestMetricsTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -275,6 +285,9 @@ func TestLogFilterTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -665,10 +678,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									MaxSizeMB: 1,
+									Enabled:   true,
+								},
 							},
 						},
 					},
@@ -684,10 +699,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									MaxSizeMB: 1,
+									Enabled:   true,
+								},
 							},
 						},
 					},
@@ -703,10 +720,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 2000,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 2000,
+								},
 							},
 						},
 					},
@@ -714,10 +733,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				CacheIndexStatsResults: true,
 				StatsCacheConfig: IndexStatsCacheConfig{
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 1000,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
 							},
 						},
 					},
@@ -791,6 +812,9 @@ func TestLogNoFilter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -802,7 +826,12 @@ func TestLogNoFilter(t *testing.T) {
 }
 
 func TestPostQueries(t *testing.T) {
-	lreq := &LokiRequest{Query: `{app="foo"} |~ "foo"`}
+	lreq := &LokiRequest{
+		Query: `{app="foo"} |~ "foo"`,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |~ "foo"`),
+		},
+	}
 	ctx := user.InjectOrgID(context.Background(), "1")
 	handler := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
 		t.Error("unexpected default roundtripper called")
@@ -840,6 +869,9 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -887,6 +919,9 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(test.qs),
+				},
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
@@ -992,6 +1027,9 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.query),
+				},
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second

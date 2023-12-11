@@ -37,15 +37,21 @@ type Expr interface {
 
 func Clone[T Expr](e T) (T, error) {
 	var empty T
-	copied, err := ParseExpr(e.String())
-	if err != nil {
-		return empty, err
-	}
-	cast, ok := copied.(T)
+	v := &cloneVisitor{}
+	e.Accept(v)
+	cast, ok := v.cloned.(T)
 	if !ok {
-		return empty, fmt.Errorf("unpexpected type of cloned expression: want %T, got %T", empty, copied)
+		return empty, fmt.Errorf("unexpected type of cloned expression: want %T, got %T", empty, v.cloned)
 	}
 	return cast, nil
+}
+
+func MustClone[T Expr](e T) T {
+	copied, err := Clone[T](e)
+	if err != nil {
+		panic(err)
+	}
+	return copied
 }
 
 // implicit holds default implementations
@@ -307,11 +313,12 @@ func (e *PipelineExpr) HasFilter() bool {
 }
 
 type LineFilterExpr struct {
-	Left  *LineFilterExpr
-	Or    *LineFilterExpr
-	Ty    labels.MatchType
-	Match string
-	Op    string
+	Left      *LineFilterExpr
+	Or        *LineFilterExpr
+	IsOrChild bool
+	Ty        labels.MatchType
+	Match     string
+	Op        string
 	implicit
 }
 
@@ -328,6 +335,7 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 
 	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
 		left.Or = right
+		right.IsOrChild = true
 		return left
 	}
 
@@ -380,52 +388,66 @@ func (e *LineFilterExpr) String() string {
 		sb.WriteString(e.Left.String())
 		sb.WriteString(" ")
 	}
-	switch e.Ty {
-	case labels.MatchRegexp:
-		sb.WriteString("|~")
-	case labels.MatchNotRegexp:
-		sb.WriteString("!~")
-	case labels.MatchEqual:
-		sb.WriteString("|=")
-	case labels.MatchNotEqual:
-		sb.WriteString("!=")
+
+	if !e.IsOrChild { // Only write the type when we're not chaining "or" filters
+		switch e.Ty {
+		case labels.MatchRegexp:
+			sb.WriteString("|~")
+		case labels.MatchNotRegexp:
+			sb.WriteString("!~")
+		case labels.MatchEqual:
+			sb.WriteString("|=")
+		case labels.MatchNotEqual:
+			sb.WriteString("!=")
+		}
+		sb.WriteString(" ")
 	}
-	sb.WriteString(" ")
+
 	if e.Op == "" {
 		sb.WriteString(strconv.Quote(e.Match))
-		return sb.String()
+	} else {
+		sb.WriteString(e.Op)
+		sb.WriteString("(")
+		sb.WriteString(strconv.Quote(e.Match))
+		sb.WriteString(")")
 	}
-	sb.WriteString(e.Op)
-	sb.WriteString("(")
-	sb.WriteString(strconv.Quote(e.Match))
-	sb.WriteString(")")
+
+	if e.Or != nil {
+		sb.WriteString(" or ")
+		// This is dirty but removes the leading MatchType from the or expression.
+		sb.WriteString(e.Or.String())
+	}
+
 	return sb.String()
 }
 
 func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	acc := make([]log.Filterer, 0)
 	for curr := e; curr != nil; curr = curr.Left {
-		switch curr.Op {
-		case OpFilterIP:
-			var err error
-			next, err := log.NewIPLineFilter(curr.Match, curr.Ty)
+		var next log.Filterer
+		var err error
+		if curr.Or != nil {
+			next, err = newOrFilter(curr)
 			if err != nil {
 				return nil, err
 			}
 			acc = append(acc, next)
-		default:
-			var next log.Filterer
-			var err error
-			if curr.Or != nil {
-				next, err = newOrFilter(curr)
-			} else {
+		} else {
+			switch curr.Op {
+			case OpFilterIP:
+				next, err := log.NewIPLineFilter(curr.Match, curr.Ty)
+				if err != nil {
+					return nil, err
+				}
+				acc = append(acc, next)
+			default:
 				next, err = log.NewFilter(curr.Match, curr.Ty)
-			}
-			if err != nil {
-				return nil, err
-			}
+				if err != nil {
+					return nil, err
+				}
 
-			acc = append(acc, next)
+				acc = append(acc, next)
+			}
 		}
 	}
 
@@ -1140,6 +1162,11 @@ const (
 	// parser flags
 	OpStrict    = "--strict"
 	OpKeepEmpty = "--keep-empty"
+
+	// internal expressions not represented in LogQL. These are used to
+	// evaluate expressions differently resulting in intermediate formats
+	// that are not consumable by LogQL clients but are used for sharding.
+	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1188,7 +1215,7 @@ type RangeAggregationExpr struct {
 func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
-		if operation != OpRangeTypeQuantile {
+		if operation != OpRangeTypeQuantile && operation != OpRangeTypeQuantileSketch {
 			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
 		}
 		var err error
@@ -1243,7 +1270,7 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1252,7 +1279,7 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -2112,6 +2139,7 @@ var shardableOps = map[string]bool{
 	OpRangeTypeSum:       true,
 	OpRangeTypeMax:       true,
 	OpRangeTypeMin:       true,
+	OpRangeTypeQuantile:  true,
 
 	// binops - arith
 	OpTypeAdd: true,
