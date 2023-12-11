@@ -144,6 +144,9 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
 
     grafanaDashboards+: {
       'loki-retention.json'+: {
+        // TODO (JoaoBraveCoding) Once we upgrade to 3.x we should be able to lift the drops on 
+        // 'Number of times Tables were skipped during Compaction' and 'Retention' since Loki will then have the 
+        // updated metrics 
         local dropList = ['Logs', 'Number of times Tables were skipped during Compaction', 'Retention'],
         local replacements = [
           { from: 'cluster=~"$cluster",', to: '' },
@@ -155,7 +158,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         tags: defaultLokiTags(super.tags),
         rows: [
           r {
-            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat')], r.panels),
+            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat')], dropPanels(r.panels, dropList, function(p) true)),
           }
           for r in dropPanels(super.rows, dropList, function(p) true)
         ],
