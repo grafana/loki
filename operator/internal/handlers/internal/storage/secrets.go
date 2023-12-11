@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"fmt"
 
@@ -10,6 +11,8 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
+
+var hashSeparator = []byte(",")
 
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
 func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
@@ -62,7 +65,7 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, st
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 
-	contents := fmt.Sprintf("%s/%s/%s/%s/%s", env, container, name, key, endpointSuffix)
+	contents := bytes.Join([][]byte{env, container, name, key, endpointSuffix}, hashSeparator)
 
 	h := sha1.New()
 	_, err := h.Write([]byte(contents))
@@ -91,7 +94,7 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, string
 		return nil, "", kverrors.New("missing google authentication credentials", "field", storage.KeyGCPServiceAccountKeyFilename)
 	}
 
-	contents := fmt.Sprintf("%s/%s", bucket, keyJSON)
+	contents := bytes.Join([][]byte{bucket, keyJSON}, hashSeparator)
 
 	h := sha1.New()
 	_, err := h.Write([]byte(contents))
@@ -132,13 +135,17 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, string, 
 		return nil, "", err
 	}
 
-	contents := fmt.Sprintf("%s/%s/%s/%s/%s/%s/%s/%s",
-		endpoint, buckets, id, secret, region, sseCfg.Type, sseCfg.KMSKeyID, sseCfg.KMSEncryptionContext)
+	contents := bytes.Join([][]byte{
+		endpoint, buckets, id, secret, region,
+		[]byte(sseCfg.Type),
+		[]byte(sseCfg.KMSKeyID),
+		[]byte(sseCfg.KMSEncryptionContext),
+	}, hashSeparator)
 
 	h := sha1.New()
-	_, err = h.Write([]byte(contents))
+	_, err = h.Write(contents)
 	if err != nil {
-		return nil, "", kverrors.Wrap(err, "failed hashing gcs secret contents")
+		return nil, "", kverrors.Wrap(err, "failed hashing s3 secret contents")
 	}
 	sha1C := fmt.Sprintf("%x", h.Sum(nil))
 
@@ -225,17 +232,19 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, st
 	projectDomainName := s.Data[storage.KeySwiftProjectDomainName]
 	region := s.Data[storage.KeySwiftRegion]
 
-	contents := fmt.Sprintf(
-		"%s/%s/%s/%s/%s/%s/%s/%s/%s/%s/%s/%s/%s/%s",
-		url, username, userDomainName, userDomainID,
-		userID, password, domainID, domainName, containerName,
-		projectID, projectName, projectDomainID, projectDomainName, region,
+	contents := bytes.Join(
+		[][]byte{
+			url, username, userDomainName, userDomainID,
+			userID, password, domainID, domainName, containerName,
+			projectID, projectName, projectDomainID, projectDomainName, region,
+		},
+		hashSeparator,
 	)
 
 	h := sha1.New()
-	_, err := h.Write([]byte(contents))
+	_, err := h.Write(contents)
 	if err != nil {
-		return nil, "", kverrors.Wrap(err, "failed hashing alibabacloud secret contents")
+		return nil, "", kverrors.Wrap(err, "failed hashing swift secret contents")
 	}
 	sha1C := fmt.Sprintf("%x", h.Sum(nil))
 
@@ -274,10 +283,10 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 		return nil, "", kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudSecretAccessKey)
 	}
 
-	contents := fmt.Sprintf("%s/%s/%s/%s", endpoint, bucket, id, secret)
+	contents := bytes.Join([][]byte{endpoint, bucket, id, secret}, hashSeparator)
 
 	h := sha1.New()
-	_, err := h.Write([]byte(contents))
+	_, err := h.Write(contents)
 	if err != nil {
 		return nil, "", kverrors.Wrap(err, "failed hashing alibabacloud secret contents")
 	}
