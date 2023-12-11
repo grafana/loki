@@ -1,5 +1,9 @@
 package logql
 
+// MaxChildrenDisplay defines the maximum number of children that should be
+// shown by explain.
+const MaxChildrenDisplay = 3
+
 func (e *LiteralStepEvaluator) Explain(parent Node) {
 	b := parent.Child("Literal")
 	e.nextEv.Explain(b)
@@ -25,7 +29,7 @@ func (e *VectorStepEvaluator) Explain(parent Node) {
 
 func (e *ConcatStepEvaluator) Explain(parent Node) {
 	b := parent.Child("Concat")
-	if len(e.evaluators) < 3 {
+	if len(e.evaluators) < MaxChildrenDisplay {
 		for _, child := range e.evaluators {
 			child.Explain(b)
 		}
