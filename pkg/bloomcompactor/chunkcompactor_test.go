@@ -147,6 +147,6 @@ func (pbb *mockPersistentBlockBuilder) BuildFrom(_ v1.Iterator[v1.SeriesWithBloo
 	return 0, nil
 }
 
-func (pbb *mockPersistentBlockBuilder) Data() (io.ReadCloser, error) {
+func (pbb *mockPersistentBlockBuilder) Data() (io.ReadSeekCloser, error) {
 	return nil, nil
 }
