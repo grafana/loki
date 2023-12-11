@@ -139,7 +139,6 @@ app.kubernetes.io/component: {{ .component }}
 {{- if .memberlist }}
 app.kubernetes.io/part-of: memberlist
 {{- end }}
-{{- end }}
 {{- if .rolloutZoneName }}
 {{-   if not .component }}
 {{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
@@ -148,6 +147,7 @@ name: "{{ .component }}-{{ .rolloutZoneName }}" {{- /* Currently required for ro
 rollout-group: {{ .component }}
 zone: {{ .rolloutZoneName }}
 {{- end }}
+{{- end -}}
 
 {{/*
 Service selector labels
