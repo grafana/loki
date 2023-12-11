@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/grafana/dskit/ring"
+	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
@@ -37,6 +38,54 @@ func (i InstancesWithTokenRange) Contains(token uint32) bool {
 	return false
 }
 
+// GetInstanceTokenRange calculates the token range for a specific instance
+// with given id based on the first token in the ring.
+// This assumes that each instance in the ring is configured with only a single
+// token.
+func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
+
+	// Sorting the tokens of the instances would not be necessary if there is
+	// only a single token per instances, however, since we only assume one
+	// token, but don't enforce one token, we keep the sorting.
+	for _, inst := range instances {
+		sort.Slice(inst.Tokens, func(i, j int) bool {
+			return inst.Tokens[i] < inst.Tokens[j]
+		})
+	}
+
+	// Sort instances
+	sort.Slice(instances, func(i, j int) bool {
+		return instances[i].Tokens[0] < instances[j].Tokens[0]
+	})
+
+	idx := slices.IndexFunc(instances, func(inst ring.InstanceDesc) bool {
+		return inst.Id == id
+	})
+
+	// instance with Id == id not found
+	if idx == -1 {
+		return InstancesWithTokenRange{}
+	}
+
+	n := len(instances)
+	step := math.MaxUint32 / n
+
+	minToken := uint32(step * idx)
+	maxToken := uint32(step*idx + step - 1)
+	if idx == n-1 {
+		// extend the last token tange to MaxUint32
+		maxToken = math.MaxUint32
+	}
+
+	return InstancesWithTokenRange{
+		{MinToken: minToken, MaxToken: maxToken, Instance: instances[idx]},
+	}
+}
+
+// GetInstancesWithTokenRanges calculates the token ranges for a specific
+// instance with given id based on all tokens in the ring.
+// If the instances in the ring are configured with a single token, such as the
+// bloom compactor, use GetInstanceWithTokenRange() instead.
 func GetInstancesWithTokenRanges(id string, instances []ring.InstanceDesc) InstancesWithTokenRange {
 	servers := make([]InstanceWithTokenRange, 0, len(instances))
 	it := NewInstanceSortMergeIterator(instances)

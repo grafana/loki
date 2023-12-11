@@ -348,7 +348,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	if err != nil {
 		return err
 	}
-	tokenRanges := bloomutils.GetInstancesWithTokenRanges(c.cfg.Ring.InstanceID, rs.Instances)
+	tokenRanges := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
 
 	_ = sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 		if isMultiTenantIndex {
