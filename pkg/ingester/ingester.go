@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -851,6 +852,16 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Selector, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
@@ -874,6 +885,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			Limit:     req.Limit,
 			Shards:    req.Shards,
 			Deletes:   req.Deletes,
+			Plan:      req.Plan,
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
@@ -900,6 +912,17 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	_, ctx := stats.NewContext(queryServer.Context())
 	sp := opentracing.SpanFromContext(ctx)
 
+	// If the plan is empty we want all series to be returned.
+	if req.Plan == nil {
+		parsed, err := syntax.ParseSampleExpr(req.Selector)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
@@ -925,6 +948,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			Selector: req.Selector,
 			Shards:   req.Shards,
 			Deletes:  req.Deletes,
+			Plan:     req.Plan,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
@@ -1234,6 +1258,16 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseLogSelector(req.Query, true)
+		if err != nil {
+			return err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	instanceID, err := tenant.TenantID(queryServer.Context())
 	if err != nil {
 		return err
@@ -1243,7 +1277,13 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	if err != nil {
 		return err
 	}
-	tailer, err := newTailer(instanceID, req.Query, queryServer, i.cfg.MaxDroppedStreams)
+
+	expr, ok := req.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return fmt.Errorf("unsupported query expression: want (LogSelectorExpr), got (%T)", req.Plan.AST)
+	}
+
+	tailer, err := newTailer(instanceID, expr, queryServer, i.cfg.MaxDroppedStreams)
 	if err != nil {
 		return err
 	}
