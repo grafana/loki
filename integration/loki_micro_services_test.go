@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,7 +18,6 @@ import (
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
@@ -159,13 +159,41 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		ctx, cancelFunc := context.WithCancel(context.Background())
 		defer cancelFunc()
 
-		out := make(chan loghttp.TailResponse)
-		err := cliQueryFrontend.Tail(ctx, `{job="fake"}`, out)
+		out := make(chan client.TailResult)
+		wc, err := cliQueryFrontend.Tail(ctx, `{job="fake"}`, out)
 		require.NoError(t, err)
+		defer wc.Close()
 
-		for resp := range out {
-			require.Len(t, resp.Streams, 100_000)
-		}
+		var lines []string
+		mu := sync.Mutex{}
+		done := make(chan struct{})
+		go func() {
+			for resp := range out {
+				require.NoError(t, resp.Err)
+				for _, stream := range resp.Response.Streams {
+					for _, e := range stream.Entries {
+						mu.Lock()
+						lines = append(lines, e.Line)
+						mu.Unlock()
+					}
+				}
+			}
+			done <- struct{}{}
+		}()
+		assert.Eventually(
+			t,
+			func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+				return len(lines) == 4
+			},
+			10*time.Second,
+			100*time.Millisecond,
+		)
+		wc.Close()
+		cancelFunc()
+		<-done
+		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
 	})
 }
 

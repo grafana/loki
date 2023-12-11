@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/buger/jsonparser"
+	"github.com/gorilla/websocket"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/model/labels"
@@ -660,41 +662,44 @@ func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]strin
 	return values.Data, nil
 }
 
-func (c *Client) Tail(ctx context.Context, query string, out chan loghttp.TailResponse) error {
+type TailResult struct {
+	Response loghttp.TailResponse
+	Err      error
+}
+
+func (c *Client) Tail(ctx context.Context, query string, out chan TailResult) (*websocket.Conn, error) {
 	client := &logcli.DefaultClient{
 		Address:   c.baseURL,
 		OrgID:     c.instanceID,
 		TLSConfig: config.TLSConfig{},
 	}
-	start := time.Now().Add(-30 * time.Second)
+	start := time.Now().Add(-1 * time.Hour)
 
 	wc, err := client.LiveTailQueryConn(query, time.Duration(0), 100, start, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	go func() {
-		defer wc.Close()
-		defer close(out)
 
 		tailResponse := new(loghttp.TailResponse)
 
 		for {
 			select {
 			case <-ctx.Done():
+				close(out)
 				return
 			default:
 				err := unmarshal.ReadTailResponseJSON(tailResponse, wc)
-				if err == nil {
-					out <- *tailResponse
-				} else {
-					// TODO: handle error
+				if errors.Is(err, net.ErrClosed) {
+					close(out)
 					return
 				}
+				out <- TailResult{*tailResponse, err}
 			}
 		}
 	}()
-	return nil
+	return wc, nil
 }
 
 func (c *Client) request(ctx context.Context, method string, url string, extraHeaders ...Header) (*http.Request, error) {
