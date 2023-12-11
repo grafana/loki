@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
@@ -43,6 +44,7 @@ func TestAzureExtract(t *testing.T) {
 		{
 			name: "missing account_key",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":  []byte("here"),
 					"container":    []byte("this,that"),
@@ -54,6 +56,7 @@ func TestAzureExtract(t *testing.T) {
 		{
 			name: "all mandatory set",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":  []byte("here"),
 					"container":    []byte("this,that"),
@@ -65,6 +68,7 @@ func TestAzureExtract(t *testing.T) {
 		{
 			name: "all set including optional",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":     []byte("here"),
 					"container":       []byte("this,that"),
@@ -80,9 +84,12 @@ func TestAzureExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure)
 			if !tst.wantErr {
 				require.NoError(t, err)
+				require.NotEmpty(t, opts.SecretName)
+				require.NotEmpty(t, opts.SecretHash)
+				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretAzure)
 			}
 			if tst.wantErr {
 				require.NotNil(t, err)
@@ -115,6 +122,7 @@ func TestGCSExtract(t *testing.T) {
 		{
 			name: "all set",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
 					"key.json":   []byte("{\"type\": \"SA\"}"),
@@ -210,6 +218,7 @@ func TestS3Extract(t *testing.T) {
 		{
 			name: "all set with SSE-KMS",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"endpoint":          []byte("here"),
 					"bucketnames":       []byte("this,that"),
@@ -223,6 +232,7 @@ func TestS3Extract(t *testing.T) {
 		{
 			name: "all set with SSE-KMS with encryption context",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"endpoint":                   []byte("here"),
 					"bucketnames":                []byte("this,that"),
@@ -237,6 +247,7 @@ func TestS3Extract(t *testing.T) {
 		{
 			name: "all set with SSE-S3",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"endpoint":          []byte("here"),
 					"bucketnames":       []byte("this,that"),
@@ -249,6 +260,7 @@ func TestS3Extract(t *testing.T) {
 		{
 			name: "all set without SSE",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"endpoint":          []byte("here"),
 					"bucketnames":       []byte("this,that"),
@@ -263,9 +275,12 @@ func TestS3Extract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretS3)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretS3)
 			if !tst.wantErr {
 				require.NoError(t, err)
+				require.NotEmpty(t, opts.SecretName)
+				require.NotEmpty(t, opts.SecretHash)
+				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
 			}
 			if tst.wantErr {
 				require.NotNil(t, err)
@@ -389,6 +404,7 @@ func TestSwiftExtract(t *testing.T) {
 		{
 			name: "all set",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
 					"username":         []byte("this,that"),
@@ -408,9 +424,12 @@ func TestSwiftExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift)
 			if !tst.wantErr {
 				require.NoError(t, err)
+				require.NotEmpty(t, opts.SecretName)
+				require.NotEmpty(t, opts.SecretHash)
+				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretSwift)
 			}
 			if tst.wantErr {
 				require.NotNil(t, err)
@@ -464,6 +483,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 		{
 			name: "all set",
 			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"endpoint":          []byte("here"),
 					"bucket":            []byte("this,that"),
@@ -478,9 +498,12 @@ func TestAlibabaCloudExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud)
 			if !tst.wantErr {
 				require.NoError(t, err)
+				require.NotEmpty(t, opts.SecretName)
+				require.NotEmpty(t, opts.SecretHash)
+				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretAlibabaCloud)
 			}
 			if tst.wantErr {
 				require.NotNil(t, err)
