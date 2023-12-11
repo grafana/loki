@@ -102,7 +102,6 @@ spec:
     {{- end }}
   {{- end }}
 
-{{- if .Values.ruler.enabled }}
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -127,7 +126,6 @@ spec:
         {{- toYaml .Values.networkPolicy.alertmanager.podSelector | nindent 8 }}
         {{- end }}
   {{- end }}
-{{- end }}
 
 {{- if .Values.networkPolicy.externalStorage.ports }}
 ---
