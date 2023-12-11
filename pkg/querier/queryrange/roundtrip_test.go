@@ -199,6 +199,9 @@ func TestMetricsTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -282,6 +285,9 @@ func TestLogFilterTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -806,6 +812,9 @@ func TestLogNoFilter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -817,7 +826,12 @@ func TestLogNoFilter(t *testing.T) {
 }
 
 func TestPostQueries(t *testing.T) {
-	lreq := &LokiRequest{Query: `{app="foo"} |~ "foo"`}
+	lreq := &LokiRequest{
+		Query: `{app="foo"} |~ "foo"`,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |~ "foo"`),
+		},
+	}
 	ctx := user.InjectOrgID(context.Background(), "1")
 	handler := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
 		t.Error("unexpected default roundtripper called")
@@ -855,6 +869,9 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -902,6 +919,9 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(test.qs),
+				},
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
@@ -1007,6 +1027,9 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.query),
+				},
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second

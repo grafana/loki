@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 
 	"github.com/go-kit/log"
@@ -64,8 +65,15 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
-			},
+				{&logproto.SampleQueryRequest{
+					Start:    time.Unix(30, 0),
+					End:      time.Unix(60, 0),
+					Selector: `rate({app="foo"} | unwrap foo[30s])`,
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
+					},
+				},
+				}},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// SUM(n=47, 61, 1) = 15
 			// 15 / 30 = 0.5
@@ -82,7 +90,14 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
+				{&logproto.SampleQueryRequest{
+					Start:    time.Unix(30, 0),
+					End:      time.Unix(60, 0),
+					Selector: `rate({app="foo"} | unwrap foo[30s])`,
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
+					},
+				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// SUM(n=47, 61, n) = (47+48+...+61) = 810
@@ -100,7 +115,14 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
+				{&logproto.SampleQueryRequest{
+					Start:    time.Unix(30, 0),
+					End:      time.Unix(60, 0),
+					Selector: `rate_counter({app="foo"} | unwrap foo[30s])`,
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`rate_counter({app="foo"} | unwrap foo[30s])`),
+					},
+				}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// (1 - 1) / 30 = 0
@@ -2669,6 +2691,9 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if streamsIn, ok := data.([][]logproto.Stream); ok {
 		if paramsIn, ok2 := params.([]SelectLogParams); ok2 {
 			for i, p := range paramsIn {
+				p.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(p.Selector),
+				}
 				streams[paramsID(p)] = streamsIn[i]
 			}
 		}
@@ -2678,6 +2703,9 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if seriesIn, ok := data.([][]logproto.Series); ok {
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
+				p.Plan = &plan.QueryPlan{
+					AST: syntax.MustParseExpr(p.Selector),
+				}
 				series[paramsID(p)] = seriesIn[i]
 			}
 		}

@@ -119,7 +119,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
 		return &TopKSketchesResponse{Response: sk}, err
-	case sketch.QuantileSketchMatrix:
+	case logql.ProbabilisticQuantileMatrix:
 		return &QuantileSketchResponse{Response: data.ToProto()}, nil
 	}
 
@@ -172,7 +172,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Headers: resp.GetHeaders(),
 		}, nil
 	case *QuantileSketchResponse:
-		matrix, err := sketch.QuantileSketchMatrixFromProto(r.Response)
+		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
 		if err != nil {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
@@ -234,6 +234,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
+	case *VolumeResponse:
+		p.Response = &QueryResponse_Volume{response}
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
 	case *QuantileSketchResponse:
