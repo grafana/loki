@@ -25,3 +25,9 @@
 {{- if and $isUsingFilesystem (and (eq $singleBinaryReplicas 0) $atLeastOneScalableReplica) }}
 {{- fail "Cannot run Scalable targets (backend, read, write) without an object storage backend."}}
 {{- end }}
+
+{{- if .Values.write.zoneAwareReplication.enabled }}
+{{- if not .Values.rollout_operator.enabled }}
+{{- fail "You have enabled zoneAwareReplication for write component, you must also enable the rollout_operator." -}}
+{{- end }}
+{{- end }}

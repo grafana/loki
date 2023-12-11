@@ -1,13 +1,21 @@
+{{- $args := dict "ctx" . "component" "write" "memberlist" true -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if $isSimpleScalable }}
----
+{{- $zonesMap := include "loki.zoneAwareReplicationMap" $args | fromYaml -}}
+{{- range $zoneName, $rolloutZone := $zonesMap }}
+{{- with $ -}}
+{{- $_ := set $args "rolloutZoneName" $zoneName -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.writeFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.writeLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
+    {{- if and $zoneName .Values.write.zoneAwareReplication.migration.enabled }}
+    # Prevent scraping PODs via this service during migration as the original non zone-aware service already scrapes all PODs and you get duplicate metrics.
+    prometheus.io/service-monitor: "false"
+    {{- end }}
     {{- with .Values.loki.serviceLabels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
@@ -33,5 +41,8 @@ spec:
       targetPort: grpc
       protocol: TCP
   selector:
-    {{- include "loki.writeSelectorLabels" . | nindent 4 }}
+    {{- include "loki.selectorLabels" $args | nindent 4 }}
+---
+{{- end }}
+{{- end }}
 {{- end }}

@@ -6,7 +6,7 @@ metadata:
   name: {{ include "loki.fullname" . }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
     {{- with .Values.ingress.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

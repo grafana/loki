@@ -1,13 +1,14 @@
+{{- $args := dict "ctx" . "component" "single-binary" "memberlist" true -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- if $isSingleBinary }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.singleBinaryFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
     {{- with .Values.loki.serviceLabels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
@@ -33,8 +34,5 @@ spec:
       targetPort: grpc
       protocol: TCP
   selector:
-    {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
-    {{- with .Values.singleBinary.selectorLabels }}
-      {{- tpl (toYaml .) $ | nindent 4 }}
-    {{- end }}
+    {{- include "loki.selectorLabels" $args | nindent 4 }}
 {{- end }}

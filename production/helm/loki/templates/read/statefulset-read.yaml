@@ -1,23 +1,29 @@
+{{- $args := dict "ctx" . "component" "read" "memberlist" true -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if and $isSimpleScalable (.Values.read.legacyReadTarget ) }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "loki.readFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    app.kubernetes.io/part-of: memberlist
-    {{- include "loki.readLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.read.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
 {{- if not .Values.read.autoscaling.enabled }}
   replicas: {{ .Values.read.replicas }}
 {{- end }}
   podManagementPolicy: {{ .Values.read.podManagementPolicy }}
   updateStrategy:
-    rollingUpdate:
-      partition: 0
-  serviceName: {{ printf "%s-headless" (include "loki.readFullname" .) }}
+    {{- toYaml .Values.read.statefulStrategy | nindent 4 }}
+  serviceName: {{ include "loki.name" . }}-read-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.read.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
@@ -30,29 +36,13 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "loki.readSelectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" $args | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
-        {{- with .Values.loki.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.read.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- include "loki.podAnnotations" $args | nindent 8 }}
       labels:
-        app.kubernetes.io/part-of: memberlist
-        {{- include "loki.readSelectorLabels" . | nindent 8 }}
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.read.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.read.selectorLabels }}
-        {{- tpl (toYaml .) $ | nindent 8 }}
-        {{- end }}
+        {{- include "loki.podLabels" $args | nindent 8 }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
@@ -61,7 +51,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.readPriorityClassName" . | nindent 6 }}
+      {{- include "loki.priorityClassName" $args | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.read.terminationGracePeriodSeconds }}
@@ -72,6 +62,11 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.read.targetModule }}
+          {{- if .Values.write.zoneAwareReplication.migration.enabled }}
+            {{- if not .Values.write.zoneAwareReplication.migration.readPath }}
+            - "-distributor.zone-awareness-enabled=false"
+            {{- end }}
+          {{- end }}
             {{- with .Values.read.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

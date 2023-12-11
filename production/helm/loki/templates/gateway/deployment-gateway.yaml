@@ -1,12 +1,12 @@
+{{- $args := dict "ctx" . "component" "gateway" -}}
 {{- if .Values.gateway.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "loki.gatewayFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.gatewayLabels" . | nindent 4 }}
-  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
+    {{- include "loki.labels" $args | nindent 4 }}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -14,7 +14,6 @@ metadata:
     {{- with .Values.gateway.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- end }}
 spec:
 {{- if not .Values.gateway.autoscaling.enabled }}
   replicas: {{ .Values.gateway.replicas }}
@@ -26,25 +25,13 @@ spec:
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   selector:
     matchLabels:
-      {{- include "loki.gatewaySelectorLabels" . | nindent 6 }}
+      {{- include "loki.selectorLabels" $args | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/gateway/configmap-gateway.yaml") . | sha256sum }}
-        {{- with .Values.loki.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.gateway.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- include "loki.podAnnotations" $args | nindent 8 }}
       labels:
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.gateway.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- include "loki.gatewaySelectorLabels" . | nindent 8 }}
+        {{- include "loki.podLabels" $args | nindent 8 }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       {{ include "loki.enableServiceLinks" . }}
@@ -52,13 +39,13 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end -}}
-      {{- include "loki.gatewayPriorityClassName" . | nindent 6 }}
+      {{- include "loki.priorityClassName" $args | nindent 6 }}
       securityContext:
         {{- toYaml .Values.gateway.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.gateway.terminationGracePeriodSeconds }}
       containers:
         - name: nginx
-          image: {{ include "loki.gatewayImage" . }}
+          image: {{ include "loki.baseImage" (dict "service" .Values.gateway.image "global" .Values.global.image) }}
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           ports:
             - name: http
@@ -122,11 +109,11 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: {{ include "loki.gatewayFullname" . }}
+            name: {{ include "loki.resourceName" $args }}
         {{- if .Values.gateway.basicAuth.enabled }}
         - name: auth
           secret:
-            secretName: {{ include "loki.gatewayAuthSecret" . }}
+            secretName: {{ .Values.gateway.basicAuth.existingSecret | default (include "loki.resourceName" $args ) }}
         {{- end }}
         - name: tmp
           emptyDir: {}

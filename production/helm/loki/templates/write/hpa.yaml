@@ -1,6 +1,7 @@
+{{- $args := dict "ctx" . "component" "write" "memberlist" true -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
-{{- if and $isSimpleScalable ( .Values.write.autoscaling.enabled ) }}
+{{- if and $isSimpleScalable ( .Values.write.autoscaling.enabled ) ( not .Values.write.zoneAwareReplication.enabled) }}
 {{- if $autoscalingv2 }}
 apiVersion: autoscaling/v2
 {{- else }}
@@ -8,15 +9,15 @@ apiVersion: autoscaling/v2beta1
 {{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "loki.writeFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.writeLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: StatefulSet
-    name: {{ include "loki.writeFullname" . }}
+    name: {{ include "loki.name" . }}-write
   minReplicas: {{ .Values.write.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.write.autoscaling.maxReplicas }}
   {{- with .Values.write.autoscaling.behavior }}

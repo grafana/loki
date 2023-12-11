@@ -5,7 +5,7 @@ metadata:
   name: {{ include "loki.name" . }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.labels" . | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" .) | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

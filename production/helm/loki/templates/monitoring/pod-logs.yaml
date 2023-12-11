@@ -11,7 +11,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    {{- include "loki.labels" $ | nindent 4 }}
+    {{- include "loki.labels" (dict "ctx" $) | nindent 4 }}
     {{- with .labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -52,6 +52,6 @@ spec:
       - {{ $.Release.Namespace }}
   selector:
     matchLabels:
-      {{- include "loki.selectorLabels" $ | nindent 6 }}
+      {{- include "loki.selectorLabels" (dict "ctx" $) | nindent 6 }}
 {{- end }}
 {{- end }}

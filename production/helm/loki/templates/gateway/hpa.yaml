@@ -1,3 +1,4 @@
+{{- $args := dict "ctx" . "component" "gateway" -}}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
 {{- if .Values.gateway.autoscaling.enabled }}
 {{- if $autoscalingv2 }}
@@ -7,15 +8,15 @@ apiVersion: autoscaling/v2beta1
 {{- end }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "loki.gatewayFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "loki.gatewayFullname" . }}
+    name: {{ include "loki.resourceName" $args }}
   minReplicas: {{ .Values.gateway.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.gateway.autoscaling.maxReplicas }}
   {{- with .Values.gateway.autoscaling.behavior }}

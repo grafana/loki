@@ -1,13 +1,14 @@
+{{- $args := dict "ctx" . "component" "read" "memberlist" true -}}
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{ if $isSimpleScalable }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.readFullname" . }}-headless
+  name: {{ include "loki.resourceName" $args }}-headless
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki.readSelectorLabels" . | nindent 4 }}
+    {{- include "loki.labels" $args | nindent 4 }}
     {{- with .Values.loki.serviceLabels }}
     {{- toYaml . | nindent 4}}
     {{- end }}
@@ -37,5 +38,5 @@ spec:
       protocol: TCP
       appProtocol: tcp
   selector:
-    {{- include "loki.readSelectorLabels" . | nindent 4 }}
+    {{- include "loki.selectorLabels" $args | nindent 4 }}
 {{- end }}

@@ -11,6 +11,6 @@ Docker image name for loki helm test
 test common labels
 */}}
 {{- define "loki.helmTestLabels" -}}
-{{ include "loki.labels" . }}
+{{ include "loki.labels" (dict "ctx" .) }}
 app.kubernetes.io/component: helm-test
 {{- end }}
