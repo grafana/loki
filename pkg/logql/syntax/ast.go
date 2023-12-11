@@ -37,15 +37,21 @@ type Expr interface {
 
 func Clone[T Expr](e T) (T, error) {
 	var empty T
-	copied, err := ParseExpr(e.String())
-	if err != nil {
-		return empty, err
-	}
-	cast, ok := copied.(T)
+	v := &cloneVisitor{}
+	e.Accept(v)
+	cast, ok := v.cloned.(T)
 	if !ok {
-		return empty, fmt.Errorf("unpexpected type of cloned expression: want %T, got %T", empty, copied)
+		return empty, fmt.Errorf("unexpected type of cloned expression: want %T, got %T", empty, v.cloned)
 	}
 	return cast, nil
+}
+
+func MustClone[T Expr](e T) T {
+	copied, err := Clone[T](e)
+	if err != nil {
+		panic(err)
+	}
+	return copied
 }
 
 // implicit holds default implementations
@@ -1156,6 +1162,11 @@ const (
 	// parser flags
 	OpStrict    = "--strict"
 	OpKeepEmpty = "--keep-empty"
+
+	// internal expressions not represented in LogQL. These are used to
+	// evaluate expressions differently resulting in intermediate formats
+	// that are not consumable by LogQL clients but are used for sharding.
+	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1204,7 +1215,7 @@ type RangeAggregationExpr struct {
 func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
-		if operation != OpRangeTypeQuantile {
+		if operation != OpRangeTypeQuantile && operation != OpRangeTypeQuantileSketch {
 			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
 		}
 		var err error
@@ -1259,7 +1270,7 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1268,7 +1279,7 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -2128,6 +2139,7 @@ var shardableOps = map[string]bool{
 	OpRangeTypeSum:       true,
 	OpRangeTypeMax:       true,
 	OpRangeTypeMin:       true,
+	OpRangeTypeQuantile:  true,
 
 	// binops - arith
 	OpTypeAdd: true,

@@ -41,8 +41,6 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 		return nil, err
 	}
 
-	// TODO(chaudum): Cache response
-
 	// Flatten response from client and return
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))
 	for i := range refs {

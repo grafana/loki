@@ -2,7 +2,9 @@ package querier
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
@@ -52,6 +54,14 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	}
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
 	params.Selector = replaceMatchers(selector, filteredMatchers).String()
+
+	parsed, err := syntax.ParseLogSelector(params.Selector, true)
+	if err != nil {
+		return nil, fmt.Errorf("log selector is invalid after matcher update: %w", err)
+	}
+	params.Plan = &plan.QueryPlan{
+		AST: parsed,
+	}
 
 	iters := make([]iter.EntryIterator, len(matchedTenants))
 	i := 0
