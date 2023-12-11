@@ -279,13 +279,9 @@ func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client 
 	if err != nil {
 		return Meta{}, fmt.Errorf("error downloading meta file %s : %w", metaRef.FilePath, err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer reader.Close()
 
-	buf, err := io.ReadAll(reader)
-	if err != nil {
-		return Meta{}, fmt.Errorf("error reading meta file %s: %w", metaRef.FilePath, err)
-	}
-	err = json.Unmarshal(buf, &meta)
+	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
 		return Meta{}, fmt.Errorf("error unmarshalling content of meta file %s: %w", metaRef.FilePath, err)
 	}
