@@ -1,6 +1,6 @@
 ## Main
 
-- [11330](https://github.com/grafana/loki/pull/11330) **JoaoBraveCoding**: Update loki-mixins, reworked retention dashboard, new structure metadata write dashboard 
+- [11330](https://github.com/grafana/loki/pull/11330) **JoaoBraveCoding**: Adds structured metadata dashboards
 - [11357](https://github.com/grafana/loki/pull/11357) **periklis**: Fix storing authentication credentials in the Loki ConfigMap
 - [11393](https://github.com/grafana/loki/pull/11393) **periklis**: Add infra annotations for OpenShift based deployments
 - [11094](https://github.com/grafana/loki/pull/11094) **periklis**: Add support for blocking queries per tenant
