@@ -74,6 +74,24 @@ data:
     tenant_id: # The Azure Federated Identity Tenant ID
 ```
 
+##### Pre-requisites
+
+The LokiStack adminisrator is required to create a custom Azure Managed Identity and an associated federated credentials to trust the LokiStack's Kubernetes ServiceAccount.
+
+1. Create an Azure Managed Identity on the same resource group as the Kubernetes cluster hosting LokiStack:
+
+```shell
+$ az identity create --name $IDENTITY_NAME --resource-group $RESOURCE_GROUP_NAME --location $LOCATION --subscription $SUBSCRIPTION_ID
+```
+
+2. Create a Federated Credentials for scenario `Kubernetes accessing Azure resources`:
+
+```shell
+$ az identity federated-credential create --name openshift-logging-lokistack --identity-name $IDENTITY_NAME --resource-group $RESOURCE_GROUP_NAME --issuer $CLUSTER_ISSUER_URL --subject system:serviceaccount:openshift-logging:lokistack-dev --audiences $AUDIENCES
+```
+
+__Note:__ To enable the required federated credential scenario in the above command the subject needs be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The issuer and audiences are related to the Kubernetes cluster hosting LokiStack.
+
 #### AWS Secure Token Service
 
 ##### Overview
