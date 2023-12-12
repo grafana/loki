@@ -10,6 +10,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -51,10 +52,46 @@ func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 		Timeouts: defaultTimeoutConfig,
 	}, sha1C)
 
-	expected := "loki.grafana.com/config-hash"
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], sha1C)
+	require.Contains(t, annotations, AnnotationLokiConfigHash)
+	require.Equal(t, annotations[AnnotationLokiConfigHash], sha1C)
+}
+
+func TestNewGatewayDeployment_HasNotTemplateObjectStoreHashAnnotation(t *testing.T) {
+	sha1C := "deadbeef"
+	ss := NewGatewayDeployment(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		ObjectStorage: storage.Options{
+			SecretSHA1: "deadbeef",
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				QueryFrontend: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}, sha1C)
+
+	annotations := ss.Spec.Template.Annotations
+	require.NotContains(t, annotations, AnnotationLokiObjectStoreHash)
 }
 
 func TestNewGatewayDeployment_HasNodeSelector(t *testing.T) {
@@ -134,10 +171,9 @@ func TestNewGatewayDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *tes
 		Timeouts: defaultTimeoutConfig,
 	}, sha1C)
 
-	expected := "loki.grafana.com/certRotationRequiredAt"
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
+	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
 }
 
 func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {

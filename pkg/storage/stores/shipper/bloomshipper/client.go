@@ -82,14 +82,18 @@ type MetaClient interface {
 	DeleteMeta(ctx context.Context, meta Meta) error
 }
 
-type Block struct {
+type LazyBlock struct {
 	BlockRef
-
 	Data io.ReadCloser
 }
 
+type Block struct {
+	BlockRef
+	Data io.ReadSeekCloser
+}
+
 type BlockClient interface {
-	GetBlock(ctx context.Context, reference BlockRef) (Block, error)
+	GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error)
 	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
 }
@@ -191,27 +195,28 @@ func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime,
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", timestamp)
 }
+
 func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
 	if err != nil {
-		return fmt.Errorf("error updloading meta file: %w", err)
+		return err
 	}
 	key := createMetaObjectKey(meta.MetaRef.Ref)
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
 
 // GetBlock downloads the blocks from objectStorage and returns the downloaded block
-func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (Block, error) {
+func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error) {
 	period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
 	if err != nil {
-		return Block{}, fmt.Errorf("error while period lookup: %w", err)
+		return LazyBlock{}, fmt.Errorf("error while period lookup: %w", err)
 	}
 	objectClient := b.periodicObjectClients[period]
 	readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
 	if err != nil {
-		return Block{}, fmt.Errorf("error while fetching object from storage: %w", err)
+		return LazyBlock{}, fmt.Errorf("error while fetching object from storage: %w", err)
 	}
-	return Block{
+	return LazyBlock{
 		BlockRef: reference,
 		Data:     readCloser,
 	}, nil
@@ -228,17 +233,13 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 
 		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
 		if err != nil {
-			return fmt.Errorf("error updloading block file: %w", err)
+			return fmt.Errorf("error uploading block file: %w", err)
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
-		data, err := io.ReadAll(block.Data)
+		err = objectClient.PutObject(ctx, key, block.Data)
 		if err != nil {
-			return fmt.Errorf("error while reading object data: %w", err)
-		}
-		err = objectClient.PutObject(ctx, key, bytes.NewReader(data))
-		if err != nil {
-			return fmt.Errorf("error updloading block file: %w", err)
+			return fmt.Errorf("error uploading block file: %w", err)
 		}
 		block.BlockPath = key
 		results[idx] = block
@@ -279,13 +280,9 @@ func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client 
 	if err != nil {
 		return Meta{}, fmt.Errorf("error downloading meta file %s : %w", metaRef.FilePath, err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer reader.Close()
 
-	buf, err := io.ReadAll(reader)
-	if err != nil {
-		return Meta{}, fmt.Errorf("error reading meta file %s: %w", metaRef.FilePath, err)
-	}
-	err = json.Unmarshal(buf, &meta)
+	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
 		return Meta{}, fmt.Errorf("error unmarshalling content of meta file %s: %w", metaRef.FilePath, err)
 	}
