@@ -52,10 +52,12 @@ jobs:
         continue-on-error: true
         id: should-comment
         run: |
-          if [[ $(wc -l < trivy.txt) -gt 1 ]]; then exit 0; fi
-          exit 1
+          if [[ $(wc -l < trivy.txt) -gt 1 ]]; then
+            echo "\nTo see more details on these vulnerabilities, and how/where to fix them, please run `make scan-vulnerabilities` on your branch. If these were not introduced by your PR, please considering fixing them in `main` via a subsequent PR. Thanks!" >> trivy.txt
+            exit 0;
+          fi
 
-          echo "\nTo see more details on these vulnerabilities, and how/where to fix them, please run `make scan-vulnerabilities` on your branch. If these were not introduced by your PR, please considering fixing them in `main` via a subsequent PR. Thanks!" >> trivy.txt
+          exit 1
 
       - name: Comment on PR with Trivy scan results
         uses: mshick/add-pr-comment@v2
