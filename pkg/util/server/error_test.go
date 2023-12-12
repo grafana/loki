@@ -9,13 +9,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 	storage_errors "github.com/grafana/loki/pkg/storage/errors"
@@ -60,7 +59,7 @@ func Test_writeError(t *testing.T) {
 			require.Equal(t, tt.msg, string(b[:len(b)-1]))
 		})
 
-		t.Run(tt.name+"-roundtrip", func(t *testing.T){
+		t.Run(tt.name+"-roundtrip", func(t *testing.T) {
 			status := WrapError(tt.err)
 			unwrappedErr := UnwrapError(status)
 

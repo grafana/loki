@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"google.golang.org/grpc/codes"
+
 	//"google.golang.org/grpc/status"
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
@@ -62,7 +63,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
 		return http.StatusBadRequest, err
-	case isRPC && int(s.Code())/100 == 4:
+	case isRPC && (int(s.Code())/100 == 4 || int(s.Code())/100 == 5):
 		return int(s.Code()), errors.New(s.Message())
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
@@ -73,7 +74,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 }
 
 // WrapError wraps an error in a protobuf status.
-func WrapError(err error) *rpc.Status{
+func WrapError(err error) *rpc.Status {
 	code, err := ClientHTTPStatusAndError(err)
 	return status.New(codes.Code(code), err.Error()).Proto()
 }
