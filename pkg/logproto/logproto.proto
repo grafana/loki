@@ -162,7 +162,7 @@ message TailRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  bytes plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
+  Plan plan = 6 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/plan.QueryPlan"];
 }
 
 message TailResponse {

@@ -51,7 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 
 	cfg.ShardAggregations = []string{}
-	f.Var(&cfg.ShardAggregations, "querier.shard-aggregation",
+	f.Var(&cfg.ShardAggregations, "querier.shard-aggregations",
 		"A comma-separated list of LogQL vector and range aggregations that should be sharded")
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
@@ -66,7 +66,7 @@ func (cfg *Config) Validate() error {
 	}
 
 	if len(cfg.ShardAggregations) > 0 && !cfg.ShardedQueries {
-		return errors.New("shard_aggregation requires parallelise_shardable_queries=true")
+		return errors.New("shard_aggregations requires parallelise_shardable_queries=true")
 	}
 
 	return nil

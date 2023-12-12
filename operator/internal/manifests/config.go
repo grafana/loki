@@ -47,9 +47,9 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 			Name:   lokiConfigMapName(opt.Name),
 			Labels: commonLabels(opt.Name),
 		},
-		BinaryData: map[string][]byte{
-			config.LokiConfigFileName:        c,
-			config.LokiRuntimeConfigFileName: rc,
+		Data: map[string]string{
+			config.LokiConfigFileName:        string(c),
+			config.LokiRuntimeConfigFileName: string(rc),
 		},
 	}, sha1C, nil
 }
