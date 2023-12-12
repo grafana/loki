@@ -14,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -60,7 +59,7 @@ type Memcached struct {
 	// there are two entry points that can close these channels, when client calls
 	// .Stop() explicitly, or passed context is cancelled.
 	// So `Stop()` will make sure it's not closing the channels that are already closed, which may cause a panic.
-	stopped atomic.Bool
+	stopped sync.Once
 
 	logger log.Logger
 
@@ -290,11 +289,10 @@ func (c *Memcached) Stop() {
 // Assumes c.inputCh, c.closed channels are non-nil
 // Go routine safe and idempotent.
 func (c *Memcached) closeAndStop() {
-	if !c.stopped.Load() {
+	c.stopped.Do(func() {
 		close(c.inputCh)
 		close(c.closed)
-		c.stopped.Store(true)
-	}
+	})
 }
 
 func (c *Memcached) GetCacheType() stats.CacheType {
