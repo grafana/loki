@@ -62,7 +62,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
 		return http.StatusBadRequest, err
-	case isRPC && s.Code() == http.StatusBadRequest:
+	case isRPC && int(s.Code())/100 == 4:
 		return int(s.Code()), errors.New(s.Message())
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
