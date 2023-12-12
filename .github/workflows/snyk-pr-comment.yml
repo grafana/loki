@@ -39,6 +39,8 @@ jobs:
           if [[ $(wc -l < snyk.txt) -gt 1 ]]; then exit 0; fi
           exit 1
 
+          echo "\nTo see more details on these vulnerabilities, and how/where to fix them, please run `make scan-vulnerabilities` on your branch. If these were not introduced by your PR, please considering fixing them in `main` via a subsequent PR. Thanks!" >> snyk.txt
+
       - name: Comment on PR with Snyk scan results
         uses: mshick/add-pr-comment@v2
         if: ${{ steps.should-comment.outcome == 'success' }}
