@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -41,6 +42,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"path/filepath"
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
@@ -489,9 +492,29 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
+		//TODO: Use the same constants as the block_downloader
+		archivePath := filepath.Join(c.cfg.WorkingDirectory, storedBlock.BlockPath[strings.LastIndex(storedBlock.BlockPath, "/")+1:])
+		archiveFile, err := os.Create(archivePath)
+		if err != nil {
+			return err
+		}
+		defer archiveFile.Close()
+		defer func() {
+			os.Remove(archivePath)
+			// todo log err
+		}()
+		v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
+		blockToUpload := bloomshipper.Block{}
+		blockToUpload.StartTimestamp = storedBlock.StartTimestamp
+		blockToUpload.EndTimestamp = storedBlock.EndTimestamp
+		blockToUpload.BlockPath = storedBlock.BlockPath
+		blockToUpload.BlockRef = storedBlock.BlockRef
+		//TODO: I don't think we need any more, but we should double check
+		blockToUpload.Data = archiveFile
+
 		// Do not change the signature of PutBlocks yet.
 		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
-		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
+		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
 		if err != nil {
 			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
 			return err
