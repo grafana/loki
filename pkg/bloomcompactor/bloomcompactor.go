@@ -499,8 +499,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 		defer archiveFile.Close()
 		defer func() {
-			os.Remove(archivePath)
-			// todo log err
+			err = os.Remove(archivePath)
+			if err != nil {
+				level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
+			}
 		}()
 		err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
 		if err != nil {
@@ -512,7 +514,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		blockToUpload.EndTimestamp = storedBlock.EndTimestamp
 		blockToUpload.MinFingerprint = storedBlock.MinFingerprint
 		blockToUpload.MaxFingerprint = storedBlock.MaxFingerprint
-		blockToUpload.BlockPath = storedBlock.BlockPath
 		blockToUpload.IndexPath = storedBlock.IndexPath
 		blockToUpload.Checksum = storedBlock.Checksum
 		blockToUpload.TenantID = storedBlock.TenantID
