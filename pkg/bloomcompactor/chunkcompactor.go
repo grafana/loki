@@ -160,25 +160,69 @@ func compactNewChunks(
 		return bloomshipper.Block{}, err
 	}
 
-	blooms := make([]v1.SeriesWithBloom, len(job.seriesMetas))
-
-	for _, seriesMeta := range job.seriesMetas {
-		// Get chunks data from list of chunkRefs
-		chks, err := storeClient.GetChunks(ctx, makeChunkRefs(seriesMeta.chunkRefs, job.tenantID, seriesMeta.seriesFP))
-		if err != nil {
-			return bloomshipper.Block{}, err
-		}
-
-		bloom := buildBloomFromSeries(seriesMeta, fpRate, bt, chks)
-		blooms = append(blooms, bloom)
-	}
+	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, fpRate)
 
 	// Build and upload bloomBlock to storage
-	block, err := buildBlockFromBlooms(ctx, logger, builder, v1.NewSliceIter(blooms), job)
+	block, err := buildBlockFromBlooms(ctx, logger, builder, bloomIter, job)
 	if err != nil {
 		level.Error(logger).Log("msg", "building bloomBlocks", "err", err)
 		return bloomshipper.Block{}, err
 	}
 
 	return block, nil
+}
+
+type lazyBloomBuilder struct {
+	ctx    context.Context
+	metas  v1.Iterator[seriesMeta]
+	tenant string
+	client chunkClient
+	bt     compactorTokenizer
+	fpRate float64
+
+	cur v1.SeriesWithBloom // retured by At()
+	err error              // returned by Err()
+}
+
+// newLazyBloomBuilder returns an iterator that yields v1.SeriesWithBloom
+// which are used by the blockBuilder to write a bloom block.
+// We use an interator to avoid loading all blooms into memory first, before
+// building the block.
+func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, fpRate float64) *lazyBloomBuilder {
+	return &lazyBloomBuilder{
+		ctx:    ctx,
+		metas:  v1.NewSliceIter(job.seriesMetas),
+		client: client,
+		tenant: job.tenantID,
+		bt:     bt,
+		fpRate: fpRate,
+	}
+}
+
+func (it *lazyBloomBuilder) Next() bool {
+	if !it.metas.Next() {
+		it.err = io.EOF
+		it.cur = v1.SeriesWithBloom{}
+		return false
+	}
+	meta := it.metas.At()
+
+	// Get chunks data from list of chunkRefs
+	chks, err := it.client.GetChunks(it.ctx, makeChunkRefs(meta.chunkRefs, it.tenant, meta.seriesFP))
+	if err != nil {
+		it.err = err
+		it.cur = v1.SeriesWithBloom{}
+		return false
+	}
+
+	it.cur = buildBloomFromSeries(meta, it.fpRate, it.bt, chks)
+	return true
+}
+
+func (it *lazyBloomBuilder) At() v1.SeriesWithBloom {
+	return it.cur
+}
+
+func (it *lazyBloomBuilder) Err() error {
+	return it.err
 }
