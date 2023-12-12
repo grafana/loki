@@ -69,7 +69,9 @@ services:
 
 ## Usage
 
-**Note**: use either `<label>...</label>` or `extra_labels` to set at least one label.
+{{% admonition type="note" %}}
+Use either `<label>...</label>` or `extra_labels` to set at least one label.
+{{% /admonition %}}
 
 In your Fluentd configuration, add `@type loki`. Additional configuration is optional. Default values would look like this:
 

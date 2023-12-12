@@ -70,7 +70,7 @@ type processor interface {
 	// This method must react on context being finished, and stop when that happens.
 	//
 	// processorManager (not processor) is responsible for starting as many goroutines as needed for each connection.
-	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string)
+	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address, workerID string)
 
 	// notifyShutdown notifies the remote query-frontend or query-scheduler that the querier is
 	// shutting down.

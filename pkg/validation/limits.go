@@ -98,7 +98,8 @@ type Limits struct {
 	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
 	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
-	MaxQueriersPerTenant       int              `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueriersPerTenant       uint             `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueryCapacity           float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
 	QueryReadyIndexNumDays     int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
 	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
@@ -190,6 +191,7 @@ type Limits struct {
 	BloomNGramSkip                           int           `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
 	BloomFalsePositiveRate                   float64       `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
 	BloomGatewayBlocksDownloadingParallelism int           `yaml:"bloom_gateway_blocks_downloading_parallelism" json:"bloom_gateway_blocks_downloading_parallelism"`
+	BloomGatewayCacheKeyInterval             time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval"`
 
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
@@ -276,7 +278,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxStatsCacheFreshness.Set("10m")
 	f.Var(&l.MaxStatsCacheFreshness, "frontend.max-stats-cache-freshness", "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature (default).")
 
-	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.UintVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.Float64Var(&l.MaxQueryCapacity, "frontend.max-query-capacity", 0, "How much of the available query capacity (\"querier\" components in distributed mode, \"read\" components in SSD mode) can be used by a single tenant. Allowed values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant to use half of the available queriers for processing the query workload. If set to 0, query capacity is determined by frontend.max-queriers-per-tenant. When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are configured, smaller value of the resulting querier replica count is considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas * frontend.max-query-capacity)). *All* queriers will handle requests for the tenant if neither limits are applied. This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL. Use this feature in a multi-tenant setup where you need to limit query capacity for certain tenants.")
 	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
@@ -311,6 +314,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 0, "Skip factor for the n-grams created when computing blooms from log lines.")
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
 	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
+	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
@@ -366,6 +370,16 @@ func (l *Limits) Validate() error {
 
 	if l.CompactorDeletionEnabled {
 		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
+	}
+
+	if l.MaxQueryCapacity < 0 {
+		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 0 as it is configured to a value less than 0")
+		l.MaxQueryCapacity = 0
+	}
+
+	if l.MaxQueryCapacity > 1 {
+		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 1 as it is configured to a value greater than 1")
+		l.MaxQueryCapacity = 1
 	}
 
 	return nil
@@ -502,8 +516,13 @@ func (o *Overrides) MaxQueryRange(_ context.Context, userID string) time.Duratio
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
-func (o *Overrides) MaxQueriersPerUser(userID string) int {
+func (o *Overrides) MaxQueriersPerUser(userID string) uint {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
+// MaxQueryCapacity returns how much of the available query capacity can be used by this user..
+func (o *Overrides) MaxQueryCapacity(userID string) float64 {
+	return o.getOverridesForUser(userID).MaxQueryCapacity
 }
 
 // QueryReadyIndexNumDays returns the number of days for which we have to be query ready for a user.
@@ -792,6 +811,10 @@ func (o *Overrides) BloomGatewayShardSize(userID string) int {
 
 func (o *Overrides) BloomGatewayBlocksDownloadingParallelism(userID string) int {
 	return o.getOverridesForUser(userID).BloomGatewayBlocksDownloadingParallelism
+}
+
+func (o *Overrides) BloomGatewayCacheKeyInterval(userID string) time.Duration {
+	return o.getOverridesForUser(userID).BloomGatewayCacheKeyInterval
 }
 
 func (o *Overrides) BloomGatewayEnabled(userID string) bool {

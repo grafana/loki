@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
@@ -37,10 +36,6 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 			MaxTasksEnqueuedPerTenant: 20,
 		},
 	}, blockClient, overrides, log.NewNopLogger(), prometheus.DefaultRegisterer)
-	stoppedWorkersCount := atomic.NewInt32(0)
-	downloader.onWorkerStopCallback = func() {
-		stoppedWorkersCount.Inc()
-	}
 	require.NoError(t, err)
 	blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
 	downloadedBlocks := make(map[string]any, len(blockReferences))
@@ -63,10 +58,13 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 	}
 	require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
 
+	// We want all workers to be connected to the queue
+	require.Equal(t, workersCount, int(downloader.queue.GetConnectedConsumersMetric()))
+
 	downloader.stop()
-	require.Eventuallyf(t, func() bool {
-		return stoppedWorkersCount.Load() == int32(workersCount)
-	}, 1*time.Second, 10*time.Millisecond, "expected all %d workers to be stopped", workersCount)
+
+	// We want all workers to be disconnected from the queue
+	require.Equal(t, 0, int(downloader.queue.GetConnectedConsumersMetric()))
 }
 
 // creates fake blocks and returns map[block-path]Block and mockBlockClient
