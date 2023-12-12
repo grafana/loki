@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Add ciliumnetworkpolicies.
 
+## 5.41.1
+
+- [FEATURE] Allow topology spread constraints for Loki read deployment component.
+
 ## 5.41.0
 
 - [CHANGE] Changed version of Loki to 2.9.3
