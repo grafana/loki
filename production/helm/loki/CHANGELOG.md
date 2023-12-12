@@ -20,6 +20,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.41.1
 
 - [FEATURE] Allow topology spread constraints for Loki read deployment component.
+## 5.41.1
+
+- [FEATURE] Add support for defining an s3 backoff config.
 
 ## 5.41.0
 
