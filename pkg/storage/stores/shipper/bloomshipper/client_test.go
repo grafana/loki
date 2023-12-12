@@ -158,7 +158,7 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 			bloomClient := createClient(t)
 			directory := bloomClient.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
 			file := filepath.Join(directory, data.expectedFilePath)
-			err := os.MkdirAll(file[:strings.LastIndex(file, delimiter)], 0755)
+			err := os.MkdirAll(file[:strings.LastIndex(file, Delimiter)], 0755)
 			require.NoError(t, err)
 			err = os.WriteFile(file, []byte("dummy content"), 0700)
 			require.NoError(t, err)
@@ -528,7 +528,7 @@ func createMetaInStorage(t *testing.T, folder string, tableName string, tenant s
 	metaChecksum := rand.Uint32()
 	metaFileName := fmt.Sprintf("%x-%x-%v-%v-%x", minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum)
 	metaFilePath := filepath.Join(rootFolder, tableName, tenant, metasFolder, metaFileName)
-	err := os.MkdirAll(filepath.Join(folder, metaFilePath[:strings.LastIndex(metaFilePath, delimiter)]), 0700)
+	err := os.MkdirAll(filepath.Join(folder, metaFilePath[:strings.LastIndex(metaFilePath, Delimiter)]), 0700)
 	require.NoError(t, err)
 	meta := createMetaEntity(tenant, tableName, minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum, metaFilePath)
 

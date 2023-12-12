@@ -492,7 +492,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
-		//TODO: Use the same constants as the block_downloader
 		archivePath := filepath.Join(c.cfg.WorkingDirectory, storedBlock.BlockPath[strings.LastIndex(storedBlock.BlockPath, "/")+1:])
 		archiveFile, err := os.Create(archivePath)
 		if err != nil {
@@ -503,13 +502,23 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			os.Remove(archivePath)
 			// todo log err
 		}()
-		v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
+		err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
+		if err != nil {
+			level.Error(logger).Log("msg", "creating bloom block archive file", "err", err)
+			return err
+		}
 		blockToUpload := bloomshipper.Block{}
 		blockToUpload.StartTimestamp = storedBlock.StartTimestamp
 		blockToUpload.EndTimestamp = storedBlock.EndTimestamp
+		blockToUpload.MinFingerprint = storedBlock.MinFingerprint
+		blockToUpload.MaxFingerprint = storedBlock.MaxFingerprint
 		blockToUpload.BlockPath = storedBlock.BlockPath
+		blockToUpload.IndexPath = storedBlock.IndexPath
+		blockToUpload.Checksum = storedBlock.Checksum
+		blockToUpload.TenantID = storedBlock.TenantID
+		blockToUpload.TableName = storedBlock.TableName
+		blockToUpload.Ref = storedBlock.Ref
 		blockToUpload.BlockRef = storedBlock.BlockRef
-		//TODO: I don't think we need any more, but we should double check
 		blockToUpload.Data = archiveFile
 
 		// Do not change the signature of PutBlocks yet.

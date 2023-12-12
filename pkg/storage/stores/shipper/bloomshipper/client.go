@@ -25,7 +25,7 @@ const (
 	rootFolder            = "bloom"
 	metasFolder           = "metas"
 	bloomsFolder          = "blooms"
-	delimiter             = "/"
+	Delimiter             = "/"
 	fileNamePartDelimiter = "-"
 )
 
@@ -137,7 +137,7 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, delimiter)
+			list, _, err := periodClient.List(ctx, prefix, Delimiter)
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
@@ -177,12 +177,12 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 func createBlockObjectKey(meta Ref) string {
 	blockParentFolder := fmt.Sprintf("%x-%x", meta.MinFingerprint, meta.MaxFingerprint)
 	filename := fmt.Sprintf("%v-%v-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
-	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, bloomsFolder, blockParentFolder, filename}, delimiter)
+	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, bloomsFolder, blockParentFolder, filename}, Delimiter)
 }
 
 func createMetaObjectKey(meta Ref) string {
 	filename := fmt.Sprintf("%x-%x-%v-%v-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
-	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, metasFolder, filename}, delimiter)
+	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, metasFolder, filename}, Delimiter)
 }
 
 func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime, error) {
@@ -291,7 +291,7 @@ func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client 
 
 // todo cover with tests
 func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef, error) {
-	fileName := objectKey[strings.LastIndex(objectKey, delimiter)+1:]
+	fileName := objectKey[strings.LastIndex(objectKey, Delimiter)+1:]
 	parts := strings.Split(fileName, fileNamePartDelimiter)
 	if len(parts) != 5 {
 		return MetaRef{}, fmt.Errorf("%s filename parts count must be 5 but was %d: [%s]", objectKey, len(parts), strings.Join(parts, ", "))
