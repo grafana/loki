@@ -67,18 +67,19 @@ func GetInstanceWithTokenRange(id string, instances []ring.InstanceDesc) Instanc
 		return InstancesWithTokenRange{}
 	}
 
-	n := len(instances)
+	i := uint32(idx)
+	n := uint32(len(instances))
 	step := math.MaxUint32 / n
 
-	minToken := uint32(step * idx)
-	maxToken := uint32(step*idx + step - 1)
-	if idx == n-1 {
+	minToken := step * i
+	maxToken := step*i + step - 1
+	if i == n-1 {
 		// extend the last token tange to MaxUint32
 		maxToken = math.MaxUint32
 	}
 
 	return InstancesWithTokenRange{
-		{MinToken: minToken, MaxToken: maxToken, Instance: instances[idx]},
+		{MinToken: minToken, MaxToken: maxToken, Instance: instances[i]},
 	}
 }
 
