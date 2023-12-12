@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	ErrMemcachedClosedByClient = errors.New("memcached is closed by client")
+	ErrMemcachedStoppedByClient = errors.New("cache is stopped by client")
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -203,7 +203,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 				workerErr = ctx.Err()
 				return
 			case <-c.closed:
-				workerErr = ErrMemcachedClosedByClient
+				workerErr = ErrMemcachedStoppedByClient
 				return
 			default:
 				if c.testFetchDelay != nil {
