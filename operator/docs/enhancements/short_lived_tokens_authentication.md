@@ -90,6 +90,37 @@ $ az identity create --name $IDENTITY_NAME --resource-group $RESOURCE_GROUP_NAME
 $ az identity federated-credential create --name openshift-logging-lokistack --identity-name $IDENTITY_NAME --resource-group $RESOURCE_GROUP_NAME --issuer $CLUSTER_ISSUER_URL --subject system:serviceaccount:openshift-logging:lokistack-dev --audiences $AUDIENCES
 ```
 
+3. Create custom role that provides access to Azure Storage:
+
+```shell
+$ az role definition create --role-definition '{
+  "Name": "Loki Operator",
+  "IsCustom": true,
+  "Description": "Can access content on Azure Storage containers.",
+  "Actions": [
+    "Microsoft.Storage/*/read",
+    "Microsoft.Storage/*/delete",
+    "Microsoft.Storage/*/write"
+  ],
+  "NotActions": [],
+  "AssignableScopes": [
+    "/subscriptions/$SUBSCRIPTION_ID"
+  ]
+}'
+```
+
+4. Assign the above managed identity to the above custom role:
+
+```shell
+$ az role assignment create --assignee "$MANAGED_IDENTITY_ID" --role "Loki Operator" --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME"
+```
+
+__Note:__ To lookup the managed identity id you can use the following command:
+
+```shell
+$ az ad sp list --all --filter "servicePrincipalType eq 'ManagedIdentity'"
+```
+
 __Note:__ To enable the required federated credential scenario in the above command the subject needs be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The issuer and audiences are related to the Kubernetes cluster hosting LokiStack.
 
 #### AWS Secure Token Service
