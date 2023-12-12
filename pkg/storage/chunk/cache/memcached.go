@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	ErrMemcachedClosed = errors.New("memcached is closed")
+	ErrMemcachedClosedByClient = errors.New("memcached is closed by client")
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -63,6 +63,9 @@ type Memcached struct {
 	stopped atomic.Bool
 
 	logger log.Logger
+
+	// NOTE: testFetchDelay should be used only for testing. See `SetTestFetchDelay()` method for more details.
+	testFetchDelay chan struct{}
 }
 
 // NewMemcached makes a new Memcached.
@@ -106,7 +109,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 					batchID: input.batchID,
 				}
 				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
-				// NOTE: This check is needed because goutines submitting work via `inputCh` may exit in-between because of context cancellation or timeout. This helps to close these worker goroutines to exit without hanging around.
+				// NOTE: This check is needed because goroutines submitting work via `inputCh` may exit in-between because of context cancellation or timeout. This helps to close these worker goroutines to exit without hanging around.
 				select {
 				case <-c.closed:
 					return
@@ -200,8 +203,13 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 				workerErr = ctx.Err()
 				return
 			case <-c.closed:
-				workerErr = ErrMemcachedClosed
+				workerErr = ErrMemcachedClosedByClient
+				return
 			default:
+				if c.testFetchDelay != nil {
+					<-c.testFetchDelay
+				}
+
 				c.inputCh <- &work{
 					keys:     batchKeys,
 					ctx:      ctx,
@@ -248,10 +256,6 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		}
 	}
 
-	if workerErr != nil {
-		err = workerErr
-	}
-
 	return
 }
 
@@ -295,6 +299,16 @@ func (c *Memcached) closeAndStop() {
 
 func (c *Memcached) GetCacheType() stats.CacheType {
 	return c.cacheType
+}
+
+// Warning: SetTestFetchDelay should be used only for testing.
+// To introduce artifical delay between each batch fetch.
+// Helpful to test if each batch is respecting the `ctx` cancelled or `Stop()` called
+// in-between each batch
+// NOTE: It is exported method instead of internal method because,
+// test's uses `cache.SetTestFetchDelay` due to some cyclic dependencies in this package
+func (c *Memcached) SetTestFetchDelay(ch chan struct{}) {
+	c.testFetchDelay = ch
 }
 
 // HashKey hashes key into something you can store in memcached.

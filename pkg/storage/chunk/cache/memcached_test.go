@@ -108,13 +108,15 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 		}, client, "test", nil, log.NewNopLogger(), "test")
 
 		var (
-			wg               sync.WaitGroup
-			wait             = make(chan struct{})
-			ctx, ctxCancel   = context.WithCancel(context.Background())
-			numKeys          = 1500
-			waitBeforeCancel = 2 * time.Millisecond
+			wg              sync.WaitGroup
+			wait            = make(chan struct{})
+			ctx, ctxCancel  = context.WithCancel(context.Background())
+			numKeys         = 1500
+			waitBeforeFetch = 100 * time.Millisecond
+			delayFetch      = make(chan struct{})
 		)
 
+		m.SetTestFetchDelay(delayFetch)
 		wg.Add(1)
 
 		// This goroutine is going to do some real "work" (writing to `c.inputCh`). We then cancel passed context closing `c.inputCh`.
@@ -134,8 +136,15 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 			})
 		}()
 
-		close(wait)                                               // start the fetching
-		go func() { time.Sleep(waitBeforeCancel); ctxCancel() }() // cancel after fetching begins
+		close(wait) // start the fetching
+
+		go func() {
+			// this waits for at least one batch fetch and cancel after fetching begins
+			time.Sleep(waitBeforeFetch)
+			close(delayFetch) // should have fetched **at least** one batch after closing this.
+			ctxCancel()
+		}()
+
 		wg.Wait()
 		require.NotEqual(t, client.keysFetchedCount, 0)   // should have fetched some keys.
 		require.Less(t, client.keysFetchedCount, numKeys) // but not all the keys because ctx cancelled in-between.
