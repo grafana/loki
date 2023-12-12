@@ -9,7 +9,9 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	//"google.golang.org/grpc/status"
+	"github.com/gogo/googleapis/google/rpc"
+	"github.com/gogo/status"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 	storage_errors "github.com/grafana/loki/pkg/storage/errors"
@@ -60,10 +62,22 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
 		return http.StatusBadRequest, err
+	case isRPC && s.Code() == http.StatusBadRequest:
+		return int(s.Code()), errors.New(s.Message())
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
 			return int(grpcErr.Code), errors.New(string(grpcErr.Body))
 		}
 		return http.StatusInternalServerError, err
 	}
+}
+
+// WrapError wraps an error in a protobuf status.
+func WrapError(err error) *rpc.Status{
+	code, err := ClientHTTPStatusAndError(err)
+	return status.New(codes.Code(code), err.Error()).Proto()
+}
+
+func UnwrapError(s *rpc.Status) error {
+	return status.ErrorProto(s)
 }

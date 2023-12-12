@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -187,7 +188,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 
 func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 	if res.Status != nil && res.Status.Code != int32(rpc.OK) {
-		return nil, status.ErrorProto(res.Status)
+		return nil , server.UnwrapError(res.Status)
 	}
 
 	switch concrete := res.Response.(type) {
@@ -245,6 +246,13 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	}
 
 	return p, nil
+}
+
+// QueryResponseWrapError wraps an error in the QueryResponse protobuf.
+func QueryResponseWrapError(err error) *QueryResponse {
+	return &QueryResponse{
+		Status: server.WrapError(err),
+	}
 }
 
 func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {

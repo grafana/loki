@@ -56,9 +56,19 @@ func Test_writeError(t *testing.T) {
 			WriteError(tt.err, rec)
 			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
 			b, err := io.ReadAll(rec.Result().Body)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.msg, string(b[:len(b)-1]))
+		})
+
+		t.Run(tt.name+"-roundtrip", func(t *testing.T){
+			status := WrapError(tt.err)
+			unwrappedErr := UnwrapError(status)
+
+			rec := httptest.NewRecorder()
+			WriteError(unwrappedErr, rec)
+			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
+			b, err := io.ReadAll(rec.Result().Body)
+			require.NoError(t, err)
 			require.Equal(t, tt.msg, string(b[:len(b)-1]))
 		})
 	}
