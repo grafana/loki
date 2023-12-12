@@ -212,6 +212,10 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 	logger := util_log.WithContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
+	if len(t.index) == 0 {
+		return nil
+	}
+
 	// shortcut; if there's only one index, there's no need for bounded concurrency
 	if len(t.index) == 1 {
 		for i := range t.index {
