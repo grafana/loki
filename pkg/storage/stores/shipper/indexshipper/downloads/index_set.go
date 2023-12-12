@@ -224,8 +224,8 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 		}
 	}
 
-	var g *errgroup.Group
-	g, ctx = errgroup.WithContext(ctx)
+	//nolint:ineffassign,staticcheck
+	g, ctx := errgroup.WithContext(ctx)
 	if t.maxConcurrent == 0 {
 		panic("maxConcurrent cannot be 0, indexSet is being initialized without setting maxConcurrent")
 	}
