@@ -125,18 +125,90 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	require.Equal(t, indexPath, compactedBlock.IndexPath)
 }
 
+func TestLazyBloomBuilder(t *testing.T) {
+	label := labels.FromStrings("foo", "bar")
+	fp1 := model.Fingerprint(100)
+	fp2 := model.Fingerprint(999)
+	fp3 := model.Fingerprint(200)
+
+	chunkRef1 := index.ChunkMeta{
+		Checksum: 1,
+		MinTime:  1,
+		MaxTime:  99,
+	}
+
+	chunkRef2 := index.ChunkMeta{
+		Checksum: 2,
+		MinTime:  10,
+		MaxTime:  999,
+	}
+
+	seriesMetas := []seriesMeta{
+		{
+			seriesFP:  fp1,
+			seriesLbs: label,
+			chunkRefs: []index.ChunkMeta{chunkRef1},
+		},
+		{
+			seriesFP:  fp2,
+			seriesLbs: label,
+			chunkRefs: []index.ChunkMeta{chunkRef1, chunkRef2},
+		},
+		{
+			seriesFP:  fp3,
+			seriesLbs: label,
+			chunkRefs: []index.ChunkMeta{chunkRef1, chunkRef1, chunkRef2},
+		},
+	}
+
+	job := NewJob(userID, table, indexPath, seriesMetas)
+
+	mbt := &mockBloomTokenizer{}
+	mcc := &mockChunkClient{}
+
+	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, fpRate)
+
+	// first seriesMeta has 1 chunks
+	require.True(t, it.Next())
+	require.Equal(t, 1, mcc.requestCount)
+	require.Equal(t, 1, mcc.chunkCount)
+	require.Equal(t, fp1, it.At().Series.Fingerprint)
+
+	// first seriesMeta has 2 chunks
+	require.True(t, it.Next())
+	require.Equal(t, 2, mcc.requestCount)
+	require.Equal(t, 3, mcc.chunkCount)
+	require.Equal(t, fp2, it.At().Series.Fingerprint)
+
+	// first seriesMeta has 3 chunks
+	require.True(t, it.Next())
+	require.Equal(t, 3, mcc.requestCount)
+	require.Equal(t, 6, mcc.chunkCount)
+	require.Equal(t, fp3, it.At().Series.Fingerprint)
+
+	// interator is done
+	require.False(t, it.Next())
+	require.Error(t, io.EOF, it.Err())
+	require.Equal(t, v1.SeriesWithBloom{}, it.At())
+}
+
 type mockBloomTokenizer struct {
 	chunks []chunk.Chunk
 }
 
 func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(_ *v1.SeriesWithBloom, c []chunk.Chunk) error {
-	mbt.chunks = c
+	mbt.chunks = append(mbt.chunks, c...)
 	return nil
 }
 
-type mockChunkClient struct{}
+type mockChunkClient struct {
+	requestCount int
+	chunkCount   int
+}
 
-func (mcc *mockChunkClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chunk.Chunk, error) {
+func (mcc *mockChunkClient) GetChunks(_ context.Context, chks []chunk.Chunk) ([]chunk.Chunk, error) {
+	mcc.requestCount++
+	mcc.chunkCount += len(chks)
 	return nil, nil
 }
 
@@ -147,6 +219,6 @@ func (pbb *mockPersistentBlockBuilder) BuildFrom(_ v1.Iterator[v1.SeriesWithBloo
 	return 0, nil
 }
 
-func (pbb *mockPersistentBlockBuilder) Data() (io.ReadCloser, error) {
+func (pbb *mockPersistentBlockBuilder) Data() (io.ReadSeekCloser, error) {
 	return nil, nil
 }
