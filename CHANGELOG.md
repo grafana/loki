@@ -8,6 +8,17 @@
 
 ### All Changes
 
+## 2.8.7 (2023-12-12)
+
+#### Loki
+
+##### Security
+
+* Upgrade `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` to `v0.44.0`
+* Upgrade `github.com/docker/distribution` to `v2.8.2-beta.1`
+* Upgrade `github.com/docker/docker` to `v24.0.7`
+* Upgrade base alpine image to `3.18.5`
+
 ## 2.8.6 (2023-10-17)
 
 #### Loki
