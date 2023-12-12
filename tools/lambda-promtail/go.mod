@@ -11,7 +11,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/grafana/dskit v0.0.0-20231017083947-7b512eb54d47
-	github.com/grafana/loki v1.6.2-0.20231025205147-7fa2f6ea9ef4
+	github.com/grafana/loki bfc231242772
 	github.com/prometheus/common v0.44.0
 	github.com/stretchr/testify v1.8.4
 )
