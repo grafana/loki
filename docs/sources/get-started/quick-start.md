@@ -7,7 +7,7 @@ description: How to create and use a simple local Loki cluster for testing and e
 
 # Quick start to run Loki locally
 
-If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in a [scalable monolithic deployment](https://grafana.com/docs/loki/latest/get-started/deployment-modes/#simple-scalable) mode and includes a sample application to generate logs.
+If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in a [scalable monolithic deployment](https://grafana.com/docs/loki/latest/get-started/deployment-modes/#monolithic-mode) mode and includes a sample application to generate logs.
 
 The Docker Compose configuration instantiates the following components, each in its own container:
 
