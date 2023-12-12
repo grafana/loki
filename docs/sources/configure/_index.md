@@ -842,6 +842,11 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
+# A comma-separated list of LogQL vector and range aggregations that should be
+# sharded
+# CLI flag: -querier.shard-aggregations
+[shard_aggregations: <string> | default = ""]
+
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
 [cache_index_stats_results: <boolean> | default = false]

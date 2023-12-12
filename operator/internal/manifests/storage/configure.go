@@ -12,28 +12,19 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-const (
-	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
-	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
-	// GCSFileName is the file containing the Google credentials for authentication
-	GCSFileName = "key.json"
-
-	secretDirectory  = "/etc/storage/secrets"
-	storageTLSVolume = "storage-tls"
-	caDirectory      = "/etc/storage/ca"
-)
-
 // ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
 // based on the object storage type. Currently supported amendments:
+// - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretGCS:
-		return configureDeployment(d, opts.SecretName)
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
+		return configureDeployment(d, opts)
 	case lokiv1.ObjectStorageSecretS3:
-		if opts.TLS == nil {
-			return nil
+		err := configureDeployment(d, opts)
+		if err != nil {
+			return err
 		}
 		return configureDeploymentCA(d, opts.TLS)
 	default:
@@ -43,15 +34,16 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 
 // ConfigureStatefulSet appends additional pod volumes and container env vars, args, volume mounts
 // based on the object storage type. Currently supported amendments:
+// - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
 func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretGCS:
-		return configureStatefulSet(d, opts.SecretName)
+	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
+		return configureStatefulSet(d, opts)
 	case lokiv1.ObjectStorageSecretS3:
-		if opts.TLS == nil {
-			return nil
+		if err := configureStatefulSet(d, opts); err != nil {
+			return err
 		}
 		return configureStatefulSetCA(d, opts.TLS)
 	default:
@@ -59,10 +51,10 @@ func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 	}
 }
 
-// ConfigureDeployment merges a GCS Object Storage volume into the deployment spec.
-// With this, the deployment will expose an environment variable for Google authentication.
-func configureDeployment(d *appsv1.Deployment, secretName string) error {
-	p := ensureCredentialsForGCS(&d.Spec.Template.Spec, secretName)
+// ConfigureDeployment merges the object storage secret volume into the deployment spec.
+// With this, the deployment will expose credentials specific environment variables.
+func configureDeployment(d *appsv1.Deployment, opts Options) error {
+	p := ensureObjectStoreCredentials(&d.Spec.Template.Spec, opts)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
@@ -73,6 +65,10 @@ func configureDeployment(d *appsv1.Deployment, secretName string) error {
 
 // ConfigureDeploymentCA merges a S3 CA ConfigMap volume into the deployment spec.
 func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
+	if tls == nil {
+		return nil
+	}
+
 	p := ensureCAForS3(&d.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
@@ -82,10 +78,10 @@ func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
 	return nil
 }
 
-// ConfigureStatefulSet merges a GCS Object Storage volume into the statefulset spec.
-// With this, the statefulset will expose an environment variable for Google authentication.
-func configureStatefulSet(s *appsv1.StatefulSet, secretName string) error {
-	p := ensureCredentialsForGCS(&s.Spec.Template.Spec, secretName)
+// ConfigureStatefulSet merges a the object storage secrect volume into the statefulset spec.
+// With this, the statefulset will expose credentials specific environment variable.
+func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
+	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, opts)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
@@ -96,6 +92,10 @@ func configureStatefulSet(s *appsv1.StatefulSet, secretName string) error {
 
 // ConfigureStatefulSetCA merges a S3 CA ConfigMap volume into the statefulset spec.
 func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
+	if tls == nil {
+		return nil
+	}
+
 	p := ensureCAForS3(&s.Spec.Template.Spec, tls)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
@@ -105,9 +105,11 @@ func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 	return nil
 }
 
-func ensureCredentialsForGCS(p *corev1.PodSpec, secretName string) corev1.PodSpec {
+func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpec {
 	container := p.Containers[0].DeepCopy()
 	volumes := p.Volumes
+	secretName := opts.SecretName
+	storeType := opts.SharedStore
 
 	volumes = append(volumes, corev1.Volume{
 		Name: secretName,
@@ -124,10 +126,133 @@ func ensureCredentialsForGCS(p *corev1.PodSpec, secretName string) corev1.PodSpe
 		MountPath: secretDirectory,
 	})
 
-	container.Env = append(container.Env, corev1.EnvVar{
-		Name:  EnvGoogleApplicationCredentials,
-		Value: path.Join(secretDirectory, GCSFileName),
-	})
+	var storeEnvVars []corev1.EnvVar
+	switch storeType {
+	case lokiv1.ObjectStorageSecretAlibabaCloud:
+		storeEnvVars = []corev1.EnvVar{
+			{
+				Name: EnvAlibabaCloudAccessKeyID,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeyAlibabaCloudAccessKeyID,
+					},
+				},
+			},
+			{
+				Name: EnvAlibabaCloudAccessKeySecret,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeyAlibabaCloudSecretAccessKey,
+					},
+				},
+			},
+		}
+	case lokiv1.ObjectStorageSecretAzure:
+		storeEnvVars = []corev1.EnvVar{
+			{
+				Name: EnvAzureStorageAccountName,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeyAzureStorageAccountName,
+					},
+				},
+			},
+			{
+				Name: EnvAzureStorageAccountKey,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeyAzureStorageAccountKey,
+					},
+				},
+			},
+		}
+	case lokiv1.ObjectStorageSecretGCS:
+		storeEnvVars = []corev1.EnvVar{
+			{
+				Name:  EnvGoogleApplicationCredentials,
+				Value: path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename),
+			},
+		}
+	case lokiv1.ObjectStorageSecretS3:
+		storeEnvVars = []corev1.EnvVar{
+			{
+				Name: EnvAWSAccessKeyID,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeyAWSAccessKeyID,
+					},
+				},
+			},
+			{
+				Name: EnvAWSAccessKeySecret,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeyAWSAccessKeySecret,
+					},
+				},
+			},
+		}
+
+		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
+			storeEnvVars = append(storeEnvVars, corev1.EnvVar{
+				Name: EnvAWSSseKmsEncryptionContext,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeyAWSSseKmsEncryptionContext,
+					},
+				},
+			})
+		}
+
+	case lokiv1.ObjectStorageSecretSwift:
+		storeEnvVars = []corev1.EnvVar{
+			{
+				Name: EnvSwiftUsername,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeySwiftUsername,
+					},
+				},
+			},
+			{
+				Name: EnvSwiftPassword,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: KeySwiftPassword,
+					},
+				},
+			},
+		}
+	}
+
+	container.Env = append(container.Env, storeEnvVars...)
 
 	return corev1.PodSpec{
 		Containers: []corev1.Container{
