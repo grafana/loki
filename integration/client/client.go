@@ -686,7 +686,7 @@ func (c *Client) Stats(ctx context.Context, query string) ([]map[string]int, err
 	}
 
 	var values struct {
-		Data []map[string]int`json:"data"`
+		Data []map[string]int `json:"data"`
 	}
 	if err := json.Unmarshal(buf, &values); err != nil {
 		return nil, err

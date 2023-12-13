@@ -188,7 +188,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 
 func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 	if res.Status != nil && res.Status.Code != int32(rpc.OK) {
-		return nil, server.UnwrapError(res.Status)
+		return nil, status.ErrorProto(res.Status)
 	}
 
 	switch concrete := res.Response.(type) {
