@@ -9,12 +9,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
 	storage_errors "github.com/grafana/loki/pkg/storage/errors"

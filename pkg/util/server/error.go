@@ -48,7 +48,6 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	}
 
-	
 	if s, isRPC := status.FromError(err); isRPC {
 		if s.Code() == codes.DeadlineExceeded {
 			return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
