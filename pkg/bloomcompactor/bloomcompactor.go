@@ -493,34 +493,18 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 
 		archivePath := filepath.Join(c.cfg.WorkingDirectory, storedBlock.BlockPath[strings.LastIndex(storedBlock.BlockPath, "/")+1:])
-		archiveFile, err := os.Create(archivePath)
+
+		blockToUpload, err := c.compressBloomBlock(storedBlock, archivePath, localDst, logger)
 		if err != nil {
+			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
 			return err
 		}
-		defer archiveFile.Close()
 		defer func() {
 			err = os.Remove(archivePath)
 			if err != nil {
 				level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
 			}
 		}()
-		err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
-		if err != nil {
-			level.Error(logger).Log("msg", "creating bloom block archive file", "err", err)
-			return err
-		}
-		blockToUpload := bloomshipper.Block{}
-		blockToUpload.StartTimestamp = storedBlock.StartTimestamp
-		blockToUpload.EndTimestamp = storedBlock.EndTimestamp
-		blockToUpload.MinFingerprint = storedBlock.MinFingerprint
-		blockToUpload.MaxFingerprint = storedBlock.MaxFingerprint
-		blockToUpload.IndexPath = storedBlock.IndexPath
-		blockToUpload.Checksum = storedBlock.Checksum
-		blockToUpload.TenantID = storedBlock.TenantID
-		blockToUpload.TableName = storedBlock.TableName
-		blockToUpload.Ref = storedBlock.Ref
-		blockToUpload.BlockRef = storedBlock.BlockRef
-		blockToUpload.Data = archiveFile
 
 		// Do not change the signature of PutBlocks yet.
 		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
@@ -571,4 +555,23 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 	return nil
+}
+
+func (c *Compactor) compressBloomBlock(storedBlock bloomshipper.Block, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
+	blockToUpload := bloomshipper.Block{}
+	archiveFile, err := os.Create(archivePath)
+	if err != nil {
+		return blockToUpload, err
+	}
+	defer archiveFile.Close()
+
+	err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
+	if err != nil {
+		level.Error(logger).Log("msg", "creating bloom block archive file", "err", err)
+		return blockToUpload, err
+	}
+
+	blockToUpload.BlockRef = storedBlock.BlockRef
+	blockToUpload.Data = archiveFile
+	return blockToUpload, nil
 }
