@@ -258,9 +258,11 @@ func (v *cloneVisitor) VisitLabelParser(e *LabelParserExpr) {
 
 func (v *cloneVisitor) VisitLineFilter(e *LineFilterExpr) {
 	copied := &LineFilterExpr{
-		Ty:        e.Ty,
-		Match:     e.Match,
-		Op:        e.Op,
+		LineFilter: LineFilter{
+			Ty:    e.Ty,
+			Match: e.Match,
+			Op:    e.Op,
+		},
 		IsOrChild: e.IsOrChild,
 	}
 
