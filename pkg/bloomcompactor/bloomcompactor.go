@@ -622,10 +622,14 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 				level.Error(logger).Log("msg", "creating block builder", "err", err)
 				return err
 			}
-			// TODO merge should return a checksum like buildFrom
+
 			// TODO merge builder writes in place? read localdst, archive, upload
 			// TODO update bloomBlocksRefs
-			mergeBuilder.Build(builder)
+			checksum, err := mergeBuilder.Build(builder)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed merging the blooms", "err", err)
+				return err
+			}
 		}
 
 	}
