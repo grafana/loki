@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -44,6 +43,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"path/filepath"
+
+	"github.com/google/uuid"
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
@@ -492,7 +493,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
-		archivePath := filepath.Join(c.cfg.WorkingDirectory, storedBlock.IndexPath[strings.LastIndex(storedBlock.IndexPath, "/")+1:])
+		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
 
 		blockToUpload, err := c.compressBloomBlock(storedBlock, archivePath, localDst, logger)
 		if err != nil {
