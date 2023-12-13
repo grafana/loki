@@ -39,8 +39,9 @@ Multi-tenancy is [configured]({{< relref "../operations/multi-tenancy" >}}) by a
 
 - **Third-party integrations** - Several third-party agents (clients) have support for Loki, via plugins. This lets you keep your existing observability setup while also shipping logs to Loki.
 
-- **Efficient storage** - Loki stores log data in highly compressed chunks. 
+- **Efficient storage** - Loki stores log data in highly compressed chunks.
 Similarly, the Loki index, because it indexes only the set of labels, is significantly smaller than other log aggregation tools.
+By leveraging object storage as the only data storage mechanism, Loki inherits the reliability and stability of the underlying object store. It also capitalizes on both the cost efficiency and operational simplicity of object storage over other storage mechanisms like locally attached solid state drives (SSD) and hard disk drives (HDD).  
 The compressed chunks, smaller index, and use of low-cost object storage, make Loki less expensive to operate.
 
 - **LogQL, Loki's query language** - [LogQL]({{< relref "../query" >}}) is the query language for Loki.  Users who are already familiar with the Prometheus query language, [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/), will find LogQL familiar and flexible for generating queries against the logs.

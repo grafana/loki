@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -14,11 +15,17 @@ import (
 	"time"
 
 	"github.com/buger/jsonparser"
+	"github.com/gorilla/websocket"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
+
+	logcli "github.com/grafana/loki/pkg/logcli/client"
+	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/util/unmarshal"
 )
 
 const requestTimeout = 30 * time.Second
@@ -653,6 +660,79 @@ func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]strin
 	}
 
 	return values.Data, nil
+}
+
+func (c *Client) Stats(ctx context.Context, query string) ([]map[string]int, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
+	v := url.Values{}
+	v.Set("query", query)
+
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		panic(err)
+	}
+	u.Path = "/loki/api/v1/index/stats"
+	u.RawQuery = v.Encode()
+
+	buf, statusCode, err := c.run(ctx, u.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	}
+
+	var values struct {
+		Data []map[string]int `json:"data"`
+	}
+	if err := json.Unmarshal(buf, &values); err != nil {
+		return nil, err
+	}
+
+	return values.Data, nil
+}
+
+type TailResult struct {
+	Response loghttp.TailResponse
+	Err      error
+}
+
+func (c *Client) Tail(ctx context.Context, query string, out chan TailResult) (*websocket.Conn, error) {
+	client := &logcli.DefaultClient{
+		Address:   c.baseURL,
+		OrgID:     c.instanceID,
+		TLSConfig: config.TLSConfig{},
+	}
+	start := time.Now().Add(-1 * time.Hour)
+
+	wc, err := client.LiveTailQueryConn(query, time.Duration(0), 100, start, false)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+
+		tailResponse := new(loghttp.TailResponse)
+
+		for {
+			select {
+			case <-ctx.Done():
+				close(out)
+				return
+			default:
+				err := unmarshal.ReadTailResponseJSON(tailResponse, wc)
+				if errors.Is(err, net.ErrClosed) {
+					close(out)
+					return
+				}
+				out <- TailResult{*tailResponse, err}
+			}
+		}
+	}()
+	return wc, nil
 }
 
 func (c *Client) request(ctx context.Context, method string, url string, extraHeaders ...Header) (*http.Request, error) {

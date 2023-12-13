@@ -274,7 +274,7 @@ type blockWithQuerier struct {
 }
 
 // extract the files into directory and returns absolute path to this directory.
-func extractBlock(block *Block, ts time.Time, workingDirectory string, logger log.Logger) (string, error) {
+func extractBlock(block *LazyBlock, ts time.Time, workingDirectory string, logger log.Logger) (string, error) {
 	workingDirectoryPath := filepath.Join(workingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixNano(), 10))
 	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
 	if err != nil {
@@ -303,7 +303,7 @@ func (d *blockDownloader) stop() {
 	d.strategy.close()
 }
 
-func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
+func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string, error) {
 	defer block.Data.Close()
 	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
 

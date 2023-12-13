@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -119,7 +120,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
 		return &TopKSketchesResponse{Response: sk}, err
-	case sketch.QuantileSketchMatrix:
+	case logql.ProbabilisticQuantileMatrix:
 		return &QuantileSketchResponse{Response: data.ToProto()}, nil
 	}
 
@@ -172,7 +173,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Headers: resp.GetHeaders(),
 		}, nil
 	case *QuantileSketchResponse:
-		matrix, err := sketch.QuantileSketchMatrixFromProto(r.Response)
+		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
 		if err != nil {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
@@ -245,6 +246,13 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	}
 
 	return p, nil
+}
+
+// QueryResponseWrapError wraps an error in the QueryResponse protobuf.
+func QueryResponseWrapError(err error) *QueryResponse {
+	return &QueryResponse{
+		Status: server.WrapError(err),
+	}
 }
 
 func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {

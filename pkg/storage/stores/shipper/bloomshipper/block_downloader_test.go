@@ -343,7 +343,7 @@ type mockBlockClient struct {
 	getBlockCalls int
 }
 
-func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (Block, error) {
+func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (LazyBlock, error) {
 	m.getBlockCalls++
 	time.Sleep(m.responseDelay)
 	supplier, exists := m.mockData[reference.BlockPath]
@@ -369,7 +369,7 @@ func Test_blockDownloader_extractBlock(t *testing.T) {
 
 	workingDir := t.TempDir()
 	ts := time.Now().UTC()
-	block := Block{
+	block := LazyBlock{
 		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
 		Data:     blockFile,
 	}

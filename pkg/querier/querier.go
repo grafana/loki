@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	querier_limits "github.com/grafana/loki/pkg/querier/limits"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/pkg/util"
@@ -443,6 +444,16 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		return nil, err
 	}
 
+	if req.Plan == nil {
+		parsed, err := syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, err
+		}
+		req.Plan = &plan.QueryPlan{
+			AST: parsed,
+		}
+	}
+
 	deletes, err := q.deletesForUser(ctx, req.Start, time.Now())
 	if err != nil {
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
@@ -456,6 +467,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 			Limit:     req.Limit,
 			Direction: logproto.BACKWARD,
 			Deletes:   deletes,
+			Plan:      req.Plan,
 		},
 	}
 
@@ -629,6 +641,15 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
+	var parsed syntax.Expr
+	var err error
+	if matcher != "" {
+		parsed, err = syntax.ParseExpr(matcher)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	ids, err := q.store.SelectSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
@@ -637,6 +658,9 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 			End:       through,
 			Direction: logproto.FORWARD,
 			Shards:    shards,
+			Plan: &plan.QueryPlan{
+				AST: parsed,
+			},
 		},
 	})
 	if err != nil {
