@@ -564,7 +564,6 @@ func (c *Compactor) compressBloomBlock(storedBlock bloomshipper.Block, archivePa
 	if err != nil {
 		return blockToUpload, err
 	}
-	defer archiveFile.Close()
 
 	err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
 	if err != nil {
