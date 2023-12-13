@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClient bloomshipper.Client, storeClient storeClient, bt *v1.BloomTokenizer, job Job, blockOptions v1.BlockOptions, blocksToUpdate []bloomshipper.BlockRef, workingDir string, blockPath string) (bloomshipper.Block, error) {
+func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClient bloomshipper.Client, storeClient storeClient, bt *v1.BloomTokenizer, job Job, blockOptions v1.BlockOptions, blocksToUpdate []bloomshipper.BlockRef, workingDir string, localDst string) (bloomshipper.Block, error) {
 	var populate = func(series *v1.Series, bloom *v1.Bloom) error {
 		bloomForChks := v1.SeriesWithBloom{
 			Series: series,
@@ -91,7 +91,7 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 		seriesIter,
 		populate)
 
-	mergeBlockBuilder, err := NewPersistentBlockBuilder(blockPath, blockOptions)
+	mergeBlockBuilder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 	if err != nil {
 		level.Error(logger).Log("msg", "creating block builder", "err", err)
 		return bloomshipper.Block{}, err

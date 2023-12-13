@@ -475,6 +475,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 
+	defer func() {
+		//clean up the bloom directory
+		if err := os.RemoveAll(localDst); err != nil {
+			level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
+		}
+	}()
+
 	// TODO This logic currently is NOT concerned with cutting blocks upon topology changes to bloom-compactors.
 	// It may create blocks with series outside of the fp range of the compactor. Cutting blocks will be addressed in a follow-up PR.
 	for _, meta := range metas {
@@ -494,19 +501,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 	}
 
+	var resultingBlock bloomshipper.Block
 	if len(tombstonedBlockRefs) == 0 && len(metasMatchingJob) > 0 {
 		// There is no change to any blocks, no compaction needed
 		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed", "err", err)
 		return nil
 	} else if len(metasMatchingJob) == 0 {
 		// No matching existing blocks for this job, compact all series from scratch
-
-		defer func() {
-			//clean up the bloom directory
-			if err := os.RemoveAll(localDst); err != nil {
-				level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
-			}
-		}()
 
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
@@ -515,70 +516,48 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 
 		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
-		storedBlock, err := compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
+		resultingBlock, err = compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
-		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
-
-		blockToUpload, err := compressBloomBlock(storedBlock, archivePath, localDst, logger)
-		if err != nil {
-			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
-			return err
-		}
-		defer func() {
-			err = os.Remove(archivePath)
-			if err != nil {
-				level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
-			}
-		}()
-
-		// Do not change the signature of PutBlocks yet.
-		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
-		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
-		if err != nil {
-			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
-			return err
-		}
-
-		// all blocks are new and active blocks
-		for _, block := range storedBlocks {
-			activeBloomBlocksRefs = append(activeBloomBlocksRefs, block.BlockRef)
-		}
 	} else if len(tombstonedBlockRefs) > 0 {
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
-		// FIXME with localdst
-		blockPath := filepath.Join("foobar", "merge-out")
 
-		mergedBlock, err := mergeCompactChunks(ctx, logger, c.bloomShipperClient, storeClient, bt, job, blockOptions, tombstonedBlockRefs, c.cfg.WorkingDirectory, blockPath)
+		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, storeClient, bt, job, blockOptions, tombstonedBlockRefs, c.cfg.WorkingDirectory, localDst)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to merge existing blocks with new chunks", "err", err)
 			return err
 		}
-
-		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
-		blockToUpload, err := compressBloomBlock(mergedBlock, archivePath, blockPath, logger)
-		if err != nil {
-			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
-			return err
-		}
-		defer func() {
-			err = os.Remove(archivePath)
-			if err != nil {
-				level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
-			}
-		}()
-
-		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
-		if err != nil {
-			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
-			return err
-		}
-		for _, block := range storedBlocks {
-			activeBloomBlocksRefs = append(activeBloomBlocksRefs, block.BlockRef)
-		}
 	}
+
+	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
+
+	blockToUpload, err := compressBloomBlock(resultingBlock, archivePath, localDst, logger)
+	if err != nil {
+		level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+		return err
+	}
+	defer func() {
+		err = os.Remove(archivePath)
+		if err != nil {
+			level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
+		}
+	}()
+
+	// Do not change the signature of PutBlocks yet.
+	// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
+	storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
+	if err != nil {
+		level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+		return err
+	}
+
+	// all blocks are new and active blocks
+	for _, block := range storedBlocks {
+		activeBloomBlocksRefs = append(activeBloomBlocksRefs, block.BlockRef)
+	}
+
 	// TODO delete old metas
 	// After all is done, create one meta file and upload to storage
 	meta := bloomshipper.Meta{
