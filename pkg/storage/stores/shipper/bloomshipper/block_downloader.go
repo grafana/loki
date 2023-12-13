@@ -215,7 +215,7 @@ func (d *blockDownloader) stop() {
 
 func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string, error) {
 	defer block.Data.Close()
-	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, Delimiter)+1:])
+	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
 
 	archiveFile, err := os.Create(archivePath)
 	if err != nil {
