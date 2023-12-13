@@ -492,7 +492,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
-		archivePath := filepath.Join(c.cfg.WorkingDirectory, storedBlock.BlockPath[strings.LastIndex(storedBlock.BlockPath, "/")+1:])
+		archivePath := filepath.Join(c.cfg.WorkingDirectory, storedBlock.IndexPath[strings.LastIndex(storedBlock.IndexPath, "/")+1:])
 
 		blockToUpload, err := c.compressBloomBlock(storedBlock, archivePath, localDst, logger)
 		if err != nil {
