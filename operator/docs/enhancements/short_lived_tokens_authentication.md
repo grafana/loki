@@ -212,6 +212,54 @@ There no changed required for GCP WIF as a provider service for short-lived toke
 
 __Note:__ As a credentials source file the Loki Operator will overwrite any user provider input with using the Kubernetes ServiceAccount token per container.
 
+##### Pre-requisites
+
+The LokiStack adminisrator is required to create a custom Google Managed Identity and an associated  credentials configuration to trust the LokiStack's Kubernetes ServiceAccount.
+
+1. Create a GCP serviceaccount to be used by the LokiStack to access GCP resources:
+
+```shell
+gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" \
+  --display-name="Loki Operator Account" \
+  --project "$PROJECT_ID"
+```
+
+2. Bind the minimal set of GCP roles to the newly created serviceaccount:
+
+```shell
+gcloud projects add-iam-policy-binding "$project_id" \
+  --member="serviceAccount:$service_account_email" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principal://iam.googleapis.com/projects/$project_number/locations/global/workloadIdentityPools/$pool_id/subject/$subject"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
+  --role="roles/storage.objectAdmin" \
+  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/subject/$SUBJECT"
+```
+
+__Note:__ To enable the required membership in the above commands the subject needs be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The workload identity pool needs to be the same that manages your other Kubernetes cluster's managed identities.
+
+3. Create a credentials configuration file for the managed identity to be used by LokiStack:
+
+```shell
+gcloud iam workload-identity-pools create-cred-config \
+    "projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/providers/$PROVIDER_ID" \
+    --service-account="$SERVICE_ACCOUNT_EMAIL" \
+    --credential-source-file=/var/run/secrets/serviceaccount/token \
+    --credential-source-type=text \
+    --output-file="/tmp/google-application-credentials.json"
+```
+
+__Note:__ The workload identity pool and associated OIDC provider needs to be the same that manages your other Kubernetes cluster's managed identities.
+
+4. Use the contents from `/tmp/google-application-credentials.json` as `key.json` when creating the GCS object storage secret for LokiStack:
+
+```yaml
+data:
+  bucketname: # A comma-separated list of bucket names
+  key.json:   # The file contents of the newly created GCP credentials configuration
+```
 
 ## Implementation History
 
