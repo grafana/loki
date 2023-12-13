@@ -1465,6 +1465,9 @@ gateway:
 networkPolicy:
   # -- Specifies whether Network Policies should be created
   enabled: false
+  # -- Specifies whether the policies created will be standard Network Policies (flavor: kubernetes)
+  # or Cilium Network Policies (flavor: cilium)
+  flavor: kubernetes
   metrics:
     # -- Specifies the Pods which are allowed to access the metrics port.
     # As this is cross-namespace communication, you also need the namespaceSelector.
