@@ -186,29 +186,58 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 			},
 		}
 	case lokiv1.ObjectStorageSecretS3:
-		storeEnvVars = []corev1.EnvVar{
-			{
-				Name: EnvAWSAccessKeyID,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
+		sts := opts.S3 != nil && len(opts.S3.RoleArn) != 0
+		if !sts {
+			storeEnvVars = []corev1.EnvVar{
+				{
+					Name: EnvAWSAccessKeyID,
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secretName,
+							},
+							Key: KeyAWSAccessKeyID,
 						},
-						Key: KeyAWSAccessKeyID,
 					},
 				},
-			},
-			{
-				Name: EnvAWSAccessKeySecret,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
+				{
+					Name: EnvAWSAccessKeySecret,
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secretName,
+							},
+							Key: KeyAWSAccessKeySecret,
 						},
-						Key: KeyAWSAccessKeySecret,
 					},
 				},
-			},
+			}
+		} else {
+			storeEnvVars = []corev1.EnvVar{
+				{
+					Name: EnvAWSRoleArn,
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secretName,
+							},
+							Key: KeyAWSRoleArn,
+						},
+					},
+				},
+				{
+					// TODO (JoaoBraveCoding) fix
+					Name: EnvAWSWebIdentityTokenFile,
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secretName,
+							},
+							Key: KeyAWSAccessKeySecret,
+						},
+					},
+				},
+			}
 		}
 
 		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {

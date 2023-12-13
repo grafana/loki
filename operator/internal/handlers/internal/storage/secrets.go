@@ -126,25 +126,36 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 
 func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
-	endpoint := s.Data[storage.KeyAWSEndpoint]
-	if len(endpoint) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSEndpoint)
-	}
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
 		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSBucketNames)
 	}
-	id := s.Data[storage.KeyAWSAccessKeyID]
-	if len(id) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeyID)
-	}
-	secret := s.Data[storage.KeyAWSAccessKeySecret]
-	if len(secret) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
-	}
 
-	// Extract and validate optional fields
+	// Fields related with static authentication
+	endpoint := s.Data[storage.KeyAWSEndpoint]
+	id := s.Data[storage.KeyAWSAccessKeyID]
+	secret := s.Data[storage.KeyAWSAccessKeySecret]
+	// Fields related with STS authentication
+	roleArn := s.Data[storage.KeyAWSRoleArn]
+	// Optional fields
 	region := s.Data[storage.KeyAWSRegion]
+
+	if len(roleArn) == 0 {
+		if len(endpoint) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSEndpoint)
+		}
+		if len(id) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeyID)
+		}
+		if len(secret) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
+		}
+	} else {
+		// In the STS case region is not an optional field
+		if len(region) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSRegion)
+		}
+	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
 	if err != nil {

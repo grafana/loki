@@ -35,10 +35,12 @@ type GCSStorageConfig struct {
 
 // S3StorageConfig for S3 storage config
 type S3StorageConfig struct {
-	Endpoint string
-	Region   string
-	Buckets  string
-	SSE      S3SSEConfig
+	Endpoint             string
+	Region               string
+	Buckets              string
+	RoleArn              string
+	WebIdentityTokenFile string
+	SSE                  S3SSEConfig
 }
 
 type S3SSEType string

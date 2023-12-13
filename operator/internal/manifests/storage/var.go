@@ -9,8 +9,12 @@ const (
 	EnvAWSAccessKeyID = "AWS_ACCESS_KEY_ID"
 	// EnvAWSAccessKeySecret is the environment variable to specify the AWS client secret to access S3.
 	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET"
-	// EnvAWSSseKmsEncryptionContext is the environment variable to specity the AWS KMS encryption context when using type SSE-KMS.
+	// EnvAWSSseKmsEncryptionContext is the environment variable to specify the AWS KMS encryption context when using type SSE-KMS.
 	EnvAWSSseKmsEncryptionContext = "AWS_SSE_KMS_ENCRYPTION_CONTEXT"
+	// EnvAWSRoleArn is the environment variable to specify the AWS role ARN secret for the federated identity workflow.
+	EnvAWSRoleArn = "AWS_ROLE_ARN"
+	// EnvAWSWebIdentityToken is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
+	EnvAWSWebIdentityTokenFile = "AWS_WEB_IDENTITY_TOKEN_FILE"
 	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
 	EnvAzureStorageAccountName = "AZURE_STORAGE_ACCOUNT_NAME"
 	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
@@ -47,6 +51,8 @@ const (
 	KeyAWSSseKmsEncryptionContext = "sse_kms_encryption_context"
 	// KeyAWSSseKmsKeyID is the secret data key for the AWS SSE KMS key id.
 	KeyAWSSseKmsKeyID = "sse_kms_key_id"
+	// KeyAWSRoleArn is the secret data key for the AWS STS role ARN.
+	KeyAWSRoleArn = "role_arn"
 
 	// KeyAzureStorageAccountKey is the secret data key for the Azure storage account key.
 	KeyAzureStorageAccountKey = "account_key"
