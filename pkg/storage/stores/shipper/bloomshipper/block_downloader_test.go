@@ -323,9 +323,9 @@ func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 		blockRef := BlockRef{
 			BlockPath: fmt.Sprintf("block-path-%d", i),
 		}
-		mockData[blockRef.BlockPath] = func() Block {
+		mockData[blockRef.BlockPath] = func() LazyBlock {
 			file, _ := os.OpenFile(archivePath, os.O_RDONLY, 0700)
-			return Block{
+			return LazyBlock{
 				BlockRef: blockRef,
 				Data:     file,
 			}
@@ -335,7 +335,7 @@ func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 	return refs, &mockBlockClient{mockData: mockData}
 }
 
-type blockSupplier func() Block
+type blockSupplier func() LazyBlock
 
 type mockBlockClient struct {
 	responseDelay time.Duration
@@ -351,7 +351,7 @@ func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (LazyB
 		return supplier(), nil
 	}
 
-	return Block{}, fmt.Errorf("block %s is not found in mockData", reference.BlockPath)
+	return LazyBlock{}, fmt.Errorf("block %s is not found in mockData", reference.BlockPath)
 }
 
 func (m *mockBlockClient) PutBlocks(_ context.Context, _ []Block) ([]Block, error) {
