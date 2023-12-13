@@ -3,11 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+)
+
+var reECSAppConfig = regexp.MustCompile(`/ecs/(?P<cloud_region>[^/]+)/(?P<deployment_environment>[^/]+)/(?P<service_name>[^/]+)-(?P<lithic_deployment_app_config>(live|sandbox|dev))`)
+var reECSNoAppConfig = regexp.MustCompile(`/ecs/(?P<cloud_region>[^/]+)/(?P<deployment_environment>[^/]+)/(?P<service_name>[^/]+)`)
+
+const (
+	LabelCloudRegion           = "cloud_region"
+	LabelDeploymentEnvironment = "deployment_environment"
+	LabelServiceName           = "service_name"
+	LabelAppConfig             = "lithic_deployment_app_config"
 )
 
 func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent) error {
@@ -24,6 +36,10 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 
 	if keepStream {
 		labels[model.LabelName("cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
+	}
+
+	if richLabels := parseECSTask(data.LogGroup); richLabels != nil {
+		labels.Merge(richLabels)
 	}
 
 	labels = applyExtraLabels(labels)
@@ -59,4 +75,24 @@ func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent) error {
 	}
 
 	return nil
+}
+
+func parseECSTask(logGroup string) model.LabelSet {
+	if !strings.HasPrefix(logGroup, "/ecs") {
+		return nil
+	}
+
+	var labels = model.LabelSet{}
+	for _, re := range []*regexp.Regexp{reECSAppConfig, reECSNoAppConfig} {
+		match := re.FindStringSubmatch(logGroup)
+		if match != nil {
+			for i, name := range re.SubexpNames() {
+				if i != 0 && name != "" {
+					labels[model.LabelName(name)] = model.LabelValue(match[i])
+				}
+			}
+			return labels
+		}
+	}
+	return labels
 }
