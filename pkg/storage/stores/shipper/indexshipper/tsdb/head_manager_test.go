@@ -541,6 +541,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 					context.Background(),
 					c.User,
 					0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
+					nil,
 					labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 				)
 				require.Nil(t, err)

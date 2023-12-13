@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
@@ -33,7 +34,7 @@ type StatsReader interface {
 type Reader interface {
 	BaseReader
 	StatsReader
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filters []syntax.LineFilterExpr, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error)
 	Filterable
 }
 
@@ -58,12 +59,12 @@ func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) *Monit
 	}
 }
 
-func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filters []syntax.LineFilterExpr, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
 	var chunks []logproto.ChunkRef
 
 	if err := loki_instrument.TimeRequest(ctx, "chunk_refs", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		chunks, err = m.rw.GetChunkRefs(ctx, userID, from, through, matchers...)
+		chunks, err = m.rw.GetChunkRefs(ctx, userID, from, through, filters, matchers...)
 		return err
 	}); err != nil {
 		return nil, err

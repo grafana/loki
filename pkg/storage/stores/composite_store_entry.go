@@ -64,7 +64,7 @@ func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through
 		return nil, nil, nil
 	}
 
-	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, allMatchers...)
+	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, nil, allMatchers...)
 
 	chunks := make([]chunk.Chunk, len(refs))
 	for i, ref := range refs {
