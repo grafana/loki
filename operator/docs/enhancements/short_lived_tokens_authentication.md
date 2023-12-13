@@ -60,20 +60,20 @@ The current Azure object storage secret requires the following mandatory set of 
 
 ```yaml
 data:
-    environment:  # The Azure Storage account environment
-    container:    # The Azure Storage account container
-    account_name: # The Azure Storage account name
-    account_key:  # The Azure Storage account key
+  environment:  # The Azure Storage account environment
+  container:    # The Azure Storage account container
+  account_name: # The Azure Storage account name
+  account_key:  # The Azure Storage account key
 ```
 
 In contrast a minimal configuration set of fields for short lived authentication requires:
 
 ```yaml
 data:
-    client_id:       # The Azure Managed Identity's Client ID
-    tenant_id:       # The Azure Account's Tenant ID holding the managed identity for LokiStack
-    subscription_id: # The Azure Account's Subscription ID holding the managed identity for LokiStack
-    region:          # The Azure Location hosting the Kubernetes cluster and in turn LokiStack
+  client_id:       # The Azure Managed Identity's Client ID
+  tenant_id:       # The Azure Account's Tenant ID holding the managed identity for LokiStack
+  subscription_id: # The Azure Account's Subscription ID holding the managed identity for LokiStack
+  region:          # The Azure Location hosting the Kubernetes cluster and in turn LokiStack
 ```
 
 ##### Pre-requisites
@@ -83,19 +83,31 @@ The LokiStack adminisrator is required to create a custom Azure Managed Identity
 1. Create an Azure Managed Identity on the same resource group as the Kubernetes cluster hosting LokiStack:
 
 ```shell
-$ az identity create --name $IDENTITY_NAME --resource-group $RESOURCE_GROUP_NAME --location $LOCATION --subscription $SUBSCRIPTION_ID
+az identity create \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP_NAME \
+  --location $LOCATION \
+  --subscription $SUBSCRIPTION_ID
 ```
 
 2. Create a Federated Credentials for scenario `Kubernetes accessing Azure resources`:
 
 ```shell
-$ az identity federated-credential create --name openshift-logging-lokistack --identity-name $IDENTITY_NAME --resource-group $RESOURCE_GROUP_NAME --issuer $CLUSTER_ISSUER_URL --subject system:serviceaccount:openshift-logging:lokistack-dev --audiences $AUDIENCES
+az identity federated-credential create \
+  --name openshift-logging-lokistack \
+  --identity-name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP_NAME \
+  --issuer $CLUSTER_ISSUER_URL \
+  --subject system:serviceaccount:$LOKISTACK_NS:$LOKISTACK_NAME \
+  --audiences $AUDIENCES
 ```
+
+__Note:__ To enable the required federated credential scenario in the above command the subject needs be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The issuer and audiences are related to the Kubernetes cluster hosting LokiStack.
 
 3. Create custom role that provides access to Azure Storage:
 
 ```shell
-$ az role definition create --role-definition '{
+az role definition create --role-definition '{
   "Name": "Loki Operator",
   "IsCustom": true,
   "Description": "Can access content on Azure Storage containers.",
@@ -114,16 +126,17 @@ $ az role definition create --role-definition '{
 4. Assign the above managed identity to the above custom role:
 
 ```shell
-$ az role assignment create --assignee "$MANAGED_IDENTITY_ID" --role "Loki Operator" --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME"
+az role assignment create \
+  --assignee "$MANAGED_IDENTITY_ID" \
+  --role "Loki Operator" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID"
 ```
 
 __Note:__ To lookup the managed identity id you can use the following command:
 
 ```shell
-$ az ad sp list --all --filter "servicePrincipalType eq 'ManagedIdentity'"
+az ad sp list --all --filter "servicePrincipalType eq 'ManagedIdentity'"
 ```
-
-__Note:__ To enable the required federated credential scenario in the above command the subject needs be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The issuer and audiences are related to the Kubernetes cluster hosting LokiStack.
 
 #### AWS Secure Token Service
 
@@ -150,7 +163,7 @@ data:
 
 ##### Pre-requisites
 
-The LokiStack administrator is required to execute a custom AWS IAM Role associated with a trust relationship to the LokiStack's Kubernetes ServiceAccount
+The LokiStack administrator is required to create a custom AWS IAM Role associated with a trust relationship to the LokiStack's Kubernetes ServiceAccount
 
 1. Trust relationship: Ensures that each Lokistack container authenticating to AWS STS is using as identity it's serviceaccount token.
 
@@ -181,13 +194,19 @@ __Note:__ The Lokistack service account name is always the same as the LokiStack
 2. Create an AWS IAM role:
 
 ```shell
-$ aws iam create-role --role-name "my-lokistack-s3-access" --assume-role-policy-document file:///tmp/trust.json --query Role.Arn --output text
+aws iam create-role \
+  --role-name "my-lokistack-s3-access" \
+  --assume-role-policy-document file:///tmp/trust.json \
+  --query Role.Arn \
+  --output text
 ```
 
 3. Attach a specific policy that role:
 
 ```shell
-$ aws iam attach-role-policy --role-name "my-lokistack-s3-access" --policy-arn "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+aws iam attach-role-policy \
+  --role-name "my-lokistack-s3-access" \
+  --policy-arn "arn:aws:iam::aws:policy/AmazonS3FullAccess"
 ```
 
 #### GCP Workload Identity Federation
@@ -227,10 +246,10 @@ gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" \
 2. Bind the minimal set of GCP roles to the newly created serviceaccount:
 
 ```shell
-gcloud projects add-iam-policy-binding "$project_id" \
-  --member="serviceAccount:$service_account_email" \
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principal://iam.googleapis.com/projects/$project_number/locations/global/workloadIdentityPools/$pool_id/subject/$subject"
+  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/subject/$SUBJECT"
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
@@ -263,5 +282,4 @@ data:
 
 ## Implementation History
 
-Major milestones in the life cycle of a proposal should be tracked in `Implementation
-History`.
+Major milestones in the life cycle of a proposal should be tracked in `Implementation History`.
