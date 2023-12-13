@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,10 +16,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -409,6 +412,77 @@ func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, fmt.Sprintf("unsupported result type: %q", loghttp.ResultTypeStream))
+}
+
+// TestRemoteEvalQueryTags validates that proper query tags are passed
+func TestRemoteEvalQueryTags(t *testing.T) {
+	defaultLimits := defaultLimitsTestConfig()
+	limits, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	cli := mockClient{
+		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+			var queryTags string
+			for _, h := range in.Headers {
+				if h.Key == string(httpreq.QueryTagsHTTPHeader) {
+					queryTags = strings.Join(h.Values, ",")
+				}
+			}
+			require.Equal(t, "ruler,Source=ruler,Rule=foo,Kind=alerting", queryTags)
+
+			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
+			// the expected JSON response by hand
+			resp := loghttp.QueryResponse{
+				Status: loghttp.QueryStatusSuccess,
+				Data: loghttp.QueryResponseData{
+					ResultType: loghttp.ResultTypeVector,
+					Result:     loghttp.Vector{},
+				},
+			}
+
+			out, err := json.Marshal(resp)
+			require.NoError(t, err)
+
+			return &httpgrpc.HTTPResponse{
+				Code:    http.StatusOK,
+				Headers: nil,
+				Body:    out,
+			}, nil
+		},
+	}
+
+	ev, err := NewRemoteEvaluator(cli, limits, log.Logger, prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	ctx = user.InjectOrgID(ctx, "test")
+	details := rules.RuleDetail{
+		Name: "foo",
+		Kind: rules.KindAlerting,
+	}
+	ctx = rules.NewOriginContext(ctx, details)
+
+	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", now)
+	require.NoError(t, err)
+}
+
+func TestDetailToQueryTags(t *testing.T) {
+	for _, tc := range []struct {
+		detail   rules.RuleDetail
+		expected string
+	}{
+		{rules.RuleDetail{}, "rule,Source=ruler"},
+		{rules.RuleDetail{Name: "foo"}, "rule,Source=ruler,Rule=foo"},
+		{rules.RuleDetail{Name: "foo", Kind: rules.KindAlerting}, "rule,Source=ruler,Rule=foo,Kind=alerting"},
+		{rules.RuleDetail{Kind: rules.KindAlerting}, "rule,Source=ruler,Kind=alerting"},
+	} {
+		t.Run(tc.expected, func(t *testing.T) {
+			actual := detailToQueryTags(tc.detail)
+			require.ElementsMatch(t, []string{tc.expected}, actual)
+		})
+	}
 }
 
 func defaultLimitsTestConfig() validation.Limits {

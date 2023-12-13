@@ -233,7 +233,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{userAgent}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeFormPost}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
-			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{fmt.Sprintf("ruler,Source=ruler,Rule=%s,Kind=%s", detail.Name, detail.Kind)}},
+			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: detailToQueryTags(detail)},
 			{Key: textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName), Values: []string{orgID}},
 		},
 	}
@@ -342,6 +342,18 @@ func metricToLabels(m model.Metric) labels.Labels {
 	// a labels.Labels list is responsible for sorting it during construction time.
 	b.Sort()
 	return b.Labels()
+}
+
+func detailToQueryTags(detail rules.RuleDetail) []string {
+	tags := "rule,Source=ruler"
+	if detail.Name != "" {
+		tags += ",Rule=" + detail.Name
+	}
+	if detail.Kind != "" {
+		tags += ",Kind=" + detail.Kind
+	}
+
+	return []string{tags}
 }
 
 // QueryFrontendConfig defines query-frontend transport configuration.
