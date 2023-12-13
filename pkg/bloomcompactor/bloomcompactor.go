@@ -27,6 +27,8 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"math"
 	"os"
 	"time"
@@ -467,8 +469,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
+	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
+	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
+
 	if len(metas) == 0 {
-		localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 		defer func() {
 			//clean up the bloom directory
 			if err := os.RemoveAll(localDst); err != nil {
@@ -476,7 +480,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			}
 		}()
 
-		blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
 			level.Error(logger).Log("msg", "creating block builder", "err", err)
@@ -501,28 +504,110 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		for _, block := range storedBlocks {
 			bloomBlocksRefs = append(bloomBlocksRefs, block.BlockRef)
 		}
-	} else {
-		// TODO complete part 2 - periodic compaction for delta from previous period
-		// When already compacted metas exists
-
-		// Take the seriesFP, query the org_chunks from storage and query the blooms.
-		// compare the checksums of the indexes
-		// if they match - all good nothing to do
-		//else {
-		//get all chunks
-		//}
-
-		// Deduplicate index paths
-		uniqueIndexPaths := make(map[string]struct{})
+	} else { // When already compacted metas exists
 
 		for _, meta := range metas {
-			for _, blockRef := range meta.Blocks {
-				uniqueIndexPaths[blockRef.IndexPath] = struct{}{}
-				// ...
-
-				// the result should return a list of active
-				// blocks and tombstoned bloom blocks.
+			if meta.TableName != job.tableName {
+				continue
 			}
+
+			var blocksToUpdate []bloomshipper.BlockRef
+			for _, blockRef := range meta.Blocks {
+				if blockRef.IndexPath == job.indexPath {
+					// index has not changed, no compaction needed
+					continue
+				} else {
+					blocksToUpdate = append(blocksToUpdate, blockRef)
+					tombstonedBlockRefs = append(tombstonedBlockRefs, blockRef)
+				}
+			}
+
+			var populate = func(series *v1.Series, bloom *v1.Bloom) error {
+				bloomForChks := v1.SeriesWithBloom{
+					Series: series,
+					Bloom:  bloom,
+				}
+
+				// Satisfy types for chunks
+				chunkRefs := make([]chunk.Chunk, len(series.Chunks))
+				for i, chk := range series.Chunks {
+					chunkRefs[i] = chunk.Chunk{
+						ChunkRef: logproto.ChunkRef{
+							Fingerprint: uint64(series.Fingerprint),
+							UserID:      meta.TenantID,
+							From:        chk.Start,
+							Through:     chk.End,
+							Checksum:    chk.Checksum,
+						},
+					}
+				}
+
+				chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
+				if err != nil {
+					level.Error(logger).Log("msg", "error downloading chunks", "err", err)
+					return err
+				}
+				_ = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
+
+				return nil
+			}
+
+			// Satisfy types for series
+			seriesFromSeriesMeta := make([]*v1.Series, len(job.seriesMetas))
+
+			for i, s := range job.seriesMetas {
+				crefs := make([]v1.ChunkRef, len(s.chunkRefs))
+				for j, chk := range s.chunkRefs {
+					crefs[j] = v1.ChunkRef{
+						Start:    model.Time(chk.MinTime),
+						End:      model.Time(chk.MaxTime),
+						Checksum: chk.Checksum,
+					}
+				}
+				seriesFromSeriesMeta[i] = &v1.Series{
+					Fingerprint: s.seriesFP,
+					Chunks:      crefs,
+				}
+			}
+			seriesIter := v1.NewSliceIter(seriesFromSeriesMeta)
+
+			// TODO: Make blockIters an actual, lazy iterator
+			// Download existing blocks that needs compaction
+			blockIters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocksToUpdate))
+			for i, b := range blocksToUpdate {
+				lazyBlock, err := c.bloomShipperClient.GetBlock(ctx, b)
+				if err != nil {
+					level.Error(logger).Log("msg", "error downloading block", "err", err)
+					return err
+				}
+
+				// TODO defer removing this blockpath
+				blockPath, err := ExtractBlock(&lazyBlock, c.cfg.WorkingDirectory)
+				if err != nil {
+					level.Error(logger).Log("msg", "error extracting block", "err", err)
+					return err
+				}
+
+				reader := v1.NewDirectoryBlockReader(blockPath)
+				block := v1.NewBlock(reader)
+				blockQuerier := v1.NewBlockQuerier(block)
+
+				blockIters[i] = v1.NewPeekingIter[*v1.SeriesWithBloom](blockQuerier)
+			}
+
+			mergeBuilder := v1.NewMergeBuilder(
+				blockIters,
+				seriesIter,
+				populate)
+			builder, err := v1.NewBlockBuilder(blockOptions, v1.NewDirectoryBlockWriter(localDst))
+			if err != nil {
+				level.Error(logger).Log("msg", "creating block builder", "err", err)
+				return err
+			}
+			// TODO merge should return a checksum like buildFrom
+			// TODO merge builder writes in place? read localdst, archive, upload
+			// TODO update bloomBlocksRefs
+			mergeBuilder.Build(builder)
 		}
 
 	}

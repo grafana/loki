@@ -578,5 +578,6 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 	if err := builder.index.Close(); err != nil {
 		return errors.Wrap(err, "closing series file")
 	}
+	// TODO return a checksum here like in builder
 	return nil
 }
