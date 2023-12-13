@@ -70,8 +70,10 @@ In contrast a minimal configuration set of fields for short lived authentication
 
 ```yaml
 data:
-    client_id: # The Azure Federated Identity ID
-    tenant_id: # The Azure Federated Identity Tenant ID
+    client_id:       # The Azure Managed Identity's Client ID
+    tenant_id:       # The Azure Account's Tenant ID holding the managed identity for LokiStack
+    subscription_id: # The Azure Account's Subscription ID holding the managed identity for LokiStack
+    region:          # The Azure Location hosting the Kubernetes cluster and in turn LokiStack
 ```
 
 ##### Pre-requisites
