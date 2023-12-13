@@ -382,7 +382,8 @@ func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
-func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
+// TODO(chaudum): Do we need to pass the line filters?
+func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, filters []*logproto.LineFilterExpression, from, through model.Time) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -391,7 +392,7 @@ func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, 
 	stats := stats.FromContext(ctx)
 
 	start := time.Now()
-	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, matchers...)
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, chunk.NewPredicate(matchers, filters))
 	stats.AddChunkRefsFetchTime(time.Since(start))
 
 	if err != nil {
@@ -469,7 +470,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	lazyChunks, err := s.lazyChunks(ctx, matchers, nil, from, through)
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +508,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, matchers, from, through)
+	lazyChunks, err := s.lazyChunks(ctx, matchers, nil, from, through)
 	if err != nil {
 		return nil, err
 	}

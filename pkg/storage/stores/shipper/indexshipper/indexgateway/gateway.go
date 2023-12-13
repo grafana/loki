@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
@@ -202,7 +203,9 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	if err != nil {
 		return nil, err
 	}
-	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, matchers...)
+
+	predicate := chunk.NewPredicate(matchers, req.Filters)
+	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate)
 	if err != nil {
 		return nil, err
 	}
