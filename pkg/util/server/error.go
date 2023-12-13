@@ -80,6 +80,10 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 
 // WrapError wraps an error in a protobuf status.
 func WrapError(err error) *rpc.Status {
+	if s, ok := status.FromError(err); ok {
+		return s.Proto()
+	}
+
 	code, err := ClientHTTPStatusAndError(err)
 	return status.New(codes.Code(code), err.Error()).Proto()
 }
