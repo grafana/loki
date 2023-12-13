@@ -11,17 +11,12 @@ import (
 	"github.com/go-kit/log"
 	instr "github.com/grafana/dskit/instrument"
 	"github.com/grafana/gomemcache/memcache"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
-)
-
-var (
-	ErrMemcachedStoppedByClient = errors.New("cache is stopped by client")
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -55,16 +50,7 @@ type Memcached struct {
 	// So that any writer goroutine wouldn't write to it after closing `intputCh`
 	closed chan struct{}
 
-	// stopped track if `inputCh` and `closed` chan need to closed. Reason being,
-	// there are two entry points that can close these channels, when client calls
-	// .Stop() explicitly, or passed context is cancelled.
-	// So `Stop()` will make sure it's not closing the channels that are already closed, which may cause a panic.
-	stopped sync.Once
-
 	logger log.Logger
-
-	// NOTE: testFetchDelay should be used only for testing. See `SetTestFetchDelay()` method for more details.
-	testFetchDelay chan struct{}
 }
 
 // NewMemcached makes a new Memcached.
@@ -108,12 +94,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 					batchID: input.batchID,
 				}
 				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
-				// NOTE: This check is needed because goroutines submitting work via `inputCh` may exit in-between because of context cancellation or timeout. This helps to close these worker goroutines to exit without hanging around.
-				select {
-				case <-c.closed:
-					return
-				case input.resultCh <- res:
-				}
+				input.resultCh <- res
 			}
 
 		}()
@@ -189,33 +170,21 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 
 func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	resultsCh := make(chan *result)
-	var workerErr error // any error (timeout, context cancel) happened in worker go routine that we start in this method?
-
 	batchSize := c.cfg.BatchSize
 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
 			select {
-			case <-ctx.Done():
-				c.closeAndStop()
-				workerErr = ctx.Err()
-				return
 			case <-c.closed:
-				workerErr = ErrMemcachedStoppedByClient
 				return
 			default:
-				if c.testFetchDelay != nil {
-					<-c.testFetchDelay
-				}
-
 				c.inputCh <- &work{
 					keys:     batchKeys,
 					ctx:      ctx,
 					resultCh: resultsCh,
 					batchID:  j,
 				}
-
 				j++
 			}
 		}
@@ -236,11 +205,9 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		// Also we do close(resultsCh) in the same goroutine so <-resultCh may never return.
 		select {
 		case <-c.closed:
-			if workerErr != nil {
-				err = workerErr
-			}
 			return
-		case result := <-resultsCh:
+		default:
+			result := <-resultsCh
 			results[result.batchID] = result
 		}
 	}
@@ -281,32 +248,14 @@ func (c *Memcached) Stop() {
 	if c.inputCh == nil {
 		return
 	}
-	c.closeAndStop()
-	c.wg.Wait()
-}
 
-// closeAndStop closes the `inputCh`, `closed` channel and update the `stopped` flag to true.
-// Assumes c.inputCh, c.closed channels are non-nil
-// Go routine safe and idempotent.
-func (c *Memcached) closeAndStop() {
-	c.stopped.Do(func() {
-		close(c.inputCh)
-		close(c.closed)
-	})
+	close(c.inputCh)
+	close(c.closed)
+	c.wg.Wait()
 }
 
 func (c *Memcached) GetCacheType() stats.CacheType {
 	return c.cacheType
-}
-
-// Warning: SetTestFetchDelay should be used only for testing.
-// To introduce artifical delay between each batch fetch.
-// Helpful to test if each batch is respecting the `ctx` cancelled or `Stop()` called
-// in-between each batch
-// NOTE: It is exported method instead of internal method because,
-// test's uses `cache.SetTestFetchDelay` due to some cyclic dependencies in this package
-func (c *Memcached) SetTestFetchDelay(ch chan struct{}) {
-	c.testFetchDelay = ch
 }
 
 // HashKey hashes key into something you can store in memcached.
