@@ -617,18 +617,60 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 				blockIters,
 				seriesIter,
 				populate)
-			builder, err := v1.NewBlockBuilder(blockOptions, v1.NewDirectoryBlockWriter(localDst))
+			blockPath := filepath.Join(localDst, "merge-out")
+
+			mergeBlockBuilder, err := NewPersistentBlockBuilder(blockPath, blockOptions)
 			if err != nil {
 				level.Error(logger).Log("msg", "creating block builder", "err", err)
 				return err
 			}
-
-			// TODO merge builder writes in place? read localdst, archive, upload
-			// TODO update bloomBlocksRefs
-			checksum, err := mergeBuilder.Build(builder)
+			checksum, err := mergeBlockBuilder.mergeBuild(mergeBuilder)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed merging the blooms", "err", err)
 				return err
+			}
+			data, err := mergeBlockBuilder.Data()
+			if err != nil {
+				level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
+				return err
+			}
+
+			mergedBlock := bloomshipper.Block{
+				BlockRef: bloomshipper.BlockRef{
+					Ref: bloomshipper.Ref{
+						TenantID:       job.tenantID,
+						TableName:      job.tableName,
+						MinFingerprint: uint64(job.minFp),
+						MaxFingerprint: uint64(job.maxFp),
+						StartTimestamp: int64(job.from),
+						EndTimestamp:   int64(job.through),
+						Checksum:       checksum,
+					},
+					IndexPath: job.indexPath,
+				},
+				Data: data,
+			}
+
+			archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
+			blockToUpload, err := c.compressBloomBlock(mergedBlock, archivePath, blockPath, logger)
+			if err != nil {
+				level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+				return err
+			}
+			defer func() {
+				err = os.Remove(archivePath)
+				if err != nil {
+					level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
+				}
+			}()
+
+			storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
+			if err != nil {
+				level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+				return err
+			}
+			for _, block := range storedBlocks {
+				bloomBlocksRefs = append(bloomBlocksRefs, block.BlockRef)
 			}
 		}
 

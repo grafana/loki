@@ -55,6 +55,10 @@ func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) 
 	return p.builder.BuildFrom(itr)
 }
 
+func (p *PersistentBlockBuilder) mergeBuild(builder *v1.MergeBuilder) (uint32, error) {
+	return builder.Build(p.builder)
+}
+
 func (p *PersistentBlockBuilder) Data() (io.ReadSeekCloser, error) {
 	blockFile, err := os.Open(filepath.Join(p.localDst, v1.BloomFileName))
 	if err != nil {
