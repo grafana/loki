@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -343,9 +344,6 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 		return nil, 0, 0, err
 	}
 	matchers = append(matchers, nameLabelMatcher)
-	if err != nil {
-		return nil, 0, 0, err
-	}
 	matchers, err = injectShardLabel(req.GetShards(), matchers)
 	if err != nil {
 		return nil, 0, 0, err
@@ -383,7 +381,7 @@ func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
 // TODO(chaudum): Do we need to pass the line filters?
-func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, filters []*logproto.LineFilterExpression, from, through model.Time) ([]*LazyChunk, error) {
+func (s *LokiStore) lazyChunks(ctx context.Context, from, through model.Time, predicate chunk.Predicate) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -392,7 +390,7 @@ func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, 
 	stats := stats.FromContext(ctx)
 
 	start := time.Now()
-	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, chunk.NewPredicate(matchers, filters))
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, predicate)
 	stats.AddChunkRefsFetchTime(time.Since(start))
 
 	if err != nil {
@@ -465,12 +463,16 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	e := plan.LineFilterExtractor{}
+	req.Plan.AST.Accept(&e)
+	level.Debug(s.logger).Log("msg", "extract line filters from query", "plan", req.Plan.AST.String(), "filters", fmt.Sprintf("%v", e.Filters))
+
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, matchers, nil, from, through)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, e.Filters))
 	if err != nil {
 		return nil, err
 	}
@@ -503,12 +505,16 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 }
 
 func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	e := plan.LineFilterExtractor{}
+	req.Plan.AST.Accept(&e)
+	level.Debug(s.logger).Log("msg", "extract line filters from query", "plan", req.Plan.AST.String(), "filters", fmt.Sprintf("%v", e.Filters))
+
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, matchers, nil, from, through)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, e.Filters))
 	if err != nil {
 		return nil, err
 	}
