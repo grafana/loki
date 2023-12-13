@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"google.golang.org/grpc/codes"
 
-	//"google.golang.org/grpc/status"
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 
