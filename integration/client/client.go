@@ -662,6 +662,39 @@ func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]strin
 	return values.Data, nil
 }
 
+func (c *Client) Stats(ctx context.Context, query string) ([]map[string]int, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
+	defer cancelFunc()
+
+	v := url.Values{}
+	v.Set("query", query)
+
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		panic(err)
+	}
+	u.Path = "/loki/api/v1/index/stats"
+	u.RawQuery = v.Encode()
+
+	buf, statusCode, err := c.run(ctx, u.String())
+	if err != nil {
+		return nil, err
+	}
+
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	}
+
+	var values struct {
+		Data []map[string]int `json:"data"`
+	}
+	if err := json.Unmarshal(buf, &values); err != nil {
+		return nil, err
+	}
+
+	return values.Data, nil
+}
+
 type TailResult struct {
 	Response loghttp.TailResponse
 	Err      error
