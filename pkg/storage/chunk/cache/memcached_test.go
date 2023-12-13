@@ -19,10 +19,11 @@ import (
 )
 
 func TestMemcached_fetchKeysBatched(t *testing.T) {
-	// This test checks for three things
-	// 1. `c.inputCh` is closed when `c.Stop()` is triggered
+	// This test checks for four things
+	// 1. `c.inputCh` is closed when `c.Stop()` is triggered returning ErrMemcachedStoppedByClient error.
 	// 2. Once `c.inputCh` is closed, no one should be writing to `c.inputCh` (thus shouldn't panic with "send to closed channel")
 	// 3. Once the `ctx` is cancelled or timeout, it should stop fetching the keys.
+	// 4. Make sure single instance of `Memcached` created via `NewMemcached()` is usable by multiple `Fetch` even some of those are context cancelled or timedout.
 
 	t.Run("inputCh is closed without panics when Stop() is triggered", func(t *testing.T) {
 		client := newMockMemcache()
@@ -49,8 +50,8 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 				err := m.Store(ctx, keys, bufs)
 				require.NoError(t, err)
 
-				_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
-				require.NoError(t, err)
+				_, _, _, err = m.Fetch(ctx, keys)                          // will try to write to `intputChan` and shouldn't panic
+				require.ErrorIs(t, err, cache.ErrMemcachedStoppedByClient) // because we stopped before fetching.
 
 			})
 		}()
@@ -88,7 +89,7 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 				require.NoError(t, err)
 				<-wait                            // wait before fetching
 				_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
-				require.ErrorIs(t, err, context.Canceled)
+				require.Error(t, err, context.Canceled)
 			})
 		}()
 
@@ -179,7 +180,7 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 				require.NoError(t, err)
 				<-wait                            // wait before fetching
 				_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
-				require.ErrorIs(t, err, context.DeadlineExceeded)
+				require.Error(t, err, context.DeadlineExceeded)
 			})
 		}()
 
@@ -187,6 +188,61 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 		close(wait)                                        // start the fetching
 		wg.Wait()
 		require.Equal(t, 0, client.keysFetchedCount) // client.GetMulti shouldn't have called because context is timedout before.
+		m.Stop()                                     // cancelation and Stop() should be able to work.
+		ctxCancel()                                  // finally cancel context for cleanup sake
+
+	})
+
+	t.Run("multi-fetch with single memcached instance", func(t *testing.T) {
+		cancelTimeout := 100 * time.Millisecond
+
+		client := newMockMemcache()
+		m := cache.NewMemcached(cache.MemcachedConfig{
+			BatchSize:   10,
+			Parallelism: 5,
+		}, client, "test", nil, log.NewNopLogger(), "test")
+
+		var (
+			wg             sync.WaitGroup
+			wait           = make(chan struct{})
+			ctx, ctxCancel = context.WithTimeout(context.Background(), cancelTimeout)
+		)
+		wg.Add(1)
+
+		// This goroutine is going to do some real "work" (writing to `c.inputCh`). We then wait till context timeout happens closing `c.inputCh`.
+		// We assert there shouldn't be any panics and it stopped fetching keys.
+		go func() {
+			defer wg.Done()
+			assert.NotPanics(t, func() {
+				keys := []string{"1", "2"}
+				bufs := [][]byte{[]byte("1"), []byte("2")}
+				err := m.Store(ctx, keys, bufs)
+				require.NoError(t, err)
+				<-wait                            // wait before fetching
+				_, _, _, err = m.Fetch(ctx, keys) // will try to write to `intputChan` and shouldn't panic
+				require.Error(t, err, context.DeadlineExceeded)
+
+				found, _, _, err := m.Fetch(context.Background(), keys) // same fetch, but working context. Should fetch successfully
+				require.NoError(t, err)
+				require.Equal(t, keys, found)
+
+				cancelCtx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				_, _, _, err = m.Fetch(cancelCtx, keys) // same fetch, but with cancelled context. Fetch should fail with context cancel error
+				require.ErrorIs(t, err, context.Canceled)
+
+				found, _, _, err = m.Fetch(context.Background(), keys) // same fetch, but working context. Should fetch successfully again
+				require.NoError(t, err)
+				require.Equal(t, keys, found)
+
+			})
+		}()
+
+		time.Sleep(cancelTimeout + (5 * time.Millisecond)) // wait till context timeout
+		close(wait)                                        // start the fetching
+		wg.Wait()
+		require.Equal(t, 4, client.keysFetchedCount) // client.GetMulti should have called for 2 successfull fetch above, fetching 4 keys totally
 		m.Stop()                                     // cancelation and Stop() should be able to work.
 		ctxCancel()                                  // finally cancel context for cleanup sake
 
