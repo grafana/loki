@@ -48,13 +48,21 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	}
 
-	s, isRPC := status.FromError(err)
+	
+	if s, isRPC := status.FromError(err); isRPC {
+		if s.Code() == codes.DeadlineExceeded {
+			return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
+		} else if int(s.Code())/100 == 4 || int(s.Code())/100 == 5 {
+			return int(s.Code()), errors.New(s.Message())
+		}
+		return http.StatusInternalServerError, err
+	}
+
 	switch {
 	case errors.Is(err, context.Canceled) ||
 		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
 		return StatusClientClosedRequest, errors.New(ErrClientCanceled)
-	case errors.Is(err, context.DeadlineExceeded) ||
-		(isRPC && s.Code() == codes.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	case errors.As(err, &queryErr):
 		return http.StatusBadRequest, err
@@ -62,8 +70,6 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
 		return http.StatusBadRequest, err
-	case isRPC && (int(s.Code())/100 == 4 || int(s.Code())/100 == 5):
-		return int(s.Code()), errors.New(s.Message())
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
 			return int(grpcErr.Code), errors.New(string(grpcErr.Body))
