@@ -498,7 +498,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
 
-		blockToUpload, err := c.compressBloomBlock(storedBlock, archivePath, localDst, logger)
+		blockToUpload, err := compressBloomBlock(storedBlock, archivePath, localDst, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
 			return err
@@ -652,7 +652,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			}
 
 			archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
-			blockToUpload, err := c.compressBloomBlock(mergedBlock, archivePath, blockPath, logger)
+			blockToUpload, err := compressBloomBlock(mergedBlock, archivePath, blockPath, logger)
 			if err != nil {
 				level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
 				return err
@@ -687,22 +687,4 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 	return nil
-}
-
-func (c *Compactor) compressBloomBlock(storedBlock bloomshipper.Block, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
-	blockToUpload := bloomshipper.Block{}
-	archiveFile, err := os.Create(archivePath)
-	if err != nil {
-		return blockToUpload, err
-	}
-
-	err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
-	if err != nil {
-		level.Error(logger).Log("msg", "creating bloom block archive file", "err", err)
-		return blockToUpload, err
-	}
-
-	blockToUpload.BlockRef = storedBlock.BlockRef
-	blockToUpload.Data = archiveFile
-	return blockToUpload, nil
 }

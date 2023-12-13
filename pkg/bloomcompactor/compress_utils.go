@@ -2,6 +2,8 @@ package bloomcompactor
 
 import (
 	"fmt"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"io"
@@ -10,7 +12,26 @@ import (
 	"strings"
 )
 
-func ExtractBlock(block *bloomshipper.LazyBlock, workingDirectory string) (string, error) {
+func compressBloomBlock(storedBlock bloomshipper.Block, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
+	blockToUpload := bloomshipper.Block{}
+	archiveFile, err := os.Create(archivePath)
+	if err != nil {
+		return blockToUpload, err
+	}
+
+	err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
+	if err != nil {
+		level.Error(logger).Log("msg", "creating bloom block archive file", "err", err)
+		return blockToUpload, err
+	}
+
+	blockToUpload.BlockRef = storedBlock.BlockRef
+	blockToUpload.Data = archiveFile
+	return blockToUpload, nil
+}
+
+// TODO common with block_downloader, extract under bloomutils
+func uncompressBloomBlock(block *bloomshipper.LazyBlock, workingDirectory string) (string, error) {
 	workingDirectoryPath := filepath.Join(workingDirectory, block.BlockPath)
 	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
 	if err != nil {
@@ -31,6 +52,7 @@ func ExtractBlock(block *bloomshipper.LazyBlock, workingDirectory string) (strin
 	return workingDirectoryPath, nil
 }
 
+// TODO common with block_downloader, extract under bloomutils
 func writeDataToTempFile(workingDirectoryPath string, block *bloomshipper.LazyBlock) (string, error) {
 	defer block.Data.Close()
 	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, "/")+1:])
@@ -47,6 +69,7 @@ func writeDataToTempFile(workingDirectoryPath string, block *bloomshipper.LazyBl
 	return archivePath, nil
 }
 
+// TODO common with block_downloader, extract under bloomutils
 func extractArchive(archivePath string, workingDirectoryPath string) error {
 	file, err := os.Open(archivePath)
 	if err != nil {

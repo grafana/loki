@@ -546,6 +546,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 			cur = &SeriesWithBloom{
 				Series: nextInStore,
 				Bloom: &Bloom{
+					// TODO parameterise SBF options. fp_rate
 					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 				},
 			}
