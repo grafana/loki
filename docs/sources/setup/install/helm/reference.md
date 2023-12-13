@@ -3113,6 +3113,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>networkPolicy.flavor</td>
+			<td>string</td>
+			<td>Specifies whether the policies created will be standard Network Policies (flavor: kubernetes) or Cilium Network Policies (flavor: cilium)</td>
+			<td><pre lang="json">
+"kubernetes"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>networkPolicy.ingress.namespaceSelector</td>
 			<td>object</td>
 			<td>Specifies the namespaces which are allowed to access the http port</td>
