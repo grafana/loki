@@ -189,6 +189,6 @@ services:
 
   flog:
     image: mingrammer/flog
-    command: -f json -d 1s -l
+    command: -f json -d 200ms -l
     networks:
       - loki

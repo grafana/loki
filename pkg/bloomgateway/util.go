@@ -5,86 +5,33 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-type IndexedValue[T any] struct {
-	idx int
-	val T
-}
-
-type IterWithIndex[T any] struct {
-	v1.Iterator[T]
-	zero  T // zero value of T
-	cache IndexedValue[T]
-}
-
-func (it *IterWithIndex[T]) At() IndexedValue[T] {
-	it.cache.val = it.Iterator.At()
-	return it.cache
-}
-
-func NewIterWithIndex[T any](iter v1.Iterator[T], idx int) v1.Iterator[IndexedValue[T]] {
-	return &IterWithIndex[T]{
-		Iterator: iter,
-		cache:    IndexedValue[T]{idx: idx},
-	}
-}
-
-type SliceIterWithIndex[T any] struct {
-	xs    []T // source slice
-	pos   int // position within the slice
-	zero  T   // zero value of T
-	cache IndexedValue[T]
-}
-
-func (it *SliceIterWithIndex[T]) Next() bool {
-	it.pos++
-	return it.pos < len(it.xs)
-}
-
-func (it *SliceIterWithIndex[T]) Err() error {
-	return nil
-}
-
-func (it *SliceIterWithIndex[T]) At() IndexedValue[T] {
-	it.cache.val = it.xs[it.pos]
-	return it.cache
-}
-
-func (it *SliceIterWithIndex[T]) Peek() (IndexedValue[T], bool) {
-	if it.pos+1 >= len(it.xs) {
-		it.cache.val = it.zero
-		return it.cache, false
-	}
-	it.cache.val = it.xs[it.pos+1]
-	return it.cache, true
-}
-
-func NewSliceIterWithIndex[T any](xs []T, idx int) v1.PeekingIterator[IndexedValue[T]] {
-	return &SliceIterWithIndex[T]{
-		xs:    xs,
-		pos:   -1,
-		cache: IndexedValue[T]{idx: idx},
-	}
-}
-
 func getDayTime(ts model.Time) time.Time {
 	return time.Date(ts.Time().Year(), ts.Time().Month(), ts.Time().Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// TODO(chaudum): Fix Through time calculation
 // getFromThrough assumes a list of ShortRefs sorted by From time
-// However, it does also assume that the last item has the highest
-// Through time, which might not be the case!
 func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 	if len(refs) == 0 {
 		return model.Earliest, model.Latest
 	}
-	return refs[0].From, refs[len(refs)-1].Through
+
+	maxItem := slices.MaxFunc(refs, func(a, b *logproto.ShortRef) int {
+		if a.Through > b.Through {
+			return 1
+		} else if a.Through < b.Through {
+			return -1
+		}
+		return 0
+	})
+
+	return refs[0].From, maxItem.Through
 }
 
 // convertToSearches converts a list of line filter expressions to a list of

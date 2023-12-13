@@ -142,7 +142,7 @@ func boolValue(value bool) float64 {
 	return 0
 }
 
-func streamRate(tenantLimits map[string]lokiv1.LimitsTemplateSpec, ingesters int32) float64 {
+func streamRate(tenantLimits map[string]lokiv1.PerTenantLimitsTemplateSpec, ingesters int32) float64 {
 	var tenants, tenantStreamLimit int32 = 0, 0
 
 	for _, tenant := range tenantLimits {

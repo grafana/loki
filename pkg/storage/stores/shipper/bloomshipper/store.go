@@ -32,6 +32,7 @@ type Store interface {
 	GetBlockRefs(ctx context.Context, tenant string, from, through time.Time) ([]BlockRef, error)
 	GetBlockQueriers(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) ([]BlockQuerierWithFingerprintRange, error)
 	GetBlockQueriersForBlockRefs(ctx context.Context, tenant string, blocks []BlockRef) ([]BlockQuerierWithFingerprintRange, error)
+	ForEach(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
 	Stop()
 }
 
@@ -52,6 +53,11 @@ func (bs *BloomStore) Stop() {
 // GetBlockRefs implements Store
 func (bs *BloomStore) GetBlockRefs(ctx context.Context, tenant string, from, through time.Time) ([]BlockRef, error) {
 	return bs.shipper.GetBlockRefs(ctx, tenant, from, through)
+}
+
+// ForEach implements Store
+func (bs *BloomStore) ForEach(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error {
+	return bs.shipper.Fetch(ctx, tenant, blocks, callback)
 }
 
 // GetQueriersForBlocks implements Store

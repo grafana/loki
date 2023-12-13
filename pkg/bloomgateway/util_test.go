@@ -3,38 +3,28 @@ package bloomgateway
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func TestSliceIterWithIndex(t *testing.T) {
-	t.Run("SliceIterWithIndex implements v1.PeekingIterator interface", func(t *testing.T) {
-		xs := []string{"a", "b", "c"}
-		it := NewSliceIterWithIndex(xs, 123)
+func TestGetFromThrough(t *testing.T) {
+	chunks := []*logproto.ShortRef{
+		{From: 0, Through: 6},
+		{From: 1, Through: 5},
+		{From: 2, Through: 9},
+		{From: 3, Through: 8},
+		{From: 4, Through: 7},
+	}
+	from, through := getFromThrough(chunks)
+	require.Equal(t, model.Time(0), from)
+	require.Equal(t, model.Time(9), through)
 
-		// peek at first item
-		p, ok := it.Peek()
-		require.True(t, ok)
-		require.Equal(t, "a", p.val)
-		require.Equal(t, 123, p.idx)
-
-		// proceed to first item
-		require.True(t, it.Next())
-		require.Equal(t, "a", it.At().val)
-		require.Equal(t, 123, it.At().idx)
-
-		// proceed to second and third item
-		require.True(t, it.Next())
-		require.True(t, it.Next())
-
-		// peek at non-existing fourth item
-		p, ok = it.Peek()
-		require.False(t, ok)
-		require.Equal(t, "", p.val) // "" is zero value for type string
-		require.Equal(t, 123, p.idx)
-	})
+	// assert that slice order did not change
+	require.Equal(t, model.Time(0), chunks[0].From)
+	require.Equal(t, model.Time(4), chunks[len(chunks)-1].From)
 }
 
 func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {

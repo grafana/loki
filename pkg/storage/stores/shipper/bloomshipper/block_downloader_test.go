@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
@@ -37,10 +36,6 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 			MaxTasksEnqueuedPerTenant: 20,
 		},
 	}, blockClient, overrides, log.NewNopLogger(), prometheus.DefaultRegisterer)
-	stoppedWorkersCount := atomic.NewInt32(0)
-	downloader.onWorkerStopCallback = func() {
-		stoppedWorkersCount.Inc()
-	}
 	require.NoError(t, err)
 	blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
 	downloadedBlocks := make(map[string]any, len(blockReferences))
@@ -63,15 +58,19 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 	}
 	require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
 
+	// We want all workers to be connected to the queue
+	require.Equal(t, workersCount, int(downloader.queue.GetConnectedConsumersMetric()))
+
 	downloader.stop()
-	require.Eventuallyf(t, func() bool {
-		return stoppedWorkersCount.Load() == int32(workersCount)
-	}, 1*time.Second, 10*time.Millisecond, "expected all %d workers to be stopped", workersCount)
+
+	// We want all workers to be disconnected from the queue
+	require.Equal(t, 0, int(downloader.queue.GetConnectedConsumersMetric()))
 }
 
 // creates fake blocks and returns map[block-path]Block and mockBlockClient
 func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 	mockData := make(map[string]Block, count)
+	mockLazyData := make(map[string]LazyBlock, count)
 	refs := make([]BlockRef, 0, count)
 	for i := 0; i < count; i++ {
 		archive, _, _ := createBlockArchive(t)
@@ -81,20 +80,28 @@ func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 			},
 			Data: archive,
 		}
+		lazyBlock := LazyBlock{
+			BlockRef: BlockRef{
+				BlockPath: fmt.Sprintf("block-path-%d", i),
+			},
+			Data: archive,
+		}
 		mockData[block.BlockPath] = block
+		mockLazyData[block.BlockPath] = lazyBlock
 		refs = append(refs, block.BlockRef)
 	}
-	return refs, &mockBlockClient{mockData: mockData}
+	return refs, &mockBlockClient{mockData: mockData, mockLazyData: mockLazyData}
 }
 
 type mockBlockClient struct {
 	responseDelay time.Duration
 	mockData      map[string]Block
+	mockLazyData  map[string]LazyBlock
 }
 
-func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (Block, error) {
+func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (LazyBlock, error) {
 	time.Sleep(m.responseDelay)
-	block, exists := m.mockData[reference.BlockPath]
+	block, exists := m.mockLazyData[reference.BlockPath]
 	if exists {
 		return block, nil
 	}
@@ -116,7 +123,7 @@ func Test_blockDownloader_extractBlock(t *testing.T) {
 	workingDir := t.TempDir()
 	downloader := &blockDownloader{workingDirectory: workingDir}
 	ts := time.Now().UTC()
-	block := Block{
+	block := LazyBlock{
 		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
 		Data:     blockFile,
 	}
