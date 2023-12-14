@@ -1780,6 +1780,9 @@ for the ruler is missing.</p>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
 </td>
+</tr><tr><td><p>&#34;ReasonStorageSchemaVersionIsOld&#34;</p></td>
+<td><p>ReasonStorageSchemaVersionIsOld when the object storage schema version is older than V13</p>
+</td>
 </tr><tr><td><p>&#34;ReasonZoneAwareEmptyLabel&#34;</p></td>
 <td><p>ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.</p>
 </td>
@@ -1813,6 +1816,10 @@ are degraded or the cluster cannot connect to object storage.</p>
 </td>
 </tr><tr><td><p>&#34;Ready&#34;</p></td>
 <td><p>ConditionReady defines the condition that all components in the Loki deployment are ready.</p>
+</td>
+</tr><tr><td><p>&#34;Warning&#34;</p></td>
+<td><p>ConditionWarning is used for configurations that are not recommended, but don&rsquo;t currently cause
+issues. There can be multiple warning conditions active at a time.</p>
 </td>
 </tr></tbody>
 </table>
