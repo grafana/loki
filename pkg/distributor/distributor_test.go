@@ -1153,7 +1153,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, log.NewNopLogger())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -1246,4 +1246,66 @@ type fakeRateStore struct {
 
 func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
 	return s.rate, s.pushRate
+}
+
+type mockTee struct {
+	mu         sync.Mutex
+	duplicated [][]KeyedStream
+}
+
+func (mt *mockTee) Duplicate(streams []KeyedStream) {
+	mt.mu.Lock()
+	defer mt.mu.Unlock()
+	mt.duplicated = append(mt.duplicated, streams)
+}
+
+func TestDistributorTee(t *testing.T) {
+	data := []*logproto.PushRequest{
+		{
+			Streams: []logproto.Stream{
+				{
+					Labels: "{job=\"foo\"}",
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(123456, 0), Line: "line 1"},
+						{Timestamp: time.Unix(123457, 0), Line: "line 2"},
+					},
+				},
+			},
+		},
+		{
+			Streams: []logproto.Stream{
+				{
+					Labels: "{job=\"foo\"}",
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(123458, 0), Line: "line 3"},
+						{Timestamp: time.Unix(123459, 0), Line: "line 4"},
+					},
+				},
+				{
+					Labels: "{job=\"bar\"}",
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(123458, 0), Line: "line 5"},
+						{Timestamp: time.Unix(123459, 0), Line: "line 6"},
+					},
+				},
+			},
+		},
+	}
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+
+	tee := mockTee{}
+	distributors[0].tee = &tee
+
+	for i, td := range data {
+		_, err := distributors[0].Push(ctx, td)
+		require.NoError(t, err)
+
+		for j, streams := range td.Streams {
+			assert.Equal(t, tee.duplicated[i][j].Stream.Entries, streams.Entries)
+		}
+	}
 }
