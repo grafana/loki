@@ -12,16 +12,16 @@ func TestDepthFirstTraversalVisitor(t *testing.T) {
 	visited := [][2]string{}
 
 	visitor := &DepthFirstTraversal{
-		VisitLabelParserFn: func(v *DepthFirstTraversal, e *LabelParserExpr) {
+		VisitLabelParserFn: func(v RootVisitor, e *LabelParserExpr) {
 			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
 		},
-		VisitLineFilterFn: func(v *DepthFirstTraversal, e *LineFilterExpr) {
+		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
 			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
 		},
-		VisitLogfmtParserFn: func(v *DepthFirstTraversal, e *LogfmtParserExpr) {
+		VisitLogfmtParserFn: func(v RootVisitor, e *LogfmtParserExpr) {
 			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
 		},
-		VisitMatchersFn: func(v *DepthFirstTraversal, e *MatchersExpr) {
+		VisitMatchersFn: func(v RootVisitor, e *MatchersExpr) {
 			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
 		},
 	}
