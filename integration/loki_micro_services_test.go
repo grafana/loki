@@ -146,8 +146,13 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		assert.ElementsMatch(t, []map[string]string{{"job": "fake"}}, resp)
 	})
 
-	t.Run("stats error", func(t *testing.T) {
+	t.Run("series error", func(t *testing.T) {
 		_, err := cliQueryFrontend.Series(context.Background(), `{job="fake"}|= "search"`)
+		require.ErrorContains(t, err, "status code 400: only label matchers are supported")
+	})
+
+	t.Run("stats error", func(t *testing.T) {
+		_, err := cliQueryFrontend.Stats(context.Background(), `{job="fake"}|= "search"`)
 		require.ErrorContains(t, err, "status code 400: only label matchers are supported")
 	})
 
