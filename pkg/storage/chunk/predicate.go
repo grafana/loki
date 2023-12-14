@@ -7,7 +7,7 @@ import (
 
 type Predicate struct {
 	Matchers []*labels.Matcher
-	Filters  []syntax.LineFilter // Should also be a slice of pointers??
+	Filters  []syntax.LineFilter
 }
 
 func NewPredicate(m []*labels.Matcher, f []syntax.LineFilter) Predicate {
