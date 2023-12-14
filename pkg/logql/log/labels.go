@@ -444,6 +444,26 @@ var stringMapPool = sync.Pool{
 	},
 }
 
+// puts labels entries into an existing map, it is up to the caller to
+// properly clear the map if it is going to be reused
+func (b *LabelsBuilder) IntoMap(m map[string]string) {
+	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
+		if b.baseMap == nil {
+			b.baseMap = b.base.Map()
+			for k, v := range b.baseMap {
+				m[k] = v
+			}
+		}
+		return
+	}
+	b.buf = b.UnsortedLabels(b.buf)
+	// todo should we also cache maps since limited by the result ?
+	// Maps also don't create a copy of the labels.
+	for _, l := range b.buf {
+		m[l.Name] = l.Value
+	}
+}
+
 func (b *LabelsBuilder) Map() map[string]string {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
@@ -455,6 +475,7 @@ func (b *LabelsBuilder) Map() map[string]string {
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := stringMapPool.Get().(map[string]string)
+	clear(res)
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
