@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/pkg/logql/log"
 	"time"
+
+	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/grafana/loki/pkg/loghttp"
 

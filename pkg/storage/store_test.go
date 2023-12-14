@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	lokilog "github.com/grafana/loki/pkg/logql/log"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -14,6 +13,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	lokilog "github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/grafana/dskit/user"
@@ -919,14 +920,17 @@ func Test_PipelineWrapper(t *testing.T) {
 		require.NoError(t, logit.Error()) // consume the iterator
 	}
 
+	require.Equal(t, "{foo=~\"ba.*\"}", wrapper.query)
 	require.Equal(t, 28, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
 type testPipelineWrapper struct {
+	query    string
 	pipeline *mockPipeline
 }
 
-func (t testPipelineWrapper) Wrap(pipeline lokilog.Pipeline) lokilog.Pipeline {
+func (t *testPipelineWrapper) Wrap(pipeline lokilog.Pipeline, query string) lokilog.Pipeline {
+	t.query = query
 	t.pipeline.wrappedExtractor = pipeline
 	return t.pipeline
 }
@@ -994,15 +998,17 @@ func Test_SampleWrapper(t *testing.T) {
 		require.NoError(t, it.Error()) // consume the iterator
 	}
 
+	require.Equal(t, "count_over_time({foo=~\"ba.*\"}[1s])", wrapper.query)
 	require.Equal(t, 28, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
-
 }
 
 type testExtractorWrapper struct {
+	query     string
 	extractor *mockExtractor
 }
 
-func (t *testExtractorWrapper) Wrap(extractor lokilog.SampleExtractor) lokilog.SampleExtractor {
+func (t *testExtractorWrapper) Wrap(extractor lokilog.SampleExtractor, query string) lokilog.SampleExtractor {
+	t.query = query
 	t.extractor.wrappedExtractor = extractor
 	return t.extractor
 }

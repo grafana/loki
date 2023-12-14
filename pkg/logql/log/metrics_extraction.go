@@ -41,7 +41,7 @@ type StreamSampleExtractor interface {
 // SampleExtractorWrapper takes an extractor, wraps it is some desired functionality
 // and returns a new pipeline
 type SampleExtractorWrapper interface {
-	Wrap(SampleExtractor) SampleExtractor
+	Wrap(extractor SampleExtractor, query string) SampleExtractor
 }
 
 type lineSampleExtractor struct {

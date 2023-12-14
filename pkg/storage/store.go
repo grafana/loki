@@ -3,9 +3,10 @@ package storage
 import (
 	"context"
 	"fmt"
-	lokilog "github.com/grafana/loki/pkg/logql/log"
 	"math"
 	"time"
+
+	lokilog "github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -512,7 +513,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 	}
 
 	if s.pipelineWrapper != nil {
-		pipeline = s.pipelineWrapper.Wrap(pipeline)
+		pipeline = s.pipelineWrapper.Wrap(pipeline, expr.String())
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -554,7 +555,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	}
 
 	if s.extractorWrapper != nil {
-		extractor = s.extractorWrapper.Wrap(extractor)
+		extractor = s.extractorWrapper.Wrap(extractor, expr.String())
 	}
 
 	var chunkFilterer chunk.Filterer

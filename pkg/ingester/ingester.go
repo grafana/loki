@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	lokilog "github.com/grafana/loki/pkg/logql/log"
 	"math/rand"
 	"net/http"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	lokilog "github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

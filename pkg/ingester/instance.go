@@ -3,13 +3,14 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logql/log"
 	"math"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -427,7 +428,7 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	}
 
 	if i.pipelineWrapper != nil {
-		pipeline = i.pipelineWrapper.Wrap(pipeline)
+		pipeline = i.pipelineWrapper.Wrap(pipeline, expr.String())
 	}
 
 	stats := stats.FromContext(ctx)
@@ -476,7 +477,7 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	}
 
 	if i.extractorWrapper != nil {
-		extractor = i.extractorWrapper.Wrap(extractor)
+		extractor = i.extractorWrapper.Wrap(extractor, expr.String())
 	}
 
 	stats := stats.FromContext(ctx)

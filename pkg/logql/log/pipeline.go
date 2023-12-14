@@ -38,7 +38,7 @@ type Stage interface {
 // PipelineWrapper takes a pipeline, wraps it is some desired functionality and
 // returns a new pipeline
 type PipelineWrapper interface {
-	Wrap(Pipeline) Pipeline
+	Wrap(pipeline Pipeline, query string) Pipeline
 }
 
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.

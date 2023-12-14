@@ -3,13 +3,14 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logql/log"
 	"math/rand"
 	"runtime"
 	"sort"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
@@ -702,14 +703,17 @@ func Test_PipelineWrapper(t *testing.T) {
 		require.NoError(t, it.Error())
 	}
 
+	require.Equal(t, `{job="3"}`, wrapper.query)
 	require.Equal(t, 10, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
 type testPipelineWrapper struct {
+	query    string
 	pipeline *mockPipeline
 }
 
-func (t testPipelineWrapper) Wrap(pipeline log.Pipeline) log.Pipeline {
+func (t *testPipelineWrapper) Wrap(pipeline log.Pipeline, query string) log.Pipeline {
+	t.query = query
 	t.pipeline.wrappedExtractor = pipeline
 	return t.pipeline
 }
@@ -781,14 +785,17 @@ func Test_ExtractorWrapper(t *testing.T) {
 		require.NoError(t, it.Error())
 	}
 
+	require.Equal(t, `sum(count_over_time({job="3"}[1m]))`, wrapper.query)
 	require.Equal(t, 10, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
 }
 
 type testExtractorWrapper struct {
+	query     string
 	extractor *mockExtractor
 }
 
-func (t *testExtractorWrapper) Wrap(extractor log.SampleExtractor) log.SampleExtractor {
+func (t *testExtractorWrapper) Wrap(extractor log.SampleExtractor, query string) log.SampleExtractor {
+	t.query = query
 	t.extractor.wrappedExtractor = extractor
 	return t.extractor
 }
