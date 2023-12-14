@@ -12,8 +12,10 @@ weight: 100
 Loki exposes an HTTP API for pushing, querying, and tailing log data, as well
 as for viewing and managing cluster information.
 
-**Note that authorization is not part of the Loki API.**
+{{% admonition type="note" %}}
+Note that authorization is not part of the Loki API.
 Authorization needs to be done separately, for example, using an open-source load-balancer such as NGINX.
+{{% /admonition %}}
 
 ## Endpoints
 
@@ -986,7 +988,7 @@ This API endpoint is usually used by Kubernetes-specific scale down automations 
 ## Flush in-memory chunks and shut down
 
 ```
-POST /ingester/shutdown
+GET, POST /ingester/shutdown
 ```
 
 `/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
@@ -1291,7 +1293,10 @@ DELETE /loki/api/v1/delete
 Query parameters:
 
 - `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
-- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. NOTE: some data from the request may still be deleted and the deleted request will be listed as 'processed'
+- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled. 
+  {{% admonition type="note" %}}
+  some data from the request may still be deleted and the deleted request will be listed as 'processed'.
+  {{% /admonition %}}
 
 A 204 response indicates success.
 

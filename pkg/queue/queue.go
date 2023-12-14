@@ -139,7 +139,7 @@ func (q *RequestQueue) ReleaseRequests(items []Request) {
 // The caller is responsible for returning the dequeued requests back to the
 // pool by calling ReleaseRequests(items).
 func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consumerID string, maxItems int, maxWait time.Duration) ([]Request, QueueIndex, error) {
-	// create a context for dequeuing with a max time we want to wait to fullfill the desired maxItems
+	// create a context for dequeuing with a max time we want to wait to fulfill the desired maxItems
 
 	dequeueCtx, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
@@ -176,9 +176,7 @@ FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
 	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
-		start := time.Now()
 		q.cond.Wait(ctx)
-		q.metrics.querierWaitTime.WithLabelValues(consumerID).Observe(time.Since(start).Seconds())
 	}
 
 	if q.stopped {

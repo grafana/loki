@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
@@ -26,7 +27,9 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 	}
 
 	for run := 0; run < runs; run++ {
-		tailer, err := newTailer("org-id", stream.Labels, nil, 10)
+		expr, err := syntax.ParseLogSelector(stream.Labels, true)
+		require.NoError(t, err)
+		tailer, err := newTailer("org-id", expr, nil, 10)
 		require.NoError(t, err)
 		require.NotNil(t, tailer)
 
@@ -78,7 +81,9 @@ func Test_dropstream(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, maxDroppedStreams)
+			expr, err := syntax.ParseLogSelector(`{app="foo"} |= "foo"`, true)
+			require.NoError(t, err)
+			tail, err := newTailer("foo", expr, &fakeTailServer{}, maxDroppedStreams)
 			require.NoError(t, err)
 
 			for i := 0; i < c.drop; i++ {
@@ -114,7 +119,9 @@ func (f *fakeTailServer) Reset() {
 }
 
 func Test_TailerSendRace(t *testing.T) {
-	tail, err := newTailer("foo", `{app="foo"} |= "foo"`, &fakeTailServer{}, 10)
+	expr, err := syntax.ParseLogSelector(`{app="foo"} |= "foo"`, true)
+	require.NoError(t, err)
+	tail, err := newTailer("foo", expr, &fakeTailServer{}, 10)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -250,7 +257,9 @@ func Test_StructuredMetadata(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var server fakeTailServer
-			tail, err := newTailer("foo", tc.query, &server, 10)
+			expr, err := syntax.ParseLogSelector(tc.query, true)
+			require.NoError(t, err)
+			tail, err := newTailer("foo", expr, &server, 10)
 			require.NoError(t, err)
 
 			var wg sync.WaitGroup

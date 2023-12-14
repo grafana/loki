@@ -228,7 +228,7 @@ func Test_splitMetricQuery(t *testing.T) {
 	const seconds = 1e3 // 1e3 milliseconds per second.
 
 	for i, tc := range []struct {
-		input    queryrangebase.Request
+		input    *LokiRequest
 		expected []queryrangebase.Request
 		interval time.Duration
 	}{
@@ -600,6 +600,17 @@ func Test_splitMetricQuery(t *testing.T) {
 			interval: 15 * time.Minute,
 		},
 	} {
+		// Set query plans
+		tc.input.Plan = &plan.QueryPlan{
+			AST: syntax.MustParseExpr(tc.input.Query),
+		}
+
+		for _, e := range tc.expected {
+			e.(*LokiRequest).Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(e.GetQuery()),
+			}
+		}
+
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			splits, err := splitMetricByTime(tc.input, tc.interval)
 			require.NoError(t, err)

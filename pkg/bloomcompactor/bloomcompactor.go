@@ -42,6 +42,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"path/filepath"
+
+	"github.com/google/uuid"
+
+	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
@@ -343,26 +348,37 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	bt, _ := v1.NewBloomTokenizer(c.reg, NGramLength, NGramSkip)
 
 	errs := multierror.New()
-	if err := sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
-		if isMultiTenantIndex { // TODO: handle multitenant tables
-			return fmt.Errorf("unexpected multi-tenant")
+	rs, err := c.sharding.GetTenantSubRing(tenant).GetAllHealthy(RingOp)
+	if err != nil {
+		return err
+	}
+	tokenRanges := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
+
+	_ = sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
+		if isMultiTenantIndex {
+			// Skip multi-tenant indexes
+			return nil
+		}
+
+		tsdbFile, ok := idx.(*tsdb.TSDBFile)
+		if !ok {
+			errs.Add(fmt.Errorf("failed to cast to TSDBFile"))
+			return nil
+		}
+
+		tsdbIndex, ok := tsdbFile.Index.(*tsdb.TSDBIndex)
+		if !ok {
+			errs.Add(fmt.Errorf("failed to cast to TSDBIndex"))
+			return nil
 		}
 
 		var seriesMetas []seriesMeta
-		// TODO: Make these casts safely
-		if err := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex).ForSeries(
+
+		err := tsdbIndex.ForSeries(
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-				// TODO: Inefficient as is, calls the ring per fingerprint. Refactor to make the call once per compaction fingerprint bounds.
-				ownsFingerprint, err := c.sharding.OwnsFingerprint(tenant, uint64(fingerprint))
-
-				if err != nil {
-					level.Error(logger).Log("msg", "failed to check if compactor owns fp", "err", err)
-					errs.Add(err)
-					return
-				}
-				if !ownsFingerprint {
+				if !tokenRanges.Contains(uint32(fingerprint)) {
 					return
 				}
 
@@ -371,26 +387,26 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 				//All seriesMetas given a table within fp of this compactor shard
 				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
 			},
-		); err != nil {
+		)
+
+		if err != nil {
 			errs.Add(err)
+			return nil
 		}
 
 		job := NewJob(tenant, tableName, idx.Path(), seriesMetas)
 		jobLogger := log.With(logger, "job", job.String())
 		c.metrics.compactionRunJobStarted.Inc()
 
-		if err := c.runCompact(ctx, jobLogger, job, bt, sc); err != nil {
+		err = c.runCompact(ctx, jobLogger, job, bt, sc)
+		if err != nil {
 			c.metrics.compactionRunJobFailed.Inc()
 			errs.Add(errors.Wrap(err, "runBloomCompact failed"))
-			return errs.Err()
+		} else {
+			c.metrics.compactionRunJobSuceeded.Inc()
 		}
-
-		c.metrics.compactionRunJobSuceeded.Inc()
-
 		return nil
-	}); err != nil {
-		errs.Add(err)
-	}
+	})
 
 	return errs.Err()
 }
@@ -477,9 +493,23 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
+		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
+
+		blockToUpload, err := c.compressBloomBlock(storedBlock, archivePath, localDst, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+			return err
+		}
+		defer func() {
+			err = os.Remove(archivePath)
+			if err != nil {
+				level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
+			}
+		}()
+
 		// Do not change the signature of PutBlocks yet.
 		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
-		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
+		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
 		if err != nil {
 			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
 			return err
@@ -526,4 +556,22 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 	return nil
+}
+
+func (c *Compactor) compressBloomBlock(storedBlock bloomshipper.Block, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
+	blockToUpload := bloomshipper.Block{}
+	archiveFile, err := os.Create(archivePath)
+	if err != nil {
+		return blockToUpload, err
+	}
+
+	err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
+	if err != nil {
+		level.Error(logger).Log("msg", "creating bloom block archive file", "err", err)
+		return blockToUpload, err
+	}
+
+	blockToUpload.BlockRef = storedBlock.BlockRef
+	blockToUpload.Data = archiveFile
+	return blockToUpload, nil
 }

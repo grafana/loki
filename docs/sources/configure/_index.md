@@ -842,6 +842,11 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
+# A comma-separated list of LogQL vector and range aggregations that should be
+# sharded
+# CLI flag: -querier.shard-aggregations
+[shard_aggregations: <string> | default = ""]
+
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
 [cache_index_stats_results: <boolean> | default = false]
@@ -2281,6 +2286,29 @@ bloom_shipper:
     # the tasks above this limit will fail an error.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+
+  blocks_cache:
+    # Whether embedded cache is enabled.
+    # CLI flag: -blocks-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # Maximum memory size of the cache in MB.
+    # CLI flag: -blocks-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # Maximum number of entries in the cache.
+    # CLI flag: -blocks-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # The time to live for items in the cache before they get purged.
+    # CLI flag: -blocks-cache.ttl
+    [ttl: <duration> | default = 0s]
+
+    # During this period the process waits until the directory becomes not used
+    # and only after this it will be deleted. If the timeout is reached, the
+    # directory is force deleted.
+    # CLI flag: -blocks-cache.remove-directory-graceful-period
+    [remove_directory_graceful_period: <duration> | default = 5m]
 ```
 
 ### chunk_store_config
