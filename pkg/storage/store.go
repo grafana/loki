@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/plan"
@@ -476,19 +477,35 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	return result, nil
 }
 
+func extractLineFilters(p *plan.QueryPlan, logger log.Logger) []syntax.LineFilter {
+	lineFilters := make([]syntax.LineFilter, 0)
+	visitor := &syntax.DepthFirstTraversal{
+		VisitLineFilterFn: func(v syntax.RootVisitor, e *syntax.LineFilterExpr) {
+			if e.Left != nil {
+				e.Left.Accept(v)
+			}
+			if e.Or != nil {
+				e.Or.Accept(v)
+			}
+			lineFilters = append(lineFilters, e.LineFilter)
+		},
+	}
+	p.AST.Accept(visitor)
+	level.Info(logger).Log("msg", "extract line filters from query", "filters", fmt.Sprintf("%v", lineFilters))
+	return lineFilters
+}
+
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	e := plan.LineFilterExtractor{}
-	req.Plan.AST.Accept(&e)
-	level.Debug(s.logger).Log("msg", "extract line filters from query", "plan", req.Plan.AST.String(), "filters", fmt.Sprintf("%v", e.Filters))
+	lf := extractLineFilters(req.Plan, log.With(s.logger, "plan", req.Plan.AST.String()))
 
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, e.Filters))
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, lf))
 	if err != nil {
 		return nil, err
 	}
@@ -525,16 +542,14 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 }
 
 func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
-	e := plan.LineFilterExtractor{}
-	req.Plan.AST.Accept(&e)
-	level.Debug(s.logger).Log("msg", "extract line filters from query", "plan", req.Plan.AST.String(), "filters", fmt.Sprintf("%v", e.Filters))
+	lf := extractLineFilters(req.Plan, log.With(s.logger, "plan", req.Plan.AST.String()))
 
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, e.Filters))
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, lf))
 	if err != nil {
 		return nil, err
 	}
