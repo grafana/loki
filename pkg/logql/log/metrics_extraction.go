@@ -38,6 +38,12 @@ type StreamSampleExtractor interface {
 	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool)
 }
 
+// SampleExtractorWrapper takes an extractor, wraps it is some desired functionality
+// and returns a new pipeline
+type SampleExtractorWrapper interface {
+	Wrap(SampleExtractor) SampleExtractor
+}
+
 type lineSampleExtractor struct {
 	Stage
 	LineExtractor

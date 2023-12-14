@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logql/log"
 	"math"
 	"net/http"
 	"os"
@@ -109,6 +110,8 @@ type instance struct {
 	metrics *ingesterMetrics
 
 	chunkFilter          chunk.RequestChunkFilterer
+	pipelineWrapper      log.PipelineWrapper
+	extractorWrapper     log.SampleExtractorWrapper
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
@@ -126,6 +129,8 @@ func newInstance(
 	metrics *ingesterMetrics,
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
+	pipelineWrapper log.PipelineWrapper,
+	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 ) (*instance, error) {
@@ -153,7 +158,9 @@ func newInstance(
 		metrics:               metrics,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
-		chunkFilter: chunkFilter,
+		chunkFilter:      chunkFilter,
+		pipelineWrapper:  pipelineWrapper,
+		extractorWrapper: extractorWrapper,
 
 		streamRateCalculator: streamRateCalculator,
 
@@ -419,6 +426,10 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
+	if i.pipelineWrapper != nil {
+		pipeline = i.pipelineWrapper.Wrap(pipeline)
+	}
+
 	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
 
@@ -462,6 +473,10 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
+	}
+
+	if i.extractorWrapper != nil {
+		extractor = i.extractorWrapper.Wrap(extractor)
 	}
 
 	stats := stats.FromContext(ctx)
