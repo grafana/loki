@@ -24,24 +24,33 @@
       node_selector: if self.use_local_ssd then error 'bloom_gateway.node_selector needs to be defined when using local SSDs' else {},
       tolerations: if self.use_local_ssd then error 'bloom_gateway.tolerations needs to be defined when using local SSDs' else [],
     },
-    loki+: {
-      bloom_gateway+: {
-        enabled: $._config.use_bloom_filters,
-        worker_concurrency: 8,
-        replication_factor: 3,
-        client: {
-          cache_results: false,
-        },
-      },
-      storage+: {
-        bloom_shipper+: {
-          working_directory: '/data/blooms',
-          blocks_downloading_queue: {
-            workers_count: 10,
+    loki+:
+      if $._config.use_bloom_filters
+      then
+        {
+          bloom_gateway+: {
+            enabled: true,
+            worker_concurrency: 8,
+            replication_factor: 3,
+            client: {
+              cache_results: false,
+            },
           },
-        },
-      },
-    },
+          storage+: {
+            bloom_shipper+: {
+              working_directory: '/data/blooms',
+              blocks_downloading_queue: {
+                workers_count: 10,
+              },
+              blocks_cache: {
+                enabled: true,
+                max_size_mb: error 'set bloom_shipper.blocks_cache.max_size_mb to ~80% of available disk size',
+                ttl: 3600 * 24,  // 24h
+              },
+            },
+          },
+        }
+      else {},
   },
 
   local cfg = self._config.bloom_gateway,

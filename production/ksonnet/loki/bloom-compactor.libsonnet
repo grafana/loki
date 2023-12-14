@@ -18,14 +18,18 @@
       pvc_size: if $._config.use_bloom_filters then error 'bloom_compactor.pvc_size needs to be defined' else '',
       pvc_class: if $._config.use_bloom_filters then error 'bloom_compactor.pvc_class needs to be defined' else '',
     },
-    loki+: {
-      bloom_compactor+: {
-        enabled: $._config.use_bloom_filters,
-        working_directory: '/data/blooms',
-        compaction_interval: '15m',
-        max_compaction_parallelism: 1,
-      },
-    },
+    loki+:
+      if $._config.use_bloom_filters
+      then
+        {
+          bloom_compactor: {
+            enabled: true,
+            working_directory: '/data/blooms',
+            compaction_interval: '15m',
+            max_compaction_parallelism: 1,
+          },
+        }
+      else {},
   },
 
   local cfg = self._config.bloom_compactor,
