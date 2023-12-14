@@ -178,7 +178,9 @@ func TestMergeBuilder(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	require.Nil(t, mergeBuilder.Build(builder))
+	_, err = mergeBuilder.Build(builder)
+	require.Nil(t, err)
+
 	block := NewBlock(reader)
 	querier := NewBlockQuerier(block)
 
