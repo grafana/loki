@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -22,6 +19,7 @@ const (
 	messagePending                = "Some LokiStack components pending on dependencies"
 	messageDegradedMissingNodes   = "Cluster contains no nodes matching the labels used for zone-awareness"
 	messageDegradedEmptyNodeLabel = "No value for the labels used for zone-awareness"
+	messageOldSchemaVersion       = "The schema configuration contains one or more schemas that do not use the most recent version."
 )
 
 var (
@@ -78,7 +76,7 @@ func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus
 	return conditions, nil
 }
 
-func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack) (metav1.Condition, error) {
+func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, degradedErr *DegradedError) (metav1.Condition, error) {
 	// Check for failed pods first
 	failed := len(cs.Compactor[corev1.PodFailed]) +
 		len(cs.Distributor[corev1.PodFailed]) +
@@ -154,56 +152,17 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 }
 
 func generateWarnings(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
-	return []metav1.Condition{}, nil
-}
-
-func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {
-	var stack lokiv1.LokiStack
-	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return kverrors.Wrap(err, "failed to lookup LokiStack", "name", req.NamespacedName)
-	}
-
-	for _, c := range stack.Status.Conditions {
-		if c.Type == condition.Type &&
-			c.Reason == condition.Reason &&
-			c.Message == condition.Message &&
-			c.Status == metav1.ConditionTrue {
-			// resource already has desired condition
-			return nil
+	warnings := make([]metav1.Condition, 0)
+	for _, sc := range stack.Status.Storage.Schemas {
+		if sc.Version != lokiv1.ObjectStorageSchemaV13 {
+			warnings = append(warnings, metav1.Condition{
+				Type:    string(lokiv1.ConditionWarning),
+				Reason:  string(lokiv1.ReasonSchemaUpgradeRecommended),
+				Message: messageOldSchemaVersion,
+			})
+			break
 		}
 	}
 
-	condition.Status = metav1.ConditionTrue
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
-			return err
-		}
-
-		now := metav1.Now()
-		condition.LastTransitionTime = now
-
-		index := -1
-		for i := range stack.Status.Conditions {
-			// Reset all other conditions first
-			stack.Status.Conditions[i].Status = metav1.ConditionFalse
-			stack.Status.Conditions[i].LastTransitionTime = now
-
-			// Locate existing pending condition if any
-			if stack.Status.Conditions[i].Type == condition.Type {
-				index = i
-			}
-		}
-
-		if index == -1 {
-			stack.Status.Conditions = append(stack.Status.Conditions, condition)
-		} else {
-			stack.Status.Conditions[index] = condition
-		}
-
-		return k.Status().Update(ctx, &stack)
-	})
+	return warnings, nil
 }
