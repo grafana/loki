@@ -106,6 +106,19 @@ func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 }
 
 func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpec {
+	var envVarFromSecret = func(name, secretName, secretKey string) corev1.EnvVar {
+		return corev1.EnvVar{
+			Name: name,
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					Key: secretKey,
+				},
+			},
+		}
+	}
 	container := p.Containers[0].DeepCopy()
 	volumes := p.Volumes
 	secretName := opts.SecretName
@@ -130,53 +143,13 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 	switch storeType {
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
 		storeEnvVars = []corev1.EnvVar{
-			{
-				Name: EnvAlibabaCloudAccessKeyID,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Key: KeyAlibabaCloudAccessKeyID,
-					},
-				},
-			},
-			{
-				Name: EnvAlibabaCloudAccessKeySecret,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Key: KeyAlibabaCloudSecretAccessKey,
-					},
-				},
-			},
+			envVarFromSecret(EnvAlibabaCloudAccessKeyID, secretName, KeyAlibabaCloudAccessKeyID),
+			envVarFromSecret(EnvAlibabaCloudAccessKeySecret, secretName, KeyAlibabaCloudSecretAccessKey),
 		}
 	case lokiv1.ObjectStorageSecretAzure:
 		storeEnvVars = []corev1.EnvVar{
-			{
-				Name: EnvAzureStorageAccountName,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Key: KeyAzureStorageAccountName,
-					},
-				},
-			},
-			{
-				Name: EnvAzureStorageAccountKey,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Key: KeyAzureStorageAccountKey,
-					},
-				},
-			},
+			envVarFromSecret(EnvAzureStorageAccountName, secretName, KeyAzureStorageAccountName),
+			envVarFromSecret(EnvAzureStorageAccountKey, secretName, KeyAzureStorageAccountKey),
 		}
 	case lokiv1.ObjectStorageSecretGCS:
 		storeEnvVars = []corev1.EnvVar{
@@ -186,98 +159,25 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 			},
 		}
 	case lokiv1.ObjectStorageSecretS3:
-		sts := opts.S3 != nil && len(opts.S3.RoleArn) != 0
-		if !sts {
+		storeEnvVars = []corev1.EnvVar{
+			envVarFromSecret(EnvAWSAccessKeyID, secretName, KeyAWSAccessKeyID),
+			envVarFromSecret(EnvAWSAccessKeySecret, secretName, KeyAWSAccessKeySecret),
+		}
+		// STS Auth Workflow
+		if opts.S3 != nil && opts.S3.RoleArn == "" {
 			storeEnvVars = []corev1.EnvVar{
-				{
-					Name: EnvAWSAccessKeyID,
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: secretName,
-							},
-							Key: KeyAWSAccessKeyID,
-						},
-					},
-				},
-				{
-					Name: EnvAWSAccessKeySecret,
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: secretName,
-							},
-							Key: KeyAWSAccessKeySecret,
-						},
-					},
-				},
-			}
-		} else {
-			storeEnvVars = []corev1.EnvVar{
-				{
-					Name: EnvAWSRoleArn,
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: secretName,
-							},
-							Key: KeyAWSRoleArn,
-						},
-					},
-				},
-				{
-					// TODO (JoaoBraveCoding) fix
-					Name: EnvAWSWebIdentityTokenFile,
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: secretName,
-							},
-							Key: KeyAWSAccessKeySecret,
-						},
-					},
-				},
+				envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
+				// TODO (JoaoBraveCoding) fix
+				envVarFromSecret(EnvAWSWebIdentityTokenFile, secretName, KeyAWSAccessKeySecret),
 			}
 		}
-
 		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
-			storeEnvVars = append(storeEnvVars, corev1.EnvVar{
-				Name: EnvAWSSseKmsEncryptionContext,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Key: KeyAWSSseKmsEncryptionContext,
-					},
-				},
-			})
+			storeEnvVars = append(storeEnvVars, envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, EnvAWSSseKmsEncryptionContext))
 		}
-
 	case lokiv1.ObjectStorageSecretSwift:
 		storeEnvVars = []corev1.EnvVar{
-			{
-				Name: EnvSwiftUsername,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Key: KeySwiftUsername,
-					},
-				},
-			},
-			{
-				Name: EnvSwiftPassword,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Key: KeySwiftPassword,
-					},
-				},
-			},
+			envVarFromSecret(EnvSwiftUsername, secretName, KeySwiftUsername),
+			envVarFromSecret(EnvSwiftPassword, secretName, KeySwiftPassword),
 		}
 	}
 
