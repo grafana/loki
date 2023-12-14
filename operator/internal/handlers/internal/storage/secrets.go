@@ -139,6 +139,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	roleArn := s.Data[storage.KeyAWSRoleArn]
 	// Optional fields
 	region := s.Data[storage.KeyAWSRegion]
+	audience := s.Data[storage.KeyAWSAudience]
 
 	if len(roleArn) == 0 {
 		if len(endpoint) == 0 {
@@ -166,6 +167,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 		Endpoint: string(endpoint),
 		Buckets:  string(buckets),
 		Region:   string(region),
+		Audience: string(audience),
 		SSE:      sseCfg,
 	}, nil
 }

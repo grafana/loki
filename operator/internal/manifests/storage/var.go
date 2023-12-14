@@ -53,6 +53,8 @@ const (
 	KeyAWSSseKmsKeyID = "sse_kms_key_id"
 	// KeyAWSRoleArn is the secret data key for the AWS STS role ARN.
 	KeyAWSRoleArn = "role_arn"
+	// KeyAWSAudience is the audience for the AWS STS workflow.
+	KeyAWSAudience = "audience"
 
 	// KeyAzureStorageAccountKey is the secret data key for the Azure storage account key.
 	KeyAzureStorageAccountKey = "account_key"
@@ -98,6 +100,11 @@ const (
 	KeySwiftUserID = "user_id"
 	// KeySwiftPassword is the secret data key for the OpenStack Swift password.
 	KeySwiftUsername = "username"
+
+	saTokenVolumeName         = "bound-sa-token"
+	saTokenVolumeK8sDirectory = "/var/run/secrets/kubernetes/serviceaccount"
+	saTokenVolumeOcpDirectory = "/var/run/secrets/openshift/serviceaccount"
+	saTokenExpiration         = 3600
 
 	secretDirectory  = "/etc/storage/secrets"
 	storageTLSVolume = "storage-tls"

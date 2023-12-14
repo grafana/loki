@@ -40,6 +40,7 @@ type S3StorageConfig struct {
 	Buckets              string
 	RoleArn              string
 	WebIdentityTokenFile string
+	Audience             string
 	SSE                  S3SSEConfig
 }
 

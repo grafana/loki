@@ -8,6 +8,7 @@ import (
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
@@ -139,6 +140,11 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		MountPath: secretDirectory,
 	})
 
+	if wifEnabled(opts) {
+		volumes = append(volumes, saTokenVolume(opts))
+		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
+	}
+
 	var storeEnvVars []corev1.EnvVar
 	switch storeType {
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
@@ -164,7 +170,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 			envVarFromSecret(EnvAWSAccessKeySecret, secretName, KeyAWSAccessKeySecret),
 		}
 		// STS Auth Workflow
-		if opts.S3 != nil && opts.S3.RoleArn == "" {
+		if wifEnabled(opts) {
 			storeEnvVars = []corev1.EnvVar{
 				envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
 				// TODO (JoaoBraveCoding) fix
@@ -221,5 +227,53 @@ func ensureCAForS3(p *corev1.PodSpec, tls *TLSConfig) corev1.PodSpec {
 			*container,
 		},
 		Volumes: volumes,
+	}
+}
+
+func wifEnabled(opts Options) bool {
+	storeType := opts.SharedStore
+	switch storeType {
+	case lokiv1.ObjectStorageSecretS3:
+		return opts.S3 != nil && opts.S3.RoleArn == ""
+	default:
+		return false
+	}
+}
+
+func saTokenVolumeMount(opts Options) corev1.VolumeMount {
+	var wiToken string
+	storeType := opts.SharedStore
+	switch storeType {
+	case lokiv1.ObjectStorageSecretS3:
+		wiToken = opts.S3.WebIdentityTokenFile
+	}
+	return corev1.VolumeMount{
+		Name:      saTokenVolumeName,
+		MountPath: wiToken,
+	}
+}
+
+func saTokenVolume(opts Options) corev1.Volume {
+	var audience string
+	storeType := opts.SharedStore
+	switch storeType {
+	case lokiv1.ObjectStorageSecretS3:
+		audience = opts.S3.Audience
+	}
+	return corev1.Volume{
+		Name: saTokenVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{
+					{
+						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+							ExpirationSeconds: pointer.Int64(saTokenExpiration),
+							Path:              corev1.ServiceAccountTokenKey,
+							Audience:          audience,
+						},
+					},
+				},
+			},
+		},
 	}
 }
