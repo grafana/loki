@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -437,6 +438,12 @@ func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels, categories ...LabelCat
 	return buf
 }
 
+var stringMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[string]string)
+	},
+}
+
 func (b *LabelsBuilder) Map() map[string]string {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
@@ -447,7 +454,7 @@ func (b *LabelsBuilder) Map() map[string]string {
 	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
-	res := make(map[string]string, len(b.buf))
+	res := stringMapPool.Get().(map[string]string)
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
