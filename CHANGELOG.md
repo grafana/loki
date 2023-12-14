@@ -48,7 +48,7 @@
 * [11195](https://github.com/grafana/loki/pull/11195) **canuteson** Generate tsdb_shipper storage_config even if using_boltdb_shipper is false
 
 ##### Changes
-
+* [11490](https://github.com/grafana/loki/pull/11490) **andresperezl**: Helm: Use `/ingester/shutdown` for `preStop` hook in write pods.
 * [10366](https://github.com/grafana/loki/pull/10366) **shantanualsi** Upgrade thanos objstore, dskit and other modules
 * [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
 * [10814](https://github.com/grafana/loki/pull/10814) **shantanualsi,kaviraj** Upgrade prometheus to v0.47.1 and dskit
