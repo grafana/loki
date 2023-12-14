@@ -51,6 +51,13 @@ var (
 		},
 		[]string{"size", "stack_id"},
 	)
+	lokistackSchemaUpgradesRequired = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "lokistack_schema_upgrades_required",
+			Help: "An object storage schema needs upgrade",
+		},
+		[]string{"stack_id"},
+	)
 )
 
 // RegisterMetricCollectors registers the prometheus collectors with the k8 default metrics
@@ -60,6 +67,7 @@ func RegisterMetricCollectors() {
 		userDefinedLimitsMetric,
 		globalStreamLimitMetric,
 		averageTenantStreamLimitMetric,
+		lokistackSchemaUpgradesRequired,
 	}
 
 	for _, collector := range metricCollectors {
@@ -104,6 +112,16 @@ func Collect(spec *lokiv1.LokiStackSpec, stackName string) {
 		setGlobalStreamLimitMetric(size, stackName, globalRate)
 		setAverageTenantStreamLimitMetric(size, stackName, tenantRate)
 	}
+
+	if len(spec.Storage.Schemas) > 0 && spec.Storage.Schemas[len(spec.Storage.Schemas)-1].Version != lokiv1.ObjectStorageSchemaV13 {
+		setLokistackSchemaUpgradesRequired(stackName, true)
+	}
+}
+
+func setLokistackSchemaUpgradesRequired(identifier string, active bool) {
+	lokistackSchemaUpgradesRequired.With(prometheus.Labels{
+		"stack_id": identifier,
+	}).Set(boolValue(active))
 }
 
 func setDeploymentMetric(size lokiv1.LokiStackSizeType, identifier string, active bool) {
