@@ -2252,11 +2252,7 @@ null
   },
   "s3": {
     "accessKeyId": null,
-    "backoff_config": {
-      "max_period": "3s",
-      "max_retries": 5,
-      "min_period": "100ms"
-    },
+    "backoff_config": {},
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -2289,6 +2285,15 @@ null
   },
   "type": "s3"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.storage.s3.backoff_config</td>
+			<td>object</td>
+			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config </td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
