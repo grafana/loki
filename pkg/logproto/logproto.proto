@@ -297,11 +297,6 @@ message LabelNamesForMetricNameRequest {
   ];
 }
 
-message LineFilterExpression {
-  int64 operator = 1;
-  string match = 2;
-}
-
 message GetChunkRefRequest {
   int64 from = 1 [
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
@@ -312,7 +307,10 @@ message GetChunkRefRequest {
     (gogoproto.nullable) = false
   ];
   string matchers = 3;
-  repeated LineFilterExpression filters = 4;
+  repeated bytes filters = 4 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logql/syntax.LineFilter",
+    (gogoproto.nullable) = false
+  ];
 }
 
 message GetChunkRefResponse {

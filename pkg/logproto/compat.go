@@ -377,9 +377,11 @@ func (m *FilterChunkRefRequest) GetQuery() string {
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		sb.Write(fmt.Appendf(encodeBuf[:0], "%d", filter.Operator))
+		sb.Write(fmt.Appendf(encodeBuf[:0], "%d", filter.Ty))
 		sb.WriteString("-")
 		sb.WriteString(filter.Match)
+		sb.WriteString("-")
+		sb.WriteString(filter.Op)
 	}
 
 	return fmt.Sprintf("%d/%s", chunksHash, sb.String())
