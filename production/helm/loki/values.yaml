@@ -285,6 +285,13 @@ loki:
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
+      backoff_config:
+        # Minimum backoff time when s3 get Object
+        min_period: "100ms"
+        # Maximum backoff time when s3 get Object
+        max_period: "3s"
+        # Maximum number of times to retry when s3 get Object
+        max_retries: 5
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
