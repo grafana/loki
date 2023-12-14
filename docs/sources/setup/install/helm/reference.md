@@ -2252,6 +2252,11 @@ null
   },
   "s3": {
     "accessKeyId": null,
+    "backoff_config": {
+      "max_period": "3s",
+      "max_retries": 5,
+      "min_period": "100ms"
+    },
     "endpoint": null,
     "http_config": {},
     "insecure": false,
