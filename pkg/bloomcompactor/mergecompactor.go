@@ -9,7 +9,6 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/prometheus/common/model"
 )
 
 func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClient bloomshipper.Client, storeClient storeClient, bt *v1.BloomTokenizer, job Job, blockOptions v1.BlockOptions, blocksToUpdate []bloomshipper.BlockRef, workingDir string, localDst string) (bloomshipper.Block, error) {
@@ -50,8 +49,8 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 		crefs := make([]v1.ChunkRef, len(s.chunkRefs))
 		for j, chk := range s.chunkRefs {
 			crefs[j] = v1.ChunkRef{
-				Start:    model.Time(chk.MinTime),
-				End:      model.Time(chk.MaxTime),
+				Start:    chk.From(),
+				End:      chk.Through(),
 				Checksum: chk.Checksum,
 			}
 		}

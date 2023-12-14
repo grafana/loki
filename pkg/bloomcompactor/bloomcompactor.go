@@ -464,13 +464,15 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	var metas []bloomshipper.Meta
 	//TODO  Configure pool for these to avoid allocations
 	var activeBloomBlocksRefs []bloomshipper.BlockRef
-	var tombstonedBlockRefs []bloomshipper.BlockRef
-	var metasMatchingJob []bloomshipper.Meta
 
 	metas, err := c.bloomShipperClient.GetMetas(ctx, metaSearchParams)
 	if err != nil {
 		return err
 	}
+
+	// TODO This logic currently is NOT concerned with cutting blocks upon topology changes to bloom-compactors.
+	// It may create blocks with series outside of the fp range of the compactor. Cutting blocks will be addressed in a follow-up PR.
+	metasMatchingJob, blocksMatchingJob := matchingBlocks(metas, job)
 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
@@ -481,28 +483,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
 		}
 	}()
-
-	// TODO This logic currently is NOT concerned with cutting blocks upon topology changes to bloom-compactors.
-	// It may create blocks with series outside of the fp range of the compactor. Cutting blocks will be addressed in a follow-up PR.
-	for _, meta := range metas {
-		if meta.TableName != job.tableName {
-			continue
-		}
-		metasMatchingJob = append(metasMatchingJob, meta)
-
-		for _, blockRef := range meta.Blocks {
-
-			if blockRef.IndexPath == job.indexPath {
-				// index has not changed, no compaction needed
-				continue
-			} else {
-				tombstonedBlockRefs = append(tombstonedBlockRefs, blockRef)
-			}
-		}
-	}
-
 	var resultingBlock bloomshipper.Block
-	if len(tombstonedBlockRefs) == 0 && len(metasMatchingJob) > 0 {
+	if len(blocksMatchingJob) == 0 && len(metasMatchingJob) > 0 {
 		// There is no change to any blocks, no compaction needed
 		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed", "err", err)
 		return nil
@@ -521,10 +503,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
-	} else if len(tombstonedBlockRefs) > 0 {
+	} else if len(blocksMatchingJob) > 0 {
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
 
-		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, storeClient, bt, job, blockOptions, tombstonedBlockRefs, c.cfg.WorkingDirectory, localDst)
+		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, storeClient, bt, job, blockOptions, blocksMatchingJob, c.cfg.WorkingDirectory, localDst)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to merge existing blocks with new chunks", "err", err)
 			return err
@@ -558,10 +540,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		activeBloomBlocksRefs = append(activeBloomBlocksRefs, block.BlockRef)
 	}
 
-	// TODO delete old metas
+	// TODO delete old metas in later compactions
 	// After all is done, create one meta file and upload to storage
 	meta := bloomshipper.Meta{
-		Tombstones: tombstonedBlockRefs,
+		Tombstones: blocksMatchingJob,
 		Blocks:     activeBloomBlocksRefs,
 	}
 	err = c.bloomShipperClient.PutMeta(ctx, meta)
