@@ -107,7 +107,7 @@ func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 }
 
 func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpec {
-	var envVarFromSecret = func(name, secretName, secretKey string) corev1.EnvVar {
+	envVarFromSecret := func(name, secretName, secretKey string) corev1.EnvVar {
 		return corev1.EnvVar{
 			Name: name,
 			ValueFrom: &corev1.EnvVarSource{
