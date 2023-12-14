@@ -77,6 +77,14 @@ func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus
 }
 
 func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, degradedErr *DegradedError) (metav1.Condition, error) {
+	if degradedErr != nil {
+		return metav1.Condition{
+			Type:    string(lokiv1.ConditionDegraded),
+			Message: degradedErr.Message,
+			Reason:  string(degradedErr.Reason),
+		}, nil
+	}
+
 	// Check for failed pods first
 	failed := len(cs.Compactor[corev1.PodFailed]) +
 		len(cs.Distributor[corev1.PodFailed]) +
@@ -157,7 +165,7 @@ func generateWarnings(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, 
 		if sc.Version != lokiv1.ObjectStorageSchemaV13 {
 			warnings = append(warnings, metav1.Condition{
 				Type:    string(lokiv1.ConditionWarning),
-				Reason:  string(lokiv1.ReasonSchemaUpgradeRecommended),
+				Reason:  string(lokiv1.ReasonStorageSchemaVersionIsOld),
 				Message: messageOldSchemaVersion,
 			})
 			break

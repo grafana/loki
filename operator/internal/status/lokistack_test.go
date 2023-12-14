@@ -62,7 +62,7 @@ func TestGenerateCondition(t *testing.T) {
 		degradedErr     *DegradedError
 		wantCondition   metav1.Condition
 	}{
-		/* {
+		{
 			desc:            "no error",
 			componentStatus: &lokiv1.LokiStackComponentStatus{},
 			wantCondition:   conditionReady,
@@ -88,7 +88,7 @@ func TestGenerateCondition(t *testing.T) {
 				},
 			},
 			wantCondition: conditionFailed,
-		}, */
+		},
 		{
 			desc: "degraded error",
 			componentStatus: &lokiv1.LokiStackComponentStatus{
@@ -113,7 +113,6 @@ func TestGenerateCondition(t *testing.T) {
 	for _, tc := range tt {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
-			println(tc.desc)
 			t.Parallel()
 
 			condition, err := generateCondition(context.TODO(), tc.componentStatus, k, r, &lokiStack, tc.degradedErr)
