@@ -12,46 +12,44 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 	tests := map[string]struct {
 		query string
 	}{
-		/*
-			"simple matchers": {
-				query: `{env="prod", app=~"loki.*"}`,
-			},
-			"simple aggregation": {
-				query: `count_over_time({env="prod", app=~"loki.*"}[5m])`,
-			},
-			"simple aggregation with unwrap": {
-				query: `sum_over_time({env="prod", app=~"loki.*"} | unwrap bytes[5m])`,
-			},
-			"bin op": {
-				query: `(count_over_time({env="prod", app=~"loki.*"}[5m]) >= 0)`,
-			},
-			"label filter": {
-				query: `{app="foo"} |= "bar" | json | ( latency>=250ms or ( status_code<500 , status_code>200 ) )`,
-			},
-			"regexp": {
-				query: `{env="prod", app=~"loki.*"} |~ ".*foo.*"`,
-			},
-			"vector matching": {
-				query: `(sum by (cluster)(rate({foo="bar"}[5m])) / ignoring (cluster)  count(rate({foo="bar"}[5m])))`,
-			},
-			"sum over or vector": {
-				query: `(sum(count_over_time({foo="bar"}[5m])) or vector(1.000000))`,
-			},
-			"label replace": {
-				query: `label_replace(vector(0.000000),"foo","bar","","")`,
-			},
-			"filters with bytes": {
-				query: `{app="foo"} |= "bar" | json | ( status_code <500 or ( status_code>200 , size>=2.5KiB ) )`,
-			},
-			"post filter": {
-				query: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
-					| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo
-					| __error__ !~".+"[5m]) by (namespace,instance)`,
-			},
-			"multiple post filters": {
-				query: `rate({app="foo"} | json | unwrap foo | latency >= 250ms or bytes > 42B or ( status_code < 500 and status_code > 200) or source = ip("") and user = "me" [1m])`,
-			},
-		*/
+		"simple matchers": {
+			query: `{env="prod", app=~"loki.*"}`,
+		},
+		"simple aggregation": {
+			query: `count_over_time({env="prod", app=~"loki.*"}[5m])`,
+		},
+		"simple aggregation with unwrap": {
+			query: `sum_over_time({env="prod", app=~"loki.*"} | unwrap bytes[5m])`,
+		},
+		"bin op": {
+			query: `(count_over_time({env="prod", app=~"loki.*"}[5m]) >= 0)`,
+		},
+		"label filter": {
+			query: `{app="foo"} |= "bar" | json | ( latency>=250ms or ( status_code<500 , status_code>200 ) )`,
+		},
+		"regexp": {
+			query: `{env="prod", app=~"loki.*"} |~ ".*foo.*"`,
+		},
+		"vector matching": {
+			query: `(sum by (cluster)(rate({foo="bar"}[5m])) / ignoring (cluster)  count(rate({foo="bar"}[5m])))`,
+		},
+		"sum over or vector": {
+			query: `(sum(count_over_time({foo="bar"}[5m])) or vector(1.000000))`,
+		},
+		"label replace": {
+			query: `label_replace(vector(0.000000),"foo","bar","","")`,
+		},
+		"filters with bytes": {
+			query: `{app="foo"} |= "bar" | json | ( status_code <500 or ( status_code>200 , size>=2.5KiB ) )`,
+		},
+		"post filter": {
+			query: `quantile_over_time(0.99998,{app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
+				| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo
+				| __error__ !~".+"[5m]) by (namespace,instance)`,
+		},
+		"multiple post filters": {
+			query: `rate({app="foo"} | json | unwrap foo | latency >= 250ms or bytes > 42B or ( status_code < 500 and status_code > 200) or source = ip("") and user = "me" [1m])`,
+		},
 		"empty label filter string": {
 			query: `rate({app="foo"} |= "bar" | json | unwrap latency | path!="" [5m])`,
 		},
