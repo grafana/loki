@@ -874,7 +874,6 @@ func Test_ChunkFilterer(t *testing.T) {
 	for it.Next() {
 		l, err := syntax.ParseLabels(it.Labels())
 		require.NoError(t, err)
-		labels.FromStrings(it.Labels())
 		require.NotEqual(t, "bazz", l.Get("foo"))
 	}
 
@@ -887,7 +886,6 @@ func Test_ChunkFilterer(t *testing.T) {
 	for logit.Next() {
 		l, err := syntax.ParseLabels(it.Labels())
 		require.NoError(t, err)
-		labels.FromStrings(it.Labels())
 		require.NotEqual(t, "bazz", l.Get("foo"))
 	}
 	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
