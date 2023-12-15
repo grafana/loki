@@ -49,6 +49,7 @@ func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 	step := (throughFp - fromFp) / model.Fingerprint(nSeries)
 	timeDelta := time.Duration(throughTs.Sub(fromTs).Nanoseconds() / int64(nSeries))
 
+	tokenizer := NewNGramTokenizer(4, 0)
 	for i := 0; i < nSeries; i++ {
 		var series Series
 		series.Fingerprint = fromFp + model.Fingerprint(i)*step
@@ -66,9 +67,12 @@ func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 
 		keys := make([][]byte, 0, keysPerSeries)
 		for j := 0; j < keysPerSeries; j++ {
-			key := []byte(fmt.Sprint(i*keysPerSeries + j))
-			bloom.Add(key)
-			keys = append(keys, key)
+			it := tokenizer.Tokens(fmt.Sprintf("series %d", i*keysPerSeries+j))
+			for it.Next() {
+				key := it.At()
+				bloom.Add(key)
+				keys = append(keys, key)
+			}
 		}
 
 		seriesList = append(seriesList, SeriesWithBloom{

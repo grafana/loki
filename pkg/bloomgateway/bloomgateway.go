@@ -142,8 +142,9 @@ func makePendingTasks(n int) *pendingTasks {
 type Gateway struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
+	cfg       Config
+	logger    log.Logger
+	overrides Limits
 
 	metrics       *metrics
 	workerMetrics *workerMetrics
@@ -186,6 +187,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		},
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
+		overrides:     overrides,
 	}
 
 	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{100}, g.queueMetrics)
@@ -298,6 +300,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	task, resCh, errCh, err := NewTask(tenantID, req)
+	task.tokenSettings = tokenSettings{
+		nGramLen: g.overrides.BloomNGramLength(tenantID),
+	}
+
 	if err != nil {
 		return nil, err
 	}
