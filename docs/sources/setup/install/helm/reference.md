@@ -2291,7 +2291,7 @@ null
 		<tr>
 			<td>loki.storage.s3.backoff_config</td>
 			<td>object</td>
-			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config </td>
+			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config</td>
 			<td><pre lang="json">
 {}
 </pre>
