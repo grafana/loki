@@ -325,7 +325,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 						Through: now,
 						Refs:    inputChunkRefs,
 						Filters: []syntax.LineFilter{
-							{Ty: labels.MatchEqual, Match: fmt.Sprint(key)},
+							{Ty: labels.MatchEqual, Match: fmt.Sprintf("series %d", key)},
 						},
 					}
 					ctx := user.InjectOrgID(context.Background(), tenantID)

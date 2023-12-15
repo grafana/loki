@@ -15,6 +15,10 @@ const (
 	Day = 24 * time.Hour
 )
 
+type tokenSettings struct {
+	nGramLen int
+}
+
 // Task is the data structure that is enqueued to the internal queue and dequeued by query workers
 type Task struct {
 	// ID is a lexcographically sortable unique identifier of the task
@@ -27,6 +31,13 @@ type Task struct {
 	ErrCh chan<- error
 	// ResCh is a send-only channel to write partial responses to
 	ResCh chan<- v1.Output
+
+	// Temporary workaround to retrieve n-gram size and skip factor:
+	// Until we store this information in the bloom block itself, get the current
+	// per-tenant settings at request time.
+	// Note, this is not safe, as the blocks that are queried can be created with
+	// different settings.
+	tokenSettings tokenSettings
 }
 
 // NewTask returns a new Task that can be enqueued to the task queue.
@@ -45,6 +56,8 @@ func NewTask(tenantID string, req *logproto.FilterChunkRefRequest) (Task, chan v
 		Request: req,
 		ErrCh:   errCh,
 		ResCh:   resCh,
+		// tokenSettings will be overwritten with per-tenant values
+		tokenSettings: tokenSettings{nGramLen: 4},
 	}
 	return task, resCh, errCh, nil
 }
@@ -62,6 +75,8 @@ func (t Task) Copy(refs []*logproto.GroupedChunkRefs) Task {
 		},
 		ErrCh: t.ErrCh,
 		ResCh: t.ResCh,
+
+		tokenSettings: t.tokenSettings,
 	}
 }
 
@@ -206,7 +221,7 @@ func (it *taskMergeIterator) Next() bool {
 
 	it.curr.Fp = model.Fingerprint(group.Value().Fingerprint)
 	it.curr.Chks = convertToChunkRefs(group.Value().Refs)
-	it.curr.Searches = convertToSearches(task.Request.Filters)
+	it.curr.Searches = convertToSearches(task.tokenSettings, task.Request.Filters)
 	it.curr.Response = task.ResCh
 	it.curr.Error = task.ErrCh
 	return true
