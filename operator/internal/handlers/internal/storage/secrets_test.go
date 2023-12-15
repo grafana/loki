@@ -135,7 +135,7 @@ func TestAzureExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure, false)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -186,7 +186,7 @@ func TestGCSExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretGCS)
+			_, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretGCS, false)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}
@@ -326,7 +326,7 @@ func TestS3Extract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretS3)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretS3, false)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -475,7 +475,7 @@ func TestSwiftExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift, false)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -549,7 +549,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud)
+			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud, false)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)

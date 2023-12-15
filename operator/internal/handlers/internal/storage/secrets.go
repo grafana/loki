@@ -15,7 +15,7 @@ import (
 var hashSeparator = []byte(",")
 
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
+func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType, osEnabled bool) (*storage.Options, error) {
 	hash, err := hashSecretData(s)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
@@ -33,7 +33,7 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 	case lokiv1.ObjectStorageSecretGCS:
 		storageOpts.GCS, err = extractGCSConfigSecret(s)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, err = extractS3ConfigSecret(s)
+		storageOpts.S3, err = extractS3ConfigSecret(s, osEnabled)
 	case lokiv1.ObjectStorageSecretSwift:
 		storageOpts.Swift, err = extractSwiftConfigSecret(s)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
@@ -124,7 +124,7 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
+func extractS3ConfigSecret(s *corev1.Secret, osEnabled bool) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
@@ -137,9 +137,10 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	secret := s.Data[storage.KeyAWSAccessKeySecret]
 	// Fields related with STS authentication
 	roleArn := s.Data[storage.KeyAWSRoleArn]
+	var wiTokenFile string
+	audience := s.Data[storage.KeyAWSAudience]
 	// Optional fields
 	region := s.Data[storage.KeyAWSRegion]
-	audience := s.Data[storage.KeyAWSAudience]
 
 	if len(roleArn) == 0 {
 		if len(endpoint) == 0 {
@@ -156,6 +157,10 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 		if len(region) == 0 {
 			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSRegion)
 		}
+		wiTokenFile = storage.SATokenVolumeK8sDirectory
+		if osEnabled {
+			wiTokenFile = storage.SATokenVolumeOcpDirectory
+		}
 	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
@@ -164,11 +169,12 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	}
 
 	return &storage.S3StorageConfig{
-		Endpoint: string(endpoint),
-		Buckets:  string(buckets),
-		Region:   string(region),
-		Audience: string(audience),
-		SSE:      sseCfg,
+		Endpoint:             string(endpoint),
+		Buckets:              string(buckets),
+		Region:               string(region),
+		Audience:             string(audience),
+		WebIdentityTokenFile: wiTokenFile,
+		SSE:                  sseCfg,
 	}, nil
 }
 
