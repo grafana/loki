@@ -70,7 +70,7 @@ func TestSeriesIdentifierViewHash(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, keyLabelPairs, []string{"baz\xffwoof\xff", "foo\xffbar\xff"})
 
-	expected, _ := identifier.Hash(b, keyLabelPairs)
+	expected := identifier.Hash(b)
 	require.Equal(t, expected, actual)
 }
 func TestSeriesIdentifierViewForEachLabel(t *testing.T) {
@@ -134,8 +134,7 @@ func TestSeriesResponseViewForEach(t *testing.T) {
 	expectedHashes := make([]uint64, 0)
 	for _, id := range response.Data {
 		b := make([]byte, 0, 1024)
-		keyLabelPairs := make([]string, 0)
-		hash, _ := id.Hash(b, keyLabelPairs)
+		hash := id.Hash(b)
 		expectedHashes = append(expectedHashes, hash)
 	}
 	require.ElementsMatch(t, expectedHashes, actualHashes)

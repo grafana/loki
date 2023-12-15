@@ -214,6 +214,7 @@ func MergeLabelResponses(responses []*LabelResponse) (*LabelResponse, error) {
 }
 
 // Combine unique label sets from multiple SeriesResponse and return a single SeriesResponse.
+// TODO: find if this can be used ion other places
 func MergeSeriesResponses(responses []*SeriesResponse) (*SeriesResponse, error) {
 	if len(responses) == 0 {
 		return &SeriesResponse{}, nil

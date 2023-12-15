@@ -1187,7 +1187,6 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// little overhead. A run with 4MB should the same speedup but
 		// much much more overhead.
 		b := make([]byte, 0, 1024)
-		keyBuffer := make([]string, 0, 32)
 		var key uint64
 
 		// only unique series should be merged
@@ -1197,7 +1196,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			for _, series := range lokiResult.Data {
 				// Use series hash as the key and reuse key
 				// buffer to avoid extra allocations.
-				key, keyBuffer = series.Hash(b, keyBuffer)
+				key = series.Hash(b)
 
 				// TODO(karsten): There is a chance that the
 				// keys match but not the labels due to hash
