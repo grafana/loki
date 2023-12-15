@@ -1101,8 +1101,8 @@ const (
 	ReasonZoneAwareNodesMissing LokiStackConditionReason = "ReasonZoneAwareNodesMissing"
 	// ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.
 	ReasonZoneAwareEmptyLabel LokiStackConditionReason = "ReasonZoneAwareEmptyLabel"
-	// ReasonStorageSchemaVersionIsOld when the object storage schema version is older than V13
-	ReasonStorageSchemaVersionIsOld LokiStackConditionReason = "ReasonStorageSchemaVersionIsOld"
+	// ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13
+	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

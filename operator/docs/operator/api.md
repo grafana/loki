@@ -1780,8 +1780,8 @@ for the ruler is missing.</p>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
 </td>
-</tr><tr><td><p>&#34;ReasonStorageSchemaVersionIsOld&#34;</p></td>
-<td><p>ReasonStorageSchemaVersionIsOld when the object storage schema version is older than V13</p>
+</tr><tr><td><p>&#34;StorageNeedsSchemaUpdate&#34;</p></td>
+<td><p>ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13</p>
 </td>
 </tr><tr><td><p>&#34;ReasonZoneAwareEmptyLabel&#34;</p></td>
 <td><p>ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.</p>

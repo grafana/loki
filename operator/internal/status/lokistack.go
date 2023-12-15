@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	messageReady                  = "All components ready"
-	messageFailed                 = "Some LokiStack components failed"
-	messagePending                = "Some LokiStack components pending on dependencies"
-	messageDegradedMissingNodes   = "Cluster contains no nodes matching the labels used for zone-awareness"
-	messageDegradedEmptyNodeLabel = "No value for the labels used for zone-awareness"
-	messageOldSchemaVersion       = "The schema configuration contains one or more schemas that do not use the most recent version."
+	messageReady                           = "All components ready"
+	messageFailed                          = "Some LokiStack components failed"
+	messagePending                         = "Some LokiStack components pending on dependencies"
+	messageDegradedMissingNodes            = "Cluster contains no nodes matching the labels used for zone-awareness"
+	messageDegradedEmptyNodeLabel          = "No value for the labels used for zone-awareness"
+	messageWarningNeedsSchemaVersionUpdate = "The schema configuration does not contain the most recent schema version and needs an update"
 )
 
 var (
@@ -62,12 +62,12 @@ func (e *DegradedError) Error() string {
 }
 
 func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
-	conditions, err := generateWarnings(ctx, cs, k, req, stack)
+	conditions, err := generateWarnings(stack.Status.Storage.Schemas)
 	if err != nil {
 		return nil, err
 	}
 
-	mainCondition, err := generateCondition(ctx, cs, k, req, stack, degradedErr)
+	mainCondition, err := generateCondition(ctx, cs, k, stack, degradedErr)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus
 	return conditions, nil
 }
 
-func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, degradedErr *DegradedError) (metav1.Condition, error) {
+func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, stack *lokiv1.LokiStack, degradedErr *DegradedError) (metav1.Condition, error) {
 	if degradedErr != nil {
 		return metav1.Condition{
 			Type:    string(lokiv1.ConditionDegraded),
@@ -159,14 +159,18 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 	return true, true, nil
 }
 
-func generateWarnings(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
+func generateWarnings(schemas []lokiv1.ObjectStorageSchema) ([]metav1.Condition, error) {
 	warnings := make([]metav1.Condition, 0)
-	for _, sc := range stack.Status.Storage.Schemas {
+	for _, sc := range schemas {
+		if schemas[len(schemas)-1].Version == lokiv1.ObjectStorageSchemaV13 {
+			return warnings, nil
+		}
 		if sc.Version != lokiv1.ObjectStorageSchemaV13 {
 			warnings = append(warnings, metav1.Condition{
 				Type:    string(lokiv1.ConditionWarning),
-				Reason:  string(lokiv1.ReasonStorageSchemaVersionIsOld),
-				Message: messageOldSchemaVersion,
+				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
+				Message: messageWarningNeedsSchemaVersionUpdate,
+				Status:  metav1.ConditionTrue,
 			})
 			break
 		}
