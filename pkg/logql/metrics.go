@@ -142,6 +142,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
+		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,

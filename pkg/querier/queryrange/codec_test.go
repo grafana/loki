@@ -1498,7 +1498,8 @@ var (
 				"chunksDownloadTime": 0,
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
-				"chunkRefsFetchTime": 0
+				"chunkRefsFetchTime": 0,
+				"queryReferencedStructuredMetadata": false
 			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
@@ -1521,7 +1522,8 @@ var (
 				"chunksDownloadTime": 16,
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
-				"chunkRefsFetchTime": 19
+				"chunkRefsFetchTime": 19,
+				"queryReferencedStructuredMetadata": true
 			}
 		},
 		"cache": {
@@ -1909,10 +1911,11 @@ var (
 					PostFilterLines:   0,
 					TotalDuplicates:   19,
 				},
-				ChunksDownloadTime:    16,
-				TotalChunksRef:        17,
-				TotalChunksDownloaded: 18,
-				ChunkRefsFetchTime:    19,
+				ChunksDownloadTime:        16,
+				TotalChunksRef:            17,
+				TotalChunksDownloaded:     18,
+				ChunkRefsFetchTime:        19,
+				QueryReferencedStructured: true,
 			},
 		},
 

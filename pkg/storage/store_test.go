@@ -960,6 +960,10 @@ type mockStreamPipeline struct {
 	called    int
 }
 
+func (p *mockStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func (p *mockStreamPipeline) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
@@ -1036,6 +1040,10 @@ func (p *mockExtractor) Reset() {}
 type mockStreamExtractor struct {
 	wrappedSP lokilog.StreamSampleExtractor
 	called    int
+}
+
+func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
 }
 
 func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
