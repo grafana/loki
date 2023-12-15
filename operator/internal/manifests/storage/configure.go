@@ -173,12 +173,14 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		if wifEnabled(opts) {
 			storeEnvVars = []corev1.EnvVar{
 				envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
-				// TODO (JoaoBraveCoding) fix
-				envVarFromSecret(EnvAWSWebIdentityTokenFile, secretName, KeyAWSAccessKeySecret),
+				{
+					Name:  EnvAWSWebIdentityTokenFile,
+					Value: opts.S3.WebIdentityTokenFile,
+				},
 			}
 		}
 		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
-			storeEnvVars = append(storeEnvVars, envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, EnvAWSSseKmsEncryptionContext))
+			storeEnvVars = append(storeEnvVars, envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, KeyAWSSseKmsEncryptionContext))
 		}
 	case lokiv1.ObjectStorageSecretSwift:
 		storeEnvVars = []corev1.EnvVar{
@@ -234,7 +236,7 @@ func wifEnabled(opts Options) bool {
 	storeType := opts.SharedStore
 	switch storeType {
 	case lokiv1.ObjectStorageSecretS3:
-		return opts.S3 != nil && opts.S3.RoleArn == ""
+		return opts.S3 != nil && opts.S3.RoleArn != ""
 	default:
 		return false
 	}

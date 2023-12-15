@@ -172,8 +172,9 @@ func extractS3ConfigSecret(s *corev1.Secret, osEnabled bool) (*storage.S3Storage
 		Endpoint:             string(endpoint),
 		Buckets:              string(buckets),
 		Region:               string(region),
-		Audience:             string(audience),
+		RoleArn:              string(roleArn),
 		WebIdentityTokenFile: wiTokenFile,
+		Audience:             string(audience),
 		SSE:                  sseCfg,
 	}, nil
 }
