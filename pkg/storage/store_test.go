@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -17,12 +16,12 @@ import (
 	lokilog "github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -36,7 +35,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -171,7 +169,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		}
 		iter.Close()
 		printHeap(b, true)
-		log.Println("line fetched", len(res))
+		b.Log("line fetched", len(res))
 	}
 	close(stop)
 }
@@ -184,8 +182,8 @@ func printHeap(b *testing.B, show bool) {
 		maxHeapInuse = m.HeapInuse
 	}
 	if show {
-		log.Printf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
-		log.Printf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
+		b.Logf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
+		b.Logf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
 	}
 }
 
@@ -219,7 +217,7 @@ func getLocalStore(cm ClientMetrics) Store {
 		},
 	}
 
-	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err := NewStore(storeConfig, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	if err != nil {
 		panic(err)
 	}
@@ -496,6 +494,7 @@ func Test_store_SelectLogs(t *testing.T) {
 					MaxChunkBatchSize: 10,
 				},
 				chunkMetrics: NilMetrics,
+				logger:       log.NewNopLogger(),
 			}
 
 			tt.req.Plan = &plan.QueryPlan{
@@ -1230,7 +1229,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	// build and add chunks to the store
@@ -1301,7 +1300,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// restart to load the updated schema
 	store.Stop()
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 	defer store.Stop()
 
@@ -1409,7 +1408,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			}
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 			require.NoError(t, err)
 
 			// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1451,7 +1450,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			store.Stop()
 
 			ResetBoltDBIndexClientsWithShipper()
-			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 			require.NoError(t, err)
 
 			defer store.Stop()
@@ -1482,7 +1481,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
 	l, err := marshal.NewLabelSet(s)
 	if err != nil {
-		log.Fatalf("Failed to parse %s", s)
+		panic(fmt.Sprintf("Failed to parse %s", s))
 	}
 
 	result := make([]logproto.SeriesIdentifier_LabelsEntry, 0, len(l))
@@ -1762,7 +1761,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	}
 
 	ResetBoltDBIndexClientsWithShipper()
-	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	// time ranges adding a chunk for each store and a chunk which overlaps both the stores
@@ -1822,7 +1821,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	require.Len(t, tsdbFiles, 1)
 	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
-	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger, constants.Loki)
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
 	defer store.Stop()
