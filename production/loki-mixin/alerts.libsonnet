@@ -7,11 +7,11 @@
           {
             alert: 'LokiRequestErrors',
             expr: |||
-              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
+              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (%(group_by_cluster)s, job, route)
                 /
-              sum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)
+              sum(rate(loki_request_duration_seconds_count[2m])) by (%(group_by_cluster)s, job, route)
                 > 10
-            |||,
+            ||| % $._config,
             'for': '15m',
             labels: {
               severity: 'critical',
@@ -25,8 +25,8 @@
           {
             alert: 'LokiRequestPanics',
             expr: |||
-              sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
-            |||,
+              sum(increase(loki_panic_total[10m])) by (%(group_by_cluster)s, job) > 0
+            ||| % $._config,
             labels: {
               severity: 'critical',
             },
@@ -39,8 +39,8 @@
           {
             alert: 'LokiRequestLatency',
             expr: |||
-              %s_namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
-            ||| % $._config.per_cluster_label,
+              %(per_cluster_label)s_namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
+            ||| % $._config,
             'for': '15m',
             labels: {
               severity: 'critical',
@@ -54,8 +54,8 @@
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
-            |||,
+              sum(loki_boltdb_shipper_compactor_running) by (%(group_by_cluster)s) > 1
+            ||| % $._config,
             'for': '5m',
             labels: {
               severity: 'warning',
