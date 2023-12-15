@@ -465,16 +465,16 @@ func mockSeriesResponse() *logproto.SeriesResponse {
 	return &logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{{"a", "1"}, {"b", "2"}},
+				Labels: logproto.NewSeriesEntries("a", "1", "b", "2"),
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{{"a", "1"}, {"b", "3"}},
+				Labels: logproto.NewSeriesEntries("a", "1", "b", "3"),
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{{"a", "1"}, {"b", "4"}},
+				Labels: logproto.NewSeriesEntries("a", "1", "b", "4"),
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{{"a", "1"}, {"b", "5"}},
+				Labels: logproto.NewSeriesEntries("a", "1", "b", "5"),
 			},
 		},
 	}

@@ -103,7 +103,7 @@ func Benchmark_UnwrapSeries(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
 		resp := &QueryResponse{}
-		resp.Unmarshal(body)
+		err := resp.Unmarshal(body)
 		require.NoError(b, err)
 
 		actual, err := QueryResponseUnwrap(resp)
