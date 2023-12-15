@@ -309,7 +309,7 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 					EffectiveDate: "2024-10-11",
 				},
 			},
-			wantCondition: []metav1.Condition{},
+			wantCondition: nil,
 		},
 	}
 
@@ -355,8 +355,7 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 			require.NotZero(t, k.StatusCallCount())
 			require.NotZero(t, sw.UpdateCallCount())
 
-			condition, err := generateWarnings(s.Status.Storage.Schemas)
-			require.Nil(t, err)
+			condition := generateWarnings(s.Status.Storage.Schemas)
 			require.Equal(t, condition, tc.wantCondition)
 
 		})

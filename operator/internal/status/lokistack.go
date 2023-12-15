@@ -62,10 +62,7 @@ func (e *DegradedError) Error() string {
 }
 
 func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
-	conditions, err := generateWarnings(stack.Status.Storage.Schemas)
-	if err != nil {
-		return nil, err
-	}
+	conditions := generateWarnings(stack.Status.Storage.Schemas)
 
 	mainCondition, err := generateCondition(ctx, cs, k, stack, degradedErr)
 	if err != nil {
@@ -159,21 +156,19 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 	return true, true, nil
 }
 
-func generateWarnings(schemas []lokiv1.ObjectStorageSchema) ([]metav1.Condition, error) {
+func generateWarnings(schemas []lokiv1.ObjectStorageSchema) []metav1.Condition {
 	warnings := make([]metav1.Condition, 0)
-	for _, sc := range schemas {
-		if schemas[len(schemas)-1].Version == lokiv1.ObjectStorageSchemaV13 {
-			return warnings, nil
-		}
-		if sc.Version != lokiv1.ObjectStorageSchemaV13 {
-			warnings = append(warnings, metav1.Condition{
-				Type:    string(lokiv1.ConditionWarning),
-				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
-				Message: messageWarningNeedsSchemaVersionUpdate,
-			})
-			break
-		}
+	if len(schemas) == 0 {
+		return nil
 	}
-
-	return warnings, nil
+	if schemas[len(schemas)-1].Version == lokiv1.ObjectStorageSchemaV13 {
+		return nil
+	} else {
+		warnings = append(warnings, metav1.Condition{
+			Type:    string(lokiv1.ConditionWarning),
+			Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
+			Message: messageWarningNeedsSchemaVersionUpdate,
+		})
+		return warnings
+	}
 }
