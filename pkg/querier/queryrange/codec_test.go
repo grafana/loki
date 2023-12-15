@@ -2237,7 +2237,7 @@ func generateSeries() (res []logproto.SeriesIdentifier) {
 	for i := 0; i < 1000; i++ {
 		labels := make([]*logproto.SeriesIdentifier_LabelsEntry, 100)
 		for l := 0; l < 100; l++ {
-			labels[l] = &logproto.SeriesIdentifier_LabelsEntry{Key: strconv.Itoa(i), Value: strconv.Itoa(l)}
+			labels[l] = &logproto.SeriesIdentifier_LabelsEntry{Key: fmt.Sprintf("%d-%d", i, l), Value: strconv.Itoa(l)}
 		}
 		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}
