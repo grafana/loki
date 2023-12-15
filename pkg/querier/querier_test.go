@@ -306,8 +306,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "4"}},
-					{Labels: map[string]string{"a": "1", "b": "5"}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "4"},
+					}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "5"},
+					}},
 				}, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
@@ -315,10 +321,22 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
-					{Labels: map[string]string{"a": "1", "b": "4"}},
-					{Labels: map[string]string{"a": "1", "b": "5"}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"}},
+					},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "4"},
+					}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "5"},
+					}},
 				}, resp.GetSeries())
 			},
 		},
@@ -331,8 +349,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"},
+					}},
 				}, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
@@ -340,8 +364,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"},
+					}},
 				}, resp.GetSeries())
 			},
 		},

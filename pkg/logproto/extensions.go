@@ -58,6 +58,14 @@ func (id SeriesIdentifier) Get(key string) string {
 	return ""
 }
 
+func NewSeriesEntries(labels ...string) []*SeriesIdentifier_LabelsEntry {
+	r := make([]*SeriesIdentifier_LabelsEntry, 0, len(labels)/2)
+	for i := 0; i < len(labels); i += 2 {
+		r = append(r, &SeriesIdentifier_LabelsEntry{Key: labels[i], Value: labels[i+1]})
+	}
+	return r
+}
+
 type Streams []Stream
 
 func (xs Streams) Len() int           { return len(xs) }
