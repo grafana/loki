@@ -221,5 +221,84 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 }
 
 func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
 
+	k.StatusStub = func() client.StatusWriter { return sw }
+	s := &lokiv1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	schemas := []lokiv1.ObjectStorageSchema{
+		{
+			Version:       lokiv1.ObjectStorageSchemaV11,
+			EffectiveDate: "2020-10-11",
+		},
+		{
+			Version:       lokiv1.ObjectStorageSchemaV13,
+			EffectiveDate: "2023-10-11",
+		},
+	}
+
+	expected := lokiv1.LokiStackStatus{
+		Storage: lokiv1.LokiStackStorageStatus{
+			Schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV11,
+					EffectiveDate: "2020-10-11",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2023-10-11",
+				},
+			},
+		},
+	}
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, s)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.SubResourceUpdateOption) error {
+		stack := obj.(*lokiv1.LokiStack)
+		require.Equal(t, expected.Storage.Schemas, stack.Status.Storage.Schemas)
+		s = stack
+		return nil
+	}
+
+	err := SetStorageSchemaStatus(context.TODO(), k, r, schemas)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, s.Status.Storage.Schemas)
+
+	require.NotZero(t, k.StatusCallCount())
+	require.NotZero(t, sw.UpdateCallCount())
+
+	wantCondition := metav1.Condition{
+		Type:    string(lokiv1.ConditionWarning),
+		Reason:  string(lokiv1.ReasonStorageSchemaVersionIsOld),
+		Message: messageOldSchemaVersion,
+	}
+	componentStatus := &lokiv1.LokiStackComponentStatus{
+		Ingester: map[corev1.PodPhase][]string{
+			corev1.PodRunning: {
+				"pod-0",
+			},
+		},
+	}
+
+	condition, err := generateWarnings(context.TODO(), componentStatus, k, r, s)
+	require.Nil(t, err)
+	require.Contains(t, condition, wantCondition)
 }
