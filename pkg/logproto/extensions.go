@@ -48,6 +48,16 @@ func (id SeriesIdentifier) Hash(b []byte) uint64 {
 	return xxhash.Sum64(b)
 }
 
+func (id SeriesIdentifier) Get(key string) string {
+	for _, entry := range id.Labels {
+		if entry.Key == key {
+			return entry.Value
+		}
+	}
+
+	return ""
+}
+
 type Streams []Stream
 
 func (xs Streams) Len() int           { return len(xs) }

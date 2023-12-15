@@ -237,9 +237,11 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 	mockSeriesResponse := func(series []map[string]string) *logproto.SeriesResponse {
 		resp := &logproto.SeriesResponse{}
 		for _, s := range series {
-			resp.Series = append(resp.Series, logproto.SeriesIdentifier{
-				Labels: s,
-			})
+			id := logproto.SeriesIdentifier{}
+			for k, v := range s {
+				id.Labels = append(id.Labels, &logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+			}
+			resp.Series = append(resp.Series, id)
 		}
 		return resp
 	}
@@ -1116,7 +1118,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	ingesterClient.On("Series", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"bar": "1"},
+				Labels: []*logproto.SeriesIdentifier_LabelsEntry{{Key: "bar", Value: "1"}},
 			},
 		},
 	}, nil)
@@ -1127,7 +1129,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
 	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-		{Labels: map[string]string{"foo": "1"}},
+		{Labels: []*logproto.SeriesIdentifier_LabelsEntry{{Key: "foo", Value: "1"}}},
 	}, nil)
 
 	querier, err := newQuerier(
