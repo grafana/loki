@@ -13,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -209,26 +208,14 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 }
 
 func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
-
 	tt := []struct {
-		desc                 string
-		schemas              []lokiv1.ObjectStorageSchema
-		expectedSchemaStatus []lokiv1.ObjectStorageSchema
-		wantCondition        []metav1.Condition
+		desc          string
+		schemas       []lokiv1.ObjectStorageSchema
+		wantCondition []metav1.Condition
 	}{
 		{
 			desc: "no V13 in schema config",
 			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV11,
-					EffectiveDate: "2020-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
-					EffectiveDate: "2023-10-11",
-				},
-			},
-			expectedSchemaStatus: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-11",
@@ -247,20 +234,6 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 		{
 			desc: "with V13 not as the last element in schema config",
 			schemas: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV11,
-					EffectiveDate: "2020-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2023-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
-					EffectiveDate: "2024-10-11",
-				},
-			},
-			expectedSchemaStatus: []lokiv1.ObjectStorageSchema{
 				{
 					Version:       lokiv1.ObjectStorageSchemaV11,
 					EffectiveDate: "2020-10-11",
@@ -295,69 +268,15 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 					EffectiveDate: "2024-10-11",
 				},
 			},
-			expectedSchemaStatus: []lokiv1.ObjectStorageSchema{
-				{
-					Version:       lokiv1.ObjectStorageSchemaV11,
-					EffectiveDate: "2020-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV12,
-					EffectiveDate: "2023-10-11",
-				},
-				{
-					Version:       lokiv1.ObjectStorageSchemaV13,
-					EffectiveDate: "2024-10-11",
-				},
-			},
-			wantCondition: nil,
+			wantCondition: []metav1.Condition{},
 		},
 	}
-
-	sw := &k8sfakes.FakeStatusWriter{}
-	k := &k8sfakes.FakeClient{}
-
-	k.StatusStub = func() client.StatusWriter { return sw }
-	s := lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-	r := ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
-		if r.Name == name.Name && r.Namespace == name.Namespace {
-			k.SetClientObject(object, &s)
-			return nil
-		}
-		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
-	}
-
 	for _, tc := range tt {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
-			sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.SubResourceUpdateOption) error {
-				stack := obj.(*lokiv1.LokiStack)
-				require.Equal(t, tc.schemas, stack.Status.Storage.Schemas)
-				s = *stack
-				return nil
-			}
-			err := SetStorageSchemaStatus(context.TODO(), k, r, tc.schemas)
-
-			require.NoError(t, err)
-			require.NotEmpty(t, s.Status.Storage.Schemas)
-
-			require.NotZero(t, k.StatusCallCount())
-			require.NotZero(t, sw.UpdateCallCount())
-
-			condition := generateWarnings(s.Status.Storage.Schemas)
+			t.Parallel()
+			condition := generateWarnings(tc.schemas)
 			require.Equal(t, condition, tc.wantCondition)
-
 		})
 	}
 }
