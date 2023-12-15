@@ -2,7 +2,6 @@ package marshal
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math/rand"
 	"reflect"
