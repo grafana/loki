@@ -285,6 +285,8 @@ loki:
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
+      # -- Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config
+      backoff_config: {}
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"

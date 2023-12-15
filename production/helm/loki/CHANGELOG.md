@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.41.3
 
 - [CHANGE] Use `/ingester/shutdown?terminate=false` for write `preStop` hook
+- [FEATURE] Add support for defining an s3 backoff config.
 
 ## 5.41.2
 
