@@ -1425,7 +1425,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Data: []logproto.SeriesIdentifier{
 					{
 						Labels: []*logproto.SeriesIdentifier_LabelsEntry{
-							{Key: "filename", Value: "/var/hostlog/apport.log"}, 
+							{Key: "filename", Value: "/var/hostlog/apport.log"},
 							{Key: "job", Value: "varlogs"},
 						},
 					},
@@ -1880,7 +1880,7 @@ var (
 		},
 		{
 			Labels: []*logproto.SeriesIdentifier_LabelsEntry{
-				{Key: "filename", Value: "/var/hostlog/test.log"}, 
+				{Key: "filename", Value: "/var/hostlog/test.log"},
 				{Key: "job", Value: "varlogs"},
 			},
 		},

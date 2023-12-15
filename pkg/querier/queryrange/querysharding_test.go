@@ -504,7 +504,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-		_, ok := r.(*LokiSeriesRequest)
+		req, ok := r.(*LokiSeriesRequest)
 		if !ok {
 			return nil, errors.New("not a series call")
 		}
@@ -512,18 +512,16 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			Status:  "success",
 			Version: 1,
 			Data: []logproto.SeriesIdentifier{
-				/* TODO
 				{
-					Labels: map[string]string{
-						"foo": "bar",
+					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "foo", Value: "bar"},
 					},
 				},
 				{
-					Labels: map[string]string{
-						"shard": req.Shards[0],
+					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "shard", Value: req.Shards[0]},
 					},
 				},
-				*/
 			},
 		}, nil
 	})).Do(ctx, &LokiSeriesRequest{
@@ -538,41 +536,54 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Status:     "success",
 		Version:    1,
 		Data: []logproto.SeriesIdentifier{
-			/* TODO
 			{
-				Labels: map[string]string{
-					"foo": "bar",
+				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "foo", Value: "bar"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "0_of_3",
+				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "0_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "1_of_3",
+				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "1_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "2_of_3",
+				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "2_of_3"},
 				},
 			},
-			*/
 		},
 	}
-	sort.Slice(expected.Data, func(i, j int) bool {
-		return false
-		// TODO: return expected.Data[i].Labels["shard"] > expected.Data[j].Labels["shard"]
-	})
+	/*
+		sort.Slice(expected.Data, func(i, j int) bool {
+			var l, r string
+			for _, p := range expected.Data[i].Labels {
+				if p.Key == "shard" {
+					l = p.Value
+				}
+			}
+			for _, p := range expected.Data[j].Labels {
+				if p.Key == "shard" {
+					r = p.Value
+				}
+			}
+
+			return l > r
+		})
+	*/
 	actual := response.(*LokiSeriesResponse)
-	sort.Slice(actual.Data, func(i, j int) bool {
-		return false
-		// TODO: return actual.Data[i].Labels["shard"] > actual.Data[j].Labels["shard"]
-	})
+	/*
+		sort.Slice(actual.Data, func(i, j int) bool {
+			return actual.Data[i].Labels["shard"] > actual.Data[j].Labels["shard"]
+		})
+	*/
 	require.NoError(t, err)
-	require.Equal(t, expected, actual)
+	require.Equal(t, expected.Status, actual.Status)
+	require.ElementsMatch(t, expected.Data, actual.Data)
 }
 
 func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
