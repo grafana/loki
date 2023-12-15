@@ -161,8 +161,10 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 		}
 
 		for _, s := range resp.GetSeries() {
-			if _, ok := s.Labels[defaultTenantLabel]; !ok {
-				s.Labels[defaultTenantLabel] = id
+			for _, pair := range s.Labels {
+				if pair.Key == defaultTenantLabel {
+					pair.Value = id
+				}
 			}
 		}
 

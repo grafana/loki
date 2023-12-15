@@ -865,8 +865,9 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 
 		data := make([]logproto.SeriesIdentifier, 0, len(resp.Data))
 		for _, label := range resp.Data {
-			d := logproto.SeriesIdentifier{
-				Labels: label.Map(),
+			d := logproto.SeriesIdentifier{}
+			for n, v := range label {
+				d.Labels = append(d.Labels, &logproto.SeriesIdentifier_LabelsEntry{Key: n, Value: v})
 			}
 			data = append(data, d)
 		}

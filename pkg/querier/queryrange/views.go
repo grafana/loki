@@ -302,9 +302,9 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 func (v *MergedSeriesResponseView) Materialize() (*LokiSeriesResponse, error) {
 	mat := &LokiSeriesResponse{}
 	err := v.ForEachUniqueSeries(func(series *SeriesIdentifierView) error {
-		identifier := logproto.SeriesIdentifier{Labels: make(map[string]string)}
+		identifier := logproto.SeriesIdentifier{Labels: make([]*logproto.SeriesIdentifier_LabelsEntry, 0)}
 		err := series.ForEachLabel(func(name, value string) error {
-			identifier.Labels[name] = value
+			// TODO: identifier.Labels[name] = value
 			return nil
 		})
 		if err != nil {

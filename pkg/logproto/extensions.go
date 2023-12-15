@@ -19,22 +19,20 @@ var seps = []byte{'\xff'}
 // `b` and `keysForLabels` are buffers that should be reused to avoid
 // allocations.
 func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) (uint64, []string) {
-	keysForLabels = keysForLabels[:0]
-	for k := range id.Labels {
-		keysForLabels = append(keysForLabels, k)
-	}
-	sort.Strings(keysForLabels)
+	sort.Slice(id.Labels, func(l, r int) bool { return id.Labels[l].Key < id.Labels[r].Key })
 
 	// Use xxhash.Sum64(b) for fast path as it's faster.
 	b = b[:0]
-	for i, name := range keysForLabels {
-		value := id.Labels[name]
+	for i, pair := range id.Labels {
+		name := pair.Key
+		value := pair.Value
 		if len(b)+len(name)+len(value)+2 >= cap(b) {
 			// If labels entry is 1KB+ do not allocate whole entry.
 			h := xxhash.New()
 			_, _ = h.Write(b)
-			for _, name := range keysForLabels[i:] {
-				value := id.Labels[name]
+			for _, pair := range id.Labels[i:] {
+				name := pair.Key
+				value := pair.Value
 				_, _ = h.WriteString(name)
 				_, _ = h.Write(seps)
 				_, _ = h.WriteString(value)

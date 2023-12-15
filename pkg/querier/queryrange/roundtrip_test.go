@@ -138,6 +138,7 @@ var (
 	}
 
 	series = logproto.SeriesResponse{
+		/*
 		Series: []logproto.SeriesIdentifier{
 			{
 				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
@@ -146,6 +147,7 @@ var (
 				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
 			},
 		},
+		*/
 	}
 
 	seriesVolume = logproto.VolumeResponse{

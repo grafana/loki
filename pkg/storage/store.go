@@ -454,8 +454,9 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	}
 	result := make([]logproto.SeriesIdentifier, len(series))
 	for i, s := range series {
-		result[i] = logproto.SeriesIdentifier{
-			Labels: s.Map(),
+		result[i] = logproto.SeriesIdentifier{}
+		for _, l := range s {
+			result[i].Labels = append(result[i].Labels, &logproto.SeriesIdentifier_LabelsEntry{Key: l.Name, Value: l.Value})
 		}
 	}
 	return result, nil
