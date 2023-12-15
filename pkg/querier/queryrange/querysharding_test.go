@@ -558,29 +558,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			},
 		},
 	}
-	/*
-		sort.Slice(expected.Data, func(i, j int) bool {
-			var l, r string
-			for _, p := range expected.Data[i].Labels {
-				if p.Key == "shard" {
-					l = p.Value
-				}
-			}
-			for _, p := range expected.Data[j].Labels {
-				if p.Key == "shard" {
-					r = p.Value
-				}
-			}
-
-			return l > r
-		})
-	*/
 	actual := response.(*LokiSeriesResponse)
-	/*
-		sort.Slice(actual.Data, func(i, j int) bool {
-			return actual.Data[i].Labels["shard"] > actual.Data[j].Labels["shard"]
-		})
-	*/
 	require.NoError(t, err)
 	require.Equal(t, expected.Status, actual.Status)
 	require.ElementsMatch(t, expected.Data, actual.Data)
