@@ -170,7 +170,6 @@ func generateWarnings(schemas []lokiv1.ObjectStorageSchema) ([]metav1.Condition,
 				Type:    string(lokiv1.ConditionWarning),
 				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
 				Message: messageWarningNeedsSchemaVersionUpdate,
-				Status:  metav1.ConditionTrue,
 			})
 			break
 		}
