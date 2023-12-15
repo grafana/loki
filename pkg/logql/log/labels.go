@@ -438,11 +438,31 @@ func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels, categories ...LabelCat
 	return buf
 }
 
-var stringMapPool = sync.Pool{
-	New: func() interface{} {
-		return make(map[string]string)
-	},
+type stringMapPool struct {
+	pool sync.Pool
 }
+
+func newStringMapPool() stringMapPool {
+	return stringMapPool{
+		pool: sync.Pool{
+			New: func() interface{} {
+				return make(map[string]string)
+			},
+		},
+	}
+}
+
+func (s stringMapPool) Get() map[string]string {
+	m := s.pool.Get().(map[string]string)
+	clear(m)
+	return m
+}
+
+func (s stringMapPool) Put(m map[string]string) {
+	s.pool.Put(m)
+}
+
+var smp = newStringMapPool()
 
 // puts labels entries into an existing map, it is up to the caller to
 // properly clear the map if it is going to be reused
@@ -474,7 +494,7 @@ func (b *LabelsBuilder) Map() map[string]string {
 	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
-	res := stringMapPool.Get().(map[string]string)
+	res := smp.Get()
 	clear(res)
 	for _, l := range b.buf {
 		res[l.Name] = l.Value

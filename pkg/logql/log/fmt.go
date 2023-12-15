@@ -223,9 +223,7 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 
 	// map now is taking from a pool
 	m := lbs.Map()
-	defer func() {
-		stringMapPool.Put(m)
-	}()
+	defer smp.Put(m)
 	if err := lf.Template.Execute(lf.buf, m); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())
@@ -385,12 +383,8 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 	lf.currentLine = l
 	lf.currentTs = ts
 
-	var data = stringMapPool.Get().(map[string]string)
-	clear(data)
-	
-	defer func() {
-		stringMapPool.Put(data)
-	}()
+	var m = smp.Get()
+	defer smp.Put(m)
 	for _, f := range lf.formats {
 		if f.Rename {
 			v, category, ok := lbs.GetWithCategory(f.Value)
@@ -401,10 +395,10 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			continue
 		}
 		lf.buf.Reset()
-		if len(data) == 0 {
-			lbs.IntoMap(data)
+		if len(m) == 0 {
+			lbs.IntoMap(m)
 		}
-		if err := f.tmpl.Execute(lf.buf, data); err != nil {
+		if err := f.tmpl.Execute(lf.buf, m); err != nil {
 			lbs.SetErr(errTemplateFormat)
 			lbs.SetErrorDetails(err.Error())
 			continue
