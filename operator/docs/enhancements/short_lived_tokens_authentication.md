@@ -18,18 +18,18 @@ toc: true
 
 ## Summary
 
-Usually, LokiStack's object storage access on major cloud providers is secured using a static service account that comprises of a set of client id and client secret. Although static service accounts provide a simple way to control access to the provider's resources centrally (e.g. access to S3 only) they impose certain security risks, lack of automatic secret rotation, and usually unset expiry. In addition, the identity of any third-party gaining to the static service account cannot be controlled or tracked upfront.
+Usually, LokiStack's object storage access on major cloud providers is secured using a static service account that comprises a set of client id and client secret. Although static service accounts provide a simple way to control access to the provider's resources centrally (e.g. access to S3 only) they impose certain security risks, lack of automatic secret rotation, and usually unset expiry. In addition, access by a third party to the static service account cannot be controlled or tracked upfront.
 
 Therefore all major cloud providers offer an OpenID Connect (OIDC) based workflow which ensures that the requesting entity (e.g. LokiStack) must be associated with an IAM role and further trust relationships (e.g. mapping to Kubernetes ServiceAccount resources) upfront before gaining access to any cloud resources (e.g. S3). In addition, such a workflow ensures handing out only short-lived tokens instead of real credentials to the requesting entity which need to be refreshed periodically. In turn, this minimizes the security risk vector by a lot but in turn, it imposes a higher administration effort for running LokiStack with that workflow.
 
-__Note:__ Short Lived Token authentication is an arbitrary picked generic term that maps well enough to each cloud providers service offering:
+__Note:__ Short-lived Token authentication is an arbitrary picked generic term that maps well enough to each cloud providers service offering:
 - Azure: [Workload Identity Federation](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation)
 - AWS: [Secure Service Token](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp.html)
 - Google Cloud Platform: [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)
 
 ## Motivation
 
-Building upon the fact that short-lived token authentication is supported by all three chunk storage clients in Loki (Azure, AWS, GAP), this proposal's main focus is to automate the administration effort to run LokiStack using such an authentication workflow for object storage access.
+Building upon the fact that short-lived token authentication is supported by all three object storage clients in Loki (Azure, AWS, GAP), this proposal's main focus is to automate the administration effort to run LokiStack using such an authentication workflow for object storage access.
 
 ### Goals
 
@@ -50,7 +50,7 @@ The implementation of this proposal does not require any custom resource extensi
 
 ### Implementation Details/Notes/Constraints
 
-The following sections describe the required changes in LokiStack's object storage secret format for each chunk storage clients to enable short-lived token authentication
+The following sections describe the required changes in LokiStack's object storage secret format for each object storage client to enable short-lived token authentication
 
 #### Azure Workload Identity Federation
 
@@ -66,10 +66,11 @@ data:
   account_key:  # The Azure Storage account key
 ```
 
-In contrast a minimal configuration set of fields for short lived authentication requires:
+In contrast, a minimal configuration set of fields for short-lived token authentication requires:
 
 ```yaml
 data:
+  container:    # The Azure Storage account container
   client_id:       # The Azure Managed Identity's Client ID
   tenant_id:       # The Azure Account's Tenant ID holding the managed identity for LokiStack
   subscription_id: # The Azure Account's Subscription ID holding the managed identity for LokiStack
@@ -78,7 +79,7 @@ data:
 
 ##### Pre-requisites
 
-The LokiStack adminisrator is required to create a custom Azure Managed Identity and an associated federated credentials to trust the LokiStack's Kubernetes ServiceAccount.
+The LokiStack administrator is required to create a custom Azure Managed Identity and associated federated credentials to trust LokiStack's Kubernetes ServiceAccount.
 
 1. Create an Azure Managed Identity on the same resource group as the Kubernetes cluster hosting LokiStack:
 
@@ -90,7 +91,7 @@ az identity create \
   --subscription $SUBSCRIPTION_ID
 ```
 
-2. Create a Federated Credentials for scenario `Kubernetes accessing Azure resources`:
+2. Create a Federated Credential for scenario `Kubernetes accessing Azure resources`:
 
 ```shell
 az identity federated-credential create \
@@ -102,7 +103,7 @@ az identity federated-credential create \
   --audiences $AUDIENCES
 ```
 
-__Note:__ To enable the required federated credential scenario in the above command the subject needs be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The issuer and audiences are related to the Kubernetes cluster hosting LokiStack.
+__Note:__ To enable the required federated credential scenario in the above command the subject needs to be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The issuer and audiences are related to the Kubernetes cluster hosting LokiStack.
 
 3. Create custom role that provides access to Azure Storage:
 
@@ -152,7 +153,7 @@ data:
   endpoint:          # The AWS endpoint URL.
 ```
 
-In contrast a minimal configuration set of fields for short lived authentication requires:
+In contrast, a minimal configuration set of fields for short-lived token authentication requires:
 
 ```yaml
 data:
@@ -180,7 +181,7 @@ The LokiStack administrator is required to create a custom AWS IAM Role associat
      "Condition": {
        "StringEquals": {
          "${OIDC_PROVIDER}:sub": [
-           "system:serviceaccount:${LOKISTACK_NAMESPACE}:${LOKISTACK_SERVICE_ACCOUNT_NAME}"
+           "system:serviceaccount:${LOKISTACK_NS}:${LOKISTACK_NAME}"
          ]
        }
      }
@@ -189,7 +190,7 @@ The LokiStack administrator is required to create a custom AWS IAM Role associat
 }
 ```
 
-__Note:__ The Lokistack service account name is always the same as the LokiStack custom resource name.
+__Note:__ To enable the required trust relationship scenario in the above command the subject needs to be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`.
 
 2. Create an AWS IAM role:
 
@@ -211,7 +212,7 @@ aws iam attach-role-policy \
 
 #### GCP Workload Identity Federation
 
-There no changed required for GCP WIF as a provider service for short-lived tokens authentication. However specific validation of the provided `serviceaccount.json` field will ensure that WIF is used only with GCP external serviceaccounts, i.e. the following format will be validated:
+There is no change required for GCP WIF as a provider service for short-lived token authentication. However specific validation of the provided `serviceaccount.json` field will ensure that WIF is used only with GCP external services accounts, i.e. the following format will be validated:
 
 ```json
 {
@@ -233,9 +234,9 @@ __Note:__ As a credentials source file the Loki Operator will overwrite any user
 
 ##### Pre-requisites
 
-The LokiStack adminisrator is required to create a custom Google Managed Identity and an associated  credentials configuration to trust the LokiStack's Kubernetes ServiceAccount.
+The LokiStack administrator is required to create a custom Google Managed Identity and an associated credentials configuration to trust the LokiStack's Kubernetes ServiceAccount.
 
-1. Create a GCP serviceaccount to be used by the LokiStack to access GCP resources:
+1. Create a GCP service account to be used by the LokiStack to access GCP resources:
 
 ```shell
 gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" \
@@ -249,15 +250,15 @@ gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" \
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/subject/$SUBJECT"
+  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/subject/system:serviceaccount:${LOKISTACK_NS}:${LOKISTACK_NAME}"
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
   --role="roles/storage.objectAdmin" \
-  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/subject/$SUBJECT"
+  --member="principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/subject/system:serviceaccount:${LOKISTACK_NS}:${LOKISTACK_NAME}"
 ```
 
-__Note:__ To enable the required membership in the above commands the subject needs be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The workload identity pool needs to be the same that manages your other Kubernetes cluster's managed identities.
+__Note:__ To enable the required membership scenario in the above commands the subject needs to be of the form: `system:serviceaccount:<NAMESPACE>:<SA_NAME>`. The workload identity pool needs to be the same that manages your other Kubernetes cluster's managed identities.
 
 3. Create a credentials configuration file for the managed identity to be used by LokiStack:
 
@@ -282,4 +283,4 @@ data:
 
 ## Implementation History
 
-Major milestones in the life cycle of a proposal should be tracked in `Implementation History`.
+- https://github.com/grafana/loki/pull/11481
