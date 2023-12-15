@@ -6,16 +6,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 func TestGetTenantSecrets(t *testing.T) {

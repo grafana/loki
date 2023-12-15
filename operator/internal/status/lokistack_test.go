@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -15,6 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 func setupFakesNoError(t *testing.T, stack *lokiv1.LokiStack) (*k8sfakes.FakeClient, *k8sfakes.FakeStatusWriter) {
@@ -217,7 +218,7 @@ func TestGenerateCondition(t *testing.T) {
 }
 
 func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
-	testError := errors.New("test-error")
+	testError := errors.New("test-error") //nolint:goerr113
 	tt := []struct {
 		desc          string
 		nodes         []corev1.Node
