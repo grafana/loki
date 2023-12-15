@@ -616,16 +616,16 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			_, derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
 				// Generate sorted labels
-				lbls, err := syntax.ParseLabels(s.stream.Labels)
+				lbls, err := syntax.ParseLabels(s.Stream.Labels)
 				require.NoError(t, err)
 
-				require.Equal(t, lbls.Hash(), s.stream.Hash)
-				require.Equal(t, lbls.String(), s.stream.Labels)
+				require.Equal(t, lbls.Hash(), s.Stream.Hash)
+				require.Equal(t, lbls.String(), s.Stream.Labels)
 			}
 		})
 	}
@@ -661,23 +661,23 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		_, derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
-			require.Len(t, s.stream.Entries, 1)
-			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.Len(t, s.Stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
 			require.Equal(t, lbls[0].Value, fmt.Sprint(i))
 		}
 
-		_, derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
-			require.Len(t, s.stream.Entries, 1)
-			lbls, err := syntax.ParseLabels(s.stream.Labels)
+			require.Len(t, s.Stream.Entries, 1)
+			lbls, err := syntax.ParseLabels(s.Stream.Labels)
 			require.NoError(t, err)
 
 			require.Equal(t, lbls[0].Value, fmt.Sprint(i+2))
