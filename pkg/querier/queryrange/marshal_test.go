@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -79,4 +80,35 @@ func TestResponseWrap(t *testing.T) {
 			require.IsType(t, tt.expected, actual.Response)
 		})
 	}
+}
+
+// Benchmark_UnwrapSeries is the sibling Benchmark_CodecDecodeSeries.
+func Benchmark_UnwrapSeries(b *testing.B) {
+	// Setup
+	original := &LokiSeriesResponse{
+		Status:     "200",
+		Version:    1,
+		Statistics: stats.Result{},
+		Data:       generateSeries(),
+	}
+
+	wrappedResponse, err := QueryResponseWrap(original)
+	require.NoError(b, err)
+
+	body, err := wrappedResponse.Marshal()
+	require.NoError(b, err)
+
+	// Actual run
+	b.ResetTimer()
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		resp := &QueryResponse{}
+		resp.Unmarshal(body)
+		require.NoError(b, err)
+
+		actual, err := QueryResponseUnwrap(resp)
+		require.NoError(b, err)
+		require.NotNil(b, actual)
+	}
+
 }
