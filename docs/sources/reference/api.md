@@ -988,7 +988,7 @@ This API endpoint is usually used by Kubernetes-specific scale down automations 
 ## Flush in-memory chunks and shut down
 
 ```
-POST /ingester/shutdown
+GET, POST /ingester/shutdown
 ```
 
 `/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
