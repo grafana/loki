@@ -878,7 +878,8 @@ enableServiceLinks: false
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $schedulerAddress := ""}}
 {{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
-{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- $backendHost := include "loki.backendFullname" .}}
+{{- $schedulerAddress = printf "%s-scheduler-discovery.%s.svc.%s.:9095" $backendHost .Release.Namespace .Values.global.clusterDomain -}}
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}
