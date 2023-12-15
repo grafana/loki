@@ -465,9 +465,11 @@ func TestMapping(t *testing.T) {
 						},
 						MultiStages: syntax.MultiStageExpr{
 							&syntax.LineFilterExpr{
-								Ty:    labels.MatchEqual,
-								Match: "error",
-								Op:    "",
+								LineFilter: syntax.LineFilter{
+									Ty:    labels.MatchEqual,
+									Match: "error",
+									Op:    "",
+								},
 							},
 						},
 					},
@@ -484,9 +486,11 @@ func TestMapping(t *testing.T) {
 							},
 							MultiStages: syntax.MultiStageExpr{
 								&syntax.LineFilterExpr{
-									Ty:    labels.MatchEqual,
-									Match: "error",
-									Op:    "",
+									LineFilter: syntax.LineFilter{
+										Ty:    labels.MatchEqual,
+										Match: "error",
+										Op:    "",
+									},
 								},
 							},
 						},

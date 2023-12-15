@@ -5,9 +5,11 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 func TestTask(t *testing.T) {
@@ -172,9 +174,9 @@ func TestChunkIterForDay(t *testing.T) {
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 701},
 				}},
 			},
-			Filters: []*logproto.LineFilterExpression{
-				{Operator: 1, Match: "foo"},
-				{Operator: 1, Match: "bar"},
+			Filters: []syntax.LineFilter{
+				{Ty: labels.MatchEqual, Match: "foo"},
+				{Ty: labels.MatchEqual, Match: "bar"},
 			},
 		}
 

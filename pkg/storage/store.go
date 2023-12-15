@@ -460,7 +460,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	return result, nil
 }
 
-func extractLineFilters(p *plan.QueryPlan, logger log.Logger) []syntax.LineFilter {
+func extractLineFilters(p *plan.QueryPlan) []syntax.LineFilter {
 	lineFilters := make([]syntax.LineFilter, 0)
 	visitor := &syntax.DepthFirstTraversal{
 		VisitLineFilterFn: func(v syntax.RootVisitor, e *syntax.LineFilterExpr) {
@@ -474,14 +474,13 @@ func extractLineFilters(p *plan.QueryPlan, logger log.Logger) []syntax.LineFilte
 		},
 	}
 	p.AST.Accept(visitor)
-	level.Info(logger).Log("msg", "extract line filters from query", "filters", fmt.Sprintf("%v", lineFilters))
 	return lineFilters
 }
 
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	lf := extractLineFilters(req.Plan, log.With(s.logger, "plan", req.Plan.AST.String()))
+	lf := extractLineFilters(req.Plan)
 
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
@@ -521,7 +520,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 }
 
 func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
-	lf := extractLineFilters(req.Plan, log.With(s.logger, "plan", req.Plan.AST.String()))
+	lf := extractLineFilters(req.Plan)
 
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
