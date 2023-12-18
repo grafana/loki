@@ -60,7 +60,7 @@
 #### Promtail
 
 * [10752](https://github.com/grafana/loki/pull/10752) **gonzalesraul**: structured_metadata: enable structured_metadata convert labels
-* [11511](https://github.com/grafana/loki/pull/11511) **kavirajk**: chore(promtail): Use minimal init config in npm/deb packaging.
+* [11511](https://github.com/grafana/loki/pull/11511) **kavirajk**: chore(promtail): Use minimal init config in rpm/deb packaging.
 
 ##### Enhancements
 
