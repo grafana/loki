@@ -2,10 +2,12 @@ package bloomcompactor
 
 import (
 	"context"
+
 	"github.com/grafana/dskit/concurrency"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"

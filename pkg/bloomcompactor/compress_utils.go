@@ -2,14 +2,16 @@ package bloomcompactor
 
 import (
 	"fmt"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func compressBloomBlock(ref bloomshipper.BlockRef, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
