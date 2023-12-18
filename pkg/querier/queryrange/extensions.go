@@ -1,6 +1,8 @@
 package queryrange
 
 import (
+	"fmt"
+
 	"github.com/buger/jsonparser"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -57,9 +59,18 @@ func (m *LokiSeriesResponse) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	_, err = jsonparser.ArrayEach(data, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+	var parseErr error
+	_, err = jsonparser.ArrayEach(data, func(value []byte, vt jsonparser.ValueType, _ int, _ error) {
+		if vt != jsonparser.Object {
+			parseErr = fmt.Errorf("unexpected data type: got(%s), expected (object)", vt)
+			return
+		}
+
 		identifier := logproto.SeriesIdentifier{}
-		err = jsonparser.ObjectEach(value, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+		parseErr = jsonparser.ObjectEach(value, func(key, val []byte, vt jsonparser.ValueType, _ int) error {
+			if vt != jsonparser.String {
+				return fmt.Errorf("unexpected label value type: got(%s), expected (string)", vt)
+			}
 			v, err := jsonparser.ParseString(val)
 			if err != nil {
 				return err
@@ -72,11 +83,15 @@ func (m *LokiSeriesResponse) UnmarshalJSON(data []byte) error {
 			identifier.Labels = append(identifier.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
 			return nil
 		})
-		if err != nil {
+
+		if parseErr != nil {
 			return
 		}
 		m.Data = append(m.Data, identifier)
 	}, "data")
+	if parseErr != nil {
+		return parseErr
+	}
 	return err
 }
 
