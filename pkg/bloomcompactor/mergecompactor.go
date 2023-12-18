@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"os"
 
 	"github.com/grafana/dskit/concurrency"
 
@@ -68,6 +69,7 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 
 	// Download existing blocks that needs compaction
 	blockIters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocksToUpdate))
+	blockPaths := make([]string, len(blocksToUpdate))
 
 	_ = concurrency.ForEachJob(ctx, len(blocksToUpdate), len(blocksToUpdate), func(ctx context.Context, i int) error {
 		b := blocksToUpdate[i]
@@ -78,12 +80,12 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 			return err
 		}
 
-		// TODO defer removing this blockpath
 		blockPath, err := bloomshipper.UncompressBloomBlock(&lazyBlock, workingDir, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "error extracting block", "err", err)
 			return err
 		}
+		blockPaths[i] = blockPath
 
 		reader := v1.NewDirectoryBlockReader(blockPath)
 		block := v1.NewBlock(reader)
@@ -92,6 +94,14 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 		blockIters[i] = v1.NewPeekingIter[*v1.SeriesWithBloom](blockQuerier)
 		return nil
 	})
+
+	defer func() {
+		for _, path := range blockPaths {
+			if err := os.RemoveAll(path); err != nil {
+				level.Error(logger).Log("msg", "failed to remove uncompressed bloomDir", "dir", path, "err", err)
+			}
+		}
+	}()
 
 	mergeBuilder := v1.NewMergeBuilder(
 		blockIters,
