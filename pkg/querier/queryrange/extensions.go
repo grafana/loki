@@ -1,6 +1,11 @@
 package queryrange
 
-import "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+import (
+	"github.com/buger/jsonparser"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+)
 
 // To satisfy queryrange.Response interface(https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L88)
 // we need to have following method as well on response types:
@@ -41,6 +46,38 @@ func (m *LokiSeriesResponse) SetHeader(name, value string) {
 func (m *LokiSeriesResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
+}
+
+// UnmarshalJSON decodes from loghttpSeriesResponse JSON format directly into
+// the protobuf LokiSeriesResponse.
+func (m *LokiSeriesResponse) UnmarshalJSON(data []byte) error {
+	var err error
+	m.Status, err = jsonparser.GetString(data, "status")
+	if err != nil {
+		return err
+	}
+
+	_, err = jsonparser.ArrayEach(data, func(value []byte, _ jsonparser.ValueType, _ int, _ error) {
+		identifier := logproto.SeriesIdentifier{}
+		err = jsonparser.ObjectEach(value, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+			v, err := jsonparser.ParseString(val)
+			if err != nil {
+				return err
+			}
+			k, err := jsonparser.ParseString(key)
+			if err != nil {
+				return err
+			}
+
+			identifier.Labels = append(identifier.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+			return nil
+		})
+		if err != nil {
+			return
+		}
+		m.Data = append(m.Data, identifier)
+	}, "data")
+	return err
 }
 
 func (m *LokiPromResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
