@@ -1,11 +1,13 @@
 package status
 
 import (
-	"github.com/google/go-cmp/cmp"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 func TestMergeConditions(t *testing.T) {
