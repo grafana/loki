@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"github.com/grafana/dskit/concurrency"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -65,18 +66,21 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 
 	// Download existing blocks that needs compaction
 	blockIters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocksToUpdate))
-	for i, b := range blocksToUpdate {
+
+	_ = concurrency.ForEachJob(ctx, len(blocksToUpdate), len(blocksToUpdate), func(ctx context.Context, i int) error {
+		b := blocksToUpdate[i]
+
 		lazyBlock, err := bloomShipperClient.GetBlock(ctx, b)
 		if err != nil {
 			level.Error(logger).Log("msg", "error downloading block", "err", err)
-			return bloomshipper.Block{}, err
+			return err
 		}
 
 		// TODO defer removing this blockpath
 		blockPath, err := uncompressBloomBlock(&lazyBlock, workingDir)
 		if err != nil {
 			level.Error(logger).Log("msg", "error extracting block", "err", err)
-			return bloomshipper.Block{}, err
+			return err
 		}
 
 		reader := v1.NewDirectoryBlockReader(blockPath)
@@ -84,7 +88,8 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 		blockQuerier := v1.NewBlockQuerier(block)
 
 		blockIters[i] = v1.NewPeekingIter[*v1.SeriesWithBloom](blockQuerier)
-	}
+		return nil
+	})
 
 	mergeBuilder := v1.NewMergeBuilder(
 		blockIters,
