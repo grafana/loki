@@ -59,7 +59,8 @@ func TestChunkCompactor_BuildBloomFromSeries(t *testing.T) {
 	chunks := []chunk.Chunk{createTestChunk(fp, label)}
 
 	mbt := mockBloomTokenizer{}
-	bloom := buildBloomFromSeries(seriesMeta, fpRate, &mbt, chunks)
+	bloom, err := buildBloomFromSeries(seriesMeta, fpRate, &mbt, chunks)
+	require.NoError(t, err)
 	require.Equal(t, seriesMeta.seriesFP, bloom.Series.Fingerprint)
 	require.Equal(t, chunks, mbt.chunks)
 }

@@ -37,8 +37,10 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 			level.Error(logger).Log("msg", "error downloading chunks", "err", err)
 			return err
 		}
-		_ = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
-
+		err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
