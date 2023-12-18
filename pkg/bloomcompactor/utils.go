@@ -5,7 +5,7 @@ import "github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 func matchingBlocks(metas []bloomshipper.Meta, job Job) ([]bloomshipper.Meta, []bloomshipper.BlockRef) {
 	var metasMatchingJob []bloomshipper.Meta
 	var blocksMatchingJob []bloomshipper.BlockRef
-	var oldTombstonedBlockRefs map[bloomshipper.BlockRef]struct{}
+	oldTombstonedBlockRefs := make(map[bloomshipper.BlockRef]struct{})
 
 	for _, meta := range metas {
 		if meta.TableName != job.tableName {
