@@ -61,7 +61,6 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 	}
 	seriesIter := v1.NewSliceIter(seriesFromSeriesMeta)
 
-	// TODO: Make blockIters an actual, lazy iterator
 	// Download existing blocks that needs compaction
 	blockIters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocksToUpdate))
 	for i, b := range blocksToUpdate {
