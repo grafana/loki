@@ -58,7 +58,7 @@ func (lf *LineFilter) Unmarshal(b []byte) error {
 	v, n = binary.Uvarint(b[i:])
 	i += n
 	lf.Op = string(b[i : i+int(v)])
-	i += int(v)
+	i += int(v) // nolint:ineffassign
 	return nil
 }
 
