@@ -230,7 +230,9 @@ func cloneLabelFilterer(filter log.LabelFilterer) log.LabelFilterer {
 		}
 		return copied
 	case *log.LineFilterLabelFilter:
-		copied := &log.LineFilterLabelFilter{}
+		copied := &log.LineFilterLabelFilter{
+			Filter: concrete.Filter,
+		}
 		if concrete.Matcher != nil {
 			copied.Matcher = mustNewMatcher(concrete.Type, concrete.Name, concrete.Value)
 		}
