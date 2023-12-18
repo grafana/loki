@@ -1181,8 +1181,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			lokiResult := res.(*LokiSeriesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
-				// Use series hash as the key and reuse key
-				// buffer to avoid extra allocations.
+				// Use series hash as the key.
 				key = series.Hash(b)
 
 				// TODO(karsten): There is a chance that the
