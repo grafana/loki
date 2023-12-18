@@ -38,7 +38,7 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 
 		chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
 		if err != nil {
-			level.Error(logger).Log("msg", "error downloading chunks", "err", err)
+			level.Error(logger).Log("msg", "failed downloading chunks", "err", err)
 			return err
 		}
 		err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
@@ -76,13 +76,13 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 
 		lazyBlock, err := bloomShipperClient.GetBlock(ctx, b)
 		if err != nil {
-			level.Error(logger).Log("msg", "error downloading block", "err", err)
+			level.Error(logger).Log("msg", "failed downloading block", "err", err)
 			return err
 		}
 
 		blockPath, err := bloomshipper.UncompressBloomBlock(&lazyBlock, workingDir, logger)
 		if err != nil {
-			level.Error(logger).Log("msg", "error extracting block", "err", err)
+			level.Error(logger).Log("msg", "failed extracting block", "err", err)
 			return err
 		}
 		blockPaths[i] = blockPath
@@ -98,7 +98,7 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 	defer func() {
 		for _, path := range blockPaths {
 			if err := os.RemoveAll(path); err != nil {
-				level.Error(logger).Log("msg", "failed to remove uncompressed bloomDir", "dir", path, "err", err)
+				level.Error(logger).Log("msg", "failed removing uncompressed bloomDir", "dir", path, "err", err)
 			}
 		}
 	}()
@@ -110,7 +110,7 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 
 	mergeBlockBuilder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 	if err != nil {
-		level.Error(logger).Log("msg", "creating block builder", "err", err)
+		level.Error(logger).Log("msg", "failed creating block builder", "err", err)
 		return bloomshipper.Block{}, err
 	}
 	checksum, err := mergeBlockBuilder.mergeBuild(mergeBuilder)

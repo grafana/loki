@@ -500,14 +500,14 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
-			level.Error(logger).Log("msg", "creating block builder", "err", err)
+			level.Error(logger).Log("msg", "failed creating block builder", "err", err)
 			return err
 		}
 
 		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
 		resultingBlock, err = compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
-			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
+			return level.Error(logger).Log("msg", "failed compacting new chunks", "err", err)
 		}
 
 	} else if len(blocksMatchingJob) > 0 {
@@ -515,7 +515,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, storeClient, bt, job, blockOptions, blocksMatchingJob, c.cfg.WorkingDirectory, localDst)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed to merge existing blocks with new chunks", "err", err)
+			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
 		}
 	}
@@ -524,13 +524,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	blockToUpload, err := bloomshipper.CompressBloomBlock(resultingBlock.BlockRef, archivePath, localDst, logger)
 	if err != nil {
-		level.Error(logger).Log("msg", "compressing bloom blocks in to tar files", "err", err)
+		level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
 		return err
 	}
 	defer func() {
 		err = os.Remove(archivePath)
 		if err != nil {
-			level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
+			level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
 		}
 	}()
 
@@ -538,7 +538,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
 	storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
 	if err != nil {
-		level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+		level.Error(logger).Log("msg", "failed uploading blocks to storage", "err", err)
 		return err
 	}
 
@@ -555,7 +555,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	err = c.bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
-		level.Error(logger).Log("msg", "putting meta.json to storage", "err", err)
+		level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)
 		return err
 	}
 	return nil
