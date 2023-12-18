@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -437,6 +438,52 @@ func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels, categories ...LabelCat
 	return buf
 }
 
+type stringMapPool struct {
+	pool sync.Pool
+}
+
+func newStringMapPool() *stringMapPool {
+	return &stringMapPool{
+		pool: sync.Pool{
+			New: func() interface{} {
+				return make(map[string]string)
+			},
+		},
+	}
+}
+
+func (s *stringMapPool) Get() map[string]string {
+	m := s.pool.Get().(map[string]string)
+	clear(m)
+	return m
+}
+
+func (s *stringMapPool) Put(m map[string]string) {
+	s.pool.Put(m)
+}
+
+var smp = newStringMapPool()
+
+// puts labels entries into an existing map, it is up to the caller to
+// properly clear the map if it is going to be reused
+func (b *LabelsBuilder) IntoMap(m map[string]string) {
+	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
+		if b.baseMap == nil {
+			b.baseMap = b.base.Map()
+			for k, v := range b.baseMap {
+				m[k] = v
+			}
+		}
+		return
+	}
+	b.buf = b.UnsortedLabels(b.buf)
+	// todo should we also cache maps since limited by the result ?
+	// Maps also don't create a copy of the labels.
+	for _, l := range b.buf {
+		m[l.Name] = l.Value
+	}
+}
+
 func (b *LabelsBuilder) Map() map[string]string {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
@@ -447,7 +494,8 @@ func (b *LabelsBuilder) Map() map[string]string {
 	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
-	res := make(map[string]string, len(b.buf))
+	res := smp.Get()
+	clear(res)
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
