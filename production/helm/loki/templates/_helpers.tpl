@@ -245,7 +245,20 @@ s3:
     ca_file: {{ . }}
     {{- end}}
   {{- end }}
+  {{- with .backoff_config}}
+  backoff_config:
+    {{- with .min_period }}
+    min_period: {{ . }}
+    {{- end}}
+    {{- with .max_period }}
+    max_period: {{ . }}
+    {{- end}}
+    {{- with .max_retries }}
+    max_retries: {{ . }}
+    {{- end}}
+  {{- end }}
 {{- end -}}
+
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
 gcs:

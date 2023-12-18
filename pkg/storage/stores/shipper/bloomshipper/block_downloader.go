@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,9 +17,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
+	"k8s.io/utils/keymutex"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
@@ -27,16 +32,17 @@ import (
 type blockDownloader struct {
 	logger log.Logger
 
-	workingDirectory   string
-	queueMetrics       *queue.Metrics
-	queue              *queue.RequestQueue
-	blockClient        BlockClient
+	queueMetrics *queue.Metrics
+	queue        *queue.RequestQueue
+
 	limits             Limits
 	activeUsersService *util.ActiveUsersCleanupService
 
 	ctx     context.Context
 	manager *services.Manager
 	wg      sync.WaitGroup
+
+	strategy downloadingStrategy
 }
 
 type queueLimits struct {
@@ -63,13 +69,13 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 		return nil, fmt.Errorf("error starting service manager: %w", err)
 	}
 
+	strategy := createDownloadingStrategy(config, blockClient, reg, logger)
 	b := &blockDownloader{
 		ctx:                ctx,
 		logger:             logger,
-		workingDirectory:   config.WorkingDirectory,
 		queueMetrics:       queueMetrics,
 		queue:              downloadingQueue,
-		blockClient:        blockClient,
+		strategy:           strategy,
 		activeUsersService: activeUsersService,
 		limits:             limits,
 		manager:            manager,
@@ -130,28 +136,115 @@ func (d *blockDownloader) serveDownloadingTasks(workerID string) {
 		}
 
 		idx = newIdx
-		blockPath := task.block.BlockPath
-		//todo add cache before downloading
-		level.Debug(logger).Log("msg", "start downloading the block", "block", blockPath)
-		block, err := d.blockClient.GetBlock(task.ctx, task.block)
+		result, err := d.strategy.downloadBlock(task, logger)
 		if err != nil {
-			level.Error(logger).Log("msg", "error downloading the block", "block", blockPath, "err", err)
-			task.ErrCh <- fmt.Errorf("error downloading the block %s : %w", blockPath, err)
+			task.ErrCh <- err
 			continue
 		}
-		directory, err := d.extractBlock(&block, time.Now())
-		if err != nil {
-			level.Error(logger).Log("msg", "error extracting the block", "block", blockPath, "err", err)
-			task.ErrCh <- fmt.Errorf("error extracting the block %s : %w", blockPath, err)
-			continue
-		}
-		level.Debug(d.logger).Log("msg", "block has been downloaded and extracted", "block", task.block.BlockPath, "directory", directory)
-		blockQuerier := d.createBlockQuerier(directory)
-		task.ResultsCh <- blockWithQuerier{
-			BlockRef:     task.block,
-			BlockQuerier: blockQuerier,
+		task.ResultsCh <- result
+		continue
+	}
+}
+
+func createDownloadingStrategy(cfg config.Config, blockClient BlockClient, reg prometheus.Registerer, logger log.Logger) downloadingStrategy {
+	if cfg.BlocksCache.EmbeddedCacheConfig.Enabled {
+		blocksCache := NewBlocksCache(cfg, reg, logger)
+		return &cacheDownloadingStrategy{
+			config:           cfg,
+			workingDirectory: cfg.WorkingDirectory,
+			blockClient:      blockClient,
+			blocksCache:      blocksCache,
+			keyMutex:         keymutex.NewHashed(cfg.BlocksDownloadingQueue.WorkersCount),
 		}
 	}
+	return &storageDownloadingStrategy{
+		workingDirectory: cfg.WorkingDirectory,
+		blockClient:      blockClient,
+	}
+}
+
+type downloadingStrategy interface {
+	downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error)
+	close()
+}
+
+type cacheDownloadingStrategy struct {
+	config           config.Config
+	workingDirectory string
+	blockClient      BlockClient
+	blocksCache      *cache.EmbeddedCache[string, *cachedBlock]
+	keyMutex         keymutex.KeyMutex
+}
+
+func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
+	blockPath := task.block.BlockPath
+	s.keyMutex.LockKey(blockPath)
+	defer func() {
+		_ = s.keyMutex.UnlockKey(blockPath)
+	}()
+	blockFromCache, exists := s.blocksCache.Get(task.ctx, task.block.BlockPath)
+	if exists {
+		return blockWithQuerier{
+			BlockRef:             task.block,
+			closableBlockQuerier: newBlockQuerierFromCache(blockFromCache),
+		}, nil
+	}
+
+	directory, err := downloadBlockToDirectory(logger, task, s.workingDirectory, s.blockClient)
+	if err != nil {
+		return blockWithQuerier{}, err
+	}
+	blockFromCache = newCachedBlock(directory, s.config.BlocksCache.RemoveDirectoryGracefulPeriod, logger)
+	err = s.blocksCache.Store(task.ctx, []string{task.block.BlockPath}, []*cachedBlock{blockFromCache})
+	if err != nil {
+		level.Error(logger).Log("msg", "error storing the block in the cache", "block", blockPath, "err", err)
+		return blockWithQuerier{}, fmt.Errorf("error storing the block %s in the cache : %w", blockPath, err)
+	}
+	return blockWithQuerier{
+		BlockRef:             task.block,
+		closableBlockQuerier: newBlockQuerierFromCache(blockFromCache),
+	}, nil
+}
+
+func (s *cacheDownloadingStrategy) close() {
+	s.blocksCache.Stop()
+}
+
+type storageDownloadingStrategy struct {
+	workingDirectory string
+	blockClient      BlockClient
+}
+
+func (s *storageDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
+	directory, err := downloadBlockToDirectory(logger, task, s.workingDirectory, s.blockClient)
+	if err != nil {
+		return blockWithQuerier{}, err
+	}
+	return blockWithQuerier{
+		BlockRef:             task.block,
+		closableBlockQuerier: newBlockQuerierFromFS(directory),
+	}, nil
+}
+
+func (s *storageDownloadingStrategy) close() {
+	// noop implementation
+}
+
+func downloadBlockToDirectory(logger log.Logger, task *BlockDownloadingTask, workingDirectory string, blockClient BlockClient) (string, error) {
+	blockPath := task.block.BlockPath
+	level.Debug(logger).Log("msg", "start downloading the block", "block", blockPath)
+	block, err := blockClient.GetBlock(task.ctx, task.block)
+	if err != nil {
+		level.Error(logger).Log("msg", "error downloading the block", "block", blockPath, "err", err)
+		return "", fmt.Errorf("error downloading the block %s : %w", blockPath, err)
+	}
+	directory, err := extractBlock(&block, time.Now(), workingDirectory, logger)
+	if err != nil {
+		level.Error(logger).Log("msg", "error extracting the block", "block", blockPath, "err", err)
+		return "", fmt.Errorf("error extracting the block %s : %w", blockPath, err)
+	}
+	level.Debug(logger).Log("msg", "block has been downloaded and extracted", "block", task.block.BlockPath, "directory", directory)
+	return directory, nil
 }
 
 func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, references []BlockRef) (chan blockWithQuerier, chan error) {
@@ -177,12 +270,12 @@ func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, r
 
 type blockWithQuerier struct {
 	BlockRef
-	*v1.BlockQuerier
+	*closableBlockQuerier
 }
 
 // extract the files into directory and returns absolute path to this directory.
-func (d *blockDownloader) extractBlock(block *Block, ts time.Time) (string, error) {
-	workingDirectoryPath := filepath.Join(d.workingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixMilli(), 10))
+func extractBlock(block *LazyBlock, ts time.Time, workingDirectory string, logger log.Logger) (string, error) {
+	workingDirectoryPath := filepath.Join(workingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixNano(), 10))
 	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
 	if err != nil {
 		return "", fmt.Errorf("can not create directory to extract the block: %w", err)
@@ -192,8 +285,10 @@ func (d *blockDownloader) extractBlock(block *Block, ts time.Time) (string, erro
 		return "", fmt.Errorf("error writing data to temp file: %w", err)
 	}
 	defer func() {
-		os.Remove(archivePath)
-		// todo log err
+		err = os.Remove(archivePath)
+		if err != nil {
+			level.Error(logger).Log("msg", "error removing temp archive file", "err", err)
+		}
 	}()
 	err = extractArchive(archivePath, workingDirectoryPath)
 	if err != nil {
@@ -202,18 +297,13 @@ func (d *blockDownloader) extractBlock(block *Block, ts time.Time) (string, erro
 	return workingDirectoryPath, nil
 }
 
-func (d *blockDownloader) createBlockQuerier(directory string) *v1.BlockQuerier {
-	reader := v1.NewDirectoryBlockReader(directory)
-	block := v1.NewBlock(reader)
-	return v1.NewBlockQuerier(block)
-}
-
 func (d *blockDownloader) stop() {
 	_ = services.StopManagerAndAwaitStopped(d.ctx, d.manager)
 	d.wg.Wait()
+	d.strategy.close()
 }
 
-func writeDataToTempFile(workingDirectoryPath string, block *Block) (string, error) {
+func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string, error) {
 	defer block.Data.Close()
 	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
 
@@ -235,4 +325,109 @@ func extractArchive(archivePath string, workingDirectoryPath string) error {
 		return fmt.Errorf("error opening archive file %s: %w", file.Name(), err)
 	}
 	return v1.UnTarGz(workingDirectoryPath, file)
+}
+
+type closableBlockQuerier struct {
+	*v1.BlockQuerier
+	Close func() error
+}
+
+func newBlockQuerierFromCache(cached *cachedBlock) *closableBlockQuerier {
+	cached.activeQueriers.Inc()
+	return &closableBlockQuerier{
+		BlockQuerier: createBlockQuerier(cached.blockDirectory),
+		Close: func() error {
+			cached.activeQueriers.Dec()
+			return nil
+		},
+	}
+}
+
+func newBlockQuerierFromFS(blockDirectory string) *closableBlockQuerier {
+	return &closableBlockQuerier{
+		BlockQuerier: createBlockQuerier(blockDirectory),
+		Close: func() error {
+			return deleteFolder(blockDirectory)
+		},
+	}
+}
+
+func createBlockQuerier(directory string) *v1.BlockQuerier {
+	reader := v1.NewDirectoryBlockReader(directory)
+	block := v1.NewBlock(reader)
+	return v1.NewBlockQuerier(block)
+}
+
+func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, *cachedBlock] {
+	return cache.NewTypedEmbeddedCache[string, *cachedBlock](
+		"bloom-blocks-cache",
+		config.BlocksCache.EmbeddedCacheConfig,
+		reg,
+		logger,
+		stats.BloomBlocksCache,
+		calculateBlockDirectorySize,
+		func(key string, value *cachedBlock) {
+			value.removeDirectoryAsync()
+		})
+}
+
+func calculateBlockDirectorySize(entry *cache.Entry[string, *cachedBlock]) uint64 {
+	value := entry.Value
+	bloomFileStats, _ := os.Lstat(path.Join(value.blockDirectory, v1.BloomFileName))
+	seriesFileStats, _ := os.Lstat(path.Join(value.blockDirectory, v1.SeriesFileName))
+	return uint64(bloomFileStats.Size() + seriesFileStats.Size())
+}
+
+func newCachedBlock(blockDirectory string, removeDirectoryTimeout time.Duration, logger log.Logger) *cachedBlock {
+	return &cachedBlock{
+		blockDirectory:              blockDirectory,
+		removeDirectoryTimeout:      removeDirectoryTimeout,
+		logger:                      logger,
+		activeQueriersCheckInterval: defaultActiveQueriersCheckInterval,
+	}
+}
+
+type cachedBlock struct {
+	blockDirectory              string
+	removeDirectoryTimeout      time.Duration
+	activeQueriers              atomic.Int32
+	logger                      log.Logger
+	activeQueriersCheckInterval time.Duration
+}
+
+const defaultActiveQueriersCheckInterval = 100 * time.Millisecond
+
+func (b *cachedBlock) removeDirectoryAsync() {
+	go func() {
+		timeout := time.After(b.removeDirectoryTimeout)
+		ticker := time.NewTicker(b.activeQueriersCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if b.activeQueriers.Load() == 0 {
+					err := deleteFolder(b.blockDirectory)
+					if err == nil {
+						return
+					}
+					level.Error(b.logger).Log("msg", "error deleting block directory", "err", err)
+				}
+			case <-timeout:
+				level.Warn(b.logger).Log("msg", "force deleting block folder after timeout", "timeout", b.removeDirectoryTimeout)
+				err := deleteFolder(b.blockDirectory)
+				if err == nil {
+					return
+				}
+				level.Error(b.logger).Log("msg", "error force deleting block directory", "err", err)
+			}
+		}
+	}()
+}
+
+func deleteFolder(folderPath string) error {
+	err := os.RemoveAll(folderPath)
+	if err != nil {
+		return fmt.Errorf("error deleting bloom block directory: %w", err)
+	}
+	return nil
 }
