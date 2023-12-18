@@ -27,8 +27,6 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"math"
 	"os"
 	"time"
@@ -515,36 +513,21 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	} else if len(blocksMatchingJob) > 0 {
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
 
-		var populate = func(series *v1.Series, bloom *v1.Bloom) error {
-			bloomForChks := v1.SeriesWithBloom{
-				Series: series,
-				Bloom:  bloom,
-			}
+		var populate = createPopulateFunc(ctx, logger, job, storeClient, bt)
 
-			// Satisfy types for chunks
-			chunkRefs := make([]chunk.Chunk, len(series.Chunks))
-			for i, chk := range series.Chunks {
-				chunkRefs[i] = chunk.Chunk{
-					ChunkRef: logproto.ChunkRef{
-						Fingerprint: uint64(series.Fingerprint),
-						UserID:      job.tenantID,
-						From:        chk.Start,
-						Through:     chk.End,
-						Checksum:    chk.Checksum,
-					},
+		seriesIter := makeSeriesIterFromSeriesMeta(job)
+
+		blockIters, blockPaths, err := makeBlockIterFromBlocks(ctx, logger, c.bloomShipperClient, blocksMatchingJob, c.cfg.WorkingDirectory)
+		defer func() {
+			for _, path := range blockPaths {
+				if err := os.RemoveAll(path); err != nil {
+					level.Error(logger).Log("msg", "failed removing uncompressed bloomDir", "dir", path, "err", err)
 				}
 			}
+		}()
 
-			chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
-			if err != nil {
-				level.Error(logger).Log("msg", "failed downloading chunks", "err", err)
-				return err
-			}
-			err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
-			if err != nil {
-				return err
-			}
-			return nil
+		if err != nil {
+			return err
 		}
 
 		mergeBlockBuilder, err := NewPersistentBlockBuilder(localDst, blockOptions)
@@ -553,7 +536,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, populate, mergeBlockBuilder, job, blocksMatchingJob, c.cfg.WorkingDirectory)
+		resultingBlock, err = mergeCompactChunks(logger, populate, mergeBlockBuilder, blockIters, seriesIter, job)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err

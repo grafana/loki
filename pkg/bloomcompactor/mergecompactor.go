@@ -2,9 +2,9 @@ package bloomcompactor
 
 import (
 	"context"
-	"os"
-
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -13,12 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func mergeCompactChunks(ctx context.Context, logger log.Logger,
-	bloomShipperClient bloomshipper.Client,
-	populate func(*v1.Series, *v1.Bloom) error,
-	mergeBlockBuilder *PersistentBlockBuilder,
-	job Job,
-	blocksToUpdate []bloomshipper.BlockRef, workingDir string) (bloomshipper.Block, error) {
+func makeSeriesIterFromSeriesMeta(job Job) *v1.SliceIter[*v1.Series] {
 	// Satisfy types for series
 	seriesFromSeriesMeta := make([]*v1.Series, len(job.seriesMetas))
 
@@ -36,13 +31,18 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger,
 			Chunks:      crefs,
 		}
 	}
-	seriesIter := v1.NewSliceIter(seriesFromSeriesMeta)
+	return v1.NewSliceIter(seriesFromSeriesMeta)
+}
+
+func makeBlockIterFromBlocks(ctx context.Context, logger log.Logger,
+	bloomShipperClient bloomshipper.Client, blocksToUpdate []bloomshipper.BlockRef,
+	workingDir string) ([]v1.PeekingIterator[*v1.SeriesWithBloom], []string, error) {
 
 	// Download existing blocks that needs compaction
 	blockIters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocksToUpdate))
 	blockPaths := make([]string, len(blocksToUpdate))
 
-	_ = concurrency.ForEachJob(ctx, len(blocksToUpdate), len(blocksToUpdate), func(ctx context.Context, i int) error {
+	err := concurrency.ForEachJob(ctx, len(blocksToUpdate), len(blocksToUpdate), func(ctx context.Context, i int) error {
 		b := blocksToUpdate[i]
 
 		lazyBlock, err := bloomShipperClient.GetBlock(ctx, b)
@@ -66,13 +66,51 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger,
 		return nil
 	})
 
-	defer func() {
-		for _, path := range blockPaths {
-			if err := os.RemoveAll(path); err != nil {
-				level.Error(logger).Log("msg", "failed removing uncompressed bloomDir", "dir", path, "err", err)
+	if err != nil {
+		return nil, nil, err
+	}
+	return blockIters, blockPaths, nil
+}
+
+func createPopulateFunc(ctx context.Context, logger log.Logger, job Job, storeClient storeClient, bt *v1.BloomTokenizer) func(series *v1.Series, bloom *v1.Bloom) error {
+	return func(series *v1.Series, bloom *v1.Bloom) error {
+		bloomForChks := v1.SeriesWithBloom{
+			Series: series,
+			Bloom:  bloom,
+		}
+
+		// Satisfy types for chunks
+		chunkRefs := make([]chunk.Chunk, len(series.Chunks))
+		for i, chk := range series.Chunks {
+			chunkRefs[i] = chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: uint64(series.Fingerprint),
+					UserID:      job.tenantID,
+					From:        chk.Start,
+					Through:     chk.End,
+					Checksum:    chk.Checksum,
+				},
 			}
 		}
-	}()
+
+		chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed downloading chunks", "err", err)
+			return err
+		}
+		err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
+func mergeCompactChunks(logger log.Logger,
+	populate func(*v1.Series, *v1.Bloom) error,
+	mergeBlockBuilder *PersistentBlockBuilder,
+	blockIters []v1.PeekingIterator[*v1.SeriesWithBloom], seriesIter *v1.SliceIter[*v1.Series],
+	job Job) (bloomshipper.Block, error) {
 
 	mergeBuilder := v1.NewMergeBuilder(
 		blockIters,
