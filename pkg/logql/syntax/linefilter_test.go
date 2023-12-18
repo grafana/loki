@@ -19,10 +19,12 @@ func TestLineFilterSerialization(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			b := make([]byte, orig.Size())
-			orig.MarshalTo(b)
+			_, err := orig.MarshalTo(b)
+			require.NoError(t, err)
 			t.Log(b)
 			res := &LineFilter{}
-			res.Unmarshal(b)
+			err = res.Unmarshal(b)
+			require.NoError(t, err)
 			t.Log(res)
 			require.Equal(t, orig, *res)
 		})

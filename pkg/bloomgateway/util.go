@@ -50,7 +50,7 @@ func convertToSearches(cfg tokenSettings, filters []syntax.LineFilter) [][]byte 
 			it := t.Tokens(f.Match)
 			for it.Next() {
 				key := make([]byte, cfg.nGramLen)
-				copy(key, it.At())
+				_ = copy(key, it.At())
 				searches = append(searches, key)
 			}
 		}
