@@ -18,7 +18,7 @@ var seps = []byte{'\xff'}
 // Hash returns hash of the labels according to Prometheus' Labels.Hash function.
 // `b` is a buffer that should be reused to avoid allocations.
 func (id SeriesIdentifier) Hash(b []byte) uint64 {
-	sort.Slice(id.Labels, func(l, r int) bool { return id.Labels[l].Key < id.Labels[r].Key })
+	sort.Sort(id)
 
 	// Use xxhash.Sum64(b) for fast path as it's faster.
 	b = b[:0]
@@ -65,6 +65,10 @@ func NewSeriesEntries(labels ...string) []SeriesIdentifier_LabelsEntry {
 	}
 	return r
 }
+
+func (s SeriesIdentifier) Len() int           { return len(s.Labels) }
+func (s SeriesIdentifier) Swap(i, j int)      { s.Labels[i], s.Labels[j] = s.Labels[j], s.Labels[i] }
+func (s SeriesIdentifier) Less(i, j int) bool { return s.Labels[i].Key < s.Labels[j].Key }
 
 type Streams []Stream
 
