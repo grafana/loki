@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/grafana/loki/pkg/loghttp"
 
 	"github.com/grafana/dskit/grpcclient"
@@ -298,8 +300,9 @@ type storeMock struct {
 func newStoreMock() *storeMock {
 	return &storeMock{}
 }
-
-func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer) {}
+func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer)    {}
+func (s *storeMock) SetExtractorWrapper(log.SampleExtractorWrapper) {}
+func (s *storeMock) SetPipelineWrapper(log.PipelineWrapper)         {}
 
 func (s *storeMock) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)

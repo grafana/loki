@@ -623,9 +623,7 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			}
 
 			var matcher *labels.Matcher
-			if name != "" && value != "" {
-				matcher = labels.MustNewMatcher(t, name, value)
-			}
+			matcher = labels.MustNewMatcher(t, name, value)
 
 			filter = log.NewStringLabelFilter(matcher)
 
