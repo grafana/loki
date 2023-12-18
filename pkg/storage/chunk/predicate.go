@@ -1,8 +1,9 @@
 package chunk
 
 import (
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 type Predicate struct {
