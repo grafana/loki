@@ -293,7 +293,7 @@ message LabelNamesForMetricNameRequest {
   ];
 }
 
-message Filters {
+message LineFilter {
   bytes raw = 1;
 }
 
@@ -307,7 +307,7 @@ message GetChunkRefRequest {
     (gogoproto.nullable) = false
   ];
   string matchers = 3;
-  repeated Filters filters = 4 [
+  repeated LineFilter filters = 4 [
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/logql/syntax.LineFilter",
     (gogoproto.nullable) = false
   ];
