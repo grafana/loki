@@ -26,7 +26,7 @@ func TestGetLokiSeriesResponse(t *testing.T) {
 				Status: "success",
 				Data: []logproto.SeriesIdentifier{
 					{
-						Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
 							{Key: "foo", Value: "bar"},
 							{Key: "baz", Value: "woof"},
 						},
@@ -52,7 +52,7 @@ func TestGetLokiSeriesResponse(t *testing.T) {
 
 func TestSeriesIdentifierViewHash(t *testing.T) {
 	identifier := &logproto.SeriesIdentifier{
-		Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+		Labels: []logproto.SeriesIdentifier_LabelsEntry{
 			{Key: "foo", Value: "bar"},
 			{Key: "baz", Value: "woof"},
 		},
@@ -75,7 +75,7 @@ func TestSeriesIdentifierViewHash(t *testing.T) {
 }
 func TestSeriesIdentifierViewForEachLabel(t *testing.T) {
 	identifier := &logproto.SeriesIdentifier{
-		Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+		Labels: []logproto.SeriesIdentifier_LabelsEntry{
 			{Key: "foo", Value: "bar"},
 			{Key: "baz", Value: "woof"},
 		},
@@ -100,13 +100,13 @@ func TestSeriesResponseViewForEach(t *testing.T) {
 	response := &LokiSeriesResponse{
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "i", Value: "1"},
 					{Key: "baz", Value: "woof"},
 				},
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "i", Value: "2"},
 					{Key: "foo", Value: "bar"},
 				},
@@ -145,13 +145,13 @@ func TestMergedViewDeduplication(t *testing.T) {
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "1"},
 						{Key: "baz", Value: "woof"},
 					},
 				},
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "2"},
 						{Key: "foo", Value: "bar"},
 					},
@@ -161,13 +161,13 @@ func TestMergedViewDeduplication(t *testing.T) {
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "3"},
 						{Key: "baz", Value: "woof"},
 					},
 				},
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "2"},
 						{Key: "foo", Value: "bar"},
 					},
@@ -198,13 +198,13 @@ func TestMergedViewMaterialize(t *testing.T) {
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "1"},
 						{Key: "baz", Value: "woof"},
 					},
 				},
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "2"},
 						{Key: "foo", Value: "bar"},
 					},
@@ -214,13 +214,13 @@ func TestMergedViewMaterialize(t *testing.T) {
 		{
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "3"},
 						{Key: "baz", Value: "woof"},
 					},
 				},
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "i", Value: "2"},
 						{Key: "foo", Value: "bar"},
 					},
@@ -257,19 +257,19 @@ func TestMergedViewJSON(t *testing.T) {
 	response := &LokiSeriesResponse{
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "i", Value: "1"},
 					{Key: "baz", Value: "woof"},
 				},
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "i", Value: "2"},
 					{Key: "foo", Value: "bar"},
 				},
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "i", Value: "3"},
 					{Key: "baz", Value: "woof"},
 				},

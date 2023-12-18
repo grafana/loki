@@ -213,7 +213,7 @@ func TestMergeLabelResponses(t *testing.T) {
 }
 
 func TestMergeSeriesResponses(t *testing.T) {
-	mockSeriesResponse := func(series [][]*SeriesIdentifier_LabelsEntry) *SeriesResponse {
+	mockSeriesResponse := func(series [][]SeriesIdentifier_LabelsEntry) *SeriesResponse {
 		resp := &SeriesResponse{}
 		for _, s := range series {
 			resp.Series = append(resp.Series, SeriesIdentifier{
@@ -232,31 +232,31 @@ func TestMergeSeriesResponses(t *testing.T) {
 		{
 			desc: "merge one series response and expect one",
 			responses: []*SeriesResponse{
-				{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test", "test"}}}}},
+				{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test", "test")}}},
 			},
 			expected: []*SeriesResponse{
-				mockSeriesResponse([][]*SeriesIdentifier_LabelsEntry{{{"test", "test"}}}),
+				mockSeriesResponse([][]SeriesIdentifier_LabelsEntry{{{"test", "test"}}}),
 			},
 		},
 		{
 			desc: "merge two series responses",
 			responses: []*SeriesResponse{
-				{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test", "test"}}}}},
-				{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test2", "test2"}}}}},
+				{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test", "test")}}},
+				{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test2", "test2")}}},
 			},
 			expected: []*SeriesResponse{
-				mockSeriesResponse([][]*SeriesIdentifier_LabelsEntry{{{"test", "test"}}, {{"test2", "test2"}}}),
+				mockSeriesResponse([][]SeriesIdentifier_LabelsEntry{{{"test", "test"}}, {{"test2", "test2"}}}),
 			},
 		},
 		{
 			desc: "merge three series responses",
 			responses: []*SeriesResponse{
-				{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test", "test"}}}}},
-				{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test2", "test2"}}}}},
-				{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test3", "test3"}}}}},
+				{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test", "test")}}},
+				{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test2", "test2")}}},
+				{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test3", "test3")}}},
 			},
 			expected: []*SeriesResponse{
-				mockSeriesResponse([][]*SeriesIdentifier_LabelsEntry{{{"test", "test"}}, {{"test2", "test2"}}, {{"test3", "test3"}}}),
+				mockSeriesResponse([][]SeriesIdentifier_LabelsEntry{{{"test", "test"}}, {{"test2", "test2"}}, {{"test3", "test3"}}}),
 			},
 		},
 		{
@@ -366,7 +366,7 @@ func BenchmarkMergeALabelResponse(b *testing.B) {
 }
 
 func BenchmarkMergeASeriesResponse(b *testing.B) {
-	response := []*SeriesResponse{{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test", "test"}}}}}}
+	response := []*SeriesResponse{{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test", "test")}}}}
 	benchmarkMergeSeriesResponses(b, response)
 }
 
@@ -381,9 +381,9 @@ func BenchmarkMergeSomeLabelResponses(b *testing.B) {
 
 func BenchmarkMergeSomeSeriesResponses(b *testing.B) {
 	responses := []*SeriesResponse{
-		{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test", "test"}}}}},
-		{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test2", "test2"}}}}},
-		{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{"test3", "test3"}}}}},
+		{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test", "test")}}},
+		{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test2", "test2")}}},
+		{Series: []SeriesIdentifier{{Labels: NewSeriesEntries("test3", "test3")}}},
 	}
 	benchmarkMergeSeriesResponses(b, responses)
 }
@@ -400,7 +400,7 @@ func BenchmarkMergeManySeriesResponses(b *testing.B) {
 	responses := []*SeriesResponse{}
 	for i := 0; i < 20; i++ {
 		test := fmt.Sprintf("test%d", i)
-		responses = append(responses, &SeriesResponse{Series: []SeriesIdentifier{{Labels: []*SeriesIdentifier_LabelsEntry{{test, test}}}}})
+		responses = append(responses, &SeriesResponse{Series: []SeriesIdentifier{{Labels: NewSeriesEntries(test, test)}}})
 	}
 	benchmarkMergeSeriesResponses(b, responses)
 }

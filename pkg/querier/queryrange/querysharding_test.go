@@ -513,12 +513,12 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			Version: 1,
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "foo", Value: "bar"},
 					},
 				},
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "shard", Value: req.Shards[0]},
 					},
 				},
@@ -537,22 +537,22 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Version:    1,
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "foo", Value: "bar"},
 				},
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "shard", Value: "0_of_3"},
 				},
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "shard", Value: "1_of_3"},
 				},
 			},
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
 					{Key: "shard", Value: "2_of_3"},
 				},
 			},

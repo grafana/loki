@@ -1386,13 +1386,13 @@ func Test_codec_MergeResponse(t *testing.T) {
 					Version: 1,
 					Data: []logproto.SeriesIdentifier{
 						{
-							Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+							Labels: []logproto.SeriesIdentifier_LabelsEntry{
 								{Key: "filename", Value: "/var/hostlog/apport.log"},
 								{Key: "job", Value: "varlogs"},
 							},
 						},
 						{
-							Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+							Labels: []logproto.SeriesIdentifier_LabelsEntry{
 								{Key: "filename", Value: "/var/hostlog/test.log"},
 								{Key: "job", Value: "varlogs"},
 							},
@@ -1404,13 +1404,13 @@ func Test_codec_MergeResponse(t *testing.T) {
 					Version: 1,
 					Data: []logproto.SeriesIdentifier{
 						{
-							Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+							Labels: []logproto.SeriesIdentifier_LabelsEntry{
 								{Key: "filename", Value: "/var/hostlog/apport.log"},
 								{Key: "job", Value: "varlogs"},
 							},
 						},
 						{
-							Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+							Labels: []logproto.SeriesIdentifier_LabelsEntry{
 								{Key: "filename", Value: "/var/hostlog/other.log"},
 								{Key: "job", Value: "varlogs"},
 							},
@@ -1424,19 +1424,19 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Version:    1,
 				Data: []logproto.SeriesIdentifier{
 					{
-						Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
 							{Key: "filename", Value: "/var/hostlog/apport.log"},
 							{Key: "job", Value: "varlogs"},
 						},
 					},
 					{
-						Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
 							{Key: "filename", Value: "/var/hostlog/test.log"},
 							{Key: "job", Value: "varlogs"},
 						},
 					},
 					{
-						Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
 							{Key: "filename", Value: "/var/hostlog/other.log"},
 							{Key: "job", Value: "varlogs"},
 						},
@@ -1873,13 +1873,13 @@ var (
 	}`
 	seriesData = []logproto.SeriesIdentifier{
 		{
-			Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+			Labels: []logproto.SeriesIdentifier_LabelsEntry{
 				{Key: "filename", Value: "/var/hostlog/apport.log"},
 				{Key: "job", Value: "varlogs"},
 			},
 		},
 		{
-			Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+			Labels: []logproto.SeriesIdentifier_LabelsEntry{
 				{Key: "filename", Value: "/var/hostlog/test.log"},
 				{Key: "job", Value: "varlogs"},
 			},
@@ -2235,9 +2235,9 @@ func generateStream() (res []logproto.Stream) {
 
 func generateSeries() (res []logproto.SeriesIdentifier) {
 	for i := 0; i < 1000; i++ {
-		labels := make([]*logproto.SeriesIdentifier_LabelsEntry, 100)
+		labels := make([]logproto.SeriesIdentifier_LabelsEntry, 100)
 		for l := 0; l < 100; l++ {
-			labels[l] = &logproto.SeriesIdentifier_LabelsEntry{Key: fmt.Sprintf("%d-%d", i, l), Value: strconv.Itoa(l)}
+			labels[l] = logproto.SeriesIdentifier_LabelsEntry{Key: fmt.Sprintf("%d-%d", i, l), Value: strconv.Itoa(l)}
 		}
 		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}

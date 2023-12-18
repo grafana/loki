@@ -192,7 +192,7 @@ message SeriesIdentifier {
     string key = 1;
     string value = 2;
   }
-  repeated LabelsEntry labels = 1;
+  repeated LabelsEntry labels = 1 [(gogoproto.nullable) = false];
 }
 
 message DroppedStream {

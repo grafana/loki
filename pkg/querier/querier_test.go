@@ -239,7 +239,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		for _, s := range series {
 			id := logproto.SeriesIdentifier{}
 			for k, v := range s {
-				id.Labels = append(id.Labels, &logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+				id.Labels = append(id.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
 			}
 			resp.Series = append(resp.Series, id)
 		}
@@ -306,11 +306,11 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "4"},
 					}},
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "5"},
 					}},
@@ -321,19 +321,19 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "2"},
 					}},
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "3"}},
 					},
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "4"},
 					}},
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "5"},
 					}},
@@ -349,11 +349,11 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "2"},
 					}},
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "3"},
 					}},
@@ -364,11 +364,11 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "2"},
 					}},
-					{Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "3"},
 					}},
@@ -1148,7 +1148,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	ingesterClient.On("Series", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: []*logproto.SeriesIdentifier_LabelsEntry{{Key: "bar", Value: "1"}},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "bar", Value: "1"}},
 			},
 		},
 	}, nil)
@@ -1159,7 +1159,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
 	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-		{Labels: []*logproto.SeriesIdentifier_LabelsEntry{{Key: "foo", Value: "1"}}},
+		{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "foo", Value: "1"}}},
 	}, nil)
 
 	querier, err := newQuerier(

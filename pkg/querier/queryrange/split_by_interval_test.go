@@ -807,19 +807,19 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "filename", Value: "/var/hostlog/apport.log"},
 						{Key: "job", Value: "varlogs"},
 					},
 				},
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "filename", Value: "/var/hostlog/test.log"},
 						{Key: "job", Value: "varlogs"},
 					},
 				},
 				{
-					Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "filename", Value: "/var/hostlog/test.log"},
 						{Key: "job", Value: "varlogs"},
 					},
@@ -856,13 +856,13 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 				Version:    1,
 				Data: []logproto.SeriesIdentifier{
 					{
-						Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
 							{Key: "filename", Value: "/var/hostlog/apport.log"},
 							{Key: "job", Value: "varlogs"},
 						},
 					},
 					{
-						Labels: []*logproto.SeriesIdentifier_LabelsEntry{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
 							{Key: "filename", Value: "/var/hostlog/test.log"},
 							{Key: "job", Value: "varlogs"},
 						},

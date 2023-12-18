@@ -1318,15 +1318,15 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 }
 
-func mustParseLabels(s string) []*logproto.SeriesIdentifier_LabelsEntry {
+func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
 	l, err := marshal.NewLabelSet(s)
 	if err != nil {
 		log.Fatalf("Failed to parse %s", s)
 	}
 
-	result := make([]*logproto.SeriesIdentifier_LabelsEntry, 0, len(l))
+	result := make([]logproto.SeriesIdentifier_LabelsEntry, 0, len(l))
 	for k, v := range l {
-		result = append(result, &logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+		result = append(result, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
 	}
 	return result
 }
