@@ -16,8 +16,9 @@ import (
 func mergeCompactChunks(ctx context.Context, logger log.Logger,
 	bloomShipperClient bloomshipper.Client,
 	populate func(*v1.Series, *v1.Bloom) error,
-	job Job, blockOptions v1.BlockOptions,
-	blocksToUpdate []bloomshipper.BlockRef, workingDir string, localDst string) (bloomshipper.Block, error) {
+	mergeBlockBuilder *PersistentBlockBuilder,
+	job Job,
+	blocksToUpdate []bloomshipper.BlockRef, workingDir string) (bloomshipper.Block, error) {
 	// Satisfy types for series
 	seriesFromSeriesMeta := make([]*v1.Series, len(job.seriesMetas))
 
@@ -78,11 +79,6 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger,
 		seriesIter,
 		populate)
 
-	mergeBlockBuilder, err := NewPersistentBlockBuilder(localDst, blockOptions)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed creating block builder", "err", err)
-		return bloomshipper.Block{}, err
-	}
 	checksum, err := mergeBlockBuilder.mergeBuild(mergeBuilder)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed merging the blooms", "err", err)

@@ -547,7 +547,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return nil
 		}
 
-		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, populate, job, blockOptions, blocksMatchingJob, c.cfg.WorkingDirectory, localDst)
+		mergeBlockBuilder, err := NewPersistentBlockBuilder(localDst, blockOptions)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed creating block builder", "err", err)
+			return err
+		}
+
+		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, populate, mergeBlockBuilder, job, blocksMatchingJob, c.cfg.WorkingDirectory)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
