@@ -61,6 +61,7 @@ const (
 	StatsResultCache            = "stats-result"
 	VolumeResultCache           = "volume-result"
 	WriteDedupeCache            = "write-dedupe"
+	SeriesResultCache           = "series-result"
 	BloomFilterCache            = "bloom-filter"
 	BloomBlocksCache            = "bloom-blocks"
 )
@@ -444,6 +445,8 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.StatsResult
 	case VolumeResultCache:
 		stats = &c.caches.VolumeResult
+	case SeriesResultCache:
+		stats = &c.caches.SeriesResult
 	default:
 		return nil
 	}

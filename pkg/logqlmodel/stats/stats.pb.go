@@ -100,6 +100,7 @@ type Caches struct {
 	Result       Cache `protobuf:"bytes,3,opt,name=result,proto3" json:"result"`
 	StatsResult  Cache `protobuf:"bytes,4,opt,name=statsResult,proto3" json:"statsResult"`
 	VolumeResult Cache `protobuf:"bytes,5,opt,name=volumeResult,proto3" json:"volumeResult"`
+	SeriesResult Cache `protobuf:"bytes,5,opt,name=seriesResult,proto3" json:"seriesResult"`
 }
 
 func (m *Caches) Reset()      { *m = Caches{} }

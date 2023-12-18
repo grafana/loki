@@ -28,6 +28,28 @@ import (
 	logutil "github.com/grafana/loki/pkg/util/log"
 )
 
+const (
+	// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
+	// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
+	// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
+	seriesQuerySplitInterval = 24 * time.Hour
+
+	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
+	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
+	indexStatsQuerySplitInterval = 24 * time.Hour
+
+	// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
+	// This is because the labels API is an index-only operation.
+	labelsQuerySplitInterval = 24 * time.Hour
+
+	// Limited queries only need to fetch up to the requested line limit worth of logs,
+	// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
+	// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
+	// Therefore we force max parallelism to `1` so that these queries are executed sequentially.
+	// Below we also fix the number of shards to a static number.
+	limitedQuerySplits = 1
+)
+
 // Config is the configuration for the queryrange tripperware
 type Config struct {
 	base.Config            `yaml:",inline"`
@@ -36,6 +58,8 @@ type Config struct {
 	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
 	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
 	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
+	CacheSeriesResults     bool                  `yaml:"cache_series_results"`
+	SeriesCacheConfig      SeriesCacheConfig     `yaml"series_results_cache"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -112,6 +136,7 @@ func NewMiddleware(
 		resultsCache cache.Cache
 		statsCache   cache.Cache
 		volumeCache  cache.Cache
+		seriesCache  cache.Cache
 		err          error
 	)
 
@@ -150,6 +175,21 @@ func NewMiddleware(
 		}
 	}
 
+	if cfg.CacheSeriesResults {
+		// If the series cache is not configured, use the results cache config.
+		cacheCfg := cfg.SeriesCacheConfig.ResultsCacheConfig
+		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
+			level.Debug(log).Log("msg", "using results cache config for series cache")
+			cacheCfg = cfg.ResultsCacheConfig
+		}
+
+		seriesCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.SeriesResultCache)
+		if err != nil {
+			return nil, nil, err
+		}
+
+	}
+
 	var codec base.Codec = DefaultCodec
 
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
@@ -176,7 +216,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, metrics, schema, DefaultCodec, metricsNamespace)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, metrics, schema, codec, seriesCache, cacheGenNumLoader, retentionEnabled, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -475,12 +515,7 @@ func NewLimitedTripperware(
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			// Limited queries only need to fetch up to the requested line limit worth of logs,
-			// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
-			// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
-			// Therefore we force max parallelism to one so that these queries are executed sequentially.
-			// Below we also fix the number of shards to a static number.
-			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), merger, splitByTime, metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, limitedQuerySplits), merger, splitByTime, metrics.SplitByMetrics),
 			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 		}
 
@@ -499,16 +534,56 @@ func NewSeriesTripperware(
 	metrics *Metrics,
 	schema config.SchemaConfig,
 	merger base.Merger,
+	c cache.Cache,
+	cacheGenNumLoader base.CacheGenNumberLoader,
+	retentionEnabled bool,
 	metricsNamespace string,
 ) (base.Middleware, error) {
+	var cacheMiddleware base.Middleware
+	if cfg.CacheSeriesResults {
+		var err error
+		cacheMiddleware, err = NewSeriesCacheMiddleware(
+			log,
+			limits,
+			merger,
+			c,
+			cacheGenNumLoader,
+			func(_ context.Context, r base.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r base.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
+				)
+			},
+			retentionEnabled,
+			cfg.Transformer,
+			metrics.ResultsCacheMetrics,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	queryRangeMiddleware := []base.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
-		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
-		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, seriesQuerySplitInterval), merger, splitByTime, metrics.SplitByMetrics),
+	}
+
+	if cfg.CacheSeriesResults {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			base.InstrumentMiddleware("results_cache", metrics.InstrumentMiddlewareMetrics),
+			cacheMiddleware,
+		)
+
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -550,9 +625,7 @@ func NewLabelsTripperware(
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
-		// This is because the labels API is an index-only operation.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, labelsQuerySplitInterval), merger, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -874,9 +947,7 @@ func NewIndexStatsTripperware(
 	metrics *Metrics,
 	metricsNamespace string,
 ) (base.Middleware, error) {
-	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
-	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
-	limits = WithSplitByLimits(limits, 24*time.Hour)
+	limits = WithSplitByLimits(limits, indexStatsQuerySplitInterval)
 
 	var cacheMiddleware base.Middleware
 	if cfg.CacheIndexStatsResults {
