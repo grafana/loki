@@ -61,7 +61,7 @@ func (e *DegradedError) Error() string {
 	return fmt.Sprintf("cluster degraded: %s", e.Message)
 }
 
-func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
+func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
 	conditions := generateWarnings(stack.Status.Storage.Schemas)
 
 	mainCondition, err := generateCondition(ctx, cs, k, stack, degradedErr)
