@@ -253,7 +253,8 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 				Reason:  string(lokiv1.ReasonStorageNeedsSchemaUpdate),
 				Message: messageWarningNeedsSchemaVersionUpdate,
 			}},
-		}, {
+		},
+		{
 			desc: "with V13 as the last element in schema config",
 			schemas: []lokiv1.ObjectStorageSchema{
 				{
