@@ -323,6 +323,7 @@ type Loki struct {
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
+	Tee                distributor.Tee
 	HTTPAuthMiddleware middleware.Interface
 
 	Codec   Codec
