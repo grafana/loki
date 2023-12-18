@@ -6,6 +6,8 @@
 
 ##### Enhancements
 
+* [11363](https://github.com/grafana/loki/pull/11477) **MichelHollands**: support GET for /ingester/shutdown
+* [11363](https://github.com/grafana/loki/pull/11363) **kavirajk**: bugfix(memcached): Make memcached batch fetch truely context aware.
 * [11319](https://github.com/grafana/loki/pull/11319) **someStrangerFromTheAbyss**: Helm: Add extraContainers to the write pods.
 * [11243](https://github.com/grafana/loki/pull/11243) **kavirajk**: Inflight-logging: Add extra metadata to inflight requests logging.
 * [11110](https://github.com/grafana/loki/pull/11003) **MichelHollands**: Change the default of the `metrics-namespace` flag to 'loki'.
@@ -47,11 +49,13 @@
 
 ##### Changes
 
+* [11490](https://github.com/grafana/loki/pull/11490) **andresperezl**: Helm: Use `/ingester/shutdown` for `preStop` hook in write pods.
 * [10366](https://github.com/grafana/loki/pull/10366) **shantanualsi** Upgrade thanos objstore, dskit and other modules
 * [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
 * [10814](https://github.com/grafana/loki/pull/10814) **shantanualsi,kaviraj** Upgrade prometheus to v0.47.1 and dskit
 * [10959](https://github.com/grafana/loki/pull/10959) **slim-bean** introduce a backoff wait on subquery retries.
 * [11121](https://github.com/grafana/loki/pull/11121) **periklis** Ensure all lifecycler cfgs ref a valid IPv6 addr and port combination
+* [10650](https://github.com/grafana/loki/pull/10650) **matthewpi** Ensure the frontend uses a valid IPv6 addr and port combination
 
 #### Promtail
 
