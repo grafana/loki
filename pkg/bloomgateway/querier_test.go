@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -57,7 +58,7 @@ func TestBloomQuerier(t *testing.T) {
 		from := through.Add(-12 * time.Hour)
 		chunkRefs := []*logproto.ChunkRef{}
 		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "uuid", Op: ""},
+			{Ty: labels.MatchEqual, Match: "uuid"},
 		}
 		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, filters...)
 		require.NoError(t, err)
@@ -78,7 +79,7 @@ func TestBloomQuerier(t *testing.T) {
 			{Fingerprint: 2000, UserID: tenant, Checksum: 3},
 		}
 		filters := []syntax.LineFilter{
-			{Ty: 0, Match: "uuid", Op: ""},
+			{Ty: labels.MatchEqual, Match: "uuid"},
 		}
 		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, chunkRefs, filters...)
 		require.Error(t, err)
