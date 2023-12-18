@@ -17,8 +17,10 @@ import (
 
 var _ Marshaler = (*JSONMarshaler)(nil)
 
+// JSONMarshaler marshals pdata.Metrics to JSON bytes using the OTLP/JSON format.
 type JSONMarshaler struct{}
 
+// MarshalMetrics to the OTLP/JSON format.
 func (*JSONMarshaler) MarshalMetrics(md Metrics) ([]byte, error) {
 	buf := bytes.Buffer{}
 	pb := internal.MetricsToProto(internal.Metrics(md))
@@ -26,8 +28,10 @@ func (*JSONMarshaler) MarshalMetrics(md Metrics) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+// JSONUnmarshaler unmarshals OTLP/JSON formatted-bytes to pdata.Metrics.
 type JSONUnmarshaler struct{}
 
+// UnmarshalMetrics from OTLP/JSON format into pdata.Metrics.
 func (*JSONUnmarshaler) UnmarshalMetrics(buf []byte) (Metrics, error) {
 	iter := jsoniter.ConfigFastest.BorrowIterator(buf)
 	defer jsoniter.ConfigFastest.ReturnIterator(iter)

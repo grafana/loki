@@ -84,13 +84,15 @@ func setIMDSRetryOptionDefaults(o *policy.RetryOptions) {
 	}
 	if o.StatusCodes == nil {
 		o.StatusCodes = []int{
-			// IMDS docs recommend retrying 404, 429 and all 5xx
-			// https://docs.microsoft.com/azure/active-directory/managed-identities-azure-resources/how-to-use-vm-token#error-handling
+			// IMDS docs recommend retrying 404, 410, 429 and 5xx
+			// https://learn.microsoft.com/azure/active-directory/managed-identities-azure-resources/how-to-use-vm-token#error-handling
 			http.StatusNotFound,                      // 404
+			http.StatusGone,                          // 410
 			http.StatusTooManyRequests,               // 429
 			http.StatusInternalServerError,           // 500
 			http.StatusNotImplemented,                // 501
 			http.StatusBadGateway,                    // 502
+			http.StatusServiceUnavailable,            // 503
 			http.StatusGatewayTimeout,                // 504
 			http.StatusHTTPVersionNotSupported,       // 505
 			http.StatusVariantAlsoNegotiates,         // 506
@@ -175,11 +177,25 @@ func (c *managedIdentityClient) authenticate(ctx context.Context, id ManagedIDKi
 		return c.createAccessToken(resp)
 	}
 
-	if c.msiType == msiTypeIMDS && resp.StatusCode == 400 {
-		if id != nil {
-			return azcore.AccessToken{}, newAuthenticationFailedError(credNameManagedIdentity, "the requested identity isn't assigned to this resource", resp, nil)
+	if c.msiType == msiTypeIMDS {
+		switch resp.StatusCode {
+		case http.StatusBadRequest:
+			if id != nil {
+				return azcore.AccessToken{}, newAuthenticationFailedError(credNameManagedIdentity, "the requested identity isn't assigned to this resource", resp, nil)
+			}
+			msg := "failed to authenticate a system assigned identity"
+			if body, err := runtime.Payload(resp); err == nil && len(body) > 0 {
+				msg += fmt.Sprintf(". The endpoint responded with %s", body)
+			}
+			return azcore.AccessToken{}, newCredentialUnavailableError(credNameManagedIdentity, msg)
+		case http.StatusForbidden:
+			// Docker Desktop runs a proxy that responds 403 to IMDS token requests. If we get that response,
+			// we return credentialUnavailableError so credential chains continue to their next credential
+			body, err := runtime.Payload(resp)
+			if err == nil && strings.Contains(string(body), "A socket operation was attempted to an unreachable network") {
+				return azcore.AccessToken{}, newCredentialUnavailableError(credNameManagedIdentity, fmt.Sprintf("unexpected response %q", string(body)))
+			}
 		}
-		return azcore.AccessToken{}, newCredentialUnavailableError(credNameManagedIdentity, "no default identity is assigned to this resource")
 	}
 
 	return azcore.AccessToken{}, newAuthenticationFailedError(credNameManagedIdentity, "authentication failed", resp, nil)

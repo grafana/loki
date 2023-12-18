@@ -1,3 +1,56 @@
+## v1.8.0 (2023-11-30)
+
+New features and improvements:
+
+* [GH-2800](https://github.com/gophercloud/gophercloud/pull/2800) [v1] Fix options initialization in ServiceClient.Request (fixes #2798)
+* [GH-2823](https://github.com/gophercloud/gophercloud/pull/2823) [v1] Add more godoc to GuestFormat
+* [GH-2826](https://github.com/gophercloud/gophercloud/pull/2826) Allow objects.CreateTempURL with names containing /v1/
+
+CI changes:
+
+* [GH-2802](https://github.com/gophercloud/gophercloud/pull/2802) [v1] Add job for bobcat stable/2023.2
+* [GH-2819](https://github.com/gophercloud/gophercloud/pull/2819) [v1] Test files alongside code
+* [GH-2814](https://github.com/gophercloud/gophercloud/pull/2814) Make fixtures part of tests
+* [GH-2796](https://github.com/gophercloud/gophercloud/pull/2796) [v1] ci/unit: switch to coverallsapp/github-action
+* [GH-2840](https://github.com/gophercloud/gophercloud/pull/2840) unit tests: Fix the installation of tools
+
+## v1.7.0 (2023-09-22)
+
+New features and improvements:
+
+* [GH-2782](https://github.com/gophercloud/gophercloud/pull/2782) [v1] (manual clean backport) Add tag field to compute block_device_v2
+
+CI changes:
+
+* [GH-2760](https://github.com/gophercloud/gophercloud/pull/2760) [v1 backports] semver auto labels
+* [GH-2775](https://github.com/gophercloud/gophercloud/pull/2775) [v1] Fix typos in comments
+* [GH-2783](https://github.com/gophercloud/gophercloud/pull/2783) [v1] (clean manual backport) ci/functional: fix ubuntu version & add antelope
+* [GH-2785](https://github.com/gophercloud/gophercloud/pull/2785) [v1] Acceptance: Handle numerical version names in version comparison helpers
+* [GH-2787](https://github.com/gophercloud/gophercloud/pull/2787) backport-v1: fixes to semver label
+* [GH-2788](https://github.com/gophercloud/gophercloud/pull/2788) [v1] Make acceptance tests internal
+
+
+## v1.6.0 (2023-08-30)
+
+New features and improvements:
+
+* [GH-2712](https://github.com/gophercloud/gophercloud/pull/2712) [v1] README: minor change to test backport workflow
+* [GH-2713](https://github.com/gophercloud/gophercloud/pull/2713) [v1] tests: run MultiAttach with a capable Cinder Type
+* [GH-2714](https://github.com/gophercloud/gophercloud/pull/2714) [v1] Add CRUD support for encryption in volume v3 types
+* [GH-2715](https://github.com/gophercloud/gophercloud/pull/2715) [v1] Add projectID to fwaas_v2 policy CreateOpts and ListOpts
+* [GH-2716](https://github.com/gophercloud/gophercloud/pull/2716) [v1] Add projectID to fwaas_v2 CreateOpts
+* [GH-2717](https://github.com/gophercloud/gophercloud/pull/2717) [v1] [manila]: add reset and force delete actions to a snapshot
+* [GH-2718](https://github.com/gophercloud/gophercloud/pull/2718) [v1] [cinder]: add reset and force delete actions to volumes and snapshots
+* [GH-2721](https://github.com/gophercloud/gophercloud/pull/2721) [v1] orchestration: Explicit error in optionsmap creation
+* [GH-2723](https://github.com/gophercloud/gophercloud/pull/2723) [v1] Add conductor API to Baremetal V1
+* [GH-2729](https://github.com/gophercloud/gophercloud/pull/2729) [v1] networking/v2/ports: allow list filter by security group
+
+CI changes:
+
+* [GH-2675](https://github.com/gophercloud/gophercloud/pull/2675) [v1][CI] Drop periodic jobs from stable branch
+* [GH-2683](https://github.com/gophercloud/gophercloud/pull/2683) [v1] CI tweaks
+
+
 ## v1.5.0 (2023-06-21)
 
 New features and improvements:

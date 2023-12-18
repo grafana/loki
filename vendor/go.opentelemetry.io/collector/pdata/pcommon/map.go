@@ -16,25 +16,32 @@ type Map internal.Map
 // NewMap creates a Map with 0 elements.
 func NewMap() Map {
 	orig := []otlpcommon.KeyValue(nil)
-	return Map(internal.NewMap(&orig))
+	state := internal.StateMutable
+	return Map(internal.NewMap(&orig, &state))
 }
 
 func (m Map) getOrig() *[]otlpcommon.KeyValue {
 	return internal.GetOrigMap(internal.Map(m))
 }
 
-func newMap(orig *[]otlpcommon.KeyValue) Map {
-	return Map(internal.NewMap(orig))
+func (m Map) getState() *internal.State {
+	return internal.GetMapState(internal.Map(m))
+}
+
+func newMap(orig *[]otlpcommon.KeyValue, state *internal.State) Map {
+	return Map(internal.NewMap(orig, state))
 }
 
 // Clear erases any existing entries in this Map instance.
 func (m Map) Clear() {
+	m.getState().AssertMutable()
 	*m.getOrig() = nil
 }
 
 // EnsureCapacity increases the capacity of this Map instance, if necessary,
 // to ensure that it can hold at least the number of elements specified by the capacity argument.
 func (m Map) EnsureCapacity(capacity int) {
+	m.getState().AssertMutable()
 	oldOrig := *m.getOrig()
 	if capacity <= cap(oldOrig) {
 		return
@@ -54,15 +61,16 @@ func (m Map) Get(key string) (Value, bool) {
 	for i := range *m.getOrig() {
 		akv := &(*m.getOrig())[i]
 		if akv.Key == key {
-			return newValue(&akv.Value), true
+			return newValue(&akv.Value, m.getState()), true
 		}
 	}
-	return newValue(nil), false
+	return newValue(nil, m.getState()), false
 }
 
 // Remove removes the entry associated with the key and returns true if the key
 // was present in the map, otherwise returns false.
 func (m Map) Remove(key string) bool {
+	m.getState().AssertMutable()
 	for i := range *m.getOrig() {
 		akv := &(*m.getOrig())[i]
 		if akv.Key == key {
@@ -76,10 +84,11 @@ func (m Map) Remove(key string) bool {
 
 // RemoveIf removes the entries for which the function in question returns true
 func (m Map) RemoveIf(f func(string, Value) bool) {
+	m.getState().AssertMutable()
 	newLen := 0
 	for i := 0; i < len(*m.getOrig()); i++ {
 		akv := &(*m.getOrig())[i]
-		if f(akv.Key, newValue(&akv.Value)) {
+		if f(akv.Key, newValue(&akv.Value, m.getState())) {
 			continue
 		}
 		if newLen == i {
@@ -96,18 +105,20 @@ func (m Map) RemoveIf(f func(string, Value) bool) {
 // PutEmpty inserts or updates an empty value to the map under given key
 // and return the updated/inserted value.
 func (m Map) PutEmpty(k string) Value {
+	m.getState().AssertMutable()
 	if av, existing := m.Get(k); existing {
 		av.getOrig().Value = nil
-		return newValue(av.getOrig())
+		return newValue(av.getOrig(), m.getState())
 	}
 	*m.getOrig() = append(*m.getOrig(), otlpcommon.KeyValue{Key: k})
-	return newValue(&(*m.getOrig())[len(*m.getOrig())-1].Value)
+	return newValue(&(*m.getOrig())[len(*m.getOrig())-1].Value, m.getState())
 }
 
 // PutStr performs the Insert or Update action. The Value is
 // inserted to the map that did not originally have the key. The key/value is
 // updated to the map where the key already existed.
 func (m Map) PutStr(k string, v string) {
+	m.getState().AssertMutable()
 	if av, existing := m.Get(k); existing {
 		av.SetStr(v)
 	} else {
@@ -119,6 +130,7 @@ func (m Map) PutStr(k string, v string) {
 // inserted to the map that did not originally have the key. The key/value is
 // updated to the map where the key already existed.
 func (m Map) PutInt(k string, v int64) {
+	m.getState().AssertMutable()
 	if av, existing := m.Get(k); existing {
 		av.SetInt(v)
 	} else {
@@ -130,6 +142,7 @@ func (m Map) PutInt(k string, v int64) {
 // inserted to the map that did not originally have the key. The key/value is
 // updated to the map where the key already existed.
 func (m Map) PutDouble(k string, v float64) {
+	m.getState().AssertMutable()
 	if av, existing := m.Get(k); existing {
 		av.SetDouble(v)
 	} else {
@@ -141,6 +154,7 @@ func (m Map) PutDouble(k string, v float64) {
 // inserted to the map that did not originally have the key. The key/value is
 // updated to the map where the key already existed.
 func (m Map) PutBool(k string, v bool) {
+	m.getState().AssertMutable()
 	if av, existing := m.Get(k); existing {
 		av.SetBool(v)
 	} else {
@@ -150,35 +164,38 @@ func (m Map) PutBool(k string, v bool) {
 
 // PutEmptyBytes inserts or updates an empty byte slice under given key and returns it.
 func (m Map) PutEmptyBytes(k string) ByteSlice {
+	m.getState().AssertMutable()
 	bv := otlpcommon.AnyValue_BytesValue{}
 	if av, existing := m.Get(k); existing {
 		av.getOrig().Value = &bv
 	} else {
 		*m.getOrig() = append(*m.getOrig(), otlpcommon.KeyValue{Key: k, Value: otlpcommon.AnyValue{Value: &bv}})
 	}
-	return ByteSlice(internal.NewByteSlice(&bv.BytesValue))
+	return ByteSlice(internal.NewByteSlice(&bv.BytesValue, m.getState()))
 }
 
 // PutEmptyMap inserts or updates an empty map under given key and returns it.
 func (m Map) PutEmptyMap(k string) Map {
+	m.getState().AssertMutable()
 	kvl := otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{Values: []otlpcommon.KeyValue(nil)}}
 	if av, existing := m.Get(k); existing {
 		av.getOrig().Value = &kvl
 	} else {
 		*m.getOrig() = append(*m.getOrig(), otlpcommon.KeyValue{Key: k, Value: otlpcommon.AnyValue{Value: &kvl}})
 	}
-	return Map(internal.NewMap(&kvl.KvlistValue.Values))
+	return Map(internal.NewMap(&kvl.KvlistValue.Values, m.getState()))
 }
 
 // PutEmptySlice inserts or updates an empty slice under given key and returns it.
 func (m Map) PutEmptySlice(k string) Slice {
+	m.getState().AssertMutable()
 	vl := otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{Values: []otlpcommon.AnyValue(nil)}}
 	if av, existing := m.Get(k); existing {
 		av.getOrig().Value = &vl
 	} else {
 		*m.getOrig() = append(*m.getOrig(), otlpcommon.KeyValue{Key: k, Value: otlpcommon.AnyValue{Value: &vl}})
 	}
-	return Slice(internal.NewSlice(&vl.ArrayValue.Values))
+	return Slice(internal.NewSlice(&vl.ArrayValue.Values, m.getState()))
 }
 
 // Len returns the length of this map.
@@ -199,7 +216,7 @@ func (m Map) Len() int {
 func (m Map) Range(f func(k string, v Value) bool) {
 	for i := range *m.getOrig() {
 		kv := &(*m.getOrig())[i]
-		if !f(kv.Key, Value(internal.NewValue(&kv.Value))) {
+		if !f(kv.Key, Value(internal.NewValue(&kv.Value, m.getState()))) {
 			break
 		}
 	}
@@ -207,6 +224,7 @@ func (m Map) Range(f func(k string, v Value) bool) {
 
 // CopyTo copies all elements from the current map overriding the destination.
 func (m Map) CopyTo(dest Map) {
+	dest.getState().AssertMutable()
 	newLen := len(*m.getOrig())
 	oldCap := cap(*dest.getOrig())
 	if newLen <= oldCap {
@@ -216,7 +234,7 @@ func (m Map) CopyTo(dest Map) {
 			akv := &(*m.getOrig())[i]
 			destAkv := &(*dest.getOrig())[i]
 			destAkv.Key = akv.Key
-			newValue(&akv.Value).CopyTo(newValue(&destAkv.Value))
+			newValue(&akv.Value, m.getState()).CopyTo(newValue(&destAkv.Value, dest.getState()))
 		}
 		return
 	}
@@ -226,7 +244,7 @@ func (m Map) CopyTo(dest Map) {
 	for i := range *m.getOrig() {
 		akv := &(*m.getOrig())[i]
 		origs[i].Key = akv.Key
-		newValue(&akv.Value).CopyTo(newValue(&origs[i].Value))
+		newValue(&akv.Value, m.getState()).CopyTo(newValue(&origs[i].Value, dest.getState()))
 	}
 	*dest.getOrig() = origs
 }
@@ -243,6 +261,7 @@ func (m Map) AsRaw() map[string]any {
 
 // FromRaw overrides this Map instance from a standard go map.
 func (m Map) FromRaw(rawMap map[string]any) error {
+	m.getState().AssertMutable()
 	if len(rawMap) == 0 {
 		*m.getOrig() = nil
 		return nil
@@ -253,7 +272,7 @@ func (m Map) FromRaw(rawMap map[string]any) error {
 	ix := 0
 	for k, iv := range rawMap {
 		origs[ix].Key = k
-		errs = multierr.Append(errs, newValue(&origs[ix].Value).FromRaw(iv))
+		errs = multierr.Append(errs, newValue(&origs[ix].Value, m.getState()).FromRaw(iv))
 		ix++
 	}
 	*m.getOrig() = origs

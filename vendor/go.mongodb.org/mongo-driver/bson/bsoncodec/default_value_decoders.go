@@ -24,7 +24,7 @@ import (
 
 var (
 	defaultValueDecoders DefaultValueDecoders
-	errCannotTruncate    = errors.New("float64 can only be truncated to an integer type when truncation is enabled")
+	errCannotTruncate    = errors.New("float64 can only be truncated to a lower precision type when truncation is enabled")
 )
 
 type decodeBinaryError struct {
@@ -1540,12 +1540,12 @@ func (dvd DefaultValueDecoders) ValueUnmarshalerDecodeValue(_ DecodeContext, vr 
 		return err
 	}
 
-	fn := val.Convert(tValueUnmarshaler).MethodByName("UnmarshalBSONValue")
-	errVal := fn.Call([]reflect.Value{reflect.ValueOf(t), reflect.ValueOf(src)})[0]
-	if !errVal.IsNil() {
-		return errVal.Interface().(error)
+	m, ok := val.Interface().(ValueUnmarshaler)
+	if !ok {
+		// NB: this error should be unreachable due to the above checks
+		return ValueDecoderError{Name: "ValueUnmarshalerDecodeValue", Types: []reflect.Type{tValueUnmarshaler}, Received: val}
 	}
-	return nil
+	return m.UnmarshalBSONValue(t, src)
 }
 
 // UnmarshalerDecodeValue is the ValueDecoderFunc for Unmarshaler implementations.
@@ -1588,12 +1588,12 @@ func (dvd DefaultValueDecoders) UnmarshalerDecodeValue(_ DecodeContext, vr bsonr
 		val = val.Addr() // If the type doesn't implement the interface, a pointer to it must.
 	}
 
-	fn := val.Convert(tUnmarshaler).MethodByName("UnmarshalBSON")
-	errVal := fn.Call([]reflect.Value{reflect.ValueOf(src)})[0]
-	if !errVal.IsNil() {
-		return errVal.Interface().(error)
+	m, ok := val.Interface().(Unmarshaler)
+	if !ok {
+		// NB: this error should be unreachable due to the above checks
+		return ValueDecoderError{Name: "UnmarshalerDecodeValue", Types: []reflect.Type{tUnmarshaler}, Received: val}
 	}
-	return nil
+	return m.UnmarshalBSON(src)
 }
 
 // EmptyInterfaceDecodeValue is the ValueDecoderFunc for interface{}.

@@ -126,6 +126,22 @@ func (w withDefaultScopes) Apply(o *internal.DialSettings) {
 	copy(o.DefaultScopes, w)
 }
 
+// WithDefaultUniverseDomain returns a ClientOption that sets the default universe domain.
+//
+// It should only be used internally by generated clients.
+//
+// This is similar to the public WithUniverse, but allows us to determine whether the user has
+// overridden the default universe.
+func WithDefaultUniverseDomain(ud string) option.ClientOption {
+	return withDefaultUniverseDomain(ud)
+}
+
+type withDefaultUniverseDomain string
+
+func (w withDefaultUniverseDomain) Apply(o *internal.DialSettings) {
+	o.DefaultUniverseDomain = string(w)
+}
+
 // EnableJwtWithScope returns a ClientOption that specifies if scope can be used
 // with self-signed JWT.
 func EnableJwtWithScope() option.ClientOption {
@@ -148,6 +164,19 @@ type withCreds google.Credentials
 
 func (w *withCreds) Apply(o *internal.DialSettings) {
 	o.InternalCredentials = (*google.Credentials)(w)
+}
+
+// EnableNewAuthLibrary returns a ClientOption that specifies if libraries in this
+// module to delegate auth to our new library. This option will be removed in
+// the future once all clients have been moved to the new auth layer.
+func EnableNewAuthLibrary() option.ClientOption {
+	return enableNewAuthLibrary(true)
+}
+
+type enableNewAuthLibrary bool
+
+func (w enableNewAuthLibrary) Apply(o *internal.DialSettings) {
+	o.EnableNewAuthLibrary = bool(w)
 }
 
 // EmbeddableAdapter is a no-op option.ClientOption that allow libraries to

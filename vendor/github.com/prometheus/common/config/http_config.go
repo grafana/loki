@@ -129,6 +129,7 @@ func (tv *TLSVersion) String() string {
 // BasicAuth contains basic HTTP authentication credentials.
 type BasicAuth struct {
 	Username     string `yaml:"username" json:"username"`
+	UsernameFile string `yaml:"username_file,omitempty" json:"username_file,omitempty"`
 	Password     Secret `yaml:"password,omitempty" json:"password,omitempty"`
 	PasswordFile string `yaml:"password_file,omitempty" json:"password_file,omitempty"`
 }
@@ -139,6 +140,7 @@ func (a *BasicAuth) SetDirectory(dir string) {
 		return
 	}
 	a.PasswordFile = JoinDir(dir, a.PasswordFile)
+	a.UsernameFile = JoinDir(dir, a.UsernameFile)
 }
 
 // Authorization contains HTTP authorization credentials.
@@ -333,6 +335,9 @@ func (c *HTTPClientConfig) Validate() error {
 	}
 	if (c.BasicAuth != nil || c.OAuth2 != nil) && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
 		return fmt.Errorf("at most one of basic_auth, oauth2, bearer_token & bearer_token_file must be configured")
+	}
+	if c.BasicAuth != nil && (string(c.BasicAuth.Username) != "" && c.BasicAuth.UsernameFile != "") {
+		return fmt.Errorf("at most one of basic_auth username & username_file must be configured")
 	}
 	if c.BasicAuth != nil && (string(c.BasicAuth.Password) != "" && c.BasicAuth.PasswordFile != "") {
 		return fmt.Errorf("at most one of basic_auth password & password_file must be configured")
@@ -555,7 +560,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		}
 
 		if cfg.BasicAuth != nil {
-			rt = NewBasicAuthRoundTripper(cfg.BasicAuth.Username, cfg.BasicAuth.Password, cfg.BasicAuth.PasswordFile, rt)
+			rt = NewBasicAuthRoundTripper(cfg.BasicAuth.Username, cfg.BasicAuth.Password, cfg.BasicAuth.UsernameFile, cfg.BasicAuth.PasswordFile, rt)
 		}
 
 		if cfg.OAuth2 != nil {
@@ -645,30 +650,43 @@ func (rt *authorizationCredentialsFileRoundTripper) CloseIdleConnections() {
 type basicAuthRoundTripper struct {
 	username     string
 	password     Secret
+	usernameFile string
 	passwordFile string
 	rt           http.RoundTripper
 }
 
 // NewBasicAuthRoundTripper will apply a BASIC auth authorization header to a request unless it has
 // already been set.
-func NewBasicAuthRoundTripper(username string, password Secret, passwordFile string, rt http.RoundTripper) http.RoundTripper {
-	return &basicAuthRoundTripper{username, password, passwordFile, rt}
+func NewBasicAuthRoundTripper(username string, password Secret, usernameFile, passwordFile string, rt http.RoundTripper) http.RoundTripper {
+	return &basicAuthRoundTripper{username, password, usernameFile, passwordFile, rt}
 }
 
 func (rt *basicAuthRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	var username string
+	var password string
 	if len(req.Header.Get("Authorization")) != 0 {
 		return rt.rt.RoundTrip(req)
 	}
-	req = cloneRequest(req)
+	if rt.usernameFile != "" {
+		usernameBytes, err := os.ReadFile(rt.usernameFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read basic auth username file %s: %s", rt.usernameFile, err)
+		}
+		username = strings.TrimSpace(string(usernameBytes))
+	} else {
+		username = rt.username
+	}
 	if rt.passwordFile != "" {
-		bs, err := os.ReadFile(rt.passwordFile)
+		passwordBytes, err := os.ReadFile(rt.passwordFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read basic auth password file %s: %s", rt.passwordFile, err)
 		}
-		req.SetBasicAuth(rt.username, strings.TrimSpace(string(bs)))
+		password = strings.TrimSpace(string(passwordBytes))
 	} else {
-		req.SetBasicAuth(rt.username, strings.TrimSpace(string(rt.password)))
+		password = string(rt.password)
 	}
+	req = cloneRequest(req)
+	req.SetBasicAuth(username, password)
 	return rt.rt.RoundTrip(req)
 }
 

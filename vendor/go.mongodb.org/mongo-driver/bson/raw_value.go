@@ -37,6 +37,12 @@ type RawValue struct {
 	r *bsoncodec.Registry
 }
 
+// IsZero reports whether the RawValue is zero, i.e. no data is present on
+// the RawValue. It returns true if Type is 0 and Value is empty or nil.
+func (rv RawValue) IsZero() bool {
+	return rv.Type == 0x00 && len(rv.Value) == 0
+}
+
 // Unmarshal deserializes BSON into the provided val. If RawValue cannot be unmarshaled into val, an
 // error is returned. This method will use the registry used to create the RawValue, if the RawValue
 // was created from partial BSON processing, or it will use the default registry. Users wishing to

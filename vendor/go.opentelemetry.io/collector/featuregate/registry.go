@@ -5,12 +5,22 @@ package featuregate // import "go.opentelemetry.io/collector/featuregate"
 
 import (
 	"fmt"
+	"net/url"
+	"regexp"
 	"sort"
 	"sync"
 	"sync/atomic"
+
+	"github.com/hashicorp/go-version"
 )
 
-var globalRegistry = NewRegistry()
+var (
+	globalRegistry = NewRegistry()
+
+	// idRegexp is used to validate the ID of a Gate.
+	// IDs' characters must be alphanumeric or dots.
+	idRegexp = regexp.MustCompile(`^[0-9a-zA-Z\.]*$`)
+)
 
 // GlobalRegistry returns the global Registry.
 func GlobalRegistry() *Registry {
@@ -28,43 +38,66 @@ func NewRegistry() *Registry {
 
 // RegisterOption allows to configure additional information about a Gate during registration.
 type RegisterOption interface {
-	apply(g *Gate)
+	apply(g *Gate) error
 }
 
-type registerOptionFunc func(g *Gate)
+type registerOptionFunc func(g *Gate) error
 
-func (ro registerOptionFunc) apply(g *Gate) {
-	ro(g)
+func (ro registerOptionFunc) apply(g *Gate) error {
+	return ro(g)
 }
 
 // WithRegisterDescription adds description for the Gate.
 func WithRegisterDescription(description string) RegisterOption {
-	return registerOptionFunc(func(g *Gate) {
+	return registerOptionFunc(func(g *Gate) error {
 		g.description = description
+		return nil
 	})
 }
 
 // WithRegisterReferenceURL adds a URL that has all the contextual information about the Gate.
-func WithRegisterReferenceURL(url string) RegisterOption {
-	return registerOptionFunc(func(g *Gate) {
-		g.referenceURL = url
+// referenceURL must be a valid URL as defined by `net/url.Parse`.
+func WithRegisterReferenceURL(referenceURL string) RegisterOption {
+	return registerOptionFunc(func(g *Gate) error {
+		if _, err := url.Parse(referenceURL); err != nil {
+			return fmt.Errorf("WithRegisterReferenceURL: invalid reference URL %q: %w", referenceURL, err)
+		}
+
+		g.referenceURL = referenceURL
+		return nil
 	})
 }
 
 // WithRegisterFromVersion is used to set the Gate "FromVersion".
 // The "FromVersion" contains the Collector release when a feature is introduced.
+// fromVersion must be a valid version string: it may start with 'v' and must be in the format Major.Minor.Patch[-PreRelease].
+// PreRelease is optional and may have dashes, tildes and ASCII alphanumeric characters.
 func WithRegisterFromVersion(fromVersion string) RegisterOption {
-	return registerOptionFunc(func(g *Gate) {
-		g.fromVersion = fromVersion
+	return registerOptionFunc(func(g *Gate) error {
+		from, err := version.NewVersion(fromVersion)
+		if err != nil {
+			return fmt.Errorf("WithRegisterFromVersion: invalid version %q: %w", fromVersion, err)
+		}
+
+		g.fromVersion = from
+		return nil
 	})
 }
 
 // WithRegisterToVersion is used to set the Gate "ToVersion".
 // The "ToVersion", if not empty, contains the last Collector release in which you can still use a feature gate.
 // If the feature stage is either "Deprecated" or "Stable", the "ToVersion" is the Collector release when the feature is removed.
+// toVersion must be a valid version string: it may start with 'v' and must be in the format Major.Minor.Patch[-PreRelease].
+// PreRelease is optional and may have dashes, tildes and ASCII alphanumeric characters.
 func WithRegisterToVersion(toVersion string) RegisterOption {
-	return registerOptionFunc(func(g *Gate) {
-		g.toVersion = toVersion
+	return registerOptionFunc(func(g *Gate) error {
+		to, err := version.NewVersion(toVersion)
+		if err != nil {
+			return fmt.Errorf("WithRegisterToVersion: invalid version %q:  %w", toVersion, err)
+		}
+
+		g.toVersion = to
+		return nil
 	})
 }
 
@@ -77,14 +110,33 @@ func (r *Registry) MustRegister(id string, stage Stage, opts ...RegisterOption) 
 	return g
 }
 
+func validateID(id string) error {
+	if id == "" {
+		return fmt.Errorf("empty ID")
+	}
+
+	if !idRegexp.MatchString(id) {
+		return fmt.Errorf("invalid character(s) in ID")
+	}
+	return nil
+}
+
 // Register a Gate and return it. The returned Gate can be used to check if is enabled or not.
+// id must be an ASCII alphanumeric nonempty string. Dots are allowed for namespacing.
 func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Gate, error) {
+	if err := validateID(id); err != nil {
+		return nil, fmt.Errorf("invalid ID %q: %w", id, err)
+	}
+
 	g := &Gate{
 		id:    id,
 		stage: stage,
 	}
 	for _, opt := range opts {
-		opt.apply(g)
+		err := opt.apply(g)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply option: %w", err)
+		}
 	}
 	switch g.stage {
 	case StageAlpha, StageDeprecated:
@@ -96,9 +148,14 @@ func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Ga
 	default:
 		return nil, fmt.Errorf("unknown stage value %q for gate %q", stage, id)
 	}
-	if (g.stage == StageStable || g.stage == StageDeprecated) && g.toVersion == "" {
+	if (g.stage == StageStable || g.stage == StageDeprecated) && g.toVersion == nil {
 		return nil, fmt.Errorf("no removal version set for %v gate %q", g.stage.String(), id)
 	}
+
+	if g.fromVersion != nil && g.toVersion != nil && g.toVersion.LessThan(g.fromVersion) {
+		return nil, fmt.Errorf("toVersion %q is before fromVersion %q", g.toVersion, g.fromVersion)
+	}
+
 	if _, loaded := r.gates.LoadOrStore(id, g); loaded {
 		return nil, fmt.Errorf("attempted to add pre-existing gate %q", id)
 	}

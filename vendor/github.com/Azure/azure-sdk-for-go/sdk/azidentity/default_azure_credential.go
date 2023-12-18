@@ -21,6 +21,8 @@ import (
 // DefaultAzureCredentialOptions contains optional parameters for DefaultAzureCredential.
 // These options may not apply to all credentials in the chain.
 type DefaultAzureCredentialOptions struct {
+	// ClientOptions has additional options for credentials that use an Azure SDK HTTP pipeline. These options don't apply
+	// to credential types that authenticate via external tools such as the Azure CLI.
 	azcore.ClientOptions
 
 	// AdditionallyAllowedTenants specifies additional tenants for which the credential may acquire tokens. Add
@@ -32,8 +34,7 @@ type DefaultAzureCredentialOptions struct {
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
-	// TenantID identifies the tenant the Azure CLI should authenticate in.
-	// Defaults to the CLI's default tenant, which is typically the home tenant of the user logged in to the CLI.
+	// TenantID sets the default tenant for authentication via the Azure CLI and workload identity.
 	TenantID string
 }
 
@@ -83,11 +84,11 @@ func NewDefaultAzureCredential(options *DefaultAzureCredentialOptions) (*Default
 		creds = append(creds, &defaultCredentialErrorReporter{credType: "EnvironmentCredential", err: err})
 	}
 
-	// workload identity requires values for AZURE_AUTHORITY_HOST, AZURE_CLIENT_ID, AZURE_FEDERATED_TOKEN_FILE, AZURE_TENANT_ID
 	wic, err := NewWorkloadIdentityCredential(&WorkloadIdentityCredentialOptions{
 		AdditionallyAllowedTenants: additionalTenants,
 		ClientOptions:              options.ClientOptions,
 		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		TenantID:                   options.TenantID,
 	})
 	if err == nil {
 		creds = append(creds, wic)
@@ -95,6 +96,7 @@ func NewDefaultAzureCredential(options *DefaultAzureCredentialOptions) (*Default
 		errorMessages = append(errorMessages, credNameWorkloadIdentity+": "+err.Error())
 		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameWorkloadIdentity, err: err})
 	}
+
 	o := &ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions}
 	if ID, ok := os.LookupEnv(azureClientID); ok {
 		o.ID = ClientID(ID)
@@ -115,9 +117,8 @@ func NewDefaultAzureCredential(options *DefaultAzureCredentialOptions) (*Default
 		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameAzureCLI, err: err})
 	}
 
-	err = defaultAzureCredentialConstructorErrorHandler(len(creds), errorMessages)
-	if err != nil {
-		return nil, err
+	if len(errorMessages) > 0 {
+		log.Writef(EventAuthentication, "NewDefaultAzureCredential failed to initialize some credentials:\n\t%s", strings.Join(errorMessages, "\n\t"))
 	}
 
 	chain, err := NewChainedTokenCredential(creds, nil)
@@ -134,20 +135,6 @@ func (c *DefaultAzureCredential) GetToken(ctx context.Context, opts policy.Token
 }
 
 var _ azcore.TokenCredential = (*DefaultAzureCredential)(nil)
-
-func defaultAzureCredentialConstructorErrorHandler(numberOfSuccessfulCredentials int, errorMessages []string) (err error) {
-	errorMessage := strings.Join(errorMessages, "\n\t")
-
-	if numberOfSuccessfulCredentials == 0 {
-		return errors.New(errorMessage)
-	}
-
-	if len(errorMessages) != 0 {
-		log.Writef(EventAuthentication, "NewDefaultAzureCredential failed to initialize some credentials:\n\t%s", errorMessage)
-	}
-
-	return nil
-}
 
 // defaultCredentialErrorReporter is a substitute for credentials that couldn't be constructed.
 // Its GetToken method always returns a credentialUnavailableError having the same message as
@@ -185,7 +172,7 @@ func (w *timeoutWrapper) GetToken(ctx context.Context, opts policy.TokenRequestO
 		defer cancel()
 		tk, err = w.mic.GetToken(c, opts)
 		if isAuthFailedDueToContext(err) {
-			err = newCredentialUnavailableError(credNameManagedIdentity, "managed identity timed out")
+			err = newCredentialUnavailableError(credNameManagedIdentity, "managed identity timed out. See https://aka.ms/azsdk/go/identity/troubleshoot#dac for more information")
 		} else {
 			// some managed identity implementation is available, so don't apply the timeout to future calls
 			w.timeout = 0

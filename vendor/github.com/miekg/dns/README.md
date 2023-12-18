@@ -81,6 +81,7 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://addr.tools/
 * https://dnscheck.tools/
 * https://github.com/egbakou/domainverifier
+* https://github.com/semihalev/sdns
 
 
 Send pull request if you want to be listed here.

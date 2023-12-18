@@ -8,6 +8,7 @@ package exported
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,28 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 )
+
+// Base64Encoding is usesd to specify which base-64 encoder/decoder to use when
+// encoding/decoding a slice of bytes to/from a string.
+// Exported as runtime.Base64Encoding
+type Base64Encoding int
+
+const (
+	// Base64StdFormat uses base64.StdEncoding for encoding and decoding payloads.
+	Base64StdFormat Base64Encoding = 0
+
+	// Base64URLFormat uses base64.RawURLEncoding for encoding and decoding payloads.
+	Base64URLFormat Base64Encoding = 1
+)
+
+// EncodeByteArray will base-64 encode the byte slice v.
+// Exported as runtime.EncodeByteArray()
+func EncodeByteArray(v []byte, format Base64Encoding) string {
+	if format == Base64URLFormat {
+		return base64.RawURLEncoding.EncodeToString(v)
+	}
+	return base64.StdEncoding.EncodeToString(v)
+}
 
 // Request is an abstraction over the creation of an HTTP request as it passes through the pipeline.
 // Don't use this type directly, use NewRequest() instead.
@@ -168,6 +191,14 @@ func (req *Request) Clone(ctx context.Context) *Request {
 	r2 := *req
 	r2.req = req.req.Clone(ctx)
 	return &r2
+}
+
+// WithContext returns a shallow copy of the request with its context changed to ctx.
+func (req *Request) WithContext(ctx context.Context) *Request {
+	r2 := new(Request)
+	*r2 = *req
+	r2.req = r2.req.WithContext(ctx)
+	return r2
 }
 
 // not exported but dependent on Request

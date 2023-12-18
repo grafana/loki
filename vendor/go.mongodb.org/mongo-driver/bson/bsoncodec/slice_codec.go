@@ -62,7 +62,7 @@ func (sc SliceCodec) EncodeValue(ec EncodeContext, vw bsonrw.ValueWriter, val re
 	}
 
 	// If we have a []primitive.E we want to treat it as a document instead of as an array.
-	if val.Type().ConvertibleTo(tD) {
+	if val.Type() == tD || val.Type().ConvertibleTo(tD) {
 		d := val.Convert(tD).Interface().(primitive.D)
 
 		dw, err := vw.WriteDocument()

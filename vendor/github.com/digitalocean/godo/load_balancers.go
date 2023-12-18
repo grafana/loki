@@ -6,10 +6,17 @@ import (
 	"net/http"
 )
 
-const loadBalancersBasePath = "/v2/load_balancers"
-const forwardingRulesPath = "forwarding_rules"
+const (
+	dropletsPath          = "droplets"
+	forwardingRulesPath   = "forwarding_rules"
+	loadBalancersBasePath = "/v2/load_balancers"
+)
 
-const dropletsPath = "droplets"
+// Load Balancer types.
+const (
+	LoadBalancerTypeGlobal   = "GLOBAL"
+	LoadBalancerTypeRegional = "REGIONAL"
+)
 
 // LoadBalancersService is an interface for managing load balancers with the DigitalOcean API.
 // See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Load-Balancers
@@ -35,6 +42,7 @@ type LoadBalancer struct {
 	SizeSlug string `json:"size,omitempty"`
 	// SizeUnit is mutually exclusive with SizeSlug. Only one should be specified
 	SizeUnit                     uint32           `json:"size_unit,omitempty"`
+	Type                         string           `json:"type,omitempty"`
 	Algorithm                    string           `json:"algorithm,omitempty"`
 	Status                       string           `json:"status,omitempty"`
 	Created                      string           `json:"created_at,omitempty"`
@@ -74,6 +82,7 @@ func (l LoadBalancer) AsRequest() *LoadBalancerRequest {
 		Algorithm:                    l.Algorithm,
 		SizeSlug:                     l.SizeSlug,
 		SizeUnit:                     l.SizeUnit,
+		Type:                         l.Type,
 		ForwardingRules:              append([]ForwardingRule(nil), l.ForwardingRules...),
 		DropletIDs:                   append([]int(nil), l.DropletIDs...),
 		Tag:                          l.Tag,
@@ -190,6 +199,7 @@ type LoadBalancerRequest struct {
 	SizeSlug string `json:"size,omitempty"`
 	// SizeUnit is mutually exclusive with SizeSlug. Only one should be specified
 	SizeUnit                     uint32           `json:"size_unit,omitempty"`
+	Type                         string           `json:"type,omitempty"`
 	ForwardingRules              []ForwardingRule `json:"forwarding_rules,omitempty"`
 	HealthCheck                  *HealthCheck     `json:"health_check,omitempty"`
 	StickySessions               *StickySessions  `json:"sticky_sessions,omitempty"`

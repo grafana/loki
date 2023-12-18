@@ -226,6 +226,10 @@ type Server struct {
 	// Whether to set the SO_REUSEPORT socket option, allowing multiple listeners to be bound to a single address.
 	// It is only supported on certain GOOSes and when using ListenAndServe.
 	ReusePort bool
+	// Whether to set the SO_REUSEADDR socket option, allowing multiple listeners to be bound to a single address.
+	// Crucially this allows binding when an existing server is listening on `0.0.0.0` or `::`.
+	// It is only supported on certain GOOSes and when using ListenAndServe.
+	ReuseAddr bool
 	// AcceptMsgFunc will check the incoming message and will reject it early in the process.
 	// By default DefaultMsgAcceptFunc will be used.
 	MsgAcceptFunc MsgAcceptFunc
@@ -304,7 +308,7 @@ func (srv *Server) ListenAndServe() error {
 
 	switch srv.Net {
 	case "tcp", "tcp4", "tcp6":
-		l, err := listenTCP(srv.Net, addr, srv.ReusePort)
+		l, err := listenTCP(srv.Net, addr, srv.ReusePort, srv.ReuseAddr)
 		if err != nil {
 			return err
 		}
@@ -317,7 +321,7 @@ func (srv *Server) ListenAndServe() error {
 			return errors.New("dns: neither Certificates nor GetCertificate set in Config")
 		}
 		network := strings.TrimSuffix(srv.Net, "-tls")
-		l, err := listenTCP(network, addr, srv.ReusePort)
+		l, err := listenTCP(network, addr, srv.ReusePort, srv.ReuseAddr)
 		if err != nil {
 			return err
 		}
@@ -327,7 +331,7 @@ func (srv *Server) ListenAndServe() error {
 		unlock()
 		return srv.serveTCP(l)
 	case "udp", "udp4", "udp6":
-		l, err := listenUDP(srv.Net, addr, srv.ReusePort)
+		l, err := listenUDP(srv.Net, addr, srv.ReusePort, srv.ReuseAddr)
 		if err != nil {
 			return err
 		}

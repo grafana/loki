@@ -11,7 +11,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 )
 
 const credNameUserPassword = "UsernamePasswordCredential"
@@ -36,10 +35,7 @@ type UsernamePasswordCredentialOptions struct {
 // with any form of multi-factor authentication, and the application must already have user or admin consent.
 // This credential can only authenticate work and school accounts; it can't authenticate Microsoft accounts.
 type UsernamePasswordCredential struct {
-	account            public.Account
-	client             publicClient
-	password, username string
-	s                  *syncer
+	client *publicClient
 }
 
 // NewUsernamePasswordCredential creates a UsernamePasswordCredential. clientID is the ID of the application the user
@@ -48,34 +44,23 @@ func NewUsernamePasswordCredential(tenantID string, clientID string, username st
 	if options == nil {
 		options = &UsernamePasswordCredentialOptions{}
 	}
-	c, err := getPublicClient(clientID, tenantID, &options.ClientOptions, public.WithInstanceDiscovery(!options.DisableInstanceDiscovery))
+	opts := publicClientOptions{
+		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
+		ClientOptions:              options.ClientOptions,
+		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		Password:                   password,
+		Username:                   username,
+	}
+	c, err := newPublicClient(tenantID, clientID, credNameUserPassword, opts)
 	if err != nil {
 		return nil, err
 	}
-	upc := UsernamePasswordCredential{client: c, password: password, username: username}
-	upc.s = newSyncer(credNameUserPassword, tenantID, options.AdditionallyAllowedTenants, upc.requestToken, upc.silentAuth)
-	return &upc, nil
+	return &UsernamePasswordCredential{client: c}, err
 }
 
 // GetToken requests an access token from Azure Active Directory. This method is called automatically by Azure SDK clients.
 func (c *UsernamePasswordCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return c.s.GetToken(ctx, opts)
-}
-
-func (c *UsernamePasswordCredential) requestToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenByUsernamePassword(ctx, opts.Scopes, c.username, c.password, public.WithTenantID(opts.TenantID))
-	if err == nil {
-		c.account = ar.Account
-	}
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
-}
-
-func (c *UsernamePasswordCredential) silentAuth(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenSilent(ctx, opts.Scopes,
-		public.WithSilentAccount(c.account),
-		public.WithTenantID(opts.TenantID),
-	)
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	return c.client.GetToken(ctx, opts)
 }
 
 var _ azcore.TokenCredential = (*UsernamePasswordCredential)(nil)

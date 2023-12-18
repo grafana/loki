@@ -124,7 +124,7 @@ func (c Copier) CopyBytesToDocumentWriter(dst DocumentWriter, src []byte) error 
 }
 
 func (c Copier) copyBytesToValueWriter(src []byte, wef writeElementFn) error {
-	// TODO(skriptble): Create errors types here. Anything thats a tag should be a property.
+	// TODO(skriptble): Create errors types here. Anything that is a tag should be a property.
 	length, rem, ok := bsoncore.ReadLength(src)
 	if !ok {
 		return fmt.Errorf("couldn't read length from src, not enough bytes. length=%d", len(src))
@@ -193,7 +193,7 @@ func (c Copier) AppendDocumentBytes(dst []byte, src ValueReader) ([]byte, error)
 	}
 
 	vw := vwPool.Get().(*valueWriter)
-	defer vwPool.Put(vw)
+	defer putValueWriter(vw)
 
 	vw.reset(dst)
 
@@ -213,7 +213,7 @@ func (c Copier) AppendArrayBytes(dst []byte, src ValueReader) ([]byte, error) {
 	}
 
 	vw := vwPool.Get().(*valueWriter)
-	defer vwPool.Put(vw)
+	defer putValueWriter(vw)
 
 	vw.reset(dst)
 
@@ -258,7 +258,7 @@ func (c Copier) AppendValueBytes(dst []byte, src ValueReader) (bsontype.Type, []
 	}
 
 	vw := vwPool.Get().(*valueWriter)
-	defer vwPool.Put(vw)
+	defer putValueWriter(vw)
 
 	start := len(dst)
 

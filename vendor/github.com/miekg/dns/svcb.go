@@ -314,10 +314,11 @@ func (s *SVCBMandatory) unpack(b []byte) error {
 }
 
 func (s *SVCBMandatory) parse(b string) error {
-	str := strings.Split(b, ",")
-	codes := make([]SVCBKey, 0, len(str))
-	for _, e := range str {
-		codes = append(codes, svcbStringToKey(e))
+	codes := make([]SVCBKey, 0, strings.Count(b, ",")+1)
+	for len(b) > 0 {
+		var key string
+		key, b, _ = strings.Cut(b, ",")
+		codes = append(codes, svcbStringToKey(key))
 	}
 	s.Code = codes
 	return nil
@@ -613,19 +614,24 @@ func (s *SVCBIPv4Hint) String() string {
 }
 
 func (s *SVCBIPv4Hint) parse(b string) error {
+	if b == "" {
+		return errors.New("dns: svcbipv4hint: empty hint")
+	}
 	if strings.Contains(b, ":") {
 		return errors.New("dns: svcbipv4hint: expected ipv4, got ipv6")
 	}
-	str := strings.Split(b, ",")
-	dst := make([]net.IP, len(str))
-	for i, e := range str {
+
+	hint := make([]net.IP, 0, strings.Count(b, ",")+1)
+	for len(b) > 0 {
+		var e string
+		e, b, _ = strings.Cut(b, ",")
 		ip := net.ParseIP(e).To4()
 		if ip == nil {
 			return errors.New("dns: svcbipv4hint: bad ip")
 		}
-		dst[i] = ip
+		hint = append(hint, ip)
 	}
-	s.Hint = dst
+	s.Hint = hint
 	return nil
 }
 
@@ -733,9 +739,14 @@ func (s *SVCBIPv6Hint) String() string {
 }
 
 func (s *SVCBIPv6Hint) parse(b string) error {
-	str := strings.Split(b, ",")
-	dst := make([]net.IP, len(str))
-	for i, e := range str {
+	if b == "" {
+		return errors.New("dns: svcbipv6hint: empty hint")
+	}
+
+	hint := make([]net.IP, 0, strings.Count(b, ",")+1)
+	for len(b) > 0 {
+		var e string
+		e, b, _ = strings.Cut(b, ",")
 		ip := net.ParseIP(e)
 		if ip == nil {
 			return errors.New("dns: svcbipv6hint: bad ip")
@@ -743,9 +754,9 @@ func (s *SVCBIPv6Hint) parse(b string) error {
 		if ip.To4() != nil {
 			return errors.New("dns: svcbipv6hint: expected ipv6, got ipv4-mapped-ipv6")
 		}
-		dst[i] = ip
+		hint = append(hint, ip)
 	}
-	s.Hint = dst
+	s.Hint = hint
 	return nil
 }
 

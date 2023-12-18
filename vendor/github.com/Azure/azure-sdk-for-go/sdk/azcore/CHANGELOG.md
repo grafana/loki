@@ -1,5 +1,119 @@
 # Release History
 
+## 1.9.0 (2023-11-06)
+
+### Breaking Changes
+> These changes affect only code written against previous beta versions of `v1.7.0` and `v1.8.0`
+* The function `NewTokenCredential` has been removed from the `fake` package. Use a literal `&fake.TokenCredential{}` instead.
+* The field `TracingNamespace` in `runtime.PipelineOptions` has been replaced by `TracingOptions`.
+
+### Bugs Fixed
+
+* Fixed an issue that could cause some allowed HTTP header values to not show up in logs.
+* Include error text instead of error type in traces when the transport returns an error.
+* Fixed an issue that could cause an HTTP/2 request to hang when the TCP connection becomes unresponsive.
+* Block key and SAS authentication for non TLS protected endpoints.
+* Passing a `nil` credential value will no longer cause a panic. Instead, the authentication is skipped.
+* Calling `Error` on a zero-value `azcore.ResponseError` will no longer panic.
+* Fixed an issue in `fake.PagerResponder[T]` that would cause a trailing error to be omitted when iterating over pages.
+* Context values created by `azcore` will no longer flow across disjoint HTTP requests.
+
+### Other Changes
+
+* Skip generating trace info for no-op tracers.
+* The `clientName` paramater in client constructors has been renamed to `moduleName`.
+
+## 1.9.0-beta.1 (2023-10-05)
+
+### Other Changes
+
+* The beta features for tracing and fakes have been reinstated.
+
+## 1.8.0 (2023-10-05)
+
+### Features Added
+
+* This includes the following features from `v1.8.0-beta.N` releases.
+  * Claims and CAE for authentication.
+  * New `messaging` package.
+  * Various helpers in the `runtime` package.
+  * Deprecation of `runtime.With*` funcs and their replacements in the `policy` package.
+* Added types `KeyCredential` and `SASCredential` to the `azcore` package.
+  * Includes their respective constructor functions.
+* Added types `KeyCredentialPolicy` and `SASCredentialPolicy` to the `azcore/runtime` package.
+  * Includes their respective constructor functions and options types.
+
+### Breaking Changes
+> These changes affect only code written against beta versions of `v1.8.0`
+* The beta features for tracing and fakes have been omitted for this release.
+
+### Bugs Fixed
+
+* Fixed an issue that could cause some ARM RPs to not be automatically registered.
+* Block bearer token authentication for non TLS protected endpoints.
+
+### Other Changes
+
+* Updated dependencies.
+
+## 1.8.0-beta.3 (2023-09-07)
+
+### Features Added
+
+* Added function `FetcherForNextLink` and `FetcherForNextLinkOptions` to the `runtime` package to centralize creation of `Pager[T].Fetcher` from a next link URL.
+
+### Bugs Fixed
+
+* Suppress creating spans for nested SDK API calls. The HTTP span will be a child of the outer API span.
+
+### Other Changes
+
+* The following functions in the `runtime` package are now exposed from the `policy` package, and the `runtime` versions have been deprecated.
+  * `WithCaptureResponse`
+  * `WithHTTPHeader`
+  * `WithRetryOptions`
+
+## 1.7.2 (2023-09-06)
+
+### Bugs Fixed
+
+* Fix default HTTP transport to work in WASM modules.
+
+## 1.8.0-beta.2 (2023-08-14)
+
+### Features Added
+
+* Added function `SanitizePagerPollerPath` to the `server` package to centralize sanitization and formalize the contract.
+* Added `TokenRequestOptions.EnableCAE` to indicate whether to request a CAE token.
+
+### Breaking Changes
+
+> This change affects only code written against beta version `v1.8.0-beta.1`.
+* `messaging.CloudEvent` deserializes JSON objects as `[]byte`, instead of `json.RawMessage`. See the documentation for CloudEvent.Data for more information.
+
+> This change affects only code written against beta versions `v1.7.0-beta.2` and `v1.8.0-beta.1`.
+* Removed parameter from method `Span.End()` and its type `tracing.SpanEndOptions`. This API GA'ed in `v1.2.0` so we cannot change it.
+
+### Bugs Fixed
+
+* Propagate any query parameters when constructing a fake poller and/or injecting next links.
+
+## 1.7.1 (2023-08-14)
+
+## Bugs Fixed
+
+* Enable TLS renegotiation in the default transport policy.
+
+## 1.8.0-beta.1 (2023-07-12)
+
+### Features Added
+
+- `messaging/CloudEvent` allows you to serialize/deserialize CloudEvents, as described in the CloudEvents 1.0 specification: [link](https://github.com/cloudevents/spec)
+
+### Other Changes
+
+* The beta features for CAE, tracing, and fakes have been reinstated.
+
 ## 1.7.0 (2023-07-12)
 
 ### Features Added

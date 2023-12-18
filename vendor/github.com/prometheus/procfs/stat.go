@@ -187,6 +187,10 @@ func parseStat(r io.Reader, fileName string) (Stat, error) {
 		err error
 	)
 
+	// Increase default scanner buffer to handle very long `intr` lines.
+	buf := make([]byte, 0, 8*1024)
+	scanner.Buffer(buf, 1024*1024)
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.Fields(scanner.Text())
