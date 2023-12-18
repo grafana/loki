@@ -39,7 +39,7 @@
           {
             alert: 'LokiRequestLatency',
             expr: |||
-              %(per_cluster_label)s_namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
+              %(group_prefix_jobs)s_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
             ||| % $._config,
             'for': '15m',
             labels: {
