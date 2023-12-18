@@ -59,6 +59,9 @@ func (id SeriesIdentifier) Get(key string) string {
 }
 
 func NewSeriesEntries(labels ...string) []SeriesIdentifier_LabelsEntry {
+	if len(labels)%2 != 0 {
+		panic("invalid number of labels")
+	}
 	r := make([]SeriesIdentifier_LabelsEntry, 0, len(labels)/2)
 	for i := 0; i < len(labels); i += 2 {
 		r = append(r, SeriesIdentifier_LabelsEntry{Key: labels[i], Value: labels[i+1]})
