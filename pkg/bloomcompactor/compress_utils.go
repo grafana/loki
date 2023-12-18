@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func compressBloomBlock(storedBlock bloomshipper.Block, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
+func compressBloomBlock(ref bloomshipper.BlockRef, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
 	blockToUpload := bloomshipper.Block{}
 	archiveFile, err := os.Create(archivePath)
 	if err != nil {
@@ -25,7 +25,7 @@ func compressBloomBlock(storedBlock bloomshipper.Block, archivePath, localDst st
 		return blockToUpload, err
 	}
 
-	blockToUpload.BlockRef = storedBlock.BlockRef
+	blockToUpload.BlockRef = ref
 	blockToUpload.Data = archiveFile
 	return blockToUpload, nil
 }
