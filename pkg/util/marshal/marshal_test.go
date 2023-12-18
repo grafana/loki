@@ -30,6 +30,7 @@ const emptyStats = `{
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
+			"queryReferencedStructuredMetadata": false,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -53,6 +54,7 @@ const emptyStats = `{
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
+			"queryReferencedStructuredMetadata": false,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
