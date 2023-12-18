@@ -69,9 +69,9 @@ func NewSeriesEntries(labels ...string) []SeriesIdentifier_LabelsEntry {
 	return r
 }
 
-func (s SeriesIdentifier) Len() int           { return len(s.Labels) }
-func (s SeriesIdentifier) Swap(i, j int)      { s.Labels[i], s.Labels[j] = s.Labels[j], s.Labels[i] }
-func (s SeriesIdentifier) Less(i, j int) bool { return s.Labels[i].Key < s.Labels[j].Key }
+func (id SeriesIdentifier) Len() int           { return len(id.Labels) }
+func (id SeriesIdentifier) Swap(i, j int)      { id.Labels[i], id.Labels[j] = id.Labels[j], id.Labels[i] }
+func (id SeriesIdentifier) Less(i, j int) bool { return id.Labels[i].Key < id.Labels[j].Key }
 
 type Streams []Stream
 
