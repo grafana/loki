@@ -483,7 +483,14 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
 		}
 	}()
+
 	var resultingBlock bloomshipper.Block
+	defer func() {
+		if resultingBlock.Data != nil {
+			_ = resultingBlock.Data.Close()
+		}
+	}()
+
 	if len(blocksMatchingJob) == 0 && len(metasMatchingJob) > 0 {
 		// There is no change to any blocks, no compaction needed
 		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed")
@@ -515,7 +522,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
 
-	blockToUpload, err := compressBloomBlock(resultingBlock.BlockRef, archivePath, localDst, logger)
+	blockToUpload, err := bloomshipper.CompressBloomBlock(resultingBlock.BlockRef, archivePath, localDst, logger)
 	if err != nil {
 		level.Error(logger).Log("msg", "compressing bloom blocks in to tar files", "err", err)
 		return err

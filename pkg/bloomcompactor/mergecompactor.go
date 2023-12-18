@@ -79,7 +79,7 @@ func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClie
 		}
 
 		// TODO defer removing this blockpath
-		blockPath, err := uncompressBloomBlock(&lazyBlock, workingDir)
+		blockPath, err := bloomshipper.UncompressBloomBlock(&lazyBlock, workingDir, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "error extracting block", "err", err)
 			return err
