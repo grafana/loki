@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: github.com/grafana/loki/pkg/logql/log
+cpu: AMD Ryzen 9 5950X 16-Core Processor            
+Benchmark_Pipeline/pipeline_bytes-32         	  183506	      6356 ns/op	    1422 B/op	      33 allocs/op
+Benchmark_Pipeline/pipeline_string-32        	  182916	      6377 ns/op	    1486 B/op	      34 allocs/op
+Benchmark_Pipeline/line_extractor_bytes-32   	  173494	      6676 ns/op	    1489 B/op	      33 allocs/op
+Benchmark_Pipeline/line_extractor_string-32  	  175282	      6797 ns/op	    1489 B/op	      33 allocs/op
+Benchmark_Pipeline/label_extractor_bytes-32  	  172417	      6954 ns/op	    1489 B/op	      33 allocs/op
+Benchmark_Pipeline/label_extractor_string-32 	  173976	      6749 ns/op	    1489 B/op	      33 allocs/op
+PASS
+ok  	github.com/grafana/loki/pkg/logql/log	7.650s

@@ -6,6 +6,8 @@ import (
 	"math"
 	"time"
 
+	lokilog "github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -57,10 +59,17 @@ type SchemaConfigProvider interface {
 	GetSchemaConfigs() []config.PeriodConfig
 }
 
+type Instrumentable interface {
+	SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper)
+
+	SetPipelineWrapper(wrapper lokilog.PipelineWrapper)
+}
+
 type Store interface {
 	stores.Store
 	SelectStore
 	SchemaConfigProvider
+	Instrumentable
 }
 
 type LokiStore struct {
@@ -84,6 +93,8 @@ type LokiStore struct {
 	logger log.Logger
 
 	chunkFilterer               chunk.RequestChunkFilterer
+	extractorWrapper            lokilog.SampleExtractorWrapper
+	pipelineWrapper             lokilog.PipelineWrapper
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 
 	metricsNamespace string
@@ -381,6 +392,14 @@ func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 	s.Store.SetChunkFilterer(chunkFilterer)
 }
 
+func (s *LokiStore) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
+	s.extractorWrapper = wrapper
+}
+
+func (s *LokiStore) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
+	s.pipelineWrapper = wrapper
+}
+
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
 func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
@@ -496,6 +515,10 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
+	if s.pipelineWrapper != nil {
+		pipeline = s.pipelineWrapper.Wrap(pipeline, expr.String())
+	}
+
 	var chunkFilterer chunk.Filterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
@@ -532,6 +555,10 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.extractorWrapper != nil {
+		extractor = s.extractorWrapper.Wrap(extractor, expr.String())
 	}
 
 	var chunkFilterer chunk.Filterer
