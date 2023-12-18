@@ -45,7 +45,7 @@ local overrides = {
         dst: '/etc/systemd/system/promtail.service',
       },
       {
-        src: './clients/cmd/promtail/promtail-minimal-config.yaml',
+        src: './tools/packaging/promtail-minimal-config.yaml',
         dst: '/etc/promtail/config.yml',
         type: 'config|noreplace',
       },
