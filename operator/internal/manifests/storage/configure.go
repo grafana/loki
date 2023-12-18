@@ -18,12 +18,12 @@ import (
 // - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
-func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
+func ConfigureDeployment(d *appsv1.Deployment, opts Options, osEnabled bool) error {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
-		return configureDeployment(d, opts)
+		return configureDeployment(d, opts, osEnabled)
 	case lokiv1.ObjectStorageSecretS3:
-		err := configureDeployment(d, opts)
+		err := configureDeployment(d, opts, osEnabled)
 		if err != nil {
 			return err
 		}
@@ -38,12 +38,12 @@ func ConfigureDeployment(d *appsv1.Deployment, opts Options) error {
 // - All: Ensure object storage secret mounted and auth projected as env vars.
 // - GCS: Ensure env var GOOGLE_APPLICATION_CREDENTIALS in container
 // - S3: Ensure mounting custom CA configmap if any TLSConfig given
-func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
+func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options, osEnabled bool) error {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretAlibabaCloud, lokiv1.ObjectStorageSecretAzure, lokiv1.ObjectStorageSecretGCS, lokiv1.ObjectStorageSecretSwift:
-		return configureStatefulSet(d, opts)
+		return configureStatefulSet(d, opts, osEnabled)
 	case lokiv1.ObjectStorageSecretS3:
-		if err := configureStatefulSet(d, opts); err != nil {
+		if err := configureStatefulSet(d, opts, osEnabled); err != nil {
 			return err
 		}
 		return configureStatefulSetCA(d, opts.TLS)
@@ -54,8 +54,8 @@ func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 
 // ConfigureDeployment merges the object storage secret volume into the deployment spec.
 // With this, the deployment will expose credentials specific environment variables.
-func configureDeployment(d *appsv1.Deployment, opts Options) error {
-	p := ensureObjectStoreCredentials(&d.Spec.Template.Spec, opts)
+func configureDeployment(d *appsv1.Deployment, opts Options, osEnabled bool) error {
+	p := ensureObjectStoreCredentials(&d.Spec.Template.Spec, opts, osEnabled)
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
@@ -81,8 +81,8 @@ func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
 
 // ConfigureStatefulSet merges a the object storage secrect volume into the statefulset spec.
 // With this, the statefulset will expose credentials specific environment variable.
-func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
-	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, opts)
+func configureStatefulSet(s *appsv1.StatefulSet, opts Options, osEnabled bool) error {
+	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, opts, osEnabled)
 
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
@@ -106,7 +106,7 @@ func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 	return nil
 }
 
-func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpec {
+func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options, osEnabled bool) corev1.PodSpec {
 	envVarFromSecret := func(name, secretName, secretKey string) corev1.EnvVar {
 		return corev1.EnvVar{
 			Name: name,
@@ -142,7 +142,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 
 	if wifEnabled(opts) {
 		volumes = append(volumes, saTokenVolume(opts))
-		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
+		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(&opts, osEnabled))
 	}
 
 	var storeEnvVars []corev1.EnvVar
@@ -175,7 +175,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 				envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
 				{
 					Name:  EnvAWSWebIdentityTokenFile,
-					Value: opts.S3.WebIdentityTokenFile,
+					Value: path.Join(opts.S3.WebIdentityTokenFile, "token"),
 				},
 			}
 		}
@@ -242,12 +242,16 @@ func wifEnabled(opts Options) bool {
 	}
 }
 
-func saTokenVolumeMount(opts Options) corev1.VolumeMount {
+func saTokenVolumeMount(opts *Options, osEnabled bool) corev1.VolumeMount {
 	var wiToken string
-	storeType := opts.SharedStore
-	switch storeType {
+	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		wiToken = opts.S3.WebIdentityTokenFile
+		wiToken = saTokenVolumeK8sDirectory
+		if osEnabled {
+			wiToken = saTokenVolumeOcpDirectory
+		}
+		// Will be used to set env variable
+		opts.S3.WebIdentityTokenFile = wiToken
 	}
 	return corev1.VolumeMount{
 		Name:      saTokenVolumeName,

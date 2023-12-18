@@ -13,10 +13,11 @@ import (
 
 func TestConfigureDeploymentForStorageType(t *testing.T) {
 	type tt struct {
-		desc string
-		opts Options
-		dpl  *appsv1.Deployment
-		want *appsv1.Deployment
+		desc      string
+		opts      Options
+		osEnabled bool
+		dpl       *appsv1.Deployment
+		want      *appsv1.Deployment
 	}
 
 	tc := []tt{
@@ -304,8 +305,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					RoleArn: "roleARN",
-					WebIdentityTokenFile: SATokenVolumeK8sDirectory,
+					RoleArn:  "roleARN",
 					Audience: "test",
 				},
 			},
@@ -338,7 +338,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: SATokenVolumeK8sDirectory,
+											MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -354,8 +354,101 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name:  EnvAWSWebIdentityTokenFile,
-											Value: SATokenVolumeK8sDirectory,
+											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
+											Value: "/var/run/secrets/kubernetes.io/serviceaccount/token",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: saTokenVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										Projected: &corev1.ProjectedVolumeSource{
+											Sources: []corev1.VolumeProjection{
+												{
+													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+														Audience:          "test",
+														ExpirationSeconds: pointer.Int64(3600),
+														Path:              corev1.ServiceAccountTokenKey,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "object storage S3 in STS Mode in OpenShift",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
+				S3: &S3StorageConfig{
+					RoleArn:  "roleARN",
+					Audience: "test",
+				},
+			},
+			osEnabled: true,
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      saTokenVolumeName,
+											ReadOnly:  false,
+											MountPath: "/var/run/secrets/openshift/serviceaccount",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAWSRoleArn,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSRoleArn,
+												},
+											},
+										},
+										{
+											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
+											Value: "/var/run/secrets/openshift/serviceaccount/token",
 										},
 									},
 								},
@@ -562,7 +655,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureDeployment(tc.dpl, tc.opts)
+			err := ConfigureDeployment(tc.dpl, tc.opts, tc.osEnabled)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -1027,7 +1120,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureStatefulSet(tc.sts, tc.opts)
+			err := ConfigureStatefulSet(tc.sts, tc.opts, false)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})
@@ -1219,7 +1312,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureDeployment(tc.dpl, tc.opts)
+			err := ConfigureDeployment(tc.dpl, tc.opts, false)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -1414,7 +1507,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureStatefulSet(tc.sts, tc.opts)
+			err := ConfigureStatefulSet(tc.sts, tc.opts, false)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})

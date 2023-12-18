@@ -80,7 +80,7 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type, fg.OpenShift.Enabled)
+	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
