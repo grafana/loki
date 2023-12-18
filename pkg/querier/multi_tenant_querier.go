@@ -163,7 +163,7 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 		for i := range resp.GetSeries() {
 			s := &resp.Series[i]
 			if s.Get(defaultTenantLabel) == "" {
-				s.Labels = append(s.Labels, &logproto.SeriesIdentifier_LabelsEntry{Key: defaultTenantLabel, Value: id})
+				s.Labels = append(s.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: defaultTenantLabel, Value: id})
 			}
 		}
 
