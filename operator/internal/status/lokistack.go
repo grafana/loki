@@ -6,7 +6,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -157,7 +156,7 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 }
 
 func generateWarnings(schemas []lokiv1.ObjectStorageSchema) []metav1.Condition {
-	warnings := make([]metav1.Condition, 0, 1)
+	warnings := make([]metav1.Condition, 0, 2)
 
 	if len(schemas) > 0 && schemas[len(schemas)-1].Version != lokiv1.ObjectStorageSchemaV13 {
 		warnings = append(warnings, metav1.Condition{
