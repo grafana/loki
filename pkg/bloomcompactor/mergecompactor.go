@@ -9,45 +9,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func mergeCompactChunks(ctx context.Context, logger log.Logger, bloomShipperClient bloomshipper.Client, storeClient storeClient, bt *v1.BloomTokenizer, job Job, blockOptions v1.BlockOptions, blocksToUpdate []bloomshipper.BlockRef, workingDir string, localDst string) (bloomshipper.Block, error) {
-	var populate = func(series *v1.Series, bloom *v1.Bloom) error {
-		bloomForChks := v1.SeriesWithBloom{
-			Series: series,
-			Bloom:  bloom,
-		}
-
-		// Satisfy types for chunks
-		chunkRefs := make([]chunk.Chunk, len(series.Chunks))
-		for i, chk := range series.Chunks {
-			chunkRefs[i] = chunk.Chunk{
-				ChunkRef: logproto.ChunkRef{
-					Fingerprint: uint64(series.Fingerprint),
-					UserID:      job.tenantID,
-					From:        chk.Start,
-					Through:     chk.End,
-					Checksum:    chk.Checksum,
-				},
-			}
-		}
-
-		chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed downloading chunks", "err", err)
-			return err
-		}
-		err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
+func mergeCompactChunks(ctx context.Context, logger log.Logger,
+	bloomShipperClient bloomshipper.Client,
+	populate func(*v1.Series, *v1.Bloom) error,
+	job Job, blockOptions v1.BlockOptions,
+	blocksToUpdate []bloomshipper.BlockRef, workingDir string, localDst string) (bloomshipper.Block, error) {
 	// Satisfy types for series
 	seriesFromSeriesMeta := make([]*v1.Series, len(job.seriesMetas))
 

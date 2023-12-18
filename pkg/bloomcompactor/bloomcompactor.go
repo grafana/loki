@@ -27,6 +27,8 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"math"
 	"os"
 	"time"
@@ -513,7 +515,39 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	} else if len(blocksMatchingJob) > 0 {
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
 
-		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, storeClient, bt, job, blockOptions, blocksMatchingJob, c.cfg.WorkingDirectory, localDst)
+		var populate = func(series *v1.Series, bloom *v1.Bloom) error {
+			bloomForChks := v1.SeriesWithBloom{
+				Series: series,
+				Bloom:  bloom,
+			}
+
+			// Satisfy types for chunks
+			chunkRefs := make([]chunk.Chunk, len(series.Chunks))
+			for i, chk := range series.Chunks {
+				chunkRefs[i] = chunk.Chunk{
+					ChunkRef: logproto.ChunkRef{
+						Fingerprint: uint64(series.Fingerprint),
+						UserID:      job.tenantID,
+						From:        chk.Start,
+						Through:     chk.End,
+						Checksum:    chk.Checksum,
+					},
+				}
+			}
+
+			chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed downloading chunks", "err", err)
+				return err
+			}
+			err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+
+		resultingBlock, err = mergeCompactChunks(ctx, logger, c.bloomShipperClient, populate, job, blockOptions, blocksMatchingJob, c.cfg.WorkingDirectory, localDst)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
