@@ -1,5 +1,6 @@
 ## Main
 
+- [11481](https://github.com/grafana/loki/pull/11481) **JoaoBraveCoding**: Adds AWS STS support
 - [11473](https://github.com/grafana/loki/pull/11473) **JoaoBraveCoding**: Adds structured metadata dashboards
 - [11448](https://github.com/grafana/loki/pull/11448) **periklis**: Update Loki operand to v2.9.3
 - [11357](https://github.com/grafana/loki/pull/11357) **periklis**: Fix storing authentication credentials in the Loki ConfigMap

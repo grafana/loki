@@ -5437,8 +5437,6 @@ func TestBuild_ConfigAndRuntimeConfig_STS_WIF(t *testing.T) {
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &storage.S3StorageConfig{
 					RoleArn:              "my-role-arn",
-					WebIdentityTokenFile: "/path/to/token",
-					Audience:             "my-audience",
 					Region:               "my-region",
 					Buckets:              "my-bucket",
 				},
