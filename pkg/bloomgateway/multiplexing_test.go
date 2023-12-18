@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func TestTask(t *testing.T) {
@@ -32,6 +33,7 @@ func TestTaskMergeIterator(t *testing.T) {
 	ts := model.TimeFromUnix(1699523810)
 	day := getDayTime(ts)
 	tenant := "fake"
+	tokenizer := v1.NewNGramTokenizer(4, 0)
 
 	t.Run("empty requests result in empty iterator", func(t *testing.T) {
 		r1 := &logproto.FilterChunkRefRequest{
@@ -58,7 +60,7 @@ func TestTaskMergeIterator(t *testing.T) {
 		t3, _, _, err := NewTask(tenant, r3)
 		require.NoError(t, err)
 
-		it := newTaskMergeIterator(day, t1, t2, t3)
+		it := newTaskMergeIterator(day, tokenizer, t1, t2, t3)
 		// nothing to iterate over
 		require.False(t, it.Next())
 	})
@@ -103,7 +105,7 @@ func TestTaskMergeIterator(t *testing.T) {
 		t3, _, _, err := NewTask(tenant, r3)
 		require.NoError(t, err)
 
-		it := newTaskMergeIterator(day, t1, t2, t3)
+		it := newTaskMergeIterator(day, tokenizer, t1, t2, t3)
 
 		// first item
 		require.True(t, it.Next())

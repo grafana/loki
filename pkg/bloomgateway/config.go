@@ -37,13 +37,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Client.RegisterFlags(f)
 }
 
-type NGramSettings interface {
-	BloomNGramLength(tenantID string) int
-}
-
 type Limits interface {
 	CacheLimits
-	NGramSettings
 	BloomGatewayShardSize(tenantID string) int
 	BloomGatewayEnabled(tenantID string) bool
 	BloomGatewayBlocksDownloadingParallelism(tenantID string) int

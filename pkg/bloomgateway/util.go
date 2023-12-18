@@ -38,18 +38,13 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 
 // convertToSearches converts a list of line filter expressions to a list of
 // byte slices that can be used with the bloom filters.
-// TODO(chaudum): Tokenize filter strings
-func convertToSearches(cfg tokenSettings, filters []syntax.LineFilter) [][]byte {
-	// never use a skip factor for search n-grams
-	t := v1.NewNGramTokenizer(cfg.nGramLen, 0)
-	// Can we assume an avg filter string length of 12 chars?
-	// Then the capacity would be (len(filterString) - (nGramLen-1)) * numFilters
-	searches := make([][]byte, 0, (13-cfg.nGramLen)*len(filters))
+func convertToSearches(filters []syntax.LineFilter, t *v1.NGramTokenizer) [][]byte {
+	searches := make([][]byte, 0, (13-t.N)*len(filters))
 	for _, f := range filters {
 		if f.Ty == labels.MatchEqual {
 			it := t.Tokens(f.Match)
 			for it.Next() {
-				key := make([]byte, cfg.nGramLen)
+				key := make([]byte, t.N)
 				_ = copy(key, it.At())
 				searches = append(searches, key)
 			}
