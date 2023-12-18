@@ -67,7 +67,7 @@ func TestRefreshSuccess(t *testing.T) {
 
 	k, sw := setupListClient(t, stack, componentPods)
 
-	err := Refresh(context.Background(), k, req, now)
+	err := Refresh(context.Background(), k, req, now, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
@@ -129,7 +129,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		return nil
 	}
 
-	err := Refresh(context.Background(), k, req, now)
+	err := Refresh(context.Background(), k, req, now, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
