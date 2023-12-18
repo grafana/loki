@@ -157,7 +157,7 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 }
 
 func generateWarnings(schemas []lokiv1.ObjectStorageSchema) []metav1.Condition {
-	warnings := make([]metav1.Condition, 0, 2)
+	warnings := make([]metav1.Condition, 0, 1)
 
 	if len(schemas) > 0 && schemas[len(schemas)-1].Version != lokiv1.ObjectStorageSchemaV13 {
 		warnings = append(warnings, metav1.Condition{
