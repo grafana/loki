@@ -486,7 +486,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	var resultingBlock bloomshipper.Block
 	if len(blocksMatchingJob) == 0 && len(metasMatchingJob) > 0 {
 		// There is no change to any blocks, no compaction needed
-		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed", "err", err)
+		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed")
 		return nil
 	} else if len(metasMatchingJob) == 0 {
 		// No matching existing blocks for this job, compact all series from scratch
@@ -515,9 +515,9 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
 
-	blockToUpload, err := compressBloomBlock(resultingBlock, archivePath, localDst, logger)
+	blockToUpload, err := compressBloomBlock(resultingBlock.BlockRef, archivePath, localDst, logger)
 	if err != nil {
-		level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+		level.Error(logger).Log("msg", "compressing bloom blocks in to tar files", "err", err)
 		return err
 	}
 	defer func() {
