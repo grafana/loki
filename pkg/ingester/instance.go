@@ -588,9 +588,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		err = i.forMatchingStreams(ctx, req.Start, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req.Start, req.End) {
-				series = append(series, logproto.SeriesIdentifier{
-					Labels: stream.labels.Map(),
-				})
+				series = append(series, logproto.SeriesIdentifierFromLabels(stream.labels))
 			}
 			return nil
 		})
@@ -613,9 +611,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 						return nil
 					}
 
-					dedupedSeries[key] = logproto.SeriesIdentifier{
-						Labels: stream.labels.Map(),
-					}
+					dedupedSeries[key] = logproto.SeriesIdentifierFromLabels(stream.labels)
 				}
 				return nil
 			})
