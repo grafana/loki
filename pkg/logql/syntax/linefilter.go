@@ -1,8 +1,7 @@
 package syntax
 
 import (
-	"encoding/binary"
-
+	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -31,34 +30,18 @@ func (lf LineFilter) Size() int {
 }
 
 func (lf LineFilter) MarshalTo(b []byte) (int, error) {
-	n := 0
-	// lf.Ty
-	n += binary.PutUvarint(b[n:], uint64(lf.Ty))
-	// lf.Match
-	n += binary.PutUvarint(b[n:], uint64(len(lf.Match)))
-	n += copy(b[n:], lf.Match)
-	// lf.Op
-	n += binary.PutUvarint(b[n:], uint64(len(lf.Op)))
-	n += copy(b[n:], lf.Op)
-	return n, nil
+	buf := encoding.EncWith(b[:0])
+	buf.PutUvarint(int(lf.Ty))
+	buf.PutUvarintStr(lf.Match)
+	buf.PutUvarintStr(lf.Op)
+	return len(b), nil
 }
 
 func (lf *LineFilter) Unmarshal(b []byte) error {
-	i := 0
-	// lf.Ty
-	v, n := binary.Uvarint(b)
-	lf.Ty = labels.MatchType(v)
-	i += n
-	// lf.Match
-	v, n = binary.Uvarint(b[i:])
-	i += n
-	lf.Match = string(b[i : i+int(v)])
-	i += int(v)
-	// lf.Op
-	v, n = binary.Uvarint(b[i:])
-	i += n
-	lf.Op = string(b[i : i+int(v)])
-	i += int(v) // nolint:ineffassign
+	buf := encoding.DecWith(b)
+	lf.Ty = labels.MatchType(buf.Uvarint())
+	lf.Match = buf.UvarintStr()
+	lf.Op = buf.UvarintStr()
 	return nil
 }
 
