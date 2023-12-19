@@ -1846,6 +1846,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 }
 
 func TestQueryReferencingStructuredMetadata(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
 	tempDir := t.TempDir()
 	store := getLocalStore(tempDir, cm)
 
