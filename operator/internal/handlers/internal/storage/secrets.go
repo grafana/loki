@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"bytes"
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"sort"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -15,7 +18,7 @@ import (
 var hashSeparator = []byte(",")
 
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
+func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType, managedAuthSecret *corev1.Secret) (*storage.Options, error) {
 	hash, err := hashSecretData(s)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
@@ -33,7 +36,7 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 	case lokiv1.ObjectStorageSecretGCS:
 		storageOpts.GCS, err = extractGCSConfigSecret(s)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, err = extractS3ConfigSecret(s)
+		storageOpts.S3, err = extractS3ConfigSecret(s, managedAuthSecret)
 	case lokiv1.ObjectStorageSecretSwift:
 		storageOpts.Swift, err = extractSwiftConfigSecret(s)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
@@ -124,7 +127,7 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
+func extractS3ConfigSecret(s *corev1.Secret, managedAuthSecret *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
@@ -155,6 +158,22 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	}
 
 	switch {
+	case managedAuthSecret != nil:
+		cfg.STS = true
+		cfg.Audience = "openshift"
+		cfg.RoleARN, err = extractSTSSecret(managedAuthSecret)
+		if err != nil {
+			return nil, err
+		}
+		if len(roleArn) != 0 {
+			return nil, kverrors.New("extra secret field set", "field", storage.KeyAWSRoleArn)
+		}
+		// In the STS case region is not an optional field
+		if len(region) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSRegion)
+		}
+
+		return cfg, nil
 	case len(roleArn) == 0:
 		cfg.Endpoint = string(endpoint)
 
@@ -310,4 +329,35 @@ func SetSATokenPath(opts *storage.Options, OpenShiftEnabled bool) {
 		}
 		opts.S3.WebIdentityTokenFile = wiToken
 	}
+}
+var (
+	errMissingAWSCredentials = errors.New("missing CCO secret for AWS STS authentication")
+	errInvalidAWSCredentials = errors.New("invalid credentials file")
+)
+
+func extractSTSSecret(s *corev1.Secret) (string, error) {
+	var data []byte
+	switch {
+	case len(s.Data["credentials"]) > 0:
+		data = s.Data["credentials"]
+	default:
+		return "", errMissingAWSCredentials
+	}
+
+	cfg, err := ini.Load(bytes.NewReader(data))
+	if err != nil {
+		return "", errInvalidAWSCredentials
+	}
+
+	section, err := cfg.GetSection("default")
+	if err != nil {
+		return "", err
+	}
+
+	roleARN, err := section.GetKey("role_arn")
+	if err != nil {
+		return "", err
+	}
+
+	return roleARN.String(), nil
 }

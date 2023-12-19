@@ -1759,6 +1759,10 @@ for authentication is missing.</p>
 <td><p>ReasonMissingGatewayTenantSecret when the required tenant secret
 for authentication is missing.</p>
 </td>
+</tr><tr><td><p>&#34;MissingManagedAuthenticationSecret&#34;</p></td>
+<td><p>ReasonMissingManagedAuthSecret when the required secret for managed auth credentials to object
+storage is missing.</p>
+</td>
 </tr><tr><td><p>&#34;MissingObjectStorageCAConfigMap&#34;</p></td>
 <td><p>ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage
 certificates is missing.</p>

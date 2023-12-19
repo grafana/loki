@@ -343,6 +343,10 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
+											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
+											Value: "/var/run/secrets/kubernetes.io/serviceaccount/token",
+										},
+										{
 											Name: EnvAWSRoleArn,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
@@ -352,10 +356,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													Key: KeyAWSRoleArn,
 												},
 											},
-										},
-										{
-											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
-											Value: "/var/run/secrets/kubernetes.io/serviceaccount/token",
 										},
 									},
 								},
@@ -436,19 +436,12 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: EnvAWSRoleArn,
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: "test",
-													},
-													Key: KeyAWSRoleArn,
-												},
-											},
-										},
-										{
 											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
 											Value: "/var/run/secrets/openshift/serviceaccount/token",
+										},
+										{
+											Name:  "AWS_ROLE_ARN",
+											Value: "my:role",
 										},
 									},
 								},

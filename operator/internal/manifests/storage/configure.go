@@ -179,10 +179,15 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 	secretName := opts.SecretName
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		return []corev1.EnvVar{
-			envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
+		envVars := []corev1.EnvVar{
 			envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
 		}
+		if opts.S3.RoleARN == "" {
+			envVars = append(envVars, envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn))
+		} else {
+			envVars = append(envVars, envVarFromValue(EnvAWSRoleArn, opts.S3.RoleARN))
+		}
+		return envVars
 	default:
 		return []corev1.EnvVar{}
 	}

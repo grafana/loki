@@ -38,6 +38,7 @@ type S3StorageConfig struct {
 	Endpoint             string
 	Region               string
 	Buckets              string
+	RoleARN              string
 	WebIdentityTokenFile string
 	Audience             string
 	STS                  bool

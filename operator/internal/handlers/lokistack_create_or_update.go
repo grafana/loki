@@ -80,7 +80,12 @@ func CreateOrUpdateLokiStack(
 		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
+	stsCreds, err := getSTSCredsFromEnv(ctx, k, ll, client.ObjectKeyFromObject(&stack), fg)
+	if err != nil {
+		return err
+	}
+
+	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type, stsCreds)
 	if err != nil {
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -441,4 +446,32 @@ func isNamespacedResource(obj client.Object) bool {
 	default:
 		return true
 	}
+}
+
+func getSTSCredsFromEnv(ctx context.Context, k k8s.Client, l logr.Logger, stack client.ObjectKey, fg configv1.FeatureGates) (*corev1.Secret, error) {
+	var managedAuthCreds corev1.Secret
+	managedAuthEnv := manifests_openshift.DiscoverManagedAuthEnv()
+	if managedAuthEnv == nil || !fg.OpenShift.Enabled {
+		return nil, nil
+	}
+
+	l.Info("discovered managed authentication credentials cluster", "env", managedAuthEnv)
+
+	managedAuthCredsKey, err := manifests_openshift.CreateCredentialsRequest(ctx, k, stack, managedAuthEnv)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed creating OpenShift CCO CredentialsRequest", "name", stack)
+	}
+
+	if err := k.Get(ctx, managedAuthCredsKey, &managedAuthCreds); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, &status.DegradedError{
+				Message: "Missing OpenShift CCO managed authentication credentials secret",
+				Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+				Requeue: true,
+			}
+		}
+		return nil, kverrors.Wrap(err, "failed to lookup OpenShift CCO managed authentication credentials secret", "name", stack)
+	}
+
+	return &managedAuthCreds, nil
 }

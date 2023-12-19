@@ -10,6 +10,7 @@ import (
 	"github.com/ViaQ/logerr/v2/log"
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
+	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -88,6 +89,7 @@ func main() {
 
 		if ctrlCfg.Gates.OpenShift.Enabled {
 			utilruntime.Must(routev1.AddToScheme(scheme))
+			utilruntime.Must(cloudcredentialv1.AddToScheme(scheme))
 		}
 	}
 
