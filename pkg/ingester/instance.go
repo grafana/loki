@@ -3,13 +3,14 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/dskit/tenant"
 	"math"
 	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/logql/log"
 
