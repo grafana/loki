@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	strings "strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -18,8 +20,23 @@ type SeriesSplitter struct {
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
 func (i SeriesSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
-	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
-	return fmt.Sprintf("series:%s", cacheKey)
+
+	sr := r.(*LokiSeriesRequest)
+
+	split := i.QuerySplitDuration(userID)
+
+	var currentInterval int64
+	if denominator := int64(split / time.Millisecond); denominator > 0 {
+		currentInterval = sr.GetStart().UnixMilli() / denominator
+	}
+
+	if i.transformer != nil {
+		userID = i.transformer(ctx, userID)
+	}
+
+	matcherStr := strings.Join(sr.GetMatch(), ",")
+
+	return fmt.Sprintf("series:%s:%s:%d:%d", userID, matcherStr, currentInterval, split)
 }
 
 type SeriesExtractor struct{}
@@ -27,16 +44,15 @@ type SeriesExtractor struct{}
 // Extract favors the ability to cache over exactness of results. It assumes a constant distribution
 // of log volumes over a range and will extract subsets proportionally.
 func (p SeriesExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
-	// factor := util.GetFactorOfTime(start, end, resStart, resEnd)
-
 	seriesRes := res.(*LokiSeriesResponse)
 	// TODO(kavi): Use factor to split the series list propotionally?
-	return &LokiSeriesResponse{
+	result := &LokiSeriesResponse{
 		Status:     seriesRes.Status,
 		Version:    seriesRes.Version,
-		Data:       seriesRes.Data,
 		Statistics: seriesRes.Statistics,
 	}
+
+	return result
 }
 
 func (p SeriesExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) queryrangebase.Response {

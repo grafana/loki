@@ -63,6 +63,47 @@ func TestSeriesCache(t *testing.T) {
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
 				{
+					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
+				},
+			},
+
+			Statistics: stats.Result{
+				Summary: stats.Summary{
+					Splits: 1,
+				},
+			},
+		}
+		calls, handler := setup(seriesResp)
+
+		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+		seriesReq := &LokiSeriesRequest{
+			StartTs: from.Time(),
+			EndTs:   through.Time(),
+			Match:   []string{`{namespace=~".*"}`},
+			Path:    seriesAPIPath,
+		}
+
+		*calls = 0
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		resp, err := handler.Do(ctx, seriesReq)
+		require.NoError(t, err)
+		require.Equal(t, 1, *calls) // called actual handled, as not cached.
+		require.Equal(t, seriesResp, resp)
+
+		// Doing same request again shouldn't change anything.
+		*calls = 0
+		resp, err = handler.Do(ctx, seriesReq)
+		require.NoError(t, err)
+		require.Equal(t, 0, *calls)
+		require.Equal(t, seriesResp, resp)
+	})
+
+	t.Run("a new request with overlapping time range should reuse part of the previous request for the overlap", func(t *testing.T) {
+		seriesResp := &LokiSeriesResponse{
+			Status:  "success",
+			Version: uint32(loghttp.VersionV1),
+			Data: []logproto.SeriesIdentifier{
+				{
 					Labels: map[string]string{"cluster": "us-central", "namespace": "dev"},
 				},
 				{
@@ -82,78 +123,29 @@ func TestSeriesCache(t *testing.T) {
 		seriesReq := &LokiSeriesRequest{
 			StartTs: from.Time(),
 			EndTs:   through.Time(),
-			Match:   []string{`{namespace="prod"}`},
+			Match:   []string{`{namespace=~".*"}`},
 			Path:    seriesAPIPath,
 		}
 
-		*calls = 0
 		ctx := user.InjectOrgID(context.Background(), "fake")
 		resp, err := handler.Do(ctx, seriesReq)
 		require.NoError(t, err)
-		require.Equal(t, 1, *calls) // called actual handled, as not cached.
+		require.Equal(t, 1, *calls)
 		require.Equal(t, seriesResp, resp)
 
-		// Doing same request again shouldn't change anything.
 		*calls = 0
-		resp, err = handler.Do(ctx, seriesReq)
+		req := seriesReq.WithStartEnd(seriesReq.GetStart().Add(15*time.Minute), seriesReq.GetEnd().Add(15*time.Minute))
+		expectedSeries := &LokiSeriesResponse{}
+
+		resp, err = handler.Do(ctx, req)
 		require.NoError(t, err)
-		require.Equal(t, 0, *calls)
-		require.Equal(t, seriesResp, resp)
+		require.Equal(t, 1, *calls)
+		require.Equal(t, expectedSeries, resp)
 	})
 
-	// t.Run("a new request with overlapping time range should reuse part of the previous request for the overlap", func(t *testing.T) {
-	// 	seriesResp := &VolumeResponse{
-	// 		Response: &logproto.VolumeResponse{
-	// 			Volumes: []logproto.Volume{
-	// 				{
-	// 					Name:   `{foo="bar"}`,
-	// 					Volume: 42,
-	// 				},
-	// 			},
-	// 			Limit: 10,
-	// 		},
-	// 	}
-	// 	calls, handler := setup(seriesResp)
-
-	// 	from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
-	// 	seriesReq := &logproto.VolumeRequest{
-	// 		From:     from,
-	// 		Through:  through,
-	// 		Matchers: `{foo="bar"}`,
-	// 		Limit:    10,
-	// 	}
-
-	// 	ctx := user.InjectOrgID(context.Background(), "fake")
-	// 	resp, err := handler.Do(ctx, seriesReq)
-	// 	require.NoError(t, err)
-	// 	require.Equal(t, 1, *calls)
-	// 	require.Equal(t, seriesResp, resp)
-
-	// 	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
-	// 	*calls = 0
-	// 	req := seriesReq.WithStartEnd(seriesReq.GetStart().Add(15*time.Minute), seriesReq.GetEnd().Add(15*time.Minute))
-	// 	vol := float64(0.75)
-	// 	expectedVol := &VolumeResponse{
-	// 		Response: &logproto.VolumeResponse{
-	// 			Volumes: []logproto.Volume{
-	// 				{
-	// 					Name:   `{foo="bar"}`,
-	// 					Volume: uint64(vol*float64(42)) + 42,
-	// 				},
-	// 			},
-	// 			Limit: 10,
-	// 		},
-	// 	}
-
-	// 	resp, err = handler.Do(ctx, req)
-	// 	require.NoError(t, err)
-	// 	require.Equal(t, 1, *calls)
-	// 	require.Equal(t, expectedVol, resp)
-	// })
-
 	// t.Run("caches are only valid for the same request parameters", func(t *testing.T) {
-	// 	seriesResp := &VolumeResponse{
-	// 		Response: &logproto.VolumeResponse{
+	// 	seriesResp := &LokiSeriesResponse{
+	// 		Response: &logproto.LokiSeriesResponse{
 	// 			Volumes: []logproto.Volume{
 	// 				{
 	// 					Name:   `{foo="bar"}`,
@@ -229,8 +221,8 @@ func TestSeriesCache(t *testing.T) {
 // 	volumeCacheMiddlewareNowTimeFunc = func() model.Time { return model.Time(testTime.UnixMilli()) }
 // 	now := volumeCacheMiddlewareNowTimeFunc()
 
-// 	seriesResp := &VolumeResponse{
-// 		Response: &logproto.VolumeResponse{
+// 	seriesResp := &LokiSeriesResponse{
+// 		Response: &logproto.LokiSeriesResponse{
 // 			Volumes: []logproto.Volume{
 // 				{
 // 					Name:   `{foo="bar"}`,
@@ -248,7 +240,7 @@ func TestSeriesCache(t *testing.T) {
 
 // 		expectedCallsBeforeCache int
 // 		expectedCallsAfterCache  int
-// 		expectedResp             *VolumeResponse
+// 		expectedResp             *LokiSeriesResponse
 // 	}{
 // 		{
 // 			name:                   "MaxStatsCacheFreshness disabled",
