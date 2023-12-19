@@ -237,9 +237,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 	mockSeriesResponse := func(series []map[string]string) *logproto.SeriesResponse {
 		resp := &logproto.SeriesResponse{}
 		for _, s := range series {
-			resp.Series = append(resp.Series, logproto.SeriesIdentifier{
-				Labels: s,
-			})
+			resp.Series = append(resp.Series, logproto.SeriesIdentifierFromMap(s))
 		}
 		return resp
 	}
@@ -304,8 +302,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "4"}},
-					{Labels: map[string]string{"a": "1", "b": "5"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "4"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "5"},
+					}},
 				}, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
@@ -313,10 +317,22 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
-					{Labels: map[string]string{"a": "1", "b": "4"}},
-					{Labels: map[string]string{"a": "1", "b": "5"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"}},
+					},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "4"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "5"},
+					}},
 				}, resp.GetSeries())
 			},
 		},
@@ -329,8 +345,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				}), nil)
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"},
+					}},
 				}, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
@@ -338,8 +360,14 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				resp, err := q.Series(ctx, req)
 				require.Nil(t, err)
 				require.ElementsMatch(t, []logproto.SeriesIdentifier{
-					{Labels: map[string]string{"a": "1", "b": "2"}},
-					{Labels: map[string]string{"a": "1", "b": "3"}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "2"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "a", Value: "1"},
+						{Key: "b", Value: "3"},
+					}},
 				}, resp.GetSeries())
 			},
 		},
@@ -1116,7 +1144,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	ingesterClient.On("Series", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"bar": "1"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "bar", Value: "1"}},
 			},
 		},
 	}, nil)
@@ -1127,7 +1155,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
 	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
-		{Labels: map[string]string{"foo": "1"}},
+		{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "foo", Value: "1"}}},
 	}, nil)
 
 	querier, err := newQuerier(
