@@ -11,4 +11,4 @@ spec:
     secret:
       name: test
       type: s3
-  storageClassName: standard
+  storageClassName: default
