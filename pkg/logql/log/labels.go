@@ -454,7 +454,9 @@ func newStringMapPool() *stringMapPool {
 
 func (s *stringMapPool) Get() map[string]string {
 	m := s.pool.Get().(map[string]string)
-	clear(m)
+	for key := range m {
+		delete(m, key)
+	}
 	return m
 }
 
@@ -495,7 +497,10 @@ func (b *LabelsBuilder) Map() map[string]string {
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	clear(res)
+	for key := range res {
+		delete(res, key)
+	}
+
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
