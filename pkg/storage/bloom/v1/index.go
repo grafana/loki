@@ -74,6 +74,10 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	return dec.Err()
 }
 
+func (s Schema) NGramLen() int {
+	return int(s.nGramLength)
+}
+
 // Block index is a set of series pages along with
 // the headers for each page
 type BlockIndex struct {
