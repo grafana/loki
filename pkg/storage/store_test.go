@@ -3,10 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/push"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -18,20 +14,22 @@ import (
 	"testing"
 	"time"
 
-	lokilog "github.com/grafana/loki/pkg/logql/log"
-
 	"github.com/cespare/xxhash/v2"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/flagext"
-
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	lokilog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/chunk"
