@@ -589,22 +589,19 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 		}
 	}
 
-	deduped := make(map[string]logproto.SeriesIdentifier)
+	response := &logproto.SeriesResponse{
+		Series: make([]logproto.SeriesIdentifier, 0),
+	}
+	seen := make(map[uint64]struct{})
+	b := make([]byte, 0, 1024)
 	for _, set := range sets {
 		for _, s := range set {
-			key := loghttp.LabelSet(s.Labels).String()
-			if _, exists := deduped[key]; !exists {
-				deduped[key] = s
+			key := s.Hash(b)
+			if _, exists := seen[key]; !exists {
+				seen[key] = struct{}{}
+				response.Series = append(response.Series, s)
 			}
 		}
-	}
-
-	response := &logproto.SeriesResponse{
-		Series: make([]logproto.SeriesIdentifier, 0, len(deduped)),
-	}
-
-	for _, s := range deduped {
-		response.Series = append(response.Series, s)
 	}
 
 	return response, nil

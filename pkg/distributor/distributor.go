@@ -99,6 +99,7 @@ type Distributor struct {
 	ingestersRing    ring.ReadRing
 	validator        *Validator
 	pool             *ring_client.Pool
+	tee              Tee
 
 	rateStore    RateStore
 	shardTracker *ShardTracker
@@ -136,6 +137,7 @@ func New(
 	overrides Limits,
 	registerer prometheus.Registerer,
 	metricsNamespace string,
+	tee Tee,
 	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
@@ -182,6 +184,7 @@ func New(
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
+		tee:                   tee,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -412,6 +415,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+	}
+
+	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
+	// function calls that cannot be inlined.
+	if d.tee != nil {
+		d.tee.Duplicate(streams)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck

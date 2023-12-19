@@ -874,8 +874,9 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		v := mustParseLabels(it.Labels())["foo"]
-		require.NotEqual(t, "bazz", v)
+		l, err := syntax.ParseLabels(it.Labels())
+		require.NoError(t, err)
+		require.NotEqual(t, "bazz", l.Get("foo"))
 	}
 
 	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
@@ -885,14 +886,14 @@ func Test_ChunkFilterer(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		v := mustParseLabels(it.Labels())["foo"]
-		require.NotEqual(t, "bazz", v)
+		l, err := syntax.ParseLabels(it.Labels())
+		require.NoError(t, err)
+		require.NotEqual(t, "bazz", l.Get("foo"))
 	}
 	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 	require.NoError(t, err)
 	for _, id := range ids {
-		v := id.Labels["foo"]
-		require.NotEqual(t, "bazz", v)
+		require.NotEqual(t, "bazz", id.Get("foo"))
 	}
 }
 
@@ -1475,13 +1476,17 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 }
 
-func mustParseLabels(s string) map[string]string {
+func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
 	l, err := marshal.NewLabelSet(s)
 	if err != nil {
 		log.Fatalf("Failed to parse %s", s)
 	}
 
-	return l
+	result := make([]logproto.SeriesIdentifier_LabelsEntry, 0, len(l))
+	for k, v := range l {
+		result = append(result, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+	}
+	return result
 }
 
 func parseDate(in string) time.Time {
@@ -1612,13 +1617,16 @@ func Test_GetSeries(t *testing.T) {
 		ctx            = user.InjectOrgID(context.Background(), "test-user")
 		expectedSeries = []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"bar": "foo"},
+				Labels: logproto.MustNewSeriesEntries("bar", "foo"),
 			},
 			{
-				Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+				Labels: logproto.MustNewSeriesEntries(
+					"buzz", "boo",
+					"foo", "bar",
+				),
 			},
 			{
-				Labels: map[string]string{"foo": "buzz"},
+				Labels: logproto.MustNewSeriesEntries("foo", "buzz"),
 			},
 		}
 	)
@@ -1650,7 +1658,10 @@ func Test_GetSeries(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"foo": "bar", "buzz": "boo"},
+					Labels: logproto.MustNewSeriesEntries(
+						"buzz", "boo",
+						"foo", "bar",
+					),
 				},
 			},
 		},
