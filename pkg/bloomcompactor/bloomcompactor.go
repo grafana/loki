@@ -42,6 +42,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"path/filepath"
+
+	"github.com/google/uuid"
+
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -489,9 +493,23 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return level.Error(logger).Log("msg", "failed to compact new chunks", "err", err)
 		}
 
+		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
+
+		blockToUpload, err := c.compressBloomBlock(storedBlock, archivePath, localDst, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
+			return err
+		}
+		defer func() {
+			err = os.Remove(archivePath)
+			if err != nil {
+				level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
+			}
+		}()
+
 		// Do not change the signature of PutBlocks yet.
 		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
-		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{storedBlock})
+		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
 		if err != nil {
 			level.Error(logger).Log("msg", "putting blocks to storage", "err", err)
 			return err
@@ -538,4 +556,22 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 	return nil
+}
+
+func (c *Compactor) compressBloomBlock(storedBlock bloomshipper.Block, archivePath, localDst string, logger log.Logger) (bloomshipper.Block, error) {
+	blockToUpload := bloomshipper.Block{}
+	archiveFile, err := os.Create(archivePath)
+	if err != nil {
+		return blockToUpload, err
+	}
+
+	err = v1.TarGz(archiveFile, v1.NewDirectoryBlockReader(localDst))
+	if err != nil {
+		level.Error(logger).Log("msg", "creating bloom block archive file", "err", err)
+		return blockToUpload, err
+	}
+
+	blockToUpload.BlockRef = storedBlock.BlockRef
+	blockToUpload.Data = archiveFile
+	return blockToUpload, nil
 }

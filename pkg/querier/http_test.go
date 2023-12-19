@@ -163,15 +163,15 @@ func TestSeriesHandler(t *testing.T) {
 			return &logproto.SeriesResponse{
 				Series: []logproto.SeriesIdentifier{
 					{
-						Labels: map[string]string{
-							"a": "1",
-							"b": "2",
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "a", Value: "1"},
+							{Key: "b", Value: "2"},
 						},
 					},
 					{
-						Labels: map[string]string{
-							"c": "3",
-							"d": "4",
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "c", Value: "3"},
+							{Key: "d", Value: "4"},
 						},
 					},
 				},
