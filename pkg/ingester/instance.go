@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/dskit/tenant"
 	"math"
 	"net/http"
 	"os"
@@ -428,7 +429,12 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	}
 
 	if i.pipelineWrapper != nil {
-		pipeline = i.pipelineWrapper.Wrap(pipeline, expr.String())
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -477,7 +483,12 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	}
 
 	if i.extractorWrapper != nil {
-		extractor = i.extractorWrapper.Wrap(extractor, expr.String())
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)

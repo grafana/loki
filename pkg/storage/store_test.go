@@ -921,6 +921,7 @@ func Test_PipelineWrapper(t *testing.T) {
 		require.NoError(t, logit.Error()) // consume the iterator
 	}
 
+	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "{foo=~\"ba.*\"}", wrapper.query)
 	require.Equal(t, 28, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
@@ -928,9 +929,11 @@ func Test_PipelineWrapper(t *testing.T) {
 type testPipelineWrapper struct {
 	query    string
 	pipeline *mockPipeline
+	tenant   string
 }
 
-func (t *testPipelineWrapper) Wrap(pipeline lokilog.Pipeline, query string) lokilog.Pipeline {
+func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline lokilog.Pipeline, query, tenant string) lokilog.Pipeline {
+	t.tenant = tenant
 	t.query = query
 	t.pipeline.wrappedExtractor = pipeline
 	return t.pipeline
@@ -999,16 +1002,19 @@ func Test_SampleWrapper(t *testing.T) {
 		require.NoError(t, it.Error()) // consume the iterator
 	}
 
+	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, "count_over_time({foo=~\"ba.*\"}[1s])", wrapper.query)
 	require.Equal(t, 28, wrapper.extractor.sp.called) // we've passed every log line through the wrapper
 }
 
 type testExtractorWrapper struct {
 	query     string
+	tenant    string
 	extractor *mockExtractor
 }
 
-func (t *testExtractorWrapper) Wrap(extractor lokilog.SampleExtractor, query string) lokilog.SampleExtractor {
+func (t *testExtractorWrapper) Wrap(_ context.Context, extractor lokilog.SampleExtractor, query, tenant string) lokilog.SampleExtractor {
+	t.tenant = tenant
 	t.query = query
 	t.extractor.wrappedExtractor = extractor
 	return t.extractor
