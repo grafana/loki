@@ -838,6 +838,7 @@ dev-k3d-down:
 .PHONY: trivy
 trivy: loki-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk

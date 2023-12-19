@@ -1041,6 +1041,10 @@ const (
 	// ConditionDegraded defines the condition that some or all components in the Loki deployment
 	// are degraded or the cluster cannot connect to object storage.
 	ConditionDegraded LokiStackConditionType = "Degraded"
+
+	// ConditionWarning is used for configurations that are not recommended, but don't currently cause
+	// issues. There can be multiple warning conditions active at a time.
+	ConditionWarning LokiStackConditionType = "Warning"
 )
 
 // LokiStackConditionReason defines the type for valid reasons of a Loki deployment conditions.
@@ -1097,6 +1101,8 @@ const (
 	ReasonZoneAwareNodesMissing LokiStackConditionReason = "ReasonZoneAwareNodesMissing"
 	// ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.
 	ReasonZoneAwareEmptyLabel LokiStackConditionReason = "ReasonZoneAwareEmptyLabel"
+	// ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13
+	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

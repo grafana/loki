@@ -366,7 +366,7 @@ func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
 
 	return &LineFilterLabelFilter{
 		Matcher: m,
-		filter:  f,
+		Filter:  f,
 	}
 }
 
@@ -383,12 +383,12 @@ func (s *StringLabelFilter) RequiredLabelNames() []string {
 // LineFilterLabelFilter filters the desired label using an optimized line filter
 type LineFilterLabelFilter struct {
 	*labels.Matcher
-	filter Filterer
+	Filter Filterer
 }
 
 // overrides the matcher.String() function in case there is a regexpFilter
 func (s *LineFilterLabelFilter) String() string {
-	if unwrappedFilter, ok := s.filter.(regexpFilter); ok {
+	if unwrappedFilter, ok := s.Filter.(regexpFilter); ok {
 		rStr := unwrappedFilter.String()
 		str := fmt.Sprintf("%s%s`%s`", s.Matcher.Name, s.Matcher.Type, rStr)
 		return str
@@ -398,7 +398,7 @@ func (s *LineFilterLabelFilter) String() string {
 
 func (s *LineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	v := labelValue(s.Name, lbs)
-	return line, s.filter.Filter(unsafeGetBytes(v))
+	return line, s.Filter.Filter(unsafeGetBytes(v))
 }
 
 func (s *LineFilterLabelFilter) isLabelFilterer() {}

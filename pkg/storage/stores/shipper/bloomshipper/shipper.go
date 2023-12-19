@@ -61,9 +61,9 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 			if !ok {
 				return nil
 			}
-			err := callback(result.BlockQuerier, result.MinFingerprint, result.MaxFingerprint)
+			err := runCallback(callback, result)
 			if err != nil {
-				return fmt.Errorf("error running callback function for block %s err: %w", result.BlockPath, err)
+				return err
 			}
 		case err := <-errorsChannel:
 			if err != nil {
@@ -71,6 +71,17 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 			}
 		}
 	}
+}
+
+func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
+	defer func(result blockWithQuerier) {
+		_ = result.Close()
+	}(block)
+	err := callback(block.closableBlockQuerier.BlockQuerier, block.MinFingerprint, block.MaxFingerprint)
+	if err != nil {
+		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
+	}
+	return nil
 }
 
 func (s *Shipper) ForEachBlock(ctx context.Context, tenantID string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
