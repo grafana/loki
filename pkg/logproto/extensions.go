@@ -58,7 +58,7 @@ func (id SeriesIdentifier) Get(key string) string {
 	return ""
 }
 
-func NewSeriesEntries(labels ...string) []SeriesIdentifier_LabelsEntry {
+func MustNewSeriesEntries(labels ...string) []SeriesIdentifier_LabelsEntry {
 	if len(labels)%2 != 0 {
 		panic("invalid number of labels")
 	}

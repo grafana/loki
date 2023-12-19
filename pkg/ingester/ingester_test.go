@@ -279,13 +279,13 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: logproto.NewSeriesEntries(
+			Labels: logproto.MustNewSeriesEntries(
 				"bar", "baz1",
 				"foo", "bar",
 			),
 		},
 		{
-			Labels: logproto.NewSeriesEntries(
+			Labels: logproto.MustNewSeriesEntries(
 				"bar", "baz2",
 				"foo", "bar",
 			),
@@ -317,13 +317,13 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: logproto.NewSeriesEntries(
+			Labels: logproto.MustNewSeriesEntries(
 				"bar", "baz1",
 				"foo", "bar",
 			),
 		},
 		{
-			Labels: logproto.NewSeriesEntries(
+			Labels: logproto.MustNewSeriesEntries(
 				"bar", "baz2",
 				"foo", "bar",
 			),
@@ -339,7 +339,7 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: logproto.NewSeriesEntries(
+			Labels: logproto.MustNewSeriesEntries(
 				"bar", "baz2",
 				"foo", "bar",
 			),
@@ -355,13 +355,13 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: logproto.NewSeriesEntries(
+			Labels: logproto.MustNewSeriesEntries(
 				"bar", "baz1",
 				"foo", "bar",
 			),
 		},
 		{
-			Labels: logproto.NewSeriesEntries(
+			Labels: logproto.MustNewSeriesEntries(
 				"bar", "baz2",
 				"foo", "bar",
 			),

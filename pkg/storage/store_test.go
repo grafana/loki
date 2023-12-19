@@ -1617,16 +1617,16 @@ func Test_GetSeries(t *testing.T) {
 		ctx            = user.InjectOrgID(context.Background(), "test-user")
 		expectedSeries = []logproto.SeriesIdentifier{
 			{
-				Labels: logproto.NewSeriesEntries("bar", "foo"),
+				Labels: logproto.MustNewSeriesEntries("bar", "foo"),
 			},
 			{
-				Labels: logproto.NewSeriesEntries(
+				Labels: logproto.MustNewSeriesEntries(
 					"buzz", "boo",
 					"foo", "bar",
 				),
 			},
 			{
-				Labels: logproto.NewSeriesEntries("foo", "buzz"),
+				Labels: logproto.MustNewSeriesEntries("foo", "buzz"),
 			},
 		}
 	)
@@ -1658,7 +1658,7 @@ func Test_GetSeries(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				{
-					Labels: logproto.NewSeriesEntries(
+					Labels: logproto.MustNewSeriesEntries(
 						"buzz", "boo",
 						"foo", "bar",
 					),

@@ -411,8 +411,8 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: logproto.NewSeriesEntries("app", "test", "job", "varlogs")},
-				{Labels: logproto.NewSeriesEntries("app", "test2", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 		{
@@ -428,7 +428,7 @@ func Test_SeriesQuery(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				// Separated by shard number
-				{Labels: logproto.NewSeriesEntries("app", "test2", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 		{
@@ -439,7 +439,7 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: logproto.NewSeriesEntries("app", "test", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test", "job", "varlogs")},
 			},
 		},
 		{
@@ -450,7 +450,7 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: logproto.NewSeriesEntries("app", "test2", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 	}
