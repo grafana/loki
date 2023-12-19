@@ -473,9 +473,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	}
 	result := make([]logproto.SeriesIdentifier, len(series))
 	for i, s := range series {
-		result[i] = logproto.SeriesIdentifier{
-			Labels: s.Map(),
-		}
+		result[i] = logproto.SeriesIdentifierFromLabels(s)
 	}
 	return result, nil
 }
