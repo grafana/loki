@@ -1860,6 +1860,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 	chkFrom := now.Add(-50 * time.Second)
 	chkThrough := now
 
+	// add some streams with and without structured metadata
 	for _, withStructuredMetadata := range []bool{true, false} {
 		stream := fmt.Sprintf(`{sm="%v"}`, withStructuredMetadata)
 		lbs, err := syntax.ParseLabels(stream)
@@ -1875,7 +1876,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
 			entry := logproto.Entry{
 				Timestamp: ts,
-				Line:      fmt.Sprintf("ts=%d,level=info", ts.Unix()),
+				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
 			}
 
 			if withStructuredMetadata {
@@ -1897,6 +1898,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		}
 		require.NoError(t, store.Put(ctx, []chunk.Chunk{c}))
 
+		// verify the data by querying it
 		it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  stream,
 			Limit:     1000,
@@ -1913,7 +1915,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			require.True(t, it.Next())
 			expectedEntry := logproto.Entry{
 				Timestamp: ts.Truncate(0),
-				Line:      fmt.Sprintf("ts=%d,level=info", ts.Unix()),
+				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
 			}
 
 			if withStructuredMetadata {
@@ -1928,7 +1930,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		}
 
 		require.False(t, it.Next())
-		it.Close()
+		require.NoError(t, it.Close())
 	}
 
 	// test cases for logs queries
@@ -1972,15 +1974,18 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					Limit:     1000,
 					Direction: logproto.FORWARD,
 					Start:     chkFrom,
-					End:       chkThrough,
+					End:       chkThrough.Add(time.Minute),
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(tc.query),
 					},
 				}})
 				require.NoError(t, err)
+				numEntries := int64(0)
 				for it.Next() {
+					numEntries++
 				}
 				require.NoError(t, it.Close())
+				require.Equal(t, chkThrough.Unix()-chkFrom.Unix()+1, numEntries)
 
 				statsCtx := stats.FromContext(ctx)
 				require.Equal(t, tc.expectedReferencedStructuredMetadata, statsCtx.Result(0, 0, 0).QueryReferencedStructuredMetadata())
@@ -2030,11 +2035,14 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), "fake")
 				_, ctx = stats.NewContext(ctx)
-				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough, nil)})
+				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough.Add(time.Minute), nil)})
 				require.NoError(t, err)
+				numSamples := int64(0)
 				for it.Next() {
+					numSamples++
 				}
 				require.NoError(t, it.Close())
+				require.Equal(t, chkThrough.Unix()-chkFrom.Unix()+1, numSamples)
 
 				statsCtx := stats.FromContext(ctx)
 				require.Equal(t, tc.expectedReferencedStructuredMetadata, statsCtx.Result(0, 0, 0).QueryReferencedStructuredMetadata())
