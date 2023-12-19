@@ -513,13 +513,13 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			Version: 1,
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{
-						"foo": "bar",
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "foo", Value: "bar"},
 					},
 				},
 				{
-					Labels: map[string]string{
-						"shard": req.Shards[0],
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "shard", Value: req.Shards[0]},
 					},
 				},
 			},
@@ -537,36 +537,31 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Version:    1,
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{
-					"foo": "bar",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "foo", Value: "bar"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "0_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "0_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "1_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "1_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "2_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "2_of_3"},
 				},
 			},
 		},
 	}
-	sort.Slice(expected.Data, func(i, j int) bool {
-		return expected.Data[i].Labels["shard"] > expected.Data[j].Labels["shard"]
-	})
 	actual := response.(*LokiSeriesResponse)
-	sort.Slice(actual.Data, func(i, j int) bool {
-		return actual.Data[i].Labels["shard"] > actual.Data[j].Labels["shard"]
-	})
 	require.NoError(t, err)
-	require.Equal(t, expected, actual)
+	require.Equal(t, expected.Status, actual.Status)
+	require.ElementsMatch(t, expected.Data, actual.Data)
 }
 
 func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
