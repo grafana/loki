@@ -5438,7 +5438,7 @@ func TestBuild_ConfigAndRuntimeConfig_STS(t *testing.T) {
     s3:
       s3: s3://my-region/my-bucket
       s3forcepathstyle: false`
-      
+
 	expCfg := `
 ---
 auth_enabled: true
