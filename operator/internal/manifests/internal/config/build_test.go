@@ -5419,37 +5419,27 @@ analytics:
 	}
 }
 
-func TestBuild_ConfigAndRuntimeConfig_STS_WIF(t *testing.T) {
-	defaultSchema := []lokiv1.ObjectStorageSchema{
-		{
-			Version:       lokiv1.ObjectStorageSchemaV11,
-			EffectiveDate: "2020-10-01",
+func TestBuild_ConfigAndRuntimeConfig_STS(t *testing.T) {
+	objStorageConfig := storage.Options{
+		SharedStore: lokiv1.ObjectStorageSecretS3,
+		S3: &storage.S3StorageConfig{
+			STS:     true,
+			Region:  "my-region",
+			Buckets: "my-bucket",
+		},
+		Schemas: []lokiv1.ObjectStorageSchema{
+			{
+				Version:       lokiv1.ObjectStorageSchemaV11,
+				EffectiveDate: "2020-10-01",
+			},
 		},
 	}
-	for _, tc := range []struct {
-		name             string
-		objStorageConfig storage.Options
-		expStorageConfig string
-	}{
-		{
-			name: "aws_sts",
-			objStorageConfig: storage.Options{
-				SharedStore: lokiv1.ObjectStorageSecretS3,
-				S3: &storage.S3StorageConfig{
-					RoleArn:              "my-role-arn",
-					Region:               "my-region",
-					Buckets:              "my-bucket",
-				},
-				Schemas: defaultSchema,
-			},
-			expStorageConfig: `
+	expStorageConfig := `
     s3:
       s3: s3://my-region/my-bucket
-      s3forcepathstyle: false`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			expCfg := `
+      s3forcepathstyle: false`
+      
+	expCfg := `
 ---
 auth_enabled: true
 chunk_store_config:
@@ -5603,14 +5593,12 @@ tracing:
 analytics:
   reporting_enabled: true
 `
-			expCfg = strings.Replace(expCfg, "${STORAGE_CONFIG}", tc.expStorageConfig, 1)
+	expCfg = strings.Replace(expCfg, "${STORAGE_CONFIG}", expStorageConfig, 1)
 
-			opts := defaultOptions()
-			opts.ObjectStorage = tc.objStorageConfig
+	opts := defaultOptions()
+	opts.ObjectStorage = objStorageConfig
 
-			cfg, _, err := Build(opts)
-			require.NoError(t, err)
-			require.YAMLEq(t, expCfg, string(cfg))
-		})
-	}
+	cfg, _, err := Build(opts)
+	require.NoError(t, err)
+	require.YAMLEq(t, expCfg, string(cfg))
 }

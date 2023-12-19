@@ -136,6 +136,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	id := s.Data[storage.KeyAWSAccessKeyID]
 	secret := s.Data[storage.KeyAWSAccessKeySecret]
 	// Fields related with STS authentication
+	var sts bool
 	roleArn := s.Data[storage.KeyAWSRoleArn]
 	audience := s.Data[storage.KeyAWSAudience]
 	// Optional fields
@@ -152,6 +153,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
 		}
 	} else {
+		sts = true
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
 			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSRegion)
@@ -167,7 +169,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 		Endpoint: string(endpoint),
 		Buckets:  string(buckets),
 		Region:   string(region),
-		RoleArn:  string(roleArn),
+		STS:      sts,
 		Audience: string(audience),
 		SSE:      sseCfg,
 	}, nil

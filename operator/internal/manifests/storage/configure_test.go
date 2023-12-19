@@ -305,7 +305,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					RoleArn:  "roleARN",
+					STS:      true,
 					Audience: "test",
 				},
 			},
@@ -397,7 +397,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					RoleArn:  "roleARN",
+					STS:      true,
 					Audience: "test",
 				},
 			},

@@ -24,7 +24,7 @@ common:
     {{- end }}
     {{- with .ObjectStorage.S3 }}
     s3:
-      {{- if .RoleArn }}
+      {{- if .STS }}
       s3: "s3://{{.Region}}/{{.Buckets}}"
       s3forcepathstyle: false
       {{- else }}

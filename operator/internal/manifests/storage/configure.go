@@ -107,23 +107,9 @@ func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 }
 
 func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options, osEnabled bool) corev1.PodSpec {
-	envVarFromSecret := func(name, secretName, secretKey string) corev1.EnvVar {
-		return corev1.EnvVar{
-			Name: name,
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: secretName,
-					},
-					Key: secretKey,
-				},
-			},
-		}
-	}
 	container := p.Containers[0].DeepCopy()
 	volumes := p.Volumes
 	secretName := opts.SecretName
-	storeType := opts.SharedStore
 
 	volumes = append(volumes, corev1.Volume{
 		Name: secretName,
@@ -140,62 +126,69 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options, osEnabled boo
 		MountPath: secretDirectory,
 	})
 
-	if wifEnabled(opts) {
+	if !wifEnabled(opts) {
+		container.Env = append(container.Env, envVarsNoWIF(opts)...)
+	} else {
+		setSATokenPath(&opts, osEnabled)
+		container.Env = append(container.Env, envVarsWIF(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
-		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(&opts, osEnabled))
+		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
 	}
-
-	var storeEnvVars []corev1.EnvVar
-	switch storeType {
-	case lokiv1.ObjectStorageSecretAlibabaCloud:
-		storeEnvVars = []corev1.EnvVar{
-			envVarFromSecret(EnvAlibabaCloudAccessKeyID, secretName, KeyAlibabaCloudAccessKeyID),
-			envVarFromSecret(EnvAlibabaCloudAccessKeySecret, secretName, KeyAlibabaCloudSecretAccessKey),
-		}
-	case lokiv1.ObjectStorageSecretAzure:
-		storeEnvVars = []corev1.EnvVar{
-			envVarFromSecret(EnvAzureStorageAccountName, secretName, KeyAzureStorageAccountName),
-			envVarFromSecret(EnvAzureStorageAccountKey, secretName, KeyAzureStorageAccountKey),
-		}
-	case lokiv1.ObjectStorageSecretGCS:
-		storeEnvVars = []corev1.EnvVar{
-			{
-				Name:  EnvGoogleApplicationCredentials,
-				Value: path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename),
-			},
-		}
-	case lokiv1.ObjectStorageSecretS3:
-		storeEnvVars = []corev1.EnvVar{
-			envVarFromSecret(EnvAWSAccessKeyID, secretName, KeyAWSAccessKeyID),
-			envVarFromSecret(EnvAWSAccessKeySecret, secretName, KeyAWSAccessKeySecret),
-		}
-		// STS Auth Workflow
-		if wifEnabled(opts) {
-			storeEnvVars = []corev1.EnvVar{
-				envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
-				{
-					Name:  EnvAWSWebIdentityTokenFile,
-					Value: path.Join(opts.S3.WebIdentityTokenFile, "token"),
-				},
-			}
-		}
-		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
-			storeEnvVars = append(storeEnvVars, envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, KeyAWSSseKmsEncryptionContext))
-		}
-	case lokiv1.ObjectStorageSecretSwift:
-		storeEnvVars = []corev1.EnvVar{
-			envVarFromSecret(EnvSwiftUsername, secretName, KeySwiftUsername),
-			envVarFromSecret(EnvSwiftPassword, secretName, KeySwiftPassword),
-		}
-	}
-
-	container.Env = append(container.Env, storeEnvVars...)
 
 	return corev1.PodSpec{
 		Containers: []corev1.Container{
 			*container,
 		},
 		Volumes: volumes,
+	}
+}
+
+func envVarsNoWIF(opts Options) []corev1.EnvVar {
+	secretName := opts.SecretName
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretAlibabaCloud:
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAlibabaCloudAccessKeyID, secretName, KeyAlibabaCloudAccessKeyID),
+			envVarFromSecret(EnvAlibabaCloudAccessKeySecret, secretName, KeyAlibabaCloudSecretAccessKey),
+		}
+	case lokiv1.ObjectStorageSecretAzure:
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAzureStorageAccountName, secretName, KeyAzureStorageAccountName),
+			envVarFromSecret(EnvAzureStorageAccountKey, secretName, KeyAzureStorageAccountKey),
+		}
+	case lokiv1.ObjectStorageSecretGCS:
+		return []corev1.EnvVar{
+			envVarFromValue(EnvGoogleApplicationCredentials, path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename)),
+		}
+	case lokiv1.ObjectStorageSecretS3:
+		storeEnvVars := []corev1.EnvVar{
+			envVarFromSecret(EnvAWSAccessKeyID, secretName, KeyAWSAccessKeyID),
+			envVarFromSecret(EnvAWSAccessKeySecret, secretName, KeyAWSAccessKeySecret),
+		}
+		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
+			storeEnvVars = append(storeEnvVars, envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, KeyAWSSseKmsEncryptionContext))
+		}
+		return storeEnvVars
+	case lokiv1.ObjectStorageSecretSwift:
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvSwiftUsername, secretName, KeySwiftUsername),
+			envVarFromSecret(EnvSwiftPassword, secretName, KeySwiftPassword),
+		}
+	default:
+		return []corev1.EnvVar{}
+	}
+}
+
+func envVarsWIF(opts Options) []corev1.EnvVar {
+	secretName := opts.SecretName
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
+			envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
+		}
+	default:
+		return []corev1.EnvVar{}
 	}
 }
 
@@ -236,13 +229,13 @@ func wifEnabled(opts Options) bool {
 	storeType := opts.SharedStore
 	switch storeType {
 	case lokiv1.ObjectStorageSecretS3:
-		return opts.S3 != nil && opts.S3.RoleArn != ""
+		return opts.S3 != nil && opts.S3.STS
 	default:
 		return false
 	}
 }
 
-func saTokenVolumeMount(opts *Options, osEnabled bool) corev1.VolumeMount {
+func setSATokenPath(opts *Options, osEnabled bool) {
 	var wiToken string
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
@@ -250,8 +243,15 @@ func saTokenVolumeMount(opts *Options, osEnabled bool) corev1.VolumeMount {
 		if osEnabled {
 			wiToken = saTokenVolumeOcpDirectory
 		}
-		// Will be used to set env variable
 		opts.S3.WebIdentityTokenFile = wiToken
+	}
+}
+
+func saTokenVolumeMount(opts Options) corev1.VolumeMount {
+	var wiToken string
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		wiToken = opts.S3.WebIdentityTokenFile
 	}
 	return corev1.VolumeMount{
 		Name:      saTokenVolumeName,
@@ -281,5 +281,26 @@ func saTokenVolume(opts Options) corev1.Volume {
 				},
 			},
 		},
+	}
+}
+
+func envVarFromSecret(name, secretName, secretKey string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: name,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: secretName,
+				},
+				Key: secretKey,
+			},
+		},
+	}
+}
+
+func envVarFromValue(name, value string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name:  name,
+		Value: value,
 	}
 }

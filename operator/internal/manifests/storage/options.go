@@ -38,9 +38,9 @@ type S3StorageConfig struct {
 	Endpoint             string
 	Region               string
 	Buckets              string
-	RoleArn              string
 	WebIdentityTokenFile string
 	Audience             string
+	STS                  bool
 	SSE                  S3SSEConfig
 }
 
