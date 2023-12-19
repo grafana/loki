@@ -237,11 +237,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 	mockSeriesResponse := func(series []map[string]string) *logproto.SeriesResponse {
 		resp := &logproto.SeriesResponse{}
 		for _, s := range series {
-			id := logproto.SeriesIdentifier{}
-			for k, v := range s {
-				id.Labels = append(id.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
-			}
-			resp.Series = append(resp.Series, id)
+			resp.Series = append(resp.Series, logproto.SeriesIdentifierFromMap(s))
 		}
 		return resp
 	}

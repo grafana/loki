@@ -8,6 +8,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -56,6 +57,26 @@ func (id SeriesIdentifier) Get(key string) string {
 	}
 
 	return ""
+}
+
+func SeriesIdentifierFromMap(in map[string]string) SeriesIdentifier {
+	id := SeriesIdentifier{
+		Labels: make([]SeriesIdentifier_LabelsEntry, 0, len(in)),
+	}
+	for k, v := range in {
+		id.Labels = append(id.Labels, SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+	}
+	return id
+}
+
+func SeriesIdentifierFromLabels(in labels.Labels) SeriesIdentifier {
+	id := SeriesIdentifier{
+		Labels: make([]SeriesIdentifier_LabelsEntry, len(in)),
+	}
+	for i, l := range in {
+		id.Labels[i] = SeriesIdentifier_LabelsEntry{Key: l.Name, Value: l.Value}
+	}
+	return id
 }
 
 func MustNewSeriesEntries(labels ...string) []SeriesIdentifier_LabelsEntry {
