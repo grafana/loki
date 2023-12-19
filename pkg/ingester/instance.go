@@ -10,10 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/logql/log"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -26,6 +22,8 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/distributor/writefailures"
@@ -34,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
