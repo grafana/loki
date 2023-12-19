@@ -20,9 +20,7 @@ type SeriesSplitter struct {
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
 func (i SeriesSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
-
 	sr := r.(*LokiSeriesRequest)
-
 	split := i.QuerySplitDuration(userID)
 
 	var currentInterval int64
@@ -49,6 +47,7 @@ func (p SeriesExtractor) Extract(start, end int64, res resultscache.Response, re
 	result := &LokiSeriesResponse{
 		Status:     seriesRes.Status,
 		Version:    seriesRes.Version,
+		Data:       seriesRes.Data,
 		Statistics: seriesRes.Statistics,
 	}
 

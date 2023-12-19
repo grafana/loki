@@ -66,7 +66,6 @@ func TestSeriesCache(t *testing.T) {
 					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
 				},
 			},
-
 			Statistics: stats.Result{
 				Summary: stats.Summary{
 					Splits: 1,
@@ -110,7 +109,6 @@ func TestSeriesCache(t *testing.T) {
 					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
 				},
 			},
-
 			Statistics: stats.Result{
 				Summary: stats.Summary{
 					Splits: 1,
@@ -135,12 +133,13 @@ func TestSeriesCache(t *testing.T) {
 
 		*calls = 0
 		req := seriesReq.WithStartEnd(seriesReq.GetStart().Add(15*time.Minute), seriesReq.GetEnd().Add(15*time.Minute))
-		expectedSeries := &LokiSeriesResponse{}
 
 		resp, err = handler.Do(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, 1, *calls)
-		require.Equal(t, expectedSeries, resp)
+		// two splits as we merge the results from the extent and downstream request
+		seriesResp.Statistics.Summary.Splits = 2
+		require.Equal(t, seriesResp, resp)
 	})
 
 	// t.Run("caches are only valid for the same request parameters", func(t *testing.T) {
