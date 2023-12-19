@@ -2,7 +2,9 @@ package bloomcompactor
 
 import (
 	"context"
+
 	"github.com/grafana/dskit/concurrency"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 
