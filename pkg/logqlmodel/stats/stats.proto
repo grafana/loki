@@ -49,6 +49,10 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "volumeResult"
   ];
+  Cache seriesResult = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "seriesResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.

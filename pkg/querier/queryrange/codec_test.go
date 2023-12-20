@@ -2006,6 +2006,7 @@ var (
 			Index:        stats.Cache{},
 			StatsResult:  stats.Cache{},
 			VolumeResult: stats.Cache{},
+			SeriesResult: stats.Cache{},
 			Result:       stats.Cache{},
 		},
 	}

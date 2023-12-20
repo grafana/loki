@@ -101,6 +101,7 @@ func (c *Context) Caches() Caches {
 		Result:       c.caches.Result,
 		StatsResult:  c.caches.StatsResult,
 		VolumeResult: c.caches.VolumeResult,
+		SeriesResult: c.caches.SeriesResult,
 	}
 }
 
@@ -216,6 +217,7 @@ func (c *Caches) Merge(m Caches) {
 	c.Result.Merge(m.Result)
 	c.StatsResult.Merge(m.StatsResult)
 	c.VolumeResult.Merge(m.VolumeResult)
+	c.SeriesResult.Merge(m.SeriesResult)
 }
 
 func (c *Cache) Merge(m Cache) {
