@@ -21,12 +21,22 @@ query_range:
   cache_index_stats_results: true
   cache_results: true
   cache_volume_results: true
+  cache_series_results: true
+  series_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        addresses: "localhost:11211"
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
   index_stats_results_cache:
     cache:
       default_validity: 12h
       memcached_client:
         consistent_hash: true
-        host: localhost:11211
+        addresses: "localhost:11211"
         max_idle_conns: 16
         timeout: 500ms
         update_interval: 1m
@@ -37,7 +47,7 @@ query_range:
       default_validity: 12h
       memcached_client:
         consistent_hash: true
-        host: localhost:11211
+        addresses: "localhost:11211"
         max_idle_conns: 16
         timeout: 500ms
         update_interval: 1m

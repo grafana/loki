@@ -59,7 +59,7 @@ type Config struct {
 	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
 	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
 	CacheSeriesResults     bool                  `yaml:"cache_series_results"`
-	SeriesCacheConfig      SeriesCacheConfig     `yaml"series_results_cache"`
+	SeriesCacheConfig      SeriesCacheConfig     `yaml:"series_results_cache"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -177,6 +177,7 @@ func NewMiddleware(
 
 	if cfg.CacheSeriesResults {
 		// If the series cache is not configured, use the results cache config.
+		// TODO(kavi): While testing I realized, if we reuse the results cache config exactly, it panics during installation. Because of same cfg.prefix (used to register promtheus). Need to change in all results cache.
 		cacheCfg := cfg.SeriesCacheConfig.ResultsCacheConfig
 		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
 			level.Debug(log).Log("msg", "using results cache config for series cache")
