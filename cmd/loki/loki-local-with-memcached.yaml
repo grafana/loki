@@ -17,11 +17,39 @@ common:
       store: inmemory
 
 query_range:
+  align_queries_with_step: true
+  cache_index_stats_results: true
+  cache_results: true
+  cache_volume_results: true
+  index_stats_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        host: localhost:11211
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
+  max_retries: 5
+  parallelise_shardable_queries: true
   results_cache:
     cache:
-      embedded_cache:
-        enabled: true
-        max_size_mb: 100
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        host: localhost:11211
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
+  volume_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        host: localhost:11211
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
 
 schema_config:
   configs:
