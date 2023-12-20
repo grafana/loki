@@ -132,8 +132,8 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	// (end - start) / step == len(results)
 	params := LiteralParams{
 		start: time.Unix(0, 0),
-		end: time.Unix(int64(len(results)), 0),
-		step: time.Second,
+		end:   time.Unix(int64(len(results)), 0),
+		step:  time.Second,
 	}
 
 	b.ReportAllocs()
@@ -151,7 +151,7 @@ func newRandomSketch() sketch.QuantileSketch {
 	r := rand.New(rand.NewSource(42))
 	s := sketch.NewDDSketch()
 	for i := 0; i < 1000; i++ {
-		s.Add(r.Float64())
+		_ = s.Add(r.Float64())
 	}
 	return s
 }
