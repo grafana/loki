@@ -114,6 +114,8 @@ func New(
 
 	c.storeClients = make(map[config.DayTime]storeClient)
 
+	indexShipperReg := prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r)
+
 	for i, periodicConfig := range schemaConfig.Configs {
 		if periodicConfig.IndexType != config.TSDBType {
 			level.Warn(c.logger).Log("msg", "skipping schema period because index type is not supported", "index_type", periodicConfig.IndexType, "period", periodicConfig.From)
@@ -131,6 +133,16 @@ func New(
 			periodEndTime = config.DayTime{Time: schemaConfig.Configs[i+1].From.Time.Add(-time.Millisecond)}
 		}
 
+		pReg := prometheus.WrapRegistererWith(
+			prometheus.Labels{
+				"component": fmt.Sprintf(
+					"index-store-%s-%s",
+					periodicConfig.IndexType,
+					periodicConfig.From.String(),
+				),
+			}, indexShipperReg)
+		pLogger := log.With(logger, "index-store", fmt.Sprintf("%s-%s", periodicConfig.IndexType, periodicConfig.From.String()))
+
 		indexShipper, err := indexshipper.NewIndexShipper(
 			periodicConfig.IndexTables.PathPrefix,
 			storageCfg.TSDBShipperConfig,
@@ -141,8 +153,8 @@ func New(
 				return tsdb.OpenShippableTSDB(p)
 			},
 			periodicConfig.GetIndexTableNumberRange(periodEndTime),
-			prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r),
-			logger,
+			pReg,
+			pLogger,
 		)
 
 		if err != nil {
