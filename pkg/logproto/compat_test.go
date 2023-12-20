@@ -2,7 +2,6 @@ package logproto
 
 import (
 	"encoding/json"
-	stdlibjson "encoding/json"
 	"fmt"
 	"math"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 // This test verifies that jsoninter uses our custom method for marshalling.
@@ -21,7 +22,7 @@ func TestJsoniterMarshalForSample(t *testing.T) {
 }
 
 func TestStdlibJsonMarshalForSample(t *testing.T) {
-	testMarshalling(t, stdlibjson.Marshal, "json: error calling MarshalJSON for type logproto.LegacySample: test sample")
+	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type logproto.LegacySample: test sample")
 }
 
 func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
@@ -303,14 +304,14 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 		{
 			desc: "request with filters but no chunks",
 			request: FilterChunkRefRequest{
-				Filters: []*LineFilterExpression{
+				Filters: []syntax.LineFilter{
 					{
-						Operator: 0,
-						Match:    "uuid",
+						Ty:    0,
+						Match: "uuid",
 					},
 				},
 			},
-			expected: `0/0-uuid`,
+			expected: `0/0-uuid-`,
 		},
 		{
 			desc: "request with filters and chunks",
@@ -325,18 +326,18 @@ func TestFilterChunkRefRequestGetQuery(t *testing.T) {
 						Tenant:      "test",
 					},
 				},
-				Filters: []*LineFilterExpression{
+				Filters: []syntax.LineFilter{
 					{
-						Operator: 0,
-						Match:    "uuid",
+						Ty:    0,
+						Match: "uuid",
 					},
 					{
-						Operator: 1,
-						Match:    "trace",
+						Ty:    1,
+						Match: "trace",
 					},
 				},
 			},
-			expected: `8827404902424034886/0-uuid,1-trace`,
+			expected: `8827404902424034886/0-uuid-,1-trace-`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

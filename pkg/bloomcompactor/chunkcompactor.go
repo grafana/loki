@@ -55,6 +55,10 @@ func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) 
 	return p.builder.BuildFrom(itr)
 }
 
+func (p *PersistentBlockBuilder) mergeBuild(builder *v1.MergeBuilder) (uint32, error) {
+	return builder.Build(p.builder)
+}
+
 func (p *PersistentBlockBuilder) Data() (io.ReadSeekCloser, error) {
 	blockFile, err := os.Open(filepath.Join(p.localDst, v1.BloomFileName))
 	if err != nil {
@@ -80,7 +84,7 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 	return chunkRefs
 }
 
-func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks []chunk.Chunk) v1.SeriesWithBloom {
+func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks []chunk.Chunk) (v1.SeriesWithBloom, error) {
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
@@ -92,8 +96,11 @@ func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compa
 	}
 
 	// Tokenize data into n-grams
-	_ = tokenizer.PopulateSeriesWithBloom(&bloomForChks, chunks)
-	return bloomForChks
+	err := tokenizer.PopulateSeriesWithBloom(&bloomForChks, chunks)
+	if err != nil {
+		return v1.SeriesWithBloom{}, err
+	}
+	return bloomForChks, nil
 }
 
 // TODO Test this when bloom block size check is implemented
@@ -165,7 +172,7 @@ func compactNewChunks(
 	// Build and upload bloomBlock to storage
 	block, err := buildBlockFromBlooms(ctx, logger, builder, bloomIter, job)
 	if err != nil {
-		level.Error(logger).Log("msg", "building bloomBlocks", "err", err)
+		level.Error(logger).Log("msg", "failed building bloomBlocks", "err", err)
 		return bloomshipper.Block{}, err
 	}
 
@@ -215,7 +222,12 @@ func (it *lazyBloomBuilder) Next() bool {
 		return false
 	}
 
-	it.cur = buildBloomFromSeries(meta, it.fpRate, it.bt, chks)
+	it.cur, err = buildBloomFromSeries(meta, it.fpRate, it.bt, chks)
+	if err != nil {
+		it.err = err
+		it.cur = v1.SeriesWithBloom{}
+		return false
+	}
 	return true
 }
 

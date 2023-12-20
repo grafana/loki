@@ -242,9 +242,17 @@ func (w *worker) processBlocksSequentially(taskCtx context.Context, tenant strin
 }
 
 func processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
-	it := newTaskMergeIterator(day, tasks...)
+	schema, err := blockQuerier.Schema()
+	if err != nil {
+		for _, t := range tasks {
+			t.ErrCh <- errors.Wrap(err, "failed to get block schema")
+		}
+	}
+
+	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
+	it := newTaskMergeIterator(day, tokenizer, tasks...)
 	fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
-	err := fq.Run()
+	err = fq.Run()
 	if err != nil {
 		for _, t := range tasks {
 			t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
