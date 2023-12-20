@@ -92,6 +92,7 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	if err != nil {
 		return nil, err
 	}
+	// TODO: update query plan
 	params.Selector = updatedSelector.String()
 
 	iters := make([]iter.SampleIterator, len(matchedTenants))
