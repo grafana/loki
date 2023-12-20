@@ -99,7 +99,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelRulerComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.ObjectStorage.SecretSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		ServiceAccountName: opts.Name,
 		Affinity:           configureAffinity(LabelRulerComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ruler),
 		Volumes: []corev1.Volume{
 			{
