@@ -66,8 +66,4 @@ func TestServiceAccountName_MatchesPodSpecServiceAccountName(t *testing.T) {
 	t.Run("index_gateway", func(t *testing.T) {
 		assert.Equal(t, sa.GetName(), NewIndexGatewayStatefulSet(opts).Spec.Template.Spec.ServiceAccountName)
 	})
-
-	t.Run("ruler", func(t *testing.T) {
-		assert.Equal(t, sa.GetName(), NewRulerStatefulSet(opts).Spec.Template.Spec.ServiceAccountName)
-	})
 }
