@@ -142,196 +142,75 @@ func TestSeriesCache(t *testing.T) {
 		require.Equal(t, seriesResp, resp)
 	})
 
-	// t.Run("caches are only valid for the same request parameters", func(t *testing.T) {
-	// 	seriesResp := &LokiSeriesResponse{
-	// 		Response: &logproto.LokiSeriesResponse{
-	// 			Volumes: []logproto.Volume{
-	// 				{
-	// 					Name:   `{foo="bar"}`,
-	// 					Volume: 42,
-	// 				},
-	// 			},
-	// 			Limit: 10,
-	// 		},
-	// 	}
-	// 	calls, handler := setup(seriesResp)
+	t.Run("caches are only valid for the same request parameters", func(t *testing.T) {
+		seriesResp := &LokiSeriesResponse{
+			Status:  "success",
+			Version: uint32(loghttp.VersionV1),
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
+				},
+			},
+			Statistics: stats.Result{
+				Summary: stats.Summary{
+					Splits: 1,
+				},
+			},
+		}
 
-	// 	// initial call to fill cache
-	// 	from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
-	// 	seriesReq := &logproto.VolumeRequest{
-	// 		From:     from,
-	// 		Through:  through,
-	// 		Matchers: `{foo="bar"}`,
-	// 		Limit:    10,
-	// 		Step:     1,
-	// 	}
+		calls, handler := setup(seriesResp)
 
-	// 	ctx := user.InjectOrgID(context.Background(), "fake")
-	// 	_, err := handler.Do(ctx, seriesReq)
-	// 	require.NoError(t, err)
-	// 	require.Equal(t, 1, *calls)
+		// initial call to fill cache
+		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+		seriesReq := &LokiSeriesRequest{
+			StartTs: from.Time(),
+			EndTs:   through.Time(),
+			Match:   []string{`{namespace=~".*"}`},
+			Path:    seriesAPIPath,
+		}
 
-	// 	type testCase struct {
-	// 		fn func(*logproto.VolumeRequest)
-	// 	}
-	// 	testCases := map[string]testCase{
-	// 		"different step": {
-	// 			fn: func(req *logproto.VolumeRequest) {
-	// 				req.Step = 2
-	// 			},
-	// 		},
-	// 		"new limit": {
-	// 			fn: func(req *logproto.VolumeRequest) {
-	// 				req.Limit = 11
-	// 			},
-	// 		},
-	// 		"aggregate by labels": {
-	// 			fn: func(req *logproto.VolumeRequest) {
-	// 				req.AggregateBy = seriesvolume.Labels
-	// 			},
-	// 		},
-	// 		"target labels": {
-	// 			fn: func(req *logproto.VolumeRequest) {
-	// 				req.TargetLabels = []string{"foo"}
-	// 			},
-	// 		},
-	// 	}
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err := handler.Do(ctx, seriesReq)
+		require.NoError(t, err)
+		require.Equal(t, 1, *calls)
 
-	// 	for name, tc := range testCases {
-	// 		*calls = 0
+		type testCase struct {
+			fn   func(*LokiSeriesRequest)
+			user string
+		}
+		testCases := map[string]testCase{
+			"different match": {
+				fn: func(req *LokiSeriesRequest) {
+					req.Match = append(req.Match, `{foo="bar"}`)
+				},
+			},
+			"different user": {
+				user: "fake2s",
+			},
+		}
 
-	// 		seriesReq := &logproto.VolumeRequest{
-	// 			From:     from,
-	// 			Through:  through,
-	// 			Matchers: `{foo="bar"}`,
-	// 			Limit:    10,
-	// 			Step:     1,
-	// 		}
-	// 		tc.fn(seriesReq)
+		for name, tc := range testCases {
+			*calls = 0
 
-	// 		_, err = handler.Do(ctx, seriesReq)
-	// 		require.NoError(t, err)
-	// 		require.Equal(t, 1, *calls, name)
-	// 	}
-	// })
+			seriesReq := &LokiSeriesRequest{
+				StartTs: from.Time(),
+				EndTs:   through.Time(),
+				Match:   []string{`{foo="bar"}`},
+			}
+			if tc.fn != nil {
+				tc.fn(seriesReq)
+			}
+
+			if tc.user != "" {
+				ctx = user.InjectOrgID(context.Background(), tc.user)
+			}
+
+			_, err = handler.Do(ctx, seriesReq)
+			require.NoError(t, err)
+			require.Equal(t, 1, *calls, name)
+		}
+	})
 }
-
-// func TestVolumeCache_RecentData(t *testing.T) {
-// 	volumeCacheMiddlewareNowTimeFunc = func() model.Time { return model.Time(testTime.UnixMilli()) }
-// 	now := volumeCacheMiddlewareNowTimeFunc()
-
-// 	seriesResp := &LokiSeriesResponse{
-// 		Response: &logproto.LokiSeriesResponse{
-// 			Volumes: []logproto.Volume{
-// 				{
-// 					Name:   `{foo="bar"}`,
-// 					Volume: 42,
-// 				},
-// 			},
-// 			Limit: 10,
-// 		},
-// 	}
-
-// 	for _, tc := range []struct {
-// 		name                   string
-// 		maxStatsCacheFreshness time.Duration
-// 		req                    *logproto.VolumeRequest
-
-// 		expectedCallsBeforeCache int
-// 		expectedCallsAfterCache  int
-// 		expectedResp             *LokiSeriesResponse
-// 	}{
-// 		{
-// 			name:                   "MaxStatsCacheFreshness disabled",
-// 			maxStatsCacheFreshness: 0,
-// 			req: &logproto.VolumeRequest{
-// 				From:     now.Add(-1 * time.Hour),
-// 				Through:  now.Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
-// 				Matchers: `{foo="bar"}`,
-// 				Limit:    10,
-// 			},
-
-// 			expectedCallsBeforeCache: 1,
-// 			expectedCallsAfterCache:  0,
-// 			expectedResp:             seriesResp,
-// 		},
-// 		{
-// 			name:                   "MaxStatsCacheFreshness enabled",
-// 			maxStatsCacheFreshness: 30 * time.Minute,
-// 			req: &logproto.VolumeRequest{
-// 				From:     now.Add(-1 * time.Hour),
-// 				Through:  now.Add(-5 * time.Minute), // So we don't hit the max_cache_freshness_per_query limit (1m)
-// 				Matchers: `{foo="bar"}`,
-// 				Limit:    10,
-// 			},
-
-// 			expectedCallsBeforeCache: 1,
-// 			expectedCallsAfterCache:  1, // The whole request is done since it wasn't cached.
-// 			expectedResp:             seriesResp,
-// 		},
-// 		{
-// 			name:                   "MaxStatsCacheFreshness enabled, but request before the max freshness",
-// 			maxStatsCacheFreshness: 30 * time.Minute,
-// 			req: &logproto.VolumeRequest{
-// 				From:     now.Add(-1 * time.Hour),
-// 				Through:  now.Add(-45 * time.Minute),
-// 				Matchers: `{foo="bar"}`,
-// 				Limit:    10,
-// 			},
-
-// 			expectedCallsBeforeCache: 1,
-// 			expectedCallsAfterCache:  0,
-// 			expectedResp:             seriesResp,
-// 		},
-// 	} {
-// 		t.Run(tc.name, func(t *testing.T) {
-// 			cfg := queryrangebase.ResultsCacheConfig{
-// 				Config: resultscache.Config{
-// 					CacheConfig: cache.Config{
-// 						Cache: cache.NewMockCache(),
-// 					},
-// 				},
-// 			}
-// 			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
-// 			defer c.Stop()
-// 			require.NoError(t, err)
-
-// 			lim := fakeLimits{maxStatsCacheFreshness: tc.maxStatsCacheFreshness}
-
-// 			cacheMiddleware, err := NewVolumeCacheMiddleware(
-// 				log.NewNopLogger(),
-// 				WithSplitByLimits(lim, 24*time.Hour),
-// 				DefaultCodec,
-// 				c,
-// 				nil,
-// 				nil,
-// 				func(_ context.Context, _ []string, _ queryrangebase.Request) int {
-// 					return 1
-// 				},
-// 				false,
-// 				nil,
-// 				nil,
-// 			)
-// 			require.NoError(t, err)
-
-// 			calls, statsHandler := volumeResultHandler(seriesResp)
-// 			rc := cacheMiddleware.Wrap(statsHandler)
-
-// 			ctx := user.InjectOrgID(context.Background(), "fake")
-// 			resp, err := rc.Do(ctx, tc.req)
-// 			require.NoError(t, err)
-// 			require.Equal(t, tc.expectedCallsBeforeCache, *calls)
-// 			require.Equal(t, tc.expectedResp, resp)
-
-// 			// Doing same request again
-// 			*calls = 0
-// 			resp, err = rc.Do(ctx, tc.req)
-// 			require.NoError(t, err)
-// 			require.Equal(t, tc.expectedCallsAfterCache, *calls)
-// 			require.Equal(t, tc.expectedResp, resp)
-// 		})
-// 	}
-// }
 
 func seriesResultHandler(v *LokiSeriesResponse) (*int, queryrangebase.Handler) {
 	calls := 0
