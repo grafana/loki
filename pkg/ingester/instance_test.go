@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
+
 	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/grafana/dskit/flagext"
@@ -411,8 +414,8 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: map[string]string{"app": "test", "job": "varlogs"}},
-				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 		{
@@ -428,7 +431,7 @@ func Test_SeriesQuery(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				// Separated by shard number
-				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 		{
@@ -439,7 +442,7 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: map[string]string{"app": "test", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test", "job", "varlogs")},
 			},
 		},
 		{
@@ -450,7 +453,7 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 	}
@@ -681,7 +684,12 @@ func Test_PipelineWrapper(t *testing.T) {
 	}
 	instance.pipelineWrapper = wrapper
 
-	it, err := instance.Query(context.TODO(),
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	_, err := tenant.TenantID(ctx)
+	require.NoError(t, err)
+
+	it, err := instance.Query(ctx,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"}`,
@@ -703,16 +711,19 @@ func Test_PipelineWrapper(t *testing.T) {
 		require.NoError(t, it.Error())
 	}
 
+	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, `{job="3"}`, wrapper.query)
 	require.Equal(t, 10, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
 type testPipelineWrapper struct {
 	query    string
+	tenant   string
 	pipeline *mockPipeline
 }
 
-func (t *testPipelineWrapper) Wrap(pipeline log.Pipeline, query string) log.Pipeline {
+func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline log.Pipeline, query, tenant string) log.Pipeline {
+	t.tenant = tenant
 	t.query = query
 	t.pipeline.wrappedExtractor = pipeline
 	return t.pipeline
@@ -765,7 +776,8 @@ func Test_ExtractorWrapper(t *testing.T) {
 	}
 	instance.extractorWrapper = wrapper
 
-	it, err := instance.QuerySample(context.TODO(),
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+	it, err := instance.QuerySample(ctx,
 		logql.SelectSampleParams{
 			SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: `sum(count_over_time({job="3"}[1m]))`,
@@ -791,10 +803,12 @@ func Test_ExtractorWrapper(t *testing.T) {
 
 type testExtractorWrapper struct {
 	query     string
+	tenant    string
 	extractor *mockExtractor
 }
 
-func (t *testExtractorWrapper) Wrap(extractor log.SampleExtractor, query string) log.SampleExtractor {
+func (t *testExtractorWrapper) Wrap(_ context.Context, extractor log.SampleExtractor, query, tenant string) log.SampleExtractor {
+	t.tenant = tenant
 	t.query = query
 	t.extractor.wrappedExtractor = extractor
 	return t.extractor

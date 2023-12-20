@@ -37,8 +37,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                 mode: 'normal',
               },
             },
+            unit: 's',
           },
-          unit: 's',
         },
       },
 

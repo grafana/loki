@@ -188,7 +188,11 @@ message SeriesResponse {
 }
 
 message SeriesIdentifier {
-  map<string, string> labels = 1;
+  message LabelsEntry {
+    string key = 1;
+    string value = 2;
+  }
+  repeated LabelsEntry labels = 1 [(gogoproto.nullable) = false];
 }
 
 message DroppedStream {

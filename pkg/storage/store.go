@@ -473,9 +473,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	}
 	result := make([]logproto.SeriesIdentifier, len(series))
 	for i, s := range series {
-		result[i] = logproto.SeriesIdentifier{
-			Labels: s.Map(),
-		}
+		result[i] = logproto.SeriesIdentifierFromLabels(s)
 	}
 	return result, nil
 }
@@ -513,7 +511,12 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 	}
 
 	if s.pipelineWrapper != nil {
-		pipeline = s.pipelineWrapper.Wrap(pipeline, expr.String())
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		pipeline = s.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -555,7 +558,12 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	}
 
 	if s.extractorWrapper != nil {
-		extractor = s.extractorWrapper.Wrap(extractor, expr.String())
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		extractor = s.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer

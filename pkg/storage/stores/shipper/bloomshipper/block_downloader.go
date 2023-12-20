@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -301,30 +299,6 @@ func (d *blockDownloader) stop() {
 	_ = services.StopManagerAndAwaitStopped(d.ctx, d.manager)
 	d.wg.Wait()
 	d.strategy.close()
-}
-
-func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string, error) {
-	defer block.Data.Close()
-	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, delimiter)+1:])
-
-	archiveFile, err := os.Create(archivePath)
-	if err != nil {
-		return "", fmt.Errorf("error creating empty file to store the archiver: %w", err)
-	}
-	defer archiveFile.Close()
-	_, err = io.Copy(archiveFile, block.Data)
-	if err != nil {
-		return "", fmt.Errorf("error writing data to archive file: %w", err)
-	}
-	return archivePath, nil
-}
-
-func extractArchive(archivePath string, workingDirectoryPath string) error {
-	file, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("error opening archive file %s: %w", file.Name(), err)
-	}
-	return v1.UnTarGz(workingDirectoryPath, file)
 }
 
 type closableBlockQuerier struct {

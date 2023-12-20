@@ -858,25 +858,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
-		var resp loghttp.SeriesResponse
+		resp := &LokiSeriesResponse{
+			Version: uint32(loghttp.GetVersion(req.Path)),
+			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+		}
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 
-		data := make([]logproto.SeriesIdentifier, 0, len(resp.Data))
-		for _, label := range resp.Data {
-			d := logproto.SeriesIdentifier{
-				Labels: label.Map(),
-			}
-			data = append(data, d)
-		}
-
-		return &LokiSeriesResponse{
-			Status:  resp.Status,
-			Version: uint32(loghttp.GetVersion(req.Path)),
-			Data:    data,
-			Headers: httpResponseHeadersToPromResponseHeaders(headers),
-		}, nil
+		return resp, nil
 	case *LabelRequest:
 		var resp loghttp.LabelResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
@@ -1184,7 +1174,6 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// little overhead. A run with 4MB should the same speedup but
 		// much much more overhead.
 		b := make([]byte, 0, 1024)
-		keyBuffer := make([]string, 0, 32)
 		var key uint64
 
 		// only unique series should be merged
@@ -1192,9 +1181,8 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			lokiResult := res.(*LokiSeriesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
-				// Use series hash as the key and reuse key
-				// buffer to avoid extra allocations.
-				key, keyBuffer = series.Hash(b, keyBuffer)
+				// Use series hash as the key.
+				key = series.Hash(b)
 
 				// TODO(karsten): There is a chance that the
 				// keys match but not the labels due to hash

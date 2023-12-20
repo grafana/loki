@@ -59,7 +59,8 @@ func TestChunkCompactor_BuildBloomFromSeries(t *testing.T) {
 	chunks := []chunk.Chunk{createTestChunk(fp, label)}
 
 	mbt := mockBloomTokenizer{}
-	bloom := buildBloomFromSeries(seriesMeta, fpRate, &mbt, chunks)
+	bloom, err := buildBloomFromSeries(seriesMeta, fpRate, &mbt, chunks)
+	require.NoError(t, err)
 	require.Equal(t, seriesMeta.seriesFP, bloom.Series.Fingerprint)
 	require.Equal(t, chunks, mbt.chunks)
 }
@@ -186,7 +187,7 @@ func TestLazyBloomBuilder(t *testing.T) {
 	require.Equal(t, 6, mcc.chunkCount)
 	require.Equal(t, fp3, it.At().Series.Fingerprint)
 
-	// interator is done
+	// iterator is done
 	require.False(t, it.Next())
 	require.Error(t, io.EOF, it.Err())
 	require.Equal(t, v1.SeriesWithBloom{}, it.At())
