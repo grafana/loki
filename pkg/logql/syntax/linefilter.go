@@ -1,8 +1,9 @@
 package syntax
 
 import (
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 // Binary encoding of the LineFilter
