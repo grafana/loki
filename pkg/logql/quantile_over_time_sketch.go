@@ -2,6 +2,7 @@ package logql
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -232,13 +233,17 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 }
 
 // JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
-func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator) (promql_parser.Value, error) {
+func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
 
-	result := make([]ProbabilisticQuantileVector, 0)
+	stepCount := int(math.Ceil(float64(params.End().Sub(params.Start()).Nanoseconds()) / float64(params.Step().Nanoseconds())))
+	if stepCount <= 0 {
+		stepCount = 1
+	}
+	result := make([]ProbabilisticQuantileVector, 0, stepCount)
 
 	for next {
 		result = append(result, vec)

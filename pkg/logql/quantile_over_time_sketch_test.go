@@ -2,8 +2,10 @@ package logql
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -66,7 +68,7 @@ func TestJoinQuantileSketchVectorError(t *testing.T) {
 	ev := errorStepEvaluator{
 		err: errors.New("could not evaluate"),
 	}
-	_, err := JoinQuantileSketchVector(true, result, ev)
+	_, err := JoinQuantileSketchVector(true, result, ev, LiteralParams{})
 	require.ErrorContains(t, err, "could not evaluate")
 }
 
@@ -110,21 +112,28 @@ func (e errorStepEvaluator) Error() error {
 func (e errorStepEvaluator) Explain(Node) {}
 
 func BenchmarkJoinQuantileSketchVector(b *testing.B) {
-	results := make([]ProbabilisticQuantileVector, 1000)
+	results := make([]ProbabilisticQuantileVector, 100)
 	for i := range results {
-		results[i] = make(ProbabilisticQuantileVector, 100)
+		results[i] = make(ProbabilisticQuantileVector, 10)
 		for j := range results[i] {
 			results[i][j] = ProbabilisticQuantileSample{
 				T:      int64(i),
 				F:      newRandomSketch(),
-				Metric: []labels.Label{{Name: "foo", Value: "bar"}},
+				Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
 			}
 		}
 	}
 
 	ev := &sliceStepEvaluator{
-		slice: results[1:],
+		slice: results,
 		cur:   1,
+	}
+
+	// (end - start) / step == len(results)
+	params := LiteralParams{
+		start: time.Unix(0, 0),
+		end: time.Unix(int64(len(results)), 0),
+		step: time.Second,
 	}
 
 	b.ReportAllocs()
@@ -133,7 +142,7 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		// Reset step evaluator
 		ev.cur = 1
-		_, err := JoinQuantileSketchVector(true, results[0], ev)
+		_, err := JoinQuantileSketchVector(true, results[0], ev, params)
 		require.NoError(b, err)
 	}
 }
