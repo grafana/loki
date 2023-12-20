@@ -1414,6 +1414,10 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 
 	shuffleSharding := bloomcompactor.NewShuffleShardingStrategy(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides)
 
+	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+		t.updateConfigForShipperStore()
+	}
+
 	compactor, err := bloomcompactor.New(
 		t.Cfg.BloomCompactor,
 		t.Cfg.StorageConfig,
