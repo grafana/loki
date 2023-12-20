@@ -207,6 +207,8 @@ func (q *query) resultLength(res promql_parser.Value) int {
 		return r.TotalSamples()
 	case logqlmodel.Streams:
 		return int(r.Lines())
+	case ProbabilisticQuantileMatrix:
+		return len(r)
 	default:
 		// for `scalar` or `string` or any other return type, we just return `0` as result length.
 		return 0
