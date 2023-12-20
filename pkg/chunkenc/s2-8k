@@ -1,0 +1,416 @@
+goos: linux
+goarch: amd64
+pkg: github.com/grafana/loki/pkg/chunkenc
+cpu: AMD Ryzen 9 5950X 16-Core Processor            
+Benchmark_fnv64a-32                    	    5349	    225076 ns/op	       3 B/op	       0 allocs/op
+Benchmark_fnv64a-32                    	    5360	    225146 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a-32                    	    5331	    224352 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a-32                    	    5349	    227081 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a-32                    	    5320	    224555 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a_third_party-32        	    5367	    221708 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a_third_party-32        	    5421	    221084 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a_third_party-32        	    5419	    221894 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a_third_party-32        	    5442	    220582 ns/op	       0 B/op	       0 allocs/op
+Benchmark_fnv64a_third_party-32        	    5258	    221992 ns/op	       0 B/op	       0 allocs/op
+Benchmark_xxhash-32                    	   52243	     22975 ns/op	       0 B/op	       0 allocs/op
+Benchmark_xxhash-32                    	   52306	     22803 ns/op	       0 B/op	       0 allocs/op
+Benchmark_xxhash-32                    	   52694	     22835 ns/op	       0 B/op	       0 allocs/op
+Benchmark_xxhash-32                    	   52458	     23390 ns/op	       0 B/op	       0 allocs/op
+Benchmark_xxhash-32                    	   52495	     23051 ns/op	       0 B/op	       0 allocs/op
+BenchmarkWrite/ordered-snappy-32       	     187	   6389421 ns/op	1353.04 MB/s	        17.77 %compressed	 4977086 B/op	    8064 allocs/op
+BenchmarkWrite/ordered-snappy-32       	     186	   6382065 ns/op	1354.59 MB/s	        17.77 %compressed	 4925381 B/op	    8055 allocs/op
+BenchmarkWrite/ordered-snappy-32       	     186	   6513284 ns/op	1327.31 MB/s	        17.77 %compressed	 4936148 B/op	    8058 allocs/op
+BenchmarkWrite/ordered-snappy-32       	     183	   6434674 ns/op	1343.52 MB/s	        17.77 %compressed	 4938895 B/op	    8058 allocs/op
+BenchmarkWrite/ordered-snappy-32       	     183	   6444399 ns/op	1341.50 MB/s	        17.77 %compressed	 4951850 B/op	    8057 allocs/op
+BenchmarkWrite/ordered-snappy-withStructuredMetadata-32         	      98	  10474673 ns/op	 825.33 MB/s	        17.77 %compressed	 6770162 B/op	  104748 allocs/op
+BenchmarkWrite/ordered-snappy-withStructuredMetadata-32         	      97	  10419910 ns/op	 829.68 MB/s	        17.77 %compressed	 6760492 B/op	  104749 allocs/op
+BenchmarkWrite/ordered-snappy-withStructuredMetadata-32         	     100	  10497565 ns/op	 823.54 MB/s	        17.77 %compressed	 6746378 B/op	  104747 allocs/op
+BenchmarkWrite/ordered-snappy-withStructuredMetadata-32         	     100	  11060631 ns/op	 781.61 MB/s	        17.77 %compressed	 6685593 B/op	  104734 allocs/op
+BenchmarkWrite/ordered-snappy-withStructuredMetadata-32         	      99	  10571583 ns/op	 817.77 MB/s	        17.77 %compressed	 6606057 B/op	  104730 allocs/op
+BenchmarkWrite/unordered-snappy-32                              	      84	  14566510 ns/op	 593.49 MB/s	        17.77 %compressed	13435303 B/op	  170176 allocs/op
+BenchmarkWrite/unordered-snappy-32                              	      74	  14855165 ns/op	 581.96 MB/s	        17.77 %compressed	13514584 B/op	  170192 allocs/op
+BenchmarkWrite/unordered-snappy-32                              	      76	  14749676 ns/op	 586.11 MB/s	        17.77 %compressed	13650062 B/op	  170198 allocs/op
+BenchmarkWrite/unordered-snappy-32                              	      72	  14631681 ns/op	 590.84 MB/s	        17.77 %compressed	13695670 B/op	  170213 allocs/op
+BenchmarkWrite/unordered-snappy-32                              	      82	  14708524 ns/op	 587.76 MB/s	        17.77 %compressed	13485872 B/op	  170182 allocs/op
+BenchmarkWrite/unordered-snappy-withStructuredMetadata-32       	      63	  18597339 ns/op	 464.86 MB/s	        17.77 %compressed	15646689 B/op	  266923 allocs/op
+BenchmarkWrite/unordered-snappy-withStructuredMetadata-32       	      60	  18850633 ns/op	 458.61 MB/s	        17.77 %compressed	15644475 B/op	  266924 allocs/op
+BenchmarkWrite/unordered-snappy-withStructuredMetadata-32       	      62	  19036982 ns/op	 454.12 MB/s	        17.77 %compressed	15710453 B/op	  266942 allocs/op
+BenchmarkWrite/unordered-snappy-withStructuredMetadata-32       	      61	  18619531 ns/op	 464.30 MB/s	        17.77 %compressed	15441029 B/op	  266910 allocs/op
+BenchmarkWrite/unordered-snappy-withStructuredMetadata-32       	      61	  18952884 ns/op	 456.13 MB/s	        17.77 %compressed	15523422 B/op	  266921 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-32     	      76	  15005684 ns/op	 574.75 MB/s	        17.81 %compressed	13521662 B/op	  169784 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-32     	      72	  15565172 ns/op	 554.08 MB/s	        17.81 %compressed	13510716 B/op	  169791 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-32     	      79	  15065355 ns/op	 572.48 MB/s	        17.81 %compressed	13392935 B/op	  169768 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-32     	      78	  15123913 ns/op	 570.25 MB/s	        17.81 %compressed	13632875 B/op	  169804 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-32     	      74	  15303686 ns/op	 563.55 MB/s	        17.81 %compressed	13594941 B/op	  169794 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-withStructuredMetadata-32         	      63	  19427585 ns/op	 443.93 MB/s	        17.81 %compressed	15327321 B/op	  266268 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-withStructuredMetadata-32         	      55	  19449295 ns/op	 443.44 MB/s	        17.81 %compressed	16097575 B/op	  266327 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-withStructuredMetadata-32         	      60	  19590508 ns/op	 440.24 MB/s	        17.81 %compressed	15694458 B/op	  266268 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-withStructuredMetadata-32         	      56	  20045990 ns/op	 430.22 MB/s	        17.81 %compressed	15627752 B/op	  266270 allocs/op
+BenchmarkWrite/unordered_with_structured_metadata-snappy-withStructuredMetadata-32         	      63	  19789875 ns/op	 435.81 MB/s	        17.81 %compressed	15942652 B/op	  266301 allocs/op
+BenchmarkRead/snappy_66_kB-32                                                              	      73	  16130752 ns/op	2900.89 MB/s	  387201 B/op	    3580 allocs/op
+BenchmarkRead/snappy_66_kB-32                                                              	      72	  16275109 ns/op	2875.16 MB/s	  373003 B/op	    3580 allocs/op
+BenchmarkRead/snappy_66_kB-32                                                              	      72	  16323991 ns/op	2866.55 MB/s	  358077 B/op	    3580 allocs/op
+BenchmarkRead/snappy_66_kB-32                                                              	      69	  16303921 ns/op	2870.08 MB/s	  358610 B/op	    3580 allocs/op
+BenchmarkRead/snappy_66_kB-32                                                              	      70	  16523275 ns/op	2831.98 MB/s	  373735 B/op	    3580 allocs/op
+BenchmarkRead/snappy_262_kB-32                                                             	      80	  14289282 ns/op	3019.36 MB/s	  106875 B/op	     840 allocs/op
+BenchmarkRead/snappy_262_kB-32                                                             	      80	  14717639 ns/op	2931.49 MB/s	   93548 B/op	     840 allocs/op
+BenchmarkRead/snappy_262_kB-32                                                             	      80	  14353034 ns/op	3005.95 MB/s	   93540 B/op	     840 allocs/op
+BenchmarkRead/snappy_262_kB-32                                                             	      81	  14304077 ns/op	3016.24 MB/s	   93275 B/op	     840 allocs/op
+BenchmarkRead/snappy_262_kB-32                                                             	      80	  14278860 ns/op	3021.57 MB/s	   93443 B/op	     840 allocs/op
+BenchmarkRead/snappy_524_kB-32                                                             	      94	  12020316 ns/op	3035.59 MB/s	   45764 B/op	     365 allocs/op
+BenchmarkRead/snappy_524_kB-32                                                             	      92	  12053922 ns/op	3027.13 MB/s	   46015 B/op	     365 allocs/op
+BenchmarkRead/snappy_524_kB-32                                                             	      94	  12033296 ns/op	3032.32 MB/s	   45677 B/op	     365 allocs/op
+BenchmarkRead/snappy_524_kB-32                                                             	      94	  11910468 ns/op	3063.59 MB/s	   45677 B/op	     365 allocs/op
+BenchmarkRead/snappy_524_kB-32                                                             	      93	  11973726 ns/op	3047.40 MB/s	   45976 B/op	     365 allocs/op
+BenchmarkRead/sample_snappy_66_kB-32                                                       	      46	  24685906 ns/op	1895.56 MB/s	  320846 B/op	    3580 allocs/op
+BenchmarkRead/sample_snappy_66_kB-32                                                       	      46	  24323456 ns/op	1923.81 MB/s	  344040 B/op	    3580 allocs/op
+BenchmarkRead/sample_snappy_66_kB-32                                                       	      48	  24464887 ns/op	1912.68 MB/s	  319858 B/op	    3580 allocs/op
+BenchmarkRead/sample_snappy_66_kB-32                                                       	      48	  24387327 ns/op	1918.77 MB/s	  319698 B/op	    3580 allocs/op
+BenchmarkRead/sample_snappy_66_kB-32                                                       	      43	  24352457 ns/op	1921.51 MB/s	  322691 B/op	    3580 allocs/op
+BenchmarkRead/sample_snappy_262_kB-32                                                      	      52	  22965008 ns/op	1878.71 MB/s	   89952 B/op	     840 allocs/op
+BenchmarkRead/sample_snappy_262_kB-32                                                      	      54	  22110098 ns/op	1951.35 MB/s	   89494 B/op	     840 allocs/op
+BenchmarkRead/sample_snappy_262_kB-32                                                      	      51	  21772269 ns/op	1981.63 MB/s	   90362 B/op	     840 allocs/op
+BenchmarkRead/sample_snappy_262_kB-32                                                      	      54	  21976704 ns/op	1963.19 MB/s	   89196 B/op	     840 allocs/op
+BenchmarkRead/sample_snappy_262_kB-32                                                      	      52	  22284848 ns/op	1936.05 MB/s	   89960 B/op	     840 allocs/op
+BenchmarkRead/sample_snappy_524_kB-32                                                      	      62	  18684642 ns/op	1952.87 MB/s	   46943 B/op	     365 allocs/op
+BenchmarkRead/sample_snappy_524_kB-32                                                      	      62	  18501789 ns/op	1972.17 MB/s	   46940 B/op	     365 allocs/op
+BenchmarkRead/sample_snappy_524_kB-32                                                      	      62	  18824674 ns/op	1938.35 MB/s	   47205 B/op	     365 allocs/op
+BenchmarkRead/sample_snappy_524_kB-32                                                      	      63	  18558399 ns/op	1966.16 MB/s	   46665 B/op	     365 allocs/op
+BenchmarkRead/sample_snappy_524_kB-32                                                      	      63	  18751331 ns/op	1945.93 MB/s	   46671 B/op	     365 allocs/op
+BenchmarkBackwardIterator/66_kB-32                                                         	     115	  10264796 ns/op	10006413 B/op	   35879 allocs/op
+BenchmarkBackwardIterator/66_kB-32                                                         	     100	  10593820 ns/op	10050309 B/op	   35879 allocs/op
+BenchmarkBackwardIterator/66_kB-32                                                         	     114	  10566415 ns/op	10011189 B/op	   35879 allocs/op
+BenchmarkBackwardIterator/66_kB-32                                                         	     100	  10391174 ns/op	10010695 B/op	   35879 allocs/op
+BenchmarkBackwardIterator/66_kB-32                                                         	     100	  10544447 ns/op	10034735 B/op	   35880 allocs/op
+BenchmarkBackwardIterator/262_kB-32                                                        	     116	   9883586 ns/op	 9153534 B/op	   32428 allocs/op
+BenchmarkBackwardIterator/262_kB-32                                                        	     100	  10397890 ns/op	 9136297 B/op	   32429 allocs/op
+BenchmarkBackwardIterator/262_kB-32                                                        	     118	   9769041 ns/op	 9202798 B/op	   32429 allocs/op
+BenchmarkBackwardIterator/262_kB-32                                                        	     100	  10053005 ns/op	 9151291 B/op	   32428 allocs/op
+BenchmarkBackwardIterator/262_kB-32                                                        	     120	  10080072 ns/op	 9148084 B/op	   32429 allocs/op
+BenchmarkBackwardIterator/524_kB-32                                                        	     136	   8571896 ns/op	 7730056 B/op	   27340 allocs/op
+BenchmarkBackwardIterator/524_kB-32                                                        	     142	   8615721 ns/op	 7776206 B/op	   27340 allocs/op
+BenchmarkBackwardIterator/524_kB-32                                                        	     144	   8590814 ns/op	 7823116 B/op	   27341 allocs/op
+BenchmarkBackwardIterator/524_kB-32                                                        	     142	   8367570 ns/op	 7805676 B/op	   27340 allocs/op
+BenchmarkBackwardIterator/524_kB-32                                                        	     138	   8304191 ns/op	 7776721 B/op	   27340 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=false-32                         	      72	  16664966 ns/op	43377760 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=false-32                         	      69	  16973953 ns/op	43377878 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=false-32                         	      68	  16215766 ns/op	43377880 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=false-32                         	      73	  16663632 ns/op	43377760 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=false-32                         	      74	  15856924 ns/op	43377870 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=true-32                          	      72	  16400907 ns/op	43377873 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=true-32                          	      73	  16259993 ns/op	43377760 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=true-32                          	      66	  18281369 ns/op	43377884 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=true-32                          	      60	  18673688 ns/op	43377760 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=100000_structuredMetadata=true-32                          	      58	  18419028 ns/op	43377760 B/op	      34 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=false-32                          	     138	   9420365 ns/op	21415126 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=false-32                          	     130	   8918343 ns/op	21415008 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=false-32                          	     133	   8708425 ns/op	21415008 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=false-32                          	     135	   8798230 ns/op	21415008 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=false-32                          	     128	   9337016 ns/op	21415008 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=true-32                           	     134	   7523464 ns/op	21415069 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=true-32                           	     139	   8713310 ns/op	21415008 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=true-32                           	     136	   9028487 ns/op	21415008 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=true-32                           	     138	   8926237 ns/op	21415067 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=50000_structuredMetadata=true-32                           	     136	   9105626 ns/op	21415008 B/op	      31 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=false-32                          	     585	   2037050 ns/op	 6161504 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=false-32                          	     602	   2002254 ns/op	 6161517 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=false-32                          	     585	   1988931 ns/op	 6161518 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=false-32                          	     577	   2139418 ns/op	 6161504 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=false-32                          	     570	   2142003 ns/op	 6161518 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=true-32                           	     541	   2027353 ns/op	 6161519 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=true-32                           	     597	   2110804 ns/op	 6161504 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=true-32                           	     568	   2176726 ns/op	 6161518 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=true-32                           	     540	   2179150 ns/op	 6161519 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=15000_structuredMetadata=true-32                           	     537	   2202517 ns/op	 6161504 B/op	      26 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=false-32                          	    1030	   1244386 ns/op	 3581024 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=false-32                          	     937	   1213700 ns/op	 3581024 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=false-32                          	    1022	   1227165 ns/op	 3581032 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=false-32                          	     961	   1230405 ns/op	 3581024 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=false-32                          	     974	   1225385 ns/op	 3581032 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=true-32                           	    1018	   1237099 ns/op	 3581024 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=true-32                           	     985	   1200650 ns/op	 3581024 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=true-32                           	     889	   1235486 ns/op	 3581033 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=true-32                           	     992	   1219533 ns/op	 3581032 B/op	      24 allocs/op
+BenchmarkHeadBlockIterator/size=10000_structuredMetadata=true-32                           	     970	   1215037 ns/op	 3581024 B/op	      24 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=false-32                    	    1388	    753861 ns/op	  485174 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=false-32                    	    1608	    747641 ns/op	  485173 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=false-32                    	    1569	    759657 ns/op	  485173 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=false-32                    	    1580	    743706 ns/op	  485168 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=false-32                    	    1608	    751264 ns/op	  485168 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=true-32                     	    1567	    760926 ns/op	  485168 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=true-32                     	    1650	    735146 ns/op	  485168 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=true-32                     	    1586	    738351 ns/op	  485168 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=true-32                     	    1406	    714732 ns/op	  485168 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=20000_structuredMetadata=true-32                     	    1641	    744525 ns/op	  485173 B/op	      12 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=false-32                    	    3844	    314659 ns/op	    1944 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=false-32                    	    3777	    315349 ns/op	    1946 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=false-32                    	    3898	    312252 ns/op	    1942 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=false-32                    	    3790	    317121 ns/op	    1842 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=false-32                    	    3912	    309338 ns/op	    1942 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=true-32                     	    3871	    312889 ns/op	    1943 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=true-32                     	    3846	    311693 ns/op	    1944 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=true-32                     	    3853	    318038 ns/op	    1944 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=true-32                     	    3843	    319414 ns/op	    1842 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=10000_structuredMetadata=true-32                     	    3906	    317556 ns/op	    1942 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=false-32                     	    4765	    246559 ns/op	    1883 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=false-32                     	    4828	    250444 ns/op	    1882 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=false-32                     	    4754	    251518 ns/op	    1883 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=false-32                     	    4759	    249920 ns/op	    1883 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=false-32                     	    4742	    254236 ns/op	    1884 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=true-32                      	    4887	    251214 ns/op	    1881 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=true-32                      	    4838	    252463 ns/op	    1922 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=true-32                      	    4852	    251540 ns/op	    1922 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=true-32                      	    4828	    250463 ns/op	    1923 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=8000_structuredMetadata=true-32                      	    4827	    256912 ns/op	    1882 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=false-32                     	    7561	    157428 ns/op	    1893 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=false-32                     	    7614	    158153 ns/op	    1893 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=false-32                     	    7596	    157683 ns/op	    1893 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=false-32                     	    7756	    158385 ns/op	    1866 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=false-32                     	    7741	    159983 ns/op	    1866 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=true-32                      	    7605	    156223 ns/op	    1893 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=true-32                      	    7642	    156425 ns/op	    1867 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=true-32                      	    7778	    156482 ns/op	    1892 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=true-32                      	    7648	    155872 ns/op	    1893 B/op	      11 allocs/op
+BenchmarkHeadBlockSampleIterator/size=5000_structuredMetadata=true-32                      	    7585	    154975 ns/op	    1867 B/op	      11 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}-32                                     	51136546	        23.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}-32                                     	48541902	        23.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}-32                                     	49532864	        23.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}-32                                     	48940893	        23.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}-32                                     	49650801	        23.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"-32                            	48822433	        23.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"-32                            	45364149	        24.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"-32                            	47216524	        23.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"-32                            	48605313	        23.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"-32                            	48525274	        24.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_-32                  	39460198	        28.78 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_-32                  	35649639	        28.58 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_-32                  	37090437	        28.42 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_-32                  	35634672	        28.82 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_-32                  	35789691	        29.13 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32 	45666231	        25.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32 	40327646	        25.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32 	40907166	        25.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32 	39995995	        25.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32 	39536996	        26.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32         	46350380	        26.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32         	39858588	        25.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32         	40017652	        25.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32         	38575268	        26.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32         	46903953	        24.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/rate({app="foo"}[1m])-32                                                        	50694766	        23.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/rate({app="foo"}[1m])-32                                                        	50490438	        24.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/rate({app="foo"}[1m])-32                                                        	49226125	        24.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/rate({app="foo"}[1m])-32                                                        	49756512	        24.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/rate({app="foo"}[1m])-32                                                        	47454454	        25.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                    	49340550	        24.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                    	50183179	        23.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                    	49651456	        24.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                    	47966426	        24.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                    	49658582	        23.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                          	49861465	        23.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                          	46425698	        23.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                          	50812213	        25.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                          	50183863	        23.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                          	50305314	        23.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                  	47356807	        24.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                  	47828217	        25.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                  	47742241	        24.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                  	48361406	        23.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                  	47588277	        24.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                   	48490467	        24.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                   	48692541	        24.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                   	48607419	        24.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                   	48159475	        24.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                   	49422556	        24.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32         	47775955	        24.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32         	46919690	        24.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32         	47355541	        24.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32         	46516134	        24.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32         	46753341	        24.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	46041687	        24.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	46549741	        24.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	45659956	        24.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	44782941	        24.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/ordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	45963854	        24.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}-32                                                                                             	48745658	        23.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}-32                                                                                             	49416942	        23.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}-32                                                                                             	48971400	        23.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}-32                                                                                             	48484344	        23.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}-32                                                                                             	46264374	        23.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"-32                                                                                    	45876129	        23.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"-32                                                                                    	48488150	        23.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"-32                                                                                    	49299910	        23.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"-32                                                                                    	47653476	        24.08 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"-32                                                                                    	48813418	        23.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_-32                                                                          	40797980	        27.54 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_-32                                                                          	40620391	        27.16 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_-32                                                                          	41366209	        28.08 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_-32                                                                          	41839659	        28.38 ns/op	       1 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_-32                                                                          	41544420	        27.19 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                                         	38667874	        25.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                                         	40062556	        26.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                                         	40179080	        25.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                                         	46197015	        25.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                                         	39705614	        26.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32                                    	39761154	        26.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32                                    	40028006	        25.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32                                    	39421419	        26.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32                                    	39366786	        25.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32                                    	39823262	        26.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/rate({app="foo"}[1m])-32                                                                                   	48679656	        23.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/rate({app="foo"}[1m])-32                                                                                   	48989571	        24.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/rate({app="foo"}[1m])-32                                                                                   	49408053	        23.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/rate({app="foo"}[1m])-32                                                                                   	50139006	        25.12 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/rate({app="foo"}[1m])-32                                                                                   	50037210	        24.86 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                                               	47773544	        23.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                                               	49995157	        23.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                                               	50058194	        24.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                                               	47515336	        25.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                                               	50162572	        24.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                                                     	49964323	        23.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                                                     	50391780	        23.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                                                     	49835847	        23.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                                                     	49856197	        23.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                                                     	48657448	        23.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                             	45746037	        25.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                             	47124948	        24.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                             	44999133	        25.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                             	44977101	        24.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                             	46592343	        24.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                              	49285828	        24.32 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                              	49435664	        25.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                              	48787112	        24.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                              	48711829	        24.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                                              	48171920	        24.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32                           	44451631	        25.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32                           	47057355	        24.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32                           	47616955	        24.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32                           	47681714	        24.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32                           	48125770	        24.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32       	43883785	        24.65 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32       	44665675	        25.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32       	42961080	        26.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32       	44522617	        24.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32       	44273235	        25.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}-32                                                                    	50034318	        23.71 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}-32                                                                    	45907542	        23.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}-32                                                                    	42238071	        23.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}-32                                                                    	46771249	        23.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}-32                                                                    	44256907	        24.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"-32                                                           	50108037	        24.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"-32                                                           	49866355	        25.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"-32                                                           	50023357	        23.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"-32                                                           	49415691	        23.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"-32                                                           	41526554	        24.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_-32                                                 	40479666	        27.48 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_-32                                                 	39768379	        28.00 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_-32                                                 	40827924	        27.52 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_-32                                                 	40556806	        28.02 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_-32                                                 	40429483	        28.38 ns/op	       2 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                	38771377	        26.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                	44832360	        26.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                	46571961	        26.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                	47125557	        25.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms-32                                	47495052	        25.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32           	46102968	        25.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32           	46438497	        25.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32           	45853809	        25.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32           	46485868	        25.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/{app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"-32           	45387879	        25.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/rate({app="foo"}[1m])-32                                                          	48912766	        24.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/rate({app="foo"}[1m])-32                                                          	49223094	        24.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/rate({app="foo"}[1m])-32                                                          	47935254	        25.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/rate({app="foo"}[1m])-32                                                          	46638703	        24.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/rate({app="foo"}[1m])-32                                                          	49194034	        23.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                      	49505133	        24.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                      	48494328	        24.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                      	49940551	        24.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                      	48322432	        23.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}[10s]))-32                                      	49541194	        24.81 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                            	48314523	        24.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                            	47924185	        24.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                            	47668126	        24.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                            	47877016	        24.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_[10s]))-32                            	48508034	        24.57 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                    	44023034	        25.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                    	45043790	        24.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                    	45413299	        24.61 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                    	45714925	        25.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                    	45456446	        24.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                     	48593858	        24.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                     	47987472	        24.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                     	47846514	        24.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                     	48953323	        24.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(caller)_(rate({app="foo"}_!=_"foo"_|_logfmt[10s]))-32                     	47978776	        24.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32  	46191679	        24.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32  	47117736	        24.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32  	45798483	        24.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32  	46711881	        23.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms[10s]))-32  	46872723	        24.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	42528328	        24.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	42512710	        25.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	43084396	        24.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	42403884	        24.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBufferedIteratorLabels/unordered_with_structured_metadata/sum_by_(cluster)_(rate({app="foo"}_!=_"foo"_|_logfmt_|_duration_>_10ms_and_component="tsdb"[1m]))-32         	42657757	        24.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes-32                                                                                                                    	    5618	    212465 ns/op	 1146898 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes-32                                                                                                                    	    5430	    214402 ns/op	 1146898 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes-32                                                                                                                    	    5134	    223805 ns/op	 1146896 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes-32                                                                                                                    	    4378	    229306 ns/op	 1146897 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes-32                                                                                                                    	    5712	    216871 ns/op	 1146896 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes_with_structured_metadata-32                                                                                           	    4359	    267954 ns/op	 1146896 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes_with_structured_metadata-32                                                                                           	    4675	    226090 ns/op	 1146900 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes_with_structured_metadata-32                                                                                           	    5329	    230798 ns/op	 1146896 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes_with_structured_metadata-32                                                                                           	    4978	    217013 ns/op	 1146896 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/ordered_headblock_ordered_writes_with_structured_metadata-32                                                                                           	    5414	    214376 ns/op	 1146898 B/op	      19 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes-32                                                                                                                  	    1274	    857489 ns/op	 1024477 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes-32                                                                                                                  	    1290	    871977 ns/op	 1024471 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes-32                                                                                                                  	    1262	    862262 ns/op	 1024477 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes-32                                                                                                                  	    1380	    894550 ns/op	 1024465 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes-32                                                                                                                  	    1327	    892534 ns/op	 1024465 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes_with_structured_metadata-32                                                                                         	    1346	    873097 ns/op	 1024471 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes_with_structured_metadata-32                                                                                         	    1417	    854848 ns/op	 1024471 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes_with_structured_metadata-32                                                                                         	    1316	    879892 ns/op	 1024470 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes_with_structured_metadata-32                                                                                         	    1309	    870604 ns/op	 1024470 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_ordered_writes_with_structured_metadata-32                                                                                         	    1256	    869354 ns/op	 1024464 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes-32                                                                                                                	     620	   1658001 ns/op	 1024478 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes-32                                                                                                                	     658	   1653108 ns/op	 1024464 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes-32                                                                                                                	     715	   1687537 ns/op	 1024464 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes-32                                                                                                                	     621	   1657406 ns/op	 1024465 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes-32                                                                                                                	     694	   1672164 ns/op	 1024488 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes_with_structured_metadata-32                                                                                       	     739	   1669390 ns/op	 1024465 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes_with_structured_metadata-32                                                                                       	     675	   1660924 ns/op	 1024465 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes_with_structured_metadata-32                                                                                       	     691	   1688566 ns/op	 1024464 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes_with_structured_metadata-32                                                                                       	     702	   1618971 ns/op	 1024476 B/op	   26231 allocs/op
+BenchmarkHeadBlockWrites/unordered_headblock_unordered_writes_with_structured_metadata-32                                                                                       	     708	   1666699 ns/op	 1024475 B/op	   26231 allocs/op
+BenchmarkUnorderedRead/itr/ordered+legacy_hblock-32                                                                                                                             	     175	   6593125 ns/op	 9020666 B/op	   31572 allocs/op
+BenchmarkUnorderedRead/itr/ordered+legacy_hblock-32                                                                                                                             	     174	   6842011 ns/op	 9014844 B/op	   31572 allocs/op
+BenchmarkUnorderedRead/itr/ordered+legacy_hblock-32                                                                                                                             	     180	   6722274 ns/op	 9001112 B/op	   31572 allocs/op
+BenchmarkUnorderedRead/itr/ordered+legacy_hblock-32                                                                                                                             	     174	   6660028 ns/op	 9020943 B/op	   31572 allocs/op
+BenchmarkUnorderedRead/itr/ordered+legacy_hblock-32                                                                                                                             	     174	   6832502 ns/op	 9014904 B/op	   31572 allocs/op
+BenchmarkUnorderedRead/itr/ordered+unordered_hblock-32                                                                                                                          	     172	   6754678 ns/op	 9065815 B/op	   31582 allocs/op
+BenchmarkUnorderedRead/itr/ordered+unordered_hblock-32                                                                                                                          	     174	   6938079 ns/op	 9034398 B/op	   31582 allocs/op
+BenchmarkUnorderedRead/itr/ordered+unordered_hblock-32                                                                                                                          	     174	   6689336 ns/op	 9034397 B/op	   31582 allocs/op
+BenchmarkUnorderedRead/itr/ordered+unordered_hblock-32                                                                                                                          	     174	   6640812 ns/op	 9022140 B/op	   31582 allocs/op
+BenchmarkUnorderedRead/itr/ordered+unordered_hblock-32                                                                                                                          	     165	   6601450 ns/op	 9036338 B/op	   31582 allocs/op
+BenchmarkUnorderedRead/itr/unordered+unordered_hblock-32                                                                                                                        	     180	   6565422 ns/op	 6178562 B/op	   21725 allocs/op
+BenchmarkUnorderedRead/itr/unordered+unordered_hblock-32                                                                                                                        	     172	   6672676 ns/op	 6191244 B/op	   21725 allocs/op
+BenchmarkUnorderedRead/itr/unordered+unordered_hblock-32                                                                                                                        	     177	   6624983 ns/op	 6178566 B/op	   21725 allocs/op
+BenchmarkUnorderedRead/itr/unordered+unordered_hblock-32                                                                                                                        	     180	   6729272 ns/op	 6184454 B/op	   21725 allocs/op
+BenchmarkUnorderedRead/itr/unordered+unordered_hblock-32                                                                                                                        	     171	   6642596 ns/op	 6185110 B/op	   21725 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+legacy_hblock-32                                                                                                                            	     304	   3952991 ns/op	   59940 B/op	     206 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+legacy_hblock-32                                                                                                                            	     301	   3943221 ns/op	   59922 B/op	     206 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+legacy_hblock-32                                                                                                                            	     302	   3887587 ns/op	   59937 B/op	     206 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+legacy_hblock-32                                                                                                                            	     308	   3872652 ns/op	   56296 B/op	     206 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+legacy_hblock-32                                                                                                                            	     309	   3879258 ns/op	   56322 B/op	     206 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+unordered_hblock-32                                                                                                                         	     306	   3894841 ns/op	   97031 B/op	     216 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+unordered_hblock-32                                                                                                                         	     306	   3941191 ns/op	   93437 B/op	     216 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+unordered_hblock-32                                                                                                                         	     304	   3913157 ns/op	   97055 B/op	     216 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+unordered_hblock-32                                                                                                                         	     308	   3977972 ns/op	   93437 B/op	     216 allocs/op
+BenchmarkUnorderedRead/smpl/ordered+unordered_hblock-32                                                                                                                         	     308	   4035470 ns/op	   96980 B/op	     216 allocs/op
+BenchmarkUnorderedRead/smpl/unordered+unordered_hblock-32                                                                                                                       	     242	   4932268 ns/op	   76974 B/op	     158 allocs/op
+BenchmarkUnorderedRead/smpl/unordered+unordered_hblock-32                                                                                                                       	     247	   4927323 ns/op	   81423 B/op	     158 allocs/op
+BenchmarkUnorderedRead/smpl/unordered+unordered_hblock-32                                                                                                                       	     244	   4894240 ns/op	   81446 B/op	     158 allocs/op
+BenchmarkUnorderedRead/smpl/unordered+unordered_hblock-32                                                                                                                       	     247	   4859224 ns/op	   81357 B/op	     158 allocs/op
+BenchmarkUnorderedRead/smpl/unordered+unordered_hblock-32                                                                                                                       	     246	   4855023 ns/op	   81409 B/op	     158 allocs/op
+PASS
+ok  	github.com/grafana/loki/pkg/chunkenc	748.896s

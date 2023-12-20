@@ -64,14 +64,14 @@ const (
 
 var supportedEncoding = []Encoding{
 	EncNone,
-	EncGZIP,
-	EncLZ4_64k,
+	//EncGZIP,
+	//EncLZ4_64k,
 	EncSnappy,
-	EncLZ4_256k,
-	EncLZ4_1M,
-	EncLZ4_4M,
-	EncFlate,
-	EncZstd,
+	//EncLZ4_256k,
+	//EncLZ4_1M,
+	//EncLZ4_4M,
+	//EncFlate,
+	//EncZstd,
 }
 
 func (e Encoding) String() string {
