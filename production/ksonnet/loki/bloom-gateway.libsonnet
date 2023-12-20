@@ -31,12 +31,14 @@
           bloom_gateway+: {
             enabled: true,
             worker_concurrency: 8,
-            replication_factor: 3,
+            ring: {
+              replication_factor: 3,
+            },
             client: {
               cache_results: false,
             },
           },
-          storage+: {
+          storage_config+: {
             bloom_shipper+: {
               working_directory: '/data/blooms',
               blocks_downloading_queue: {
