@@ -297,9 +297,8 @@ message LabelNamesForMetricNameRequest {
   ];
 }
 
-message LineFilterExpression {
-  int64 operator = 1;
-  string match = 2;
+message LineFilter {
+  bytes raw = 1;
 }
 
 message GetChunkRefRequest {
@@ -312,7 +311,10 @@ message GetChunkRefRequest {
     (gogoproto.nullable) = false
   ];
   string matchers = 3;
-  repeated LineFilterExpression filters = 4;
+  repeated LineFilter filters = 4 [
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logql/syntax.LineFilter",
+    (gogoproto.nullable) = false
+  ];
 }
 
 message GetChunkRefResponse {
