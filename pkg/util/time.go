@@ -90,7 +90,6 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 // IngesterQueryOptions exists because querier.Config cannot be passed directly to the queryrange package
 // due to an import cycle.
 type IngesterQueryOptions interface {
-	QueryIngestersOnly() bool
 	QueryStoreOnly() bool
 	QueryIngestersWithin() time.Duration
 	MaxIngesterSplits() uint
@@ -111,16 +110,14 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
 	firstInterval := true
 	ogInterval := interval
-	modifiedIngesterInterval := ogInterval
-	if iqo.MaxIngesterSplits() > 0 {
-		modifiedIngesterInterval = time.Duration(iqo.QueryIngestersWithin().Nanoseconds() / int64(iqo.MaxIngesterSplits()))
-	}
 
 	for start := start; start.Before(end); start = start.Add(interval) {
 		interval = ogInterval
 
 		if iqo != nil && start.Add(interval).Before(ogStart.Add(iqo.QueryIngestersWithin())) {
-			interval = modifiedIngesterInterval
+			if !iqo.QueryStoreOnly() && iqo.MaxIngesterSplits() > 0 {
+				interval = time.Duration(iqo.QueryIngestersWithin().Nanoseconds() / int64(iqo.MaxIngesterSplits()))
+			}
 		}
 		newEnd := start.Add(interval)
 

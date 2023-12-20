@@ -145,6 +145,7 @@ func TestForInterval(t *testing.T) {
 		endTimeInclusive     bool
 		queryIngestersWithin time.Duration
 		maxIngesterSplits    uint
+		queryStoreOnly       bool
 	}{
 		{
 			name: "range smaller than split interval",
@@ -310,6 +311,29 @@ func TestForInterval(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "splits within `query_ingesters_within` are not affected if `query_store_only` is true",
+			inp: timeInterval{
+				from:    time.Unix(5, 0),
+				through: time.Unix(28, 0),
+			},
+			queryIngestersWithin: time.Minute,
+			queryStoreOnly:       true,
+			expectedIntervals: []timeInterval{
+				{
+					from:    time.Unix(5, 0),
+					through: time.Unix(10, 0),
+				},
+				{
+					from:    time.Unix(10, 0),
+					through: time.Unix(20, 0),
+				},
+				{
+					from:    time.Unix(20, 0),
+					through: time.Unix(28, 0),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var actualIntervals []timeInterval
@@ -321,6 +345,7 @@ func TestForInterval(t *testing.T) {
 			}, mockIngesterQueryOptions{
 				maxIngesterSplits:    tc.maxIngesterSplits,
 				queryIngestersWithin: tc.queryIngestersWithin,
+				queryStoreOnly:       tc.queryStoreOnly,
 			})
 
 			if !assert.Equal(t, tc.expectedIntervals, actualIntervals) {
@@ -350,14 +375,11 @@ func TestForInterval(t *testing.T) {
 type mockIngesterQueryOptions struct {
 	queryIngestersWithin time.Duration
 	maxIngesterSplits    uint
-}
-
-func (m mockIngesterQueryOptions) QueryIngestersOnly() bool {
-	return false
+	queryStoreOnly       bool
 }
 
 func (m mockIngesterQueryOptions) QueryStoreOnly() bool {
-	return false
+	return m.queryStoreOnly
 }
 
 func (m mockIngesterQueryOptions) QueryIngestersWithin() time.Duration {

@@ -813,10 +813,6 @@ type ingesterQueryOptions struct {
 	frontend queryrange.Config
 }
 
-func (i ingesterQueryOptions) QueryIngestersOnly() bool {
-	return i.querier.QueryIngesterOnly
-}
-
 func (i ingesterQueryOptions) QueryStoreOnly() bool {
 	return i.querier.QueryStoreOnly
 }
