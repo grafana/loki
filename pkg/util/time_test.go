@@ -139,10 +139,12 @@ type timeInterval struct {
 func TestForInterval(t *testing.T) {
 	splitInterval := 10 * time.Second
 	for _, tc := range []struct {
-		name              string
-		inp               timeInterval
-		expectedIntervals []timeInterval
-		endTimeInclusive  bool
+		name                 string
+		inp                  timeInterval
+		expectedIntervals    []timeInterval
+		endTimeInclusive     bool
+		queryIngestersWithin time.Duration
+		maxIngesterSplits    uint
 	}{
 		{
 			name: "range smaller than split interval",
@@ -213,6 +215,101 @@ func TestForInterval(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "time range fully within query_ingesters_within",
+			inp: timeInterval{
+				from:    time.Unix(5, 0),
+				through: time.Unix(55, 0),
+			},
+			queryIngestersWithin: time.Minute,
+			maxIngesterSplits:    2,
+			expectedIntervals: []timeInterval{
+				// first two splits come from queryIngestersWithin/maxIngesterSplits=30m
+				{
+					from:    time.Unix(5, 0),
+					through: time.Unix(30, 0),
+				},
+				{
+					from:    time.Unix(30, 0),
+					through: time.Unix(55, 0),
+				},
+			},
+		},
+		{
+			name: "time range partially within query_ingesters_within",
+			inp: timeInterval{
+				from:    time.Unix(5, 0),
+				through: time.Unix(92, 0),
+			},
+			queryIngestersWithin: time.Minute,
+			maxIngesterSplits:    2,
+			expectedIntervals: []timeInterval{
+				// first two splits come from queryIngestersWithin/maxIngesterSplits=30m
+				{
+					from:    time.Unix(5, 0),
+					through: time.Unix(30, 0),
+				},
+				{
+					from:    time.Unix(30, 0),
+					through: time.Unix(60, 0),
+				},
+				// subsequent intervals are outside the `query_ingesters_within` window
+				{
+					from:    time.Unix(60, 0),
+					through: time.Unix(70, 0),
+				},
+				{
+					from:    time.Unix(70, 0),
+					through: time.Unix(80, 0),
+				},
+				{
+					from:    time.Unix(80, 0),
+					through: time.Unix(90, 0),
+				},
+				{
+					from:    time.Unix(90, 0),
+					through: time.Unix(92, 0),
+				},
+			},
+		},
+		{
+			name: "time range partially within query_ingesters_within, end time inclusive",
+			inp: timeInterval{
+				from:    time.Unix(5, 0),
+				through: time.Unix(92, 0),
+			},
+			endTimeInclusive:     true,
+			queryIngestersWithin: time.Minute,
+			maxIngesterSplits:    2,
+			expectedIntervals: []timeInterval{
+				// first two splits come from queryIngestersWithin/maxIngesterSplits=30m
+				{
+					from:    time.Unix(5, 0),
+					through: time.Unix(30, 0).Add(-time.Millisecond),
+				},
+				{
+					from:    time.Unix(30, 0),
+					through: time.Unix(60, 0).Add(-time.Millisecond),
+				},
+				// subsequent intervals are outside the `query_ingesters_within` window
+				{
+					from:    time.Unix(60, 0),
+					through: time.Unix(70, 0).Add(-time.Millisecond),
+				},
+				{
+					from:    time.Unix(70, 0),
+					through: time.Unix(80, 0).Add(-time.Millisecond),
+				},
+				{
+					from:    time.Unix(80, 0),
+					through: time.Unix(90, 0).Add(-time.Millisecond),
+				},
+				{
+					from:    time.Unix(90, 0),
+					through: time.Unix(92, 0),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var actualIntervals []timeInterval
@@ -221,11 +318,54 @@ func TestForInterval(t *testing.T) {
 					from:    start,
 					through: end,
 				})
+			}, mockIngesterQueryOptions{
+				maxIngesterSplits:    tc.maxIngesterSplits,
+				queryIngestersWithin: tc.queryIngestersWithin,
 			})
 
-			require.Equal(t, tc.expectedIntervals, actualIntervals)
+			if !assert.Equal(t, tc.expectedIntervals, actualIntervals) {
+				for i, expected := range tc.expectedIntervals {
+					if i > len(actualIntervals)-1 {
+						t.Logf("MISSING! EXPECTED FROM %q THROUGH %q", expected.from, expected.through)
+						t.Fail()
+						continue
+					}
+
+					actual := actualIntervals[i]
+
+					if !expected.from.Equal(actual.from) {
+						t.Logf("FROM %q != %q", expected.from, actual.from)
+						t.Fail()
+					}
+					if !expected.through.Equal(actual.through) {
+						t.Logf("THROUGH %q != %q", expected.through, actual.through)
+						t.Fail()
+					}
+				}
+			}
 		})
 	}
+}
+
+type mockIngesterQueryOptions struct {
+	queryIngestersWithin time.Duration
+	maxIngesterSplits    uint
+}
+
+func (m mockIngesterQueryOptions) QueryIngestersOnly() bool {
+	return false
+}
+
+func (m mockIngesterQueryOptions) QueryStoreOnly() bool {
+	return false
+}
+
+func (m mockIngesterQueryOptions) QueryIngestersWithin() time.Duration {
+	return m.queryIngestersWithin
+}
+
+func (m mockIngesterQueryOptions) MaxIngesterSplits() uint {
+	return m.maxIngesterSplits
 }
 
 func TestForInterval_OfZero(t *testing.T) {
@@ -239,7 +379,7 @@ func TestForInterval_OfZero(t *testing.T) {
 			from:    start,
 			through: end,
 		})
-	})
+	}, nil)
 
 	require.Equal(t, []timeInterval{
 		{

@@ -87,11 +87,20 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 	return func() { tick.Stop() }, tick.C
 }
 
+// IngesterQueryOptions exists because querier.Config cannot be passed directly to the queryrange package
+// due to an import cycle.
+type IngesterQueryOptions interface {
+	QueryIngestersOnly() bool
+	QueryStoreOnly() bool
+	QueryIngestersWithin() time.Duration
+	MaxIngesterSplits() uint
+}
+
 // ForInterval splits the given start and end time into given interval.
 // The start and end time in splits would be aligned to the interval
 // except for the start time of first split and end time of last split which would be kept same as original start/end
 // When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
-func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
+func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time), iqo IngesterQueryOptions) {
 	if interval <= 0 {
 		callback(start, end)
 		return
@@ -101,9 +110,20 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 	startNs := start.UnixNano()
 	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
 	firstInterval := true
+	ogInterval := interval
+	modifiedIngesterInterval := ogInterval
+	if iqo.MaxIngesterSplits() > 0 {
+		modifiedIngesterInterval = time.Duration(iqo.QueryIngestersWithin().Nanoseconds() / int64(iqo.MaxIngesterSplits()))
+	}
 
 	for start := start; start.Before(end); start = start.Add(interval) {
+		interval = ogInterval
+
+		if iqo != nil && start.Add(interval).Before(ogStart.Add(iqo.QueryIngestersWithin())) {
+			interval = modifiedIngesterInterval
+		}
 		newEnd := start.Add(interval)
+
 		if !newEnd.Before(end) {
 			newEnd = end
 		} else if endTimeInclusive {

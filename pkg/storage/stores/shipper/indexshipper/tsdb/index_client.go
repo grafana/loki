@@ -206,7 +206,8 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 			Start: model.TimeFromUnixNano(start.UnixNano()),
 			End:   model.TimeFromUnixNano(end.UnixNano()),
 		})
-	})
+		// TODO keep as nil?
+	}, nil)
 
 	var acc IndexStatsAccumulator
 	if c.opts.UseBloomFilters {
@@ -261,7 +262,8 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 			Start: model.TimeFromUnixNano(start.UnixNano()),
 			End:   model.TimeFromUnixNano(end.UnixNano()),
 		})
-	})
+		// TODO: keep as nil?
+	}, nil)
 
 	acc := seriesvolume.NewAccumulator(limit, c.limits.VolumeMaxSeries(userID))
 	for _, interval := range intervals {

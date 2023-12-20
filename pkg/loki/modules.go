@@ -808,12 +808,34 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) uint { return 
 
 func (disabledShuffleShardingLimits) MaxQueryCapacity(_ string) float64 { return 0 }
 
+type ingesterQueryOptions struct {
+	querier  querier.Config
+	frontend queryrange.Config
+}
+
+func (i ingesterQueryOptions) QueryIngestersOnly() bool {
+	return i.querier.QueryIngesterOnly
+}
+
+func (i ingesterQueryOptions) QueryStoreOnly() bool {
+	return i.querier.QueryStoreOnly
+}
+
+func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
+	return i.querier.QueryIngestersWithin
+}
+
+func (i ingesterQueryOptions) MaxIngesterSplits() uint {
+	return i.frontend.MaxIngesterSplits
+}
+
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
+		ingesterQueryOptions{querier: t.Cfg.Querier, frontend: t.Cfg.QueryRange},
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
