@@ -10,14 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var (
@@ -25,21 +23,12 @@ var (
 )
 
 func TestSeriesCache(t *testing.T) {
-	setup := func(seriesResp *LokiSeriesResponse) (*int, queryrangebase.Handler) {
-		cfg := queryrangebase.ResultsCacheConfig{
-			Config: resultscache.Config{
-				CacheConfig: cache.Config{
-					Cache: cache.NewMockCache(),
-				},
-			},
-		}
-		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
-		require.NoError(t, err)
+	setupCacheMW := func() queryrangebase.Middleware {
 		cacheMiddleware, err := NewSeriesCacheMiddleware(
 			log.NewNopLogger(),
 			WithSplitByLimits(fakeLimits{}, 24*time.Hour),
 			DefaultCodec,
-			c,
+			cache.NewMockCache(),
 			nil,
 			nil,
 			func(_ context.Context, _ []string, _ queryrangebase.Request) int {
@@ -51,13 +40,20 @@ func TestSeriesCache(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		calls, seriesHandler := seriesResultHandler(seriesResp)
-		rc := cacheMiddleware.Wrap(seriesHandler)
-
-		return calls, rc
+		return cacheMiddleware
 	}
 
 	t.Run("caches the response for the same request", func(t *testing.T) {
+		cacheMiddleware := setupCacheMW()
+		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+
+		seriesReq := &LokiSeriesRequest{
+			StartTs: from.Time(),
+			EndTs:   through.Time(),
+			Match:   []string{`{namespace=~".*"}`},
+			Path:    seriesAPIPath,
+		}
+
 		seriesResp := &LokiSeriesResponse{
 			Status:  "success",
 			Version: uint32(loghttp.VersionV1),
@@ -72,33 +68,43 @@ func TestSeriesCache(t *testing.T) {
 				},
 			},
 		}
-		calls, handler := setup(seriesResp)
+
+		called := 0
+		handler := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			called++
+
+			// should request the entire length with no partitioning as nothing is cached yet.
+			require.Equal(t, seriesReq.GetStart(), r.GetStart())
+			require.Equal(t, seriesReq.GetEnd(), r.GetEnd())
+
+			return seriesResp, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		got, err := handler.Do(ctx, seriesReq)
+		require.NoError(t, err)
+		require.Equal(t, 1, called) // called actual handler, as not cached.
+		require.Equal(t, seriesResp, got)
+
+		// Doing same request again shouldn't change anything.
+		called = 0
+		got, err = handler.Do(ctx, seriesReq)
+		require.NoError(t, err)
+		require.Equal(t, 0, called)
+		require.Equal(t, seriesResp, got)
+	})
+
+	t.Run("a new request with overlapping time range should reuse part of the previous request for the overlap", func(t *testing.T) {
+		cacheMiddleware := setupCacheMW()
 
 		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
-		seriesReq := &LokiSeriesRequest{
+		req1 := &LokiSeriesRequest{
 			StartTs: from.Time(),
 			EndTs:   through.Time(),
 			Match:   []string{`{namespace=~".*"}`},
 			Path:    seriesAPIPath,
 		}
-
-		*calls = 0
-		ctx := user.InjectOrgID(context.Background(), "fake")
-		resp, err := handler.Do(ctx, seriesReq)
-		require.NoError(t, err)
-		require.Equal(t, 1, *calls) // called actual handled, as not cached.
-		require.Equal(t, seriesResp, resp)
-
-		// Doing same request again shouldn't change anything.
-		*calls = 0
-		resp, err = handler.Do(ctx, seriesReq)
-		require.NoError(t, err)
-		require.Equal(t, 0, *calls)
-		require.Equal(t, seriesResp, resp)
-	})
-
-	t.Run("a new request with overlapping time range should reuse part of the previous request for the overlap", func(t *testing.T) {
-		seriesResp := &LokiSeriesResponse{
+		resp1 := &LokiSeriesResponse{
 			Status:  "success",
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
@@ -115,7 +121,79 @@ func TestSeriesCache(t *testing.T) {
 				},
 			},
 		}
-		calls, handler := setup(seriesResp)
+
+		called := 0
+		handler := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			called++
+
+			// should request the entire length with no partitioning as nothing is cached yet.
+			require.Equal(t, req1.GetStart(), r.GetStart())
+			require.Equal(t, req1.GetEnd(), r.GetEnd())
+
+			return resp1, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		got, err := handler.Do(ctx, req1)
+		require.NoError(t, err)
+		require.Equal(t, 1, called)
+		require.Equal(t, resp1, got)
+
+		req2 := req1.WithStartEnd(req1.GetStart().Add(15*time.Minute), req1.GetEnd().Add(15*time.Minute))
+
+		called = 0
+		handler = cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			called++
+
+			// make downstream request only for the non-overlapping portion of the query.
+			require.Equal(t, req1.GetEnd(), r.GetStart())
+			require.Equal(t, req1.GetEnd().Add(15*time.Minute), r.GetEnd())
+
+			return &LokiSeriesResponse{
+				Status:  "success",
+				Version: uint32(loghttp.VersionV1),
+				Data: []logproto.SeriesIdentifier{
+					{
+						Labels: map[string]string{"cluster": "us-central", "namespace": "prod"},
+					},
+				},
+				Statistics: stats.Result{
+					Summary: stats.Summary{
+						Splits: 1,
+					},
+				},
+			}, nil
+		}))
+
+		got, err = handler.Do(ctx, req2)
+		require.NoError(t, err)
+		require.Equal(t, 1, called)
+		// two splits as we merge the results from the extent and downstream request
+		resp1.Statistics.Summary.Splits = 2
+		require.Equal(t, &LokiSeriesResponse{
+			Status:  "success",
+			Version: uint32(loghttp.VersionV1),
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"cluster": "us-central", "namespace": "dev"},
+				},
+				{
+					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
+				},
+				{
+					Labels: map[string]string{"cluster": "us-central", "namespace": "prod"},
+				},
+			},
+			Statistics: stats.Result{
+				Summary: stats.Summary{
+					Splits: 2,
+				},
+			},
+		}, got)
+	})
+
+	t.Run("caches are only valid for the same request parameters", func(t *testing.T) {
+		cacheMiddleware := setupCacheMW()
 
 		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
 		seriesReq := &LokiSeriesRequest{
@@ -124,25 +202,6 @@ func TestSeriesCache(t *testing.T) {
 			Match:   []string{`{namespace=~".*"}`},
 			Path:    seriesAPIPath,
 		}
-
-		ctx := user.InjectOrgID(context.Background(), "fake")
-		resp, err := handler.Do(ctx, seriesReq)
-		require.NoError(t, err)
-		require.Equal(t, 1, *calls)
-		require.Equal(t, seriesResp, resp)
-
-		*calls = 0
-		req := seriesReq.WithStartEnd(seriesReq.GetStart().Add(15*time.Minute), seriesReq.GetEnd().Add(15*time.Minute))
-
-		resp, err = handler.Do(ctx, req)
-		require.NoError(t, err)
-		require.Equal(t, 1, *calls)
-		// two splits as we merge the results from the extent and downstream request
-		seriesResp.Statistics.Summary.Splits = 2
-		require.Equal(t, seriesResp, resp)
-	})
-
-	t.Run("caches are only valid for the same request parameters", func(t *testing.T) {
 		seriesResp := &LokiSeriesResponse{
 			Status:  "success",
 			Version: uint32(loghttp.VersionV1),
@@ -158,21 +217,21 @@ func TestSeriesCache(t *testing.T) {
 			},
 		}
 
-		calls, handler := setup(seriesResp)
+		called := 0
+		handler := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			called++
+
+			// should request the entire length as none of the subsequent queries hit the cache.
+			require.Equal(t, seriesReq.GetStart(), r.GetStart())
+			require.Equal(t, seriesReq.GetEnd(), r.GetEnd())
+			return seriesResp, nil
+		}))
 
 		// initial call to fill cache
-		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
-		seriesReq := &LokiSeriesRequest{
-			StartTs: from.Time(),
-			EndTs:   through.Time(),
-			Match:   []string{`{namespace=~".*"}`},
-			Path:    seriesAPIPath,
-		}
-
 		ctx := user.InjectOrgID(context.Background(), "fake")
 		_, err := handler.Do(ctx, seriesReq)
 		require.NoError(t, err)
-		require.Equal(t, 1, *calls)
+		require.Equal(t, 1, called)
 
 		type testCase struct {
 			fn   func(*LokiSeriesRequest)
@@ -190,13 +249,9 @@ func TestSeriesCache(t *testing.T) {
 		}
 
 		for name, tc := range testCases {
-			*calls = 0
+			called = 0
+			seriesReq := seriesReq
 
-			seriesReq := &LokiSeriesRequest{
-				StartTs: from.Time(),
-				EndTs:   through.Time(),
-				Match:   []string{`{foo="bar"}`},
-			}
 			if tc.fn != nil {
 				tc.fn(seriesReq)
 			}
@@ -207,15 +262,7 @@ func TestSeriesCache(t *testing.T) {
 
 			_, err = handler.Do(ctx, seriesReq)
 			require.NoError(t, err)
-			require.Equal(t, 1, *calls, name)
+			require.Equal(t, 1, called, name)
 		}
-	})
-}
-
-func seriesResultHandler(v *LokiSeriesResponse) (*int, queryrangebase.Handler) {
-	calls := 0
-	return &calls, queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		calls++
-		return v, nil
 	})
 }
