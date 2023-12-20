@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -158,8 +159,6 @@ func newQuantileSketchIterator(
 	}
 }
 
-//batch
-
 type ProbabilisticQuantileSample struct {
 	T int64
 	F sketch.QuantileSketch
@@ -232,6 +231,14 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
+// Initializing pool
+var quantileVectorPool = sync.Pool{
+	// New optionally specifies a function to generate
+	// a value when Get would otherwise return nil.
+	// New: func() interface{} { return make([]ProbabilisticQuantileVector, 2) },
+	New: func() interface{} { return make([]ProbabilisticQuantileVector, 0, 2) },
+}
+
 // JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
 func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
@@ -243,11 +250,17 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 	if stepCount <= 0 {
 		stepCount = 1
 	}
-	result := make([]ProbabilisticQuantileVector, 0, stepCount)
+
+	result := quantileVectorPool.Get().([]ProbabilisticQuantileVector)
+	if cap(result) < stepCount {
+		//  slices.Grow seems to be significantly slower here
+		result = append(make([]ProbabilisticQuantileVector, 0, cap(result)+stepCount), result...)
+	}
+	result = result[:0]
+	defer quantileVectorPool.Put(result)
 
 	for next {
 		result = append(result, vec)
-
 		next, _, r = stepEvaluator.Next()
 		vec = r.QuantileSketchVec()
 		if stepEvaluator.Error() != nil {
