@@ -126,7 +126,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 	})
 
 	container.Env = append(container.Env, staticAuthCredentials(opts)...)
-	container.Env = append(container.Env, serverSideEncrypt(opts)...)
+	container.Env = append(container.Env, serverSideEncryption(opts)...)
 
 	return corev1.PodSpec{
 		Containers: []corev1.Container{
@@ -168,7 +168,7 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 	}
 }
 
-func serverSideEncrypt(opts Options) []corev1.EnvVar {
+func serverSideEncryption(opts Options) []corev1.EnvVar {
 	secretName := opts.SecretName
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
