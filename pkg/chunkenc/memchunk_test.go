@@ -30,15 +30,15 @@ import (
 )
 
 var testEncoding = []Encoding{
-	//EncNone,
-	//EncGZIP,
-	//EncLZ4_64k,
-	//EncLZ4_256k,
-	//EncLZ4_1M,
-	//EncLZ4_4M,
+	EncNone,
+	EncGZIP,
+	EncLZ4_64k,
+	EncLZ4_256k,
+	EncLZ4_1M,
+	EncLZ4_4M,
 	EncSnappy,
-	//EncFlate,
-	//EncZstd,
+	EncFlate,
+	EncZstd,
 }
 
 var (
