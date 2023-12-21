@@ -142,8 +142,9 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		// Reset step evaluator
 		ev.cur = 1
-		_, err := JoinQuantileSketchVector(true, results[0], ev, params)
+		r, err := JoinQuantileSketchVector(true, results[0], ev, params)
 		require.NoError(b, err)
+		r.(ProbabilisticQuantileMatrix).Release()
 	}
 }
 
@@ -173,9 +174,7 @@ func (ev *sliceStepEvaluator) Error() error {
 }
 
 // Explain implements StepEvaluator.
-func (*sliceStepEvaluator) Explain(Node) {
-	return
-}
+func (*sliceStepEvaluator) Explain(Node) {}
 
 // Next implements StepEvaluator.
 func (ev *sliceStepEvaluator) Next() (ok bool, ts int64, r StepResult) {

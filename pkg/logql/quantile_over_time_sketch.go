@@ -3,7 +3,6 @@ package logql
 import (
 	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/queue"
 )
 
 const (
@@ -81,6 +81,10 @@ func (ProbabilisticQuantileMatrix) String() string {
 }
 
 func (ProbabilisticQuantileMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
+
+func (p ProbabilisticQuantileMatrix) Release() {
+	quantileVectorPool.Put(p)
+}
 
 func (m ProbabilisticQuantileMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	values := make([]*logproto.QuantileSketchVector, len(m))
@@ -231,13 +235,8 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
-// Initializing pool
-var quantileVectorPool = sync.Pool{
-	// New optionally specifies a function to generate
-	// a value when Get would otherwise return nil.
-	// New: func() interface{} { return make([]ProbabilisticQuantileVector, 2) },
-	New: func() interface{} { return make([]ProbabilisticQuantileVector, 0, 2) },
-}
+// quantileVectorPool slice of ProbabilisticQuantileVector [64, 128, 256, ..., 65536]
+var quantileVectorPool = queue.NewSlicePool[ProbabilisticQuantileVector](1<<6, 1<<16, 2)
 
 // JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
 func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
@@ -251,13 +250,8 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		stepCount = 1
 	}
 
-	result := quantileVectorPool.Get().([]ProbabilisticQuantileVector)
-	if cap(result) < stepCount {
-		//  slices.Grow seems to be significantly slower here
-		result = append(make([]ProbabilisticQuantileVector, 0, cap(result)+stepCount), result...)
-	}
-	result = result[:0]
-	defer quantileVectorPool.Put(result)
+	// The result is released to the pool when the matrix is serialized.
+	result := quantileVectorPool.Get(stepCount)
 
 	for next {
 		result = append(result, vec)
