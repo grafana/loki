@@ -213,6 +213,11 @@ type MockDownstreamer struct {
 	*Engine
 }
 
+// AsyncDownstream implements Downstreamer.
+func (MockDownstreamer) AsyncDownstream(context.Context, []DownstreamQuery) chan Resp {
+	panic("unimplemented")
+}
+
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
 func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {

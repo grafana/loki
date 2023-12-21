@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
@@ -119,64 +120,76 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 	})
 }
 
+func (in instance) AsyncDownstream(ctx context.Context, queries []logql.DownstreamQuery) chan logql.Resp {
+	return in.AsyncFor(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
+		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
+		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
+		defer sp.Finish()
+		logger := spanlogger.FromContext(ctx)
+		defer logger.Finish()
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
+
+		res, err := in.handler.Do(ctx, req)
+		if err != nil {
+			return logqlmodel.Result{}, err
+		}
+		return ResponseToResult(res)
+	})
+}
+
+func (in instance) AsyncFor(
+	ctx context.Context,
+	queries []logql.DownstreamQuery,
+	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
+) chan logql.Resp {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ch := make(chan logql.Resp)
+
+	go func() {
+		err := concurrency.ForEachJob(ctx, len(queries), DefaultDownstreamConcurrency, func(ctx context.Context, i int) error {
+			res, err := fn(queries[i])
+			response := logql.Resp{
+				I:   i,
+				Res: res,
+				Err: err,
+			}
+
+			// Feed the result into the channel unless the work has completed.
+			select {
+			case <-ctx.Done():
+			case ch <- response:
+			}
+			return err
+		})
+		if err != nil {
+			ch <- logql.Resp{
+				I: -1,
+				Err: err,
+			}
+		}
+		close(ch)
+	}()
+
+	return ch
+}
+
 // For runs a function against a list of queries, collecting the results or returning an error. The indices are preserved such that input[i] maps to output[i].
 func (in instance) For(
 	ctx context.Context,
 	queries []logql.DownstreamQuery,
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
 ) ([]logqlmodel.Result, error) {
-	type resp struct {
-		i   int
-		res logqlmodel.Result
-		err error
-	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	ch := make(chan resp)
-
-	// Make one goroutine to dispatch the other goroutines, bounded by instance parallelism
-	go func() {
-		for i := 0; i < len(queries); i++ {
-			select {
-			case <-ctx.Done():
-				break
-			case <-in.locks:
-				go func(i int) {
-					// release lock back into pool
-					defer func() {
-						in.locks <- struct{}{}
-					}()
-
-					res, err := fn(queries[i])
-					response := resp{
-						i:   i,
-						res: res,
-						err: err,
-					}
-
-					// Feed the result into the channel unless the work has completed.
-					select {
-					case <-ctx.Done():
-					case ch <- response:
-					}
-				}(i)
-			}
-		}
-	}()
+	ch := in.AsyncFor(ctx, queries, fn)
 
 	acc := newDownstreamAccumulator(queries[0].Params, len(queries))
-	for i := 0; i < len(queries); i++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case resp := <-ch:
-			if resp.err != nil {
-				return nil, resp.err
-			}
-			if err := acc.Accumulate(ctx, resp.i, resp.res); err != nil {
-				return nil, err
-			}
+	for resp := range ch {
+		if resp.Err != nil {
+			return nil, resp.Err
+		}
+		if err := acc.Accumulate(ctx, resp.I, resp.Res); err != nil {
+			return nil, err
 		}
 	}
 	return acc.Result(), nil

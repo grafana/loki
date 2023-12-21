@@ -235,10 +235,17 @@ type DownstreamQuery struct {
 	Params Params
 }
 
+type Resp struct {
+	I   int
+	Res logqlmodel.Result
+	Err error
+}
+
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
 	Downstream(context.Context, []DownstreamQuery) ([]logqlmodel.Result, error)
+	AsyncDownstream(context.Context, []DownstreamQuery) chan Resp
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -274,6 +281,38 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	return results, nil
+}
+
+// Downstream runs queries and collects stats from the embedded Downstreamer
+func (ev DownstreamEvaluator) AsyncDownstream(ctx context.Context, queries []DownstreamQuery) chan logqlmodel.Result {
+	result := make(chan logqlmodel.Result)
+
+	intermediate := ev.Downstreamer.AsyncDownstream(ctx, queries)
+
+	for res := range intermediate {
+		// TODO(owen-d/ewelch): Shard counts should be set by the querier
+		// so we don't have to do it in tricky ways in multiple places.
+		// See pkg/queryrange/downstreamer.go:*accumulatedStreams.Accumulate
+		// for another example
+		if res.Res.Statistics.Summary.Shards == 0 {
+			res.Res.Statistics.Summary.Shards = 1
+		}
+
+		stats.JoinResults(ctx, res.Res.Statistics)
+
+		if err := metadata.JoinHeaders(ctx, res.Res.Headers); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+			break
+		}
+
+		// TODO: it would be nice to have iterators with yield instead
+		// here.
+		if res.Err != nil {
+			result <- res.Res
+		}
+	}
+
+	return result
 }
 
 type errorQuerier struct{}
@@ -373,13 +412,10 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		results, err := ev.Downstream(ctx, queries)
-		if err != nil {
-			return nil, fmt.Errorf("error running quantile sketch downstream query: %w", err)
-		}
+		results := ev.AsyncDownstream(ctx, queries)
 
 		xs := make([]StepEvaluator, 0, len(queries))
-		for _, res := range results {
+		for res := range results {
 			if res.Data.Type() != QuantileSketchMatrixType {
 				return nil, fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
 			}
