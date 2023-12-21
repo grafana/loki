@@ -251,7 +251,6 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 			errs.Add(err)
 			return nil
 		}
-		level.Info(logger).Log("msg", "finished compacting table")
 		return nil
 	})
 
@@ -501,6 +500,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 	}()
 
+	level.Info(logger).Log("msg", "started compacting table", "table", job.tableName, "tenant", job.tenantID)
 	if len(blocksMatchingJob) == 0 && len(metasMatchingJob) > 0 {
 		// There is no change to any blocks, no compaction needed
 		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed")
@@ -591,5 +591,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)
 		return err
 	}
+	level.Info(logger).Log("msg", "finished compacting table", "table", job.tableName, "tenant", job.tenantID)
 	return nil
 }
