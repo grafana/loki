@@ -140,10 +140,16 @@ var (
 	series = logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/apport.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/test.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 		},
 	}

@@ -1,6 +1,7 @@
 package bloomgateway
 
 import (
+	"context"
 	"math"
 	"sort"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/bloomutils"
@@ -21,15 +23,18 @@ func TestBloomGatewayClient(t *testing.T) {
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
-	l, err := validation.NewOverrides(validation.Limits{BloomGatewayShardSize: 1}, nil)
+	l, err := validation.NewOverrides(validation.Limits{BloomGatewayShardSize: 1, BloomGatewayEnabled: true}, nil)
 	require.NoError(t, err)
 
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
-	t.Run("", func(t *testing.T) {
-		_, err := NewGatewayClient(cfg, l, reg, logger, "loki", nil, false)
+	t.Run("FilterChunks returns response", func(t *testing.T) {
+		c, err := NewClient(cfg, &mockRing{}, l, reg, logger, "loki", nil, false)
 		require.NoError(t, err)
+		res, err := c.FilterChunks(context.Background(), "tenant", model.Now(), model.Now(), nil)
+		require.NoError(t, err)
+		require.Equal(t, []*logproto.GroupedChunkRefs{}, res)
 	})
 }
 
@@ -212,7 +217,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
-	c, err := NewGatewayClient(cfg, l, reg, logger, "loki", nil, false)
+	c, err := NewClient(cfg, nil, l, reg, logger, "loki", nil, false)
 	require.NoError(t, err)
 
 	instances := []ring.InstanceDesc{
@@ -408,8 +413,8 @@ func (*mockRing) ReplicationFactor() int {
 }
 
 // ShuffleShard implements ring.ReadRing.
-func (*mockRing) ShuffleShard(_ string, _ int) ring.ReadRing {
-	panic("unimplemented")
+func (r *mockRing) ShuffleShard(_ string, _ int) ring.ReadRing {
+	return r
 }
 
 // ShuffleShardWithLookback implements ring.ReadRing.

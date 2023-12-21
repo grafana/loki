@@ -279,16 +279,16 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz1",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz1",
+				"foo", "bar",
+			),
 		},
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 
@@ -317,16 +317,16 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz1",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz1",
+				"foo", "bar",
+			),
 		},
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 
@@ -339,10 +339,10 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 
@@ -355,16 +355,16 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz1",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz1",
+				"foo", "bar",
+			),
 		},
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 }
@@ -453,7 +453,7 @@ func (s *mockStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 	return nil
 }
 
-func (s *mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
