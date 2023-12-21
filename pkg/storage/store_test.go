@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -191,7 +190,8 @@ func printHeap(b *testing.B, show bool) {
 	}
 }
 
-func getLocalStore(path string, cm ClientMetrics) Store {	limits, err := validation.NewOverrides(validation.Limits{
+func getLocalStore(path string, cm ClientMetrics) Store {
+	limits, err := validation.NewOverrides(validation.Limits{
 		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
 	if err != nil {
