@@ -49,7 +49,7 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(reg prometheus.Registerer, NGramLength, NGramSkip int) (*BloomTokenizer, error) {
+func NewBloomTokenizer(NGramLength, NGramSkip int, reg prometheus.Registerer) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
 		metrics: newMetrics(reg),
 	}

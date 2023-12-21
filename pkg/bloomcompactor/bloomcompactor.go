@@ -76,8 +76,9 @@ type Compactor struct {
 
 	sharding ShardingStrategy
 
-	metrics *metrics
-	reg     prometheus.Registerer
+	metrics   *metrics
+	btMetrics prometheus.Registerer
+	reg       prometheus.Registerer
 }
 
 type storeClient struct {
@@ -113,6 +114,9 @@ func New(
 	}
 
 	c.storeClients = make(map[config.DayTime]storeClient)
+
+	// initialize metrics
+	c.btMetrics = prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", r)
 
 	indexShipperReg := prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r)
 
@@ -354,6 +358,11 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		return err
 	}
 
+	// Tokenizer is not thread-safe so we need one per goroutine.
+	NGramLength := c.limits.BloomNGramLength(tenant)
+	NGramSkip := c.limits.BloomNGramSkip(tenant)
+	bt, _ := v1.NewBloomTokenizer(NGramLength, NGramSkip, c.btMetrics)
+
 	errs := multierror.New()
 	rs, err := c.sharding.GetTenantSubRing(tenant).GetAllHealthy(RingOp)
 	if err != nil {
@@ -405,7 +414,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		jobLogger := log.With(logger, "job", job.String())
 		c.metrics.compactionRunJobStarted.Inc()
 
-		err = c.runCompact(ctx, jobLogger, job, sc)
+		err = c.runCompact(ctx, jobLogger, job, bt, sc)
 		if err != nil {
 			c.metrics.compactionRunJobFailed.Inc()
 			errs.Add(errors.Wrap(err, "runBloomCompact failed"))
@@ -456,7 +465,7 @@ func (c *Compactor) compactTenantWithRetries(ctx context.Context, logger log.Log
 	)
 }
 
-func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, storeClient storeClient) error {
+func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, bt *v1.BloomTokenizer, storeClient storeClient) error {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return err
@@ -480,22 +489,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	// TODO This logic currently is NOT concerned with cutting blocks upon topology changes to bloom-compactors.
 	// It may create blocks with series outside of the fp range of the compactor. Cutting blocks will be addressed in a follow-up PR.
 	metasMatchingJob, blocksMatchingJob := matchingBlocks(metas, job)
-
-	// Tokenizer is not thread-safe so we need one per goroutine.
-	NGramLength := c.limits.BloomNGramLength(job.tenantID)
-	NGramSkip := c.limits.BloomNGramSkip(job.tenantID)
-
-	btReg := prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", c.reg)
-	pReg := prometheus.WrapRegistererWith(
-		prometheus.Labels{
-			"component": fmt.Sprintf(
-				"bloom-tokenizer-%s-%s",
-				job.tenantID,
-				job.tableName,
-			),
-		}, btReg)
-
-	bt, _ := v1.NewBloomTokenizer(pReg, NGramLength, NGramSkip)
 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
