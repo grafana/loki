@@ -18,7 +18,7 @@ type BloomQuerier struct {
 	logger log.Logger
 }
 
-func NewBloomQuerier(c Client, logger log.Logger) *BloomQuerier {
+func NewQuerier(c Client, logger log.Logger) *BloomQuerier {
 	return &BloomQuerier{c: c, logger: logger}
 }
 

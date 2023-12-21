@@ -15,6 +15,8 @@ import (
 func BuildAll(opts Options) ([]client.Object, error) {
 	res := make([]client.Object, 0)
 
+	sa := BuildServiceAccount(opts)
+
 	cm, sha1C, mapErr := LokiConfigMap(opts)
 	if mapErr != nil {
 		return nil, mapErr
@@ -52,6 +54,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	}
 
 	res = append(res, cm)
+	res = append(res, sa)
 	res = append(res, distributorObjs...)
 	res = append(res, ingesterObjs...)
 	res = append(res, querierObjs...)

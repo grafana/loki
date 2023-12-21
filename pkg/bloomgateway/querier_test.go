@@ -32,7 +32,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("client not called when filters are empty", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewBloomQuerier(c, logger)
+		bq := NewQuerier(c, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -51,7 +51,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("client not called when chunkRefs are empty", func(t *testing.T) {
 		c := &noopClient{}
-		bq := NewBloomQuerier(c, logger)
+		bq := NewQuerier(c, logger)
 
 		ctx := context.Background()
 		through := model.Now()
@@ -68,7 +68,7 @@ func TestBloomQuerier(t *testing.T) {
 
 	t.Run("querier propagates error from client", func(t *testing.T) {
 		c := &noopClient{err: errors.New("something went wrong")}
-		bq := NewBloomQuerier(c, logger)
+		bq := NewQuerier(c, logger)
 
 		ctx := context.Background()
 		through := model.Now()
