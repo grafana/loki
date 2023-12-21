@@ -27,7 +27,7 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	if err := storage.ConfigureDeployment(deployment, opts.ObjectStorage, opts.Gates.OpenShift.Enabled); err != nil {
+	if err := storage.ConfigureDeployment(deployment, opts.ObjectStorage); err != nil {
 		return nil, err
 	}
 

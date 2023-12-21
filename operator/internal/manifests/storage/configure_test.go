@@ -13,11 +13,10 @@ import (
 
 func TestConfigureDeploymentForStorageType(t *testing.T) {
 	type tt struct {
-		desc      string
-		opts      Options
-		osEnabled bool
-		dpl       *appsv1.Deployment
-		want      *appsv1.Deployment
+		desc string
+		opts Options
+		dpl  *appsv1.Deployment
+		want *appsv1.Deployment
 	}
 
 	tc := []tt{
@@ -305,8 +304,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					STS:      true,
-					Audience: "test",
+					STS:                  true,
+					Audience:             "test",
+					WebIdentityTokenFile: saTokenVolumeK8sDirectory,
 				},
 			},
 			dpl: &appsv1.Deployment{
@@ -397,11 +397,11 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					STS:      true,
-					Audience: "test",
+					STS:                  true,
+					Audience:             "test",
+					WebIdentityTokenFile: saTokenVolumeOcpDirectory,
 				},
 			},
-			osEnabled: true,
 			dpl: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -655,7 +655,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureDeployment(tc.dpl, tc.opts, tc.osEnabled)
+			err := ConfigureDeployment(tc.dpl, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -1120,7 +1120,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureStatefulSet(tc.sts, tc.opts, false)
+			err := ConfigureStatefulSet(tc.sts, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})
@@ -1312,7 +1312,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureDeployment(tc.dpl, tc.opts, false)
+			err := ConfigureDeployment(tc.dpl, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
@@ -1507,7 +1507,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := ConfigureStatefulSet(tc.sts, tc.opts, false)
+			err := ConfigureStatefulSet(tc.sts, tc.opts)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.sts)
 		})

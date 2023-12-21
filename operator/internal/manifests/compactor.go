@@ -26,7 +26,7 @@ func BuildCompactor(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	if err := storage.ConfigureStatefulSet(statefulSet, opts.ObjectStorage, opts.Gates.OpenShift.Enabled); err != nil {
+	if err := storage.ConfigureStatefulSet(statefulSet, opts.ObjectStorage); err != nil {
 		return nil, err
 	}
 
