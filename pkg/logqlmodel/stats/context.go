@@ -187,6 +187,9 @@ func (s *Store) Merge(m Store) {
 	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
 	s.Chunk.PostFilterLines += m.Chunk.PostFilterLines
+	if m.QueryReferencedStructured {
+		s.QueryReferencedStructured = true
+	}
 }
 
 func (s *Summary) Merge(m Summary) {
@@ -275,6 +278,10 @@ func (r Result) TotalDecompressedBytes() int64 {
 
 func (r Result) TotalDecompressedLines() int64 {
 	return r.Querier.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.DecompressedLines
+}
+
+func (r Result) QueryReferencedStructuredMetadata() bool {
+	return r.Querier.Store.QueryReferencedStructured || r.Ingester.Store.QueryReferencedStructured
 }
 
 func (c *Context) AddIngesterBatch(size int64) {
@@ -420,6 +427,10 @@ func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
 
+func (c *Context) SetQueryReferencedStructuredMetadata() {
+	c.store.QueryReferencedStructured = true
+}
+
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	var stats *Cache
 	switch t {
@@ -469,6 +480,7 @@ func (r Result) Log(log log.Logger) {
 		"Querier.PostFilterLInes", r.Querier.Store.Chunk.PostFilterLines,
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
+		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
 	)
 	r.Caches.Log(log)
 	r.Summary.Log(log)

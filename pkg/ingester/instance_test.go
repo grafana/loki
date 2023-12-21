@@ -754,6 +754,10 @@ type mockStreamPipeline struct {
 	called    int
 }
 
+func (p *mockStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func (p *mockStreamPipeline) BaseLabels() log.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
@@ -837,6 +841,10 @@ func (p *mockExtractor) Reset() {}
 type mockStreamExtractor struct {
 	wrappedSP log.StreamSampleExtractor
 	called    int
+}
+
+func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
 }
 
 func (p *mockStreamExtractor) BaseLabels() log.LabelsResult {
