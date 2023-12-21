@@ -77,7 +77,7 @@ type Compactor struct {
 	sharding ShardingStrategy
 
 	metrics   *metrics
-	btMetrics prometheus.Registerer
+	btMetrics *v1.Metrics
 	reg       prometheus.Registerer
 }
 
@@ -116,7 +116,7 @@ func New(
 	c.storeClients = make(map[config.DayTime]storeClient)
 
 	// initialize metrics
-	c.btMetrics = prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", r)
+	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", r))
 
 	indexShipperReg := prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r)
 

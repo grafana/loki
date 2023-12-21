@@ -5,10 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -19,14 +16,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-type metrics struct {
-	sbfCreationTime    prometheus.Counter   // time spent creating sbfs
-	chunkSize          prometheus.Histogram // uncompressed size of all chunks summed per series
-	bloomSize          prometheus.Histogram // size of the bloom filter in bytes
-	hammingWeightRatio prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
-	estimatedCount     prometheus.Histogram // estimated number of elements in the bloom filter
-}
-
 /*
 BloomTokenizer is a utility that converts either Loki chunks or individual lines into tokens.
 These tokens are n-grams, representing adjacent letters, that are used to populate a bloom filter.
@@ -34,7 +23,7 @@ https://en.wikipedia.org/wiki/Bloom_filter
 Bloom filters are utilized for faster lookups of log lines.
 */
 type BloomTokenizer struct {
-	metrics *metrics
+	metrics *Metrics
 
 	lineTokenizer *NGramTokenizer
 	cache         map[string]interface{}
@@ -49,9 +38,9 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(NGramLength, NGramSkip int, reg prometheus.Registerer) (*BloomTokenizer, error) {
+func NewBloomTokenizer(NGramLength, NGramSkip int, metrics *Metrics) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
-		metrics: newMetrics(reg),
+		metrics: metrics,
 	}
 	t.cache = make(map[string]interface{}, cacheSize)
 	t.lineTokenizer = NewNGramTokenizer(NGramLength, NGramSkip)
@@ -71,35 +60,6 @@ func (bt *BloomTokenizer) GetNGramLength() uint64 {
 
 func (bt *BloomTokenizer) GetNGramSkip() uint64 {
 	return uint64(bt.lineTokenizer.Skip)
-}
-
-func newMetrics(r prometheus.Registerer) *metrics {
-	return &metrics{
-		sbfCreationTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "bloom_creation_time",
-			Help: "Time spent creating scalable bloom filters",
-		}),
-		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "bloom_chunk_series_size",
-			Help:    "Uncompressed size of chunks in a series",
-			Buckets: prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
-		}),
-		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "bloom_size",
-			Help:    "Size of the bloom filter in bytes",
-			Buckets: prometheus.ExponentialBucketsRange(128, 16777216, 8),
-		}),
-		hammingWeightRatio: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "bloom_hamming_weight_ratio",
-			Help:    "Ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter",
-			Buckets: prometheus.ExponentialBucketsRange(0.001, 1, 12),
-		}),
-		estimatedCount: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "bloom_estimated_count",
-			Help:    "Estimated number of elements in the bloom filter",
-			Buckets: prometheus.ExponentialBucketsRange(1, 33554432, 10),
-		}),
-	}
 }
 
 func clearCache(cache map[string]interface{}) {
