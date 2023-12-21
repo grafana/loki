@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql/log"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -24,6 +22,8 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/distributor/writefailures"
@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -428,7 +429,12 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 	}
 
 	if i.pipelineWrapper != nil {
-		pipeline = i.pipelineWrapper.Wrap(pipeline, expr.String())
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -477,7 +483,12 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	}
 
 	if i.extractorWrapper != nil {
-		extractor = i.extractorWrapper.Wrap(extractor, expr.String())
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -588,9 +599,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		err = i.forMatchingStreams(ctx, req.Start, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req.Start, req.End) {
-				series = append(series, logproto.SeriesIdentifier{
-					Labels: stream.labels.Map(),
-				})
+				series = append(series, logproto.SeriesIdentifierFromLabels(stream.labels))
 			}
 			return nil
 		})
@@ -613,9 +622,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 						return nil
 					}
 
-					dedupedSeries[key] = logproto.SeriesIdentifier{
-						Labels: stream.labels.Map(),
-					}
+					dedupedSeries[key] = logproto.SeriesIdentifierFromLabels(stream.labels)
 				}
 				return nil
 			})

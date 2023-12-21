@@ -168,8 +168,12 @@ func (v *DepthFirstTraversal) VisitLineFilter(e *LineFilterExpr) {
 	if v.VisitLineFilterFn != nil {
 		v.VisitLineFilterFn(v, e)
 	} else {
-		e.Left.Accept(v)
-		e.Or.Accept(v)
+		if e.Left != nil {
+			e.Left.Accept(v)
+		}
+		if e.Or != nil {
+			e.Or.Accept(v)
+		}
 	}
 }
 
