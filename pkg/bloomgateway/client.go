@@ -149,8 +149,9 @@ type GatewayClient struct {
 	ring   ring.ReadRing
 }
 
-func NewGatewayClient(
+func NewClient(
 	cfg ClientConfig,
+	readRing ring.ReadRing,
 	limits Limits,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -207,6 +208,7 @@ func NewGatewayClient(
 		logger: logger,
 		limits: limits,
 		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
+		ring:   readRing,
 	}, nil
 }
 
