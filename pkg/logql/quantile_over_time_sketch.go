@@ -82,7 +82,7 @@ func (ProbabilisticQuantileMatrix) String() string {
 
 func (ProbabilisticQuantileMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
 
-func (p ProbabilisticQuantileMatrix) Release() {
+func (m ProbabilisticQuantileMatrix) Release() {
 	quantileVectorPool.Put(p)
 }
 
