@@ -1884,6 +1884,10 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 						Name:  "fizz",
 						Value: "buzz",
 					},
+					{
+						Name:  "num",
+						Value: "1",
+					},
 				}
 			}
 			require.NoError(t, chunkEnc.Append(&entry))
@@ -1922,6 +1926,10 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					{
 						Name:  "fizz",
 						Value: "buzz",
+					},
+					{
+						Name:  "num",
+						Value: "1",
 					},
 				}
 			}
@@ -2027,6 +2035,12 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			{
 				name:  "referencing structured metadata in without aggregation clause",
 				query: `sum without (fizz) (count_over_time({sm="true"}[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata in unwrap",
+				query: `sum(sum_over_time({sm="true"} | unwrap num[1m]))`,
 
 				expectedReferencedStructuredMetadata: true,
 			},
