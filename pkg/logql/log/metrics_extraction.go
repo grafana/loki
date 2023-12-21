@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"time"
@@ -41,7 +42,7 @@ type StreamSampleExtractor interface {
 // SampleExtractorWrapper takes an extractor, wraps it is some desired functionality
 // and returns a new pipeline
 type SampleExtractorWrapper interface {
-	Wrap(extractor SampleExtractor, query string) SampleExtractor
+	Wrap(ctx context.Context, extractor SampleExtractor, query, tenant string) SampleExtractor
 }
 
 type lineSampleExtractor struct {

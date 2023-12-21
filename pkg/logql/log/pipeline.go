@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"reflect"
 	"sync"
 	"unsafe"
@@ -38,7 +39,7 @@ type Stage interface {
 // PipelineWrapper takes a pipeline, wraps it is some desired functionality and
 // returns a new pipeline
 type PipelineWrapper interface {
-	Wrap(pipeline Pipeline, query string) Pipeline
+	Wrap(ctx context.Context, pipeline Pipeline, query, tenant string) Pipeline
 }
 
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.

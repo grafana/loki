@@ -450,8 +450,8 @@ func TestOrLineFilterTypes(t *testing.T) {
 		{labels.MatchNotRegexp},
 	} {
 		t.Run("right inherits left's type", func(t *testing.T) {
-			left := &LineFilterExpr{Ty: tt.ty, Match: "something"}
-			right := &LineFilterExpr{Ty: labels.MatchEqual, Match: "something"}
+			left := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
+			right := &LineFilterExpr{LineFilter: LineFilter{Ty: labels.MatchEqual, Match: "something"}}
 
 			_ = newOrLineFilter(left, right)
 			require.Equal(t, tt.ty, right.Ty)

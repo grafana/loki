@@ -127,13 +127,14 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options, osEnabled boo
 	})
 
 	if !wifEnabled(opts) {
-		container.Env = append(container.Env, envVarsNoWIF(opts)...)
+		container.Env = append(container.Env, staticAuthCredentials(opts)...)
 	} else {
 		setSATokenPath(&opts, osEnabled)
-		container.Env = append(container.Env, envVarsWIF(opts)...)
+		container.Env = append(container.Env, managedAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
 	}
+	container.Env = append(container.Env, serverSideEncryption(opts)...)
 
 	return corev1.PodSpec{
 		Containers: []corev1.Container{
@@ -143,7 +144,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options, osEnabled boo
 	}
 }
 
-func envVarsNoWIF(opts Options) []corev1.EnvVar {
+func staticAuthCredentials(opts Options) []corev1.EnvVar {
 	secretName := opts.SecretName
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
@@ -161,14 +162,10 @@ func envVarsNoWIF(opts Options) []corev1.EnvVar {
 			envVarFromValue(EnvGoogleApplicationCredentials, path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename)),
 		}
 	case lokiv1.ObjectStorageSecretS3:
-		storeEnvVars := []corev1.EnvVar{
+		return []corev1.EnvVar{
 			envVarFromSecret(EnvAWSAccessKeyID, secretName, KeyAWSAccessKeyID),
 			envVarFromSecret(EnvAWSAccessKeySecret, secretName, KeyAWSAccessKeySecret),
 		}
-		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
-			storeEnvVars = append(storeEnvVars, envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, KeyAWSSseKmsEncryptionContext))
-		}
-		return storeEnvVars
 	case lokiv1.ObjectStorageSecretSwift:
 		return []corev1.EnvVar{
 			envVarFromSecret(EnvSwiftUsername, secretName, KeySwiftUsername),
@@ -179,7 +176,7 @@ func envVarsNoWIF(opts Options) []corev1.EnvVar {
 	}
 }
 
-func envVarsWIF(opts Options) []corev1.EnvVar {
+func managedAuthCredentials(opts Options) []corev1.EnvVar {
 	secretName := opts.SecretName
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
@@ -187,6 +184,20 @@ func envVarsWIF(opts Options) []corev1.EnvVar {
 			envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
 			envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
 		}
+	default:
+		return []corev1.EnvVar{}
+	}
+}
+func serverSideEncryption(opts Options) []corev1.EnvVar {
+	secretName := opts.SecretName
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
+			return []corev1.EnvVar{
+				envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, KeyAWSSseKmsEncryptionContext),
+			}
+		}
+		return []corev1.EnvVar{}
 	default:
 		return []corev1.EnvVar{}
 	}
@@ -222,6 +233,27 @@ func ensureCAForS3(p *corev1.PodSpec, tls *TLSConfig) corev1.PodSpec {
 			*container,
 		},
 		Volumes: volumes,
+	}
+}
+
+func envVarFromSecret(name, secretName, secretKey string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: name,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: secretName,
+				},
+				Key: secretKey,
+			},
+		},
+	}
+}
+
+func envVarFromValue(name, value string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name:  name,
+		Value: value,
 	}
 }
 
@@ -281,26 +313,5 @@ func saTokenVolume(opts Options) corev1.Volume {
 				},
 			},
 		},
-	}
-}
-
-func envVarFromSecret(name, secretName, secretKey string) corev1.EnvVar {
-	return corev1.EnvVar{
-		Name: name,
-		ValueFrom: &corev1.EnvVarSource{
-			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: secretName,
-				},
-				Key: secretKey,
-			},
-		},
-	}
-}
-
-func envVarFromValue(name, value string) corev1.EnvVar {
-	return corev1.EnvVar{
-		Name:  name,
-		Value: value,
 	}
 }
