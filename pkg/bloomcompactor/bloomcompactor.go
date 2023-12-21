@@ -246,7 +246,6 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 	_ = concurrency.ForEachJob(ctx, len(tables), parallelism, func(ctx context.Context, i int) error {
 		tableName := tables[i]
 		logger := log.With(c.logger, "table", tableName)
-		level.Info(logger).Log("msg", "compacting table")
 		err := c.compactTable(ctx, logger, tableName, tablesIntervals[tableName])
 		if err != nil {
 			errs.Add(err)
@@ -307,12 +306,7 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 
 		// Skip this table if it is too new/old for the tenant limits.
 		now := model.Now()
-		tableMinAge := c.limits.BloomCompactorMinTableAge(tenant)
 		tableMaxAge := c.limits.BloomCompactorMaxTableAge(tenant)
-		if tableMinAge > 0 && tableInterval.End.After(now.Add(-tableMinAge)) {
-			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too new ", "table-min-age", tableMinAge, "table-end", tableInterval.End, "now", now)
-			continue
-		}
 		if tableMaxAge > 0 && tableInterval.Start.Before(now.Add(-tableMaxAge)) {
 			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too old", "table-max-age", tableMaxAge, "table-start", tableInterval.Start, "now", now)
 			continue
