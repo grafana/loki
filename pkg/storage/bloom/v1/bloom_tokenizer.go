@@ -38,7 +38,7 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(NGramLength, NGramSkip int, metrics *Metrics) (*BloomTokenizer, error) {
+func NewBloomTokenizer(NGramLength, NGramSkip int, metrics *Metrics) *BloomTokenizer {
 	t := &BloomTokenizer{
 		metrics: metrics,
 	}
@@ -47,7 +47,7 @@ func NewBloomTokenizer(NGramLength, NGramSkip int, metrics *Metrics) (*BloomToke
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 
-	return t, nil
+	return t
 }
 
 func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {

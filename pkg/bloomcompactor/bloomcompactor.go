@@ -361,7 +361,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	// Tokenizer is not thread-safe so we need one per goroutine.
 	NGramLength := c.limits.BloomNGramLength(tenant)
 	NGramSkip := c.limits.BloomNGramSkip(tenant)
-	bt, _ := v1.NewBloomTokenizer(NGramLength, NGramSkip, c.btMetrics)
+	bt := v1.NewBloomTokenizer(NGramLength, NGramSkip, c.btMetrics)
 
 	errs := multierror.New()
 	rs, err := c.sharding.GetTenantSubRing(tenant).GetAllHealthy(RingOp)
