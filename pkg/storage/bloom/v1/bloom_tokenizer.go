@@ -7,8 +7,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/util/constants"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -53,7 +51,7 @@ const eightBits = 8
 // 2) This is not thread safe.
 func NewBloomTokenizer(reg prometheus.Registerer, NGramLength, NGramSkip int) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
-		metrics: newMetrics(reg, constants.Loki, bloomTokenizerMetricsSubsystem),
+		metrics: newMetrics(reg),
 	}
 	t.cache = make(map[string]interface{}, cacheSize)
 	t.lineTokenizer = NewNGramTokenizer(NGramLength, NGramSkip)
@@ -75,41 +73,31 @@ func (bt *BloomTokenizer) GetNGramSkip() uint64 {
 	return uint64(bt.lineTokenizer.Skip)
 }
 
-func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
+func newMetrics(r prometheus.Registerer) *metrics {
 	return &metrics{
 		sbfCreationTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name:      "bloom_creation_time",
-			Help:      "Time spent creating scalable bloom filters",
-			Namespace: namespace,
-			Subsystem: subsystem,
+			Name: "bloom_creation_time",
+			Help: "Time spent creating scalable bloom filters",
 		}),
 		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:      "bloom_chunk_series_size",
-			Help:      "Uncompressed size of chunks in a series",
-			Buckets:   prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
-			Namespace: namespace,
-			Subsystem: subsystem,
+			Name:    "bloom_chunk_series_size",
+			Help:    "Uncompressed size of chunks in a series",
+			Buckets: prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
 		}),
 		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:      "bloom_size",
-			Help:      "Size of the bloom filter in bytes",
-			Buckets:   prometheus.ExponentialBucketsRange(128, 16777216, 8),
-			Namespace: namespace,
-			Subsystem: subsystem,
+			Name:    "bloom_size",
+			Help:    "Size of the bloom filter in bytes",
+			Buckets: prometheus.ExponentialBucketsRange(128, 16777216, 8),
 		}),
 		hammingWeightRatio: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:      "bloom_hamming_weight_ratio",
-			Help:      "Ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter",
-			Buckets:   prometheus.ExponentialBucketsRange(0.001, 1, 12),
-			Namespace: namespace,
-			Subsystem: subsystem,
+			Name:    "bloom_hamming_weight_ratio",
+			Help:    "Ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter",
+			Buckets: prometheus.ExponentialBucketsRange(0.001, 1, 12),
 		}),
 		estimatedCount: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:      "bloom_estimated_count",
-			Help:      "Estimated number of elements in the bloom filter",
-			Buckets:   prometheus.ExponentialBucketsRange(1, 33554432, 10),
-			Namespace: namespace,
-			Subsystem: subsystem,
+			Name:    "bloom_estimated_count",
+			Help:    "Estimated number of elements in the bloom filter",
+			Buckets: prometheus.ExponentialBucketsRange(1, 33554432, 10),
 		}),
 	}
 }
