@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -541,7 +542,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 					context.Background(),
 					c.User,
 					0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
-					labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+					chunk.NewPredicate([]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+")}, nil),
 				)
 				require.Nil(t, err)
 				require.Equal(t, tc.expectedChunks, refs)

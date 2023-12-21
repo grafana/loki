@@ -8,10 +8,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
@@ -384,8 +386,8 @@ func TestCache(t *testing.T) {
 		From:    model.Time(2000),
 		Through: model.Time(3000),
 		Refs:    groupRefs(t, chunkRefs),
-		Filters: []*logproto.LineFilterExpression{
-			{Operator: 1, Match: "foo"},
+		Filters: []syntax.LineFilter{
+			{Ty: labels.MatchEqual, Match: "foo"},
 		},
 	}
 	expectedRes := &logproto.FilterChunkRefResponse{
