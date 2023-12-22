@@ -109,4 +109,6 @@ const (
 	secretDirectory  = "/etc/storage/secrets"
 	storageTLSVolume = "storage-tls"
 	caDirectory      = "/etc/storage/ca"
+
+	awsDefaultAudience = "sts.amazonaws.com"
 )

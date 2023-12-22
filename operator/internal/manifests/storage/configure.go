@@ -297,7 +297,10 @@ func saTokenVolume(opts Options) corev1.Volume {
 	storeType := opts.SharedStore
 	switch storeType {
 	case lokiv1.ObjectStorageSecretS3:
-		audience = opts.S3.Audience
+		audience = awsDefaultAudience
+		if opts.S3.Audience != "" {
+			audience = opts.S3.Audience
+		}
 	}
 	return corev1.Volume{
 		Name: saTokenVolumeName,
