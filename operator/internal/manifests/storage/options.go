@@ -16,9 +16,10 @@ type Options struct {
 	Swift        *SwiftStorageConfig
 	AlibabaCloud *AlibabaCloudStorageConfig
 
-	SecretName string
-	SecretSHA1 string
-	TLS        *TLSConfig
+	SecretName       string
+	SecretSHA1       string
+	TLS              *TLSConfig
+	OpenShiftEnabled bool
 }
 
 // AzureStorageConfig for Azure storage config

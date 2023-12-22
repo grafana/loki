@@ -127,6 +127,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 	})
 
 	if managedAuthEnabled(opts) {
+		setSATokenPath(&opts)
 		container.Env = append(container.Env, managedAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
@@ -267,12 +268,12 @@ func managedAuthEnabled(opts Options) bool {
 	}
 }
 
-func SetSATokenPath(opts *Options, openshiftEnabled bool) {
+func setSATokenPath(opts *Options) {
 	var wiToken string
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
 		wiToken = saTokenVolumeK8sDirectory
-		if openshiftEnabled {
+		if opts.OpenShiftEnabled {
 			wiToken = saTokenVolumeOcpDirectory
 		}
 		opts.S3.WebIdentityTokenFile = wiToken
