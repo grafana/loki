@@ -679,7 +679,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err:       "",
 		},
 		{
-			name: "results cache enabled, stats cache disabled",
+			name: "results cache enabled",
 			config: Config{
 				Config: base.Config{
 					CacheResults: true,
@@ -694,34 +694,32 @@ func TestNewTripperware_Caches(t *testing.T) {
 						},
 					},
 				},
-				CacheIndexStatsResults: false,
+			},
+			numCaches: 1,
+			err:       "",
+		},
+		{
+			name: "stats cache enabled",
+			config: Config{
+				CacheIndexStatsResults: true,
+				StatsCacheConfig: IndexStatsCacheConfig{
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
+							},
+						},
+					},
+				},
 			},
 			numCaches: 1,
 			err:       "",
 		},
 		{
 			name: "results cache enabled, stats cache enabled",
-			config: Config{
-				Config: base.Config{
-					CacheResults: true,
-					ResultsCacheConfig: base.ResultsCacheConfig{
-						Config: resultscache.Config{
-							CacheConfig: cache.Config{
-								EmbeddedCache: cache.EmbeddedCacheConfig{
-									MaxSizeMB: 1,
-									Enabled:   true,
-								},
-							},
-						},
-					},
-				},
-				CacheIndexStatsResults: true,
-			},
-			numCaches: 2,
-			err:       "",
-		},
-		{
-			name: "results cache enabled, stats cache enabled but different",
 			config: Config{
 				Config: base.Config{
 					CacheResults: true,
@@ -763,11 +761,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err: fmt.Sprintf("%s cache is not configured", stats.ResultCache),
 		},
 		{
-			name: "results cache disabled, stats cache enabled (no config provided)",
+			name: "stats cache enabled (no config provided)",
 			config: Config{
-				Config: base.Config{
-					CacheResults: false,
-				},
 				CacheIndexStatsResults: true,
 			},
 			numCaches: 0,
