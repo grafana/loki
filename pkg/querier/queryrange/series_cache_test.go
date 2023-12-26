@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -21,6 +22,47 @@ import (
 var (
 	seriesAPIPath = "/loki/api/v1/series"
 )
+
+func TestCacheKeySeries_GenerateCacheKey(t *testing.T) {
+	k := cacheKeySeries{
+		transformer: nil,
+		Limits: fakeLimits{
+			splitDuration: map[string]time.Duration{
+				"fake": time.Hour,
+			},
+		},
+	}
+
+	from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+	req := &LokiSeriesRequest{
+		StartTs: from.Time(),
+		EndTs:   through.Time(),
+		Match:   []string{`{namespace="prod"}`, `{service="foo"}`},
+		Path:    seriesAPIPath,
+	}
+
+	expectedInterval := testTime.UnixMilli() / time.Hour.Milliseconds()
+	require.Equal(t, fmt.Sprintf(`series:fake:{namespace="prod"},{service="foo"}:%d:%d`, expectedInterval, time.Hour.Nanoseconds()), k.GenerateCacheKey(context.Background(), "fake", req))
+
+	t.Run("same set of matchers in any order should result in the same cache key", func(t *testing.T) {
+		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+
+		for _, matchers := range [][]string{
+			{`{cluster="us-central"}`, `{namespace="prod"}`, `{service=~"foo.*"}`},
+			{`{namespace="prod"}`, `{service=~"foo.*"}`, `{cluster="us-central"}`},
+		} {
+			req := &LokiSeriesRequest{
+				StartTs: from.Time(),
+				EndTs:   through.Time(),
+				Match:   matchers,
+				Path:    seriesAPIPath,
+			}
+			expectedInterval := testTime.UnixMilli() / time.Hour.Milliseconds()
+			require.Equal(t, fmt.Sprintf(`series:fake:{cluster="us-central"},{namespace="prod"},{service=~"foo.*"}:%d:%d`, expectedInterval, time.Hour.Nanoseconds()), k.GenerateCacheKey(context.Background(), "fake", req))
+		}
+
+	})
+}
 
 func TestSeriesCache(t *testing.T) {
 	setupCacheMW := func() queryrangebase.Middleware {
@@ -59,7 +101,7 @@ func TestSeriesCache(t *testing.T) {
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "eu-west"}, {Key: "namespace", Value: "prod"}},
 				},
 			},
 			Statistics: stats.Result{
@@ -109,10 +151,10 @@ func TestSeriesCache(t *testing.T) {
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"cluster": "us-central", "namespace": "dev"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "us-central"}, {Key: "namespace", Value: "dev"}},
 				},
 				{
-					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "eu-west"}, {Key: "namespace", Value: "prod"}},
 				},
 			},
 			Statistics: stats.Result{
@@ -154,7 +196,7 @@ func TestSeriesCache(t *testing.T) {
 				Version: uint32(loghttp.VersionV1),
 				Data: []logproto.SeriesIdentifier{
 					{
-						Labels: map[string]string{"cluster": "us-central", "namespace": "prod"},
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "us-central"}, {Key: "namespace", Value: "prod"}},
 					},
 				},
 				Statistics: stats.Result{
@@ -175,13 +217,13 @@ func TestSeriesCache(t *testing.T) {
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"cluster": "us-central", "namespace": "dev"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "us-central"}, {Key: "namespace", Value: "dev"}},
 				},
 				{
-					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "eu-west"}, {Key: "namespace", Value: "prod"}},
 				},
 				{
-					Labels: map[string]string{"cluster": "us-central", "namespace": "prod"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "us-central"}, {Key: "namespace", Value: "prod"}},
 				},
 			},
 			Statistics: stats.Result{
@@ -207,7 +249,7 @@ func TestSeriesCache(t *testing.T) {
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"cluster": "eu-west", "namespace": "prod"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "eu-west"}, {Key: "namespace", Value: "prod"}},
 				},
 			},
 			Statistics: stats.Result{

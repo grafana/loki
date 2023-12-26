@@ -1234,7 +1234,7 @@ type fakeLimits struct {
 	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
-	splits                  map[string]time.Duration
+	splitDuration           map[string]time.Duration
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
 	requiredLabels          []string
@@ -1246,10 +1246,10 @@ type fakeLimits struct {
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
-	if f.splits == nil {
+	if f.splitDuration == nil {
 		return 0
 	}
-	return f.splits[key]
+	return f.splitDuration[key]
 }
 
 func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {

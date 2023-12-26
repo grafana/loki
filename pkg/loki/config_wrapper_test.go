@@ -1014,7 +1014,7 @@ query_range:
         endpoint: endpoint.redis.org`
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, config.QueryRange.SeriesCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.EqualValues(t, "endpoint.redis.org", config.QueryRange.SeriesCacheConfig.CacheConfig.Redis.Endpoint)
 			assert.False(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
