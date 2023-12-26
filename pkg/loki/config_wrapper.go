@@ -628,6 +628,10 @@ func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 		// We use the same config as the query range results cache.
 		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
 	}
+
+	if !cache.IsCacheConfigured(r.QueryRange.SeriesCacheConfig.CacheConfig) {
+		r.QueryRange.SeriesCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+	}
 }
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {

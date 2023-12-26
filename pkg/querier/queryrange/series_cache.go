@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"sort"
 	strings "strings"
 	"time"
 
@@ -13,12 +14,13 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
-type SeriesSplitter struct {
-	cacheKeyLimits
+type cacheKeySeries struct {
+	Limits
+	transformer UserIDTransformer
 }
 
-// GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (i SeriesSplitter) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
+// GenerateCacheKey generates a cache key based on the userID, matchers, split duration and the interval of the request.
+func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	sr := r.(*LokiSeriesRequest)
 	split := i.QuerySplitDuration(userID)
 
@@ -31,29 +33,22 @@ func (i SeriesSplitter) GenerateCacheKey(ctx context.Context, userID string, r r
 		userID = i.transformer(ctx, userID)
 	}
 
-	matcherStr := strings.Join(sr.GetMatch(), ",")
+	matchers := sr.GetMatch()
+	sort.Strings(matchers)
+	matcherStr := strings.Join(matchers, ",")
 
 	return fmt.Sprintf("series:%s:%s:%d:%d", userID, matcherStr, currentInterval, split)
 }
 
-type SeriesExtractor struct{}
+type seriesExtractor struct{}
 
-// Extract favors the ability to cache over exactness of results. It assumes a constant distribution
-// of log volumes over a range and will extract subsets proportionally.
-func (p SeriesExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
-	seriesRes := res.(*LokiSeriesResponse)
-	// TODO(kavi): Use factor to split the series list propotionally?
-	result := &LokiSeriesResponse{
-		Status:     seriesRes.Status,
-		Version:    seriesRes.Version,
-		Data:       seriesRes.Data,
-		Statistics: seriesRes.Statistics,
-	}
-
-	return result
+// Extract extracts the series response for the specific time range.
+// It is a no-op since it is not possible to partition the series data by time range as it is just a list of kv pairs.
+func (p seriesExtractor) Extract(_, _ int64, res resultscache.Response, _, _ int64) resultscache.Response {
+	return res
 }
 
-func (p SeriesExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) queryrangebase.Response {
+func (p seriesExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) queryrangebase.Response {
 	seriesRes := resp.(*LokiSeriesResponse)
 	return &LokiSeriesResponse{
 		Data:       seriesRes.Data,
@@ -77,7 +72,7 @@ func (cfg *SeriesCacheConfig) Validate() error {
 }
 
 func NewSeriesCacheMiddleware(
-	log log.Logger,
+	logger log.Logger,
 	limits Limits,
 	merger queryrangebase.Merger,
 	c cache.Cache,
@@ -89,19 +84,14 @@ func NewSeriesCacheMiddleware(
 	metrics *queryrangebase.ResultsCacheMetrics,
 ) (queryrangebase.Middleware, error) {
 	return queryrangebase.NewResultsCacheMiddleware(
-		log,
+		logger,
 		c,
-		SeriesSplitter{cacheKeyLimits{limits, transformer}},
+		cacheKeySeries{limits, transformer},
 		limits,
 		merger,
-		SeriesExtractor{},
+		seriesExtractor{},
 		cacheGenNumberLoader,
-		func(ctx context.Context, r queryrangebase.Request) bool {
-			if shouldCache != nil && !shouldCache(ctx, r) {
-				return false
-			}
-			return true
-		},
+		shouldCache,
 		parallelismForReq,
 		retentionEnabled,
 		metrics,

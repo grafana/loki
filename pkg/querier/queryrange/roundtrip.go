@@ -59,7 +59,7 @@ type Config struct {
 	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
 	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
 	CacheSeriesResults     bool                  `yaml:"cache_series_results"`
-	SeriesCacheConfig      SeriesCacheConfig     `yaml:"series_results_cache"`
+	SeriesCacheConfig      SeriesCacheConfig     `yaml:"series_results_cache" doc:"description=If a cache config is not specified and cache_series_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -69,6 +69,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StatsCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-series-results", false, "Cache series query results.")
+	cfg.SeriesCacheConfig.RegisterFlags(f)
 }
 
 // Validate validates the config.
