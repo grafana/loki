@@ -880,6 +880,21 @@ volume_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
+
+[cache_series_results: <boolean>]
+
+# If a cache config is not specified and cache_series_results is true, the
+# config for the results cache is used.
+series_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.series-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.series-results-cache.compression
+  [compression: <string> | default = ""]
 ```
 
 ### ruler
@@ -4283,6 +4298,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
