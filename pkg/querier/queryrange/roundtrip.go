@@ -59,7 +59,7 @@ type Config struct {
 	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
 	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
 	CacheSeriesResults     bool                  `yaml:"cache_series_results"`
-	SeriesCacheConfig      SeriesCacheConfig     `yaml:"series_results_cache" doc:"description=If a cache config is not specified and cache_series_results is true, the config for the results cache is used."`
+	SeriesCacheConfig      SeriesCacheConfig     `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -69,7 +69,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StatsCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-series-results", false, "Cache series query results.")
+	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", false, "Cache series query results.")
 	cfg.SeriesCacheConfig.RegisterFlags(f)
 }
 
@@ -150,47 +150,24 @@ func NewMiddleware(
 	}
 
 	if cfg.CacheIndexStatsResults {
-		// If the stats cache is not configured, use the results cache config.
-		cacheCfg := cfg.StatsCacheConfig.ResultsCacheConfig
-		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
-			level.Debug(log).Log("msg", "using results cache config for stats cache")
-			cacheCfg = cfg.ResultsCacheConfig
-		}
-
-		statsCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.StatsResultCache)
+		statsCache, err = newResultsCacheFromConfig(cfg.StatsCacheConfig.ResultsCacheConfig, registerer, log, stats.StatsResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
 	if cfg.CacheVolumeResults {
-		// If the volume cache is not configured, use the results cache config.
-		cacheCfg := cfg.VolumeCacheConfig.ResultsCacheConfig
-		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
-			level.Debug(log).Log("msg", "using results cache config for volume cache")
-			cacheCfg = cfg.ResultsCacheConfig
-		}
-
-		volumeCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.VolumeResultCache)
+		volumeCache, err = newResultsCacheFromConfig(cfg.VolumeCacheConfig.ResultsCacheConfig, registerer, log, stats.VolumeResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
 	if cfg.CacheSeriesResults {
-		// If the series cache is not configured, use the results cache config.
-		// TODO(kavi): While testing I realized, if we reuse the results cache config exactly, it panics during installation. Because of same cfg.prefix (used to register promtheus). Need to change in all results cache.
-		cacheCfg := cfg.SeriesCacheConfig.ResultsCacheConfig
-		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
-			level.Debug(log).Log("msg", "using results cache config for series cache")
-			cacheCfg = cfg.ResultsCacheConfig
-		}
-
-		seriesCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.SeriesResultCache)
+		seriesCache, err = newResultsCacheFromConfig(cfg.SeriesCacheConfig.ResultsCacheConfig, registerer, log, stats.SeriesResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
-
 	}
 
 	var codec base.Codec = DefaultCodec

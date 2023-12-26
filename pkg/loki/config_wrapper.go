@@ -620,17 +620,23 @@ func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 	indexStatsCacheConfig := r.QueryRange.StatsCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
 		// We use the same config as the query range results cache.
+		prefix := r.QueryRange.StatsCacheConfig.CacheConfig.Prefix
 		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.StatsCacheConfig.CacheConfig.Prefix = prefix
 	}
 
 	volumeCacheConfig := r.QueryRange.VolumeCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(volumeCacheConfig) {
 		// We use the same config as the query range results cache.
+		prefix := r.QueryRange.VolumeCacheConfig.CacheConfig.Prefix
 		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.VolumeCacheConfig.CacheConfig.Prefix = prefix
 	}
 
 	if !cache.IsCacheConfigured(r.QueryRange.SeriesCacheConfig.CacheConfig) {
+		prefix := r.QueryRange.SeriesCacheConfig.CacheConfig.Prefix
 		r.QueryRange.SeriesCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.SeriesCacheConfig.CacheConfig.Prefix = prefix
 	}
 }
 

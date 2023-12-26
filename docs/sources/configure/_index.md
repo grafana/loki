@@ -881,10 +881,12 @@ volume_results_cache:
   # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
 
-[cache_series_results: <boolean>]
+# Cache series query results.
+# CLI flag: -querier.cache-series-results
+[cache_series_results: <boolean> | default = false]
 
-# If a cache config is not specified and cache_series_results is true, the
-# config for the results cache is used.
+# If series_results_cache is not configured and cache_series_results is true,
+# the config for the results cache is used.
 series_results_cache:
   # The cache block configures the cache backend.
   # The CLI flags prefix for this block configuration is:
