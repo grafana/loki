@@ -1,11 +1,17 @@
-package v1
+package main
 
 import (
 	"context"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"math"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/util/constants"
+
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -16,6 +22,14 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+type metrics struct {
+	sbfCreationTime    prometheus.Counter   // time spent creating sbfs
+	chunkSize          prometheus.Histogram // uncompressed size of all chunks summed per series
+	bloomSize          prometheus.Histogram // size of the bloom filter in bytes
+	hammingWeightRatio prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
+	estimatedCount     prometheus.Histogram // estimated number of elements in the bloom filter
+}
+
 /*
 BloomTokenizer is a utility that converts either Loki chunks or individual lines into tokens.
 These tokens are n-grams, representing adjacent letters, that are used to populate a bloom filter.
@@ -23,9 +37,9 @@ https://en.wikipedia.org/wiki/Bloom_filter
 Bloom filters are utilized for faster lookups of log lines.
 */
 type BloomTokenizer struct {
-	metrics *Metrics
+	metrics *metrics
 
-	lineTokenizer *NGramTokenizer
+	lineTokenizer *v1.NGramTokenizer
 	cache         map[string]interface{}
 }
 
@@ -38,19 +52,19 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(NGramLength, NGramSkip int, metrics *Metrics) *BloomTokenizer {
+func NewBloomTokenizer(reg prometheus.Registerer, NGramLength, NGramSkip int) (*BloomTokenizer, error) {
 	t := &BloomTokenizer{
-		metrics: metrics,
+		metrics: newMetrics(reg, constants.Loki, bloomTokenizerMetricsSubsystem),
 	}
 	t.cache = make(map[string]interface{}, cacheSize)
-	t.lineTokenizer = NewNGramTokenizer(NGramLength, NGramSkip)
+	t.lineTokenizer = v1.NewNGramTokenizer(NGramLength, NGramSkip)
 
 	level.Info(util_log.Logger).Log("bloom tokenizer created")
 
-	return t
+	return t, nil
 }
 
-func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {
+func (bt *BloomTokenizer) SetLineTokenizer(t *v1.NGramTokenizer) {
 	bt.lineTokenizer = t
 }
 
@@ -60,6 +74,45 @@ func (bt *BloomTokenizer) GetNGramLength() uint64 {
 
 func (bt *BloomTokenizer) GetNGramSkip() uint64 {
 	return uint64(bt.lineTokenizer.Skip)
+}
+
+func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
+	return &metrics{
+		sbfCreationTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name:      "bloom_creation_time",
+			Help:      "Time spent creating scalable bloom filters",
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_chunk_series_size",
+			Help:      "Uncompressed size of chunks in a series",
+			Buckets:   prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_size",
+			Help:      "Size of the bloom filter in bytes",
+			Buckets:   prometheus.ExponentialBucketsRange(128, 16777216, 8),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		hammingWeightRatio: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_hamming_weight_ratio",
+			Help:      "Ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter",
+			Buckets:   prometheus.ExponentialBucketsRange(0.001, 1, 12),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		estimatedCount: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_estimated_count",
+			Help:      "Estimated number of elements in the bloom filter",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 33554432, 10),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+	}
 }
 
 func clearCache(cache map[string]interface{}) {
@@ -77,14 +130,14 @@ func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
 	enc.PutBE32(chk.Checksum)
 	prefixLn := enc.Len() // record the length of the prefix
 
-	enc.PutBytes(make([]byte, ngram*MaxRuneLen)) // ensure enough capacity for the ngram
+	enc.PutBytes(make([]byte, ngram*v1.MaxRuneLen)) // ensure enough capacity for the ngram
 
 	// return the underlying byte slice and the length of the prefix
 	return enc.Get(), prefixLn
 }
 
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
-func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) error {
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWithBloom, chunks []chunk.Chunk) error {
 	startTime := time.Now().UnixMilli()
 
 	clearCache(bt.cache)
@@ -110,7 +163,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 		defer itr.Close()
 
 		for itr.Next() && itr.Error() == nil {
-			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
+			chunkTokenizer := v1.NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
 			for chunkTokenizer.Next() {
 				tok := chunkTokenizer.At()
 				if tok != nil {
@@ -146,7 +199,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 			}
 
 		}
-		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
+		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, v1.ChunkRef{
 			Start:    chunks[idx].From,
 			End:      chunks[idx].Through,
 			Checksum: chunks[idx].Checksum,
@@ -164,9 +217,4 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
 	bt.metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 	return nil
-}
-
-// n ≈ −m ln(1 − p).
-func estimatedCount(m uint, p float64) uint {
-	return uint(-float64(m) * math.Log(1-p))
 }
