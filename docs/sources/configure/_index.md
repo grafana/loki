@@ -882,7 +882,7 @@ volume_results_cache:
   [compression: <string> | default = ""]
 
 # Cache series query results.
-# CLI flag: -querier.cache-series-results
+# CLI flag: -frontend.cache-series-results
 [cache_series_results: <boolean> | default = false]
 
 # If series_results_cache is not configured and cache_series_results is true,

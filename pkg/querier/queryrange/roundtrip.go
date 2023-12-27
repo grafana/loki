@@ -69,7 +69,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StatsCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
-	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", false, "Cache series query results.")
+	f.BoolVar(&cfg.CacheSeriesResults, "frontend.cache-series-results", false, "Cache series query results.")
 	cfg.SeriesCacheConfig.RegisterFlags(f)
 }
 
@@ -560,7 +560,7 @@ func NewSeriesTripperware(
 	if cfg.CacheSeriesResults {
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			base.InstrumentMiddleware("results_cache", metrics.InstrumentMiddlewareMetrics),
+			base.InstrumentMiddleware("series_results_cache", metrics.InstrumentMiddlewareMetrics),
 			cacheMiddleware,
 		)
 

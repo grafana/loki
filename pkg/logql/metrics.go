@@ -273,7 +273,6 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"match", PrintMatches(match),
 		"query_hash", util.HashedQuery(PrintMatches(match)),
 		"total_entries", stats.Summary.TotalEntriesReturned,
-		// cache is accumulated by middleware used by the frontend only; logs from the queriers will not show cache stats
 		"cache_series_results_req", stats.Caches.SeriesResult.EntriesRequested,
 		"cache_series_results_hit", stats.Caches.SeriesResult.EntriesFound,
 		"cache_series_results_stored", stats.Caches.SeriesResult.EntriesStored,
