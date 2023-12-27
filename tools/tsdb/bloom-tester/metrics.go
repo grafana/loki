@@ -1,21 +1,21 @@
 package main
 
 import (
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
 
 type Experiment struct {
 	name          string
-	tokenizer     bt.NGramTokenizer
+	tokenizer     *v1.NGramTokenizer
 	bloom         func() *filter.ScalableBloomFilter
 	encodeChunkID bool
 }
 
-func NewExperiment(name string, tokenizer bt.NGramTokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
+func NewExperiment(name string, tokenizer *v1.NGramTokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
 	return Experiment{
 		name:          name,
 		tokenizer:     tokenizer,
