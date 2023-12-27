@@ -799,7 +799,12 @@ func (c Codec) Path(r queryrangebase.Request) string {
 	case *LokiSeriesRequest:
 		return "loki/api/v1/series"
 	case *LabelRequest:
-		return request.Path() // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
+		if request.Values {
+			// This request contains user-generated input in the URL, which is not safe to reflect in the route path.
+			return "loki/api/v1/label/values"
+		}
+
+		return request.Path()
 	case *LokiInstantRequest:
 		return "/loki/api/v1/query"
 	case *logproto.IndexStatsRequest:
