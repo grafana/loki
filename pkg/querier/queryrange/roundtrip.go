@@ -36,7 +36,6 @@ type Config struct {
 	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
 	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
 	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
-	MaxIngesterSplits      uint                  `yaml:"max_ingester_splits"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -46,7 +45,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StatsCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
-	f.UintVar(&cfg.MaxIngesterSplits, "querier.max-ingester-splits", 4, "Limit of the number of sub-queries generated to ingesters for queries within the `query_ingesters_within` range.")
 }
 
 // Validate validates the config.
@@ -394,7 +392,7 @@ func NewLogFilterTripperware(cfg Config, iqo util.IngesterQueryOptions, engineOp
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime(cfg, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime(limits, iqo), metrics.SplitByMetrics),
 		}
 
 		if cfg.CacheResults {
@@ -463,7 +461,7 @@ func NewLimitedTripperware(cfg Config, iqo util.IngesterQueryOptions, engineOpts
 			// potentially GB of logs being returned by all the shards and splits which will overwhelm the frontend
 			// Therefore we force max parallelism to one so that these queries are executed sequentially.
 			// Below we also fix the number of shards to a static number.
-			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), merger, splitByTime(cfg, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, 1), merger, splitByTime(limits, iqo), metrics.SplitByMetrics),
 			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 		}
 
@@ -483,7 +481,7 @@ func NewSeriesTripperware(cfg Config, iqo util.IngesterQueryOptions, log log.Log
 		// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
 		// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
 		// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime(cfg, iqo), metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime(limits, iqo), metrics.SplitByMetrics),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -519,7 +517,7 @@ func NewLabelsTripperware(cfg Config, iqo util.IngesterQueryOptions, log log.Log
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 		// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
 		// This is because the labels API is an index-only operation.
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime(cfg, iqo), metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, 24*time.Hour), merger, splitByTime(limits, iqo), metrics.SplitByMetrics),
 	}
 
 	if cfg.MaxRetries > 0 {
@@ -590,7 +588,7 @@ func NewMetricTripperware(cfg Config, iqo util.IngesterQueryOptions, engineOpts 
 			queryRangeMiddleware,
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitMetricByTime(cfg, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitMetricByTime(limits, iqo), metrics.SplitByMetrics),
 		)
 
 		if cfg.CacheResults {
@@ -865,7 +863,7 @@ func sharedIndexTripperware(
 		middlewares := []base.Middleware{
 			NewLimitsMiddleware(limits),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime(cfg, iqo), metrics.SplitByMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime(limits, iqo), metrics.SplitByMetrics),
 		}
 
 		if cacheMiddleware != nil {

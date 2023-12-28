@@ -59,7 +59,7 @@ type splitByInterval struct {
 	splitter Splitter
 }
 
-type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
+type Splitter func(tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
 func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
@@ -190,7 +190,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	intervals, err := h.splitter(r, interval)
+	intervals, err := h.splitter(tenantIDs, r, interval)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +244,29 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	return h.merger.MergeResponse(resps...)
 }
 
-func splitByTime(cfg Config, iqo util.IngesterQueryOptions) func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
-	return func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+// intervalOverrideFn is used to override the query interval if the given time-range is during the `query_ingesters_within` window
+func intervalOverrideFn(tenantIDs []string, limits Limits, iqo util.IngesterQueryOptions) func(start, origStart time.Time, interval time.Duration) time.Duration {
+	ingesterSplitBy := validation.MaxDurationPerTenant(tenantIDs, limits.IngesterQuerySplitDuration)
+	splitBy := validation.MaxDurationPerTenant(tenantIDs, limits.QuerySplitDuration)
+
+	return func(start, origStart time.Time, interval time.Duration) time.Duration {
+		if iqo != nil && start.Add(interval).Before(origStart.Add(iqo.QueryIngestersWithin())) {
+			if !iqo.QueryStoreOnly() {
+				interval = ingesterSplitBy
+
+				// clamp split_ingester_queries_by_interval to split_queries_by_interval if larger
+				if interval == 0 || interval > splitBy {
+					interval = splitBy
+				}
+			}
+		}
+
+		return interval
+	}
+}
+
+func splitByTime(limits Limits, iqo util.IngesterQueryOptions) func(tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+	return func(tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 		var reqs []queryrangebase.Request
 
 		switch r := req.(type) {
@@ -262,7 +283,7 @@ func splitByTime(cfg Config, iqo util.IngesterQueryOptions) func(req queryrangeb
 					EndTs:     end,
 					Plan:      r.Plan,
 				})
-			}, iqo)
+			}, intervalOverrideFn(tenantIDs, limits, iqo))
 		case *LokiSeriesRequest:
 			// metadata queries have end time inclusive.
 			// Set endTimeInclusive to true so that ForInterval keeps a gap of 1ms between splits to
@@ -275,14 +296,14 @@ func splitByTime(cfg Config, iqo util.IngesterQueryOptions) func(req queryrangeb
 					EndTs:   end,
 					Shards:  r.Shards,
 				})
-			}, iqo)
+			}, intervalOverrideFn(tenantIDs, limits, iqo))
 		case *LabelRequest:
 			// metadata queries have end time inclusive.
 			// Set endTimeInclusive to true so that ForInterval keeps a gap of 1ms between splits to
 			// avoid querying duplicate data in adjacent queries.
 			util.ForInterval(interval, *r.Start, *r.End, true, func(start, end time.Time) {
 				reqs = append(reqs, NewLabelRequest(start, end, r.Query, r.Name, r.Path()))
-			}, iqo)
+			}, intervalOverrideFn(tenantIDs, limits, iqo))
 		case *logproto.IndexStatsRequest:
 			startTS := r.GetStart()
 			endTS := r.GetEnd()
@@ -292,7 +313,7 @@ func splitByTime(cfg Config, iqo util.IngesterQueryOptions) func(req queryrangeb
 					Through:  model.TimeFromUnix(end.Unix()),
 					Matchers: r.GetMatchers(),
 				})
-			}, iqo)
+			}, intervalOverrideFn(tenantIDs, limits, iqo))
 		case *logproto.VolumeRequest:
 			startTS := r.GetStart()
 			endTS := r.GetEnd()
@@ -305,7 +326,7 @@ func splitByTime(cfg Config, iqo util.IngesterQueryOptions) func(req queryrangeb
 					TargetLabels: r.TargetLabels,
 					AggregateBy:  r.AggregateBy,
 				})
-			}, iqo)
+			}, intervalOverrideFn(tenantIDs, limits, iqo))
 		default:
 			return nil, nil
 		}
@@ -355,8 +376,8 @@ func reduceSplitIntervalForRangeVector(r *LokiRequest, interval time.Duration) (
 	return interval, nil
 }
 
-func splitMetricByTime(_ Config, iqo util.IngesterQueryOptions) func(r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
-	return func(r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+func splitMetricByTime(limits Limits, iqo util.IngesterQueryOptions) func(tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+	return func(tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 		var reqs []queryrangebase.Request
 
 		lokiReq := r.(*LokiRequest)
@@ -393,7 +414,7 @@ func splitMetricByTime(_ Config, iqo util.IngesterQueryOptions) func(r queryrang
 					EndTs:     end,
 					Plan:      lokiReq.Plan,
 				})
-			}, iqo)
+			}, intervalOverrideFn(tenantIDs, limits, iqo))
 
 			return reqs, nil
 		}

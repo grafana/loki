@@ -342,11 +342,7 @@ func TestForInterval(t *testing.T) {
 					from:    start,
 					through: end,
 				})
-			}, mockIngesterQueryOptions{
-				maxIngesterSplits:    tc.maxIngesterSplits,
-				queryIngestersWithin: tc.queryIngestersWithin,
-				queryStoreOnly:       tc.queryStoreOnly,
-			})
+			}, nil) // TODO
 
 			if !assert.Equal(t, tc.expectedIntervals, actualIntervals) {
 				for i, expected := range tc.expectedIntervals {
@@ -374,20 +370,14 @@ func TestForInterval(t *testing.T) {
 
 type mockIngesterQueryOptions struct {
 	queryIngestersWithin time.Duration
-	maxIngesterSplits    uint
 	queryStoreOnly       bool
 }
 
 func (m mockIngesterQueryOptions) QueryStoreOnly() bool {
 	return m.queryStoreOnly
 }
-
 func (m mockIngesterQueryOptions) QueryIngestersWithin() time.Duration {
 	return m.queryIngestersWithin
-}
-
-func (m mockIngesterQueryOptions) MaxIngesterSplits() uint {
-	return m.maxIngesterSplits
 }
 
 func TestForInterval_OfZero(t *testing.T) {

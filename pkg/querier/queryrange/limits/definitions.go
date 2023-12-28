@@ -14,6 +14,7 @@ type Limits interface {
 	queryrangebase.Limits
 	logql.Limits
 	QuerySplitDuration(string) time.Duration
+	IngesterQuerySplitDuration(string) time.Duration
 	MaxQuerySeries(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
 	MinShardingLookback(string) time.Duration

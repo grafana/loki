@@ -808,21 +808,16 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) uint { return 
 
 func (disabledShuffleShardingLimits) MaxQueryCapacity(_ string) float64 { return 0 }
 
+// ingesterQueryOptions exists simply to avoid dependency cycles when using querier.Config directly in queryrange.NewMiddleware
 type ingesterQueryOptions struct {
-	querier  querier.Config
-	frontend queryrange.Config
+	querier.Config
 }
 
 func (i ingesterQueryOptions) QueryStoreOnly() bool {
-	return i.querier.QueryStoreOnly
+	return i.Config.QueryStoreOnly
 }
-
 func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
-	return i.querier.QueryIngestersWithin
-}
-
-func (i ingesterQueryOptions) MaxIngesterSplits() uint {
-	return i.frontend.MaxIngesterSplits
+	return i.Config.QueryIngestersWithin
 }
 
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
@@ -831,7 +826,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
-		ingesterQueryOptions{querier: t.Cfg.Querier, frontend: t.Cfg.QueryRange},
+		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,

@@ -92,14 +92,16 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 type IngesterQueryOptions interface {
 	QueryStoreOnly() bool
 	QueryIngestersWithin() time.Duration
-	MaxIngesterSplits() uint
 }
 
 // ForInterval splits the given start and end time into given interval.
 // The start and end time in splits would be aligned to the interval
 // except for the start time of first split and end time of last split which would be kept same as original start/end
 // When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
-func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time), iqo IngesterQueryOptions) {
+func ForInterval(
+	interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time),
+	intervalOverride func(start, origStart time.Time, interval time.Duration) time.Duration,
+) {
 	if interval <= 0 {
 		callback(start, end)
 		return
@@ -114,10 +116,10 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 	for start := start; start.Before(end); start = start.Add(interval) {
 		interval = ogInterval
 
-		if iqo != nil && start.Add(interval).Before(ogStart.Add(iqo.QueryIngestersWithin())) {
-			if !iqo.QueryStoreOnly() && iqo.MaxIngesterSplits() > 0 {
-				interval = time.Duration(iqo.QueryIngestersWithin().Nanoseconds() / int64(iqo.MaxIngesterSplits()))
-			}
+		// allow interval to be overridden under certain conditions
+		// right now this is only used to override the interval when querying ingesters during `query_ingesters_within` window
+		if intervalOverride != nil {
+			interval = intervalOverride(start, ogStart, interval)
 		}
 		newEnd := start.Add(interval)
 
