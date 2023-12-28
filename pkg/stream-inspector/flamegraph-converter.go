@@ -9,14 +9,15 @@ type FlamegraphConverter struct {
 
 func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
 	dictionary := make(map[string]int)
-	var levels [][]float64
-
+	var levels []FlamegraphLevel
+	//limit := 50000
+	//added := 0
 	iterator := NewTreesLevelsIterator(trees)
 	levelIndex := -1
-	for iterator.HasNextLevel() {
+	for iterator.HasNextLevel() /* && added <= limit*/ {
 		levelIndex++
 		levelIterator := iterator.NextLevelIterator()
-		var level []float64
+		var level FlamegraphLevel
 		for levelIterator.HasNext() {
 			block := levelIterator.Next()
 			blockName := block.node.Name
@@ -26,27 +27,8 @@ func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
 			if levelIndex > 0 && block.childIndex == 0 {
 				previousLevel := levels[levelIndex-1]
 				parentsIndexInPreviousLevel := block.parentBlock.indexInLevel
-
-				// calculate the offset of the parent from the left side(offsets+weight of all left neighbours + parents offset)
-				parentsOffset := previousLevel[parentsIndexInPreviousLevel*4]
-				parentsGlobalOffset := parentsOffset
-				parentsLeftNeighbour := block.parentBlock.leftNeighbour
-				for parentsLeftNeighbour != nil {
-					leftNeighbourOffset := previousLevel[parentsLeftNeighbour.indexInLevel*4]
-					leftNeighbourWeight := previousLevel[parentsLeftNeighbour.indexInLevel*4+1]
-					parentsGlobalOffset += leftNeighbourOffset + leftNeighbourWeight
-					parentsLeftNeighbour = parentsLeftNeighbour.leftNeighbour
-				}
-
-				currentBlockOffset = parentsGlobalOffset
-				left := block.leftNeighbour
-				// iterate over all already added blocks from the left
-				for left != nil {
-					leftNeighbourOffset := level[left.indexInLevel*4]
-					leftNeighbourWeight := level[left.indexInLevel*4+1]
-					currentBlockOffset -= leftNeighbourOffset + leftNeighbourWeight
-					left = left.leftNeighbour
-				}
+				parentsGlobalOffset := previousLevel.blocksGlobalOffsets[parentsIndexInPreviousLevel]
+				currentBlockOffset = parentsGlobalOffset - level.curentWidth
 			}
 
 			index, exists := dictionary[blockName]
@@ -54,12 +36,15 @@ func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
 				index = len(dictionary)
 				dictionary[blockName] = index
 			}
-
-			level = append(level, []float64{currentBlockOffset, blockWeight, magicNumber, float64(index)}...)
+			level.blocksGlobalOffsets = append(level.blocksGlobalOffsets, currentBlockOffset+level.curentWidth)
+			level.curentWidth += currentBlockOffset + blockWeight
+			level.blocks = append(level.blocks, []float64{currentBlockOffset, blockWeight, magicNumber, float64(index)}...)
+			//added++
 		}
 		levels = append(levels, level)
 	}
-	firstLevel := levels[0]
+
+	firstLevel := levels[0].blocks
 	totalWidth := float64(0)
 	for i := 1; i < len(firstLevel); i += 4 {
 		totalWidth += firstLevel[i]
@@ -68,13 +53,23 @@ func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
 	for name, index := range dictionary {
 		names[index] = name
 	}
+	levelsBlocks := make([][]float64, 0, len(levels))
+	for _, level := range levels {
+		levelsBlocks = append(levelsBlocks, level.blocks)
+	}
 	return FlameBearer{
 		Units:    "bytes",
 		NumTicks: totalWidth,
 		MaxSelf:  totalWidth,
 		Names:    names,
-		Levels:   levels,
+		Levels:   levelsBlocks,
 	}
+}
+
+type FlamegraphLevel struct {
+	curentWidth         float64
+	blocks              []float64
+	blocksGlobalOffsets []float64
 }
 
 type TreesLevelsIterator struct {

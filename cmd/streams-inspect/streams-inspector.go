@@ -46,7 +46,9 @@ func main() {
 	level.Info(logger).Log("from", fromUnix.Time().UTC(), "to", toUnix.Time().UTC())
 	//idx.Stats(ctx, "", 0, model.Time(math.MaxInt), )
 	level.Info(logger).Log("msg", "starting extracting series")
-	streams, err := idx.Series(ctx, "", 0, model.Time(math.MaxInt), nil, nil, labels.MustNewMatcher(labels.MatchNotEqual, "job", "non-existent"))
+	var streamMatchers []*labels.Matcher
+	streamMatchers = []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "job", "hosted-grafana/grafana"), labels.MustNewMatcher(labels.MatchEqual, "cluster", "prod-us-central-0"), labels.MustNewMatcher(labels.MatchEqual, "container", "grafana")}
+	streams, err := idx.Series(ctx, "", 0, model.Time(math.MaxInt), nil, nil, append(streamMatchers, labels.MustNewMatcher(labels.MatchNotEqual, "anything", "not-existent"))...)
 	if err != nil {
 		level.Error(logger).Log("msg", "error while fetching all the streams", "err", err)
 		return
@@ -58,7 +60,7 @@ func main() {
 	for _, stream := range streams {
 		streamStringToFingerprint[stream.Labels.String()] = stream.Fingerprint
 	}
-	accumulator := seriesvolume.NewAccumulator(int32(len(streams)), len(streams))
+	accumulator := seriesvolume.NewAccumulator(math.MaxInt32, math.MaxInt32)
 	err = idx.Volume(ctx, "", 0, model.Time(math.MaxInt), accumulator, nil, func(meta index.ChunkMeta) bool {
 		return true
 	}, nil, seriesvolume.Series, labels.MustNewMatcher(labels.MatchNotEqual, "", "non-existent"))
@@ -72,8 +74,9 @@ func main() {
 	for _, volume := range volumes {
 		fingerprint, exists := streamStringToFingerprint[volume.Name]
 		if !exists {
-			level.Error(logger).Log("msg", "can not find fingerprint", "volumeName", volume.Name)
-			return
+			continue
+			//level.Error(logger).Log("msg", "can not find fingerprint", "volumeName", volume.Name)
+			//return
 		}
 		streamToVolume[fingerprint] = float64(volume.Volume)
 	}
@@ -83,10 +86,10 @@ func main() {
 		return streamToVolume[a.Fingerprint] > streamToVolume[b.Fingerprint]
 	})
 
-	streams = streams[:5000]
+	//streams = streams[:5000]
 	level.Info(logger).Log("msg", "starting building trees")
 	inspector := stream_inspector.Inspector{}
-	trees, err := inspector.BuildTrees(streams, streamToVolume)
+	trees, err := inspector.BuildTrees(streams, streamToVolume, streamMatchers)
 	if err != nil {
 		level.Error(logger).Log("msg", "error while building trees", "err", err)
 		return

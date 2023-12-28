@@ -6,14 +6,15 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
+	"math"
 	"sort"
 )
 
 type Inspector struct {
 }
 
-func (i *Inspector) BuildTrees(streams []tsdb.Series, volumesMap map[model.Fingerprint]float64) ([]*Tree, error) {
-	labelNamesOrder := i.sortLabelNamesByPopularity(streams)
+func (i *Inspector) BuildTrees(streams []tsdb.Series, volumesMap map[model.Fingerprint]float64, matchers []*labels.Matcher) ([]*Tree, error) {
+	labelNamesOrder := i.sortLabelNamesByPopularity(streams, matchers)
 
 	rootLabelNameToThreeMap := make(map[string]*Tree)
 	var threes []*Tree
@@ -97,7 +98,7 @@ var labelsToSkip = map[string]any{
 	"__stream_shard__": nil,
 }
 
-func (i *Inspector) sortLabelNamesByPopularity(streams []tsdb.Series) map[string]int {
+func (i *Inspector) sortLabelNamesByPopularity(streams []tsdb.Series, matchers []*labels.Matcher) map[string]int {
 	labelNameCounts := make(map[string]uint32)
 	uniqueLabelNames := make([]string, 0, 1000)
 	for _, stream := range streams {
@@ -112,13 +113,26 @@ func (i *Inspector) sortLabelNamesByPopularity(streams []tsdb.Series) map[string
 			labelNameCounts[label.Name] = count + 1
 		}
 	}
+	matchersLabels := make(map[string]int, len(matchers))
+	for idx, matcher := range matchers {
+		matchersLabels[matcher.Name] = idx
+	}
 	sort.SliceStable(uniqueLabelNames, func(i, j int) bool {
 		leftLabel := uniqueLabelNames[i]
 		rightLabel := uniqueLabelNames[j]
+		leftLabelPriority := -1
+		if leftLabelIndex, used := matchersLabels[leftLabel]; used {
+			leftLabelPriority = math.MaxInt - leftLabelIndex
+		}
+		rightLabelPriority := -1
+		if rightLabelIndex, used := matchersLabels[rightLabel]; used {
+			rightLabelPriority = math.MaxInt - rightLabelIndex
+		}
 		leftCount := labelNameCounts[leftLabel]
 		rightCount := labelNameCounts[rightLabel]
 		// sort by streams count (desc) and by label name (asc)
-		return leftCount > rightCount || leftCount == rightCount && leftLabel < rightLabel
+
+		return leftLabelPriority > rightLabelPriority || (leftLabelPriority == rightLabelPriority && leftCount > rightCount) || leftCount == rightCount && leftLabel < rightLabel
 	})
 	labelNameToOrderMap := make(map[string]int, len(uniqueLabelNames))
 	for idx, name := range uniqueLabelNames {
