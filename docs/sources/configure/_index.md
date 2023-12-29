@@ -897,6 +897,23 @@ series_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.series-results-cache.compression
   [compression: <string> | default = ""]
+
+# Cache label query results.
+# CLI flag: -frontend.cache-label-results
+[cache_label_results: <boolean> | default = false]
+
+# If label_results_cache is not configured and cache_label_results is true, the
+# config for the results cache is used.
+label_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.label-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.label-results-cache.compression
+  [compression: <string> | default = ""]
 ```
 
 ### ruler
@@ -4300,6 +4317,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
