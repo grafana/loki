@@ -262,13 +262,13 @@ func (s *DDSketch) GetSum() (sum float64) {
 
 // GetPositiveValueStore returns the store.Store object that contains the positive
 // values of the sketch.
-func (s *DDSketch) GetPositiveValueStore() store.Store {
+func (s *DDSketch) GetPositiveValueStore() (store.Store) {
 	return s.positiveValueStore
 }
 
 // GetNegativeValueStore returns the store.Store object that contains the negative
 // values of the sketch.
-func (s *DDSketch) GetNegativeValueStore() store.Store {
+func (s *DDSketch) GetNegativeValueStore() (store.Store) {
 	return s.negativeValueStore
 }
 
@@ -559,13 +559,13 @@ func (s *DDSketchWithExactSummaryStatistics) GetSum() float64 {
 
 // GetPositiveValueStore returns the store.Store object that contains the positive
 // values of the sketch.
-func (s *DDSketchWithExactSummaryStatistics) GetPositiveValueStore() store.Store {
+func (s *DDSketchWithExactSummaryStatistics) GetPositiveValueStore() (store.Store) {
 	return s.DDSketch.positiveValueStore
 }
 
 // GetNegativeValueStore returns the store.Store object that contains the negative
 // values of the sketch.
-func (s *DDSketchWithExactSummaryStatistics) GetNegativeValueStore() store.Store {
+func (s *DDSketchWithExactSummaryStatistics) GetNegativeValueStore() (store.Store) {
 	return s.DDSketch.negativeValueStore
 }
 

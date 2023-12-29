@@ -177,7 +177,7 @@ func (s *BufferedPaginatedStore) compact() {
 }
 
 func (s *BufferedPaginatedStore) sortBuffer() {
-	sort.Ints(s.buffer)
+	sort.Slice(s.buffer, func(i, j int) bool { return s.buffer[i] < s.buffer[j] })
 }
 
 func (s *BufferedPaginatedStore) Add(index int) {
