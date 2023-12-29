@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/DataDog/sketches-go/ddsketch"
+	"github.com/DataDog/sketches-go/ddsketch/mapping"
+	"github.com/DataDog/sketches-go/ddsketch/store"
 	"github.com/influxdata/tdigest"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -38,8 +40,11 @@ type DDSketchQuantile struct {
 	*ddsketch.DDSketch
 }
 
+const relativeAccuracy = 0.01
+
 func NewDDSketch() *DDSketchQuantile {
-	s, _ := ddsketch.NewDefaultDDSketch(0.01)
+	m, _ := mapping.NewCubicallyInterpolatedMapping(relativeAccuracy)
+	s := ddsketch.NewDDSketchFromStoreProvider(m, store.DefaultProvider)
 	return &DDSketchQuantile{s}
 }
 
