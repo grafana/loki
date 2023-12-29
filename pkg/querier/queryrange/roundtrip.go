@@ -60,6 +60,8 @@ type Config struct {
 	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
 	CacheSeriesResults     bool                  `yaml:"cache_series_results"`
 	SeriesCacheConfig      SeriesCacheConfig     `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
+	CacheLabelResults      bool                  `yaml:"cache_label_results"`
+	LabelsCacheConfig      LabelsCacheConfig     `yaml:"label_results_cache" doc:"description=If label_results_cache is not configured and cache_label_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -71,6 +73,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.VolumeCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheSeriesResults, "frontend.cache-series-results", false, "Cache series query results.")
 	cfg.SeriesCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.CacheLabelResults, "frontend.cache-label-results", false, "Cache label query results.")
+	cfg.LabelsCacheConfig.RegisterFlags(f)
 }
 
 // Validate validates the config.
@@ -139,6 +143,7 @@ func NewMiddleware(
 		statsCache   cache.Cache
 		volumeCache  cache.Cache
 		seriesCache  cache.Cache
+		labelsCache  cache.Cache
 		err          error
 	)
 
@@ -165,6 +170,13 @@ func NewMiddleware(
 
 	if cfg.CacheSeriesResults {
 		seriesCache, err = newResultsCacheFromConfig(cfg.SeriesCacheConfig.ResultsCacheConfig, registerer, log, stats.SeriesResultCache)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if cfg.CacheLabelResults {
+		labelsCache, err = newResultsCacheFromConfig(cfg.LabelsCacheConfig.ResultsCacheConfig, registerer, log, stats.LabelResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -201,7 +213,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, metrics, schema, metricsNamespace)
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, labelsCache, cacheGenNumLoader, retentionEnabled, metrics, schema, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -519,6 +531,8 @@ func NewSeriesTripperware(
 	retentionEnabled bool,
 	metricsNamespace string,
 ) (base.Middleware, error) {
+	limits = WithSplitByLimits(limits, seriesQuerySplitInterval)
+
 	var cacheMiddleware base.Middleware
 	if cfg.CacheSeriesResults {
 		var err error
@@ -554,7 +568,7 @@ func NewSeriesTripperware(
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, seriesQuerySplitInterval), merger, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime, metrics.SplitByMetrics),
 	}
 
 	if cfg.CacheSeriesResults {
@@ -597,15 +611,60 @@ func NewLabelsTripperware(
 	log log.Logger,
 	limits Limits,
 	merger base.Merger,
+	c cache.Cache,
+	cacheGenNumLoader base.CacheGenNumberLoader,
+	retentionEnabled bool,
 	metrics *Metrics,
 	schema config.SchemaConfig,
 	metricsNamespace string,
 ) (base.Middleware, error) {
+	limits = WithSplitByLimits(limits, labelsQuerySplitInterval)
+
+	var cacheMiddleware base.Middleware
+	if cfg.CacheLabelResults {
+		var err error
+		cacheMiddleware, err = NewLabelsCacheMiddleware(
+			log,
+			limits,
+			merger,
+			c,
+			cacheGenNumLoader,
+			func(_ context.Context, r base.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r base.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
+				)
+			},
+			retentionEnabled,
+			cfg.Transformer,
+			metrics.ResultsCacheMetrics,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	queryRangeMiddleware := []base.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
 		base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-		SplitByIntervalMiddleware(schema.Configs, WithSplitByLimits(limits, labelsQuerySplitInterval), merger, splitByTime, metrics.SplitByMetrics),
+		SplitByIntervalMiddleware(schema.Configs, limits, merger, splitByTime, metrics.SplitByMetrics),
+	}
+
+	if cfg.CacheLabelResults {
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			base.InstrumentMiddleware("label_results_cache", metrics.InstrumentMiddlewareMetrics),
+			cacheMiddleware,
+		)
+
 	}
 
 	if cfg.MaxRetries > 0 {

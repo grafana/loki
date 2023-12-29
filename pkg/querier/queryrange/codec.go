@@ -231,10 +231,10 @@ func (r *LabelRequest) GetStep() int64 {
 
 func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	tmp := s
-	clone.Start = &tmp
-	tmp = e
-	clone.End = &tmp
+	start := s
+	clone.Start = &start
+	end := e
+	clone.End = &end
 	return &clone
 }
 
@@ -864,6 +864,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 
 		return &LokiSeriesResponse{
+			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path)),
 			Headers: httpResponseHeadersToPromResponseHeaders(headers),
 			Data:    resp.Data,
@@ -1237,6 +1238,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return &LokiLabelNamesResponse{
 			Status:     labelNameRes.Status,
 			Version:    labelNameRes.Version,
+			Headers:    labelNameRes.Headers,
 			Data:       names,
 			Statistics: mergedStats,
 		}, nil

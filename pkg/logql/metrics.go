@@ -222,6 +222,10 @@ func RecordLabelQueryMetrics(
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
+		"cache_label_results_req", stats.Caches.LabelResult.EntriesRequested,
+		"cache_label_results_hit", stats.Caches.LabelResult.EntriesFound,
+		"cache_label_results_stored", stats.Caches.LabelResult.EntriesStored,
+		"cache_label_results_download_time", stats.Caches.LabelResult.CacheDownloadTime(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)

@@ -106,10 +106,18 @@ func TestLogLabelsQuery(t *testing.T) {
 			TotalBytesProcessed:     100000,
 			TotalEntriesReturned:    12,
 		},
+		Caches: stats.Caches{
+			LabelResult: stats.Cache{
+				EntriesRequested: 2,
+				EntriesFound:     1,
+				EntriesStored:    1,
+				DownloadTime:     80,
+			},
+		},
 	})
 	require.Regexp(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 label=foo query= query_hash=2166136261 total_entries=12\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels splits=0 start=.* end=.* start_delta=1h0m0.* end_delta=.* length=1h0m0s duration=25.25s status=200 label=foo query= query_hash=2166136261 total_entries=12 cache_label_results_req=2 cache_label_results_hit=1 cache_label_results_stored=1 cache_label_results_download_time=80ns\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())

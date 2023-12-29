@@ -62,6 +62,7 @@ const (
 	VolumeResultCache           = "volume-result"
 	WriteDedupeCache            = "write-dedupe"
 	SeriesResultCache           = "series-result"
+	LabelResultCache            = "label-result"
 	BloomFilterCache            = "bloom-filter"
 	BloomBlocksCache            = "bloom-blocks"
 )
@@ -102,6 +103,7 @@ func (c *Context) Caches() Caches {
 		StatsResult:  c.caches.StatsResult,
 		VolumeResult: c.caches.VolumeResult,
 		SeriesResult: c.caches.SeriesResult,
+		LabelResult:  c.caches.LabelResult,
 	}
 }
 
@@ -218,6 +220,7 @@ func (c *Caches) Merge(m Caches) {
 	c.StatsResult.Merge(m.StatsResult)
 	c.VolumeResult.Merge(m.VolumeResult)
 	c.SeriesResult.Merge(m.SeriesResult)
+	c.LabelResult.Merge(m.LabelResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -449,6 +452,8 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.VolumeResult
 	case SeriesResultCache:
 		stats = &c.caches.SeriesResult
+	case LabelResultCache:
+		stats = &c.caches.LabelResult
 	default:
 		return nil
 	}
@@ -537,6 +542,12 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.SeriesResult.EntriesStored", c.SeriesResult.EntriesStored,
 		"Cache.SeriesResult.BytesSent", humanize.Bytes(uint64(c.SeriesResult.BytesSent)),
 		"Cache.SeriesResult.BytesReceived", humanize.Bytes(uint64(c.SeriesResult.BytesReceived)),
+		"Cache.LabelResult.Requests", c.LabelResult.Requests,
+		"Cache.LabelResult.EntriesRequested", c.LabelResult.EntriesRequested,
+		"Cache.LabelResult.EntriesFound", c.LabelResult.EntriesFound,
+		"Cache.LabelResult.EntriesStored", c.LabelResult.EntriesStored,
+		"Cache.LabelResult.BytesSent", humanize.Bytes(uint64(c.LabelResult.BytesSent)),
+		"Cache.LabelResult.BytesReceived", humanize.Bytes(uint64(c.LabelResult.BytesReceived)),
 		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,

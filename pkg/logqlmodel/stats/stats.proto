@@ -53,6 +53,10 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "seriesResult"
   ];
+  Cache labelResult = 7 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "labelResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
