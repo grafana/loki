@@ -305,8 +305,8 @@ func (ev DownstreamEvaluator) AsyncDownstream(ctx context.Context, queries []Dow
 			break
 		}
 
-		// TODO: it would be nice to have iterators with yield instead
-		// here.
+		// TODO(karsten): it would be nice to have iterators with yield instead
+		// here: https://github.com/golang/go/issues/61405
 		if res.Err != nil {
 			result <- res.Res
 		}
@@ -414,7 +414,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 		results := ev.AsyncDownstream(ctx, queries)
 
-		xs := make([]StepEvaluator, 0, len(queries))
+		var matrix ProbabilisticQuantileMatrix
+		var err error
 		for res := range results {
 			if res.Data.Type() != QuantileSketchMatrixType {
 				return nil, fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
@@ -423,11 +424,18 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			if !ok {
 				return nil, fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
 			}
-			stepper := NewQuantileSketchMatrixStepEvaluator(data, params)
-			xs = append(xs, stepper)
+			if matrix == nil {
+				matrix = data
+				continue
+			}
+
+			matrix, err = matrix.Merge(data)
+			if err != nil {
+				return nil, err
+			}
 		}
 
-		inner := NewQuantileSketchMergeStepEvaluator(xs)
+		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
 
