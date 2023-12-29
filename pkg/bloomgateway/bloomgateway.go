@@ -298,6 +298,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	task, resCh, errCh, err := NewTask(tenantID, req)
+
 	if err != nil {
 		return nil, err
 	}

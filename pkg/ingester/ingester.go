@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	lokilog "github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -99,7 +101,10 @@ type Config struct {
 
 	WAL WALConfig `yaml:"wal,omitempty" doc:"description=The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file systems in order to guarantee persistence of acknowledged data in the event of a process crash."`
 
-	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
+	ChunkFilterer          chunk.RequestChunkFilterer     `yaml:"-"`
+	PipelineWrapper        lokilog.PipelineWrapper        `yaml:"-"`
+	SampleExtractorWrapper lokilog.SampleExtractorWrapper `yaml:"-"`
+
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -227,7 +232,9 @@ type Ingester struct {
 
 	wal WAL
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter      chunk.RequestChunkFilterer
+	extractorWrapper lokilog.SampleExtractorWrapper
+	pipelineWrapper  lokilog.PipelineWrapper
 
 	streamRateCalculator *StreamRateCalculator
 
@@ -304,11 +311,27 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
+	if i.cfg.PipelineWrapper != nil {
+		i.SetPipelineWrapper(i.cfg.PipelineWrapper)
+	}
+
+	if i.cfg.SampleExtractorWrapper != nil {
+		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
+	}
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+func (i *Ingester) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
+	i.extractorWrapper = wrapper
+}
+
+func (i *Ingester) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
+	i.pipelineWrapper = wrapper
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -837,7 +860,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator, i.writeLogManager)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager)
 		if err != nil {
 			return nil, err
 		}
@@ -1008,7 +1031,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, matchers...)
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil))
 	if err != nil {
 		return nil, err
 	}

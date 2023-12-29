@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -318,6 +319,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Overrides,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
+		t.Tee,
 		logger,
 	)
 	if err != nil {
@@ -579,7 +581,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
 	)
-	t.Server.HTTP.Methods("POST").Path("/ingester/shutdown").Handler(
+	t.Server.HTTP.Methods("POST", "GET").Path("/ingester/shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
 	)
 	return t.Ingester, nil
@@ -697,7 +699,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway):
+	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway), t.isModuleActive(BloomCompactor):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -867,7 +869,7 @@ func (t *Loki) compactorAddress() (string, bool, error) {
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read)
 	if t.Cfg.isModuleEnabled(All) || legacyReadMode || t.Cfg.isModuleEnabled(Backend) {
 		// In single binary or read modes, this module depends on Server
-		return fmt.Sprintf("%s:%d", t.Cfg.Server.GRPCListenAddress, t.Cfg.Server.GRPCListenPort), true, nil
+		return net.JoinHostPort(t.Cfg.Server.GRPCListenAddress, strconv.Itoa(t.Cfg.Server.GRPCListenPort)), true, nil
 	}
 
 	if t.Cfg.Common.CompactorAddress == "" && t.Cfg.Common.CompactorGRPCAddress == "" {
@@ -1335,8 +1337,9 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var bloomQuerier indexgateway.BloomQuerier
 	if t.Cfg.BloomGateway.Enabled {
-		bloomGatewayClient, err := bloomgateway.NewGatewayClient(
+		bloomGatewayClient, err := bloomgateway.NewClient(
 			t.Cfg.BloomGateway.Client,
+			t.bloomGatewayRingManager.Ring,
 			t.Overrides,
 			prometheus.DefaultRegisterer,
 			logger,
@@ -1347,7 +1350,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		if err != nil {
 			return nil, err
 		}
-		bloomQuerier = bloomgateway.NewBloomQuerier(bloomGatewayClient, logger)
+		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, logger)
 	}
 
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
@@ -1408,6 +1411,8 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 }
 
 func (t *Loki) initBloomCompactor() (services.Service, error) {
+	t.updateConfigForShipperStore()
+
 	logger := log.With(util_log.Logger, "component", "bloom-compactor")
 
 	shuffleSharding := bloomcompactor.NewShuffleShardingStrategy(t.bloomCompactorRingManager.Ring, t.bloomCompactorRingManager.RingLifecycler, t.Overrides)

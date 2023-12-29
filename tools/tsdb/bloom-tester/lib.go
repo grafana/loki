@@ -6,7 +6,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-
 	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
@@ -113,7 +112,7 @@ var experiments = []Experiment{
 	*/
 	NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		*four,
+		four,
 		true,
 		onePctError,
 	),
@@ -266,7 +265,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	var n int // count iterated series
 	// pool := newPool(runtime.NumCPU())
 	// pool := newPool(1)
-	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
+	bloomTokenizer, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
@@ -341,7 +340,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										tenant,
 										ls.String(),
 										objectClient) {
-										bloomTokenizer.SetLineTokenizer(&experiment.tokenizer)
+										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
 
 										level.Info(util_log.Logger).Log("Starting work on: ", ls.String(), "'", FNV32a(ls.String()), "'", experiment.name, tenant)
 										startTime := time.Now().UnixMilli()

@@ -42,7 +42,7 @@ You can use labels of structured metadata to filter log line using a [label filt
 For example, if you have a label `trace_id` attached to some of your log lines as structured metadata, you can filter log lines using:
 
 ```logql
-{job="example"} | trace_id="0242ac120002"`
+{job="example"} | trace_id="0242ac120002"
 ```
 
 Of course, you can filter by multiple labels of structured metadata at the same time:
