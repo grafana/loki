@@ -218,7 +218,8 @@ func BenchmarkQuantileBatchRangeVectorIteratorAt(b *testing.B) {
 			b.ReportAllocs()
 
 			for n := 0; n < b.N; n++ {
-				it.At()
+				_, r := it.At()
+				r.QuantileSketchVec().Release()
 			}
 		})
 	}

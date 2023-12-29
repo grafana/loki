@@ -62,6 +62,12 @@ func (q ProbabilisticQuantileVector) ToProto() *logproto.QuantileSketchVector {
 	return &logproto.QuantileSketchVector{Samples: samples}
 }
 
+func (q ProbabilisticQuantileVector) Release() {
+	for _, s := range q {
+		s.F.Release()
+	}
+}
+
 func ProbabilisticQuantileVectorFromProto(proto *logproto.QuantileSketchVector) (ProbabilisticQuantileVector, error) {
 	out := make([]ProbabilisticQuantileSample, len(proto.Samples))
 	var s ProbabilisticQuantileSample
@@ -83,6 +89,9 @@ func (ProbabilisticQuantileMatrix) String() string {
 func (ProbabilisticQuantileMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
 
 func (m ProbabilisticQuantileMatrix) Release() {
+	for _, vec := range m {
+		vec.Release()
+	}
 	quantileVectorPool.Put(m)
 }
 
