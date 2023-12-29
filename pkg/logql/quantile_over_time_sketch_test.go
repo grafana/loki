@@ -190,27 +190,28 @@ func (ev *sliceStepEvaluator) Next() (ok bool, ts int64, r StepResult) {
 	return
 }
 
-func BenchmarkBatchRangeVectorIteratorAt(b *testing.B) {
+func BenchmarkQuantileBatchRangeVectorIteratorAt(b *testing.B) {
 	for _, tc := range []struct {
 		numberSamples int64
-	} {
+	}{
 		{numberSamples: 1},
 		{numberSamples: 1_000},
 		{numberSamples: 100_000},
 	} {
-		b.Run(fmt.Sprintf("%d-samples", tc.numberSamples), func (b *testing.B){
+		b.Run(fmt.Sprintf("%d-samples", tc.numberSamples), func(b *testing.B) {
 			r := rand.New(rand.NewSource(42))
 
-
-			// similar to Benchmark_RangeVectorIterator
-			it := &quantileSketchBatchRangeVectorIterator{}
 			key := "group"
-			it.window = map[string]*promql.Series{
-				key: {Floats: make([]promql.FPoint, tc.numberSamples)},
+			// similar to Benchmark_RangeVectorIterator
+			it := &quantileSketchBatchRangeVectorIterator{
+				batchRangeVectorIterator: &batchRangeVectorIterator{
+					window: map[string]*promql.Series{
+						key: {Floats: make([]promql.FPoint, tc.numberSamples)},
+					},
+				},
 			}
-
 			for i := int64(0); i < tc.numberSamples; i++ {
-				it.window[key].Floats[i] = promql.FPoint{ T: i, F: r.Float64()}
+				it.window[key].Floats[i] = promql.FPoint{T: i, F: r.Float64()}
 			}
 
 			b.ResetTimer()
