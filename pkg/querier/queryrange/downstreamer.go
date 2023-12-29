@@ -164,7 +164,7 @@ func (in instance) AsyncFor(
 		})
 		if err != nil {
 			ch <- logql.Resp{
-				I: -1,
+				I:   -1,
 				Err: err,
 			}
 		}
