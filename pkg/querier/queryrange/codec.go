@@ -231,10 +231,8 @@ func (r *LabelRequest) GetStep() int64 {
 
 func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	start := s
-	clone.Start = &start
-	end := e
-	clone.End = &end
+	clone.Start = &s
+	clone.End = &e
 	return &clone
 }
 
