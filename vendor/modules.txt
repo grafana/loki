@@ -158,7 +158,7 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/options
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
-# github.com/DataDog/sketches-go v1.4.2
+# github.com/DataDog/sketches-go v1.4.4
 ## explicit; go 1.15
 github.com/DataDog/sketches-go/ddsketch
 github.com/DataDog/sketches-go/ddsketch/encoding
