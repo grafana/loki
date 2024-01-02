@@ -30,12 +30,14 @@ import (
 
 // Config is the configuration for the queryrange tripperware
 type Config struct {
-	base.Config            `yaml:",inline"`
-	Transformer            UserIDTransformer     `yaml:"-"`
-	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
-	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
-	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
-	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
+	base.Config               `yaml:",inline"`
+	Transformer               UserIDTransformer        `yaml:"-"`
+	CacheIndexStatsResults    bool                     `yaml:"cache_index_stats_results"`
+	StatsCacheConfig          IndexStatsCacheConfig    `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
+	CacheVolumeResults        bool                     `yaml:"cache_volume_results"`
+	VolumeCacheConfig         VolumeCacheConfig        `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
+	CacheInstantMetricResults bool                     `yaml:"cache_instant_metric_results"`
+	InstantMetricCacheConfig  InstantMetricCacheConfig `yaml:"instant_metric_cache" doc:"description=If a cache config is not specified and cache_instant_metric_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -45,6 +47,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StatsCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
 	cfg.VolumeCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.CacheInstantMetricResults, "querier.cache-instant-metric-results", false, "Cache instant metric query results.")
+	cfg.InstantMetricCacheConfig.RegisterFlags(f)
 }
 
 // Validate validates the config.
@@ -109,10 +113,11 @@ func NewMiddleware(
 	metrics := NewMetrics(registerer, metricsNamespace)
 
 	var (
-		resultsCache cache.Cache
-		statsCache   cache.Cache
-		volumeCache  cache.Cache
-		err          error
+		resultsCache       cache.Cache
+		statsCache         cache.Cache
+		volumeCache        cache.Cache
+		instantMetricCache cache.Cache
+		err                error
 	)
 
 	if cfg.CacheResults {
@@ -700,9 +705,46 @@ func NewInstantMetricTripperware(
 	limits Limits,
 	schema config.SchemaConfig,
 	metrics *Metrics,
+	merger base.Merger,
+	c cache.Cache,
+	cacheGenNumLoader base.CacheGenNumberLoader,
+	retentionEnabled bool,
 	indexStatsTripperware base.Middleware,
 	metricsNamespace string,
 ) (base.Middleware, error) {
+	limits = WithSplitByLimits(limits, 24*time.Hour)
+
+	var cacheMiddleware base.Middleware
+	if cfg.CacheInstantMetricResults {
+		var err error
+		cacheMiddleware, err = NewIndexStatsCacheMiddleware(
+			log,
+			limits,
+			merger,
+			c,
+			cacheGenNumLoader,
+			func(_ context.Context, r base.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r base.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart().UnixMilli()),
+					model.Time(r.GetEnd().UnixMilli()),
+				)
+			},
+			retentionEnabled,
+			cfg.Transformer,
+			metrics.ResultsCacheMetrics,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 
@@ -710,11 +752,19 @@ func NewInstantMetricTripperware(
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewSplitByRangeMiddleware(log, engineOpts, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
+		}
+
+		if cfg.CacheInstantMetricResults {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware,
+				base.InstrumentMiddleware("instant_metric_results_cache", metrics.InstrumentMiddlewareMetrics),
+				cacheMiddleware,
+			)
 		}
 
 		if cfg.ShardedQueries {
 			queryRangeMiddleware = append(queryRangeMiddleware,
-				NewSplitByRangeMiddleware(log, engineOpts, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
 				NewQueryShardMiddleware(
 					log,
 					schema.Configs,
