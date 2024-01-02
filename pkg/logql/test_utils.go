@@ -225,6 +225,7 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 
 		results = append(results, res)
 	}
+	// TODO: use queryrange.instance.For
 	return results, nil
 }
 
