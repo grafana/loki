@@ -396,7 +396,14 @@ func TestInstantQueryTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -427,7 +434,14 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -1230,6 +1244,7 @@ type fakeLimits struct {
 	maxEntriesLimitPerQuery int
 	maxSeries               int
 	splitDuration           map[string]time.Duration
+	metadataSplitDuration   map[string]time.Duration
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
 	requiredLabels          []string
@@ -1245,6 +1260,13 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 		return 0
 	}
 	return f.splitDuration[key]
+}
+
+func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {
+	if f.metadataSplitDuration == nil {
+		return 0
+	}
+	return f.metadataSplitDuration[key]
 }
 
 func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {

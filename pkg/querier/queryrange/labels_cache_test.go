@@ -22,7 +22,7 @@ func TestCacheKeyLabels_GenerateCacheKey(t *testing.T) {
 	k := cacheKeyLabels{
 		transformer: nil,
 		Limits: fakeLimits{
-			splitDuration: map[string]time.Duration{
+			metadataSplitDuration: map[string]time.Duration{
 				"fake": time.Hour,
 			},
 		},
@@ -60,7 +60,11 @@ func TestLabelsCache(t *testing.T) {
 	setupCacheMW := func() queryrangebase.Middleware {
 		cacheMiddleware, err := NewLabelsCacheMiddleware(
 			log.NewNopLogger(),
-			WithSplitByLimits(fakeLimits{}, 24*time.Hour),
+			fakeLimits{
+				metadataSplitDuration: map[string]time.Duration{
+					"fake": 24 * time.Hour,
+				},
+			},
 			DefaultCodec,
 			cache.NewMockCache(),
 			nil,

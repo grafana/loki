@@ -27,7 +27,7 @@ func TestCacheKeySeries_GenerateCacheKey(t *testing.T) {
 	k := cacheKeySeries{
 		transformer: nil,
 		Limits: fakeLimits{
-			splitDuration: map[string]time.Duration{
+			metadataSplitDuration: map[string]time.Duration{
 				"fake": time.Hour,
 			},
 		},
@@ -68,7 +68,11 @@ func TestSeriesCache(t *testing.T) {
 	setupCacheMW := func() queryrangebase.Middleware {
 		cacheMiddleware, err := NewSeriesCacheMiddleware(
 			log.NewNopLogger(),
-			WithSplitByLimits(fakeLimits{}, 24*time.Hour),
+			fakeLimits{
+				metadataSplitDuration: map[string]time.Duration{
+					"fake": 24 * time.Hour,
+				},
+			},
 			DefaultCodec,
 			cache.NewMockCache(),
 			nil,

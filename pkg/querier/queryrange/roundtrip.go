@@ -29,18 +29,9 @@ import (
 )
 
 const (
-	// The Series API needs to pull one chunk per series to extract the label set, which is much cheaper than iterating through all matching chunks.
-	// Force a 24 hours split by for series API, this will be more efficient with our static daily bucket storage.
-	// This would avoid queriers downloading chunks for same series over and over again for serving smaller queries.
-	seriesQuerySplitInterval = 24 * time.Hour
-
 	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
 	indexStatsQuerySplitInterval = 24 * time.Hour
-
-	// Force a 24 hours split by for labels API, this will be more efficient with our static daily bucket storage.
-	// This is because the labels API is an index-only operation.
-	labelsQuerySplitInterval = 24 * time.Hour
 
 	// Limited queries only need to fetch up to the requested line limit worth of logs,
 	// Our defaults for splitting and parallelism are much too aggressive for large customers and result in
@@ -531,8 +522,6 @@ func NewSeriesTripperware(
 	retentionEnabled bool,
 	metricsNamespace string,
 ) (base.Middleware, error) {
-	limits = WithSplitByLimits(limits, seriesQuerySplitInterval)
-
 	var cacheMiddleware base.Middleware
 	if cfg.CacheSeriesResults {
 		var err error
@@ -618,8 +607,6 @@ func NewLabelsTripperware(
 	schema config.SchemaConfig,
 	metricsNamespace string,
 ) (base.Middleware, error) {
-	limits = WithSplitByLimits(limits, labelsQuerySplitInterval)
-
 	var cacheMiddleware base.Middleware
 	if cfg.CacheLabelResults {
 		var err error

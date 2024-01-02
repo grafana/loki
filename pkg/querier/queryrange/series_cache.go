@@ -23,7 +23,7 @@ type cacheKeySeries struct {
 // GenerateCacheKey generates a cache key based on the userID, matchers, split duration and the interval of the request.
 func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	sr := r.(*LokiSeriesRequest)
-	split := i.QuerySplitDuration(userID)
+	split := i.MetadataQuerySplitDuration(userID)
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {

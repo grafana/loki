@@ -22,7 +22,7 @@ type cacheKeyLabels struct {
 // It also includes the label name and the provided query for label values request.
 func (i cacheKeyLabels) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	lr := r.(*LabelRequest)
-	split := i.QuerySplitDuration(userID)
+	split := i.MetadataQuerySplitDuration(userID)
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
