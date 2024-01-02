@@ -2,6 +2,7 @@ package logql
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/queue"
 )
 
 const (
@@ -79,6 +81,10 @@ func (ProbabilisticQuantileMatrix) String() string {
 }
 
 func (ProbabilisticQuantileMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
+
+func (m ProbabilisticQuantileMatrix) Release() {
+	quantileVectorPool.Put(m)
+}
 
 func (m ProbabilisticQuantileMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	values := make([]*logproto.QuantileSketchVector, len(m))
@@ -157,8 +163,6 @@ func newQuantileSketchIterator(
 	}
 }
 
-//batch
-
 type ProbabilisticQuantileSample struct {
 	T int64
 	F sketch.QuantileSketch
@@ -231,18 +235,26 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
+// quantileVectorPool slice of ProbabilisticQuantileVector [64, 128, 256, ..., 65536]
+var quantileVectorPool = queue.NewSlicePool[ProbabilisticQuantileVector](1<<6, 1<<16, 2)
+
 // JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
-func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator) (promql_parser.Value, error) {
+func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
 
-	result := make([]ProbabilisticQuantileVector, 0)
+	stepCount := int(math.Ceil(float64(params.End().Sub(params.Start()).Nanoseconds()) / float64(params.Step().Nanoseconds())))
+	if stepCount <= 0 {
+		stepCount = 1
+	}
+
+	// The result is released to the pool when the matrix is serialized.
+	result := quantileVectorPool.Get(stepCount)
 
 	for next {
 		result = append(result, vec)
-
 		next, _, r = stepEvaluator.Next()
 		vec = r.QuantileSketchVec()
 		if stepEvaluator.Error() != nil {
