@@ -135,8 +135,8 @@ func buildBlockFromBlooms(
 				TableName:      job.tableName,
 				MinFingerprint: uint64(job.minFp),
 				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: int64(job.from),
-				EndTimestamp:   int64(job.through),
+				StartTimestamp: job.from,
+				EndTimestamp:   job.through,
 				Checksum:       checksum,
 			},
 			IndexPath: job.indexPath,
@@ -148,7 +148,7 @@ func buildBlockFromBlooms(
 }
 
 func createLocalDirName(workingDir string, job Job) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.tableName, job.tenantID, job.minFp, job.maxFp, job.from, job.through)
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%d-%d", job.tableName, job.tenantID, job.minFp, job.maxFp, job.from, job.through)
 	return filepath.Join(workingDir, dir)
 }
 
