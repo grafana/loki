@@ -290,6 +290,7 @@ func (ev DownstreamEvaluator) AsyncDownstream(ctx context.Context, queries []Dow
 	intermediate := ev.Downstreamer.AsyncDownstream(ctx, queries)
 
 	go func() {
+		defer close(result)
 		for res := range intermediate {
 			// TODO(owen-d/ewelch): Shard counts should be set by the querier
 			// so we don't have to do it in tricky ways in multiple places.
@@ -308,7 +309,7 @@ func (ev DownstreamEvaluator) AsyncDownstream(ctx context.Context, queries []Dow
 
 			// TODO(karsten): it would be nice to have iterators with yield instead
 			// here: https://github.com/golang/go/issues/61405
-			if res.Err != nil {
+			if res.Err == nil {
 				result <- res.Res
 			}
 		}

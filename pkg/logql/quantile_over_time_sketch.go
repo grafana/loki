@@ -413,6 +413,9 @@ func NewQuantileSketchVectorStepEvaluator(inner StepEvaluator, quantile float64)
 
 func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.inner.Next()
+	if !ok {
+		return false, 0, SampleVector{}
+	}
 	quantileSketchVec := r.QuantileSketchVec()
 
 	vec := make(promql.Vector, len(quantileSketchVec))
