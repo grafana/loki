@@ -142,8 +142,6 @@ func (in instance) AsyncFor(
 	queries []logql.DownstreamQuery,
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
 ) chan logql.Resp {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	ch := make(chan logql.Resp)
 
 	go func() {
@@ -180,6 +178,8 @@ func (in instance) For(
 	queries []logql.DownstreamQuery,
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
 ) ([]logqlmodel.Result, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	ch := in.AsyncFor(ctx, queries, fn)
 

@@ -289,28 +289,30 @@ func (ev DownstreamEvaluator) AsyncDownstream(ctx context.Context, queries []Dow
 
 	intermediate := ev.Downstreamer.AsyncDownstream(ctx, queries)
 
-	for res := range intermediate {
-		// TODO(owen-d/ewelch): Shard counts should be set by the querier
-		// so we don't have to do it in tricky ways in multiple places.
-		// See pkg/queryrange/downstreamer.go:*accumulatedStreams.Accumulate
-		// for another example
-		if res.Res.Statistics.Summary.Shards == 0 {
-			res.Res.Statistics.Summary.Shards = 1
-		}
+	go func() {
+		for res := range intermediate {
+			// TODO(owen-d/ewelch): Shard counts should be set by the querier
+			// so we don't have to do it in tricky ways in multiple places.
+			// See pkg/queryrange/downstreamer.go:*accumulatedStreams.Accumulate
+			// for another example
+			if res.Res.Statistics.Summary.Shards == 0 {
+				res.Res.Statistics.Summary.Shards = 1
+			}
 
-		stats.JoinResults(ctx, res.Res.Statistics)
+			stats.JoinResults(ctx, res.Res.Statistics)
 
-		if err := metadata.JoinHeaders(ctx, res.Res.Headers); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
-			break
-		}
+			if err := metadata.JoinHeaders(ctx, res.Res.Headers); err != nil {
+				level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+				break
+			}
 
-		// TODO(karsten): it would be nice to have iterators with yield instead
-		// here: https://github.com/golang/go/issues/61405
-		if res.Err != nil {
-			result <- res.Res
+			// TODO(karsten): it would be nice to have iterators with yield instead
+			// here: https://github.com/golang/go/issues/61405
+			if res.Err != nil {
+				result <- res.Res
+			}
 		}
-	}
+	}()
 
 	return result
 }
