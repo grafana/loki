@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -23,9 +24,17 @@ const (
 type ProbabilisticQuantileVector []ProbabilisticQuantileSample
 type ProbabilisticQuantileMatrix []ProbabilisticQuantileVector
 
+var streamHashPool = sync.Pool{
+	New: func() interface{} { return make(map[uint64]int) },
+}
+
 func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (ProbabilisticQuantileVector, error) {
 	// labels hash to vector index map
-	groups := make(map[uint64]int)
+	groups := streamHashPool.Get().(map[uint64]int)
+	defer func() {
+		clear(groups)
+		streamHashPool.Put(groups)
+	}()
 	for i, sample := range q {
 		groups[sample.Metric.Hash()] = i
 	}
