@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/pkg/logql/sketch"
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -596,5 +598,72 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func newRandomSketch() sketch.QuantileSketch {
+	r := rand.New(rand.NewSource(42))
+	s := sketch.NewDDSketch()
+	for i := 0; i < 1000; i++ {
+		_ = s.Add(r.Float64())
+	}
+	return s
+}
+
+func BenchmarkAccumulateMerge(b *testing.B) {
+	b.ReportAllocs()
+	results := make([]logql.ProbabilisticQuantileVector, 100)
+	for i := range results {
+		results[i] = make(logql.ProbabilisticQuantileVector, 100)
+		for j := range results[i] {
+			results[i][j] = logql.ProbabilisticQuantileSample{
+				T:      int64(i),
+				F:      newRandomSketch(),
+				Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
+			}
+		}
+	}
+	res := make([]logqlmodel.Result, 0, 100)
+	for _, r := range results {
+		res = append(res, logqlmodel.Result{
+			Data: logql.ProbabilisticQuantileMatrix([]logql.ProbabilisticQuantileVector{r}),
+		})
+	}
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		acc := newQuantileSketchAccumulator()
+		for _, r := range res {
+			require.NoError(b, acc.Accumulate(r, 0))
+		}
+	}
+}
+
+func BenchmarkSingleMerge(b *testing.B) {
+	b.ReportAllocs()
+	results := make([]logql.ProbabilisticQuantileVector, 100)
+	for i := range results {
+		results[i] = make(logql.ProbabilisticQuantileVector, 100)
+		for j := range results[i] {
+			results[i][j] = logql.ProbabilisticQuantileSample{
+				T:      int64(i),
+				F:      newRandomSketch(),
+				Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
+			}
+		}
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		// simulate receiving all sketches and keeping them in memory
+		res := make([]logql.ProbabilisticQuantileMatrix, 0, 100)
+		for _, r := range results {
+			res = append(res, logql.ProbabilisticQuantileMatrix{r})
+		}
+		var err error
+		final := res[0]
+		for i := 1; i < len(res); i++ {
+			_, err = final.Merge(res[i])
+			require.NoError(b, err)
+		}
 	}
 }
