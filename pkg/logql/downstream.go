@@ -245,7 +245,6 @@ type Resp struct {
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
 	Downstream(context.Context, []DownstreamQuery) ([]logqlmodel.Result, error)
-	AsyncDownstream(context.Context, []DownstreamQuery) chan Resp
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -281,41 +280,6 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	return results, nil
-}
-
-// Downstream runs queries and collects stats from the embedded Downstreamer
-func (ev DownstreamEvaluator) AsyncDownstream(ctx context.Context, queries []DownstreamQuery) chan logqlmodel.Result {
-	result := make(chan logqlmodel.Result)
-
-	intermediate := ev.Downstreamer.AsyncDownstream(ctx, queries)
-
-	go func() {
-		defer close(result)
-		for res := range intermediate {
-			// TODO(owen-d/ewelch): Shard counts should be set by the querier
-			// so we don't have to do it in tricky ways in multiple places.
-			// See pkg/queryrange/downstreamer.go:*accumulatedStreams.Accumulate
-			// for another example
-			if res.Res.Statistics.Summary.Shards == 0 {
-				res.Res.Statistics.Summary.Shards = 1
-			}
-
-			stats.JoinResults(ctx, res.Res.Statistics)
-
-			if err := metadata.JoinHeaders(ctx, res.Res.Headers); err != nil {
-				level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
-				break
-			}
-
-			// TODO(karsten): it would be nice to have iterators with yield instead
-			// here: https://github.com/golang/go/issues/61405
-			if res.Err == nil {
-				result <- res.Res
-			}
-		}
-	}()
-
-	return result
 }
 
 type errorQuerier struct{}
@@ -415,31 +379,20 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		results := ev.AsyncDownstream(ctx, queries)
-
-		var matrix ProbabilisticQuantileMatrix
-		var err error
-		for res := range results {
-			if res.Data.Type() != QuantileSketchMatrixType {
-				return nil, fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
-			}
-			data, ok := res.Data.(ProbabilisticQuantileMatrix)
-			if !ok {
-				return nil, fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
-			}
-			if matrix == nil {
-				matrix = data
-				continue
-			}
-
-			matrix, err = matrix.Merge(data)
-			if err != nil {
-				return nil, err
-			}
+		results, err := ev.Downstream(ctx, queries)
+		if err != nil {
+			return nil, err
 		}
 
-		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded quantile: got (%d), want (1)", len(results))
+		}
 
+		matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix)
+		if !ok {
+			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", results[0].Data)
+		}
+		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
 
 	default:

@@ -213,24 +213,6 @@ type MockDownstreamer struct {
 	*Engine
 }
 
-// AsyncDownstream implements Downstreamer.
-func (m MockDownstreamer) AsyncDownstream(ctx context.Context, queries []DownstreamQuery) chan Resp {
-	results := make(chan Resp)
-	go func() {
-		defer close(results)
-		for _, query := range queries {
-			res, err := m.Query(query.Params).Exec(ctx)
-			if err != nil {
-				results <- Resp{Err: err}
-				continue
-			}
-
-			results <- Resp{Res: res}
-		}
-	}()
-	return results
-}
-
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
 func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {

@@ -120,23 +120,6 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 	})
 }
 
-func (in instance) AsyncDownstream(ctx context.Context, queries []logql.DownstreamQuery) chan logql.Resp {
-	return in.AsyncFor(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
-		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
-		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
-		defer sp.Finish()
-		logger := spanlogger.FromContext(ctx)
-		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
-
-		res, err := in.handler.Do(ctx, req)
-		if err != nil {
-			return logqlmodel.Result{}, err
-		}
-		return ResponseToResult(res)
-	})
-}
-
 func (in instance) AsyncFor(
 	ctx context.Context,
 	queries []logql.DownstreamQuery,
@@ -145,7 +128,7 @@ func (in instance) AsyncFor(
 	ch := make(chan logql.Resp)
 
 	go func() {
-		err := concurrency.ForEachJob(ctx, len(queries), DefaultDownstreamConcurrency, func(ctx context.Context, i int) error {
+		err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
 			res, err := fn(queries[i])
 			response := logql.Resp{
 				I:   i,
@@ -261,7 +244,8 @@ func newDownstreamAccumulator(params logql.Params, nQueries int) *downstreamAccu
 }
 
 func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
-	if acc.Data.Type() == logqlmodel.ValueTypeStreams {
+	switch acc.Data.Type() {
+	case logqlmodel.ValueTypeStreams:
 
 		// the stream accumulator stores a heap with reversed order
 		// from the results we expect, so we need to reverse the direction
@@ -271,8 +255,9 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 		}
 
 		a.acc = newStreamAccumulator(direction, int(a.params.Limit()))
-
-	} else {
+	case logql.QuantileSketchMatrixType:
+		a.acc = newQuantileSketchAccumulator()
+	default:
 		a.acc = &bufferedAccumulator{
 			results: make([]logqlmodel.Result, a.n),
 		}
@@ -308,6 +293,36 @@ func (a *bufferedAccumulator) Accumulate(acc logqlmodel.Result, i int) error {
 
 func (a *bufferedAccumulator) Result() []logqlmodel.Result {
 	return a.results
+}
+
+type quantileSketchAccumulator struct {
+	matrix logql.ProbabilisticQuantileMatrix
+}
+
+func newQuantileSketchAccumulator() *quantileSketchAccumulator {
+	return &quantileSketchAccumulator{}
+}
+
+func (a *quantileSketchAccumulator) Accumulate(res logqlmodel.Result, _ int) error {
+	if res.Data.Type() != logql.QuantileSketchMatrixType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), logql.QuantileSketchMatrixType)
+	}
+	data, ok := res.Data.(logql.ProbabilisticQuantileMatrix)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
+	}
+	if a.matrix == nil {
+		a.matrix = data
+		return nil
+	}
+
+	var err error
+	a.matrix, err = a.matrix.Merge(data)
+	return err
+}
+
+func (a *quantileSketchAccumulator) Result() []logqlmodel.Result {
+	return []logqlmodel.Result{{Data: a.matrix}}
 }
 
 // heap impl for keeping only the top n results across m streams
