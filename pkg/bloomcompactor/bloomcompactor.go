@@ -369,10 +369,14 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		return err
 	}
 	tokenRanges := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
+	for _, tr := range tokenRanges {
+		level.Debug(logger).Log("msg", "got token range for instance", "id", tr.Instance.Id, "min", tr.MinToken, "max", tr.MaxToken)
+	}
 
 	_ = sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 		if isMultiTenantIndex {
 			// Skip multi-tenant indexes
+			level.Debug(logger).Log("msg", "skipping multi-tenant index", "table", tableName, "index", idx.Name())
 			return nil
 		}
 
@@ -407,6 +411,11 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 
 		if err != nil {
 			errs.Add(err)
+			return nil
+		}
+
+		if len(seriesMetas) == 0 {
+			level.Debug(logger).Log("msg", "skipping index because it does not have any matching series", "table", tableName, "index", idx.Name())
 			return nil
 		}
 
