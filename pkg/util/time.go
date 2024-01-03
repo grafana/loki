@@ -98,31 +98,19 @@ type IngesterQueryOptions interface {
 // The start and end time in splits would be aligned to the interval
 // except for the start time of first split and end time of last split which would be kept same as original start/end
 // When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
-func ForInterval(
-	interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time),
-	intervalOverride func(start, origStart time.Time, interval time.Duration) time.Duration,
-) {
+func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
 	if interval <= 0 {
 		callback(start, end)
 		return
 	}
 
-	ogStart := start
+	ogStart := start.UTC()
 	startNs := start.UnixNano()
-	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
+	start = time.Unix(0, startNs-startNs%interval.Nanoseconds()).UTC()
 	firstInterval := true
-	ogInterval := interval
 
 	for start := start; start.Before(end); start = start.Add(interval) {
-		interval = ogInterval
-
-		// allow interval to be overridden under certain conditions
-		// right now this is only used to override the interval when querying ingesters during `query_ingesters_within` window
-		if intervalOverride != nil {
-			interval = intervalOverride(start, ogStart, interval)
-		}
 		newEnd := start.Add(interval)
-
 		if !newEnd.Before(end) {
 			newEnd = end
 		} else if endTimeInclusive {

@@ -46,8 +46,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 					TargetLabels: volReq.TargetLabels,
 					AggregateBy:  volReq.AggregateBy,
 				}
-				// TODO: keep as nil?
-			}, nil)
+			})
 
 			type f func(context.Context) (time.Time, definitions.Response, error)
 			var jobs []f

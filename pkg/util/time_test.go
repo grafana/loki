@@ -137,15 +137,16 @@ type timeInterval struct {
 }
 
 func TestForInterval(t *testing.T) {
-	splitInterval := 10 * time.Second
+	const defaultInterval = 10 * time.Second
 	for _, tc := range []struct {
-		name                 string
-		inp                  timeInterval
-		expectedIntervals    []timeInterval
-		endTimeInclusive     bool
-		queryIngestersWithin time.Duration
-		maxIngesterSplits    uint
-		queryStoreOnly       bool
+		name                   string
+		inp                    timeInterval
+		expectedIntervals      []timeInterval
+		endTimeInclusive       bool
+		queryIngestersWithin   time.Duration
+		splitQueriesBy         time.Duration
+		splitIngesterQueriesBy time.Duration
+		queryStoreOnly         bool
 	}{
 		{
 			name: "range smaller than split interval",
@@ -159,6 +160,7 @@ func TestForInterval(t *testing.T) {
 					through: time.Unix(8, 0),
 				},
 			},
+			splitQueriesBy: defaultInterval,
 		},
 		{
 			name: "range exactly equal and aligned to split interval",
@@ -172,6 +174,7 @@ func TestForInterval(t *testing.T) {
 					through: time.Unix(20, 0),
 				},
 			},
+			splitQueriesBy: defaultInterval,
 		},
 		{
 			name: "multiple splits with end time not inclusive",
