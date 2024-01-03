@@ -209,14 +209,12 @@ func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt co
 }
 
 func (it *lazyBloomBuilder) Next() bool {
-	level.Info(it.logger).Log("msg", "-> lazyBloomBuilder.Next()")
 	if !it.metas.Next() {
 		it.cur = v1.SeriesWithBloom{}
 		level.Info(it.logger).Log("msg", "No metas")
 		return false
 	}
 	meta := it.metas.At()
-	level.Info(it.logger).Log("meta", meta)
 
 	// Get chunks data from list of chunkRefs
 	chks, err := it.client.GetChunks(it.ctx, makeChunkRefs(meta.chunkRefs, it.tenant, meta.seriesFP))
@@ -226,8 +224,6 @@ func (it *lazyBloomBuilder) Next() bool {
 		it.cur = v1.SeriesWithBloom{}
 		return false
 	}
-
-	level.Info(it.logger).Log("len(chks)", len(chks))
 
 	it.cur, err = buildBloomFromSeries(meta, it.fpRate, it.bt, chks)
 	if err != nil {

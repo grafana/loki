@@ -84,6 +84,7 @@ func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
 func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) error {
 	startTime := time.Now().UnixMilli()
+	level.Debug(util_log.Logger).Log("msg", "PopulateSeriesWithBloom")
 
 	clearCache(bt.cache)
 	chunkTotalUncompressedSize := 0
