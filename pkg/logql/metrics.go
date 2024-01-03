@@ -26,13 +26,14 @@ import (
 )
 
 const (
-	QueryTypeMetric  = "metric"
-	QueryTypeFilter  = "filter"
-	QueryTypeLimited = "limited"
-	QueryTypeLabels  = "labels"
-	QueryTypeSeries  = "series"
-	QueryTypeStats   = "stats"
-	QueryTypeVolume  = "volume"
+	QueryTypeMetric         = "metric"
+	QueryTypeFilter         = "filter"
+	QueryTypeLimited        = "limited"
+	QueryTypeLabels         = "labels"
+	QueryTypeSeries         = "series"
+	QueryTypeIngesterSeries = "ingester_series"
+	QueryTypeStats          = "stats"
+	QueryTypeVolume         = "volume"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -241,6 +242,37 @@ func fixLogger(ctx context.Context, logger log.Logger) log.Logger {
 func PrintMatches(matches []string) string {
 	// not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
 	return strings.Join(matches, ":")
+}
+
+func RecordIngesterSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, stats logql_stats.Result) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeIngesterSeries
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	logValues := make([]interface{}, 0, 11)
+	logValues = append(logValues,
+		"latency", latencyType,
+		"query_type", queryType,
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"total_entries", stats.Summary.TotalEntriesReturned)
+
+	level.Info(logger).Log(logValues...)
 }
 
 func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {

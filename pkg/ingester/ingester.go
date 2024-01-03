@@ -871,9 +871,13 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 }
 
 // Query the ingests for log streams matching a set of matchers.
-func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
+func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) (err error) {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+
+	start := time.Now()
+	query := ""
+	var lines int32
 
 	if req.Plan == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
@@ -883,7 +887,19 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		req.Plan = &plan.QueryPlan{
 			AST: parsed,
 		}
+		query = parsed.String()
 	}
+
+	defer func() {
+		status := "200"
+		if err != nil {
+			status = "400"
+		}
+		statsCtx := stats.FromContext(ctx)
+		execTime := time.Since(start)
+		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, query, status,
+			statsCtx.Result(execTime, time.Duration(0), int(lines)))
+	}()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -926,7 +942,8 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		batchLimit = -1
 	}
 
-	return sendBatches(ctx, it, queryServer, batchLimit)
+	lines, err = sendBatches(ctx, it, queryServer, batchLimit)
+	return err
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.

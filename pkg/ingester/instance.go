@@ -949,8 +949,9 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) (int32, error) {
 	stats := stats.FromContext(ctx)
+	var lines int32
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -960,7 +961,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
-			return err
+			return lines, err
 		}
 
 		if limit > 0 {
@@ -969,22 +970,23 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
+		lines += int32(batchSize)
 
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return err
+			return lines, err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Streams) == 0 {
-			return nil
+			return lines, err
 		}
 
 		stats.Reset()
 	}
-	return nil
+	return lines, nil
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
