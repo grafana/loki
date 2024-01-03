@@ -120,13 +120,20 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 	})
 }
 
-func (in instance) AsyncFor(
+// For runs a function against a list of queries, collecting the results or returning an error. The indices are preserved such that input[i] maps to output[i].
+func (in instance) For(
 	ctx context.Context,
 	queries []logql.DownstreamQuery,
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
-) chan logql.Resp {
+) ([]logqlmodel.Result, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	ch := make(chan logql.Resp)
 
+	// ForEachJob blocks until all are done. However, we want to process the
+	// results as they come in. That's why we start everything in another
+	// gorouting.
 	go func() {
 		err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
 			res, err := fn(queries[i])
@@ -151,20 +158,6 @@ func (in instance) AsyncFor(
 		}
 		close(ch)
 	}()
-
-	return ch
-}
-
-// For runs a function against a list of queries, collecting the results or returning an error. The indices are preserved such that input[i] maps to output[i].
-func (in instance) For(
-	ctx context.Context,
-	queries []logql.DownstreamQuery,
-	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
-) ([]logqlmodel.Result, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	ch := in.AsyncFor(ctx, queries, fn)
 
 	acc := newDownstreamAccumulator(queries[0].Params, len(queries))
 	for resp := range ch {
@@ -218,8 +211,8 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	return xs
 }
 
-// downstreamAccumulator is one of two variants:
-// a logsAccumulator or a bufferedAccumulator.
+// downstreamAccumulator is one of three variants:
+// a logsAccumulator, a bufferedAccumulator, or a quantileSketchAccumulator.
 // Which variant is detected on the first call to Accumulate.
 // Metric queries, which are generally small payloads, are buffered
 // since the memory overhead is negligible.
@@ -228,6 +221,7 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 // accumulate the results into a logsAccumulator, discarding values
 // over the limit to keep memory pressure down while other subqueries
 // are executing.
+// Sharded probabilistic quantile query results are merged as they come in.
 type downstreamAccumulator struct {
 	acc    resultAccumulator
 	params logql.Params

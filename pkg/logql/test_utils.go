@@ -225,7 +225,16 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 
 		results = append(results, res)
 	}
-	// TODO: use queryrange.instance.For
+
+	if matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix); ok {
+		if len(results) == 1 {
+			return results, nil
+		}
+		for _, m := range results[1:] {
+			matrix, _ = matrix.Merge(m.Data.(ProbabilisticQuantileMatrix))
+		}
+		return []logqlmodel.Result{{Data: matrix}}, nil
+	}
 	return results, nil
 }
 
