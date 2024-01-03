@@ -989,28 +989,30 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	return lines, nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) (int32, error) {
+	var lines int32
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
-			return err
+			return lines, err
 		}
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
+		lines += int32(size)
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return err
+			return lines, err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Series) == 0 {
-			return nil
+			return lines, nil
 		}
 
 		stats.Reset()
@@ -1019,7 +1021,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 	}
 
-	return nil
+	return lines, nil
 }
 
 func shouldConsiderStream(stream *stream, reqFrom, reqThrough time.Time) bool {

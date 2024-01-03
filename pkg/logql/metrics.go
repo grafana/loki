@@ -26,14 +26,15 @@ import (
 )
 
 const (
-	QueryTypeMetric         = "metric"
-	QueryTypeFilter         = "filter"
-	QueryTypeLimited        = "limited"
-	QueryTypeLabels         = "labels"
-	QueryTypeSeries         = "series"
-	QueryTypeIngesterSeries = "ingester_series"
-	QueryTypeStats          = "stats"
-	QueryTypeVolume         = "volume"
+	QueryTypeMetric          = "metric"
+	QueryTypeFilter          = "filter"
+	QueryTypeLimited         = "limited"
+	QueryTypeLabels          = "labels"
+	QueryTypeSeries          = "series"
+	QueryTypeIngesterStreams = "ingester_streams"
+	QueryTypeIngesterSeries  = "ingester_series"
+	QueryTypeStats           = "stats"
+	QueryTypeVolume          = "volume"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -244,11 +245,18 @@ func PrintMatches(matches []string) string {
 	return strings.Join(matches, ":")
 }
 
-func RecordIngesterSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, stats logql_stats.Result) {
+func RecordIngesterStreamsQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, limit uint32, returnedLines int32, stats logql_stats.Result) {
+	recordIngesterQueryMetrics(ctx, QueryTypeIngesterStreams, log, start, end, query, status, &limit, returnedLines, stats)
+}
+
+func RecordIngesterSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, returnedLines int32, stats logql_stats.Result) {
+	recordIngesterQueryMetrics(ctx, QueryTypeIngesterSeries, log, start, end, query, status, nil, returnedLines, stats)
+}
+
+func recordIngesterQueryMetrics(ctx context.Context, queryType string, log log.Logger, start, end time.Time, query string, status string, limit *uint32, returnedLines int32, stats logql_stats.Result) {
 	var (
 		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
-		queryType   = QueryTypeIngesterSeries
 	)
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -270,7 +278,21 @@ func RecordIngesterSeriesQueryMetrics(ctx context.Context, log log.Logger, start
 		"status", status,
 		"query", query,
 		"query_hash", util.HashedQuery(query),
-		"total_entries", stats.Summary.TotalEntriesReturned)
+		"total_entries", stats.Summary.TotalEntriesReturned,
+		"returned_lines", returnedLines,
+		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
+		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_bytes_structured_metadata", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalStructuredMetadataBytesProcessed)), " ", "", 1),
+		"lines_per_second", stats.Summary.LinesProcessedPerSecond,
+		"total_lines", stats.Summary.TotalLinesProcessed,
+		"post_filter_lines", stats.Summary.TotalPostFilterLines,
+		"total_entries", stats.Summary.TotalEntriesReturned,
+		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime())
+
+	if limit != nil {
+		logValues = append(logValues,
+			"limit", *limit)
+	}
 
 	level.Info(logger).Log(logValues...)
 }
