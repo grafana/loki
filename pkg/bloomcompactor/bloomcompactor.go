@@ -530,6 +530,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 
 		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
+		level.Info(logger).Log("job.seriesMetas length", len(job.seriesMetas))
 		resultingBlock, err = compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
 			return level.Error(logger).Log("msg", "failed compacting new chunks", "err", err)

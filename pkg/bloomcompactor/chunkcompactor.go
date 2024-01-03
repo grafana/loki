@@ -167,7 +167,7 @@ func compactNewChunks(
 		return bloomshipper.Block{}, err
 	}
 
-	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, fpRate)
+	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, fpRate, logger)
 
 	// Build and upload bloomBlock to storage
 	block, err := buildBlockFromBlooms(ctx, logger, builder, bloomIter, job)
@@ -186,6 +186,7 @@ type lazyBloomBuilder struct {
 	client chunkClient
 	bt     compactorTokenizer
 	fpRate float64
+	logger log.Logger
 
 	cur v1.SeriesWithBloom // retured by At()
 	err error              // returned by Err()
@@ -195,7 +196,7 @@ type lazyBloomBuilder struct {
 // which are used by the blockBuilder to write a bloom block.
 // We use an interator to avoid loading all blooms into memory first, before
 // building the block.
-func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, fpRate float64) *lazyBloomBuilder {
+func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, fpRate float64, logger log.Logger) *lazyBloomBuilder {
 	return &lazyBloomBuilder{
 		ctx:    ctx,
 		metas:  v1.NewSliceIter(job.seriesMetas),
@@ -203,26 +204,34 @@ func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt co
 		tenant: job.tenantID,
 		bt:     bt,
 		fpRate: fpRate,
+		logger: logger,
 	}
 }
 
 func (it *lazyBloomBuilder) Next() bool {
+	level.Info(it.logger).Log("msg", "-> lazyBloomBuilder.Next()")
 	if !it.metas.Next() {
 		it.cur = v1.SeriesWithBloom{}
+		level.Info(it.logger).Log("msg", "No metas")
 		return false
 	}
 	meta := it.metas.At()
+	level.Info(it.logger).Log("meta", meta)
 
 	// Get chunks data from list of chunkRefs
 	chks, err := it.client.GetChunks(it.ctx, makeChunkRefs(meta.chunkRefs, it.tenant, meta.seriesFP))
 	if err != nil {
+		level.Info(it.logger).Log("err in getChunks", err)
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
 		return false
 	}
 
+	level.Info(it.logger).Log("len(chks)", len(chks))
+
 	it.cur, err = buildBloomFromSeries(meta, it.fpRate, it.bt, chks)
 	if err != nil {
+		level.Info(it.logger).Log("err in buildBloomFromSeries", err)
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
 		return false
