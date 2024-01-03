@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -56,13 +55,11 @@ type splitByInterval struct {
 	limits   Limits
 	merger   queryrangebase.Merger
 	metrics  *SplitByMetrics
-	splitter Splitter
+	splitter splitter
 }
 
-type Splitter func(tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
-
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
 	if metrics == nil {
 		metrics = NewSplitByMetrics(nil)
 	}
@@ -190,7 +187,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	intervals, err := h.splitter(tenantIDs, r, interval)
+	intervals, err := h.splitter.split(tenantIDs, r, interval)
 	if err != nil {
 		return nil, err
 	}
@@ -244,96 +241,6 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	return h.merger.MergeResponse(resps...)
 }
 
-// intervalOverrideFn is used to override the query interval if the given time-range is during the `query_ingesters_within` window
-func intervalOverrideFn(tenantIDs []string, limits Limits, iqo util.IngesterQueryOptions) func(start, origStart time.Time, interval time.Duration) time.Duration {
-	ingesterSplitBy := validation.MaxDurationPerTenant(tenantIDs, limits.IngesterQuerySplitDuration)
-	splitBy := validation.MaxDurationPerTenant(tenantIDs, limits.QuerySplitDuration)
-
-	return func(start, origStart time.Time, interval time.Duration) time.Duration {
-		if iqo != nil && start.Add(interval).Before(origStart.Add(iqo.QueryIngestersWithin())) {
-			if !iqo.QueryStoreOnly() {
-				interval = ingesterSplitBy
-
-				// clamp split_ingester_queries_by_interval to split_queries_by_interval if larger
-				if interval == 0 || interval > splitBy {
-					interval = splitBy
-				}
-			}
-		}
-
-		return interval
-	}
-}
-
-func splitByTime(limits Limits, iqo util.IngesterQueryOptions) func(tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
-	return func(tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
-		var reqs []queryrangebase.Request
-
-		switch r := req.(type) {
-		case *LokiRequest:
-			util.ForInterval(interval, r.StartTs, r.EndTs, false, func(start, end time.Time) {
-				reqs = append(reqs, &LokiRequest{
-					Query:     r.Query,
-					Limit:     r.Limit,
-					Step:      r.Step,
-					Interval:  r.Interval,
-					Direction: r.Direction,
-					Path:      r.Path,
-					StartTs:   start,
-					EndTs:     end,
-					Plan:      r.Plan,
-				})
-			}, intervalOverrideFn(tenantIDs, limits, iqo))
-		case *LokiSeriesRequest:
-			// metadata queries have end time inclusive.
-			// Set endTimeInclusive to true so that ForInterval keeps a gap of 1ms between splits to
-			// avoid querying duplicate data in adjacent queries.
-			util.ForInterval(interval, r.StartTs, r.EndTs, true, func(start, end time.Time) {
-				reqs = append(reqs, &LokiSeriesRequest{
-					Match:   r.Match,
-					Path:    r.Path,
-					StartTs: start,
-					EndTs:   end,
-					Shards:  r.Shards,
-				})
-			}, intervalOverrideFn(tenantIDs, limits, iqo))
-		case *LabelRequest:
-			// metadata queries have end time inclusive.
-			// Set endTimeInclusive to true so that ForInterval keeps a gap of 1ms between splits to
-			// avoid querying duplicate data in adjacent queries.
-			util.ForInterval(interval, *r.Start, *r.End, true, func(start, end time.Time) {
-				reqs = append(reqs, NewLabelRequest(start, end, r.Query, r.Name, r.Path()))
-			}, intervalOverrideFn(tenantIDs, limits, iqo))
-		case *logproto.IndexStatsRequest:
-			startTS := r.GetStart()
-			endTS := r.GetEnd()
-			util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
-				reqs = append(reqs, &logproto.IndexStatsRequest{
-					From:     model.TimeFromUnix(start.Unix()),
-					Through:  model.TimeFromUnix(end.Unix()),
-					Matchers: r.GetMatchers(),
-				})
-			}, intervalOverrideFn(tenantIDs, limits, iqo))
-		case *logproto.VolumeRequest:
-			startTS := r.GetStart()
-			endTS := r.GetEnd()
-			util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
-				reqs = append(reqs, &logproto.VolumeRequest{
-					From:         model.TimeFromUnix(start.Unix()),
-					Through:      model.TimeFromUnix(end.Unix()),
-					Matchers:     r.GetMatchers(),
-					Limit:        r.Limit,
-					TargetLabels: r.TargetLabels,
-					AggregateBy:  r.AggregateBy,
-				})
-			}, intervalOverrideFn(tenantIDs, limits, iqo))
-		default:
-			return nil, nil
-		}
-		return reqs, nil
-	}
-}
-
 // maxRangeVectorAndOffsetDurationFromQueryString
 func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, time.Duration, error) {
 	parsed, err := syntax.ParseExpr(q)
@@ -361,95 +268,4 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 		}
 	})
 	return maxRVDuration, maxOffset, nil
-}
-
-// reduceSplitIntervalForRangeVector reduces the split interval for a range query based on the duration of the range vector.
-// Large range vector durations will not be split into smaller intervals because it can cause the queries to be slow by over-processing data.
-func reduceSplitIntervalForRangeVector(r *LokiRequest, interval time.Duration) (time.Duration, error) {
-	maxRange, _, err := maxRangeVectorAndOffsetDuration(r.Plan.AST)
-	if err != nil {
-		return 0, err
-	}
-	if maxRange > interval {
-		return maxRange, nil
-	}
-	return interval, nil
-}
-
-func splitMetricByTime(limits Limits, iqo util.IngesterQueryOptions) func(tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
-	return func(tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
-		var reqs []queryrangebase.Request
-
-		lokiReq := r.(*LokiRequest)
-
-		interval, err := reduceSplitIntervalForRangeVector(lokiReq, interval)
-		if err != nil {
-			return nil, err
-		}
-
-		// step align start and end time of the query. Start time is rounded down and end time is rounded up.
-		stepNs := r.GetStep() * 1e6
-		startNs := lokiReq.StartTs.UnixNano()
-		start := time.Unix(0, startNs-startNs%stepNs)
-
-		endNs := lokiReq.EndTs.UnixNano()
-		if mod := endNs % stepNs; mod != 0 {
-			endNs += stepNs - mod
-		}
-		end := time.Unix(0, endNs)
-
-		lokiReq = lokiReq.WithStartEnd(start, end).(*LokiRequest)
-
-		// step is >= configured split interval, let us just split the query interval by step
-		if lokiReq.Step >= interval.Milliseconds() {
-			util.ForInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, func(start, end time.Time) {
-				reqs = append(reqs, &LokiRequest{
-					Query:     lokiReq.Query,
-					Limit:     lokiReq.Limit,
-					Step:      lokiReq.Step,
-					Interval:  lokiReq.Interval,
-					Direction: lokiReq.Direction,
-					Path:      lokiReq.Path,
-					StartTs:   start,
-					EndTs:     end,
-					Plan:      lokiReq.Plan,
-				})
-			}, intervalOverrideFn(tenantIDs, limits, iqo))
-
-			return reqs, nil
-		}
-
-		for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
-			end := nextIntervalBoundary(start, r.GetStep(), interval)
-			if end.Add(time.Duration(r.GetStep())*time.Millisecond).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*time.Millisecond) == lokiReq.EndTs {
-				end = lokiReq.EndTs
-			}
-			reqs = append(reqs, &LokiRequest{
-				Query:     lokiReq.Query,
-				Limit:     lokiReq.Limit,
-				Step:      lokiReq.Step,
-				Interval:  lokiReq.Interval,
-				Direction: lokiReq.Direction,
-				Path:      lokiReq.Path,
-				StartTs:   start,
-				EndTs:     end,
-				Plan:      lokiReq.Plan,
-			})
-		}
-
-		return reqs, nil
-	}
-}
-
-// Round up to the step before the next interval boundary.
-func nextIntervalBoundary(t time.Time, step int64, interval time.Duration) time.Time {
-	stepNs := step * 1e6
-	nsPerInterval := interval.Nanoseconds()
-	startOfNextInterval := ((t.UnixNano() / nsPerInterval) + 1) * nsPerInterval
-	// ensure that target is a multiple of steps away from the start time
-	target := startOfNextInterval - ((startOfNextInterval - t.UnixNano()) % stepNs)
-	if target == startOfNextInterval {
-		target -= stepNs
-	}
-	return time.Unix(0, target)
 }

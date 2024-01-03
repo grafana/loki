@@ -56,6 +56,8 @@ var testSchemasTSDB = func() []config.PeriodConfig {
 	return confs
 }()
 
+var defSplitter = newDefaultSplitter(fakeLimits{}, nil)
+
 func Test_splitQuery(t *testing.T) {
 	buildLokiRequest := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
@@ -217,7 +219,7 @@ func Test_splitQuery(t *testing.T) {
 					want = append(want, tc.requestBuilderFunc(interval.start, interval.end))
 				}
 
-				splits, err := splitByTime(fakeLimits{}, nil)([]string{}, inp, time.Hour)
+				splits, err := defSplitter.split([]string{}, inp, time.Hour)
 				require.NoError(t, err)
 				require.Equal(t, want, splits)
 			})
@@ -613,7 +615,8 @@ func Test_splitMetricQuery(t *testing.T) {
 		}
 
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			splits, err := splitMetricByTime(fakeLimits{}, nil)([]string{}, tc.input, tc.interval)
+			ms := newMetricQuerySplitter(fakeLimits{}, nil)
+			splits, err := ms.split([]string{}, tc.input, tc.interval)
 			require.NoError(t, err)
 			for i, s := range splits {
 				s := s.(*LokiRequest)
@@ -652,7 +655,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 		testSchemas,
 		l,
 		DefaultCodec,
-		splitByTime(fakeLimits{}, nil),
+		defSplitter,
 		nilMetrics,
 	).Wrap(next)
 
@@ -834,7 +837,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 		testSchemas,
 		l,
 		DefaultCodec,
-		splitByTime(fakeLimits{}, nil),
+		defSplitter,
 		nilMetrics,
 	).Wrap(next)
 
@@ -889,7 +892,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 			testSchemas,
 			l,
 			DefaultCodec,
-			splitByTime(fakeLimits{}, nil),
+			defSplitter,
 			nilMetrics,
 		).Wrap(next)
 	}
@@ -1050,7 +1053,7 @@ func Test_ExitEarly(t *testing.T) {
 		testSchemas,
 		l,
 		DefaultCodec,
-		splitByTime(fakeLimits{}, nil),
+		defSplitter,
 		nilMetrics,
 	).Wrap(next)
 
@@ -1132,7 +1135,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 		testSchemas,
 		l,
 		DefaultCodec,
-		splitByTime(fakeLimits{}, nil),
+		defSplitter,
 		nilMetrics,
 	).Wrap(next)
 
