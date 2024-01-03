@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/grafana/loki/pkg/loghttp"
 
 	"github.com/grafana/dskit/grpcclient"
@@ -127,9 +129,9 @@ func (c *querierClientMock) Close() error {
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
-	return func(addr string) (ring_client.PoolClient, error) {
+	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return c, nil
-	}
+	})
 }
 
 // mockIngesterClientConfig returns an ingester client config suitable for testing
@@ -298,8 +300,9 @@ type storeMock struct {
 func newStoreMock() *storeMock {
 	return &storeMock{}
 }
-
-func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer) {}
+func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer)    {}
+func (s *storeMock) SetExtractorWrapper(log.SampleExtractorWrapper) {}
+func (s *storeMock) SetPipelineWrapper(log.PipelineWrapper)         {}
 
 func (s *storeMock) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	args := s.Called(ctx, req)
@@ -319,8 +322,8 @@ func (s *storeMock) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	return res.(iter.SampleIterator), args.Error(1)
 }
 
-func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
-	args := s.Called(ctx, userID, from, through, matchers)
+func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	args := s.Called(ctx, userID, from, through, predicate)
 	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*fetcher.Fetcher), args.Error(2)
 }
 
@@ -350,7 +353,7 @@ func (s *storeMock) GetSchemaConfigs() []config.PeriodConfig {
 	panic("don't call me please")
 }
 
-func (s *storeMock) Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *storeMock) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
 	if res == nil {
@@ -530,7 +533,7 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 }
 
-func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest) (*Tailer, error) {
+func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest, _ bool) (*Tailer, error) {
 	return nil, errors.New("querierMock.Tail() has not been mocked")
 }
 

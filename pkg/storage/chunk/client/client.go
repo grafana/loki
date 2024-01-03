@@ -22,9 +22,11 @@ type Client interface {
 	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
 	DeleteChunk(ctx context.Context, userID, chunkID string) error
 	IsChunkNotFoundErr(err error) bool
+	IsRetryableErr(err error) bool
 }
 
 // ObjectAndIndexClient allows optimisations where the same client handles both
+// Only used by DynamoDB (dynamodbIndexReader and dynamoDBStorageClient)
 type ObjectAndIndexClient interface {
 	PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error
 }

@@ -52,7 +52,7 @@ func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
 			return float64(val.Field(i).Int()), true
 		case model.Duration:
 			return float64(val.Field(i).Interface().(model.Duration)), true
-		case flagext.ByteSize:
+		case uint, flagext.ByteSize:
 			return float64(val.Field(i).Uint()), true
 		case float64:
 			return val.Field(i).Float(), true

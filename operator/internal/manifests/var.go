@@ -22,7 +22,8 @@ const (
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
 
-	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarName     = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarTemplate = "${" + gossipInstanceAddrEnvVarName + "}"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
@@ -58,7 +59,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.8.3"
+	DefaultContainerImage = "docker.io/grafana/loki:2.9.3"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -75,6 +76,8 @@ const (
 	AnnotationCertRotationRequiredAt string = "loki.grafana.com/certRotationRequiredAt"
 	// AnnotationLokiConfigHash stores the last SHA1 hash of the loki configuration
 	AnnotationLokiConfigHash string = "loki.grafana.com/config-hash"
+	// AnnotationLokiObjectStoreHash stores the last SHA1 hash of the loki object storage credetials.
+	AnnotationLokiObjectStoreHash string = "loki.grafana.com/object-store-hash"
 
 	// LabelCompactorComponent is the label value for the compactor component
 	LabelCompactorComponent string = "compactor"
@@ -129,11 +132,18 @@ var (
 	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
 )
 
-func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
-	return map[string]string{
-		AnnotationLokiConfigHash:         configHash,
+func commonAnnotations(configHash, objStoreHash, rotationRequiredAt string) map[string]string {
+	a := map[string]string{
+		AnnotationLokiConfigHash: configHash,
+
 		AnnotationCertRotationRequiredAt: rotationRequiredAt,
 	}
+
+	if objStoreHash != "" {
+		a[AnnotationLokiObjectStoreHash] = objStoreHash
+	}
+
+	return a
 }
 
 func commonLabels(stackName string) map[string]string {

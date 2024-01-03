@@ -22,10 +22,10 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
+	shipperstorage "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	desiredVer               = tsdb_index.LiveFormat
+	desiredVer               = tsdbindex.FormatV3
 	tableNumMin, tableNumMax int64
 	newTablePrefix           string
 )
@@ -102,7 +102,7 @@ func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMe
 		return err
 	}
 
-	indexStorageClient := shipper_storage.NewIndexStorageClient(objClient, storageCfg.TSDBShipperConfig.SharedStoreKeyPrefix)
+	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, pCfg.IndexTables.PathPrefix)
 
 	tableNames, err := indexStorageClient.ListTables(context.Background())
 	if err != nil {
@@ -142,7 +142,7 @@ func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMe
 	return nil
 }
 
-func migrateTable(tableName string, indexStorageClient shipper_storage.Client) error {
+func migrateTable(tableName string, indexStorageClient shipperstorage.Client) error {
 	tempDir := os.TempDir()
 
 	uncompactedFiles, tenants, err := indexStorageClient.ListFiles(context.Background(), tableName, true)
@@ -182,15 +182,15 @@ func migrateTable(tableName string, indexStorageClient shipper_storage.Client) e
 
 		dst := filepath.Join(tenantDir, indexFiles[0].Name)
 
-		decompress := shipper_storage.IsCompressedFile(indexFiles[0].Name)
+		decompress := shipperstorage.IsCompressedFile(indexFiles[0].Name)
 		if decompress {
 			dst = strings.Trim(dst, gzipExtension)
 		}
-		if err := shipper_storage.DownloadFileFromStorage(
+		if err := shipperstorage.DownloadFileFromStorage(
 			dst,
 			decompress,
 			true,
-			shipper_storage.LoggerWithFilename(util_log.Logger, indexFiles[0].Name),
+			shipperstorage.LoggerWithFilename(util_log.Logger, indexFiles[0].Name),
 			func() (io.ReadCloser, error) {
 				return indexStorageClient.GetUserFile(context.Background(), tableName, tenant, indexFiles[0].Name)
 			},
@@ -234,7 +234,7 @@ func migrateTable(tableName string, indexStorageClient shipper_storage.Client) e
 	return nil
 }
 
-func uploadFile(idx index.Index, indexStorageClient shipper_storage.Client, tableName, tenant string) error {
+func uploadFile(idx shipperindex.Index, indexStorageClient shipperstorage.Client, tableName, tenant string) error {
 	fileName := idx.Name()
 	level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("uploading index %s", fileName))
 
@@ -298,7 +298,8 @@ func setup() loki.Config {
 		os.Exit(1)
 	}
 
-	util_log.InitLogger(&c.Server, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
+	serverCfg := &c.Server
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
 	if err := c.Validate(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())

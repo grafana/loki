@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
@@ -22,18 +21,19 @@ type IndexGatewayClientStore struct {
 	logger log.Logger
 }
 
-func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) index.ReaderWriter {
+func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) *IndexGatewayClientStore {
 	return &IndexGatewayClientStore{
 		client: client,
 		logger: logger,
 	}
 }
 
-func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	response, err := c.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{
 		From:     from,
 		Through:  through,
-		Matchers: (&syntax.MatchersExpr{Mts: allMatchers}).String(),
+		Matchers: (&syntax.MatchersExpr{Mts: predicate.Matchers}).String(),
+		Filters:  predicate.Filters,
 	})
 	if err != nil {
 		return nil, err

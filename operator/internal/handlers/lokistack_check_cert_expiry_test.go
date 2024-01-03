@@ -1,4 +1,4 @@
-package handlers_test
+package handlers
 
 import (
 	"context"
@@ -6,10 +6,6 @@ import (
 	"testing"
 	"time"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/certrotation"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,6 +15,10 @@ import (
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/certrotation"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 func TestCheckCertExpiry_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
@@ -37,7 +37,7 @@ func TestCheckCertExpiry_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
+	err := CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was NOT called because the Get failed
@@ -61,7 +61,7 @@ func TestCheckCertExpiry_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsTheError(
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
+	err := CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
 
 	require.Equal(t, badRequestErr, errors.Unwrap(err))
 
@@ -100,7 +100,7 @@ func TestCheckCertExpiry_WhenGetOptionsReturnsSignerNotFound_DoesNotError(t *tes
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
+	err := CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was NOT called because the Get failed
@@ -179,7 +179,7 @@ func TestCheckCertExpiry_WhenGetOptionsReturnsCABUndleNotFound_DoesNotError(t *t
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
+	err := CheckCertExpiry(context.TODO(), logger, r, k, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was NOT called because the Get failed

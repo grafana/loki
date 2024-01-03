@@ -1283,6 +1283,62 @@ func (c *EC2) WaitUntilSpotInstanceRequestFulfilledWithContext(ctx aws.Context, 
 	return w.WaitWithContext(ctx)
 }
 
+// WaitUntilStoreImageTaskComplete uses the Amazon EC2 API operation
+// DescribeStoreImageTasks to wait for a condition to be met before returning.
+// If the condition is not met within the max attempt window, an error will
+// be returned.
+func (c *EC2) WaitUntilStoreImageTaskComplete(input *DescribeStoreImageTasksInput) error {
+	return c.WaitUntilStoreImageTaskCompleteWithContext(aws.BackgroundContext(), input)
+}
+
+// WaitUntilStoreImageTaskCompleteWithContext is an extended version of WaitUntilStoreImageTaskComplete.
+// With the support for passing in a context and options to configure the
+// Waiter and the underlying request options.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *EC2) WaitUntilStoreImageTaskCompleteWithContext(ctx aws.Context, input *DescribeStoreImageTasksInput, opts ...request.WaiterOption) error {
+	w := request.Waiter{
+		Name:        "WaitUntilStoreImageTaskComplete",
+		MaxAttempts: 40,
+		Delay:       request.ConstantWaiterDelay(5 * time.Second),
+		Acceptors: []request.WaiterAcceptor{
+			{
+				State:   request.SuccessWaiterState,
+				Matcher: request.PathAllWaiterMatch, Argument: "StoreImageTaskResults[].StoreTaskState",
+				Expected: "Completed",
+			},
+			{
+				State:   request.FailureWaiterState,
+				Matcher: request.PathAnyWaiterMatch, Argument: "StoreImageTaskResults[].StoreTaskState",
+				Expected: "Failed",
+			},
+			{
+				State:   request.RetryWaiterState,
+				Matcher: request.PathAnyWaiterMatch, Argument: "StoreImageTaskResults[].StoreTaskState",
+				Expected: "InProgress",
+			},
+		},
+		Logger: c.Config.Logger,
+		NewRequest: func(opts []request.Option) (*request.Request, error) {
+			var inCpy *DescribeStoreImageTasksInput
+			if input != nil {
+				tmp := *input
+				inCpy = &tmp
+			}
+			req, _ := c.DescribeStoreImageTasksRequest(inCpy)
+			req.SetContext(ctx)
+			req.ApplyOptions(opts...)
+			return req, nil
+		},
+	}
+	w.ApplyOptions(opts...)
+
+	return w.WaitWithContext(ctx)
+}
+
 // WaitUntilSubnetAvailable uses the Amazon EC2 API operation
 // DescribeSubnets to wait for a condition to be met before returning.
 // If the condition is not met within the max attempt window, an error will

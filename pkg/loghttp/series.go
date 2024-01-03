@@ -68,9 +68,10 @@ func ParseAndValidateSeriesQuery(r *http.Request) (*logproto.SeriesRequest, erro
 	if err != nil {
 		return nil, err
 	}
+
 	// ensure matchers are valid before fanning out to ingesters/store as well as returning valuable parsing errors
 	// instead of 500s
-	if _, err = logql.Match(req.Groups); err != nil {
+	if _, err = logql.MatchForSeriesRequest(req.Groups); err != nil {
 		return nil, err
 	}
 	return req, nil

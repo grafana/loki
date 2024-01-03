@@ -1,6 +1,6 @@
 ---
 title: LogQL Analyzer
-menuTitle: LoqQL Analyzer 
+menuTitle: LogQL Analyzer 
 description: The LogQL Analyzer is an inline educational tool for experimenting with writing LogQL queries.
 aliases: 
 - ../logql/analyzer/

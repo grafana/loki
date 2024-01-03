@@ -11,7 +11,7 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD | sed 's#/#-#g')
 SHA=$(git rev-parse --short=7 HEAD | head -c7)
 
 # If not a tag, use branch-hash else use tag
-TAG=$((git describe --exact-match 2> /dev/null || echo "") | sed 's/v//g')
+TAG=$((git describe --tags --exact-match 2> /dev/null || echo "") | sed 's/[operator\/]*v//g')
 
 if [ -z "$TAG" ]
 then

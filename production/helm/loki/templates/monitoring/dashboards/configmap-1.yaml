@@ -1,6 +1,5 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- with .Values.monitoring.dashboards }}
-{{- if and $isSimpleScalable .enabled }}
+{{- if .enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap

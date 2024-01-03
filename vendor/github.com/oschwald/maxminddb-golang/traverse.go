@@ -14,11 +14,10 @@ type netNode struct {
 
 // Networks represents a set of subnets that we are iterating over.
 type Networks struct {
-	reader   *Reader
-	nodes    []netNode // Nodes we still have to visit.
-	lastNode netNode
-	err      error
-
+	err                 error
+	reader              *Reader
+	nodes               []netNode
+	lastNode            netNode
 	skipAliasedNetworks bool
 }
 
@@ -159,7 +158,7 @@ func (n *Networks) Next() bool {
 // Network returns the current network or an error if there is a problem
 // decoding the data for the network. It takes a pointer to a result value to
 // decode the network's data into.
-func (n *Networks) Network(result interface{}) (*net.IPNet, error) {
+func (n *Networks) Network(result any) (*net.IPNet, error) {
 	if n.err != nil {
 		return nil, n.err
 	}

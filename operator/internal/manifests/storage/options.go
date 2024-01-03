@@ -17,15 +17,15 @@ type Options struct {
 	AlibabaCloud *AlibabaCloudStorageConfig
 
 	SecretName string
+	SecretSHA1 string
 	TLS        *TLSConfig
 }
 
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
-	Env         string
-	Container   string
-	AccountName string
-	AccountKey  string
+	Env            string
+	Container      string
+	EndpointSuffix string
 }
 
 // GCSStorageConfig for GCS storage config
@@ -35,21 +35,31 @@ type GCSStorageConfig struct {
 
 // S3StorageConfig for S3 storage config
 type S3StorageConfig struct {
-	Endpoint        string
-	Region          string
-	Buckets         string
-	AccessKeyID     string
-	AccessKeySecret string
+	Endpoint string
+	Region   string
+	Buckets  string
+	SSE      S3SSEConfig
+}
+
+type S3SSEType string
+
+const (
+	SSEKMSType S3SSEType = "SSE-KMS"
+	SSES3Type  S3SSEType = "SSE-S3"
+)
+
+type S3SSEConfig struct {
+	Type                 S3SSEType
+	KMSKeyID             string
+	KMSEncryptionContext string
 }
 
 // SwiftStorageConfig for Swift storage config
 type SwiftStorageConfig struct {
 	AuthURL           string
-	Username          string
 	UserDomainName    string
 	UserDomainID      string
 	UserID            string
-	Password          string
 	DomainID          string
 	DomainName        string
 	ProjectID         string
@@ -62,10 +72,8 @@ type SwiftStorageConfig struct {
 
 // AlibabaCloudStorageConfig for AlibabaCloud storage config
 type AlibabaCloudStorageConfig struct {
-	Endpoint        string
-	Bucket          string
-	AccessKeyID     string
-	SecretAccessKey string
+	Endpoint string
+	Bucket   string
 }
 
 // TLSConfig for object storage endpoints. Currently supported only by:

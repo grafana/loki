@@ -1,6 +1,6 @@
 ---
 title: Setup Loki
-menuTitle: Setup
+menuTitle: Set up
 description:  How to install and upgrade Loki, and how to migrate configurations.
 weight: 300
 ---

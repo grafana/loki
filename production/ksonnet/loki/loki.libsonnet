@@ -9,7 +9,6 @@
 (import 'distributor.libsonnet') +
 (import 'ingester.libsonnet') +
 (import 'querier.libsonnet') +
-(import 'table-manager.libsonnet') +
 (import 'query-frontend.libsonnet') +
 (import 'ruler.libsonnet') +
 
@@ -21,14 +20,16 @@
 (import 'memcached.libsonnet') +
 (import 'overrides-exporter.libsonnet') +
 
-// WAL support
-(import 'wal.libsonnet') +
-
 // Index Gateway support
 (import 'index-gateway.libsonnet') +
 
 // BoltDB and TSDB Shipper support. Anything that modifies the compactor must be imported after this.
 (import 'shipper.libsonnet') +
+
+// Accelerated search using bloom filters
+(import 'bloomfilters.libsonnet') +
+
+(import 'table-manager.libsonnet') +
 
 // Multi-zone ingester related config
 (import 'multi-zone.libsonnet') +

@@ -2,7 +2,7 @@ package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	cfg "sigs.k8s.io/controller-runtime/pkg/config/v1alpha1"
+	cfg "sigs.k8s.io/controller-runtime/pkg/config/v1alpha1" //nolint:staticcheck
 )
 
 // BuiltInCertManagement is the configuration for the built-in facility to generate and rotate
@@ -48,6 +48,9 @@ type OpenShiftFeatureGates struct {
 	// ClusterProxy enables usage of the proxy variables set in the proxy resource.
 	// More details: https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy
 	ClusterProxy bool `json:"clusterProxy,omitempty"`
+
+	// Dashboards enables the loki-mixin dashboards into the OpenShift Console
+	Dashboards bool `json:"dashboards,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.

@@ -12,7 +12,7 @@ compactor:
     compaction_interval: 1m
     retention_delete_worker_count: 500
     retention_enabled: true
-    shared_store: s3
+    delete_request_store: s3
     working_directory: /data/compactor
 distributor:
     ring:
@@ -28,10 +28,10 @@ frontend:
     compress_responses: true
     log_queries_longer_than: 5s
     max_outstanding_per_tenant: 512
+    encoding: protobuf
 frontend_worker:
     grpc_client_config:
-        max_send_msg_size: 1.048576e+08
-    parallelism: 6
+      max_send_msg_size: 1.048576e+08
     scheduler_address: query-scheduler:9009
 ingester:
     chunk_block_size: 262144
@@ -55,7 +55,6 @@ ingester:
                     http_client_timeout: 20s
                 store: consul
             replication_factor: 3
-    max_transfer_retries: 0
     sync_min_utilization: 0.2
     sync_period: 15m
     wal:
@@ -87,12 +86,10 @@ limits_config:
     reject_old_samples_max_age: 168h
     split_queries_by_interval: 15m
 querier:
-    engine:
-        timeout: 5m
     query_ingesters_within: 2h
-    query_timeout: 5m
     multi_tenant_queries_enabled: true
     per_request_limits_enabled: true
+    max_concurrent: 6
 query_range:
     align_queries_with_step: true
     cache_results: true
@@ -102,7 +99,6 @@ query_range:
         cache:
             memcached_client:
                 addresses: memcached:11211
-    required_query_response_format: protobuf
 schema_config:
     configs:
       - from: "2020-07-30"
@@ -112,6 +108,7 @@ schema_config:
         object_store: s3
         schema: v11
         store: boltdb-shipper
+        row_shards: 4
 server:
     graceful_shutdown_timeout: 5s
     grpc_server_max_concurrent_streams: 1000
@@ -127,7 +124,6 @@ storage_config:
         cache_location: /data/boltdb-cache
         index_gateway_client:
             server_address: index-gateway:9008
-        shared_store: s3
     aws:
       s3: s3://loki:supersecret@minio:9000/loki
       s3forcepathstyle: true

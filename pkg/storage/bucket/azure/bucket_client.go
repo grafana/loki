@@ -10,11 +10,12 @@ import (
 
 func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := azure.Config{
-		StorageAccountName: cfg.StorageAccountName,
-		StorageAccountKey:  cfg.StorageAccountKey.String(),
-		ContainerName:      cfg.ContainerName,
-		Endpoint:           cfg.Endpoint,
-		MaxRetries:         cfg.MaxRetries,
+		StorageAccountName:      cfg.StorageAccountName,
+		StorageAccountKey:       cfg.StorageAccountKey.String(),
+		StorageConnectionString: cfg.ConnectionString.String(),
+		ContainerName:           cfg.ContainerName,
+		Endpoint:                cfg.EndpointSuffix,
+		MaxRetries:              cfg.MaxRetries,
 		HTTPConfig: azure.HTTPConfig{
 			IdleConnTimeout:       model.Duration(cfg.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.ResponseHeaderTimeout),

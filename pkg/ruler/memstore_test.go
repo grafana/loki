@@ -78,7 +78,7 @@ func TestSelectRestores(t *testing.T) {
 	tNow := time.Now()
 	now := util.TimeToMillis(tNow)
 
-	q, err := store.Querier(context.Background(), 0, now)
+	q, err := store.Querier(0, now)
 	require.Nil(t, err)
 
 	ls := ForStateMetric(labels.FromMap(map[string]string{
@@ -87,7 +87,7 @@ func TestSelectRestores(t *testing.T) {
 	}), ruleName)
 
 	// First call evaluates the rule at ts-ForDuration and populates the cache
-	sset := q.Select(false, nil, labelsToMatchers(ls)...)
+	sset := q.Select(context.Background(), false, nil, labelsToMatchers(ls)...)
 
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
@@ -105,7 +105,7 @@ func TestSelectRestores(t *testing.T) {
 		"bazz": "bork",
 	}), ruleName)
 
-	sset = q.Select(false, nil, labelsToMatchers(ls)...)
+	sset = q.Select(context.Background(), false, nil, labelsToMatchers(ls)...)
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
 	iter = sset.At().Iterator(iter)
@@ -123,7 +123,7 @@ func TestSelectRestores(t *testing.T) {
 		"bazz": "unknown",
 	}), ruleName)
 
-	sset = q.Select(false, nil, labelsToMatchers(ls)...)
+	sset = q.Select(context.Background(), false, nil, labelsToMatchers(ls)...)
 	require.Equal(t, false, sset.Next())
 	require.Equal(t, 1, callCount)
 }
@@ -179,7 +179,7 @@ func TestMemstoreBlocks(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = store.Querier(context.Background(), 0, 1)
+		_, _ = store.Querier(0, 1)
 		done <- struct{}{}
 	}()
 

@@ -3,9 +3,9 @@ package cache
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sony/gobreaker"
 
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -95,7 +96,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
 // from SRV and updates the server list on a regular basis.
-func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger) MemcachedClient {
+func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
 		selector = DefaultMemcachedJumpHashSelector()
@@ -107,7 +108,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	client.Timeout = cfg.Timeout
 	client.MaxIdleConns = cfg.MaxIdleConns
 
-	dnsProviderRegisterer := prometheus.WrapRegistererWithPrefix("cortex_", prometheus.WrapRegistererWith(prometheus.Labels{
+	dnsProviderRegisterer := prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", prometheus.WrapRegistererWith(prometheus.Labels{
 		"name": name,
 	}, r))
 
@@ -127,14 +128,14 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		quit:        make(chan struct{}),
 
 		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "memcache_client_servers",
 			Help:        "The number of memcache servers discovered.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		skipped: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
+			Namespace:   constants.Loki,
 			Name:        "memcache_client_set_skip_total",
 			Help:        "Total number of skipped set operations because of the value is larger than the max-item-size.",
 			ConstLabels: prometheus.Labels{"name": name},
@@ -253,7 +254,7 @@ func (c *memcachedClient) updateMemcacheServers() error {
 			return err
 		}
 		for _, srv := range addrs {
-			servers = append(servers, fmt.Sprintf("%s:%d", srv.Target, srv.Port))
+			servers = append(servers, net.JoinHostPort(srv.Target, strconv.Itoa(int(srv.Port))))
 		}
 	}
 

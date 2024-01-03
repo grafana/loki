@@ -113,6 +113,35 @@ func (m *RBAC) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetAuditLoggingOptions()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, RBACValidationError{
+					field:  "AuditLoggingOptions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, RBACValidationError{
+					field:  "AuditLoggingOptions",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetAuditLoggingOptions()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RBACValidationError{
+				field:  "AuditLoggingOptions",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return RBACMultiError(errors)
 	}
@@ -1730,6 +1759,290 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ActionValidationError{}
+
+// Validate checks the field values on RBAC_AuditLoggingOptions with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *RBAC_AuditLoggingOptions) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RBAC_AuditLoggingOptions with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// RBAC_AuditLoggingOptionsMultiError, or nil if none found.
+func (m *RBAC_AuditLoggingOptions) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RBAC_AuditLoggingOptions) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if _, ok := RBAC_AuditLoggingOptions_AuditCondition_name[int32(m.GetAuditCondition())]; !ok {
+		err := RBAC_AuditLoggingOptionsValidationError{
+			field:  "AuditCondition",
+			reason: "value must be one of the defined enum values",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	for idx, item := range m.GetLoggerConfigs() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RBAC_AuditLoggingOptionsValidationError{
+						field:  fmt.Sprintf("LoggerConfigs[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RBAC_AuditLoggingOptionsValidationError{
+						field:  fmt.Sprintf("LoggerConfigs[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RBAC_AuditLoggingOptionsValidationError{
+					field:  fmt.Sprintf("LoggerConfigs[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return RBAC_AuditLoggingOptionsMultiError(errors)
+	}
+
+	return nil
+}
+
+// RBAC_AuditLoggingOptionsMultiError is an error wrapping multiple validation
+// errors returned by RBAC_AuditLoggingOptions.ValidateAll() if the designated
+// constraints aren't met.
+type RBAC_AuditLoggingOptionsMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RBAC_AuditLoggingOptionsMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RBAC_AuditLoggingOptionsMultiError) AllErrors() []error { return m }
+
+// RBAC_AuditLoggingOptionsValidationError is the validation error returned by
+// RBAC_AuditLoggingOptions.Validate if the designated constraints aren't met.
+type RBAC_AuditLoggingOptionsValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RBAC_AuditLoggingOptionsValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RBAC_AuditLoggingOptionsValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RBAC_AuditLoggingOptionsValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RBAC_AuditLoggingOptionsValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RBAC_AuditLoggingOptionsValidationError) ErrorName() string {
+	return "RBAC_AuditLoggingOptionsValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RBAC_AuditLoggingOptionsValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRBAC_AuditLoggingOptions.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RBAC_AuditLoggingOptionsValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RBAC_AuditLoggingOptionsValidationError{}
+
+// Validate checks the field values on
+// RBAC_AuditLoggingOptions_AuditLoggerConfig with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *RBAC_AuditLoggingOptions_AuditLoggerConfig) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on
+// RBAC_AuditLoggingOptions_AuditLoggerConfig with the rules defined in the
+// proto definition for this message. If any rules are violated, the result is
+// a list of violation errors wrapped in
+// RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError, or nil if none found.
+func (m *RBAC_AuditLoggingOptions_AuditLoggerConfig) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RBAC_AuditLoggingOptions_AuditLoggerConfig) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if all {
+		switch v := interface{}(m.GetAuditLogger()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError{
+					field:  "AuditLogger",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError{
+					field:  "AuditLogger",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetAuditLogger()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError{
+				field:  "AuditLogger",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for IsOptional
+
+	if len(errors) > 0 {
+		return RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError(errors)
+	}
+
+	return nil
+}
+
+// RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError is an error wrapping
+// multiple validation errors returned by
+// RBAC_AuditLoggingOptions_AuditLoggerConfig.ValidateAll() if the designated
+// constraints aren't met.
+type RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RBAC_AuditLoggingOptions_AuditLoggerConfigMultiError) AllErrors() []error { return m }
+
+// RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError is the validation
+// error returned by RBAC_AuditLoggingOptions_AuditLoggerConfig.Validate if
+// the designated constraints aren't met.
+type RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError) ErrorName() string {
+	return "RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRBAC_AuditLoggingOptions_AuditLoggerConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RBAC_AuditLoggingOptions_AuditLoggerConfigValidationError{}
 
 // Validate checks the field values on Permission_Set with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
