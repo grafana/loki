@@ -208,7 +208,6 @@ func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt co
 
 func (it *lazyBloomBuilder) Next() bool {
 	if !it.metas.Next() {
-		it.err = io.EOF
 		it.cur = v1.SeriesWithBloom{}
 		return false
 	}
