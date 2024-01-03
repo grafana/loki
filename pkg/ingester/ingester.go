@@ -876,7 +876,6 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	_, ctx := stats.NewContext(queryServer.Context())
 
 	start := time.Now()
-	query := ""
 	var lines int32
 
 	if req.Plan == nil {
@@ -887,7 +886,6 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		req.Plan = &plan.QueryPlan{
 			AST: parsed,
 		}
-		query = parsed.String()
 	}
 
 	defer func() {
@@ -897,7 +895,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		}
 		statsCtx := stats.FromContext(ctx)
 		execTime := time.Since(start)
-		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, query, status,
+		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status,
 			statsCtx.Result(execTime, time.Duration(0), int(lines)))
 	}()
 
