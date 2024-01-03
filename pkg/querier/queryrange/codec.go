@@ -929,9 +929,13 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 
 func mergeOrderedStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
 	var total int
+loop:
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
 			total += len(stream.Entries)
+			if total > int(limit) {
+				break loop
+			}
 		}
 	}
 
