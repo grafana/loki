@@ -398,6 +398,8 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
 			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
+				level.Debug(logger).Log("fingerprint", uint32(fingerprint))
+
 				if !tokenRanges.Contains(uint32(fingerprint)) {
 					return
 				}
