@@ -409,6 +409,7 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 				//All seriesMetas given a table within fp of this compactor shard
 				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
 			},
+			labels.MustNewMatcher(labels.MatchEqual, "", ""),
 		)
 
 		if err != nil {
