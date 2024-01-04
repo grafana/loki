@@ -676,6 +676,49 @@ func Test_ChunkFilter(t *testing.T) {
 	}
 }
 
+func Test_Series_ChunkFilter(t *testing.T) {
+	instance := defaultInstance(t)
+	instance.chunkFilter = &testFilter{}
+
+	tests := []struct {
+		name   string
+		groups []string
+	}{
+		{
+			"no group parameter",
+			[]string{},
+		},
+		{
+			"with group parameter",
+			[]string{`{host="agent"}`},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sr, err := instance.Series(context.TODO(),
+				&logproto.SeriesRequest{
+					Start:  time.Unix(0, 0),
+					End:    time.Unix(0, 1000000),
+					Groups: tc.groups,
+				})
+			require.NoError(t, err)
+
+			// The series with log_stream="dispatcher" should be filtered out
+			series := sr.GetSeries()
+			require.NotEmpty(t, series)
+			for _, s := range series {
+				for _, l := range s.GetLabels() {
+					t.Logf("Key: %s, value %s", l.Key, l.Value)
+					if l.Key == "log_stream" {
+						require.NotEqual(t, "dispatcher", l.Value)
+					}
+				}
+			}
+		})
+	}
+}
+
 func Test_PipelineWrapper(t *testing.T) {
 	instance := defaultInstance(t)
 
