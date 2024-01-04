@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -217,6 +219,28 @@ func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (LazyBlo
 	}, nil
 }
 
+func getFileSize(reader io.ReadSeeker) int64 {
+	// Get current offset
+	currentOffset, err := reader.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0
+	}
+
+	// Seek to the end to get file size
+	size, err := reader.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0
+	}
+
+	// Restore the original offset
+	_, err = reader.Seek(currentOffset, io.SeekStart)
+	if err != nil {
+		return 0
+	}
+
+	return size
+}
+
 func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
 	results := make([]Block, len(blocks))
 	//todo move concurrency to the config
@@ -232,6 +256,8 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
+
+		level.Debug(util_log.Logger).Log("msg", "block size before upload", "size", getFileSize(block.Data))
 		err = objectClient.PutObject(ctx, key, block.Data)
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)
