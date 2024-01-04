@@ -58,10 +58,6 @@ type Hints struct {
 }
 
 func (p *Hints) ShouldExtract(key string) bool {
-	if len(p.requiredLabels) == 0 {
-		return true
-	}
-
 	for _, l := range p.extracted {
 		if l == key {
 			return false
@@ -74,7 +70,7 @@ func (p *Hints) ShouldExtract(key string) bool {
 		}
 	}
 
-	return false
+	return len(p.requiredLabels) == 0
 }
 
 func (p *Hints) ShouldExtractPrefix(prefix string) bool {
@@ -95,12 +91,7 @@ func (p *Hints) NoLabels() bool {
 }
 
 func (p *Hints) RecordExtracted(key string) {
-	for _, l := range p.requiredLabels {
-		if l == key {
-			p.extracted = append(p.extracted, key)
-			return
-		}
-	}
+	p.extracted = append(p.extracted, key)
 }
 
 func (p *Hints) AllRequiredExtracted() bool {
