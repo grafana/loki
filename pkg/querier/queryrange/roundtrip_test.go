@@ -617,7 +617,7 @@ func TestVolumeTripperware(t *testing.T) {
 				Value:       3350,
 				TimestampMs: e.UnixMilli(),
 			})
-		}, nil)
+		})
 		sort.Slice(barBazExpectedSamples, func(i, j int) bool {
 			return barBazExpectedSamples[i].TimestampMs < barBazExpectedSamples[j].TimestampMs
 		})
@@ -628,7 +628,7 @@ func TestVolumeTripperware(t *testing.T) {
 				Value:       1024,
 				TimestampMs: e.UnixMilli(),
 			})
-		}, nil)
+		})
 		sort.Slice(fooBarExpectedSamples, func(i, j int) bool {
 			return fooBarExpectedSamples[i].TimestampMs < fooBarExpectedSamples[j].TimestampMs
 		})

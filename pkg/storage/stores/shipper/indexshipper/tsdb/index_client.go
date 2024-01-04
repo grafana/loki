@@ -206,7 +206,6 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 			Start: model.TimeFromUnixNano(start.UnixNano()),
 			End:   model.TimeFromUnixNano(end.UnixNano()),
 		})
-		// TODO keep as nil?
 	})
 
 	var acc IndexStatsAccumulator

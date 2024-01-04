@@ -87,13 +87,6 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 	return func() { tick.Stop() }, tick.C
 }
 
-// IngesterQueryOptions exists because querier.Config cannot be passed directly to the queryrange package
-// due to an import cycle.
-type IngesterQueryOptions interface {
-	QueryStoreOnly() bool
-	QueryIngestersWithin() time.Duration
-}
-
 // ForInterval splits the given start and end time into given interval.
 // The start and end time in splits would be aligned to the interval
 // except for the start time of first split and end time of last split which would be kept same as original start/end
@@ -104,9 +97,9 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		return
 	}
 
-	ogStart := start.UTC()
+	ogStart := start
 	startNs := start.UnixNano()
-	start = time.Unix(0, startNs-startNs%interval.Nanoseconds()).UTC()
+	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
 	firstInterval := true
 
 	for start := start; start.Before(end); start = start.Add(interval) {
