@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -549,7 +550,7 @@ func NewSeriesTripperware(
 			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create series cache middleware: %w", err)
 		}
 	}
 
@@ -634,7 +635,7 @@ func NewLabelsTripperware(
 			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create labels cache middleware: %w", err)
 		}
 	}
 

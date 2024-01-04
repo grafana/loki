@@ -41,7 +41,6 @@ query_range:
         timeout: 500ms
         update_interval: 1m
   max_retries: 5
-  parallelise_shardable_queries: true
   results_cache:
     cache:
       default_validity: 12h
