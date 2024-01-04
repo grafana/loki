@@ -181,7 +181,14 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
+	var interval time.Duration
+	switch r.(type) {
+	case *LokiSeriesRequest, *LabelRequest:
+		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.MetadataQuerySplitDuration)
+	default:
+		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
+	}
+
 	// skip split by if unset
 	if interval == 0 {
 		return h.next.Do(ctx, r)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -597,4 +599,94 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			}
 		})
 	}
+}
+
+func BenchmarkAccumulator(b *testing.B) {
+
+	// dummy params. Only need to populate direction & limit
+	lim := 30
+	params, err := logql.NewLiteralParams(
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.BACKWARD, uint32(lim), nil,
+	)
+	require.NoError(b, err)
+
+	for acc, tc := range map[string]struct {
+		results []logqlmodel.Result
+		params  logql.Params
+	}{
+		"streams": {
+			newStreamResults(),
+			params,
+		},
+		"quantile sketches": {
+			newQuantileSketchResults(),
+			params,
+		},
+	} {
+		b.Run(acc, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for n := 0; n < b.N; n++ {
+
+				acc := newDownstreamAccumulator(params, len(tc.results))
+				for i, r := range tc.results {
+					err := acc.Accumulate(context.Background(), i, r)
+					require.Nil(b, err)
+				}
+
+				acc.Result()
+			}
+		})
+	}
+}
+
+func newStreamResults() []logqlmodel.Result {
+	nQueries := 50
+	delta := 100 // 10 entries per stream, 1s apart
+	streamsPerQuery := 50
+
+	results := make([]logqlmodel.Result, nQueries)
+	for i := 0; i < nQueries; i++ {
+		start := i * delta
+		end := start + delta
+		streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, streamsPerQuery, logproto.BACKWARD)
+		var res logqlmodel.Streams
+		for i := range streams {
+			res = append(res, *streams[i])
+		}
+		results[i] = logqlmodel.Result{Data: res}
+
+	}
+
+	return results
+}
+
+func newQuantileSketchResults() []logqlmodel.Result {
+	results := make([]logqlmodel.Result, 100)
+
+	for r := range results {
+		vectors := make([]logql.ProbabilisticQuantileVector, 10)
+		for i := range vectors {
+			vectors[i] = make(logql.ProbabilisticQuantileVector, 10)
+			for j := range vectors[i] {
+				vectors[i][j] = logql.ProbabilisticQuantileSample{
+					T:      int64(i),
+					F:      newRandomSketch(),
+					Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
+				}
+			}
+		}
+		results[r] = logqlmodel.Result{Data: logql.ProbabilisticQuantileMatrix(vectors)}
+	}
+
+	return results
+}
+
+func newRandomSketch() sketch.QuantileSketch {
+	r := rand.New(rand.NewSource(42))
+	s := sketch.NewDDSketch()
+	for i := 0; i < 1000; i++ {
+		_ = s.Add(r.Float64())
+	}
+	return s
 }

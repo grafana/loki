@@ -29,7 +29,7 @@ import (
 
 func TestLimits(t *testing.T) {
 	l := fakeLimits{
-		splits: map[string]time.Duration{"a": time.Minute},
+		splitDuration: map[string]time.Duration{"a": time.Minute},
 	}
 
 	wrapped := WithSplitByLimits(l, time.Hour)

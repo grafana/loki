@@ -105,6 +105,7 @@ type Limits struct {
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration         model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
 	IngesterQuerySplitDuration model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
 	MinShardingLookback        model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 	MaxQueryBytesRead          flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
@@ -296,6 +297,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
+
+	_ = l.MetadataQuerySplitDuration.Set("24h")
+	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
 
 	_ = l.IngesterQuerySplitDuration.Set("1h")
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; clamps to `split_queries_by_interval` if larger than it.")
@@ -569,6 +573,11 @@ func (o *Overrides) MinShardingLookback(userID string) time.Duration {
 // QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
+}
+
+// MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.
+func (o *Overrides) MetadataQuerySplitDuration(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MetadataQuerySplitDuration)
 }
 
 // IngesterQuerySplitDuration returns the tenant specific splitby interval applied in the query frontend when querying

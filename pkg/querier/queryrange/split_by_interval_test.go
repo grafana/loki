@@ -832,7 +832,12 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 		}, nil
 	})
 
-	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+	l := fakeLimits{
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": time.Hour,
+		},
+	}
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
