@@ -28,6 +28,8 @@ func CompressBloomBlock(ref BlockRef, archivePath, localDst string, logger log.L
 
 	blockToUpload.BlockRef = ref
 	blockToUpload.Data = archiveFile
+	fileInfo, _ := archiveFile.Stat()
+	level.Debug(logger).Log("msg", "archive block size", "size", fileInfo.Size())
 	return blockToUpload, nil
 }
 
