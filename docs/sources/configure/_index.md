@@ -3084,13 +3084,6 @@ shard_streams:
 # CLI flag: -bloom-compactor.max-table-age
 [bloom_compactor_max_table_age: <duration> | default = 168h]
 
-# The minimum age of a table before it is compacted. Do not compact tables newer
-# than the the configured time. Default to 1 hour. 0s means no limit. This is
-# useful to avoid compacting tables that will be updated with out-of-order
-# writes.
-# CLI flag: -bloom-compactor.min-table-age
-[bloom_compactor_min_table_age: <duration> | default = 1h]
-
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
