@@ -121,8 +121,8 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	require.Equal(t, job.tableName, compactedBlock.TableName)
 	require.Equal(t, uint64(fp1), compactedBlock.MinFingerprint)
 	require.Equal(t, uint64(fp2), compactedBlock.MaxFingerprint)
-	require.Equal(t, chunkRef1.MinTime, compactedBlock.StartTimestamp)
-	require.Equal(t, chunkRef2.MaxTime, compactedBlock.EndTimestamp)
+	require.Equal(t, model.Time(chunkRef1.MinTime), compactedBlock.StartTimestamp)
+	require.Equal(t, model.Time(chunkRef2.MaxTime), compactedBlock.EndTimestamp)
 	require.Equal(t, indexPath, compactedBlock.IndexPath)
 }
 

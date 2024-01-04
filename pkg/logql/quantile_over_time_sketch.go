@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -23,9 +24,17 @@ const (
 type ProbabilisticQuantileVector []ProbabilisticQuantileSample
 type ProbabilisticQuantileMatrix []ProbabilisticQuantileVector
 
+var streamHashPool = sync.Pool{
+	New: func() interface{} { return make(map[uint64]int) },
+}
+
 func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (ProbabilisticQuantileVector, error) {
 	// labels hash to vector index map
-	groups := make(map[uint64]int)
+	groups := streamHashPool.Get().(map[uint64]int)
+	defer func() {
+		clear(groups)
+		streamHashPool.Put(groups)
+	}()
 	for i, sample := range q {
 		groups[sample.Metric.Hash()] = i
 	}
@@ -84,6 +93,21 @@ func ProbabilisticQuantileVectorFromProto(proto *logproto.QuantileSketchVector) 
 
 func (ProbabilisticQuantileMatrix) String() string {
 	return "QuantileSketchMatrix()"
+}
+
+func (m ProbabilisticQuantileMatrix) Merge(right ProbabilisticQuantileMatrix) (ProbabilisticQuantileMatrix, error) {
+	if len(m) != len(right) {
+		return nil, fmt.Errorf("failed to merge probabilistic quantile matrix: lengths differ %d!=%d", len(m), len(right))
+	}
+	var err error
+	for i, vec := range m {
+		m[i], err = vec.Merge(right[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to merge probabilistic quantile matrix: %w", err)
+		}
+	}
+
+	return m, nil
 }
 
 func (ProbabilisticQuantileMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
@@ -407,6 +431,9 @@ func NewQuantileSketchVectorStepEvaluator(inner StepEvaluator, quantile float64)
 
 func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.inner.Next()
+	if !ok {
+		return false, 0, SampleVector{}
+	}
 	quantileSketchVec := r.QuantileSketchVec()
 
 	vec := make(promql.Vector, len(quantileSketchVec))

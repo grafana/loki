@@ -13,8 +13,8 @@ import (
 type ForEachBlockCallback func(bq *v1.BlockQuerier, minFp, maxFp uint64) error
 
 type ReadShipper interface {
-	GetBlockRefs(ctx context.Context, tenant string, from, through time.Time) ([]BlockRef, error)
-	ForEachBlock(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error
+	GetBlockRefs(ctx context.Context, tenant string, from, through model.Time) ([]BlockRef, error)
+	ForEachBlock(ctx context.Context, tenant string, from, through model.Time, fingerprints []uint64, callback ForEachBlockCallback) error
 	Fetch(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
 }
 
@@ -52,7 +52,7 @@ func (bs *BloomStore) Stop() {
 
 // GetBlockRefs implements Store
 func (bs *BloomStore) GetBlockRefs(ctx context.Context, tenant string, from, through time.Time) ([]BlockRef, error) {
-	return bs.shipper.GetBlockRefs(ctx, tenant, from, through)
+	return bs.shipper.GetBlockRefs(ctx, tenant, toModelTime(from), toModelTime(through))
 }
 
 // ForEach implements Store
@@ -80,7 +80,7 @@ func (bs *BloomStore) GetBlockQueriersForBlockRefs(ctx context.Context, tenant s
 // BlockQueriers implements Store
 func (bs *BloomStore) GetBlockQueriers(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) ([]BlockQuerierWithFingerprintRange, error) {
 	bqs := make([]BlockQuerierWithFingerprintRange, 0, 32)
-	err := bs.shipper.ForEachBlock(ctx, tenant, from, through, fingerprints, func(bq *v1.BlockQuerier, minFp uint64, maxFp uint64) error {
+	err := bs.shipper.ForEachBlock(ctx, tenant, toModelTime(from), toModelTime(through), fingerprints, func(bq *v1.BlockQuerier, minFp uint64, maxFp uint64) error {
 		bqs = append(bqs, BlockQuerierWithFingerprintRange{
 			BlockQuerier: bq,
 			MinFp:        model.Fingerprint(minFp),
@@ -92,4 +92,8 @@ func (bs *BloomStore) GetBlockQueriers(ctx context.Context, tenant string, from,
 		return bqs[i].MinFp < bqs[j].MinFp
 	})
 	return bqs, err
+}
+
+func toModelTime(t time.Time) model.Time {
+	return model.TimeFromUnixNano(t.UnixNano())
 }
