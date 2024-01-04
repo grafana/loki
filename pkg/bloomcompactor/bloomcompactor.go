@@ -465,10 +465,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
-		MinFingerprint: uint64(job.minFp),
-		MaxFingerprint: uint64(job.maxFp),
-		StartTimestamp: int64(job.from),
-		EndTimestamp:   int64(job.through),
+		MinFingerprint: job.minFp,
+		MaxFingerprint: job.maxFp,
+		StartTimestamp: job.from,
+		EndTimestamp:   job.through,
 	}
 	var metas []bloomshipper.Meta
 	//TODO  Configure pool for these to avoid allocations

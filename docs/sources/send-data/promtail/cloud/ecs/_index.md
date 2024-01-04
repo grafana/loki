@@ -88,13 +88,13 @@ Our [task definition][task] will be made of two containers, the [Firelens][Firel
 Let's download the task definition, we'll go through the most important parts.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ecs/ecs-task.json > ecs-task.json
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/send-data/promtail/cloud/ecs/ecs-task.json > ecs-task.json
 ```
 
 ```json
  {
     "essential": true,
-    "image": "grafana/fluent-bit-plugin-loki:2.0.0-amd64",
+    "image": "grafana/fluent-bit-plugin-loki:2.9.3-amd64",
     "name": "log_router",
     "firelensConfiguration": {
         "type": "fluentbit",
