@@ -885,6 +885,40 @@ volume_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
+
+# Cache series query results.
+# CLI flag: -querier.cache-series-results
+[cache_series_results: <boolean> | default = false]
+
+# If series_results_cache is not configured and cache_series_results is true,
+# the config for the results cache is used.
+series_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.series-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.series-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache label query results.
+# CLI flag: -querier.cache-label-results
+[cache_label_results: <boolean> | default = false]
+
+# If label_results_cache is not configured and cache_label_results is true, the
+# config for the results cache is used.
+label_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.label-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.label-results-cache.compression
+  [compression: <string> | default = ""]
 ```
 
 ### ruler
@@ -2849,6 +2883,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 1h]
 
+# Split metadata queries by a time interval and execute in parallel. The value 0
+# disables splitting metadata queries by time. This also determines how cache
+# keys are chosen when label/series result caching is enabled.
+# CLI flag: -querier.split-metadata-queries-by-interval
+[split_metadata_queries_by_interval: <duration> | default = 1d]
+
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
 # disables the lookback, causing sharding of all queries at all times.
@@ -3048,13 +3088,6 @@ shard_streams:
 # than the the configured time. Default to 7 days. 0s means no limit.
 # CLI flag: -bloom-compactor.max-table-age
 [bloom_compactor_max_table_age: <duration> | default = 168h]
-
-# The minimum age of a table before it is compacted. Do not compact tables newer
-# than the the configured time. Default to 1 hour. 0s means no limit. This is
-# useful to avoid compacting tables that will be updated with out-of-order
-# writes.
-# CLI flag: -bloom-compactor.min-table-age
-[bloom_compactor_min_table_age: <duration> | default = 1h]
 
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
@@ -4288,6 +4321,8 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.label-results-cache`
+- `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`

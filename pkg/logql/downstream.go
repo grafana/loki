@@ -235,6 +235,12 @@ type DownstreamQuery struct {
 	Params Params
 }
 
+type Resp struct {
+	I   int
+	Res logqlmodel.Result
+	Err error
+}
+
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
@@ -375,24 +381,18 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 		results, err := ev.Downstream(ctx, queries)
 		if err != nil {
-			return nil, fmt.Errorf("error running quantile sketch downstream query: %w", err)
+			return nil, err
 		}
 
-		xs := make([]StepEvaluator, 0, len(queries))
-		for _, res := range results {
-			if res.Data.Type() != QuantileSketchMatrixType {
-				return nil, fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
-			}
-			data, ok := res.Data.(ProbabilisticQuantileMatrix)
-			if !ok {
-				return nil, fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
-			}
-			stepper := NewQuantileSketchMatrixStepEvaluator(data, params)
-			xs = append(xs, stepper)
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded quantile: got (%d), want (1)", len(results))
 		}
 
-		inner := NewQuantileSketchMergeStepEvaluator(xs)
-
+		matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix)
+		if !ok {
+			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", results[0].Data)
+		}
+		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
 
 	default:
