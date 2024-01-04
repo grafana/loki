@@ -3,7 +3,6 @@ package log
 import (
 	"fmt"
 	"sort"
-	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 
