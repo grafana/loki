@@ -12,8 +12,10 @@ import (
 
 	errs "errors"
 
-	"github.com/golang/snappy"
+	old_snappy "github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/klauspost/compress/s2"
+	"github.com/klauspost/compress/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -222,7 +224,39 @@ func unsafeGetString(buf []byte) string {
 }
 
 var writerPool = sync.Pool{
-	New: func() interface{} { return snappy.NewBufferedWriter(nil) },
+	New: func() interface{} { return old_snappy.NewBufferedWriter(nil) },
+}
+
+// sync.Pool-ed createComp
+var snappyPool = sync.Pool{
+	// New optionally specifies a function to generate
+	// a value when Get would otherwise return nil.
+	New: func() interface{} {
+		return &snappyComp{}
+	},
+}
+
+type snappyComp struct {
+	Buf []byte
+}
+
+func (s *snappyComp) Compress(data []byte) ([]byte, error) {
+	s.Buf = s.Buf[0:cap(s.Buf)]
+
+	compressed := s2.EncodeSnappy(s.Buf, data)
+	if n := snappy.MaxEncodedLen(len(data)); n > cap(s.Buf) {
+		s.Buf = make([]byte, n)
+	}
+	return compressed, nil
+}
+
+func (s *snappyComp) Decompress(data []byte) ([]byte, error) {
+	s.Buf = s.Buf[0:cap(s.Buf)]
+	uncompressed, err := snappy.Decode(s.Buf, data)
+	if len(uncompressed) > cap(s.Buf) {
+		s.Buf = uncompressed
+	}
+	return uncompressed, err
 }
 
 // Encode writes the chunk into a buffer, and calculates the checksum.
@@ -232,6 +266,71 @@ func (c *Chunk) Encode() error {
 
 // EncodeTo is like Encode but you can provide your own buffer to use.
 func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
+	var bufWasNil bool
+	if buf == nil {
+		buf = bytes.NewBuffer(nil)
+		// if buf was nil we should copy the contents into encoded
+		bufWasNil = true
+	}
+	buf.Reset()
+
+	// Write 4 empty bytes first - we will come back and put the len in here.
+	metadataLenBytes := [4]byte{}
+	if _, err := buf.Write(metadataLenBytes[:]); err != nil {
+		return err
+	}
+
+	// Encode chunk metadata into snappy-compressed buffer
+	// first, marshal to json
+	var tmp bytes.Buffer
+	json := jsoniter.ConfigFastest
+	if err := json.NewEncoder(&tmp).Encode(c); err != nil {
+		return err
+	}
+
+	// encode as snappy
+	// Encode chunk metadata into snappy-compressed buffer
+	comp := snappyPool.Get().(*snappyComp)
+	defer snappyPool.Put(comp)
+	compressed, err := comp.Compress(tmp.Bytes())
+	if err != nil {
+		return err
+	}
+	defer tmp.Reset()
+	buf.Write(compressed)
+
+	// Write the metadata length back at the start of the buffer.
+	// (note this length includes the 4 bytes for the length itself)
+	metadataLen := buf.Len()
+	binary.BigEndian.PutUint32(metadataLenBytes[:], uint32(metadataLen))
+	copy(buf.Bytes(), metadataLenBytes[:])
+
+	// Write another 4 empty bytes - we will come back and put the len in here.
+	dataLenBytes := [4]byte{}
+	if _, err := buf.Write(dataLenBytes[:]); err != nil {
+		return err
+	}
+
+	// And now the chunk data
+	if err := c.Data.Marshal(buf); err != nil {
+		return err
+	}
+
+	// Now write the data len back into the buf.
+	binary.BigEndian.PutUint32(dataLenBytes[:], uint32(buf.Len()-metadataLen-4))
+	copy(buf.Bytes()[metadataLen:], dataLenBytes[:])
+
+	// Now work out the checksum
+	c.encoded = buf.Bytes()
+	if bufWasNil {
+		copy(c.encoded, buf.Bytes())
+	}
+	c.Checksum = crc32.Checksum(c.encoded, castagnoliTable)
+	return nil
+}
+
+// EncodeTo is like Encode but you can provide your own buffer to use.
+func (c *Chunk) EncodeToOld(buf *bytes.Buffer) error {
 	if buf == nil {
 		buf = bytes.NewBuffer(nil)
 	}
@@ -242,7 +341,7 @@ func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
 	}
 
 	// Encode chunk metadata into snappy-compressed buffer
-	writer := writerPool.Get().(*snappy.Writer)
+	writer := writerPool.Get().(*old_snappy.Writer)
 	defer writerPool.Put(writer)
 	writer.Reset(buf)
 	json := jsoniter.ConfigFastest
@@ -300,9 +399,76 @@ func NewDecodeContext() *DecodeContext {
 	}
 }
 
+var bufPool = sync.Pool{
+	New: func() interface{} { return &bytes.Buffer{} },
+}
+
 // Decode the chunk from the given buffer, and confirm the chunk is the one we
 // expected.
 func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
+	// First, calculate the checksum of the chunk and confirm it matches
+	// what we expected.
+	if c.Checksum != crc32.Checksum(input, castagnoliTable) {
+		return errors.WithStack(ErrInvalidChecksum)
+	}
+
+	// Now unmarshal the chunk metadata.
+	var metadataLen uint32
+	metadataLen = binary.BigEndian.Uint32(input[:4])
+
+	var dataLen uint32
+	dataLen = binary.BigEndian.Uint32(input[metadataLen:])
+	bytesRead := 8
+
+	var tempMetadata Chunk
+	comp := snappyPool.Get().(*snappyComp)
+	defer snappyPool.Put(comp)
+	bytesRead += len(input[4:metadataLen])
+	tmp, err := comp.Decompress(input[4:metadataLen])
+	if err != nil {
+		return errors.Wrap(err, "when decompressing chunk")
+	}
+	b := bufPool.Get().(*bytes.Buffer)
+	defer bufPool.Put(b)
+	b.Read(tmp)
+	err = jsoniter.NewDecoder(bytes.NewReader(tmp)).Decode(&tempMetadata)
+	if err != nil {
+		return errors.Wrap(err, "when decoding chunk metadata")
+	}
+
+	// Next, confirm the chunks matches what we expected.  Easiest way to do this
+	// is to compare what the decoded data thinks its external ID would be, but
+	// we don't write the checksum to s3, so we have to copy the checksum in.
+	tempMetadata.Checksum = c.Checksum
+	if !equalByKey(*c, tempMetadata) {
+		return errors.WithStack(ErrWrongMetadata)
+	}
+
+	*c = tempMetadata
+
+	// Finally, unmarshal the actual chunk data.
+	c.Data, err = NewForEncoding(c.Encoding)
+	if err != nil {
+		return errors.Wrap(err, "when creating new chunk")
+	}
+	remainingData := input[len(input)-int(dataLen):]
+	err = c.Data.UnmarshalFromBuf(remainingData)
+	if err != nil {
+		return errors.Wrap(err, "unmarshalling chunk")
+	}
+	bytesRead += c.Data.Size()
+
+	c.encoded = input
+	if bytesRead != len(remainingData)+int(metadataLen)+4 {
+		return ErrDataLength
+	}
+
+	return c.Data.UnmarshalFromBuf(remainingData[:])
+}
+
+// Decode the chunk from the given buffer, and confirm the chunk is the one we
+// expected.
+func (c *Chunk) DecodeOld(decodeContext *DecodeContext, input []byte) error {
 	// First, calculate the checksum of the chunk and confirm it matches
 	// what we expected.
 	if c.Checksum != crc32.Checksum(input, castagnoliTable) {

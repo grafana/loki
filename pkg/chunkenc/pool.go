@@ -7,9 +7,9 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/golang/snappy"
 	"github.com/klauspost/compress/flate"
 	"github.com/klauspost/compress/gzip"
+	snappy "github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pierrec/lz4/v4"
 	"github.com/prometheus/prometheus/util/pool"
@@ -359,7 +359,7 @@ func (pool *SnappyPool) GetWriter(dst io.Writer) io.WriteCloser {
 		writer.Reset(dst)
 		return writer
 	}
-	return snappy.NewBufferedWriter(dst)
+	return snappy.NewWriter(dst, snappy.WriterSnappyCompat(), snappy.WriterBlockSize(4096))
 }
 
 // PutWriter places back in the pool a CompressionWriter
