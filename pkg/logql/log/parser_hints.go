@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -122,6 +123,10 @@ func (p *Hints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) 
 	for i := 0; i < len(p.labelNames); i++ {
 		if p.labelNames[i] == labelName {
 			_, matches := p.labelFilters[i].Process(0, nil, lbs)
+			if !matches {
+				v, _ := lbs.Get(labelName)
+				fmt.Printf("should continue parsing: no match for key:%v value:%v\n", labelName, v)
+			}
 			return matches
 		}
 	}

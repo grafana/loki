@@ -31,6 +31,17 @@ var (
 	}
 }`)
 
+	jsonLine2 = []byte(`{
+	"remote_user": "foo",
+	"upstream_addr": "10.0.0.1:80",
+	"protocol": "HTTP/2.0",
+    "cluster": "us-east-west",
+	"request"="{\"method\": \"POST\",\"host\": \"foo.grafana.net\",\"remote_user\": \"bar\"}"
+	"response": {
+		"status": 204,
+		"latency_seconds": "30.001"
+	}
+}`)
 	packedLine = []byte(`{
 		"remote_user": "foo",
 		"upstream_addr": "10.0.0.1:80",
@@ -213,6 +224,45 @@ func Test_ParserHints(t *testing.T) {
 			false,
 			0,
 			``,
+		},
+	} {
+		tt := tt
+		t.Run(tt.expr, func(t *testing.T) {
+			t.Parallel()
+			expr, err := syntax.ParseSampleExpr(tt.expr)
+			require.NoError(t, err)
+
+			ex, err := expr.Extractor()
+			require.NoError(t, err)
+			v, lbsRes, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...))
+			var lbsResString string
+			if lbsRes != nil {
+				lbsResString = lbsRes.String()
+			}
+			require.Equal(t, tt.expectOk, ok)
+			require.Equal(t, tt.expectVal, v)
+			require.Equal(t, tt.expectLbs, lbsResString)
+		})
+	}
+}
+
+func Test_ParserHints2(t *testing.T) {
+	lbs := labels.FromStrings("app", "nginx", "cluster", "us-central-west")
+
+	t.Parallel()
+	for _, tt := range []struct {
+		expr      string
+		line      []byte
+		expectOk  bool
+		expectVal float64
+		expectLbs string
+	}{
+		{
+			`rate({app="nginx"} | json | line_format "{{.request}}" | json | remote_user = "bar" [1m])`,
+			jsonLine2,
+			true,
+			1.0,
+			`{app="nginx", cluster="us-central-west", remote_user="foo"}`,
 		},
 	} {
 		tt := tt

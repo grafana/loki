@@ -138,6 +138,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		}
 		j.lbs.Set(ParsedLabel, key, readValue(value, dataType))
 		if !j.parserHints.ShouldContinueParsingLine(key, j.lbs) {
+			fmt.Printf("jsonParsing: key %v err %v", key, errLabelDoesNotMatch)
 			return errLabelDoesNotMatch
 		}
 		return nil
@@ -168,6 +169,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
+		fmt.Printf("jsonParsing: key:%v err:%v", key, errLabelDoesNotMatch)
 		return errLabelDoesNotMatch
 	}
 	return nil
