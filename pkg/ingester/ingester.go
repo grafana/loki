@@ -9,7 +9,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -890,13 +889,13 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	}
 
 	defer func() {
-		status := http.StatusOK
+		status := "successful"
 		if err != nil {
-			status = http.StatusBadRequest
+			status = "failed"
 		}
 		statsCtx := stats.FromContext(ctx)
 		execTime := time.Since(start)
-		logql.RecordIngesterStreamsQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, strconv.Itoa(status), req.Limit, lines,
+		logql.RecordIngesterStreamsQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, req.Limit, lines, req.Shards,
 			statsCtx.Result(execTime, time.Duration(0), 0))
 	}()
 
@@ -965,13 +964,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	}
 
 	defer func() {
-		status := http.StatusOK
+		status := "successful"
 		if err != nil {
-			status = http.StatusBadRequest
+			status = "failed"
 		}
 		statsCtx := stats.FromContext(ctx)
 		execTime := time.Since(start)
-		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, strconv.Itoa(status), lines,
+		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, lines, req.Shards,
 			statsCtx.Result(execTime, time.Duration(0), 0))
 	}()
 

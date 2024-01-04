@@ -245,15 +245,15 @@ func PrintMatches(matches []string) string {
 	return strings.Join(matches, ":")
 }
 
-func RecordIngesterStreamsQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, limit uint32, returnedLines int32, stats logql_stats.Result) {
-	recordIngesterQueryMetrics(ctx, QueryTypeIngesterStreams, log, start, end, query, status, &limit, returnedLines, stats)
+func RecordIngesterStreamsQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, limit uint32, returnedLines int32, shards []string, stats logql_stats.Result) {
+	recordIngesterQueryMetrics(ctx, QueryTypeIngesterStreams, log, start, end, query, status, &limit, returnedLines, shards, stats)
 }
 
-func RecordIngesterSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, returnedLines int32, stats logql_stats.Result) {
-	recordIngesterQueryMetrics(ctx, QueryTypeIngesterSeries, log, start, end, query, status, nil, returnedLines, stats)
+func RecordIngesterSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, returnedLines int32, shards []string, stats logql_stats.Result) {
+	recordIngesterQueryMetrics(ctx, QueryTypeIngesterSeries, log, start, end, query, status, nil, returnedLines, shards, stats)
 }
 
-func recordIngesterQueryMetrics(ctx context.Context, queryType string, log log.Logger, start, end time.Time, query string, status string, limit *uint32, returnedLines int32, stats logql_stats.Result) {
+func recordIngesterQueryMetrics(ctx context.Context, queryType string, log log.Logger, start, end time.Time, query string, status string, limit *uint32, returnedLines int32, shards []string, stats logql_stats.Result) {
 	var (
 		logger      = fixLogger(ctx, log)
 		latencyType = latencyTypeFast
@@ -265,7 +265,7 @@ func recordIngesterQueryMetrics(ctx context.Context, queryType string, log log.L
 		latencyType = latencyTypeSlow
 	}
 
-	logValues := make([]interface{}, 0, 11)
+	logValues := make([]interface{}, 0, 23)
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
@@ -278,7 +278,6 @@ func recordIngesterQueryMetrics(ctx context.Context, queryType string, log log.L
 		"status", status,
 		"query", query,
 		"query_hash", util.HashedQuery(query),
-		"total_entries", stats.Summary.TotalEntriesReturned,
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
@@ -292,6 +291,13 @@ func recordIngesterQueryMetrics(ctx context.Context, queryType string, log log.L
 	if limit != nil {
 		logValues = append(logValues,
 			"limit", *limit)
+	}
+	shard := extractShard(shards)
+	if shard != nil {
+		logValues = append(logValues,
+			"shard_num", shard.Shard,
+			"shard_count", shard.Of,
+		)
 	}
 
 	level.Info(logger).Log(logValues...)
