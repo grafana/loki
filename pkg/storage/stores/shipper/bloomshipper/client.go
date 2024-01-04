@@ -258,6 +258,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		objectClient := b.periodicObjectClients[period]
 
 		level.Debug(util_log.Logger).Log("msg", "block size before upload", "size", getFileSize(block.Data))
+		block.Data.Seek(0, 0)
 		err = objectClient.PutObject(ctx, key, block.Data)
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)

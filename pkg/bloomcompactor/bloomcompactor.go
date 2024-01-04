@@ -610,6 +610,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		Tombstones: blocksMatchingJob,
 		Blocks:     activeBloomBlocksRefs,
 	}
+	meta.StartTimestamp = job.from
+	meta.EndTimestamp = job.through
+	meta.MinFingerprint = uint64(job.minFp)
+	meta.MaxFingerprint = uint64(job.maxFp)
 	err = c.bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)
