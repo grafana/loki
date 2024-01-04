@@ -205,6 +205,11 @@ func (s *metricQuerySplitter) split(tenantIDs []string, r queryrangebase.Request
 func buildIngesterQuerySplitsAndRebound(limits Limits, iqo util.IngesterQueryOptions, tenantIDs []string, req queryrangebase.Request, factory func(start, end time.Time)) (time.Time, time.Time) {
 	start, end := req.GetStart().UTC(), req.GetEnd().UTC()
 
+	// ingesters are not queried, nothing to do
+	if iqo == nil || iqo.QueryStoreOnly() {
+		return start, end
+	}
+
 	// split_ingester_queries_by_interval = 30m
 	// start = 	12:00
 	// end = 	15:27
@@ -224,11 +229,6 @@ func buildIngesterQuerySplitsAndRebound(limits Limits, iqo util.IngesterQueryOpt
 	// clamp to the start time
 	if queryWindowStart.Before(start) {
 		queryWindowStart = start
-	}
-
-	// ingesters are not queried, nothing to do
-	if iqo == nil || iqo.QueryStoreOnly() {
-		return start, end
 	}
 
 	// query range does not overlap with ingester query window, nothing to do
