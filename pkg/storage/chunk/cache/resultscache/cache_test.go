@@ -370,6 +370,7 @@ func TestHandleHit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sut := ResultsCache{
+				cache:             cache.NewMockCache(),
 				extractor:         MockExtractor{},
 				minCacheExtent:    10,
 				limits:            mockLimits{},
@@ -389,6 +390,62 @@ func TestHandleHit(t *testing.T) {
 			require.Equal(t, tc.expectedUpdatedCachedEntry, updatedExtents, "updated cache entry does not match the expectation")
 		})
 	}
+}
+
+func TestHandleHit_queryLengthServed(t *testing.T) {
+	rc := ResultsCache{
+		cache:             &mockResultsCache{},
+		extractor:         MockExtractor{},
+		limits:            mockLimits{},
+		merger:            MockMerger{},
+		parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
+		next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			return mkAPIResponse(req.GetStart().UnixMilli(), req.GetEnd().UnixMilli(), req.GetStep()), nil
+		}),
+	}
+
+	statsCtx, ctx := stats.NewContext(context.Background())
+	ctx = user.InjectOrgID(ctx, "1")
+
+	input := &MockRequest{
+		Start: time.UnixMilli(100),
+		End:   time.UnixMilli(130),
+		Step:  5,
+	}
+
+	// no cached response
+	_, _, err := rc.handleHit(ctx, input, nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), statsCtx.Caches().Result.QueryLengthServed)
+
+	// partial hit
+	extents := []Extent{
+		mkExtentWithStep(60, 80, 5),
+		mkExtentWithStep(90, 105, 5),
+	}
+	statsCtx, ctx = stats.NewContext(ctx)
+	_, _, err = rc.handleHit(ctx, input, extents, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(5*time.Millisecond), statsCtx.Caches().Result.QueryLengthServed)
+
+	extents = []Extent{
+		mkExtentWithStep(90, 105, 5),
+		mkExtentWithStep(110, 120, 5),
+	}
+	statsCtx, ctx = stats.NewContext(ctx)
+	_, _, err = rc.handleHit(ctx, input, extents, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(15*time.Millisecond), statsCtx.Caches().Result.QueryLengthServed)
+
+	// entire query served from cache
+	extents = []Extent{
+		mkExtentWithStep(90, 110, 5),
+		mkExtentWithStep(110, 130, 5),
+	}
+	statsCtx, ctx = stats.NewContext(ctx)
+	_, _, err = rc.handleHit(ctx, input, extents, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(30*time.Millisecond), statsCtx.Caches().Result.QueryLengthServed)
 }
 
 func TestResultsCacheMaxFreshness(t *testing.T) {
@@ -602,4 +659,21 @@ type mockLimits struct {
 
 func (m mockLimits) MaxCacheFreshness(context.Context, string) time.Duration {
 	return m.maxCacheFreshness
+}
+
+type mockResultsCache struct{}
+
+func (m mockResultsCache) Store(ctx context.Context, key []string, buf [][]byte) error {
+	panic("not implemented")
+}
+func (m mockResultsCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+	panic("not implemented")
+}
+func (m mockResultsCache) Stop() {
+	panic("not implemented")
+}
+
+func (m mockResultsCache) GetCacheType() stats.CacheType {
+	// returning results cache since we do not support storing stats for "mock" cache
+	return stats.ResultCache
 }
