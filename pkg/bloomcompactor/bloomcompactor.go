@@ -27,6 +27,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"time"
@@ -577,6 +578,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
 		return err
 	}
+	level.Info(logger).Log("msg", "file size of blockToUpload", "size", getFileSize(blockToUpload.Data))
+
 	//defer func() {
 	//	err = os.Remove(archivePath)
 	//	if err != nil {
@@ -590,6 +593,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	if err != nil {
 		level.Error(logger).Log("msg", "failed uploading blocks to storage", "err", err)
 		return err
+	}
+
+	if len(storedBlocks) != 0 {
+		level.Info(logger).Log("msg", "file size of storedBlocks", "size", getFileSize(storedBlocks[0].Data))
 	}
 
 	// all blocks are new and active blocks
@@ -609,4 +616,25 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 	return nil
+}
+func getFileSize(reader io.ReadSeeker) int64 {
+	// Get current offset
+	currentOffset, err := reader.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0
+	}
+
+	// Seek to the end to get file size
+	size, err := reader.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0
+	}
+
+	// Restore the original offset
+	_, err = reader.Seek(currentOffset, io.SeekStart)
+	if err != nil {
+		return 0
+	}
+
+	return size
 }
