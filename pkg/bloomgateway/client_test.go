@@ -426,3 +426,8 @@ func (*mockRing) ShuffleShardWithLookback(_ string, _ int, _ time.Duration, _ ti
 func (*mockRing) CleanupShuffleShardCache(_ string) {
 	panic("unimplemented")
 }
+
+func (r *mockRing) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
+	tr := ring.TokenRanges{0, math.MaxUint32}
+	return tr, nil
+}
