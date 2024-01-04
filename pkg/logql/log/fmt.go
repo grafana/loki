@@ -395,7 +395,13 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			continue
 		}
 		lf.buf.Reset()
-		if len(m) == 0 {
+		isEmpty := true
+		m.Range(func(_, _ interface{}) bool {
+			isEmpty = false
+			return false
+		})
+
+		if isEmpty {
 			lbs.IntoMap(m)
 		}
 		if err := f.tmpl.Execute(lf.buf, m); err != nil {

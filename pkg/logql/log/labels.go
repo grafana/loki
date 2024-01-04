@@ -146,7 +146,7 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
-	baseMap       map[string]string
+	baseMap       *sync.Map
 	buf           labels.Labels
 	currentResult LabelsResult
 	groupedResult LabelsResult
@@ -457,19 +457,22 @@ func newStringMapPool() *stringMapPool {
 	return &stringMapPool{
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make(map[string]string)
+				return &sync.Map{}
 			},
 		},
 	}
 }
 
-func (s *stringMapPool) Get() map[string]string {
-	m := s.pool.Get().(map[string]string)
-	clear(m)
+func (s *stringMapPool) Get() *sync.Map {
+	m := s.pool.Get().(*sync.Map)
+	m.Range(func(k, v interface{}) bool {
+		m.Delete(k)
+		return true
+	})
 	return m
 }
 
-func (s *stringMapPool) Put(m map[string]string) {
+func (s *stringMapPool) Put(m *sync.Map) {
 	s.pool.Put(m)
 }
 
@@ -477,38 +480,54 @@ var smp = newStringMapPool()
 
 // puts labels entries into an existing map, it is up to the caller to
 // properly clear the map if it is going to be reused
-func (b *LabelsBuilder) IntoMap(m map[string]string) {
+func (b *LabelsBuilder) IntoMap(m *sync.Map) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
-		if b.baseMap == nil {
-			b.baseMap = b.base.Map()
-			for k, v := range b.baseMap {
-				m[k] = v
+		isEmpty := true
+		b.baseMap.Range(func(_, _ interface{}) bool {
+			isEmpty = false
+			return false
+		})
+		if isEmpty {
+			syncMap := sync.Map{}
+			base := b.base.Map()
+			for k, v := range base {
+				syncMap.Store(k, v)
 			}
+			b.baseMap = &syncMap
 		}
 		return
 	}
 	b.buf = b.UnsortedLabels(b.buf)
-	// todo should we also cache maps since limited by the result ?
-	// Maps also don't create a copy of the labels.
 	for _, l := range b.buf {
-		m[l.Name] = l.Value
+		m.Store(l.Name, l.Value)
 	}
 }
 
-func (b *LabelsBuilder) Map() map[string]string {
+func (b *LabelsBuilder) Map() *sync.Map {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
-		if b.baseMap == nil {
-			b.baseMap = b.base.Map()
+		isEmpty := true
+		b.baseMap.Range(func(_, _ interface{}) bool {
+			isEmpty = false
+			return false
+		})
+		if isEmpty {
+			syncMap := sync.Map{}
+			base := b.base.Map()
+			for k, v := range base {
+				syncMap.Store(k, v)
+			}
+			b.baseMap = &syncMap
 		}
 		return b.baseMap
 	}
 	b.buf = b.UnsortedLabels(b.buf)
-	// todo should we also cache maps since limited by the result ?
-	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	clear(res)
+	res.Range(func(k, v interface{}) bool {
+		res.Delete(k)
+		return true
+	})
 	for _, l := range b.buf {
-		res[l.Name] = l.Value
+		res.Store(l.Name, l.Value)
 	}
 	return res
 }
