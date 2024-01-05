@@ -152,6 +152,10 @@ The API accepts several formats for timestamps:
 * A floating point number is a Unix timestamp with fractions of a second.
 * A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
+{{% admonition type="note" %}}
+When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
+{{% /admonition %}}
+
 ### Statistics
 
 Query endpoints such as `/loki/api/v1/query` and `/loki/api/v1/query_range` return a set of statistics about the query execution. Those statistics allow users to understand the amount of data processed and at which speed.
