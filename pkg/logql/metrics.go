@@ -163,6 +163,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_req", stats.Caches.Result.EntriesRequested,
 		"cache_result_hit", stats.Caches.Result.EntriesFound,
 		"cache_result_download_time", stats.Caches.Result.CacheDownloadTime(),
+		"cache_result_query_length_served", stats.Caches.Result.CacheQueryLengthServed(),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -228,6 +229,7 @@ func RecordLabelQueryMetrics(
 		"cache_label_results_hit", stats.Caches.LabelResult.EntriesFound,
 		"cache_label_results_stored", stats.Caches.LabelResult.EntriesStored,
 		"cache_label_results_download_time", stats.Caches.LabelResult.CacheDownloadTime(),
+		"cache_label_results_query_length_served", stats.Caches.LabelResult.CacheQueryLengthServed(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
@@ -341,6 +343,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"cache_series_results_hit", stats.Caches.SeriesResult.EntriesFound,
 		"cache_series_results_stored", stats.Caches.SeriesResult.EntriesStored,
 		"cache_series_results_download_time", stats.Caches.SeriesResult.CacheDownloadTime(),
+		"cache_series_results_query_length_served", stats.Caches.SeriesResult.CacheQueryLengthServed(),
 	)
 
 	if shard != nil {
@@ -428,6 +431,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
 		"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
 		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		"cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
