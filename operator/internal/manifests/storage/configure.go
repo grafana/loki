@@ -130,6 +130,10 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		container.Env = append(container.Env, managedAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
+		if opts.ExtraSecretName != "" {
+			volumes = append(volumes, extraCredentialsVolume(opts))
+			container.VolumeMounts = append(container.VolumeMounts, extraCredentialsVolumeMount(opts))
+		}
 	} else {
 		container.Env = append(container.Env, staticAuthCredentials(opts)...)
 	}
@@ -179,15 +183,17 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 	secretName := opts.SecretName
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		envVars := []corev1.EnvVar{
-			envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
-		}
-		if opts.S3.RoleARN == "" {
-			envVars = append(envVars, envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn))
+		if opts.ExtraSecretName != "" {
+			return []corev1.EnvVar{
+				envVarFromValue(EnvAWSCredentialsFile, path.Join(extraSecretDirectory, KeyAWSCredentialsFilename)),
+				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
+			}
 		} else {
-			envVars = append(envVars, envVarFromValue(EnvAWSRoleArn, opts.S3.RoleARN))
+			return []corev1.EnvVar{
+				envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
+				envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
+			}
 		}
-		return envVars
 	default:
 		return []corev1.EnvVar{}
 	}
@@ -307,6 +313,24 @@ func saTokenVolume(opts Options) corev1.Volume {
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+func extraCredentialsVolumeMount(opts Options) corev1.VolumeMount {
+	return corev1.VolumeMount{
+		Name:      opts.ExtraSecretName,
+		MountPath: extraSecretDirectory,
+	}
+}
+
+func extraCredentialsVolume(opts Options) corev1.Volume {
+	return corev1.Volume{
+		Name: opts.ExtraSecretName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: opts.ExtraSecretName,
 			},
 		},
 	}

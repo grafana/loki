@@ -1,14 +1,11 @@
 package storage
 
 import (
-	"bytes"
 	"crypto/sha1"
-	"errors"
 	"fmt"
 	"sort"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -28,6 +25,17 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType, 
 		SecretName:  s.Name,
 		SecretSHA1:  hash,
 		SharedStore: secretType,
+	}
+
+	if managedAuthSecret != nil {
+		var extraSHash string
+		extraSHash, err = hashSecretData(managedAuthSecret)
+		if err != nil {
+			return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
+		}
+
+		storageOpts.ExtraSecretName = managedAuthSecret.Name
+		storageOpts.ExtraSecretSHA1 = extraSHash
 	}
 
 	switch secretType {
@@ -161,10 +169,6 @@ func extractS3ConfigSecret(s *corev1.Secret, managedAuthSecret *corev1.Secret) (
 	case managedAuthSecret != nil:
 		cfg.STS = true
 		cfg.Audience = "openshift"
-		cfg.RoleARN, err = extractSTSSecret(managedAuthSecret)
-		if err != nil {
-			return nil, err
-		}
 		if len(roleArn) != 0 {
 			return nil, kverrors.New("extra secret field set", "field", storage.KeyAWSRoleArn)
 		}
@@ -188,7 +192,6 @@ func extractS3ConfigSecret(s *corev1.Secret, managedAuthSecret *corev1.Secret) (
 		}
 
 		return cfg, nil
-	// TODO(JoaoBraveCoding) For CCO integration here we will first check if we get a secret, OS use-case
 	case len(roleArn) != 0: // Extract STS from user provided values
 		cfg.STS = true
 		cfg.Audience = string(audience)
@@ -329,35 +332,4 @@ func SetSATokenPath(opts *storage.Options, OpenShiftEnabled bool) {
 		}
 		opts.S3.WebIdentityTokenFile = wiToken
 	}
-}
-var (
-	errMissingAWSCredentials = errors.New("missing CCO secret for AWS STS authentication")
-	errInvalidAWSCredentials = errors.New("invalid credentials file")
-)
-
-func extractSTSSecret(s *corev1.Secret) (string, error) {
-	var data []byte
-	switch {
-	case len(s.Data["credentials"]) > 0:
-		data = s.Data["credentials"]
-	default:
-		return "", errMissingAWSCredentials
-	}
-
-	cfg, err := ini.Load(bytes.NewReader(data))
-	if err != nil {
-		return "", errInvalidAWSCredentials
-	}
-
-	section, err := cfg.GetSection("default")
-	if err != nil {
-		return "", err
-	}
-
-	roleARN, err := section.GetKey("role_arn")
-	if err != nil {
-		return "", err
-	}
-
-	return roleARN.String(), nil
 }

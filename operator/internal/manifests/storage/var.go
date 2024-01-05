@@ -15,6 +15,10 @@ const (
 	EnvAWSRoleArn = "AWS_ROLE_ARN"
 	// EnvAWSWebIdentityToken is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
 	EnvAWSWebIdentityTokenFile = "AWS_WEB_IDENTITY_TOKEN_FILE"
+	// EnvAWSCredentialsFile is the environment variable to specify path to the shared credentials file
+	EnvAWSCredentialsFile = "AWS_SHARED_CREDENTIALS_FILE"
+	// EnvAWSSdkLoadConfig is the environment that enabled the AWS SDK to enabled the shared credentials file to be loaded
+	EnvAWSSdkLoadConfig = "AWS_SDK_LOAD_CONFIG"
 	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
 	EnvAzureStorageAccountName = "AZURE_STORAGE_ACCOUNT_NAME"
 	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
@@ -55,6 +59,8 @@ const (
 	KeyAWSRoleArn = "role_arn"
 	// KeyAWSAudience is the audience for the AWS STS workflow.
 	KeyAWSAudience = "audience"
+	// KeyAWSCredentialsFilename is the config filename containing the AWS authentication credentials.
+	KeyAWSCredentialsFilename = "credentials"
 
 	// KeyAzureStorageAccountKey is the secret data key for the Azure storage account key.
 	KeyAzureStorageAccountKey = "account_key"
@@ -106,9 +112,10 @@ const (
 	saTokenVolumeName         = "bound-sa-token"
 	saTokenExpiration         = 3600
 
-	secretDirectory  = "/etc/storage/secrets"
-	storageTLSVolume = "storage-tls"
-	caDirectory      = "/etc/storage/ca"
+	secretDirectory      = "/etc/storage/secrets"
+	extraSecretDirectory = "/etc/storage/extra-secrets"
+	storageTLSVolume     = "storage-tls"
+	caDirectory          = "/etc/storage/ca"
 
 	awsDefaultAudience = "sts.amazonaws.com"
 )

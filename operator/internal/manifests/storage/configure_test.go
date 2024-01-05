@@ -343,10 +343,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
-											Value: "/var/run/secrets/kubernetes.io/serviceaccount/token",
-										},
-										{
 											Name: EnvAWSRoleArn,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
@@ -356,6 +352,10 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													Key: KeyAWSRoleArn,
 												},
 											},
+										},
+										{
+											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
+											Value: "/var/run/secrets/kubernetes.io/serviceaccount/token",
 										},
 									},
 								},
@@ -394,8 +394,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage S3 in STS Mode in OpenShift",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretS3,
+				SecretName:      "test",
+				ExtraSecretName: "extra-secret",
+				SharedStore:     lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
 					STS:                  true,
 					Audience:             "test",
@@ -433,15 +434,20 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: "/var/run/secrets/openshift/serviceaccount",
 										},
+										{
+											Name:      "extra-secret",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/extra-secrets",
+										},
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
-											Value: "/var/run/secrets/openshift/serviceaccount/token",
+											Name:  "AWS_SHARED_CREDENTIALS_FILE",
+											Value: "/etc/storage/extra-secrets/credentials",
 										},
 										{
-											Name:  "AWS_ROLE_ARN",
-											Value: "my:role",
+											Name:  "AWS_SDK_LOAD_CONFIG",
+											Value: "true",
 										},
 									},
 								},
@@ -468,6 +474,14 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													},
 												},
 											},
+										},
+									},
+								},
+								{
+									Name: "extra-secret",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "extra-secret",
 										},
 									},
 								},

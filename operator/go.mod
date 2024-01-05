@@ -28,10 +28,7 @@ require (
 	sigs.k8s.io/yaml v1.3.0
 )
 
-require (
-	github.com/openshift/cloud-credential-operator v0.0.0-20231220062235-fba5608095b6
-	gopkg.in/ini.v1 v1.67.0
-)
+require github.com/openshift/cloud-credential-operator v0.0.0-20231220062235-fba5608095b6
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
@@ -153,6 +150,7 @@ require (
 	google.golang.org/grpc v1.52.3 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.27.7 // indirect
 	k8s.io/component-base v0.27.7 // indirect
