@@ -232,6 +232,12 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
+
+		_, err = block.Data.Seek(0, 0)
+		if err != nil {
+			return fmt.Errorf("error uploading block file: %w", err)
+		}
+
 		err = objectClient.PutObject(ctx, key, block.Data)
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)
