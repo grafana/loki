@@ -480,11 +480,17 @@ var smp = newStringMapPool()
 // properly clear the map if it is going to be reused
 func (b *LabelsBuilder) IntoMap(m map[string]string) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
+		b.mapLock.RLock()
 		if b.baseMap == nil {
+			b.mapLock.RUnlock()
+			b.mapLock.Lock()
 			b.baseMap = b.base.Map()
+			b.mapLock.Unlock()
 			for k, v := range b.baseMap {
 				m[k] = v
 			}
+		} else {
+			b.mapLock.RUnlock()
 		}
 		return
 	}

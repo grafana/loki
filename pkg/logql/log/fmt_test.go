@@ -948,8 +948,4 @@ func TestMapPool(t *testing.T) {
 	}
 	wg.Done()
 	time.Sleep(2 * time.Second)
-
-	//require.Equal(t, tt.want, newMustLineFormatter(tt.fmt).RequiredLabelNames())
-	//})
-	//}
 }
