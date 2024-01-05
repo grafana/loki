@@ -88,7 +88,7 @@ func CreateOrUpdateLokiStack(
 			Requeue: false,
 		}
 	}
-	objStore.OpenShiftEnabled = fg.OpenShift.Enabled
+	storage.SetSATokenPath(objStore, fg.OpenShift.Enabled)
 
 	storageSchemas, err := storageoptions.BuildSchemaConfig(
 		time.Now().UTC(),

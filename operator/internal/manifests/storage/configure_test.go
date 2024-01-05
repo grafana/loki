@@ -304,8 +304,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					STS:      true,
-					Audience: "test",
+					STS:                  true,
+					Audience:             "test",
+					WebIdentityTokenFile: "/var/run/secrets/kubernetes.io/serviceaccount",
 				},
 			},
 			dpl: &appsv1.Deployment{
@@ -393,12 +394,12 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage S3 in STS Mode in OpenShift",
 			opts: Options{
-				SecretName:       "test",
-				OpenShiftEnabled: true,
-				SharedStore:      lokiv1.ObjectStorageSecretS3,
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					STS:      true,
-					Audience: "test",
+					STS:                  true,
+					Audience:             "test",
+					WebIdentityTokenFile: "/var/run/secrets/openshift/serviceaccount",
 				},
 			},
 			dpl: &appsv1.Deployment{

@@ -299,3 +299,15 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 		Bucket:   string(bucket),
 	}, nil
 }
+
+func SetSATokenPath(opts *storage.Options, OpenShiftEnabled bool) {
+	var wiToken string
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		wiToken = storage.SATokenVolumeK8sDirectory
+		if OpenShiftEnabled {
+			wiToken = storage.SATokenVolumeOcpDirectory
+		}
+		opts.S3.WebIdentityTokenFile = wiToken
+	}
+}
