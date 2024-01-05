@@ -3,10 +3,11 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/google/uuid"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -212,7 +213,7 @@ func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt co
 func (it *lazyBloomBuilder) Next() bool {
 	if !it.metas.Next() {
 		it.cur = v1.SeriesWithBloom{}
-		level.Info(it.logger).Log("msg", "No seriesMeta")
+		level.Debug(it.logger).Log("msg", "No seriesMeta")
 		return false
 	}
 	meta := it.metas.At()
@@ -220,17 +221,17 @@ func (it *lazyBloomBuilder) Next() bool {
 	// Get chunks data from list of chunkRefs
 	chks, err := it.client.GetChunks(it.ctx, makeChunkRefs(meta.chunkRefs, it.tenant, meta.seriesFP))
 	if err != nil {
-		level.Info(it.logger).Log("err in getChunks", err)
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
+		level.Debug(it.logger).Log("err in getChunks", err)
 		return false
 	}
 
 	it.cur, err = buildBloomFromSeries(meta, it.fpRate, it.bt, chks)
 	if err != nil {
-		level.Info(it.logger).Log("err in buildBloomFromSeries", err)
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
+		level.Debug(it.logger).Log("err in buildBloomFromSeries", err)
 		return false
 	}
 	return true

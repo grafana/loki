@@ -2,8 +2,6 @@ package v1
 
 import (
 	"archive/tar"
-	"github.com/go-kit/kit/log/level"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,7 +27,6 @@ func TarGz(dst io.Writer, src *DirectoryBlockReader) error {
 		if err != nil {
 			return errors.Wrapf(err, "error stat'ing file %s", f.Name())
 		}
-		level.Debug(util_log.Logger).Log("msg", "actual block size", "size", info.Size())
 
 		header, err := tar.FileInfoHeader(info, f.Name())
 		if err != nil {

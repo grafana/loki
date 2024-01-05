@@ -27,7 +27,6 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -519,6 +518,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return nil
 	} else if len(metasMatchingJob) == 0 {
 		// No matching existing blocks for this job, compact all series from scratch
+		level.Info(logger).Log("msg", "No matching existing blocks for this job, compact all series from scratch")
 
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
@@ -527,7 +527,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 
 		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
-		level.Info(logger).Log("job.seriesMetas length", len(job.seriesMetas))
 		resultingBlock, err = compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
 		if err != nil {
 			return level.Error(logger).Log("msg", "failed compacting new chunks", "err", err)
@@ -535,6 +534,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	} else if len(blocksMatchingJob) > 0 {
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
+		level.Info(logger).Log("msg", "already compacted metas exists, use mergeBlockBuilder")
 
 		var populate = createPopulateFunc(ctx, logger, job, storeClient, bt)
 
@@ -573,7 +573,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
 		return err
 	}
-	level.Info(logger).Log("msg", "file size of blockToUpload", "size", getFileSize(blockToUpload.Data))
 
 	//defer func() {
 	//	err = os.Remove(archivePath)
@@ -588,10 +587,6 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	if err != nil {
 		level.Error(logger).Log("msg", "failed uploading blocks to storage", "err", err)
 		return err
-	}
-
-	if len(storedBlocks) != 0 {
-		level.Info(logger).Log("msg", "file size of storedBlocks", "size", getFileSize(storedBlocks[0].Data))
 	}
 
 	// all blocks are new and active blocks
@@ -624,25 +619,4 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	level.Info(logger).Log("msg", "finished compacting table", "table", job.tableName, "tenant", job.tenantID)
 	return nil
-}
-func getFileSize(reader io.ReadSeeker) int64 {
-	// Get current offset
-	currentOffset, err := reader.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return 0
-	}
-
-	// Seek to the end to get file size
-	size, err := reader.Seek(0, io.SeekEnd)
-	if err != nil {
-		return 0
-	}
-
-	// Restore the original offset
-	_, err = reader.Seek(currentOffset, io.SeekStart)
-	if err != nil {
-		return 0
-	}
-
-	return size
 }
