@@ -614,16 +614,16 @@ func Test_Iterator(t *testing.T) {
 
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
-	require.NoError(t,
-		sendBatches(context.TODO(), it,
-			fakeQueryServer(
-				func(qr *logproto.QueryResponse) error {
-					res = qr
-					return nil
-				},
-			),
-			int32(2)),
-	)
+	lines, err := sendBatches(context.TODO(), it,
+		fakeQueryServer(
+			func(qr *logproto.QueryResponse) error {
+				res = qr
+				return nil
+			},
+		),
+		int32(2))
+	require.NoError(t, err)
+	require.Equal(t, int32(2), lines)
 	require.Equal(t, 2, len(res.Streams))
 	// each entry translated into a unique stream
 	require.Equal(t, 1, len(res.Streams[0].Entries))
