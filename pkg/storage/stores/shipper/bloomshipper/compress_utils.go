@@ -74,7 +74,7 @@ func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string,
 func extractArchive(archivePath string, workingDirectoryPath string) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
-		return fmt.Errorf("error opening archive file %s: %w", file.Name(), err)
+		return fmt.Errorf("error opening archive file %s: %w", archivePath, err)
 	}
 	return v1.UnTarGz(workingDirectoryPath, file)
 }
