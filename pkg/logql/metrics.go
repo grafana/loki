@@ -222,6 +222,10 @@ func RecordLabelQueryMetrics(
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
+		"cache_label_results_req", stats.Caches.LabelResult.EntriesRequested,
+		"cache_label_results_hit", stats.Caches.LabelResult.EntriesFound,
+		"cache_label_results_stored", stats.Caches.LabelResult.EntriesStored,
+		"cache_label_results_download_time", stats.Caches.LabelResult.CacheDownloadTime(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
@@ -272,7 +276,12 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"status", status,
 		"match", PrintMatches(match),
 		"query_hash", util.HashedQuery(PrintMatches(match)),
-		"total_entries", stats.Summary.TotalEntriesReturned)
+		"total_entries", stats.Summary.TotalEntriesReturned,
+		"cache_series_results_req", stats.Caches.SeriesResult.EntriesRequested,
+		"cache_series_results_hit", stats.Caches.SeriesResult.EntriesFound,
+		"cache_series_results_stored", stats.Caches.SeriesResult.EntriesStored,
+		"cache_series_results_download_time", stats.Caches.SeriesResult.CacheDownloadTime(),
+	)
 
 	if shard != nil {
 		logValues = append(logValues,
