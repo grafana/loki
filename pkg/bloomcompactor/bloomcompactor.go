@@ -490,9 +490,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
+	level.Info(logger).Log("msg", "meta length", "metas", len(metas))
+
 	// TODO This logic currently is NOT concerned with cutting blocks upon topology changes to bloom-compactors.
 	// It may create blocks with series outside of the fp range of the compactor. Cutting blocks will be addressed in a follow-up PR.
 	metasMatchingJob, blocksMatchingJob := matchingBlocks(metas, job)
+
+	level.Info(logger).Log("msg", "metasMatchingJob AND blocksMatchingJob", "metas", metasMatchingJob, "blocks", blocksMatchingJob)
 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())

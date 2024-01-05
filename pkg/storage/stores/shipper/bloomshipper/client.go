@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-kit/kit/log/level"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -139,6 +141,8 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 			}
 			for _, object := range list {
 				metaRef, err := createMetaRef(object.Key, params.TenantID, table)
+				level.Info(util_log.Logger).Log("msg", "created metaRef in GetMetas", "metaRef", metaRef)
+
 				if err != nil {
 					return nil, err
 				}
@@ -278,6 +282,7 @@ func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client 
 		MetaRef: metaRef,
 	}
 	reader, _, err := client.GetObject(ctx, metaRef.FilePath)
+	level.Info(util_log.Logger).Log("msg", "metaRef to downloadMeta", "filepath", metaRef.FilePath)
 	if err != nil {
 		return Meta{}, fmt.Errorf("error downloading meta file %s : %w", metaRef.FilePath, err)
 	}
