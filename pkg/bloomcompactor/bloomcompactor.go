@@ -305,7 +305,7 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 			continue
 		}
 
-		// Skip this table if it is too new/old for the tenant limits.
+		// Skip this table if it is too old for the tenant limits.
 		now := model.Now()
 		tableMaxAge := c.limits.BloomCompactorMaxTableAge(tenant)
 		if tableMaxAge > 0 && tableInterval.Start.Before(now.Add(-tableMaxAge)) {
