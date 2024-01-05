@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -922,4 +923,33 @@ func TestInvalidUnixTimes(t *testing.T) {
 
 	_, err = unixToTime("464")
 	require.Error(t, err)
+}
+
+func TestMapPool(t *testing.T) {
+	//for _, tt := range tests {
+	//	t.Run(tt.fmt, func(t *testing.T) {
+	ls := labels.FromStrings("cluster", "us-central-0")
+	builder := NewBaseLabelsBuilder().ForLabels(ls, ls.Hash())
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	for i := 0; i < 100; i++ {
+		go func() {
+			wg.Wait()
+			a := newMustLineFormatter(`[1m{{if .level }}{{alignRight 5 .level}}{{else if .severity}}{{alignRight 5 .severity}}{{end}}[0m [90m[{{alignRight 10 .resources_service_instance_id}}{{if .attributes_thread_name}}/{{alignRight 20 .attributes_thread_name}}{{else if eq "java" .resources_telemetry_sdk_language }}                    {{end}}][0m [36m{{if .instrumentation_scope_name }}{{alignRight 40 .instrumentation_scope_name}}{{end}}[0m {{.body}} {{if .traceid}} [37m[3m[traceid={{.traceid}}]{{end}}`)
+			for j := 0; j < 100; j++ {
+				a.Process(0,
+					[]byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null"),
+					builder,
+				)
+			}
+
+		}()
+
+	}
+	wg.Done()
+	time.Sleep(2 * time.Second)
+
+	//require.Equal(t, tt.want, newMustLineFormatter(tt.fmt).RequiredLabelNames())
+	//})
+	//}
 }
