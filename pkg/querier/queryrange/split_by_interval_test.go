@@ -59,50 +59,6 @@ var testSchemasTSDB = func() []config.PeriodConfig {
 func Test_splitQuery(t *testing.T) {
 	tenantID := "1"
 
-	buildLokiRequest := func(start, end time.Time) queryrangebase.Request {
-		return &LokiRequest{
-			Query:     `{app="foo"}`,
-			Limit:     1,
-			Step:      2,
-			StartTs:   start,
-			EndTs:     end,
-			Direction: logproto.BACKWARD,
-			Path:      "/path",
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(`{app="foo"}`),
-			},
-		}
-	}
-
-	buildLokiRequestWithInterval := func(start, end time.Time) queryrangebase.Request {
-		return &LokiRequest{
-			Query:     `{app="foo"}`,
-			Limit:     1,
-			Interval:  2,
-			StartTs:   start,
-			EndTs:     end,
-			Direction: logproto.BACKWARD,
-			Path:      "/path",
-			Plan: &plan.QueryPlan{
-				AST: syntax.MustParseExpr(`{app="foo"}`),
-			},
-		}
-	}
-
-	buildLokiSeriesRequest := func(start, end time.Time) queryrangebase.Request {
-		return &LokiSeriesRequest{
-			Match:   []string{"match1"},
-			StartTs: start,
-			EndTs:   end,
-			Path:    "/series",
-			Shards:  []string{"shard1"},
-		}
-	}
-
-	buildLokiLabelNamesRequest := func(start, end time.Time) queryrangebase.Request {
-		return NewLabelRequest(start, end, "", "", "/lables")
-	}
-
 	type interval struct {
 		start, end time.Time
 	}
@@ -112,18 +68,54 @@ func Test_splitQuery(t *testing.T) {
 		endTimeInclusive   bool
 	}{
 		"LokiRequest": {
-			requestBuilderFunc: buildLokiRequest,
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return &LokiRequest{
+					Query:     `{app="foo"}`,
+					Limit:     1,
+					Step:      2,
+					StartTs:   start,
+					EndTs:     end,
+					Direction: logproto.BACKWARD,
+					Path:      "/query",
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`{app="foo"}`),
+					},
+				}
+			},
 		},
 		"LokiRequestWithInterval": {
-			requestBuilderFunc: buildLokiRequestWithInterval,
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return &LokiRequest{
+					Query:     `{app="foo"}`,
+					Limit:     1,
+					Interval:  2,
+					StartTs:   start,
+					EndTs:     end,
+					Direction: logproto.BACKWARD,
+					Path:      "/query",
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(`{app="foo"}`),
+					},
+				}
+			},
 		},
 		"LokiSeriesRequest": {
-			requestBuilderFunc: buildLokiSeriesRequest,
-			endTimeInclusive:   true,
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return &LokiSeriesRequest{
+					Match:   []string{"match1"},
+					StartTs: start,
+					EndTs:   end,
+					Path:    "/series",
+					Shards:  []string{"shard1"},
+				}
+			},
+			endTimeInclusive: true,
 		},
 		"LokiLabelNamesRequest": {
-			requestBuilderFunc: buildLokiLabelNamesRequest,
-			endTimeInclusive:   true,
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return NewLabelRequest(start, end, "", "", "/labels")
+			},
+			endTimeInclusive: true,
 		},
 		// TODO: add other query types!
 	} {
@@ -135,228 +127,230 @@ func Test_splitQuery(t *testing.T) {
 		// 62697274686461792063616b65
 		refTime := time.Date(2023, 1, 15, 8, 5, 30, 123456789, time.UTC)
 
-		for name, intervals := range map[string]struct {
-			input         interval
-			expected      []interval
-			splitInterval time.Duration
-			splitter      splitter
-		}{
-			"no_change": {
-				input: interval{
-					start: time.Unix(0, 0),
-					end:   time.Unix(0, (1 * time.Hour).Nanoseconds()),
-				},
-				expected: []interval{
-					{
+		t.Run(requestType, func(t *testing.T) {
+			for name, intervals := range map[string]struct {
+				input         interval
+				expected      []interval
+				splitInterval time.Duration
+				splitter      splitter
+			}{
+				"no_change": {
+					input: interval{
 						start: time.Unix(0, 0),
 						end:   time.Unix(0, (1 * time.Hour).Nanoseconds()),
 					},
-				},
-			},
-			"align_start": {
-				input: interval{
-					start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
-					end:   time.Unix(0, (2 * time.Hour).Nanoseconds()),
-				},
-				expected: []interval{
-					{
-						start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
-						end:   time.Unix(0, (1 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
+					expected: []interval{
+						{
+							start: time.Unix(0, 0),
+							end:   time.Unix(0, (1 * time.Hour).Nanoseconds()),
+						},
 					},
-					{
-						start: time.Unix(0, (1 * time.Hour).Nanoseconds()),
+				},
+				"align_start": {
+					input: interval{
+						start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
 						end:   time.Unix(0, (2 * time.Hour).Nanoseconds()),
 					},
-				},
-			},
-			"align_end": {
-				input: interval{
-					start: time.Unix(0, 0),
-					end:   time.Unix(0, (115 * time.Minute).Nanoseconds()),
-				},
-				expected: []interval{
-					{
-						start: time.Unix(0, 0),
-						end:   time.Unix(0, (1 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
+					expected: []interval{
+						{
+							start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
+							end:   time.Unix(0, (1 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Unix(0, (1 * time.Hour).Nanoseconds()),
+							end:   time.Unix(0, (2 * time.Hour).Nanoseconds()),
+						},
 					},
-					{
-						start: time.Unix(0, (1 * time.Hour).Nanoseconds()),
+				},
+				"align_end": {
+					input: interval{
+						start: time.Unix(0, 0),
 						end:   time.Unix(0, (115 * time.Minute).Nanoseconds()),
 					},
+					expected: []interval{
+						{
+							start: time.Unix(0, 0),
+							end:   time.Unix(0, (1 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Unix(0, (1 * time.Hour).Nanoseconds()),
+							end:   time.Unix(0, (115 * time.Minute).Nanoseconds()),
+						},
+					},
 				},
-			},
-			"align_both": {
-				input: interval{
-					start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
-					end:   time.Unix(0, (175 * time.Minute).Nanoseconds()),
-				},
-				expected: []interval{
-					{
+				"align_both": {
+					input: interval{
 						start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
-						end:   time.Unix(0, (1 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Unix(0, (1 * time.Hour).Nanoseconds()),
-						end:   time.Unix(0, (2 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Unix(0, (2 * time.Hour).Nanoseconds()),
 						end:   time.Unix(0, (175 * time.Minute).Nanoseconds()),
 					},
+					expected: []interval{
+						{
+							start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
+							end:   time.Unix(0, (1 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Unix(0, (1 * time.Hour).Nanoseconds()),
+							end:   time.Unix(0, (2 * time.Hour).Nanoseconds()).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Unix(0, (2 * time.Hour).Nanoseconds()),
+							end:   time.Unix(0, (175 * time.Minute).Nanoseconds()),
+						},
+					},
 				},
-			},
-			"no_align": {
-				input: interval{
-					start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
-					end:   time.Unix(0, (55 * time.Minute).Nanoseconds()),
-				},
-				expected: []interval{
-					{
+				"no_align": {
+					input: interval{
 						start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
 						end:   time.Unix(0, (55 * time.Minute).Nanoseconds()),
 					},
+					expected: []interval{
+						{
+							start: time.Unix(0, (5 * time.Minute).Nanoseconds()),
+							end:   time.Unix(0, (55 * time.Minute).Nanoseconds()),
+						},
+					},
 				},
-			},
-			"wholly_within_ingester_query_window": {
-				input: interval{
-					start: refTime.Add(-time.Hour).Truncate(time.Second),
-					end:   refTime,
-				},
-				expected: []interval{
-					{
+				"wholly_within_ingester_query_window": {
+					input: interval{
 						start: refTime.Add(-time.Hour).Truncate(time.Second),
-						end:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
 						end:   refTime,
 					},
+					expected: []interval{
+						{
+							start: refTime.Add(-time.Hour).Truncate(time.Second),
+							end:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
+					),
 				},
-				splitInterval: time.Hour,
-				splitter: newDefaultSplitter(
-					fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-					ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-				),
-			},
-			"partially_within_ingester_query_window": {
-				input: interval{
-					// overlapping `query_ingesters_within` window of 3h
-					start: refTime.Add(-4 * time.Hour).Add(-30 * time.Minute).Truncate(time.Second),
-					end:   refTime,
-				},
-				expected: []interval{
-					// regular intervals until `query_ingesters_within` window
-					{
+				"partially_within_ingester_query_window": {
+					input: interval{
+						// overlapping `query_ingesters_within` window of 3h
 						start: refTime.Add(-4 * time.Hour).Add(-30 * time.Minute).Truncate(time.Second),
-						end:   time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC),
-						end:   time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
-						end:   time.Date(2023, 1, 15, 5, 5, 30, 123456789, time.UTC).Add(-expectedSplitGap),
-					},
-					// and then different intervals for queries to ingesters
-					{
-						start: time.Date(2023, 1, 15, 5, 5, 30, 123456789, time.UTC),
-						end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
-						end:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
 						end:   refTime,
 					},
-				},
-				splitInterval: time.Hour,
-				splitter: newDefaultSplitter(
-					fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-					ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-				),
-			},
-			"not_within_ingester_query_window": {
-				input: interval{
-					// outside `query_ingesters_within` range of 3h
-					start: refTime.Add(-5 * time.Hour).Truncate(time.Second),
-					end:   refTime.Add(-4 * time.Hour).Truncate(time.Second),
-				},
-				expected: []interval{
-					// regular intervals outside `query_ingesters_within` window
-					{
-						start: refTime.Add(-5 * time.Hour).Truncate(time.Second),
-						end:   time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+					expected: []interval{
+						// regular intervals until `query_ingesters_within` window
+						{
+							start: refTime.Add(-4 * time.Hour).Add(-30 * time.Minute).Truncate(time.Second),
+							end:   time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 5, 5, 30, 123456789, time.UTC).Add(-expectedSplitGap),
+						},
+						// and then different intervals for queries to ingesters
+						{
+							start: time.Date(2023, 1, 15, 5, 5, 30, 123456789, time.UTC),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+							end:   refTime,
+						},
 					},
-					{
-						start: time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC),
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
+					),
+				},
+				"not_within_ingester_query_window": {
+					input: interval{
+						// outside `query_ingesters_within` range of 3h
+						start: refTime.Add(-5 * time.Hour).Truncate(time.Second),
 						end:   refTime.Add(-4 * time.Hour).Truncate(time.Second),
 					},
+					expected: []interval{
+						// regular intervals outside `query_ingesters_within` window
+						{
+							start: refTime.Add(-5 * time.Hour).Truncate(time.Second),
+							end:   time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC),
+							end:   refTime.Add(-4 * time.Hour).Truncate(time.Second),
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
+						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
+					),
 				},
-				splitInterval: time.Hour,
-				splitter: newDefaultSplitter(
-					fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 90 * time.Minute}},
-					ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-				),
-			},
-			"ingester_query_split_by_disabled": {
-				input: interval{
-					// overlapping `query_ingesters_within` range of 3h
-					start: refTime.Add(-4 * time.Hour).Truncate(time.Second),
-					end:   refTime,
-				},
-				expected: []interval{
-					// regular intervals only, since ingester split duration is 0
-					{
+				"ingester_query_split_by_disabled": {
+					input: interval{
+						// overlapping `query_ingesters_within` range of 3h
 						start: refTime.Add(-4 * time.Hour).Truncate(time.Second),
-						end:   time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
-						end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
-						end:   time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC),
-						end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
-					},
-					{
-						start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
 						end:   refTime,
 					},
+					expected: []interval{
+						// regular intervals only, since ingester split duration is 0
+						{
+							start: refTime.Add(-4 * time.Hour).Truncate(time.Second),
+							end:   time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 7, 0, 0, 0, time.UTC),
+							end:   time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC).Add(-expectedSplitGap),
+						},
+						{
+							start: time.Date(2023, 1, 15, 8, 0, 0, 0, time.UTC),
+							end:   refTime,
+						},
+					},
+					splitInterval: time.Hour,
+					splitter: newDefaultSplitter(
+						fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 0}},
+						ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
+					),
 				},
-				splitInterval: time.Hour,
-				splitter: newDefaultSplitter(
-					fakeLimits{ingesterSplitDuration: map[string]time.Duration{tenantID: 0}},
-					ingesterQueryOpts{queryIngestersWithin: 3 * time.Hour},
-				),
-			},
-		} {
-			t.Run(fmt.Sprintf("%s - %s", name, requestType), func(t *testing.T) {
-				req := tc.requestBuilderFunc(intervals.input.start, intervals.input.end)
-				var want []queryrangebase.Request
-				for _, exp := range intervals.expected {
-					want = append(want, tc.requestBuilderFunc(exp.start, exp.end))
-				}
+			} {
+				t.Run(name, func(t *testing.T) {
+					req := tc.requestBuilderFunc(intervals.input.start, intervals.input.end)
+					var want []queryrangebase.Request
+					for _, exp := range intervals.expected {
+						want = append(want, tc.requestBuilderFunc(exp.start, exp.end))
+					}
 
-				if intervals.splitInterval == 0 {
-					intervals.splitInterval = time.Hour
-				}
+					if intervals.splitInterval == 0 {
+						intervals.splitInterval = time.Hour
+					}
 
-				if intervals.splitter == nil {
-					intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
-				}
+					if intervals.splitter == nil {
+						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
+					}
 
-				splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
-				require.NoError(t, err)
-				require.Equal(t, want, splits)
-			})
-		}
+					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
+					require.NoError(t, err)
+					require.Equal(t, want, splits)
+				})
+			}
+		})
 	}
 }
 
