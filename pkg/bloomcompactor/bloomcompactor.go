@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"time"
 
@@ -607,13 +608,21 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	// TODO delete old metas in later compactions
 	// After all is done, create one meta file and upload to storage
 	meta := bloomshipper.Meta{
+		MetaRef: bloomshipper.MetaRef{
+			Ref: bloomshipper.Ref{
+				TenantID:       job.tenantID,
+				TableName:      job.tableName,
+				MinFingerprint: uint64(job.minFp),
+				MaxFingerprint: uint64(job.maxFp),
+				StartTimestamp: job.from,
+				EndTimestamp:   job.through,
+				Checksum:       rand.Uint32(), // Discuss if checksum is needed for Metas, why should we read all data again.
+			},
+		},
 		Tombstones: blocksMatchingJob,
 		Blocks:     activeBloomBlocksRefs,
 	}
-	meta.StartTimestamp = job.from
-	meta.EndTimestamp = job.through
-	meta.MinFingerprint = uint64(job.minFp)
-	meta.MaxFingerprint = uint64(job.maxFp)
+
 	err = c.bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)

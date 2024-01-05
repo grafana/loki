@@ -212,7 +212,7 @@ func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt co
 func (it *lazyBloomBuilder) Next() bool {
 	if !it.metas.Next() {
 		it.cur = v1.SeriesWithBloom{}
-		level.Info(it.logger).Log("msg", "No metas")
+		level.Info(it.logger).Log("msg", "No seriesMeta")
 		return false
 	}
 	meta := it.metas.At()
