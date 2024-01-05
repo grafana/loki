@@ -2,12 +2,13 @@ package bloomshipper
 
 import (
 	"fmt"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/google/uuid"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )

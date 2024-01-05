@@ -5,13 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-kit/kit/log/level"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-kit/log/level"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
