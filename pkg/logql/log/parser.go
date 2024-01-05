@@ -468,9 +468,6 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	keys := make(map[string]string, len(l.expressions))
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
-		if !lbs.BaseHas(id) {
-			lbs.Set(ParsedLabel, id, "")
-		}
 	}
 
 	l.dec.Reset(line)

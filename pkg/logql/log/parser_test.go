@@ -1108,7 +1108,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 				NewLabelExtractionExpr("nope", "nope"),
 			},
 			labels.EmptyLabels(),
-			labels.FromStrings("nope", ""),
+			labels.EmptyLabels(),
 		},
 		{
 			"double property logfmt",
