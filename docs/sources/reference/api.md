@@ -404,6 +404,14 @@ curl -u "Tenant1|Tenant2|Tenant3:$API_TOKEN" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
+
+To query against your hosted log tenant in Grafana Cloud, use the **User** and **URL** values provided in the Loki logging service details of your Grafana Cloud stack. You can find this information in the [Cloud Portal](https://grafana.com/docs/grafana-cloud/account-management/cloud-portal/#your-grafana-cloud-stack). Use an access policy token in your queries for authentication. The password in this example is an access policy token that has been defined in the `API_TOKEN` environment variable:
+```bash
+curl -u "User:$API_TOKEN" \
+  -G -s "<URL-PROVIDED-IN-LOKI-DATA-SOURCE-SETTINGS>/loki/api/v1/query" \
+  --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+```
+
 ## Query logs within a range of time
 
 ```
