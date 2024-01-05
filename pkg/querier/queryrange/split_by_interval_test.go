@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -67,7 +68,7 @@ func Test_splitQuery(t *testing.T) {
 		requestBuilderFunc func(start, end time.Time) queryrangebase.Request
 		endTimeInclusive   bool
 	}{
-		"LokiRequest": {
+		"logs request": {
 			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
 				return &LokiRequest{
 					Query:     `{app="foo"}`,
@@ -83,7 +84,7 @@ func Test_splitQuery(t *testing.T) {
 				}
 			},
 		},
-		"LokiRequestWithInterval": {
+		"logs request with interval": {
 			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
 				return &LokiRequest{
 					Query:     `{app="foo"}`,
@@ -99,7 +100,7 @@ func Test_splitQuery(t *testing.T) {
 				}
 			},
 		},
-		"LokiSeriesRequest": {
+		"series request": {
 			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
 				return &LokiSeriesRequest{
 					Match:   []string{"match1"},
@@ -111,13 +112,40 @@ func Test_splitQuery(t *testing.T) {
 			},
 			endTimeInclusive: true,
 		},
-		"LokiLabelNamesRequest": {
+		"label names request": {
 			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
-				return NewLabelRequest(start, end, "", "", "/labels")
+				return NewLabelRequest(start, end, `{foo="bar"}`, "", "/labels")
 			},
 			endTimeInclusive: true,
 		},
-		// TODO: add other query types!
+		"label values request": {
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return NewLabelRequest(start, end, `{foo="bar"}`, "test", "/label/test/values")
+			},
+			endTimeInclusive: true,
+		},
+		"index stats request": {
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return &logproto.IndexStatsRequest{
+					From:     model.TimeFromUnix(start.Unix()),
+					Through:  model.TimeFromUnix(end.Unix()),
+					Matchers: `{host="agent"}`,
+				}
+			},
+			endTimeInclusive: true,
+		},
+		"volume request": {
+			requestBuilderFunc: func(start, end time.Time) queryrangebase.Request {
+				return &logproto.VolumeRequest{
+					From:        model.TimeFromUnix(start.Unix()),
+					Through:     model.TimeFromUnix(end.Unix()),
+					Matchers:    `{host="agent"}`,
+					Limit:       5,
+					AggregateBy: seriesvolume.Series,
+				}
+			},
+			endTimeInclusive: true,
+		},
 	} {
 		expectedSplitGap := time.Duration(0)
 		if tc.endTimeInclusive {
