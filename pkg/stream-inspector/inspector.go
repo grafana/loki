@@ -1,9 +1,6 @@
 package stream_inspector
 
 import (
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
 	"math"
@@ -13,7 +10,12 @@ import (
 type Inspector struct {
 }
 
-func (i *Inspector) BuildTrees(streams []tsdb.Series, volumesMap map[model.Fingerprint]float64, matchers []*labels.Matcher) ([]*Tree, error) {
+type StreamWithVolume struct {
+	Labels labels.Labels
+	Volume float64
+}
+
+func (i *Inspector) BuildTrees(streams []StreamWithVolume, matchers []*labels.Matcher) ([]*Tree, error) {
 	labelNamesOrder := i.sortLabelNamesByPopularity(streams, matchers)
 
 	rootLabelNameToThreeMap := make(map[string]*Tree)
@@ -38,10 +40,7 @@ func (i *Inspector) BuildTrees(streams []tsdb.Series, volumesMap map[model.Finge
 			rootLabelNameToThreeMap[rootLabelName] = rootThree
 			threes = append(threes, rootThree)
 		}
-		streamVolume, err := i.getStreamVolume(stream, volumesMap)
-		if err != nil {
-			return nil, errors.Wrap(err, "can not build tree due to error")
-		}
+		streamVolume := stream.Volume
 		currentNode := rootThree.Root
 		for i, label := range streamLabels {
 			var labelNameNode *Node
@@ -61,14 +60,6 @@ func (i *Inspector) BuildTrees(streams []tsdb.Series, volumesMap map[model.Finge
 
 	}
 	return threes, nil
-}
-
-func (i *Inspector) getStreamVolume(stream tsdb.Series, volumesMap map[model.Fingerprint]float64) (float64, error) {
-	streamVolume, exists := volumesMap[stream.Fingerprint]
-	if !exists {
-		return 0, errors.New("stream volume not found")
-	}
-	return streamVolume, nil
 }
 
 type Iterator[T any] struct {
@@ -98,7 +89,7 @@ var labelsToSkip = map[string]any{
 	"__stream_shard__": nil,
 }
 
-func (i *Inspector) sortLabelNamesByPopularity(streams []tsdb.Series, matchers []*labels.Matcher) map[string]int {
+func (i *Inspector) sortLabelNamesByPopularity(streams []StreamWithVolume, matchers []*labels.Matcher) map[string]int {
 	labelNameCounts := make(map[string]uint32)
 	uniqueLabelNames := make([]string, 0, 1000)
 	for _, stream := range streams {
