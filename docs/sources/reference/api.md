@@ -109,6 +109,10 @@ The API accepts several formats for timestamps. An integer with ten or fewer dig
 
 The timestamps can also be written in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
+{{% admonition type="note" %}}
+When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
+{{% /admonition %}}
+
 ## Query Loki
 
 ```
