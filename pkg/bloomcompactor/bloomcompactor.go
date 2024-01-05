@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/go-kit/log"
@@ -545,16 +544,20 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 		seriesIter := makeSeriesIterFromSeriesMeta(job)
 
-		blockIters, blockPaths, err := makeBlockIterFromBlocks(ctx, logger, c.bloomShipperClient, blocksMatchingJob, c.cfg.WorkingDirectory)
-		defer func() {
-			for _, path := range blockPaths {
-				if err := os.RemoveAll(path); err != nil {
-					level.Error(logger).Log("msg", "failed removing uncompressed bloomDir", "dir", path, "err", err)
-				}
-			}
-		}()
+		blockIters, _, err := makeBlockIterFromBlocks(ctx, logger, c.bloomShipperClient, blocksMatchingJob, c.cfg.WorkingDirectory)
+
+		// TODO: turn this back on after debugging
+		//blockIters, blockPaths, err := makeBlockIterFromBlocks(ctx, logger, c.bloomShipperClient, blocksMatchingJob, c.cfg.WorkingDirectory)
+		//defer func() {
+		//	for _, path := range blockPaths {
+		//		if err := os.RemoveAll(path); err != nil {
+		//			level.Error(logger).Log("msg", "failed removing uncompressed bloomDir", "dir", path, "err", err)
+		//		}
+		//	}
+		//}()
 
 		if err != nil {
+			level.Error(logger).Log("err", err)
 			return err
 		}
 
@@ -569,6 +572,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
 		}
+		level.Info(logger).Log("msg", "merge was successful")
+
 	}
 
 	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
