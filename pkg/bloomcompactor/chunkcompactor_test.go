@@ -127,6 +127,8 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 }
 
 func TestLazyBloomBuilder(t *testing.T) {
+	logger := log.NewNopLogger()
+
 	label := labels.FromStrings("foo", "bar")
 	fp1 := model.Fingerprint(100)
 	fp2 := model.Fingerprint(999)
@@ -167,7 +169,7 @@ func TestLazyBloomBuilder(t *testing.T) {
 	mbt := &mockBloomTokenizer{}
 	mcc := &mockChunkClient{}
 
-	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, fpRate)
+	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, fpRate, logger)
 
 	// first seriesMeta has 1 chunks
 	require.True(t, it.Next())
