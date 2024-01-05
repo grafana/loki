@@ -1,7 +1,7 @@
 ---
 title: Loki HTTP API
 menuTitle: HTTP API
-description: Loki exposes HTTP endpoints for data ingestion, data retrieval, as well for cluster management.
+description: Provides a reference page for the Loki HTTP API endpoints for data ingestion, data retrieval, and cluster management.
 aliases:
 - ../api/
 weight: 100

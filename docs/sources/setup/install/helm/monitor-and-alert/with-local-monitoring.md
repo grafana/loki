@@ -1,7 +1,7 @@
 ---
 title: Configure monitoring and alerting
 menuTitle: Configure monitoring and alerting
-description: setup monitoring and alerts for the Helm chart
+description: Configuring monitoring and alerts using the Helm chart.
 aliases:
   - ../../../../installation/helm/monitor-and-alert/with-local-monitoring/
 weight: 100
