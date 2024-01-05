@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -187,7 +188,11 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	if err != nil {
 		return nil, nil, err
 	}
+
+	queryLenFromCache := r.GetEnd().Sub(r.GetStart())
+	st := stats.FromContext(ctx)
 	if len(requests) == 0 {
+		st.AddCacheQueryLengthServed(s.cache.GetCacheType(), queryLenFromCache)
 		response, err := s.merger.MergeResponse(responses...)
 		// No downstream requests so no need to write back to the cache.
 		return response, nil, err
@@ -204,6 +209,7 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	}
 
 	for _, reqResp := range reqResps {
+		queryLenFromCache -= reqResp.Request.GetEnd().Sub(reqResp.Request.GetStart())
 		responses = append(responses, reqResp.Response)
 		if s.shouldCacheRes != nil && !s.shouldCacheRes(ctx, r, reqResp.Response, maxCacheTime) {
 			continue
@@ -267,6 +273,7 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return nil, nil, err
 	}
 
+	st.AddCacheQueryLengthServed(s.cache.GetCacheType(), queryLenFromCache)
 	response, err := s.merger.MergeResponse(responses...)
 	return response, mergedExtents, err
 }

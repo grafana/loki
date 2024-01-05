@@ -231,10 +231,15 @@ func (c *Cache) Merge(m Cache) {
 	c.BytesSent += m.BytesSent
 	c.BytesReceived += m.BytesReceived
 	c.DownloadTime += m.DownloadTime
+	c.QueryLengthServed += m.QueryLengthServed
 }
 
 func (c *Cache) CacheDownloadTime() time.Duration {
 	return time.Duration(c.DownloadTime)
+}
+
+func (c *Cache) CacheQueryLengthServed() time.Duration {
+	return time.Duration(c.QueryLengthServed)
 }
 
 func (r *Result) MergeSplit(m Result) {
@@ -427,6 +432,16 @@ func (c *Context) AddCacheRequest(t CacheType, i int) {
 	}
 
 	atomic.AddInt32(&stats.Requests, int32(i))
+}
+
+// AddCacheQueryLengthServed measures the length of the query served from cache
+func (c *Context) AddCacheQueryLengthServed(t CacheType, i time.Duration) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt64(&stats.QueryLengthServed, int64(i))
 }
 
 func (c *Context) AddSplitQueries(num int64) {
