@@ -497,6 +497,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 
+	// TODO(poyzannur) enable once debugging is over
 	//defer func() {
 	//	//clean up the bloom directory
 	//	if err := os.RemoveAll(localDst); err != nil {
@@ -574,6 +575,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
+	// TODO(poyzannur) enable once debugging is over
 	//defer func() {
 	//	err = os.Remove(archivePath)
 	//	if err != nil {
