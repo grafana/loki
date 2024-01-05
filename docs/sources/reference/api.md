@@ -152,6 +152,10 @@ The API accepts several formats for timestamps:
 * A floating point number is a Unix timestamp with fractions of a second.
 * A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
+{{% admonition type="note" %}}
+When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
+{{% /admonition %}}
+
 ### Statistics
 
 Query endpoints such as `/loki/api/v1/query` and `/loki/api/v1/query_range` return a set of statistics about the query execution. Those statistics allow users to understand the amount of data processed and at which speed.
@@ -401,6 +405,14 @@ defined in the `API_TOKEN` environment variable:
 ```bash
 curl -u "Tenant1|Tenant2|Tenant3:$API_TOKEN" \
   -G -s "http://localhost:3100/loki/api/v1/query" \
+  --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
+```
+
+
+To query against your hosted log tenant in Grafana Cloud, use the **User** and **URL** values provided in the Loki logging service details of your Grafana Cloud stack. You can find this information in the [Cloud Portal](https://grafana.com/docs/grafana-cloud/account-management/cloud-portal/#your-grafana-cloud-stack). Use an access policy token in your queries for authentication. The password in this example is an access policy token that has been defined in the `API_TOKEN` environment variable:
+```bash
+curl -u "User:$API_TOKEN" \
+  -G -s "<URL-PROVIDED-IN-LOKI-DATA-SOURCE-SETTINGS>/loki/api/v1/query" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
