@@ -12,7 +12,7 @@ import (
 )
 
 type splitter interface {
-	split(tenantIDs []string, request queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
+	split(execTime time.Time, tenantIDs []string, request queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 }
 
 type defaultSplitter struct {
@@ -24,7 +24,7 @@ func newDefaultSplitter(limits Limits, iqo util.IngesterQueryOptions) *defaultSp
 	return &defaultSplitter{limits, iqo}
 }
 
-func (s *defaultSplitter) split(tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 	var (
 		reqs             []queryrangebase.Request
 		factory          func(start, end time.Time)
@@ -95,9 +95,16 @@ func (s *defaultSplitter) split(tenantIDs []string, req queryrangebase.Request, 
 	// for queries outside the `query_ingesters_within` window.
 	//
 	// The given factory is responsible for building the splits and appending to reqs.
-	start, end := buildIngesterQuerySplitsAndRebound(s.limits, s.iqo, tenantIDs, req, factory)
+	start, end := buildIngesterQuerySplitsAndRebound(execTime, s.limits, s.iqo, tenantIDs, req, factory, endTimeInclusive)
 	if !start.Equal(end) {
+		// copy the splits
+		ingesterSplits := reqs
+		reqs = nil
+
 		util.ForInterval(interval, start, end, endTimeInclusive, factory)
+
+		// move the ingester splits to the end to maintain correct order
+		reqs = append(reqs, ingesterSplits...)
 	}
 	return reqs, nil
 }
@@ -137,7 +144,7 @@ func (s *metricQuerySplitter) nextIntervalBoundary(t time.Time, step int64, inte
 	return time.Unix(0, target)
 }
 
-func (s *metricQuerySplitter) split(tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 	var reqs []queryrangebase.Request
 
 	lokiReq := r.(*LokiRequest)
@@ -179,9 +186,9 @@ func (s *metricQuerySplitter) split(tenantIDs []string, r queryrangebase.Request
 		return reqs, nil
 	}
 
-	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = s.nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
+	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = s.nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * util.SplitGap) {
 		end := s.nextIntervalBoundary(start, r.GetStep(), interval)
-		if end.Add(time.Duration(r.GetStep())*time.Millisecond).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*time.Millisecond) == lokiReq.EndTs {
+		if end.Add(time.Duration(r.GetStep())*util.SplitGap).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*util.SplitGap) == lokiReq.EndTs {
 			end = lokiReq.EndTs
 		}
 		reqs = append(reqs, &LokiRequest{
@@ -202,7 +209,7 @@ func (s *metricQuerySplitter) split(tenantIDs []string, r queryrangebase.Request
 
 // buildIngesterQuerySplitsAndRebound creates subqueries for the given request if it spans the `query_ingesters_within` window.
 // It returns the new start & end times which exclude this window.
-func buildIngesterQuerySplitsAndRebound(limits Limits, iqo util.IngesterQueryOptions, tenantIDs []string, req queryrangebase.Request, factory func(start, end time.Time)) (time.Time, time.Time) {
+func buildIngesterQuerySplitsAndRebound(execTime time.Time, limits Limits, iqo util.IngesterQueryOptions, tenantIDs []string, req queryrangebase.Request, factory func(start time.Time, end time.Time), endTimeInclusive bool) (time.Time, time.Time) {
 	start, end := req.GetStart().UTC(), req.GetEnd().UTC()
 
 	// ingesters are not queried, nothing to do
@@ -210,41 +217,39 @@ func buildIngesterQuerySplitsAndRebound(limits Limits, iqo util.IngesterQueryOpt
 		return start, end
 	}
 
-	// split_ingester_queries_by_interval = 30m
-	// start = 	12:00
-	// end = 	15:27
-	// now =	16:00
-	// query window = 13:00 - 16:00
-	// needs splits from $queryWindowStart (13:00) to end
-	// 12:00 to 12:59:59.999 unaffected
-	// rewrite end time to exclude query window
-	// result:
-	// 		start = 12:00
-	//		end =	12:59:59.999
-	//		splits = [13:00, 13:30, 14:00, 14:30, 15:00, 15:27]
+	interval := validation.MaxDurationPerTenant(tenantIDs, limits.IngesterQuerySplitDuration)
+	if interval == 0 {
+		// defer to normal split interval, leave start/end times unchanged
+		return start, end
+	}
 
 	windowSize := iqo.QueryIngestersWithin()
-	queryWindowStart := time.Now().UTC().Add(-windowSize)
+	ingesterWindow := execTime.UTC().Add(-windowSize)
 
 	// clamp to the start time
-	if queryWindowStart.Before(start) {
-		queryWindowStart = start
+	if ingesterWindow.Before(start) {
+		ingesterWindow = start
 	}
 
 	// query range does not overlap with ingester query window, nothing to do
-	if end.Before(queryWindowStart) {
+	if end.Before(ingesterWindow) {
 		return start, end
 	}
 
 	newStart := start
-	newEnd := queryWindowStart.Add(-time.Nanosecond)
+	newEnd := ingesterWindow
+
+	if endTimeInclusive {
+		newEnd = newEnd.Add(-util.SplitGap)
+	}
+
 	if start.After(newEnd) {
 		// query is fully within the ingester query window
 		newStart = newEnd
 	}
 
-	interval := validation.MaxDurationPerTenant(tenantIDs, limits.IngesterQuerySplitDuration)
-	util.ForInterval(interval, queryWindowStart, end, true, factory) // TODO end time always inclusive?
+	// build intervals using time range within ingester query window
+	util.ForInterval(interval, ingesterWindow, end, endTimeInclusive, factory)
 
 	return newStart, newEnd
 }

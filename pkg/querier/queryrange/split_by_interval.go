@@ -194,7 +194,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	intervals, err := h.splitter.split(tenantIDs, r, interval)
+	intervals, err := h.splitter.split(time.Now().UTC(), tenantIDs, r, interval)
 	if err != nil {
 		return nil, err
 	}

@@ -807,7 +807,7 @@ func NewInstantMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log lo
 func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, split splitter, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, metrics *Metrics, metricsNamespace string) (base.Middleware, error) {
 	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
-	limits = WithSplitByLimits(limits, 24*time.Hour)
+	limits = WithSplitByLimits(limits, indexStatsQuerySplitInterval)
 	var cacheMiddleware base.Middleware
 	if cfg.CacheVolumeResults {
 		var err error

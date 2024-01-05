@@ -1245,6 +1245,7 @@ type fakeLimits struct {
 	maxSeries               int
 	splitDuration           map[string]time.Duration
 	metadataSplitDuration   map[string]time.Duration
+	ingesterSplitDuration   map[string]time.Duration
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
 	requiredLabels          []string
@@ -1253,7 +1254,6 @@ type fakeLimits struct {
 	maxQuerierBytesRead     int
 	maxStatsCacheFreshness  time.Duration
 	volumeEnabled           bool
-	ingesterQuerySplit      time.Duration
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1268,6 +1268,13 @@ func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {
 		return 0
 	}
 	return f.metadataSplitDuration[key]
+}
+
+func (f fakeLimits) IngesterQuerySplitDuration(key string) time.Duration {
+	if f.ingesterSplitDuration == nil {
+		return 0
+	}
+	return f.ingesterSplitDuration[key]
 }
 
 func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
@@ -1345,6 +1352,19 @@ func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
 
+type ingesterQueryOpts struct {
+	queryStoreOnly       bool
+	queryIngestersWithin time.Duration
+}
+
+func (i ingesterQueryOpts) QueryStoreOnly() bool {
+	return i.queryStoreOnly
+}
+
+func (i ingesterQueryOpts) QueryIngestersWithin() time.Duration {
+	return i.queryIngestersWithin
+}
+
 func counter() (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
@@ -1354,10 +1374,6 @@ func counter() (*int, base.Handler) {
 		count++
 		return base.NewEmptyPrometheusResponse(), nil
 	})
-}
-
-func (f fakeLimits) IngesterQuerySplitDuration(_ string) time.Duration {
-	return f.ingesterQuerySplit
 }
 
 func counterWithError(err error) (*int, base.Handler) {
