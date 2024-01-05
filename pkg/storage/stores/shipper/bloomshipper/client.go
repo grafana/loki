@@ -135,7 +135,7 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, delimiter)
+			list, _, err := periodClient.List(ctx, prefix, "")
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
