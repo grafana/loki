@@ -146,6 +146,7 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
+	mapLock       sync.RWMutex
 	baseMap       map[string]string
 	buf           labels.Labels
 	currentResult LabelsResult
@@ -497,10 +498,16 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 
 func (b *LabelsBuilder) Map() map[string]string {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
-		if b.baseMap == nil {
-			b.baseMap = b.base.Map()
+		b.mapLock.RLock()
+		if b.baseMap != nil {
+			defer b.mapLock.RUnlock()
+			return b.baseMap
 		}
-		return b.baseMap
+		b.mapLock.RUnlock()
+		b.mapLock.Lock()
+		b.baseMap = b.base.Map()
+		b.mapLock.Unlock()
+
 	}
 	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
