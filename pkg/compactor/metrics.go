@@ -11,11 +11,14 @@ const (
 )
 
 type metrics struct {
-	compactTablesOperationTotal           *prometheus.CounterVec
-	compactTablesOperationDurationSeconds prometheus.Gauge
-	compactTablesOperationLastSuccess     prometheus.Gauge
-	applyRetentionLastSuccess             prometheus.Gauge
-	compactorRunning                      prometheus.Gauge
+	compactTablesOperationTotal            *prometheus.CounterVec
+	compactTablesOperationDurationSeconds  prometheus.Gauge
+	compactTablesOperationLastSuccess      prometheus.Gauge
+	applyRetentionOperationTotal           *prometheus.CounterVec
+	applyRetentionOperationDurationSeconds prometheus.Gauge
+	applyRetentionLastSuccess              prometheus.Gauge
+	compactorRunning                       prometheus.Gauge
+	skippedCompactingLockedTables          *prometheus.CounterVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -35,8 +38,18 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "compact_tables_operation_last_successful_run_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful compaction run",
 		}),
+		applyRetentionOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_compactor",
+			Name:      "apply_retention_operation_total",
+			Help:      "Total number of attempts done to apply retention with status",
+		}, []string{"status"}),
+		applyRetentionOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_compactor",
+			Name:      "apply_retention_operation_duration_seconds",
+			Help:      "Time (in seconds) spent in applying retention",
+		}),
 		applyRetentionLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_boltdb_shipper",
+			Namespace: "loki_compactor",
 			Name:      "apply_retention_last_successful_run_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful retention run",
 		}),
@@ -45,6 +58,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "compactor_running",
 			Help:      "Value will be 1 if compactor is currently running on this instance",
 		}),
+		skippedCompactingLockedTables: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_compactor",
+			Name:      "skipped_compacting_locked_table_total",
+			Help:      "Count of uncompacted tables being skipped due to them being locked by retention",
+		}, []string{"table_name"}),
 	}
 
 	return &m

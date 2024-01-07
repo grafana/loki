@@ -1,7 +1,7 @@
 ---
 title: Query examples
 menuTitle: Query examples  
-description: LogQL query examples with explanations on what those queries accomplish.
+description: Provides LogQL query examples with explanations on what those queries accomplish.
 aliases: 
 - ../logql/query_examples/
 weight: 50 

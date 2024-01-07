@@ -217,9 +217,9 @@
                               "group": "A",
                               "mode": "normal"
                            }
-                        }
-                     },
-                     "unit": "s"
+                        },
+                        "unit": "s"
+                     }
                   },
                   "fill": 1,
                   "id": 3,
@@ -493,9 +493,9 @@
                               "group": "A",
                               "mode": "normal"
                            }
-                        }
-                     },
-                     "unit": "s"
+                        },
+                        "unit": "s"
+                     }
                   },
                   "fill": 1,
                   "id": 6,

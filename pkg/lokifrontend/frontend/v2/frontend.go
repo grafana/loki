@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -137,7 +138,7 @@ type enqueueResult struct {
 func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer, codec transport.Codec, metricsNamespace string) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
-	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), ring, requestsCh, log)
+	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, net.JoinHostPort(cfg.Addr, strconv.Itoa(cfg.Port)), ring, requestsCh, log)
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +318,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
 		}
 
-		freq.request, err = server.HTTPRequest(httpReq)
+		freq.request, err = httpgrpc.FromHTTPRequest(httpReq)
 		if err != nil {
 			return nil, fmt.Errorf("cannot convert HTTP request to gRPC request: %w", err)
 		}

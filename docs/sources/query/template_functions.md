@@ -1,7 +1,7 @@
 ---
 title: Template functions
 menuTItle:  
-description: Describes functions that are supported by the text template.
+description: Describes functions that are supported by the Go text template.
 aliases: 
 - ../logql/template_functions/
 weight: 30
@@ -710,7 +710,7 @@ Examples:
 
 ```template
 {{ default "-" "" }} // output: -
-{{ default "" "foo" }} // output: foo
+{{ default "-" "foo" }} // output: foo
 ```
 
 Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:

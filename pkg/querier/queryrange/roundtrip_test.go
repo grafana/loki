@@ -23,10 +23,13 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
@@ -44,11 +47,13 @@ var (
 			MaxRetries:           3,
 			CacheResults:         true,
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -57,22 +62,26 @@ var (
 		CacheIndexStatsResults: true,
 		StatsCacheConfig: IndexStatsCacheConfig{
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
 		},
 		VolumeCacheConfig: VolumeCacheConfig{
 			ResultsCacheConfig: base.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					EmbeddedCache: cache.EmbeddedCacheConfig{
-						Enabled:   true,
-						MaxSizeMB: 1024,
-						TTL:       24 * time.Hour,
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						EmbeddedCache: cache.EmbeddedCacheConfig{
+							Enabled:   true,
+							MaxSizeMB: 1024,
+							TTL:       24 * time.Hour,
+						},
 					},
 				},
 			},
@@ -131,10 +140,16 @@ var (
 	series = logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/apport.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/test.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 		},
 	}
@@ -190,6 +205,9 @@ func TestMetricsTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -273,6 +291,9 @@ func TestLogFilterTripperware(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -332,12 +353,16 @@ func TestInstantQueryTripperware(t *testing.T) {
 	}
 	require.NoError(t, err)
 
+	q := `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`
 	lreq := &LokiInstantRequest{
-		Query:     `sum by (job) (bytes_rate({cluster="dev-us-central-0"}[15m]))`,
+		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -371,7 +396,14 @@ func TestInstantQueryTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -402,7 +434,14 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -654,20 +693,41 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err:       "",
 		},
 		{
-			name: "results cache enabled, stats cache disabled",
+			name: "results cache enabled",
 			config: Config{
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									MaxSizeMB: 1,
+									Enabled:   true,
+								},
 							},
 						},
 					},
 				},
-				CacheIndexStatsResults: false,
+			},
+			numCaches: 1,
+			err:       "",
+		},
+		{
+			name: "stats cache enabled",
+			config: Config{
+				CacheIndexStatsResults: true,
+				StatsCacheConfig: IndexStatsCacheConfig{
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
+							},
+						},
+					},
+				},
 			},
 			numCaches: 1,
 			err:       "",
@@ -678,29 +738,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				Config: base.Config{
 					CacheResults: true,
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								MaxSizeMB: 1,
-								Enabled:   true,
-							},
-						},
-					},
-				},
-				CacheIndexStatsResults: true,
-			},
-			numCaches: 2,
-			err:       "",
-		},
-		{
-			name: "results cache enabled, stats cache enabled but different",
-			config: Config{
-				Config: base.Config{
-					CacheResults: true,
-					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 2000,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 2000,
+								},
 							},
 						},
 					},
@@ -708,10 +751,12 @@ func TestNewTripperware_Caches(t *testing.T) {
 				CacheIndexStatsResults: true,
 				StatsCacheConfig: IndexStatsCacheConfig{
 					ResultsCacheConfig: base.ResultsCacheConfig{
-						CacheConfig: cache.Config{
-							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled:   true,
-								MaxSizeMB: 1000,
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
 							},
 						},
 					},
@@ -730,11 +775,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err: fmt.Sprintf("%s cache is not configured", stats.ResultCache),
 		},
 		{
-			name: "results cache disabled, stats cache enabled (no config provided)",
+			name: "stats cache enabled (no config provided)",
 			config: Config{
-				Config: base.Config{
-					CacheResults: false,
-				},
 				CacheIndexStatsResults: true,
 			},
 			numCaches: 0,
@@ -785,6 +827,9 @@ func TestLogNoFilter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -796,7 +841,12 @@ func TestLogNoFilter(t *testing.T) {
 }
 
 func TestPostQueries(t *testing.T) {
-	lreq := &LokiRequest{Query: `{app="foo"} |~ "foo"`}
+	lreq := &LokiRequest{
+		Query: `{app="foo"} |~ "foo"`,
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |~ "foo"`),
+		},
+	}
 	ctx := user.InjectOrgID(context.Background(), "1")
 	handler := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
 		t.Error("unexpected default roundtripper called")
@@ -834,6 +884,9 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"}`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -881,6 +934,9 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(test.qs),
+				},
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
@@ -986,6 +1042,9 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.query),
+				},
 			}
 			// See loghttp.step
 			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
@@ -1101,6 +1160,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
+				},
 			},
 			expectedSplitStats: 2, // [2h] interval split by 1h configured split interval
 			expectedShardStats: 8, // 2 time splits * 4 row shards
@@ -1113,6 +1175,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				TimeTs:    testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // [1h] interval not split
 			expectedShardStats: 4, // 4 row shards
@@ -1127,6 +1192,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
 			expectedShardStats: 12, // 3 time splits * 4 row shards
@@ -1141,6 +1209,9 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
+				},
 			},
 			expectedSplitStats: 0, // 1 minute range interval not split
 			expectedShardStats: 4, // 4 row shards
@@ -1172,7 +1243,8 @@ type fakeLimits struct {
 	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
-	splits                  map[string]time.Duration
+	splitDuration           map[string]time.Duration
+	metadataSplitDuration   map[string]time.Duration
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
 	requiredLabels          []string
@@ -1184,10 +1256,17 @@ type fakeLimits struct {
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
-	if f.splits == nil {
+	if f.splitDuration == nil {
 		return 0
 	}
-	return f.splits[key]
+	return f.splitDuration[key]
+}
+
+func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {
+	if f.metadataSplitDuration == nil {
+		return 0
+	}
+	return f.metadataSplitDuration[key]
 }
 
 func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {

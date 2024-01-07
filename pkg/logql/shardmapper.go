@@ -25,15 +25,27 @@ type ConstantShards int
 func (s ConstantShards) Shards(_ syntax.Expr) (int, uint64, error)   { return int(s), 0, nil }
 func (s ConstantShards) GetStats(_ syntax.Expr) (stats.Stats, error) { return stats.Stats{}, nil }
 
+const (
+	ShardQuantileOverTime = "quantile_over_time"
+)
+
 type ShardMapper struct {
-	shards  ShardResolver
-	metrics *MapperMetrics
+	shards                   ShardResolver
+	metrics                  *MapperMetrics
+	quantileOverTimeSharding bool
 }
 
-func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics) ShardMapper {
+func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
+	quantileOverTimeSharding := false
+	for _, a := range shardAggregation {
+		if a == ShardQuantileOverTime {
+			quantileOverTimeSharding = true
+		}
+	}
 	return ShardMapper{
-		shards:  resolver,
-		metrics: metrics,
+		shards:                   resolver,
+		metrics:                  metrics,
+		quantileOverTimeSharding: quantileOverTimeSharding,
 	}
 }
 
@@ -41,12 +53,7 @@ func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
 	return newMapperMetrics(registerer, "shard")
 }
 
-func (m ShardMapper) Parse(query string) (noop bool, bytesPerShard uint64, expr syntax.Expr, err error) {
-	parsed, err := syntax.ParseExpr(query)
-	if err != nil {
-		return false, 0, nil, err
-	}
-
+func (m ShardMapper) Parse(parsed syntax.Expr) (noop bool, bytesPerShard uint64, expr syntax.Expr, err error) {
 	recorder := m.metrics.downstreamRecorder()
 
 	mapped, bytesPerShard, err := m.Map(parsed, recorder)
@@ -163,11 +170,11 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 			},
 		}, bytesPerShard, nil
 	}
-	for i := shards - 1; i >= 0; i-- {
+	for shard := shards - 1; shard >= 0; shard-- {
 		head = &ConcatSampleExpr{
 			DownstreamSampleExpr: DownstreamSampleExpr{
 				shard: &astmapper.ShardAnnotation{
-					Shard: i,
+					Shard: shard,
 					Of:    shards,
 				},
 				SampleExpr: expr,
@@ -379,7 +386,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
-		// avg_overtime() by (foo) -> sum by (foo) (sum_over_time()) / sum by (foo) (count_over_time())
+		// avg_over_time() by (foo) -> sum by (foo) (sum_over_time()) / sum by (foo) (count_over_time())
 		lhs, lhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left: &syntax.RangeAggregationExpr{
 				Left:      expr.Left,
@@ -417,6 +424,43 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			SampleExpr: lhs,
 			RHS:        rhs,
 			Op:         syntax.OpTypeDiv,
+		}, bytesPerShard, nil
+
+	case syntax.OpRangeTypeQuantile:
+		potentialConflict := syntax.ReducesLabels(expr)
+		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
+			return m.mapSampleExpr(expr, r)
+		}
+
+		shards, bytesPerShard, err := m.shards.Shards(expr)
+		if err != nil {
+			return nil, 0, err
+		}
+		if shards == 0 || !m.quantileOverTimeSharding {
+			return m.mapSampleExpr(expr, r)
+		}
+
+		// quantile_over_time() by (foo) ->
+		// quantile_sketch_eval(quantile_merge by (foo)
+		// (__quantile_sketch_over_time__() by (foo)))
+
+		downstreams := make([]DownstreamSampleExpr, 0, shards)
+		expr.Operation = syntax.OpRangeTypeQuantileSketch
+		for shard := shards - 1; shard >= 0; shard-- {
+			downstreams = append(downstreams, DownstreamSampleExpr{
+				shard: &astmapper.ShardAnnotation{
+					Shard: shard,
+					Of:    shards,
+				},
+				SampleExpr: expr,
+			})
+		}
+
+		return &QuantileSketchEvalExpr{
+			quantileMergeExpr: &QuantileSketchMergeExpr{
+				downstreams: downstreams,
+			},
+			quantile: expr.Params,
 		}, bytesPerShard, nil
 
 	default:

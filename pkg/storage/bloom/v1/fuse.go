@@ -5,49 +5,49 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-type request struct {
-	fp       model.Fingerprint
-	chks     ChunkRefs
-	searches [][]byte
-	response chan output
+type Request struct {
+	Fp       model.Fingerprint
+	Chks     ChunkRefs
+	Searches [][]byte
+	Response chan<- Output
 }
 
-// output represents a chunk that failed to pass all searches
+// Output represents a chunk that failed to pass all searches
 // and must be downloaded
-type output struct {
-	fp   model.Fingerprint
-	chks ChunkRefs
+type Output struct {
+	Fp       model.Fingerprint
+	Removals ChunkRefs
 }
 
 // Fuse combines multiple requests into a single loop iteration
 // over the data set and returns the corresponding outputs
 // TODO(owen-d): better async control
-func (bq *BlockQuerier) Fuse(inputs []PeekingIterator[request]) *FusedQuerier {
+func (bq *BlockQuerier) Fuse(inputs []PeekingIterator[Request]) *FusedQuerier {
 	return NewFusedQuerier(bq, inputs)
 }
 
 type FusedQuerier struct {
 	bq     *BlockQuerier
-	inputs Iterator[[]request]
+	inputs Iterator[[]Request]
 }
 
-func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[request]) *FusedQuerier {
-	heap := NewHeapIterator[request](
-		func(a, b request) bool {
-			return a.fp < b.fp
+func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request]) *FusedQuerier {
+	heap := NewHeapIterator[Request](
+		func(a, b Request) bool {
+			return a.Fp < b.Fp
 		},
 		inputs...,
 	)
 
-	merging := NewDedupingIter[request, []request](
-		func(a request, b []request) bool {
-			return a.fp == b[0].fp
+	merging := NewDedupingIter[Request, []Request](
+		func(a Request, b []Request) bool {
+			return a.Fp == b[0].Fp
 		},
-		func(a request) []request { return []request{a} },
-		func(a request, b []request) []request {
+		func(a Request) []Request { return []Request{a} },
+		func(a Request, b []Request) []Request {
 			return append(b, a)
 		},
-		NewPeekingIter[request](heap),
+		NewPeekingIter[Request](heap),
 	)
 	return &FusedQuerier{
 		bq:     bq,
@@ -60,7 +60,7 @@ func (fq *FusedQuerier) Run() error {
 		// find all queries for the next relevant fingerprint
 		nextBatch := fq.inputs.At()
 
-		fp := nextBatch[0].fp
+		fp := nextBatch[0].Fp
 
 		// advance the series iterator to the next fingerprint
 		if err := fq.bq.Seek(fp); err != nil {
@@ -76,9 +76,9 @@ func (fq *FusedQuerier) Run() error {
 		if series.Fingerprint != fp {
 			// fingerprint not found, can't remove chunks
 			for _, input := range nextBatch {
-				input.response <- output{
-					fp:   fp,
-					chks: input.chks,
+				input.Response <- Output{
+					Fp:       fp,
+					Removals: nil,
 				}
 			}
 		}
@@ -88,9 +88,9 @@ func (fq *FusedQuerier) Run() error {
 		if !fq.bq.blooms.Next() {
 			// fingerprint not found, can't remove chunks
 			for _, input := range nextBatch {
-				input.response <- output{
-					fp:   fp,
-					chks: input.chks,
+				input.Response <- Output{
+					Fp:       fp,
+					Removals: nil,
 				}
 			}
 			continue
@@ -100,41 +100,42 @@ func (fq *FusedQuerier) Run() error {
 		// test every input against this chunk
 	inputLoop:
 		for _, input := range nextBatch {
-			mustCheck, inBlooms := input.chks.Compare(series.Chunks, true)
+			_, inBlooms := input.Chks.Compare(series.Chunks, true)
 
 			// First, see if the search passes the series level bloom before checking for chunks individually
-			for _, search := range input.searches {
+			for _, search := range input.Searches {
 				if !bloom.Test(search) {
-					// the entire series bloom didn't pass one of the searches,
-					// so we can skip checking chunks individually.
-					// We still return all chunks that are not included in the bloom
-					// as they may still have the data
-					input.response <- output{
-						fp:   fp,
-						chks: mustCheck,
+					// We return all the chunks that were the intersection of the query
+					// because they for sure do not match the search and don't
+					// need to be downloaded
+					input.Response <- Output{
+						Fp:       fp,
+						Removals: inBlooms,
 					}
 					continue inputLoop
 				}
 			}
 
+			// TODO(owen-d): pool
+			var removals ChunkRefs
+
 		chunkLoop:
 			for _, chk := range inBlooms {
-				for _, search := range input.searches {
+				for _, search := range input.Searches {
 					// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
 					var combined = search
 
 					if !bloom.ScalableBloomFilter.Test(combined) {
+						removals = append(removals, chk)
 						continue chunkLoop
 					}
 				}
-				// chunk passed all searches, add to the list of chunks to download
-				mustCheck = append(mustCheck, chk)
-
+				// Otherwise, the chunk passed all the searches
 			}
 
-			input.response <- output{
-				fp:   fp,
-				chks: mustCheck,
+			input.Response <- Output{
+				Fp:       fp,
+				Removals: removals,
 			}
 		}
 

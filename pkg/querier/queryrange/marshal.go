@@ -6,10 +6,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql"
@@ -19,10 +21,13 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/sketch"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -115,8 +120,10 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
 		return &TopKSketchesResponse{Response: sk}, err
-	case sketch.QuantileSketchMatrix:
-		return &QuantileSketchResponse{Response: data.ToProto()}, nil
+	case logql.ProbabilisticQuantileMatrix:
+		r := data.ToProto()
+		data.Release()
+		return &QuantileSketchResponse{Response: r}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -168,7 +175,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Headers: resp.GetHeaders(),
 		}, nil
 	case *QuantileSketchResponse:
-		matrix, err := sketch.QuantileSketchMatrixFromProto(r.Response)
+		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
 		if err != nil {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
@@ -230,6 +237,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
+	case *VolumeResponse:
+		p.Response = &QueryResponse_Volume{response}
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
 	case *QuantileSketchResponse:
@@ -239,6 +248,13 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	}
 
 	return p, nil
+}
+
+// QueryResponseWrapError wraps an error in the QueryResponse protobuf.
+func QueryResponseWrapError(err error) *QueryResponse {
+	return &QueryResponse{
+		Status: server.WrapError(err),
+	}
 }
 
 func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryrangebase.Request, context.Context, error) {
@@ -277,12 +293,32 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 	case *QueryRequest_Series:
 		return concrete.Series, ctx, nil
 	case *QueryRequest_Instant:
+		if concrete.Instant.Plan == nil {
+			parsed, err := syntax.ParseExpr(concrete.Instant.GetQuery())
+			if err != nil {
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+			concrete.Instant.Plan = &plan.QueryPlan{
+				AST: parsed,
+			}
+		}
+
 		return concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
 		return concrete.Stats, ctx, nil
 	case *QueryRequest_Volume:
 		return concrete.Volume, ctx, nil
 	case *QueryRequest_Streams:
+		if concrete.Streams.Plan == nil {
+			parsed, err := syntax.ParseExpr(concrete.Streams.GetQuery())
+			if err != nil {
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+			concrete.Streams.Plan = &plan.QueryPlan{
+				AST: parsed,
+			}
+		}
+
 		return concrete.Streams, ctx, nil
 	case *QueryRequest_Labels:
 		return &LabelRequest{

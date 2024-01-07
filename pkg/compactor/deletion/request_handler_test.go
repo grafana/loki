@@ -245,7 +245,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		store.getErr = errors.New("something bad")
 		h := NewDeleteRequestHandler(store, 0, nil)
 
-		req := buildRequest("org id", ``, "", "")
+		req := buildRequest("orgid", ``, "", "")
 		params := req.URL.Query()
 		params.Set("request_id", "test-request")
 		req.URL.RawQuery = params.Encode()
@@ -411,7 +411,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 		store.getAllErr = errors.New("something bad")
 		h := NewDeleteRequestHandler(store, 0, nil)
 
-		req := buildRequest("org id", ``, "", "")
+		req := buildRequest("orgid", ``, "", "")
 		params := req.URL.Query()
 		params.Set("request_id", "test-request")
 		req.URL.RawQuery = params.Encode()

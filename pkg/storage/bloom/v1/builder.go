@@ -30,10 +30,12 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions() BlockOptions {
+func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
 	return BlockOptions{
 		schema: Schema{
-			version: byte(1),
+			version:     byte(1),
+			nGramLength: NGramLength,
+			nGramSkip:   NGramSkip,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10, // 0.01MB
@@ -495,7 +497,7 @@ func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[
 
 // NB: this will build one block. Ideally we would build multiple blocks once a target size threshold is met
 // but this gives us a good starting point.
-func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
+func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	var (
 		nextInBlocks *SeriesWithBloom
 	)
@@ -544,6 +546,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 			cur = &SeriesWithBloom{
 				Series: nextInStore,
 				Bloom: &Bloom{
+					// TODO parameterise SBF options. fp_rate
 					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 				},
 			}
@@ -560,21 +563,21 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 				},
 				cur.Bloom,
 			); err != nil {
-				return errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+				return 0, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
 			}
 		}
 
 		if err := builder.AddSeries(*cur); err != nil {
-			return errors.Wrap(err, "adding series to block")
+			return 0, errors.Wrap(err, "adding series to block")
 		}
 	}
 
-	_, err := builder.blooms.Close()
+	checksum, err := builder.blooms.Close()
 	if err != nil {
-		return errors.Wrap(err, "closing bloom file")
+		return 0, errors.Wrap(err, "closing bloom file")
 	}
 	if err := builder.index.Close(); err != nil {
-		return errors.Wrap(err, "closing series file")
+		return 0, errors.Wrap(err, "closing series file")
 	}
-	return nil
+	return checksum, nil
 }

@@ -3,50 +3,12 @@ package v1
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"testing"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
-
-func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
-	seriesList = make([]SeriesWithBloom, 0, nSeries)
-	keysList = make([][][]byte, 0, nSeries)
-	for i := 0; i < nSeries; i++ {
-		var series Series
-		step := (throughFp - fromFp) / (model.Fingerprint(nSeries))
-		series.Fingerprint = fromFp + model.Fingerprint(i)*step
-		timeDelta := fromTs + (throughTs-fromTs)/model.Time(nSeries)*model.Time(i)
-		series.Chunks = []ChunkRef{
-			{
-				Start:    fromTs + timeDelta*model.Time(i),
-				End:      fromTs + timeDelta*model.Time(i),
-				Checksum: uint32(i),
-			},
-		}
-
-		var bloom Bloom
-		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
-
-		keys := make([][]byte, 0, keysPerSeries)
-		for j := 0; j < keysPerSeries; j++ {
-			key := []byte(fmt.Sprint(j))
-			bloom.Add(key)
-			keys = append(keys, key)
-		}
-
-		seriesList = append(seriesList, SeriesWithBloom{
-			Series: &series,
-			Bloom:  &bloom,
-		})
-		keysList = append(keysList, keys)
-	}
-	return
-}
 
 func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
 	for expected.Next() {
@@ -87,12 +49,16 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
+			schema := Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 10,
+				nGramSkip:   2,
+			}
+
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					schema: Schema{
-						version:  DefaultSchemaVersion,
-						encoding: chunkenc.EncSnappy,
-					},
+					schema:         schema,
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 				},
@@ -105,6 +71,10 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 			require.Nil(t, err)
 			block := NewBlock(tc.reader)
 			querier := NewBlockQuerier(block)
+
+			err = block.LoadHeaders()
+			require.Nil(t, err)
+			require.Equal(t, block.blooms.schema, schema)
 
 			for i := 0; i < len(data); i++ {
 				require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
@@ -208,7 +178,9 @@ func TestMergeBuilder(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	require.Nil(t, mergeBuilder.Build(builder))
+	_, err = mergeBuilder.Build(builder)
+	require.Nil(t, err)
+
 	block := NewBlock(reader)
 	querier := NewBlockQuerier(block)
 

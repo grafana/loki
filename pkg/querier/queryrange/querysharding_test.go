@@ -19,7 +19,9 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -170,9 +172,15 @@ func Test_astMapper(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		[]string{},
 	)
 
-	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
+	req := defaultReq()
+	req.Query = `{foo="bar"}`
+	req.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(req.Query),
+	}
+	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 
 	require.Equal(t, []*definitions.PrometheusResponseHeader{
@@ -309,9 +317,15 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 					maxQuerierBytesRead:     tc.maxQuerierBytesSize,
 				},
 				0,
+				[]string{},
 			)
 
-			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(tc.query))
+			req := defaultReq()
+			req.Query = tc.query
+			req.Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tc.query),
+			}
+			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 			if err != nil {
 				require.ErrorContains(t, err, tc.err)
 			}
@@ -342,9 +356,16 @@ func Test_ShardingByPass(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 		0,
+		[]string{},
 	)
 
-	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
+	req := defaultReq()
+	req.Query = `1+1`
+	req.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(req.Query),
+	}
+
+	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Nil(t, err)
 	require.Equal(t, called, 1)
 }
@@ -416,7 +437,9 @@ func Test_InstantSharding(t *testing.T) {
 			queryTimeout:        time.Second,
 		},
 		0,
-		nil)
+		nil,
+		[]string{},
+	)
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
@@ -437,6 +460,9 @@ func Test_InstantSharding(t *testing.T) {
 		Query:  `rate({app="foo"}[1m])`,
 		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"}[1m])`),
+		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, called, "expected 3 calls but got {}", called)
@@ -487,13 +513,13 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			Version: 1,
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{
-						"foo": "bar",
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "foo", Value: "bar"},
 					},
 				},
 				{
-					Labels: map[string]string{
-						"shard": req.Shards[0],
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "shard", Value: req.Shards[0]},
 					},
 				},
 			},
@@ -511,36 +537,31 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Version:    1,
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{
-					"foo": "bar",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "foo", Value: "bar"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "0_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "0_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "1_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "1_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "2_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "2_of_3"},
 				},
 			},
 		},
 	}
-	sort.Slice(expected.Data, func(i, j int) bool {
-		return expected.Data[i].Labels["shard"] > expected.Data[j].Labels["shard"]
-	})
 	actual := response.(*LokiSeriesResponse)
-	sort.Slice(actual.Data, func(i, j int) bool {
-		return actual.Data[i].Labels["shard"] > actual.Data[j].Labels["shard"]
-	})
 	require.NoError(t, err)
-	require.Equal(t, expected, actual)
+	require.Equal(t, expected.Status, actual.Status)
+	require.ElementsMatch(t, expected.Data, actual.Data)
 }
 
 func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
@@ -564,7 +585,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 	}{
 		{
 			name: "logs query touching just the active schema config",
-			req:  defaultReq().WithStartEndTime(now.Add(-time.Hour).Time(), now.Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEnd(now.Add(-time.Hour).Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -575,7 +596,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "logs query touching just the prev schema config",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), confs[0].From.Time.Add(time.Hour).Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), confs[0].From.Time.Add(time.Hour).Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -586,7 +607,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query touching just the active schema config",
-			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -603,7 +624,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query touching just the prev schema config",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Add(time.Hour).Time(), confs[0].From.Time.Add(2*time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Add(time.Hour).Time(), confs[0].From.Time.Add(2*time.Hour).Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -620,7 +641,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "logs query covering both schemas",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Headers: []definitions.PrometheusResponseHeader{
@@ -631,7 +652,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query covering both schemas",
-			req:  defaultReq().WithStartEndTime(confs[0].From.Time.Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m])`),
+			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -648,7 +669,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough range to cover previous schema too",
-			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), confs[1].From.Time.Add(time.Hour).Time()).WithQuery(`rate({foo="bar"}[24h])`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -665,7 +686,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 		},
 		{
 			name: "metric query with start/end within first schema but with large enough offset to shift it to previous schema",
-			req:  defaultReq().WithStartEndTime(confs[1].From.Time.Add(5*time.Minute).Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m] offset 12h)`),
+			req:  defaultReq().WithStartEnd(confs[1].From.Time.Add(5*time.Minute).Time(), now.Time()).WithQuery(`rate({foo="bar"}[1m] offset 12h)`),
 			resp: &LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -701,7 +722,15 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 				0,
+				[]string{},
 			)
+
+			// currently all the tests call `defaultReq()` which creates an instance of the type LokiRequest
+			// if in the future that isn't true, we need another way to access the Plan field of an arbitrary query type
+			// or we should set the Plan in calls to `GetExpression` if the Plan is nil by calling `ParseExpr` or similar
+			tc.req.(*LokiRequest).Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(tc.req.GetQuery()),
+			}
 
 			resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), tc.req)
 			require.Nil(t, err)
@@ -828,14 +857,19 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		[]string{},
 	)
 
+	q := `{cluster="dev-us-central-0"}`
 	lokiReq := &LokiInstantRequest{
-		Query:     `{cluster="dev-us-central-0"}`,
+		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(q),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "foo")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -66,7 +67,19 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 	)
 	require.NoError(t, clu.Run())
 
-	// finally, run the query-frontend and querier.
+	// the run querier.
+	var (
+		tQuerier = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend.
 	var (
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
@@ -76,13 +89,8 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-querier.per-request-limits-enabled=true",
 			"-frontend.encoding=protobuf",
-		)
-		_ = clu.AddComponent(
-			"querier",
-			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-querier.shard-aggregations=quantile_over_time",
+			"-frontend.tail-proxy-url="+tQuerier.HTTPURL(),
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -138,6 +146,16 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 		assert.ElementsMatch(t, []map[string]string{{"job": "fake"}}, resp)
 	})
 
+	t.Run("series error", func(t *testing.T) {
+		_, err := cliQueryFrontend.Series(context.Background(), `{job="fake"}|= "search"`)
+		require.ErrorContains(t, err, "status code 400: only label matchers are supported")
+	})
+
+	t.Run("stats error", func(t *testing.T) {
+		_, err := cliQueryFrontend.Stats(context.Background(), `{job="fake"}|= "search"`)
+		require.ErrorContains(t, err, "status code 400: only label matchers are supported")
+	})
+
 	t.Run("per-request-limits", func(t *testing.T) {
 		queryLimitsPolicy := client.InjectHeadersOption(map[string][]string{querylimits.HTTPHeaderQueryLimitsKey: {`{"maxQueryLength": "1m"}`}})
 		cliQueryFrontendLimited := client.New(tenantID, "", tQueryFrontend.HTTPURL(), queryLimitsPolicy)
@@ -145,6 +163,47 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 
 		_, err := cliQueryFrontendLimited.LabelNames(context.Background())
 		require.ErrorContains(t, err, "the query time range exceeds the limit (query length")
+	})
+
+	t.Run("tail", func(t *testing.T) {
+		ctx, cancelFunc := context.WithCancel(context.Background())
+		defer cancelFunc()
+
+		out := make(chan client.TailResult)
+		wc, err := cliQueryFrontend.Tail(ctx, `{job="fake"}`, out)
+		require.NoError(t, err)
+		defer wc.Close()
+
+		var lines []string
+		mu := sync.Mutex{}
+		done := make(chan struct{})
+		go func() {
+			for resp := range out {
+				require.NoError(t, resp.Err)
+				for _, stream := range resp.Response.Streams {
+					for _, e := range stream.Entries {
+						mu.Lock()
+						lines = append(lines, e.Line)
+						mu.Unlock()
+					}
+				}
+			}
+			done <- struct{}{}
+		}()
+		assert.Eventually(
+			t,
+			func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+				return len(lines) == 4
+			},
+			10*time.Second,
+			100*time.Millisecond,
+		)
+		wc.Close()
+		cancelFunc()
+		<-done
+		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
 	})
 }
 
@@ -888,6 +947,7 @@ func TestCategorizedLabels(t *testing.T) {
 					},
 					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
 					CategorizedLabels: []map[string]map[string]string{
+						{},
 						{
 							"structuredMetadata": {
 								"traceID": "123",
@@ -923,6 +983,7 @@ func TestCategorizedLabels(t *testing.T) {
 					},
 					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
 					CategorizedLabels: []map[string]map[string]string{
+						{},
 						{
 							"structuredMetadata": {
 								"traceID": "123",

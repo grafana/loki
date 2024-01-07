@@ -17,7 +17,9 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 )
@@ -57,25 +59,31 @@ var testSchemasTSDB = func() []config.PeriodConfig {
 func Test_splitQuery(t *testing.T) {
 	buildLokiRequest := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
-			Query:     "foo",
+			Query:     `{app="foo"}`,
 			Limit:     1,
 			Step:      2,
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
 			Path:      "/path",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{app="foo"}`),
+			},
 		}
 	}
 
 	buildLokiRequestWithInterval := func(start, end time.Time) queryrangebase.Request {
 		return &LokiRequest{
-			Query:     "foo",
+			Query:     `{app="foo"}`,
 			Limit:     1,
 			Interval:  2,
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
 			Path:      "/path",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{app="foo"}`),
+			},
 		}
 	}
 
@@ -220,7 +228,7 @@ func Test_splitMetricQuery(t *testing.T) {
 	const seconds = 1e3 // 1e3 milliseconds per second.
 
 	for i, tc := range []struct {
-		input    queryrangebase.Request
+		input    *LokiRequest
 		expected []queryrangebase.Request
 		interval time.Duration
 	}{
@@ -592,6 +600,17 @@ func Test_splitMetricQuery(t *testing.T) {
 			interval: 15 * time.Minute,
 		},
 	} {
+		// Set query plans
+		tc.input.Plan = &plan.QueryPlan{
+			AST: syntax.MustParseExpr(tc.input.Query),
+		}
+
+		for _, e := range tc.expected {
+			e.(*LokiRequest).Plan = &plan.QueryPlan{
+				AST: syntax.MustParseExpr(e.GetQuery()),
+			}
+		}
+
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			splits, err := splitMetricByTime(tc.input, tc.interval)
 			require.NoError(t, err)
@@ -788,19 +807,33 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 			Version: uint32(loghttp.VersionV1),
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "filename", Value: "/var/hostlog/apport.log"},
+						{Key: "job", Value: "varlogs"},
+					},
 				},
 				{
-					Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "filename", Value: "/var/hostlog/test.log"},
+						{Key: "job", Value: "varlogs"},
+					},
 				},
 				{
-					Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "filename", Value: "/var/hostlog/test.log"},
+						{Key: "job", Value: "varlogs"},
+					},
 				},
 			},
 		}, nil
 	})
 
-	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+	l := fakeLimits{
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": time.Hour,
+		},
+	}
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
@@ -828,10 +861,16 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 				Version:    1,
 				Data: []logproto.SeriesIdentifier{
 					{
-						Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "filename", Value: "/var/hostlog/apport.log"},
+							{Key: "job", Value: "varlogs"},
+						},
 					},
 					{
-						Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "filename", Value: "/var/hostlog/test.log"},
+							{Key: "job", Value: "varlogs"},
+						},
 					},
 				},
 			},

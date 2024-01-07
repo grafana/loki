@@ -144,7 +144,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
 
     grafanaDashboards+: {
       'loki-retention.json'+: {
-        local dropList = ['Logs'],
+        // TODO (JoaoBraveCoding) Once we upgrade to 3.x we should be able to lift the drops on
+        // 'Number of times Tables were skipped during Compaction' and 'Retention' since Loki will then have the
+        // updated metrics
+        local dropList = ['Logs', 'Number of times Tables were skipped during Compaction', 'Retention'],
         local replacements = [
           { from: 'cluster=~"$cluster",', to: '' },
           { from: 'container="compactor"', to: 'container=~".+-compactor"' },
@@ -155,7 +158,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         tags: defaultLokiTags(super.tags),
         rows: [
           r {
-            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat')], r.panels),
+            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat')], dropPanels(r.panels, dropList, function(p) true)),
           }
           for r in dropPanels(super.rows, dropList, function(p) true)
         ],
@@ -181,7 +184,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         },
       },
       'loki-reads.json'+: {
-        local dropList = ['BigTable', 'Ingester - Zone Aware'],
+        // We drop both BigTable and BlotDB dashboards as they have been
+        // replaced by the Index dashboards
+        local dropList = ['BigTable', 'Ingester - Zone Aware', 'BoltDB Shipper'],
+
 
         uid: '62q5jjYwhVSaz4Mcrm8tV3My3gcKED',
         title: 'OpenShift Logging / LokiStack / Reads',
@@ -220,7 +226,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         },
       },
       'loki-writes.json'+: {
-        local dropList = ['Ingester - Zone Aware'],
+        local dropList = ['Ingester - Zone Aware', 'BoltDB Shipper'],
         uid: 'F6nRYKuXmFVpVSFQmXr7cgXy5j7UNr',
         title: 'OpenShift Logging / LokiStack / Writes',
         tags: defaultLokiTags(super.tags),
@@ -239,6 +245,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
             utils.selector.re('job', '.+-ingester-http'),
           ],
           ingester_zone:: [],
+          any_ingester:: [
+            utils.selector.eq('namespace', '$namespace'),
+            utils.selector.re('job', '.+-ingester-http'),
+          ],
         },
         rows: dropPanels(super.rows, dropList, function(p) true),
         templating+: {

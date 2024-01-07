@@ -42,6 +42,8 @@ BUILD_IMAGE_VERSION ?= 0.31.2
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
+BUILD_IMAGE_PREFIX ?= grafana
+
 IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
@@ -102,7 +104,7 @@ RM := --rm
 TTY := --tty
 
 DOCKER_BUILDKIT ?= 1
-BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+BUILD_IMAGE = BUILD_IMAGE=$(BUILD_IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
 PUSH_OCI=docker push
 TAG_OCI=docker tag
 ifeq ($(CI), true)
@@ -425,7 +427,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -836,6 +838,7 @@ dev-k3d-down:
 .PHONY: trivy
 trivy: loki-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk

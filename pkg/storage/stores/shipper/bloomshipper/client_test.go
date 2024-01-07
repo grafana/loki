@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	aws_io "github.com/aws/smithy-go/io"
+	awsio "github.com/aws/smithy-go/io"
 	"github.com/google/uuid"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -28,11 +28,26 @@ const (
 
 var (
 	// table 19627
-	fixedDay = model.TimeFromUnix(time.Date(2023, time.September, 27, 0, 0, 0, 0, time.UTC).Unix())
+	fixedDay = Date(2023, time.September, 27, 0, 0, 0)
 )
 
+func Date(year int, month time.Month, day, hour, min, sec int) model.Time {
+	date := time.Date(year, month, day, hour, min, sec, 0, time.UTC)
+	return model.TimeFromUnixNano(date.UnixNano())
+}
+
+func parseDayTime(s string) config.DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return config.DayTime{
+		Time: model.TimeFromUnix(t.Unix()),
+	}
+}
+
 func Test_BloomClient_GetMetas(t *testing.T) {
-	shipper := createShipper(t)
+	shipper := createClient(t)
 
 	var expected []Meta
 	folder1 := shipper.storageConfig.NamedStores.Filesystem["folder-1"].Directory
@@ -57,8 +72,8 @@ func Test_BloomClient_GetMetas(t *testing.T) {
 		TenantID:       "tenantA",
 		MinFingerprint: 50,
 		MaxFingerprint: 150,
-		StartTimestamp: fixedDay.Add(-6 * day).Unix(),
-		EndTimestamp:   fixedDay.Add(-1*day - 1*time.Hour).Unix(),
+		StartTimestamp: fixedDay.Add(-6 * day),
+		EndTimestamp:   fixedDay.Add(-1*day - 1*time.Hour),
 	})
 	require.NoError(t, err)
 	require.ElementsMatch(t, expected, actual)
@@ -75,36 +90,36 @@ func Test_BloomClient_PutMeta(t *testing.T) {
 				"first-period-19621",
 				0xff,
 				0xfff,
-				time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
-				time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+				Date(2023, time.September, 21, 5, 0, 0),
+				Date(2023, time.September, 21, 6, 0, 0),
 				0xaaa,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-1",
-			expectedFilePath: "bloom/first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa",
+			expectedFilePath: "bloom/first-period-19621/tenantA/metas/ff-fff-1695272400000-1695276000000-aaa",
 		},
 		"expected meta to be uploaded to the second folder": {
 			source: createMetaEntity("tenantA",
 				"second-period-19625",
 				200,
 				300,
-				time.Date(2023, time.September, 25, 0, 0, 0, 0, time.UTC).Unix(),
-				time.Date(2023, time.September, 25, 1, 0, 0, 0, time.UTC).Unix(),
+				Date(2023, time.September, 25, 0, 0, 0),
+				Date(2023, time.September, 25, 1, 0, 0),
 				0xbbb,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-2",
-			expectedFilePath: "bloom/second-period-19625/tenantA/metas/c8-12c-1695600000-1695603600-bbb",
+			expectedFilePath: "bloom/second-period-19625/tenantA/metas/c8-12c-1695600000000-1695603600000-bbb",
 		},
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			shipper := createShipper(t)
+			bloomClient := createClient(t)
 
-			err := shipper.PutMeta(context.Background(), data.source)
+			err := bloomClient.PutMeta(context.Background(), data.source)
 			require.NoError(t, err)
 
-			directory := shipper.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
+			directory := bloomClient.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
 			filePath := filepath.Join(directory, data.expectedFilePath)
 			require.FileExists(t, filePath)
 			content, err := os.ReadFile(filePath)
@@ -131,39 +146,39 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 				"first-period-19621",
 				0xff,
 				0xfff,
-				time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
-				time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+				Date(2023, time.September, 21, 5, 0, 0),
+				Date(2023, time.September, 21, 6, 0, 0),
 				0xaaa,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-1",
-			expectedFilePath: "bloom/first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa",
+			expectedFilePath: "bloom/first-period-19621/tenantA/metas/ff-fff-1695272400000-1695276000000-aaa",
 		},
 		"expected meta to be delete from the second folder": {
 			source: createMetaEntity("tenantA",
 				"second-period-19625",
 				200,
 				300,
-				time.Date(2023, time.September, 25, 0, 0, 0, 0, time.UTC).Unix(),
-				time.Date(2023, time.September, 25, 1, 0, 0, 0, time.UTC).Unix(),
+				Date(2023, time.September, 25, 0, 0, 0),
+				Date(2023, time.September, 25, 1, 0, 0),
 				0xbbb,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-2",
-			expectedFilePath: "bloom/second-period-19625/tenantA/metas/c8-12c-1695600000-1695603600-bbb",
+			expectedFilePath: "bloom/second-period-19625/tenantA/metas/c8-12c-1695600000000-1695603600000-bbb",
 		},
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			shipper := createShipper(t)
-			directory := shipper.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
+			bloomClient := createClient(t)
+			directory := bloomClient.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
 			file := filepath.Join(directory, data.expectedFilePath)
 			err := os.MkdirAll(file[:strings.LastIndex(file, delimiter)], 0755)
 			require.NoError(t, err)
 			err = os.WriteFile(file, []byte("dummy content"), 0700)
 			require.NoError(t, err)
 
-			err = shipper.DeleteMeta(context.Background(), data.source)
+			err = bloomClient.DeleteMeta(context.Background(), data.source)
 			require.NoError(t, err)
 
 			require.NoFileExists(t, file)
@@ -173,12 +188,12 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 }
 
 func Test_BloomClient_GetBlocks(t *testing.T) {
-	shipper := createShipper(t)
-	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
-	firstBlockPath := "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400-1695276000-1"
+	bloomClient := createClient(t)
+	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
+	firstBlockPath := "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1"
 	firstBlockFullPath := filepath.Join(fsNamedStores["folder-1"].Directory, firstBlockPath)
 	firstBlockData := createBlockFile(t, firstBlockFullPath)
-	secondBlockPath := "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600-1695535200-2"
+	secondBlockPath := "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600000-1695535200000-2"
 	secondBlockFullPath := filepath.Join(fsNamedStores["folder-2"].Directory, secondBlockPath)
 	secondBlockData := createBlockFile(t, secondBlockFullPath)
 	require.FileExists(t, firstBlockFullPath)
@@ -190,8 +205,8 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 			TableName:      "first-period-19621",
 			MinFingerprint: 0xeeee,
 			MaxFingerprint: 0xffff,
-			StartTimestamp: time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
-			EndTimestamp:   time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+			StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
+			EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 			Checksum:       1,
 		},
 		BlockPath: firstBlockPath,
@@ -202,51 +217,28 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 			TableName:      "second-period-19624",
 			MinFingerprint: 0xaaaa,
 			MaxFingerprint: 0xbbbb,
-			StartTimestamp: time.Date(2023, time.September, 24, 5, 0, 0, 0, time.UTC).Unix(),
-			EndTimestamp:   time.Date(2023, time.September, 24, 6, 0, 0, 0, time.UTC).Unix(),
+			StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
+			EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 			Checksum:       2,
 		},
 		BlockPath: secondBlockPath,
 	}
 
-	blocksToDownload := []BlockRef{firstBlockRef, secondBlockRef}
+	downloadedFirstBlock, err := bloomClient.GetBlock(context.Background(), firstBlockRef)
+	require.NoError(t, err)
+	firstBlockActualData, err := io.ReadAll(downloadedFirstBlock.Data)
+	require.NoError(t, err)
+	require.Equal(t, firstBlockData, string(firstBlockActualData))
 
-	blocksCh, errorsCh := shipper.GetBlocks(context.Background(), blocksToDownload)
-	blocks := make(map[string]string)
-	func() {
-		timout := time.After(5 * time.Second)
-		for {
-			select {
-			case <-timout:
-				t.Fatalf("the test had to be completed before the timeout")
-				return
-			case err := <-errorsCh:
-				require.NoError(t, err)
-			case block, ok := <-blocksCh:
-				if !ok {
-					return
-				}
-				blockData, err := io.ReadAll(block.Data)
-				require.NoError(t, err)
-				blocks[block.BlockRef.BlockPath] = string(blockData)
-
-			}
-		}
-	}()
-
-	firstBlockActualData, exists := blocks[firstBlockRef.BlockPath]
-	require.Truef(t, exists, "data for the first block must be present in the results: %+v", blocks)
-	require.Equal(t, firstBlockData, firstBlockActualData)
-
-	secondBlockActualData, exists := blocks[secondBlockRef.BlockPath]
-	require.True(t, exists, "data for the second block must be present in the results: %+v", blocks)
-	require.Equal(t, secondBlockData, secondBlockActualData)
-
-	require.Len(t, blocks, 2)
+	downloadedSecondBlock, err := bloomClient.GetBlock(context.Background(), secondBlockRef)
+	require.NoError(t, err)
+	secondBlockActualData, err := io.ReadAll(downloadedSecondBlock.Data)
+	require.NoError(t, err)
+	require.Equal(t, secondBlockData, string(secondBlockActualData))
 }
 
 func Test_BloomClient_PutBlocks(t *testing.T) {
-	shipper := createShipper(t)
+	bloomClient := createClient(t)
 	blockForFirstFolderData := "data1"
 	blockForFirstFolder := Block{
 		BlockRef: BlockRef{
@@ -255,13 +247,13 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 				TableName:      "first-period-19621",
 				MinFingerprint: 0xeeee,
 				MaxFingerprint: 0xffff,
-				StartTimestamp: time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
-				EndTimestamp:   time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+				StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
+				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 				Checksum:       1,
 			},
 			IndexPath: uuid.New().String(),
 		},
-		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
+		Data: awsio.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
 	}
 
 	blockForSecondFolderData := "data2"
@@ -272,21 +264,21 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 				TableName:      "second-period-19624",
 				MinFingerprint: 0xaaaa,
 				MaxFingerprint: 0xbbbb,
-				StartTimestamp: time.Date(2023, time.September, 24, 5, 0, 0, 0, time.UTC).Unix(),
-				EndTimestamp:   time.Date(2023, time.September, 24, 6, 0, 0, 0, time.UTC).Unix(),
+				StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
+				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 				Checksum:       2,
 			},
 			IndexPath: uuid.New().String(),
 		},
-		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
+		Data: awsio.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
 	}
 
-	results, err := shipper.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
+	results, err := bloomClient.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	firstResultBlock := results[0]
 	path := firstResultBlock.BlockPath
-	require.Equal(t, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400-1695276000-1", path)
+	require.Equal(t, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1", path)
 	require.Equal(t, blockForFirstFolder.TenantID, firstResultBlock.TenantID)
 	require.Equal(t, blockForFirstFolder.TableName, firstResultBlock.TableName)
 	require.Equal(t, blockForFirstFolder.MinFingerprint, firstResultBlock.MinFingerprint)
@@ -295,7 +287,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, blockForFirstFolder.EndTimestamp, firstResultBlock.EndTimestamp)
 	require.Equal(t, blockForFirstFolder.Checksum, firstResultBlock.Checksum)
 	require.Equal(t, blockForFirstFolder.IndexPath, firstResultBlock.IndexPath)
-	folder1 := shipper.storageConfig.NamedStores.Filesystem["folder-1"].Directory
+	folder1 := bloomClient.storageConfig.NamedStores.Filesystem["folder-1"].Directory
 	savedFilePath := filepath.Join(folder1, path)
 	require.FileExists(t, savedFilePath)
 	savedData, err := os.ReadFile(savedFilePath)
@@ -304,7 +296,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 
 	secondResultBlock := results[1]
 	path = secondResultBlock.BlockPath
-	require.Equal(t, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600-1695535200-2", path)
+	require.Equal(t, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600000-1695535200000-2", path)
 	require.Equal(t, blockForSecondFolder.TenantID, secondResultBlock.TenantID)
 	require.Equal(t, blockForSecondFolder.TableName, secondResultBlock.TableName)
 	require.Equal(t, blockForSecondFolder.MinFingerprint, secondResultBlock.MinFingerprint)
@@ -313,7 +305,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, blockForSecondFolder.EndTimestamp, secondResultBlock.EndTimestamp)
 	require.Equal(t, blockForSecondFolder.Checksum, secondResultBlock.Checksum)
 	require.Equal(t, blockForSecondFolder.IndexPath, secondResultBlock.IndexPath)
-	folder2 := shipper.storageConfig.NamedStores.Filesystem["folder-2"].Directory
+	folder2 := bloomClient.storageConfig.NamedStores.Filesystem["folder-2"].Directory
 
 	savedFilePath = filepath.Join(folder2, path)
 	require.FileExists(t, savedFilePath)
@@ -323,11 +315,11 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 }
 
 func Test_BloomClient_DeleteBlocks(t *testing.T) {
-	shipper := createShipper(t)
-	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
-	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400-1695276000-1")
+	bloomClient := createClient(t)
+	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
+	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1")
 	createBlockFile(t, block1Path)
-	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600-1695535200-2")
+	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600000-1695535200000-2")
 	createBlockFile(t, block2Path)
 	require.FileExists(t, block1Path)
 	require.FileExists(t, block2Path)
@@ -339,8 +331,8 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 				TableName:      "second-period-19624",
 				MinFingerprint: 0xaaaa,
 				MaxFingerprint: 0xbbbb,
-				StartTimestamp: time.Date(2023, time.September, 24, 5, 0, 0, 0, time.UTC).Unix(),
-				EndTimestamp:   time.Date(2023, time.September, 24, 6, 0, 0, 0, time.UTC).Unix(),
+				StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
+				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 				Checksum:       2,
 			},
 			IndexPath: uuid.New().String(),
@@ -351,14 +343,14 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 				TableName:      "first-period-19621",
 				MinFingerprint: 0xeeee,
 				MaxFingerprint: 0xffff,
-				StartTimestamp: time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
-				EndTimestamp:   time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+				StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
+				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 				Checksum:       1,
 			},
 			IndexPath: uuid.New().String(),
 		},
 	}
-	err := shipper.DeleteBlocks(context.Background(), blocksToDelete)
+	err := bloomClient.DeleteBlocks(context.Background(), blocksToDelete)
 	require.NoError(t, err)
 	require.NoFileExists(t, block1Path)
 	require.NoFileExists(t, block2Path)
@@ -500,7 +492,7 @@ func Test_createMetaRef(t *testing.T) {
 	}
 }
 
-func createShipper(t *testing.T) *BloomClient {
+func createClient(t *testing.T) *BloomClient {
 	periodicConfigs := createPeriodConfigs()
 	namedStores := storage.NamedStores{
 		Filesystem: map[string]storage.NamedFSConfig{
@@ -513,9 +505,9 @@ func createShipper(t *testing.T) *BloomClient {
 
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
-	bshipper, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
+	bloomClient, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
 	require.NoError(t, err)
-	return bshipper
+	return bloomClient
 }
 
 func createPeriodConfigs() []config.PeriodConfig {
@@ -523,7 +515,7 @@ func createPeriodConfigs() []config.PeriodConfig {
 		{
 			ObjectType: "folder-1",
 			// from 2023-09-20: table range [19620:19623]
-			From: config.DayTime{Time: model.TimeFromUnix(time.Date(2023, time.September, 20, 0, 0, 0, 0, time.UTC).Unix())},
+			From: parseDayTime("2023-09-20"),
 			IndexTables: config.IndexPeriodicTableConfig{
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Period: day,
@@ -533,7 +525,7 @@ func createPeriodConfigs() []config.PeriodConfig {
 		{
 			ObjectType: "folder-2",
 			// from 2023-09-24: table range [19624:19627]
-			From: config.DayTime{Time: model.TimeFromUnix(time.Date(2023, time.September, 24, 0, 0, 0, 0, time.UTC).Unix())},
+			From: parseDayTime("2023-09-24"),
 			IndexTables: config.IndexPeriodicTableConfig{
 				PeriodicTableConfig: config.PeriodicTableConfig{
 					Period: day,
@@ -545,15 +537,15 @@ func createPeriodConfigs() []config.PeriodConfig {
 }
 
 func createMetaInStorage(t *testing.T, folder string, tableName string, tenant string, minFingerprint uint64, maxFingerprint uint64, start model.Time) Meta {
-	startTimestamp := start.Unix()
-	endTimestamp := start.Add(12 * time.Hour).Unix()
+	end := start.Add(12 * time.Hour)
 
 	metaChecksum := rand.Uint32()
-	metaFileName := fmt.Sprintf("%x-%x-%v-%v-%x", minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum)
+	// make sure this is equal to the createMetaObjectKey()
+	metaFileName := fmt.Sprintf("%x-%x-%d-%d-%x", minFingerprint, maxFingerprint, start, end, metaChecksum)
 	metaFilePath := filepath.Join(rootFolder, tableName, tenant, metasFolder, metaFileName)
 	err := os.MkdirAll(filepath.Join(folder, metaFilePath[:strings.LastIndex(metaFilePath, delimiter)]), 0700)
 	require.NoError(t, err)
-	meta := createMetaEntity(tenant, tableName, minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum, metaFilePath)
+	meta := createMetaEntity(tenant, tableName, minFingerprint, maxFingerprint, start, end, metaChecksum, metaFilePath)
 
 	metaFileContent, err := json.Marshal(meta)
 	require.NoError(t, err)
@@ -567,8 +559,8 @@ func createMetaEntity(
 	tableName string,
 	minFingerprint uint64,
 	maxFingerprint uint64,
-	startTimestamp int64,
-	endTimestamp int64,
+	startTimestamp model.Time,
+	endTimestamp model.Time,
 	metaChecksum uint32,
 	metaFilePath string) Meta {
 	return Meta{

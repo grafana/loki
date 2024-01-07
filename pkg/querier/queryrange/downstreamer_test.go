@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -223,8 +227,8 @@ func TestInstanceFor(t *testing.T) {
 	}
 	in := mkIn()
 	newParams := func() logql.Params {
-		return logql.NewLiteralParams(
-			"",
+		params, err := logql.NewLiteralParams(
+			`{app="foo"}`,
 			time.Now(),
 			time.Now(),
 			0,
@@ -233,6 +237,8 @@ func TestInstanceFor(t *testing.T) {
 			1000,
 			nil,
 		)
+		require.NoError(t, err)
+		return params
 	}
 
 	var queries []logql.DownstreamQuery
@@ -280,22 +286,32 @@ func TestInstanceFor(t *testing.T) {
 		context.TODO(),
 		[]logql.DownstreamQuery{
 			{
-				Params: newParams(),
-				Shards: logql.Shards{
-					{Shard: 0, Of: 2},
+				Params: logql.ParamsWithShardsOverride{
+					Params: newParams(),
+					ShardsOverride: logql.Shards{
+						{Shard: 0, Of: 2},
+					}.Encode(),
 				},
 			},
 			{
-				Params: newParams(),
-				Shards: logql.Shards{
-					{Shard: 1, Of: 2},
+				Params: logql.ParamsWithShardsOverride{
+					Params: newParams(),
+					ShardsOverride: logql.Shards{
+						{Shard: 1, Of: 2},
+					}.Encode(),
 				},
 			},
 		},
 		func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
+			// Decode shard
+			s := strings.Split(qry.Params.Shards()[0], "_")
+			shard, err := strconv.Atoi(s[0])
+			if err != nil {
+				return logqlmodel.Result{}, err
+			}
 			return logqlmodel.Result{
 				Data: promql.Scalar{
-					V: float64(qry.Shards[0].Shard),
+					V: float64(shard),
 				},
 			}, nil
 		},
@@ -309,8 +325,8 @@ func TestInstanceFor(t *testing.T) {
 }
 
 func TestInstanceDownstream(t *testing.T) {
-	params := logql.NewLiteralParams(
-		"",
+	params, err := logql.NewLiteralParams(
+		`{foo="bar"}`,
 		time.Now(),
 		time.Now(),
 		0,
@@ -319,8 +335,9 @@ func TestInstanceDownstream(t *testing.T) {
 		1000,
 		nil,
 	)
+	require.NoError(t, err)
 	expr, err := syntax.ParseExpr(`{foo="bar"}`)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	expectedResp := func() *LokiResponse {
 		return &LokiResponse{
@@ -340,9 +357,10 @@ func TestInstanceDownstream(t *testing.T) {
 
 	queries := []logql.DownstreamQuery{
 		{
-			Expr:   expr,
-			Params: params,
-			Shards: logql.Shards{{Shard: 0, Of: 2}},
+			Params: logql.ParamsWithShardsOverride{
+				Params:         logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: expr},
+				ShardsOverride: logql.Shards{{Shard: 0, Of: 2}}.Encode(),
+			},
 		},
 	}
 
@@ -353,7 +371,7 @@ func TestInstanceDownstream(t *testing.T) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(params, queries[0].Shards).WithQuery(expr.String())
+			want = ParamsToLokiRequest(queries[0].Params).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},
@@ -484,9 +502,10 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 		x = append(x, *s)
 	}
 	// dummy params. Only need to populate direction & limit
-	params := logql.NewLiteralParams(
-		"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+	params, err := logql.NewLiteralParams(
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 	)
+	require.NoError(t, err)
 
 	acc := newDownstreamAccumulator(params, 1)
 	result := logqlmodel.Result{
@@ -542,9 +561,10 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			}
 
 			// dummy params. Only need to populate direction & limit
-			params := logql.NewLiteralParams(
-				"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+			params, err := logql.NewLiteralParams(
+				`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 			)
+			require.NoError(t, err)
 
 			acc := newDownstreamAccumulator(params, 1)
 			for i := 0; i < nQueries; i++ {
@@ -579,4 +599,94 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			}
 		})
 	}
+}
+
+func BenchmarkAccumulator(b *testing.B) {
+
+	// dummy params. Only need to populate direction & limit
+	lim := 30
+	params, err := logql.NewLiteralParams(
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.BACKWARD, uint32(lim), nil,
+	)
+	require.NoError(b, err)
+
+	for acc, tc := range map[string]struct {
+		results []logqlmodel.Result
+		params  logql.Params
+	}{
+		"streams": {
+			newStreamResults(),
+			params,
+		},
+		"quantile sketches": {
+			newQuantileSketchResults(),
+			params,
+		},
+	} {
+		b.Run(acc, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for n := 0; n < b.N; n++ {
+
+				acc := newDownstreamAccumulator(params, len(tc.results))
+				for i, r := range tc.results {
+					err := acc.Accumulate(context.Background(), i, r)
+					require.Nil(b, err)
+				}
+
+				acc.Result()
+			}
+		})
+	}
+}
+
+func newStreamResults() []logqlmodel.Result {
+	nQueries := 50
+	delta := 100 // 10 entries per stream, 1s apart
+	streamsPerQuery := 50
+
+	results := make([]logqlmodel.Result, nQueries)
+	for i := 0; i < nQueries; i++ {
+		start := i * delta
+		end := start + delta
+		streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, streamsPerQuery, logproto.BACKWARD)
+		var res logqlmodel.Streams
+		for i := range streams {
+			res = append(res, *streams[i])
+		}
+		results[i] = logqlmodel.Result{Data: res}
+
+	}
+
+	return results
+}
+
+func newQuantileSketchResults() []logqlmodel.Result {
+	results := make([]logqlmodel.Result, 100)
+
+	for r := range results {
+		vectors := make([]logql.ProbabilisticQuantileVector, 10)
+		for i := range vectors {
+			vectors[i] = make(logql.ProbabilisticQuantileVector, 10)
+			for j := range vectors[i] {
+				vectors[i][j] = logql.ProbabilisticQuantileSample{
+					T:      int64(i),
+					F:      newRandomSketch(),
+					Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
+				}
+			}
+		}
+		results[r] = logqlmodel.Result{Data: logql.ProbabilisticQuantileMatrix(vectors)}
+	}
+
+	return results
+}
+
+func newRandomSketch() sketch.QuantileSketch {
+	r := rand.New(rand.NewSource(42))
+	s := sketch.NewDDSketch()
+	for i := 0; i < 1000; i++ {
+		_ = s.Add(r.Float64())
+	}
+	return s
 }

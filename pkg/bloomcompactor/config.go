@@ -42,6 +42,8 @@ type Limits interface {
 	downloads.Limits
 	BloomCompactorShardSize(tenantID string) int
 	BloomCompactorMaxTableAge(tenantID string) time.Duration
-	BloomCompactorMinTableAge(tenantID string) time.Duration
 	BloomCompactorEnabled(tenantID string) bool
+	BloomNGramLength(tenantID string) int
+	BloomNGramSkip(tenantID string) int
+	BloomFalsePositiveRate(tenantID string) float64
 }

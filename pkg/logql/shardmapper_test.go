@@ -51,7 +51,7 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 
 	for _, tc := range []struct {
 		in  syntax.SampleExpr
@@ -113,7 +113,7 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -418,7 +418,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 
 	for _, tc := range []struct {
 		in   string
@@ -465,9 +465,11 @@ func TestMapping(t *testing.T) {
 						},
 						MultiStages: syntax.MultiStageExpr{
 							&syntax.LineFilterExpr{
-								Ty:    labels.MatchEqual,
-								Match: "error",
-								Op:    "",
+								LineFilter: syntax.LineFilter{
+									Ty:    labels.MatchEqual,
+									Match: "error",
+									Op:    "",
+								},
 							},
 						},
 					},
@@ -484,9 +486,11 @@ func TestMapping(t *testing.T) {
 							},
 							MultiStages: syntax.MultiStageExpr{
 								&syntax.LineFilterExpr{
-									Ty:    labels.MatchEqual,
-									Match: "error",
-									Op:    "",
+									LineFilter: syntax.LineFilter{
+										Ty:    labels.MatchEqual,
+										Match: "error",
+										Op:    "",
+									},
 								},
 							},
 						},
@@ -1361,14 +1365,14 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 
 func TestStringTrimming(t *testing.T) {
 	for _, tc := range []struct {
-		expr     string
+		expr     syntax.Expr
 		expected string
 		shards   int
 	}{
 		{
 			// sample expr in entirety for low shard count
 			shards: 2,
-			expr:   `count_over_time({app="foo"}[1m])`,
+			expr:   syntax.MustParseExpr(`count_over_time({app="foo"}[1m])`),
 			expected: `
 				downstream<count_over_time({app="foo"}[1m]),shard=0_of_2> ++
 				downstream<count_over_time({app="foo"}[1m]),shard=1_of_2>
@@ -1377,7 +1381,7 @@ func TestStringTrimming(t *testing.T) {
 		{
 			// sample expr doesnt display infinite shards
 			shards: 5,
-			expr:   `count_over_time({app="foo"}[1m])`,
+			expr:   syntax.MustParseExpr(`count_over_time({app="foo"}[1m])`),
 			expected: `
 				downstream<count_over_time({app="foo"}[1m]),shard=0_of_5> ++
 				downstream<count_over_time({app="foo"}[1m]),shard=1_of_5> ++
@@ -1389,7 +1393,7 @@ func TestStringTrimming(t *testing.T) {
 		{
 			// log selector expr in entirety for low shard count
 			shards: 2,
-			expr:   `{app="foo"}`,
+			expr:   syntax.MustParseExpr(`{app="foo"}`),
 			expected: `
 				downstream<{app="foo"},shard=0_of_2> ++
 				downstream<{app="foo"},shard=1_of_2>
@@ -1398,7 +1402,7 @@ func TestStringTrimming(t *testing.T) {
 		{
 			// log selector expr doesnt display infinite shards
 			shards: 5,
-			expr:   `{app="foo"}`,
+			expr:   syntax.MustParseExpr(`{app="foo"}`),
 			expected: `
 				downstream<{app="foo"},shard=0_of_5> ++
 				downstream<{app="foo"},shard=1_of_5> ++
@@ -1408,8 +1412,8 @@ func TestStringTrimming(t *testing.T) {
 			`,
 		},
 	} {
-		t.Run(tc.expr, func(t *testing.T) {
-			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics)
+		t.Run(tc.expr.String(), func(t *testing.T) {
+			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))

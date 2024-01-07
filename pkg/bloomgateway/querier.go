@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 // BloomQuerier is a store-level abstraction on top of Client
@@ -17,7 +18,7 @@ type BloomQuerier struct {
 	logger log.Logger
 }
 
-func NewBloomQuerier(c Client, logger log.Logger) *BloomQuerier {
+func NewQuerier(c Client, logger log.Logger) *BloomQuerier {
 	return &BloomQuerier{c: c, logger: logger}
 }
 
@@ -25,23 +26,21 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 	return &logproto.ShortRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum}
 }
 
-func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error) {
+func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, filters ...syntax.LineFilter) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
 	if len(chunkRefs) == 0 || len(filters) == 0 {
 		return chunkRefs, nil
 	}
 
-	// TODO(chaudum): Make buffer pool to reduce allocations.
 	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
-	grouped := make([]*logproto.GroupedChunkRefs, 0, len(chunkRefs))
+	grouped := groupedChunksRefPool.Get(len(chunkRefs))
+	defer groupedChunksRefPool.Put(grouped)
 	grouped = groupChunkRefs(chunkRefs, grouped)
 
 	refs, err := bq.c.FilterChunks(ctx, tenant, from, through, grouped, filters...)
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO(chaudum): Cache response
 
 	// Flatten response from client and return
 	result := make([]*logproto.ChunkRef, 0, len(chunkRefs))

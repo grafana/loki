@@ -39,6 +39,11 @@ func (ui QueueIndex) ReuseLastIndex() QueueIndex {
 	return ui - 1
 }
 
+type Limits interface {
+	// MaxConsumers returns the max consumers to use per tenant or 0 to allow all consumers to consume from the queue.
+	MaxConsumers(user string, allConsumers int) int
+}
+
 // Request stored into the queue.
 type Request any
 
@@ -59,13 +64,15 @@ type RequestQueue struct {
 	stopped bool
 
 	metrics *Metrics
+	pool    *SlicePool[Request]
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, limits Limits, metrics *Metrics) *RequestQueue {
 	q := &RequestQueue{
-		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay),
+		queues:             newTenantQueues(maxOutstandingPerTenant, forgetDelay, limits),
 		connectedConsumers: atomic.NewInt32(0),
 		metrics:            metrics,
+		pool:               NewSlicePool[Request](1<<6, 1<<10, 2), // Buckets are [64, 128, 256, 512, 1024].
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -74,12 +81,9 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, met
 	return q
 }
 
-// Enqueue puts the request into the queue. MaxQueries is tenant-specific value that specifies how many queriers can
-// this tenant use (zero or negative = all queriers). It is passed to each Enqueue, because it can change
-// between calls.
-//
+// Enqueue puts the request into the queue.
 // If request is successfully enqueued, successFn is called with the lock held, before any querier can receive the request.
-func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQueriers int, successFn func()) error {
+func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, successFn func()) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -87,10 +91,9 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 		return ErrStopped
 	}
 
-	queue := q.queues.getOrAddQueue(tenant, path, maxQueriers)
-	if queue == nil {
-		// This can only happen if tenant is "".
-		return errors.New("no queue found")
+	queue, err := q.queues.getOrAddQueue(tenant, path)
+	if err != nil {
+		return fmt.Errorf("no queue found: %w", err)
 	}
 
 	// Optimistically increase queue counter for tenant instead of doing separate
@@ -125,6 +128,41 @@ func (q *RequestQueue) Enqueue(tenant string, path []string, req Request, maxQue
 	}
 }
 
+// ReleaseRequests returns items back to the slice pool.
+// Must only be called in combination with DequeueMany().
+func (q *RequestQueue) ReleaseRequests(items []Request) {
+	q.pool.Put(items)
+}
+
+// DequeueMany consumes multiple items for a single tenant from the queue.
+// It returns maxItems and waits maxWait if no requests for this tenant are enqueued.
+// The caller is responsible for returning the dequeued requests back to the
+// pool by calling ReleaseRequests(items).
+func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consumerID string, maxItems int, maxWait time.Duration) ([]Request, QueueIndex, error) {
+	// create a context for dequeuing with a max time we want to wait to fulfill the desired maxItems
+
+	dequeueCtx, cancel := context.WithTimeout(ctx, maxWait)
+	defer cancel()
+
+	var idx QueueIndex
+
+	items := q.pool.Get(maxItems)
+	for {
+		item, newIdx, err := q.Dequeue(dequeueCtx, last, consumerID)
+		if err != nil {
+			if err == context.DeadlineExceeded {
+				err = nil
+			}
+			return items, idx, err
+		}
+		items = append(items, item)
+		idx = newIdx
+		if len(items) == maxItems {
+			return items, idx, nil
+		}
+	}
+}
+
 // Dequeue find next tenant queue and takes the next request off of it. Will block if there are no requests.
 // By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
 // If consumer finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
@@ -138,9 +176,7 @@ FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
 	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
-		start := time.Now()
 		q.cond.Wait(ctx)
-		q.metrics.querierWaitTime.WithLabelValues(consumerID).Observe(time.Since(start).Seconds())
 	}
 
 	if q.stopped {
