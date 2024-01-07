@@ -1,7 +1,7 @@
 ---
 title: Template functions
 menuTItle:  
-description: Describes functions that are supported by the text template.
+description: Describes functions that are supported by the Go text template.
 aliases: 
 - ../logql/template_functions/
 weight: 30
