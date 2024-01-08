@@ -5,6 +5,7 @@
 ##### Fixes
 
 * [10375](https://github.com/grafana/loki/pull/10375) **trevorwhitney**: Fix ingester query when getting label values by passing matchers
+* [11601](https://github.com/grafana/loki/pull/11601) **dannykopping** Ruler: Fixed a panic that can be caused by concurrent read-write access of tenant configs when there are a large amount of rules.
 
 ### All Changes
 
