@@ -33,7 +33,7 @@ Loki places the same restrictions on label naming as [Prometheus](https://promet
 > Note: The colons are reserved for user defined recording rules. They should not be used by exporters or direct instrumentation.
 
 {{% admonition type="note" %}}
-Any other unsupported character in the label should be converted to an underscore. For example, the label `app.kubernetes.io/name` should be written as `app_kubernetes_io_name`
+Unsupported characters in the label should be converted to an underscore. For example, the label `app.kubernetes.io/name` should be written as `app_kubernetes_io_name`
 {{% /admonition %}}
 
 ## Loki labels demo
