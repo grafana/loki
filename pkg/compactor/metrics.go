@@ -60,7 +60,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		}),
 		skippedCompactingLockedTables: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "loki_compactor",
-			Name:      "skipped_compacting_locked_table_consecutive",
+			Name:      "locked_table_successive_compaction_skips",
 			Help:      "Number of times uncompacted tables were consecutively skipped due to them being locked by retention",
 		}, []string{"table_name"}),
 	}
