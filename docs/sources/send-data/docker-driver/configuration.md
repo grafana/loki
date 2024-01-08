@@ -1,7 +1,7 @@
 ---
 title: Docker driver client configuration
 menuTitle:  Configure Docker driver
-description: Configuring the Docker driver client
+description: Configuring the Docker driver client to send logs to Loki.
 aliases: 
 - ../../clients/docker-driver/configuration/
 weight:  410

@@ -1,7 +1,7 @@
 ---
 menuTitle: Deployment modes
 title: Loki deployment modes
-description: Describes the different ways to deploy Loki.
+description: Describes the three different Loki deployment models.
 weight: 400
 aliases:
     - ../fundamentals/architecture/deployment-modes
