@@ -300,7 +300,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
 
-	_ = l.IngesterQuerySplitDuration.Set("1h")
+	_ = l.IngesterQuerySplitDuration.Set("0s")
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
