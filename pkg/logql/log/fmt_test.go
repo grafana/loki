@@ -925,7 +925,7 @@ func TestInvalidUnixTimes(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestMapPool(t *testing.T) {
+func TestMapPoolPanic(_ *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	wgFinished := sync.WaitGroup{}
