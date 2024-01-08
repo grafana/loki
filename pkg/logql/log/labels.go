@@ -495,12 +495,12 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 	}
 }
 
-func (b *LabelsBuilder) Map() map[string]string {
+func (b *LabelsBuilder) Map() (map[string]string, bool) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
 		}
-		return b.baseMap
+		return b.baseMap, false
 	}
 	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
@@ -509,7 +509,7 @@ func (b *LabelsBuilder) Map() map[string]string {
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
-	return res
+	return res, true
 }
 
 // LabelsResult returns the LabelsResult from the builder.
