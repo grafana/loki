@@ -10,12 +10,15 @@ const magic = 0
 func TestFlamegraphConverter_covertTrees(t *testing.T) {
 	tests := []struct {
 		name  string
-		trees []*Tree
+		left  []*Tree
+		right []*Tree
+		mode  FlamebearerMode
 		want  FlameBearer
 	}{
 		{
 			name: "expected flame graph to be built with offset for the second level",
-			trees: []*Tree{
+			mode: Single,
+			left: []*Tree{
 				// 1st tree
 				{
 					Root: &Node{
@@ -77,7 +80,8 @@ func TestFlamegraphConverter_covertTrees(t *testing.T) {
 		},
 		{
 			name: "expected flame graph to be built",
-			trees: []*Tree{
+			mode: Single,
+			left: []*Tree{
 				// 1st tree
 				{
 					Root: &Node{
@@ -109,12 +113,55 @@ func TestFlamegraphConverter_covertTrees(t *testing.T) {
 				},
 			},
 		},
+
+		{
+			name: "expected diff flame graph to be built",
+			mode: Diff,
+			left: []*Tree{
+				// 1st tree
+				{
+					Root: &Node{
+						Name: "top_level-a", Weight: 100, Children: []*Node{
+							{Name: "second_level-a_1", Weight: 100},
+						},
+					},
+				},
+			},
+			right: []*Tree{
+				// 1st tree
+				{
+					Root: &Node{
+						Name: "top_level-a", Weight: 200, Children: []*Node{
+							{Name: "second_level-a_1", Weight: 50},
+							{Name: "second_level-a_2", Weight: 100},
+						},
+					},
+				},
+			},
+			want: FlameBearer{
+				Units:    "bytes",
+				NumTicks: 300,
+				MaxSelf:  300,
+				Names:    []string{"top_level-a", "second_level-a_1", "second_level-a_2"},
+				Levels: [][]float64{
+					// for each block: offset, value, self, offset_right, value_right, self_right, label,
+					// 1st level
+					{ /*1st block*/ /*left*/ 0, 100, magic /*right*/, 0, 200, magic, 0},
+					// 2nd level
+					{ /*1st block*/ /*left*/ 0, 100, magic /*right*/, 0, 50, magic, 1 /*2nd block*/ /*left*/, 0, 0, magic /*right*/, 0, 100, magic, 2},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &FlamegraphConverter{}
-			result := f.CovertTrees(tt.trees)
-			require.Equal(t, tt.want, result)
+			f := &FlamegraphConverter{
+				Left:  tt.left,
+				Right: tt.right,
+				Mode:  tt.mode,
+			}
+			result := f.CovertTrees()
+			require.Equal(t, tt.want, result.FlameBearer)
 		})
 	}
 }

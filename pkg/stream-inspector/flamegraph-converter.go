@@ -4,15 +4,25 @@ import "golang.org/x/exp/slices"
 
 const magicNumber = 0
 
+type FlamebearerMode uint8
+
+const (
+	Diff = iota
+	Single
+)
+
 type FlamegraphConverter struct {
+	Left  []*Tree
+	Right []*Tree
+	Mode  FlamebearerMode
 }
 
-func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
+func (f *FlamegraphConverter) CovertTrees() FlameGraph {
 	dictionary := make(map[string]int)
 	var levels []FlamegraphLevel
 	//limit := 50000
 	//added := 0
-	iterator := NewTreesLevelsIterator(trees)
+	iterator := NewTreesLevelsIterator(f.Left, f.Right, f.Mode)
 	levelIndex := -1
 	for iterator.HasNextLevel() /* && added <= limit*/ {
 		levelIndex++
@@ -20,11 +30,24 @@ func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
 		var level FlamegraphLevel
 		for levelIterator.HasNext() {
 			block := levelIterator.Next()
-			blockName := block.node.Name
-			blockWeight := block.node.Weight
+			var blockName string
+			if block.leftNode != nil {
+				blockName = block.leftNode.Name
+			} else {
+				blockName = block.rightNode.Name
+			}
+
+			var leftNodeWeight float64
+			if block.leftNode != nil {
+				leftNodeWeight = block.leftNode.Weight
+			}
+			var rightNodeWeight float64
+			if block.rightNode != nil {
+				rightNodeWeight = block.rightNode.Weight
+			}
 			currentBlockOffset := float64(0)
 			// we need to find the offset for the first child block to place it exactly under the parent
-			if levelIndex > 0 && block.childIndex == 0 {
+			if levelIndex > 0 && block.childBlockIndex == 0 {
 				previousLevel := levels[levelIndex-1]
 				parentsIndexInPreviousLevel := block.parentBlock.indexInLevel
 				parentsGlobalOffset := previousLevel.blocksGlobalOffsets[parentsIndexInPreviousLevel]
@@ -37,17 +60,33 @@ func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
 				dictionary[blockName] = index
 			}
 			level.blocksGlobalOffsets = append(level.blocksGlobalOffsets, currentBlockOffset+level.curentWidth)
-			level.curentWidth += currentBlockOffset + blockWeight
-			level.blocks = append(level.blocks, []float64{currentBlockOffset, blockWeight, magicNumber, float64(index)}...)
+			level.curentWidth += currentBlockOffset + leftNodeWeight + rightNodeWeight
+
+			level.blocks = append(level.blocks, []float64{currentBlockOffset, leftNodeWeight, magicNumber}...)
+			if f.Mode == Diff {
+				level.blocks = append(level.blocks, []float64{0, rightNodeWeight, magicNumber}...)
+			}
+			level.blocks = append(level.blocks, float64(index))
 			//added++
 		}
 		levels = append(levels, level)
 	}
 
 	firstLevel := levels[0].blocks
-	totalWidth := float64(0)
-	for i := 1; i < len(firstLevel); i += 4 {
-		totalWidth += firstLevel[i]
+	totalLeft := float64(0)
+	totalRight := float64(0)
+
+	blockParamsLength := 4
+	if f.Mode == Diff {
+		blockParamsLength = 7
+	}
+	for i := 1; i < len(firstLevel); i += blockParamsLength {
+		// leftWidth
+		totalLeft += firstLevel[i]
+		if f.Mode == Diff {
+			//rightWidth
+			totalRight += firstLevel[i+3]
+		}
 	}
 	names := make([]string, len(dictionary))
 	for name, index := range dictionary {
@@ -57,13 +96,51 @@ func (f *FlamegraphConverter) CovertTrees(trees []*Tree) FlameBearer {
 	for _, level := range levels {
 		levelsBlocks = append(levelsBlocks, level.blocks)
 	}
-	return FlameBearer{
-		Units:    "bytes",
-		NumTicks: totalWidth,
-		MaxSelf:  totalWidth,
-		Names:    names,
-		Levels:   levelsBlocks,
+	var leftTicks *float64
+	var rightTicks *float64
+	format := "single"
+	if f.Mode == Diff {
+		format = "double"
+		leftTicks = &totalLeft
+		rightTicks = &totalRight
 	}
+
+	return FlameGraph{
+		Version: 1,
+		FlameBearer: FlameBearer{
+			Units:    "bytes",
+			NumTicks: totalLeft + totalRight,
+			MaxSelf:  totalLeft + totalRight,
+			Names:    names,
+			Levels:   levelsBlocks,
+		},
+		Metadata: Metadata{
+			Format:     format,
+			SpyName:    "dotnetspy",
+			SampleRate: 100,
+			Units:      "bytes",
+			Name:       "Logs Volumes",
+		},
+		LeftTicks:  leftTicks,
+		RightTicks: rightTicks,
+	}
+
+}
+
+type Metadata struct {
+	Format     string `json:"format,omitempty"`
+	SpyName    string `json:"spyName,omitempty"`
+	SampleRate int    `json:"sampleRate,omitempty"`
+	Units      string `json:"units,omitempty"`
+	Name       string `json:"name,omitempty"`
+}
+
+type FlameGraph struct {
+	Version     int         `json:"version,omitempty"`
+	FlameBearer FlameBearer `json:"flamebearer"`
+	Metadata    Metadata    `json:"metadata"`
+	LeftTicks   *float64    `json:"leftTicks,omitempty"`
+	RightTicks  *float64    `json:"rightTicks,omitempty"`
 }
 
 type FlamegraphLevel struct {
@@ -73,12 +150,14 @@ type FlamegraphLevel struct {
 }
 
 type TreesLevelsIterator struct {
-	trees        []*Tree
+	left         []*Tree
+	right        []*Tree
 	currentLevel *LevelBlocksIterator
+	mode         FlamebearerMode
 }
 
-func NewTreesLevelsIterator(trees []*Tree) *TreesLevelsIterator {
-	return &TreesLevelsIterator{trees: trees}
+func NewTreesLevelsIterator(left []*Tree, right []*Tree, mode FlamebearerMode) *TreesLevelsIterator {
+	return &TreesLevelsIterator{left: left, right: right, mode: mode}
 }
 
 func (i *TreesLevelsIterator) HasNextLevel() bool {
@@ -93,54 +172,119 @@ func (i *TreesLevelsIterator) HasNextLevel() bool {
 	for i.currentLevel.HasNext() {
 		block := i.currentLevel.Next()
 		// if at least one block at current level has children
-		if len(block.node.Children) > 0 {
+		if block.leftNode != nil && len(block.leftNode.Children) > 0 || block.rightNode != nil && len(block.rightNode.Children) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
+func (i *TreesLevelsIterator) mergeNodes(parent *LevelBlock, left []*Node, right []*Node) []*LevelBlock {
+	leftByNameMap := i.mapByNodeName(left)
+	rightByNameMap := i.mapByNodeName(right)
+	blocks := make([]*LevelBlock, 0, len(leftByNameMap)+len(rightByNameMap))
+	for _, leftNode := range leftByNameMap {
+		rightNode := rightByNameMap[leftNode.Name]
+		blocks = append(blocks, &LevelBlock{
+			parentBlock: parent,
+			leftNode:    leftNode,
+			rightNode:   rightNode,
+		})
+	}
+	for _, rightNode := range rightByNameMap {
+		//skip nodes that exists in leftNodes to add only diff from the right nodes
+		_, exists := leftByNameMap[rightNode.Name]
+		if exists {
+			continue
+		}
+
+		blocks = append(blocks, &LevelBlock{
+			parentBlock: parent,
+			rightNode:   rightNode,
+		})
+	}
+	slices.SortStableFunc(blocks, func(a, b *LevelBlock) bool {
+		return maxWeight(a.leftNode, a.rightNode) > maxWeight(b.leftNode, b.rightNode)
+	})
+	return blocks
+}
+
+func maxWeight(left *Node, right *Node) float64 {
+	if left == nil {
+		return right.Weight
+	}
+	if right == nil {
+		return left.Weight
+	}
+	if left.Weight > right.Weight {
+		return left.Weight
+	}
+	return right.Weight
+}
+
 func (i *TreesLevelsIterator) NextLevelIterator() *LevelBlocksIterator {
 	if i.currentLevel == nil {
-		levelNodes := make([]*LevelBlock, 0, len(i.trees))
-		for index, tree := range i.trees {
-			var leftNeighbour *LevelBlock
-			if index > 0 {
-				leftNeighbour = levelNodes[index-1]
-			}
-			levelNodes = append(levelNodes, &LevelBlock{leftNeighbour: leftNeighbour, node: tree.Root, childIndex: index, indexInLevel: index})
+		leftNodes := make([]*Node, 0, len(i.left))
+		for _, tree := range i.left {
+			leftNodes = append(leftNodes, tree.Root)
 		}
-		slices.SortStableFunc(levelNodes, func(a, b *LevelBlock) bool {
-			return a.node.Weight > b.node.Weight
-		})
-		i.currentLevel = NewLevelBlocksIterator(levelNodes)
+		rightNodes := make([]*Node, 0, len(i.right))
+		for _, tree := range i.right {
+			rightNodes = append(rightNodes, tree.Root)
+		}
+		levelBlocks := i.mergeNodes(nil, leftNodes, rightNodes)
+
+		for index, block := range levelBlocks {
+			if index > 0 {
+				block.leftNeighbour = levelBlocks[index-1]
+			}
+			block.childBlockIndex = index
+			block.indexInLevel = index
+		}
+		i.currentLevel = NewLevelBlocksIterator(levelBlocks)
 		return i.currentLevel
 	}
 
 	var nextLevelBlocks []*LevelBlock
 	for i.currentLevel.HasNext() {
-		block := i.currentLevel.Next()
-		slices.SortStableFunc(block.node.Children, func(a, b *Node) bool {
-			return a.Weight > b.Weight
-		})
-		for index, child := range block.node.Children {
-			var leftNeighbour *LevelBlock
+		currentBlock := i.currentLevel.Next()
+		var left []*Node
+		if currentBlock.leftNode != nil {
+			left = currentBlock.leftNode.Children
+		}
+		var right []*Node
+		if currentBlock.rightNode != nil {
+			right = currentBlock.rightNode.Children
+		}
+		levelBlocks := i.mergeNodes(currentBlock, left, right)
+		for index, block := range levelBlocks {
+			block.childBlockIndex = index
+			block.indexInLevel = len(nextLevelBlocks)
 			if len(nextLevelBlocks) > 0 {
-				leftNeighbour = nextLevelBlocks[len(nextLevelBlocks)-1]
+				block.leftNeighbour = nextLevelBlocks[len(nextLevelBlocks)-1]
 			}
-			nextLevelBlocks = append(nextLevelBlocks, &LevelBlock{leftNeighbour: leftNeighbour, childIndex: index, indexInLevel: len(nextLevelBlocks), node: child, parentBlock: block})
+			nextLevelBlocks = append(nextLevelBlocks, block)
 		}
 	}
 	i.currentLevel = NewLevelBlocksIterator(nextLevelBlocks)
 	return i.currentLevel
 }
 
+func (i *TreesLevelsIterator) mapByNodeName(nodes []*Node) map[string]*Node {
+	result := make(map[string]*Node, len(nodes))
+	for _, node := range nodes {
+		result[node.Name] = node
+	}
+	return result
+}
+
 type LevelBlock struct {
-	parentBlock   *LevelBlock
-	leftNeighbour *LevelBlock
-	childIndex    int
-	node          *Node
-	indexInLevel  int
+	parentBlock     *LevelBlock
+	leftNeighbour   *LevelBlock
+	childBlockIndex int
+	leftNode        *Node
+	rightNode       *Node
+	indexInLevel    int
 }
 
 // iterates over Nodes at the level
