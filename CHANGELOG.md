@@ -1,5 +1,13 @@
 ## Unreleased
 
+### All Changes
+
+#### Loki
+
+##### Fixes
+
+* [11601](https://github.com/grafana/loki/pull/11601) **dannykopping** Ruler: Fixed a panic that can be caused by concurrent read-write access of tenant configs when there are a large amount of rules.
+
 ## 2.9.3 (2023-10-16)
 
 ### All Changes

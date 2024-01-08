@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -33,7 +34,8 @@ type walRegistry struct {
 	logger  log.Logger
 	manager instance.Manager
 
-	metrics *storageRegistryMetrics
+	metrics     *storageRegistryMetrics
+	overridesMu sync.Mutex
 
 	config         Config
 	overrides      RulesLimits
@@ -223,6 +225,9 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 }
 
 func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWriteConfig) (*RemoteWriteConfig, error) {
+	r.overridesMu.Lock()
+	defer r.overridesMu.Unlock()
+
 	overrides, err := base.Clone()
 	if err != nil {
 		return nil, fmt.Errorf("error generating tenant remote-write config: %w", err)
