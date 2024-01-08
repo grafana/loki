@@ -96,16 +96,20 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	//
 	// The given factory is responsible for building the splits and appending to reqs.
 	start, end := buildIngesterQuerySplitsAndRebound(execTime, s.limits, s.iqo, tenantIDs, req, factory, endTimeInclusive)
-	if !start.Equal(end) {
-		// copy the splits
-		ingesterSplits := reqs
-		reqs = nil
-
-		util.ForInterval(interval, start, end, endTimeInclusive, factory)
-
-		// move the ingester splits to the end to maintain correct order
-		reqs = append(reqs, ingesterSplits...)
+	if start.Equal(end) {
+		// Nothing to do, there are no more intervals to process.
+		return reqs, nil
 	}
+
+	// copy the splits, reset the results
+	ingesterSplits := reqs
+	reqs = nil
+
+	util.ForInterval(interval, start, end, endTimeInclusive, factory)
+
+	// move the ingester splits to the end to maintain correct order
+	reqs = append(reqs, ingesterSplits...)
+
 	return reqs, nil
 }
 
@@ -167,30 +171,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 
 	lokiReq = lokiReq.WithStartEnd(start, end).(*LokiRequest)
 
-	// step is >= configured split interval, let us just split the query interval by step
-	if lokiReq.Step >= interval.Milliseconds() {
-		util.ForInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, func(start, end time.Time) {
-			reqs = append(reqs, &LokiRequest{
-				Query:     lokiReq.Query,
-				Limit:     lokiReq.Limit,
-				Step:      lokiReq.Step,
-				Interval:  lokiReq.Interval,
-				Direction: lokiReq.Direction,
-				Path:      lokiReq.Path,
-				StartTs:   start,
-				EndTs:     end,
-				Plan:      lokiReq.Plan,
-			})
-		})
-
-		return reqs, nil
-	}
-
-	for start := lokiReq.StartTs; start.Before(lokiReq.EndTs); start = s.nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * util.SplitGap) {
-		end := s.nextIntervalBoundary(start, r.GetStep(), interval)
-		if end.Add(time.Duration(r.GetStep())*util.SplitGap).After(lokiReq.EndTs) || end.Add(time.Duration(r.GetStep())*util.SplitGap) == lokiReq.EndTs {
-			end = lokiReq.EndTs
-		}
+	factory := func(start, end time.Time) {
 		reqs = append(reqs, &LokiRequest{
 			Query:     lokiReq.Query,
 			Limit:     lokiReq.Limit,
@@ -203,6 +184,39 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 			Plan:      lokiReq.Plan,
 		})
 	}
+
+	// step is >= configured split interval, let us just split the query interval by step
+	if lokiReq.Step >= interval.Milliseconds() {
+		util.ForInterval(time.Duration(lokiReq.Step*1e6), lokiReq.StartTs, lokiReq.EndTs, false, factory)
+
+		return reqs, nil
+	}
+
+	// Treat range of given query within the `query_ingesters_within` window differently by splitting using the `split_ingester_queries_by_interval`
+	// instead of the default `split_queries_by_interval`; rebound the start/end time after doing so to build intervals
+	// for queries outside the `query_ingesters_within` window.
+	//
+	// The given factory is responsible for building the splits and appending to reqs.
+	newStart, newEnd := buildIngesterQuerySplitsAndRebound(execTime, s.limits, s.iqo, tenantIDs, lokiReq, factory, false)
+	if newStart.Equal(newEnd) {
+		// Nothing to do, there are no more intervals to process.
+		return reqs, nil
+	}
+
+	// copy the splits, reset the results
+	ingesterSplits := reqs
+	reqs = nil
+
+	for start := newStart; start.Before(newEnd); start = s.nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * util.SplitGap) {
+		end := s.nextIntervalBoundary(start, r.GetStep(), interval)
+		if end.Add(time.Duration(r.GetStep())*util.SplitGap).After(newEnd) || end.Add(time.Duration(r.GetStep())*util.SplitGap) == newEnd {
+			end = newEnd
+		}
+		factory(start, end)
+	}
+
+	// move the ingester splits to the end to maintain correct order
+	reqs = append(reqs, ingesterSplits...)
 
 	return reqs, nil
 }
