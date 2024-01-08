@@ -45,7 +45,7 @@ func TestTailHandler(t *testing.T) {
 
 	handler.ServeHTTP(rr, req)
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.Equal(t, "multiple org IDs present\n", rr.Body.String())
+	require.Equal(t, "multiple org IDs present", rr.Body.String())
 }
 
 type slowConnectionSimulator struct {
