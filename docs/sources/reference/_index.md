@@ -1,7 +1,7 @@
 ---
 title: Loki reference topics
 menuTitle: Reference
-description:  Reference topics for Loki.
+description:  Overview page for Loki reference topics.
 weight: 1000
 ---
 
