@@ -56,7 +56,7 @@ func Test_writeError(t *testing.T) {
 			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
 			b, err := io.ReadAll(rec.Result().Body)
 			require.NoError(t, err)
-			require.Equal(t, tt.msg, string(b[:len(b)-1]))
+			require.EqualValues(t, tt.msg, b)
 		})
 
 		t.Run(tt.name+"-roundtrip", func(t *testing.T) {
@@ -68,7 +68,7 @@ func Test_writeError(t *testing.T) {
 			require.Equal(t, tt.expectedStatus, rec.Result().StatusCode)
 			b, err := io.ReadAll(rec.Result().Body)
 			require.NoError(t, err)
-			require.Equal(t, tt.msg, string(b[:len(b)-1]))
+			require.EqualValues(t, tt.msg, b)
 		})
 	}
 }
