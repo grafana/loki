@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -25,8 +23,6 @@ import (
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -110,8 +106,6 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 }
 
 func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -295,8 +289,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 		}
 	}
 
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc           string
 		name           string
@@ -354,8 +346,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 }
 
 func TestMultiTenantQuerierSeries(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc           string
 		orgID          string
@@ -418,8 +408,6 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 }
 
 func TestVolume(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc            string
 		orgID           string

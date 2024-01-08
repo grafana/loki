@@ -1,7 +1,7 @@
 ---
 title: Matching IP addresses
 menuTItle:  
-description: LogQL supports matching IP addresses.
+description: Describes how LogQL supports matching IP addresses.
 aliases: 
  - ../logql/ip/
 weight: 40

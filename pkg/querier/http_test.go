@@ -16,15 +16,12 @@ import (
 	"github.com/grafana/loki/pkg/validation"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTailHandler(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
@@ -78,7 +75,6 @@ func (s *slowConnectionSimulator) ServeHTTP(_ http.ResponseWriter, r *http.Reque
 }
 
 func TestQueryWrapperMiddleware(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	shortestTimeout := time.Millisecond * 5
 
 	t.Run("request timeout is the shortest one", func(t *testing.T) {
