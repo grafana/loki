@@ -643,6 +643,10 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		level.Error(util_log.Logger).Log("msg", "failed to compact files", "table", tableName, "err", err)
 		return err
 	}
+
+	if !applyRetention {
+		c.metrics.skippedCompactingLockedTables.WithLabelValues(tableName).Set(0)
+	}
 	return nil
 }
 
