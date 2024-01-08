@@ -506,7 +506,6 @@ func (b *LabelsBuilder) Map() map[string]string {
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	clear(res)
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
