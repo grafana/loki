@@ -51,7 +51,7 @@
 * [11074](https://github.com/grafana/loki/pull/11074) **hainenber** Fix panic in lambda-promtail due to mishandling of empty DROP_LABELS env var.
 * [11195](https://github.com/grafana/loki/pull/11195) **canuteson** Generate tsdb_shipper storage_config even if using_boltdb_shipper is false
 * [11551](https://github.com/grafana/loki/pull/11551) **dannykopping** Do not reflect label names in request metrics' "route" label.
-* [11601](https://github.com/grafana/loki/pull/11601) **dannykopping** Ruler: protect overrides map with mutex when accessing tenant configs.
+* [11601](https://github.com/grafana/loki/pull/11601) **dannykopping** Ruler: Fixed a panic that can be caused by concurrent read-write access of tenant configs when there are a large amount of rules.
 
 ##### Changes
 
