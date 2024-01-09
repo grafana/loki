@@ -124,6 +124,7 @@ func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from,
 	if err != nil {
 		return []BlockRef{}, fmt.Errorf("error fetching meta.json files: %w", err)
 	}
+	level.Debug(s.logger).Log("msg", "dowloaded metas", "count", len(metas))
 	activeBlocks := s.findBlocks(metas, from, through, fingerprints)
 	slices.SortStableFunc(activeBlocks, func(a, b BlockRef) int {
 		if a.MinFingerprint < b.MinFingerprint {
@@ -192,7 +193,7 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp model.Time, finger
 	// e.g.
 	// fingerprints = [1, 2,          6, 7, 8]
 	// block =              [3, 4, 5]
-	idx := getPosition[[]uint64](fingerprints, b.MinFingerprint)
+	idx := getPosition(fingerprints, b.MinFingerprint)
 	// in case b.MinFingerprint is outside of the fingerprints range, return true
 	// this is already covered in the range check above, but I keep it as a second gate
 	if idx > len(fingerprints)-1 {
