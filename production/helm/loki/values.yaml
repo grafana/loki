@@ -780,11 +780,16 @@ write:
   podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
+  # Write service configuration
   service:
-    # -- Annotations for write Service
-    annotations: {}
-    # -- Additional labels for write Service
+    # -- Type of the write service
+    type: ClusterIP
+    # -- ClusterIP of the write service
+    clusterIP: null
+    # -- Additional labels for write service
     labels: {}
+    # -- Annotations for the write service
+    annotations: {}
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
   # -- Additional CLI args for the write
@@ -967,11 +972,16 @@ read:
   podLabels: {}
   # -- Additional selector labels for each `read` pod
   selectorLabels: {}
+  # Read service configuration
   service:
-    # -- Annotations for read Service
-    annotations: {}
-    # -- Additional labels for read Service
+    # -- Type of the read service
+    type: ClusterIP
+    # -- ClusterIP of the read service
+    clusterIP: null
+    # -- Additional labels for read service
     labels: {}
+    # -- Annotations for the read service
+    annotations: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
