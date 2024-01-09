@@ -43,7 +43,6 @@ server:
   grpc_server_max_recv_msg_size: 110485813
   grpc_server_max_send_msg_size: 110485813
 
-
 common:
   path_prefix: {{.dataPath}}
   storage:
@@ -70,14 +69,26 @@ storage_config:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
-    active_index_directory: {{.dataPath}}/index
+    active_index_directory: {{.dataPath}}/boltdb-index
     cache_location: {{.dataPath}}/boltdb-cache
+    build_per_tenant_index: true
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
+  bloom_shipper:
+    working_directory: {{.dataPath}}/bloom-shipper
+    blocks_downloading_queue:
+      workers_count: 1
+
+bloom_gateway:
+  enabled: false
+
+bloom_compactor:
+  enabled: false
+  working_directory: {{.dataPath}}/bloom-compactor
 
 compactor:
-  working_directory: {{.dataPath}}/retention
+  working_directory: {{.dataPath}}/compactor
   retention_enabled: true
   delete_request_store: store-1
 
@@ -90,6 +101,7 @@ ingester:
 
 querier:
   multi_tenant_queries_enabled: true
+  query_ingesters_within: 5s
 
 query_scheduler:
   max_outstanding_requests_per_tenant: 2048
