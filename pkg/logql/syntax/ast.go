@@ -312,21 +312,27 @@ func (e *PipelineExpr) HasFilter() bool {
 	return false
 }
 
+type LineFilter struct {
+	Ty    labels.MatchType
+	Match string
+	Op    string
+}
+
 type LineFilterExpr struct {
+	LineFilter
 	Left      *LineFilterExpr
 	Or        *LineFilterExpr
 	IsOrChild bool
-	Ty        labels.MatchType
-	Match     string
-	Op        string
 	implicit
 }
 
 func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 	return &LineFilterExpr{
-		Ty:    ty,
-		Match: match,
-		Op:    op,
+		LineFilter: LineFilter{
+			Ty:    ty,
+			Match: match,
+			Op:    op,
+		},
 	}
 }
 
@@ -345,10 +351,8 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
 	return &LineFilterExpr{
-		Left:  left,
-		Ty:    right.Ty,
-		Match: right.Match,
-		Op:    right.Op,
+		Left:       left,
+		LineFilter: right.LineFilter,
 	}
 }
 

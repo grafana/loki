@@ -1,6 +1,6 @@
 ---
 title: Storage
-description: Storage
+description: Describes Loki storage.
 weight: 475
 ---
 # Storage

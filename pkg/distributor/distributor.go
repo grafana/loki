@@ -420,7 +420,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
 	// function calls that cannot be inlined.
 	if d.tee != nil {
-		d.tee.Duplicate(streams)
+		d.tee.Duplicate(tenantID, streams)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck

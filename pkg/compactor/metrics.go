@@ -18,7 +18,7 @@ type metrics struct {
 	applyRetentionOperationDurationSeconds prometheus.Gauge
 	applyRetentionLastSuccess              prometheus.Gauge
 	compactorRunning                       prometheus.Gauge
-	skippedCompactingLockedTables          *prometheus.CounterVec
+	skippedCompactingLockedTables          *prometheus.GaugeVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -58,10 +58,10 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "compactor_running",
 			Help:      "Value will be 1 if compactor is currently running on this instance",
 		}),
-		skippedCompactingLockedTables: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		skippedCompactingLockedTables: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "loki_compactor",
-			Name:      "skipped_compacting_locked_table_total",
-			Help:      "Count of uncompacted tables being skipped due to them being locked by retention",
+			Name:      "locked_table_successive_compaction_skips",
+			Help:      "Number of times uncompacted tables were consecutively skipped due to them being locked by retention",
 		}, []string{"table_name"}),
 	}
 

@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -190,8 +191,8 @@ func createBlockRef(
 			TableName:      "16600",
 			MinFingerprint: minFingerprint,
 			MaxFingerprint: maxFingerprint,
-			StartTimestamp: startTimestamp,
-			EndTimestamp:   endTimestamp,
+			StartTimestamp: model.Time(startTimestamp),
+			EndTimestamp:   model.Time(endTimestamp),
 			Checksum:       0,
 		},
 		// block path is unique, and it's used to distinguish the blocks so the rest of the fields might be skipped in this test

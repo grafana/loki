@@ -121,7 +121,9 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 		sk, err := data.ToProto()
 		return &TopKSketchesResponse{Response: sk}, err
 	case logql.ProbabilisticQuantileMatrix:
-		return &QuantileSketchResponse{Response: data.ToProto()}, nil
+		r := data.ToProto()
+		data.Release()
+		return &QuantileSketchResponse{Response: r}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)

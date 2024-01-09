@@ -1,7 +1,7 @@
 ---
 title: LogCLI
 menuTItle:  
-description: LogCLI, Grafana Loki's command-line interface
+description: Describes LogCLI, Grafana Loki's command-line interface.
 aliases:
 - ../getting-started/logcli/
 - ../tools/logcli/

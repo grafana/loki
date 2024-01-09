@@ -140,10 +140,16 @@ var (
 	series = logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/apport.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/apport.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 			{
-				Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "filename", Value: "/var/hostlog/test.log"},
+					{Key: "job", Value: "varlogs"},
+				},
 			},
 		},
 	}
@@ -390,7 +396,14 @@ func TestInstantQueryTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -421,7 +434,14 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -673,7 +693,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err:       "",
 		},
 		{
-			name: "results cache enabled, stats cache disabled",
+			name: "results cache enabled",
 			config: Config{
 				Config: base.Config{
 					CacheResults: true,
@@ -688,34 +708,32 @@ func TestNewTripperware_Caches(t *testing.T) {
 						},
 					},
 				},
-				CacheIndexStatsResults: false,
+			},
+			numCaches: 1,
+			err:       "",
+		},
+		{
+			name: "stats cache enabled",
+			config: Config{
+				CacheIndexStatsResults: true,
+				StatsCacheConfig: IndexStatsCacheConfig{
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
+							},
+						},
+					},
+				},
 			},
 			numCaches: 1,
 			err:       "",
 		},
 		{
 			name: "results cache enabled, stats cache enabled",
-			config: Config{
-				Config: base.Config{
-					CacheResults: true,
-					ResultsCacheConfig: base.ResultsCacheConfig{
-						Config: resultscache.Config{
-							CacheConfig: cache.Config{
-								EmbeddedCache: cache.EmbeddedCacheConfig{
-									MaxSizeMB: 1,
-									Enabled:   true,
-								},
-							},
-						},
-					},
-				},
-				CacheIndexStatsResults: true,
-			},
-			numCaches: 2,
-			err:       "",
-		},
-		{
-			name: "results cache enabled, stats cache enabled but different",
 			config: Config{
 				Config: base.Config{
 					CacheResults: true,
@@ -757,11 +775,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err: fmt.Sprintf("%s cache is not configured", stats.ResultCache),
 		},
 		{
-			name: "results cache disabled, stats cache enabled (no config provided)",
+			name: "stats cache enabled (no config provided)",
 			config: Config{
-				Config: base.Config{
-					CacheResults: false,
-				},
 				CacheIndexStatsResults: true,
 			},
 			numCaches: 0,
@@ -1228,7 +1243,8 @@ type fakeLimits struct {
 	maxQueryLookback        time.Duration
 	maxEntriesLimitPerQuery int
 	maxSeries               int
-	splits                  map[string]time.Duration
+	splitDuration           map[string]time.Duration
+	metadataSplitDuration   map[string]time.Duration
 	minShardingLookback     time.Duration
 	queryTimeout            time.Duration
 	requiredLabels          []string
@@ -1240,10 +1256,17 @@ type fakeLimits struct {
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
-	if f.splits == nil {
+	if f.splitDuration == nil {
 		return 0
 	}
-	return f.splits[key]
+	return f.splitDuration[key]
+}
+
+func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {
+	if f.metadataSplitDuration == nil {
+		return 0
+	}
+	return f.metadataSplitDuration[key]
 }
 
 func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {

@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"testing"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Test that all serviceMonitor match the labels of their services so that we know all serviceMonitor
@@ -99,6 +99,7 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 	}
 
 	for _, tst := range table {
+		tst := tst
 		testName := fmt.Sprintf("%s_%s", tst.Service.GetName(), tst.ServiceMonitor.GetName())
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -189,6 +190,7 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 	}
 
 	for _, tst := range table {
+		tst := tst
 		testName := fmt.Sprintf("%s_%s", tst.Service.GetName(), tst.ServiceMonitor.GetName())
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
