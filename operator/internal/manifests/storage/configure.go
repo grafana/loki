@@ -177,11 +177,10 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 }
 
 func managedAuthCredentials(opts Options) []corev1.EnvVar {
-	secretName := opts.SecretName
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
 		return []corev1.EnvVar{
-			envVarFromSecret(EnvAWSRoleArn, secretName, KeyAWSRoleArn),
+			envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
 			envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
 		}
 	default:
@@ -259,8 +258,7 @@ func envVarFromValue(name, value string) corev1.EnvVar {
 }
 
 func managedAuthEnabled(opts Options) bool {
-	storeType := opts.SharedStore
-	switch storeType {
+	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
 		return opts.S3 != nil && opts.S3.STS
 	default:
@@ -269,26 +267,24 @@ func managedAuthEnabled(opts Options) bool {
 }
 
 func setSATokenPath(opts *Options) {
-	var wiToken string
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		wiToken = saTokenVolumeK8sDirectory
+		opts.S3.WebIdentityTokenFile = saTokenVolumeK8sDirectory
 		if opts.OpenShiftEnabled {
-			wiToken = saTokenVolumeOcpDirectory
+			opts.S3.WebIdentityTokenFile = saTokenVolumeOcpDirectory
 		}
-		opts.S3.WebIdentityTokenFile = wiToken
 	}
 }
 
 func saTokenVolumeMount(opts Options) corev1.VolumeMount {
-	var wiToken string
+	var tokenPath string
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		wiToken = opts.S3.WebIdentityTokenFile
+		tokenPath = opts.S3.WebIdentityTokenFile
 	}
 	return corev1.VolumeMount{
 		Name:      saTokenVolumeName,
-		MountPath: wiToken,
+		MountPath: tokenPath,
 	}
 }
 
@@ -300,6 +296,9 @@ func saTokenVolume(opts Options) corev1.Volume {
 		audience = awsDefaultAudience
 		if opts.S3.Audience != "" {
 			audience = opts.S3.Audience
+		}
+		if opts.OpenShiftEnabled != "" {
+			audience = "openshift"
 		}
 	}
 	return corev1.Volume{
