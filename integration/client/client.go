@@ -479,17 +479,40 @@ type Header struct {
 	Name, Value string
 }
 
-// RunRangeQuery runs a query and returns an error if anything went wrong
+// RunRangeQuery runs a 7d query and returns an error if anything went wrong
 func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
+	start := c.Now.Add(-7 * 24 * time.Hour)
+	end := c.Now.Add(-1 * time.Second)
+	return c.RunRangeQueryWithStartEnd(ctx, query, start, end, extraHeaders...)
+}
+
+// RunRangeQuery runs a query and returns an error if anything went wrong
+func (c *Client) RunRangeQueryWithStartEnd(ctx context.Context, query string, start, end time.Time, extraHeaders ...Header) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
-	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query), extraHeaders...)
+	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query, start, end), extraHeaders...)
 	if err != nil {
 		return nil, err
 	}
 
 	return c.parseResponse(buf, statusCode)
+}
+
+func (c *Client) rangeQueryURL(query string, start, end time.Time) string {
+	v := url.Values{}
+	v.Set("query", query)
+	v.Set("start", formatTS(start))
+	v.Set("end", formatTS(end))
+
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		panic(err)
+	}
+	u.Path = "/loki/api/v1/query_range"
+	u.RawQuery = v.Encode()
+
+	return u.String()
 }
 
 // RunQuery runs a query and returns an error if anything went wrong
@@ -553,22 +576,6 @@ func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
 	}
 
 	return &lokiResp, nil
-}
-
-func (c *Client) rangeQueryURL(query string) string {
-	v := url.Values{}
-	v.Set("query", query)
-	v.Set("start", formatTS(c.Now.Add(-7*24*time.Hour)))
-	v.Set("end", formatTS(c.Now.Add(time.Second)))
-
-	u, err := url.Parse(c.baseURL)
-	if err != nil {
-		panic(err)
-	}
-	u.Path = "/loki/api/v1/query_range"
-	u.RawQuery = v.Encode()
-
-	return u.String()
 }
 
 func (c *Client) LabelNames(ctx context.Context) ([]string, error) {

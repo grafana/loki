@@ -62,6 +62,7 @@ limits_config:
   ingestion_burst_size_mb: 50
   reject_old_samples: false
   allow_structured_metadata: true
+  split_queries_by_interval: 24h
 
 storage_config:
   named_stores:
@@ -101,7 +102,7 @@ ingester:
 
 querier:
   multi_tenant_queries_enabled: true
-  query_ingesters_within: 5s
+  query_ingesters_within: 1s
 
 query_scheduler:
   max_outstanding_requests_per_tenant: 2048
