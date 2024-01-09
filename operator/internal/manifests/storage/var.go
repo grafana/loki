@@ -110,5 +110,6 @@ const (
 	storageTLSVolume = "storage-tls"
 	caDirectory      = "/etc/storage/ca"
 
-	awsDefaultAudience = "sts.amazonaws.com"
+	awsDefaultAudience   = "sts.amazonaws.com"
+	awsOpenShiftAudience = "openshift"
 )

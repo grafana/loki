@@ -298,7 +298,7 @@ func saTokenVolume(opts Options) corev1.Volume {
 			audience = opts.S3.Audience
 		}
 		if opts.OpenShiftEnabled {
-			audience = "openshift"
+			audience = awsOpenShiftAudience
 		}
 	}
 	return corev1.Volume{
