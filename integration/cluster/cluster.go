@@ -173,7 +173,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(filepath.Join(sharedPath, "loki-overrides.yaml"), []byte(`overrides:`), 0777)
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0777)
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -420,6 +420,8 @@ func (c *Component) run() error {
 		c.configFile,
 		"-limits.per-user-override-config",
 		c.overridesFile,
+		"-limits.per-user-override-period",
+		"1s",
 	), flagset); err != nil {
 		return err
 	}
