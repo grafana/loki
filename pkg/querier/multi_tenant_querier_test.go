@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/tenant"
-
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -25,8 +23,6 @@ import (
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -110,8 +106,6 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 }
 
 func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -295,8 +289,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 		}
 	}
 
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc           string
 		name           string
@@ -354,8 +346,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 }
 
 func TestMultiTenantQuerierSeries(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc           string
 		orgID          string
@@ -365,42 +355,42 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 			desc:  "two tenantIDs",
 			orgID: "1|2",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "2")},
 			},
 		},
 		{
 			desc:  "three tenantIDs",
 			orgID: "1|2|3",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "3")},
 			},
 		},
 		{
 			desc:  "single tenantID; behaves like a normal `Series` call",
 			orgID: "2",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"a": "1", "b": "2"}},
-				{Labels: map[string]string{"a": "1", "b": "3"}},
-				{Labels: map[string]string{"a": "1", "b": "4"}},
-				{Labels: map[string]string{"a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5")},
 			},
 		},
 	} {
@@ -418,8 +408,6 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 }
 
 func TestVolume(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc            string
 		orgID           string
@@ -465,16 +453,16 @@ func mockSeriesResponse() *logproto.SeriesResponse {
 	return &logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"a": "1", "b": "2"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "3"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "4"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "5"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5"),
 			},
 		},
 	}

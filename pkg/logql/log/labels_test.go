@@ -16,8 +16,19 @@ func TestLabelsBuilder_Get(t *testing.T) {
 	b.Reset()
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(ParsedLabel, "bar", "buzz")
+
+	_, category, ok := b.GetWithCategory("bar")
+	require.Equal(t, ParsedLabel, category)
+	require.True(t, ok)
+	require.False(t, b.referencedStructuredMetadata)
+
+	_, category, ok = b.GetWithCategory("foo")
+	require.Equal(t, StructuredMetadataLabel, category)
+	require.True(t, ok)
+	require.True(t, b.referencedStructuredMetadata)
+
 	b.Del("foo")
-	_, _, ok := b.GetWithCategory("foo")
+	_, _, ok = b.GetWithCategory("foo")
 	require.False(t, ok)
 	v, category, ok := b.GetWithCategory("bar")
 	require.True(t, ok)
@@ -136,6 +147,12 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b.Reset()
 	b.Set(StreamLabel, "namespace", "tempo")
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
+	require.False(t, b.referencedStructuredMetadata)
+
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, false, false).ForLabels(lbs, lbs.Hash())
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	assertLabelResult(t, labels.FromStrings("foo", "bar"), b.GroupedLabels())
+	require.True(t, b.referencedStructuredMetadata)
 
 	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, true, false).ForLabels(lbs, lbs.Hash())
 	b.Del("job")
@@ -146,6 +163,16 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 		"foo", "bar",
 	)
 	assertLabelResult(t, expected, b.GroupedLabels())
+	require.False(t, b.referencedStructuredMetadata)
+
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, lbs.Hash())
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	expected = labels.FromStrings("namespace", "loki",
+		"job", "us-central1/loki",
+		"cluster", "us-central1",
+	)
+	assertLabelResult(t, expected, b.GroupedLabels())
+	require.True(t, b.referencedStructuredMetadata)
 
 	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, lbs.Hash())
 	b.Set(StructuredMetadataLabel, "foo", "bar")

@@ -17,9 +17,11 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -73,7 +75,13 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{
-		From:       parseDayTime("2023-09-01"),
+		From: parseDayTime("2023-09-01"),
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 24 * time.Hour,
+			},
+		},
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v13",
@@ -135,7 +143,13 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{
-		From:       parseDayTime("2023-09-01"),
+		From: parseDayTime("2023-09-01"),
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 24 * time.Hour,
+			},
+		},
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v13",
@@ -243,8 +257,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				From:    now.Add(-24 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
-				Filters: []*logproto.LineFilterExpression{
-					{Operator: 1, Match: "foo"},
+				Filters: []syntax.LineFilter{
+					{Ty: labels.MatchEqual, Match: "foo"},
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -294,8 +308,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 						From:    now.Add(-8 * time.Hour),
 						Through: now,
 						Refs:    inputChunkRefs,
-						Filters: []*logproto.LineFilterExpression{
-							{Operator: 1, Match: "does not match"},
+						Filters: []syntax.LineFilter{
+							{Ty: labels.MatchEqual, Match: "does not match"},
 						},
 					}
 					ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -322,8 +336,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 						From:    now.Add(-8 * time.Hour),
 						Through: now,
 						Refs:    inputChunkRefs,
-						Filters: []*logproto.LineFilterExpression{
-							{Operator: 1, Match: fmt.Sprint(key)},
+						Filters: []syntax.LineFilter{
+							{Ty: labels.MatchEqual, Match: fmt.Sprintf("series %d", key)},
 						},
 					}
 					ctx := user.InjectOrgID(context.Background(), tenantID)

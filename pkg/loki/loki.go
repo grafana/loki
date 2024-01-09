@@ -323,6 +323,7 @@ type Loki struct {
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
+	Tee                distributor.Tee
 	HTTPAuthMiddleware middleware.Interface
 
 	Codec   Codec
@@ -690,6 +691,11 @@ func (t *Loki) setupModuleManager() error {
 	// first to initialize the ring that will also be used by the query frontend
 	if (t.Cfg.isModuleEnabled(QueryFrontend) && t.Cfg.isModuleEnabled(QueryScheduler)) || t.Cfg.isModuleEnabled(All) {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
+	}
+
+	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
+	if t.Cfg.isModuleEnabled(IndexGateway) && t.Cfg.BloomGateway.Enabled {
+		deps[IndexGateway] = append(deps[IndexGateway], BloomGatewayRing)
 	}
 
 	//TODO(poyzannur) not sure this is needed for BloomCompactor

@@ -388,13 +388,12 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, chunk.NewPredicate(matchers, nil))
 					require.NoError(t, err)
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
@@ -518,7 +517,6 @@ func Test_GetSeries(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
@@ -654,7 +652,7 @@ func TestChunkStoreError(t *testing.T) {
 				require.NoError(t, err)
 
 				// Query with ordinary time-range
-				_, _, err = store.GetChunks(ctx, userID, tc.from, tc.through, matchers...)
+				_, _, err = store.GetChunks(ctx, userID, tc.from, tc.through, chunk.NewPredicate(matchers, nil))
 				require.EqualError(t, err, tc.err)
 			})
 		}

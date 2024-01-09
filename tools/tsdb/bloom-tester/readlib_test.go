@@ -9,7 +9,7 @@ import (
 func TestSearchSbf(t *testing.T) {
 	experiment := NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		*four,
+		four,
 		true,
 		onePctError,
 	)

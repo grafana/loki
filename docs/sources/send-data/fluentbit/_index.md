@@ -1,7 +1,7 @@
 ---
 title: Fluent Bit client
 menuTitle:  Fluent Bit
-description: Instructions to install, configure, and use the Fluent Bit client to send logs to Loki.
+description: Provides instructions for how to install, configure, and use the Fluent Bit client to send logs to Loki.
 aliases: 
 - ../clients/fluentbit/
 weight:  500
