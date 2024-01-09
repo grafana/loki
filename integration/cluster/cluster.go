@@ -167,7 +167,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	resetMetricRegistry()
-	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
+	sharedPath, err := os.MkdirTemp("", "loki-shared-data-")
 	if err != nil {
 		panic(err.Error())
 	}
@@ -331,12 +331,12 @@ func port(addr string) string {
 func (c *Component) writeConfig() error {
 	var err error
 
-	configFile, err := os.CreateTemp("", "loki-config")
+	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
 
-	c.dataPath, err = os.MkdirTemp("", "loki-data")
+	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
