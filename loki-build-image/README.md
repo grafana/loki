@@ -2,7 +2,7 @@
 
 ## Versions
 
-### 0.31.3
+### 0.33.0
 
 - Update to Alpine 3.18.5
 
