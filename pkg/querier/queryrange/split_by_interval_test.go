@@ -412,7 +412,24 @@ func Test_splitQuery(t *testing.T) {
 
 					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
 					require.NoError(t, err)
-					require.Equal(t, want, splits)
+					//require.Equal(t, want, splits)
+
+					if !assert.Equal(t, want, splits) {
+						t.Logf("expected and actual do not match\n")
+						defer t.Fail()
+
+						if len(want) != len(splits) {
+							t.Logf("expected %d splits, got %d\n", len(want), len(splits))
+							return
+						}
+
+						for j := 0; j < len(want); j++ {
+							exp := want[j]
+							act := splits[j]
+							equal := assert.Equal(t, exp, act)
+							t.Logf("\t#%d [matches: %v]: expected %q/%q got %q/%q\n", j, equal, exp.GetStart(), exp.GetEnd(), act.GetStart(), act.GetEnd())
+						}
+					}
 				})
 			}
 		})
@@ -801,24 +818,23 @@ func Test_splitMetricQuery(t *testing.T) {
 		// query is wholly within ingester query window
 		{
 			input: &LokiRequest{
-				StartTs: refTime.Add(-time.Hour).Truncate(time.Second),
+				StartTs: refTime.Add(-time.Hour),
 				EndTs:   refTime,
 				Step:    15 * seconds,
 				Query:   shortRange,
 			},
 			expected: []queryrangebase.Request{
 				&LokiRequest{
-					StartTs: refTime.Add(-time.Hour).Truncate(time.Second),
-					EndTs:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+					StartTs: time.Date(2023, 1, 15, 7, 05, 30, 0, time.UTC), // start time is aligned down to step of 15s
+					EndTs:   time.Date(2023, 1, 15, 7, 29, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
 				},
 				&LokiRequest{
 					StartTs: time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
-					// end time is aligned to step of 15s
-					EndTs: time.Date(2023, 1, 15, 8, 5, 45, 0, time.UTC),
-					Step:  15 * seconds,
-					Query: shortRange,
+					EndTs:   time.Date(2023, 1, 15, 8, 5, 45, 0, time.UTC), // end time is aligned up to step of 15s
+					Step:    15 * seconds,
+					Query:   shortRange,
 				},
 			},
 			splitInterval: time.Hour,
@@ -830,7 +846,7 @@ func Test_splitMetricQuery(t *testing.T) {
 		// query is partially within ingester query window
 		{
 			input: &LokiRequest{
-				StartTs: refTime.Add(-4 * time.Hour).Add(-30 * time.Minute).Truncate(time.Second),
+				StartTs: refTime.Add(-4 * time.Hour).Add(-30 * time.Minute),
 				EndTs:   refTime,
 				Step:    15 * seconds,
 				Query:   shortRange,
@@ -838,7 +854,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			expected: []queryrangebase.Request{
 				// regular intervals until `query_ingesters_within` window
 				&LokiRequest{
-					StartTs: refTime.Add(-4 * time.Hour).Add(-30 * time.Minute).Truncate(time.Second),
+					StartTs: time.Date(2023, 1, 15, 3, 35, 30, 0, time.UTC),
 					EndTs:   time.Date(2023, 1, 15, 3, 59, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
@@ -851,20 +867,20 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 				&LokiRequest{
 					StartTs: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
-					EndTs:   time.Date(2023, 1, 15, 5, 5, 30, 123456789, time.UTC),
+					EndTs:   time.Date(2023, 1, 15, 5, 5, 30, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
 				},
 				// and then different intervals for queries to ingesters
 				&LokiRequest{
-					StartTs: time.Date(2023, 1, 15, 5, 5, 30, 123456789, time.UTC),
-					EndTs:   time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
+					StartTs: time.Date(2023, 1, 15, 5, 5, 30, 0, time.UTC),
+					EndTs:   time.Date(2023, 1, 15, 5, 59, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
 				},
 				&LokiRequest{
 					StartTs: time.Date(2023, 1, 15, 6, 0, 0, 0, time.UTC),
-					EndTs:   time.Date(2023, 1, 15, 7, 30, 0, 0, time.UTC),
+					EndTs:   time.Date(2023, 1, 15, 7, 29, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
 				},
@@ -884,22 +900,22 @@ func Test_splitMetricQuery(t *testing.T) {
 		// not within ingester query window
 		{
 			input: &LokiRequest{
-				StartTs: refTime.Add(-5 * time.Hour).Truncate(time.Second),
-				EndTs:   refTime.Add(-4 * time.Hour).Truncate(time.Second),
+				StartTs: refTime.Add(-5 * time.Hour),
+				EndTs:   refTime.Add(-4 * time.Hour),
 				Step:    15 * seconds,
 				Query:   shortRange,
 			},
 			expected: []queryrangebase.Request{
 				// regular intervals until `query_ingesters_within` window
 				&LokiRequest{
-					StartTs: refTime.Add(-5 * time.Hour).Truncate(time.Second),
+					StartTs: time.Date(2023, 1, 15, 3, 5, 30, 0, time.UTC),
 					EndTs:   time.Date(2023, 1, 15, 3, 59, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
 				},
 				&LokiRequest{
 					StartTs: time.Date(2023, 1, 15, 4, 0, 0, 0, time.UTC),
-					EndTs:   time.Date(2023, 1, 15, 4, 5, 30, 0, time.UTC),
+					EndTs:   time.Date(2023, 1, 15, 4, 5, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
 				},
@@ -913,7 +929,7 @@ func Test_splitMetricQuery(t *testing.T) {
 		// ingester query split by disabled
 		{
 			input: &LokiRequest{
-				StartTs: refTime.Add(-4 * time.Hour).Truncate(time.Second),
+				StartTs: refTime.Add(-4 * time.Hour),
 				EndTs:   refTime,
 				Step:    15 * seconds,
 				Query:   shortRange,
@@ -921,7 +937,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			expected: []queryrangebase.Request{
 				// regular intervals only, since ingester split duration is 0
 				&LokiRequest{
-					StartTs: refTime.Add(-4 * time.Hour).Truncate(time.Second),
+					StartTs: time.Date(2023, 1, 15, 4, 5, 30, 0, time.UTC),
 					EndTs:   time.Date(2023, 1, 15, 4, 59, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
@@ -960,7 +976,7 @@ func Test_splitMetricQuery(t *testing.T) {
 		// ingester query split by enabled, but query_store_only is enabled too
 		{
 			input: &LokiRequest{
-				StartTs: refTime.Add(-4 * time.Hour).Truncate(time.Second),
+				StartTs: refTime.Add(-4 * time.Hour),
 				EndTs:   refTime,
 				Step:    15 * seconds,
 				Query:   shortRange,
@@ -968,7 +984,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			expected: []queryrangebase.Request{
 				// regular intervals only, since ingester split duration is 0
 				&LokiRequest{
-					StartTs: refTime.Add(-4 * time.Hour).Truncate(time.Second),
+					StartTs: time.Date(2023, 1, 15, 4, 5, 30, 0, time.UTC),
 					EndTs:   time.Date(2023, 1, 15, 4, 59, 45, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
