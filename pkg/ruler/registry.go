@@ -179,6 +179,9 @@ func (r *walRegistry) stop() {
 }
 
 func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
+	r.overridesMu.Lock()
+	defer r.overridesMu.Unlock()
+
 	conf, err := r.config.WAL.Clone()
 	if err != nil {
 		return instance.Config{}, err
@@ -225,9 +228,6 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 }
 
 func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWriteConfig) (*RemoteWriteConfig, error) {
-	r.overridesMu.Lock()
-	defer r.overridesMu.Unlock()
-
 	overrides, err := base.Clone()
 	if err != nil {
 		return nil, fmt.Errorf("error generating tenant remote-write config: %w", err)
