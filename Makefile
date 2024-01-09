@@ -838,14 +838,14 @@ dev-k3d-down:
 .PHONY: trivy
 trivy: loki-image build-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
-	trivy i $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
 	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
 snyk: loki-image build-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
-	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities
