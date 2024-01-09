@@ -207,9 +207,9 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 	ingesterSplits := reqs
 	reqs = nil
 
-	for start := newStart; start.Before(newEnd); start = s.nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * util.SplitGap) {
+	for start := newStart; start.Before(newEnd); start = s.nextIntervalBoundary(start, r.GetStep(), interval).Add(time.Duration(r.GetStep()) * time.Millisecond) {
 		end := s.nextIntervalBoundary(start, r.GetStep(), interval)
-		if end.Add(time.Duration(r.GetStep())*util.SplitGap).After(newEnd) || end.Add(time.Duration(r.GetStep())*util.SplitGap) == newEnd {
+		if end.Add(time.Duration(r.GetStep())*time.Millisecond).After(newEnd) || end.Add(time.Duration(r.GetStep())*time.Millisecond) == newEnd {
 			end = newEnd
 		}
 		factory(start, end)
