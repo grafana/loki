@@ -468,7 +468,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											Sources: []corev1.VolumeProjection{
 												{
 													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-														Audience:          "test",
+														Audience:          "openshift",
 														ExpirationSeconds: pointer.Int64(3600),
 														Path:              corev1.ServiceAccountTokenKey,
 													},
