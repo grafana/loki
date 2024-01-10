@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.41.6
+
+- [ENHANCEMENT] Modified helm template to use variables http_listen_port and grpc_listen_port instead of hardcoded value of 3100 and 9095.
+
 ## 5.41.5
 
 - [BUGFIX] Added "swift" type object storage to resolve Loki HELM Chart error.

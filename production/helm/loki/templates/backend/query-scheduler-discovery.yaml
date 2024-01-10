@@ -14,11 +14,11 @@ spec:
   publishNotReadyAddresses: true
   ports:
     - name: http-metrics
-      port: 3100
+      port: {{ .Values.loki.server.http_listen_port | default 3100 }}
       targetPort: http-metrics
       protocol: TCP
     - name: grpc
-      port: 9095
+      port: {{ .Values.loki.server.grpc_listen_port | default 9095 }}
       targetPort: grpc
       protocol: TCP
   selector:
