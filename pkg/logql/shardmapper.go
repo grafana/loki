@@ -97,6 +97,7 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
+		// TODO: extract into method
 		var err error
 		var lhsMapped, rhsMapped syntax.Expr
 		var lhsBytesPerShard, rhsBytesPerShard uint64
@@ -111,7 +112,7 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 				return nil, 0, badASTMapping(lhsMapped)
 			}
 		} else {
-			lhsMapped = &DownstreamSampleExpr{
+			lhsMapped = DownstreamSampleExpr{
 				shard:      nil,
 				SampleExpr: e.SampleExpr,
 			}
@@ -127,7 +128,7 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 				return nil, 0, badASTMapping(rhsMapped)
 			}
 		} else {
-			rhsMapped = &DownstreamSampleExpr{
+			rhsMapped = DownstreamSampleExpr{
 				shard:      nil,
 				SampleExpr: e.RHS,
 			}
