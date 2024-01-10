@@ -2,6 +2,16 @@
 groups:
 - name: logging_loki.alerts
   rules:
+  - alert: lokistackSchemaUpgradesRequired
+    annotations:
+      message: |-
+        Object storage schema needs upgrade.
+      summary: "The applied storage schema config is old and should be upgraded."
+    expr: lokistack_schema_upgrades_required
+    labels:
+      severity: warning
+      resource: '{{ $labels.stack_id}}'
+      for: 15m
   - alert: LokiRequestErrors
     annotations:
       message: |-
@@ -175,12 +185,3 @@ groups:
     for: 15m
     labels:
       severity: warning
-  - alert: lokistackSchemaUpgradesRequired
-    annotations:
-      message: |-
-        Object storage schema needs upgrade.
-      summary: "The applied storage schema config is old and should be upgraded."
-    expr: lokistack_schema_upgrades_required
-    labels:
-      severity: warning
-      resource: '{{ $labels.stack_id}}'
