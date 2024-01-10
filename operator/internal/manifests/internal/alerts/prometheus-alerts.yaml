@@ -1,4 +1,4 @@
-----
+---
 groups:
 - name: logging_loki.alerts
   rules:
