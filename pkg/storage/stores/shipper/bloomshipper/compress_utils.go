@@ -59,7 +59,6 @@ func UncompressBloomBlock(block *LazyBlock, workingDirectory string, logger log.
 
 func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string, error) {
 	defer block.Data.Close()
-	//archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, "/")+1:])
 	archivePath := filepath.Join(workingDirectoryPath, uuid.New().String())
 
 	archiveFile, err := os.Create(archivePath)
