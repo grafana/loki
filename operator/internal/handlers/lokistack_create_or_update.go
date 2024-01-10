@@ -133,7 +133,8 @@ func CreateOrUpdateLokiStack(
 			caKey = tlsConfig.CAKey
 		}
 
-		caHash, err := storage.CheckCAConfigMap(&cm, caKey)
+		var caHash string
+		caHash, err = storage.CheckCAConfigMap(&cm, caKey)
 		if err != nil {
 			return &status.DegradedError{
 				Message: fmt.Sprintf("Invalid object storage CA configmap contents: %s", err),
