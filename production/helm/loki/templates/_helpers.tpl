@@ -597,7 +597,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") -}}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
