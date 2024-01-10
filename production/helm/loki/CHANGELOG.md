@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.41.6
 
-- [ENHANCEMENT] Modified helm template to use variables http_listen_port and grpc_listen_port instead of hardcoded value of 3100 and 9095.
+- [ENHANCEMENT] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded value of 3100 and 9095.
 
 ## 5.41.5
 
