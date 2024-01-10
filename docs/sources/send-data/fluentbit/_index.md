@@ -1,7 +1,7 @@
 ---
 title: Fluent Bit client
 menuTitle:  Fluent Bit
-description: Instructions to install, configure, and use the Fluent Bit client to send logs to Loki.
+description: Provides instructions for how to install, configure, and use the Fluent Bit client to send logs to Loki.
 aliases: 
 - ../clients/fluentbit/
 weight:  500
@@ -21,6 +21,43 @@ docker run -v /var/log:/var/log \
     -e LOG_PATH="/var/log/*.log" -e LOKI_URL="http://localhost:3100/loki/api/v1/push" \
     grafana/fluent-bit-plugin-loki:latest
 ```
+
+Or, an alternative is to run the fluent-bit container using [Docker Hub](https://hub.docker.com/r/fluent/fluent-bit) image:
+
+### Docker Container Logs
+
+To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can use the Fluent Bit Docker image and configure it to forward logs directly to Grafana Cloud's Loki. Below is a step-by-step guide on setting up Fluent Bit for this purpose.
+
+#### Prerequisites
+
+- Docker is installed on your machine.
+- You have a Grafana Cloud account with access to Loki.
+
+#### Configuration
+
+1. Create a Fluent Bit configuration file named `fluent-bit.conf` with the following content, which defines the input from Docker container logs and sets up the output to send logs to your Grafana Cloud Loki instance:
+
+   ```ini
+   [SERVICE]
+       Flush        1
+       Log_Level    info
+
+   [INPUT]
+       Name     tail
+       Path     /var/lib/docker/containers/*/*.log
+       Parser   docker
+       Tag      docker.*
+
+   [OUTPUT]
+       Name         loki
+       Match        *
+       Host         logs-prod-006.grafana.net
+       Port         443
+       TLS          On
+       TLS.Verify   On
+       HTTP_User    478625
+       HTTP_Passwd  YOUR_GRAFANA_CLOUD_API_KEY
+       Labels       job=fluentbit
 
 ### Kubernetes
 

@@ -1,7 +1,7 @@
 ---
 title: Log entry deletion
 menuTitle: Log entry deletion
-description: Log entries from a specified stream may be deleted.
+description: Describes how Loki implements log deletion and deletion configuration options.
 weight: 700
 ---
 # Log entry deletion

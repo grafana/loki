@@ -1,7 +1,7 @@
 ---
 title: Log retention
 menuTitle:  Log retention
-description: Describes Grafana Loki Storage Retention
+description: Describes how Loki implements storage retention and retention configuration options.
 weight:  600
 ---
 # Log retention

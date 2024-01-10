@@ -1,7 +1,7 @@
 ---
 title: Lambda Promtail client 
 menuTitle:  Lambda Promtail
-description: How to configure the Lambda Promtail client workflow.
+description: Configuring the Lambda Promtail client to send logs to Loki.
 aliases: 
 - ../clients/lambda-promtail/
 weight:  700
@@ -99,7 +99,9 @@ Ephemeral jobs can quite easily run afoul of cardinality best practices. During 
 
 For those using Cloudwatch and wishing to test out Loki in a low-risk way, this workflow allows piping Cloudwatch logs to Loki regardless of the event source (EC2, Kubernetes, Lambda, ECS, etc) without setting up a set of Promtail daemons across their infrastructure. However, running Promtail as a daemon on your infrastructure is the best-practice deployment strategy in the long term for flexibility, reliability, performance, and cost.
 
-Note: Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
+{{% admonition type="note" %}}
+Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
+{{% /admonition %}}
 
 ### VPC Flow logs
 
@@ -163,7 +165,9 @@ Incoming logs can have seven special labels assigned to them which can be used i
 
 ### Promtail labels
 
-Note: This section is relevant if running Promtail between lambda-promtail and the end Loki deployment and was used to circumvent `out of order` problems prior to the v2.4 Loki release which removed the ordering constraint.
+{{% admonition type="note" %}}
+This section is relevant if running Promtail between lambda-promtail and the end Loki deployment and was used to circumvent `out of order` problems prior to the v2.4 Loki release which removed the ordering constraint.
+{{% /admonition %}}
 
 As stated earlier, this workflow moves the worst case stream cardinality from `number_of_log_streams` -> `number_of_log_groups` * `number_of_promtails`. For this reason, each Promtail must have a unique label attached to logs it processes (ideally via something like `--client.external-labels=promtail=${HOSTNAME}`) and it's advised to run a small number of Promtails behind a load balancer according to your throughput and redundancy needs.
 
@@ -191,7 +195,9 @@ The provided Terraform and CloudFormation files are meant to cover the default u
 
 ## Example Promtail Config
 
-Note: this should be run in conjunction with a Promtail-specific label attached, ideally via a flag argument like `--client.external-labels=promtail=${HOSTNAME}`. It will receive writes via the push-api on ports `3500` (http) and `3600` (grpc).
+{{% admonition type="note" %}}
+This should be run in conjunction with a Promtail-specific label attached, ideally via a flag argument like `--client.external-labels=promtail=${HOSTNAME}`. It will receive writes via the push-api on ports `3500` (http) and `3600` (grpc).
+{{% /admonition %}}
 
 ```yaml
 server:

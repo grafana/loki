@@ -49,6 +49,14 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "volumeResult"
   ];
+  Cache seriesResult = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "seriesResult"
+  ];
+  Cache labelResult = 7 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "labelResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
@@ -155,4 +163,5 @@ message Cache {
   int64 bytesSent = 5 [(gogoproto.jsontag) = "bytesSent"];
   int32 requests = 6 [(gogoproto.jsontag) = "requests"];
   int64 downloadTime = 7 [(gogoproto.jsontag) = "downloadTime"];
+  int64 queryLengthServed = 8 [(gogoproto.jsontag) = "queryLengthServed"];
 }
