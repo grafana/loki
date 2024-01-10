@@ -64,7 +64,7 @@ config:
         Match kube.*
         Url ${FLUENT_LOKI_URL}
         Labels {job="fluent-bit"}
-        LabelKeys level,app # this sets the values for actual loki streams and the other labels are converted to structured_metadata https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/
+        LabelKeys level,app # this sets the values for actual Loki streams and the other labels are converted to structured_metadata https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/
         BatchWait 1
         BatchSize 1001024
         LineFormat json
