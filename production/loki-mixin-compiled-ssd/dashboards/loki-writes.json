@@ -246,7 +246,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum (rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\",}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\",}[$__rate_interval]))",
+                        "expr": "sum (rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval]))",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "bytes",
@@ -322,7 +322,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by (tenant) (rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\",}[$__rate_interval])) / ignoring(tenant) group_left sum(rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\",}[$__rate_interval]))",
+                        "expr": "sum by (tenant) (rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) / ignoring(tenant) group_left sum(rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval]))",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{tenant}}",
@@ -371,7 +371,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Write Path",
+            "title": "Write Path - Structured Metadata",
             "titleSize": "h6"
          },
          {
