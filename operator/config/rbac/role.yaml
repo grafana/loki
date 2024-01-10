@@ -4,6 +4,10 @@ kind: ClusterRole
 metadata:
   name: lokistack-manager
 rules:
+- nonResourceURLs:
+  - /api/v2/alerts
+  verbs:
+  - create
 - apiGroups:
   - ""
   resources:
@@ -177,12 +181,6 @@ rules:
   - alertmanagers/api
   verbs:
   - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - monitoring.coreos.com
   resources:

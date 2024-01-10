@@ -101,6 +101,14 @@ func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
 				},
 			},
 			{
+				NonResourceURLs: []string{
+					"/api/v2/alerts",
+				},
+				Verbs: []string{
+					"create",
+				},
+			},
+			{
 				APIGroups: []string{
 					"monitoring.coreos.com",
 				},
@@ -108,13 +116,7 @@ func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
 					"alertmanagers/api",
 				},
 				Verbs: []string{
-					"get",
-					"list",
-					"watch",
 					"create",
-					"update",
-					"patch",
-					"delete",
 				},
 			},
 		},

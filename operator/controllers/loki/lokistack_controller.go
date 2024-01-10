@@ -123,7 +123,8 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;prometheusrules,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers,verbs=patch
-// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers/api,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers/api,verbs=create
+// +kubebuilder:rbac:urls=/api/v2/alerts,verbs=create
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update

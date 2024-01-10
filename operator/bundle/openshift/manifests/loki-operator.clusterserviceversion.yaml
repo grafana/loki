@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2024-01-09T15:56:33Z"
+    createdAt: "2024-01-10T18:25:02Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1405,6 +1405,10 @@ spec:
     spec:
       clusterPermissions:
       - rules:
+        - nonResourceURLs:
+          - /api/v2/alerts
+          verbs:
+          - create
         - apiGroups:
           - ""
           resources:
@@ -1578,12 +1582,6 @@ spec:
           - alertmanagers/api
           verbs:
           - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
         - apiGroups:
           - monitoring.coreos.com
           resources:
