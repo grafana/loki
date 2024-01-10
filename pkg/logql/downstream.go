@@ -279,11 +279,11 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 type errorQuerier struct{}
 
 func (errorQuerier) SelectLogs(_ context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
-	return nil, errors.New("unimplemented")
+	return nil, errors.New("SelectLogs unimplemented: the query-frontend cannot evaluate an expression that selects logs. this is likely a bug in the query engine. please contact your system operator")
 }
 
 func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, errors.New("unimplemented")
+	return nil, errors.New("SelectSamples unimplemented: the query-frontend cannot evaluate an expression that selects samples. this is likely a bug in the query engine. please contact your system operator")
 }
 
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
