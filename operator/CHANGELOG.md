@@ -1,5 +1,6 @@
 ## Main
 
+- [11624](https://github.com/grafana/loki/pull/11624) **xperimental**: React to changes in ConfigMap used for storage CA
 - [11533](https://github.com/grafana/loki/pull/11533) **periklis**: Add serviceaccount per LokiStack resource
 - [11158](https://github.com/grafana/loki/pull/11158) **btaani**: operator: Add warning for old schema configuration
 - [11473](https://github.com/grafana/loki/pull/11473) **JoaoBraveCoding**: Adds structured metadata dashboards
