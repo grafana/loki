@@ -91,6 +91,7 @@
 
 #### Mixins
 
+* [11636](https://github.com/grafana/loki/pull/11636) **JoaoBraveCoding**: Remove extra comma on distributor structured metadata dashboards
 * [11087](https://github.com/grafana/loki/pull/11087) **JoaoBraveCoding**: Adds structured metadata panels for ingested data
 
 #### Fixes
