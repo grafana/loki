@@ -285,11 +285,11 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 type errorQuerier struct{}
 
 func (errorQuerier) SelectLogs(_ context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
-	return nil, errors.New("unimplemented")
+	return nil, errors.New("unimplemented SelectLogs")
 }
 
 func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, errors.New("unimplemented")
+	return nil, errors.New("unimplemented SelectSamples")
 }
 
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
