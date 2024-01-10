@@ -466,8 +466,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// Create a map of every renamed label and its original name
 	// in order to retrieve it later in the extraction phase
 	keys := make(map[string]string, len(l.expressions))
+	requiredKeys := make([]string, 0, len(l.expressions))
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
+		requiredKeys = append(requiredKeys, id)
 	}
 
 	l.dec.Reset(line)
@@ -527,6 +529,13 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 		}
 	}
+
+	for _, key := range requiredKeys {
+		if !lbs.BaseHas(key) {
+			lbs.Set(ParsedLabel, key, "")
+		}
+	}
+
 	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 		return line, true
