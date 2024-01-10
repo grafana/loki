@@ -102,23 +102,33 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 }
 
 func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*syntax.BinOpExpr, uint64, error) {
+	// In a BinOp expression both sides need to be either executed locally or wrapped
+	// into a downstream expression to be executed on the querier, since the default
+	// evaluator on the query frontend cannot select logs or samples.
+	// However, it can evaluate literals and vectors.
+
+	// check if LHS is shardable by mapping the tree
+	// only wrap in downstream expression if the mapping is a no-op and the
+	// expression is a vector or literal
 	lhsMapped, lhsBytesPerShard, err := m.Map(e.SampleExpr, r)
 	if err != nil {
 		return nil, 0, err
 	}
-	if isNoOp(e.SampleExpr, lhsMapped) {
-		// TODO: check if literal or vector
+	if isNoOp(e.SampleExpr, lhsMapped) && !isLiteralOrVector(lhsMapped) {
 		lhsMapped = DownstreamSampleExpr{
 			shard:      nil,
 			SampleExpr: e.SampleExpr,
 		}
 	}
 
+	// check if RHS is shardable by mapping the tree
+	// only wrap in downstream expression if the mapping is a no-op and the
+	// expression is a vector or literal
 	rhsMapped, rhsBytesPerShard, err := m.Map(e.RHS, r)
 	if err != nil {
 		return nil, 0, err
 	}
-	if isNoOp(e.SampleExpr, rhsMapped) {
+	if isNoOp(e.SampleExpr, rhsMapped) && !isLiteralOrVector(rhsMapped) {
 		// TODO: check if literal or vector
 		rhsMapped = DownstreamSampleExpr{
 			shard:      nil,
@@ -494,6 +504,15 @@ func noOp[E syntax.Expr](expr E, shards ShardResolver) (E, uint64, error) {
 
 func isNoOp(left syntax.Expr, right syntax.Expr) bool {
 	return left.String() == right.String()
+}
+
+func isLiteralOrVector(e syntax.Expr) bool {
+	switch e.(type) {
+	case *syntax.VectorExpr, *syntax.LiteralExpr:
+		return true
+	default:
+		return false
+	}
 }
 
 func badASTMapping(got syntax.Expr) error {

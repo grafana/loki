@@ -1361,26 +1361,88 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `
-			  (quantile_over_time(0.99,{a=~".+"} | logfmt | unwrap value[1s]) by (a) > 1)
+			  quantile_over_time(0.99, {a="foo"} | unwrap bytes [1s]) by (b)
 			and
-			  avg by (a)(rate({a=~".+"}[1s]))
+			  sum by (b) (rate({a="bar"}[1s]))
 			`,
 			expr: &syntax.BinOpExpr{
-				SampleExpr: &syntax.RangeAggregationExpr{
-					Operation: syntax.OpRangeTypeQuantile,
-					Params:    float64p(0.8),
-					Left: &syntax.LogRange{
-						Left: &syntax.MatchersExpr{
-							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+				SampleExpr: DownstreamSampleExpr{
+					SampleExpr: &syntax.RangeAggregationExpr{
+						Operation: syntax.OpRangeTypeQuantile,
+						Params:    float64p(0.99),
+						Left: &syntax.LogRange{
+							Left: &syntax.MatchersExpr{
+								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
+							},
+							Unwrap: &syntax.UnwrapExpr{
+								Identifier: "bytes",
+							},
+							Interval: 1 * time.Second,
 						},
-						Unwrap: &syntax.UnwrapExpr{
-							Identifier: "bytes",
+						Grouping: &syntax.Grouping{
+							Groups: []string{"b"},
 						},
-						Interval: 5 * time.Minute,
+					},
+				},
+				RHS: &syntax.VectorAggregationExpr{
+					Left: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 0,
+								Of:    2,
+							},
+							SampleExpr: &syntax.VectorAggregationExpr{
+								Left: &syntax.RangeAggregationExpr{
+									Left: &syntax.LogRange{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "bar")},
+										},
+										Interval: 1 * time.Second,
+									},
+									Operation: syntax.OpRangeTypeRate,
+								},
+								Grouping: &syntax.Grouping{
+									Groups: []string{"b"},
+								},
+								Params:    0,
+								Operation: syntax.OpTypeSum,
+							},
+						},
+						next: &ConcatSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
+								shard: &astmapper.ShardAnnotation{
+									Shard: 1,
+									Of:    2,
+								},
+								SampleExpr: &syntax.VectorAggregationExpr{
+									Left: &syntax.RangeAggregationExpr{
+										Left: &syntax.LogRange{
+											Left: &syntax.MatchersExpr{
+												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "bar")},
+											},
+											Interval: 1 * time.Second,
+										},
+										Operation: syntax.OpRangeTypeRate,
+									},
+									Grouping: &syntax.Grouping{
+										Groups: []string{"b"},
+									},
+									Params:    0,
+									Operation: syntax.OpTypeSum,
+								},
+							},
+							next: nil,
+						},
 					},
 					Grouping: &syntax.Grouping{
-						Groups: []string{"cluster"},
+						Groups: []string{"b"},
 					},
+					Operation: syntax.OpTypeSum,
+				},
+				Op: syntax.OpTypeAnd,
+				Opts: &syntax.BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: &syntax.VectorMatching{},
 				},
 			},
 		},
@@ -1392,8 +1454,8 @@ func TestMapping(t *testing.T) {
 			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 
 			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.expr.String(), mapped.String())
-			require.Equal(t, tc.expr, mapped)
+			require.Equal(t, mapped.String(), tc.expr.String())
+			require.Equal(t, mapped, tc.expr)
 		})
 	}
 }

@@ -57,9 +57,9 @@ func TestMappingEquivalence(t *testing.T) {
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s])`, true},
 		{
 			`
-			  (quantile_over_time(0.99,{a=~".+"} | logfmt | unwrap value[1s]) by (a) > 1)
+			  (quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a) > 1)
 			and
-			  avg by (a)(rate({a=~".+"}[1s]))
+			  avg by (a) (rate({a=~".+"}[1s]))
 			`,
 			false,
 		},
