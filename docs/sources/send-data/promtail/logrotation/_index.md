@@ -1,7 +1,7 @@
 ---
 title: Promtail and Log Rotation 
 menuTitle:  Configure log rotation
-description: Promtail and Log Rotation
+description: Configuring Promtail log rotation.
 aliases: 
 - ../../clients/promtail/logrotation/
 weight:  500

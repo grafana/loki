@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"time"
 
@@ -76,8 +77,9 @@ type Compactor struct {
 
 	sharding ShardingStrategy
 
-	metrics *metrics
-	reg     prometheus.Registerer
+	metrics   *metrics
+	btMetrics *v1.Metrics
+	reg       prometheus.Registerer
 }
 
 type storeClient struct {
@@ -113,6 +115,9 @@ func New(
 	}
 
 	c.storeClients = make(map[config.DayTime]storeClient)
+
+	// initialize metrics
+	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", r))
 
 	indexShipperReg := prometheus.WrapRegistererWithPrefix("loki_bloom_compactor_tsdb_shipper_", r)
 
@@ -242,13 +247,11 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 	_ = concurrency.ForEachJob(ctx, len(tables), parallelism, func(ctx context.Context, i int) error {
 		tableName := tables[i]
 		logger := log.With(c.logger, "table", tableName)
-		level.Info(logger).Log("msg", "compacting table")
 		err := c.compactTable(ctx, logger, tableName, tablesIntervals[tableName])
 		if err != nil {
 			errs.Add(err)
 			return nil
 		}
-		level.Info(logger).Log("msg", "finished compacting table")
 		return nil
 	})
 
@@ -301,14 +304,9 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 			continue
 		}
 
-		// Skip this table if it is too new/old for the tenant limits.
+		// Skip this table if it is too old for the tenant limits.
 		now := model.Now()
-		tableMinAge := c.limits.BloomCompactorMinTableAge(tenant)
 		tableMaxAge := c.limits.BloomCompactorMaxTableAge(tenant)
-		if tableMinAge > 0 && tableInterval.End.After(now.Add(-tableMinAge)) {
-			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too new ", "table-min-age", tableMinAge, "table-end", tableInterval.End, "now", now)
-			continue
-		}
 		if tableMaxAge > 0 && tableInterval.Start.Before(now.Add(-tableMaxAge)) {
 			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too old", "table-max-age", tableMaxAge, "table-start", tableInterval.Start, "now", now)
 			continue
@@ -355,9 +353,9 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	}
 
 	// Tokenizer is not thread-safe so we need one per goroutine.
-	NGramLength := c.limits.BloomNGramLength(tenant)
-	NGramSkip := c.limits.BloomNGramSkip(tenant)
-	bt, _ := v1.NewBloomTokenizer(c.reg, NGramLength, NGramSkip)
+	nGramLen := c.limits.BloomNGramLength(tenant)
+	nGramSkip := c.limits.BloomNGramSkip(tenant)
+	bt := v1.NewBloomTokenizer(nGramLen, nGramSkip, c.btMetrics)
 
 	errs := multierror.New()
 	rs, err := c.sharding.GetTenantSubRing(tenant).GetAllHealthy(RingOp)
@@ -365,10 +363,14 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		return err
 	}
 	tokenRanges := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
+	for _, tr := range tokenRanges {
+		level.Debug(logger).Log("msg", "got token range for instance", "id", tr.Instance.Id, "min", tr.MinToken, "max", tr.MaxToken)
+	}
 
 	_ = sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 		if isMultiTenantIndex {
 			// Skip multi-tenant indexes
+			level.Debug(logger).Log("msg", "skipping multi-tenant index", "table", tableName, "index", idx.Name())
 			return nil
 		}
 
@@ -399,10 +401,16 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 				//All seriesMetas given a table within fp of this compactor shard
 				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
 			},
+			labels.MustNewMatcher(labels.MatchEqual, "", ""),
 		)
 
 		if err != nil {
 			errs.Add(err)
+			return nil
+		}
+
+		if len(seriesMetas) == 0 {
+			level.Debug(logger).Log("msg", "skipping index because it does not have any matching series", "table", tableName, "index", idx.Name())
 			return nil
 		}
 
@@ -468,10 +476,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
-		MinFingerprint: uint64(job.minFp),
-		MaxFingerprint: uint64(job.maxFp),
-		StartTimestamp: int64(job.from),
-		EndTimestamp:   int64(job.through),
+		MinFingerprint: job.minFp,
+		MaxFingerprint: job.maxFp,
+		StartTimestamp: job.from,
+		EndTimestamp:   job.through,
 	}
 	var metas []bloomshipper.Meta
 	//TODO  Configure pool for these to avoid allocations
@@ -489,12 +497,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 
-	defer func() {
-		//clean up the bloom directory
-		if err := os.RemoveAll(localDst); err != nil {
-			level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
-		}
-	}()
+	// TODO(poyzannur) enable once debugging is over
+	//defer func() {
+	//	//clean up the bloom directory
+	//	if err := os.RemoveAll(localDst); err != nil {
+	//		level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
+	//	}
+	//}()
 
 	var resultingBlock bloomshipper.Block
 	defer func() {
@@ -503,12 +512,14 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 	}()
 
+	level.Info(logger).Log("msg", "started compacting table", "table", job.tableName, "tenant", job.tenantID)
 	if len(blocksMatchingJob) == 0 && len(metasMatchingJob) > 0 {
 		// There is no change to any blocks, no compaction needed
 		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed")
 		return nil
 	} else if len(metasMatchingJob) == 0 {
 		// No matching existing blocks for this job, compact all series from scratch
+		level.Info(logger).Log("msg", "No matching existing blocks for this job, compact all series from scratch")
 
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
@@ -524,6 +535,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	} else if len(blocksMatchingJob) > 0 {
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
+		level.Info(logger).Log("msg", "already compacted metas exists, use mergeBlockBuilder")
 
 		var populate = createPopulateFunc(ctx, logger, job, storeClient, bt)
 
@@ -562,12 +574,14 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
 		return err
 	}
-	defer func() {
-		err = os.Remove(archivePath)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
-		}
-	}()
+
+	// TODO(poyzannur) enable once debugging is over
+	//defer func() {
+	//	err = os.Remove(archivePath)
+	//	if err != nil {
+	//		level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
+	//	}
+	//}()
 
 	// Do not change the signature of PutBlocks yet.
 	// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
@@ -585,13 +599,26 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	// TODO delete old metas in later compactions
 	// After all is done, create one meta file and upload to storage
 	meta := bloomshipper.Meta{
+		MetaRef: bloomshipper.MetaRef{
+			Ref: bloomshipper.Ref{
+				TenantID:       job.tenantID,
+				TableName:      job.tableName,
+				MinFingerprint: uint64(job.minFp),
+				MaxFingerprint: uint64(job.maxFp),
+				StartTimestamp: job.from,
+				EndTimestamp:   job.through,
+				Checksum:       rand.Uint32(), // Discuss if checksum is needed for Metas, why should we read all data again.
+			},
+		},
 		Tombstones: blocksMatchingJob,
 		Blocks:     activeBloomBlocksRefs,
 	}
+
 	err = c.bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)
 		return err
 	}
+	level.Info(logger).Log("msg", "finished compacting table", "table", job.tableName, "tenant", job.tenantID)
 	return nil
 }

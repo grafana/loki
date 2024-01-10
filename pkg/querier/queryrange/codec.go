@@ -231,10 +231,8 @@ func (r *LabelRequest) GetStep() int64 {
 
 func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	tmp := s
-	clone.Start = &tmp
-	tmp = e
-	clone.End = &tmp
+	clone.Start = &s
+	clone.End = &e
 	return &clone
 }
 
@@ -799,7 +797,12 @@ func (c Codec) Path(r queryrangebase.Request) string {
 	case *LokiSeriesRequest:
 		return "loki/api/v1/series"
 	case *LabelRequest:
-		return request.Path() // NOTE: this could be either /label or /label/{name}/values endpoint. So forward the original path as it is.
+		if request.Values {
+			// This request contains user-generated input in the URL, which is not safe to reflect in the route path.
+			return "loki/api/v1/label/values"
+		}
+
+		return request.Path()
 	case *LokiInstantRequest:
 		return "/loki/api/v1/query"
 	case *logproto.IndexStatsRequest:
@@ -858,15 +861,17 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
-		resp := &LokiSeriesResponse{
-			Version: uint32(loghttp.GetVersion(req.Path)),
-			Headers: httpResponseHeadersToPromResponseHeaders(headers),
-		}
+		var resp LokiSeriesResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 
-		return resp, nil
+		return &LokiSeriesResponse{
+			Status:  resp.Status,
+			Version: uint32(loghttp.GetVersion(req.Path)),
+			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+			Data:    resp.Data,
+		}, nil
 	case *LabelRequest:
 		var resp loghttp.LabelResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
@@ -1201,6 +1206,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Status:     lokiSeriesRes.Status,
 			Version:    lokiSeriesRes.Version,
 			Data:       lokiSeriesData,
+			Headers:    lokiSeriesRes.Headers,
 			Statistics: mergedStats,
 		}, nil
 	case *LokiSeriesResponseView:
@@ -1235,6 +1241,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return &LokiLabelNamesResponse{
 			Status:     labelNameRes.Status,
 			Version:    labelNameRes.Version,
+			Headers:    labelNameRes.Headers,
 			Data:       names,
 			Statistics: mergedStats,
 		}, nil
