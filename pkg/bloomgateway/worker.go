@@ -20,6 +20,8 @@ import (
 type workerConfig struct {
 	maxWaitTime time.Duration
 	maxItems    int
+
+	processBlocksSequentially bool
 }
 
 type workerMetrics struct {
@@ -186,30 +188,17 @@ func (w *worker) running(ctx context.Context) error {
 					blockRefs = append(blockRefs, b.blockRef)
 				}
 
-				// GetBlockQueriersForBlockRefs() waits until all blocks are downloaded and available for querying.
-				// TODO(chaudum): Add API that allows to process blocks as soon as they become available.
-				// This will require to change the taskMergeIterator to a slice of requests so we can seek
-				// to the appropriate fingerprint range within the slice that matches the block's fingerprint range.
-				storeFetchStart = time.Now()
-				blockQueriers, err := w.store.GetBlockQueriersForBlockRefs(taskCtx, tasks[0].Tenant, blockRefs)
-				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriersForBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
+				if w.cfg.processBlocksSequentially {
+					err = w.processBlocksSequentially(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
+				} else {
+					err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
+				}
 				if err != nil {
 					for _, t := range tasks {
 						t.ErrCh <- err
 					}
 					// continue with tasks of next day
 					continue
-				}
-
-				for i, blockQuerier := range blockQueriers {
-					it := newTaskMergeIterator(day, boundedRefs[i].tasks...)
-					fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
-					err := fq.Run()
-					if err != nil {
-						for _, t := range boundedRefs[i].tasks {
-							t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
-						}
-					}
 				}
 			}
 
@@ -224,4 +213,49 @@ func (w *worker) stopping(err error) error {
 	level.Debug(w.logger).Log("msg", "stopping worker", "err", err)
 	w.queue.UnregisterConsumerConnection(w.id)
 	return nil
+}
+
+func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
+	return w.store.ForEach(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
+		for _, b := range boundedRefs {
+			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
+				processBlock(bq, day, b.tasks)
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+func (w *worker) processBlocksSequentially(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
+	storeFetchStart := time.Now()
+	blockQueriers, err := w.store.GetBlockQueriersForBlockRefs(taskCtx, tenant, blockRefs)
+	w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriersForBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
+	if err != nil {
+		return err
+	}
+
+	for i := range blockQueriers {
+		processBlock(blockQueriers[i].BlockQuerier, day, boundedRefs[i].tasks)
+	}
+	return nil
+}
+
+func processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
+	schema, err := blockQuerier.Schema()
+	if err != nil {
+		for _, t := range tasks {
+			t.ErrCh <- errors.Wrap(err, "failed to get block schema")
+		}
+	}
+
+	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
+	it := newTaskMergeIterator(day, tokenizer, tasks...)
+	fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
+	err = fq.Run()
+	if err != nil {
+		for _, t := range tasks {
+			t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
+		}
+	}
 }

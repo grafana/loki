@@ -2252,6 +2252,7 @@ null
   },
   "s3": {
     "accessKeyId": null,
+    "backoff_config": {},
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -2284,6 +2285,15 @@ null
   },
   "type": "s3"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.storage.s3.backoff_config</td>
+			<td>object</td>
+			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3109,6 +3119,15 @@ false
 			<td>Specify the port used for external storage, e.g. AWS S3</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.flavor</td>
+			<td>string</td>
+			<td>Specifies whether the policies created will be standard Network Policies (flavor: kubernetes) or Cilium Network Policies (flavor: cilium)</td>
+			<td><pre lang="json">
+"kubernetes"
 </pre>
 </td>
 		</tr>
@@ -4549,6 +4568,15 @@ null
 			<td>write.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the write</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the write pods</td>
 			<td><pre lang="json">
 []
 </pre>

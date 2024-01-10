@@ -104,7 +104,7 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 // TODO(owen-d): synchronize logproto.ChunkRef and tsdb.ChunkRef so we don't have to convert.
 // They share almost the same fields, so we can add the missing `KB` field to the proto and then
 // use that within the tsdb package.
-func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.GetChunkRefs")
 	defer sp.Finish()
 
@@ -113,7 +113,7 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		sp.LogKV(kvps...)
 	}()
 
-	matchers, shard, err := cleanMatchers(matchers...)
+	matchers, shard, err := cleanMatchers(predicate.Matchers...)
 	kvps = append(kvps,
 		"from", from.Time(),
 		"through", through.Time(),

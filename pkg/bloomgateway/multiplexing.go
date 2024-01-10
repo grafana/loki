@@ -15,6 +15,10 @@ const (
 	Day = 24 * time.Hour
 )
 
+type tokenSettings struct {
+	nGramLen int
+}
+
 // Task is the data structure that is enqueued to the internal queue and dequeued by query workers
 type Task struct {
 	// ID is a lexcographically sortable unique identifier of the task
@@ -163,32 +167,34 @@ type FilterRequest struct {
 
 // taskMergeIterator implements v1.Iterator
 type taskMergeIterator struct {
-	curr  FilterRequest
-	heap  *v1.HeapIterator[IndexedValue[*logproto.GroupedChunkRefs]]
-	tasks []Task
-	day   time.Time
-	err   error
+	curr      FilterRequest
+	heap      *v1.HeapIterator[v1.IndexedValue[*logproto.GroupedChunkRefs]]
+	tasks     []Task
+	day       time.Time
+	tokenizer *v1.NGramTokenizer
+	err       error
 }
 
-func newTaskMergeIterator(day time.Time, tasks ...Task) v1.PeekingIterator[v1.Request] {
+func newTaskMergeIterator(day time.Time, tokenizer *v1.NGramTokenizer, tasks ...Task) v1.PeekingIterator[v1.Request] {
 	it := &taskMergeIterator{
-		tasks: tasks,
-		curr:  FilterRequest{},
-		day:   day,
+		tasks:     tasks,
+		curr:      FilterRequest{},
+		day:       day,
+		tokenizer: tokenizer,
 	}
 	it.init()
 	return v1.NewPeekingIter[v1.Request](it)
 }
 
 func (it *taskMergeIterator) init() {
-	sequences := make([]v1.PeekingIterator[IndexedValue[*logproto.GroupedChunkRefs]], 0, len(it.tasks))
+	sequences := make([]v1.PeekingIterator[v1.IndexedValue[*logproto.GroupedChunkRefs]], 0, len(it.tasks))
 	for i := range it.tasks {
-		iter := NewIterWithIndex(it.tasks[i].ChunkIterForDay(it.day), i)
+		iter := v1.NewIterWithIndex(it.tasks[i].ChunkIterForDay(it.day), i)
 		sequences = append(sequences, v1.NewPeekingIter(iter))
 	}
 	it.heap = v1.NewHeapIterator(
-		func(i, j IndexedValue[*logproto.GroupedChunkRefs]) bool {
-			return i.val.Fingerprint < j.val.Fingerprint
+		func(i, j v1.IndexedValue[*logproto.GroupedChunkRefs]) bool {
+			return i.Value().Fingerprint < j.Value().Fingerprint
 		},
 		sequences...,
 	)
@@ -202,11 +208,11 @@ func (it *taskMergeIterator) Next() bool {
 	}
 
 	group := it.heap.At()
-	task := it.tasks[group.idx]
+	task := it.tasks[group.Index()]
 
-	it.curr.Fp = model.Fingerprint(group.val.Fingerprint)
-	it.curr.Chks = convertToChunkRefs(group.val.Refs)
-	it.curr.Searches = convertToSearches(task.Request.Filters)
+	it.curr.Fp = model.Fingerprint(group.Value().Fingerprint)
+	it.curr.Chks = convertToChunkRefs(group.Value().Refs)
+	it.curr.Searches = convertToSearches(task.Request.Filters, it.tokenizer)
 	it.curr.Response = task.ResCh
 	it.curr.Error = task.ErrCh
 	return true

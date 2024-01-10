@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"reflect"
 	"sync"
 	"unsafe"
@@ -25,6 +26,7 @@ type StreamPipeline interface {
 	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
 	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (resultLine []byte, resultLabels LabelsResult, matches bool)
 	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (resultLine string, resultLabels LabelsResult, matches bool)
+	ReferencedStructuredMetadata() bool
 }
 
 // Stage is a single step of a Pipeline.
@@ -33,6 +35,12 @@ type StreamPipeline interface {
 type Stage interface {
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	RequiredLabelNames() []string
+}
+
+// PipelineWrapper takes a pipeline, wraps it is some desired functionality and
+// returns a new pipeline
+type PipelineWrapper interface {
+	Wrap(ctx context.Context, pipeline Pipeline, query, tenant string) Pipeline
 }
 
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
@@ -85,6 +93,10 @@ func IsNoopPipeline(p Pipeline) bool {
 
 type noopStreamPipeline struct {
 	builder *LabelsBuilder
+}
+
+func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
 }
 
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
@@ -201,6 +213,10 @@ func (p *pipeline) Reset() {
 	}
 }
 
+func (p *streamPipeline) ReferencedStructuredMetadata() bool {
+	return p.builder.referencedStructuredMetadata
+}
+
 func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
@@ -290,6 +306,10 @@ type streamFilter struct {
 type filteringStreamPipeline struct {
 	filters  []streamFilter
 	pipeline StreamPipeline
+}
+
+func (sp *filteringStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
 }
 
 func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {

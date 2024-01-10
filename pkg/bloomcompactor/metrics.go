@@ -18,9 +18,9 @@ type metrics struct {
 	compactionRunSkippedTenants    prometheus.Counter
 	compactionRunSucceededTenants  prometheus.Counter
 	compactionRunFailedTenants     prometheus.Counter
-	compactionRunUnownedJobs       prometheus.Counter
-	compactionRunSucceededJobs     prometheus.Counter
-	compactionRunFailedJobs        prometheus.Counter
+	compactionRunJobStarted        prometheus.Counter
+	compactionRunJobSuceeded       prometheus.Counter
+	compactionRunJobFailed         prometheus.Counter
 	compactionRunInterval          prometheus.Gauge
 	compactorRunning               prometheus.Gauge
 }
@@ -69,22 +69,22 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "tenants_failed",
 			Help:      "Number of tenants failed processing during the current compaction run",
 		}),
-		compactionRunUnownedJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunJobStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "jobs_unowned",
-			Help:      "Number of unowned jobs skipped during the current compaction run",
+			Name:      "job_started",
+			Help:      "Number of jobs started processing during the current compaction run",
 		}),
-		compactionRunSucceededJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunJobSuceeded: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "jobs_succeeded",
+			Name:      "job_succeeded",
 			Help:      "Number of jobs successfully processed during the current compaction run",
 		}),
-		compactionRunFailedJobs: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunJobFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "jobs_failed",
+			Name:      "job_failed",
 			Help:      "Number of jobs failed processing during the current compaction run",
 		}),
 		compactionRunInterval: promauto.With(r).NewGauge(prometheus.GaugeOpts{

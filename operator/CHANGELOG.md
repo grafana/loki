@@ -1,5 +1,12 @@
 ## Main
 
+- [11481](https://github.com/grafana/loki/pull/11481) **JoaoBraveCoding**: Adds AWS STS support
+- [11533](https://github.com/grafana/loki/pull/11533) **periklis**: Add serviceaccount per LokiStack resource
+- [11158](https://github.com/grafana/loki/pull/11158) **btaani**: operator: Add warning for old schema configuration
+- [11473](https://github.com/grafana/loki/pull/11473) **JoaoBraveCoding**: Adds structured metadata dashboards
+- [11448](https://github.com/grafana/loki/pull/11448) **periklis**: Update Loki operand to v2.9.3
+- [11357](https://github.com/grafana/loki/pull/11357) **periklis**: Fix storing authentication credentials in the Loki ConfigMap
+- [11393](https://github.com/grafana/loki/pull/11393) **periklis**: Add infra annotations for OpenShift based deployments
 - [11094](https://github.com/grafana/loki/pull/11094) **periklis**: Add support for blocking queries per tenant
 - [11288](https://github.com/grafana/loki/pull/11288) **periklis**: Fix custom CA for object-store in ruler component
 - [11091](https://github.com/grafana/loki/pull/11091) **periklis**: Add automatic stream sharding support

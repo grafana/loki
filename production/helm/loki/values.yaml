@@ -285,6 +285,8 @@ loki:
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
+      # -- Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config
+      backoff_config: {}
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
@@ -800,6 +802,8 @@ write:
   # https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown
   # -- Init containers to add to the write pods
   initContainers: []
+  # -- Containers to add to the write pods
+  extraContainers: []
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
@@ -1463,6 +1467,9 @@ gateway:
 networkPolicy:
   # -- Specifies whether Network Policies should be created
   enabled: false
+  # -- Specifies whether the policies created will be standard Network Policies (flavor: kubernetes)
+  # or Cilium Network Policies (flavor: cilium)
+  flavor: kubernetes
   metrics:
     # -- Specifies the Pods which are allowed to access the metrics port.
     # As this is cross-namespace communication, you also need the namespaceSelector.

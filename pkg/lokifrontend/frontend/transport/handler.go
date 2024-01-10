@@ -25,6 +25,7 @@ import (
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/server"
 )
 
 const (
@@ -133,7 +134,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	queryResponseTime := time.Since(startTime)
 
 	if err != nil {
-		writeError(w, err)
+		server.WriteError(err, w)
 		return
 	}
 
@@ -227,20 +228,6 @@ func formatQueryString(queryString url.Values) (fields []interface{}) {
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
 	}
 	return fields
-}
-
-func writeError(w http.ResponseWriter, err error) {
-	switch err {
-	case context.Canceled:
-		err = errCanceled
-	case context.DeadlineExceeded:
-		err = errDeadlineExceeded
-	default:
-		if util.IsRequestBodyTooLarge(err) {
-			err = errRequestEntityTooLarge
-		}
-	}
-	httpgrpc.WriteError(w, err)
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.Stats) {

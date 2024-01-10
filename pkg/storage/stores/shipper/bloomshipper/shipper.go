@@ -4,11 +4,12 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"time"
+	"math"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
@@ -39,10 +40,10 @@ func NewShipper(client Client, config config.Config, limits Limits, logger log.L
 	}, nil
 }
 
-func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, from, through time.Time) ([]BlockRef, error) {
+func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, from, through model.Time) ([]BlockRef, error) {
 	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "from", from, "through", through)
 
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), nil)
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, []uint64{0, math.MaxUint64})
 	if err != nil {
 		return nil, fmt.Errorf("error fetching active block references : %w", err)
 	}
@@ -62,9 +63,9 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 			if !ok {
 				return nil
 			}
-			err := callback(result.BlockQuerier, result.MinFingerprint, result.MaxFingerprint)
+			err := runCallback(callback, result)
 			if err != nil {
-				return fmt.Errorf("error running callback function for block %s err: %w", result.BlockPath, err)
+				return err
 			}
 		case err := <-errorsChannel:
 			if err != nil {
@@ -74,10 +75,21 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 	}
 }
 
-func (s *Shipper) ForEachBlock(ctx context.Context, tenantID string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
+func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
+	defer func(result blockWithQuerier) {
+		_ = result.Close()
+	}(block)
+	err := callback(block.closableBlockQuerier.BlockQuerier, block.MinFingerprint, block.MaxFingerprint)
+	if err != nil {
+		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
+	}
+	return nil
+}
+
+func (s *Shipper) ForEachBlock(ctx context.Context, tenantID string, from, through model.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
 	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
 
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from.UnixNano(), through.UnixNano(), fingerprints)
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, fingerprints)
 	if err != nil {
 		return fmt.Errorf("error fetching active block references : %w", err)
 	}
@@ -100,12 +112,12 @@ func getFirstLast[T any](s []T) (T, T) {
 	return s[0], s[len(s)-1]
 }
 
-func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through int64, fingerprints []uint64) ([]BlockRef, error) {
+func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through model.Time, fingerprints []uint64) ([]BlockRef, error) {
 	minFingerprint, maxFingerprint := getFirstLast(fingerprints)
 	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
 		TenantID:       tenantID,
-		MinFingerprint: minFingerprint,
-		MaxFingerprint: maxFingerprint,
+		MinFingerprint: model.Fingerprint(minFingerprint),
+		MaxFingerprint: model.Fingerprint(maxFingerprint),
 		StartTimestamp: from,
 		EndTimestamp:   through,
 	})
@@ -126,7 +138,7 @@ func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from,
 	return activeBlocks, nil
 }
 
-func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp int64, fingerprints []uint64) []BlockRef {
+func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp model.Time, fingerprints []uint64) []BlockRef {
 	outdatedBlocks := make(map[string]interface{})
 	for _, meta := range metas {
 		for _, tombstone := range meta.Tombstones {
@@ -164,7 +176,7 @@ func getPosition[S ~[]E, E cmp.Ordered](s S, v E) int {
 	return len(s)
 }
 
-func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp int64, fingerprints []uint64) bool {
+func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp model.Time, fingerprints []uint64) bool {
 	// First, check time range
 	if b.EndTimestamp < startTimestamp || b.StartTimestamp > endTimestamp {
 		return true

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
@@ -125,58 +126,46 @@ func (in instance) For(
 	queries []logql.DownstreamQuery,
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
 ) ([]logqlmodel.Result, error) {
-	type resp struct {
-		i   int
-		res logqlmodel.Result
-		err error
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	ch := make(chan resp)
 
-	// Make one goroutine to dispatch the other goroutines, bounded by instance parallelism
+	ch := make(chan logql.Resp)
+
+	// ForEachJob blocks until all are done. However, we want to process the
+	// results as they come in. That's why we start everything in another
+	// gorouting.
 	go func() {
-		for i := 0; i < len(queries); i++ {
+		err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
+			res, err := fn(queries[i])
+			response := logql.Resp{
+				I:   i,
+				Res: res,
+				Err: err,
+			}
+
+			// Feed the result into the channel unless the work has completed.
 			select {
 			case <-ctx.Done():
-				break
-			case <-in.locks:
-				go func(i int) {
-					// release lock back into pool
-					defer func() {
-						in.locks <- struct{}{}
-					}()
-
-					res, err := fn(queries[i])
-					response := resp{
-						i:   i,
-						res: res,
-						err: err,
-					}
-
-					// Feed the result into the channel unless the work has completed.
-					select {
-					case <-ctx.Done():
-					case ch <- response:
-					}
-				}(i)
+			case ch <- response:
+			}
+			return err
+		})
+		if err != nil {
+			ch <- logql.Resp{
+				I:   -1,
+				Err: err,
 			}
 		}
+		close(ch)
 	}()
 
 	acc := newDownstreamAccumulator(queries[0].Params, len(queries))
-	for i := 0; i < len(queries); i++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case resp := <-ch:
-			if resp.err != nil {
-				return nil, resp.err
-			}
-			if err := acc.Accumulate(ctx, resp.i, resp.res); err != nil {
-				return nil, err
-			}
+	for resp := range ch {
+		if resp.Err != nil {
+			return nil, resp.Err
+		}
+		if err := acc.Accumulate(ctx, resp.I, resp.Res); err != nil {
+			return nil, err
 		}
 	}
 	return acc.Result(), nil
@@ -222,8 +211,8 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	return xs
 }
 
-// downstreamAccumulator is one of two variants:
-// a logsAccumulator or a bufferedAccumulator.
+// downstreamAccumulator is one of three variants:
+// a logsAccumulator, a bufferedAccumulator, or a quantileSketchAccumulator.
 // Which variant is detected on the first call to Accumulate.
 // Metric queries, which are generally small payloads, are buffered
 // since the memory overhead is negligible.
@@ -232,6 +221,7 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 // accumulate the results into a logsAccumulator, discarding values
 // over the limit to keep memory pressure down while other subqueries
 // are executing.
+// Sharded probabilistic quantile query results are merged as they come in.
 type downstreamAccumulator struct {
 	acc    resultAccumulator
 	params logql.Params
@@ -248,7 +238,8 @@ func newDownstreamAccumulator(params logql.Params, nQueries int) *downstreamAccu
 }
 
 func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
-	if acc.Data.Type() == logqlmodel.ValueTypeStreams {
+	switch acc.Data.Type() {
+	case logqlmodel.ValueTypeStreams:
 
 		// the stream accumulator stores a heap with reversed order
 		// from the results we expect, so we need to reverse the direction
@@ -258,8 +249,9 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 		}
 
 		a.acc = newStreamAccumulator(direction, int(a.params.Limit()))
-
-	} else {
+	case logql.QuantileSketchMatrixType:
+		a.acc = newQuantileSketchAccumulator()
+	default:
 		a.acc = &bufferedAccumulator{
 			results: make([]logqlmodel.Result, a.n),
 		}
@@ -295,6 +287,36 @@ func (a *bufferedAccumulator) Accumulate(acc logqlmodel.Result, i int) error {
 
 func (a *bufferedAccumulator) Result() []logqlmodel.Result {
 	return a.results
+}
+
+type quantileSketchAccumulator struct {
+	matrix logql.ProbabilisticQuantileMatrix
+}
+
+func newQuantileSketchAccumulator() *quantileSketchAccumulator {
+	return &quantileSketchAccumulator{}
+}
+
+func (a *quantileSketchAccumulator) Accumulate(res logqlmodel.Result, _ int) error {
+	if res.Data.Type() != logql.QuantileSketchMatrixType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), logql.QuantileSketchMatrixType)
+	}
+	data, ok := res.Data.(logql.ProbabilisticQuantileMatrix)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
+	}
+	if a.matrix == nil {
+		a.matrix = data
+		return nil
+	}
+
+	var err error
+	a.matrix, err = a.matrix.Merge(data)
+	return err
+}
+
+func (a *quantileSketchAccumulator) Result() []logqlmodel.Result {
+	return []logqlmodel.Result{{Data: a.matrix}}
 }
 
 // heap impl for keeping only the top n results across m streams

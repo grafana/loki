@@ -74,6 +74,11 @@ const (
 	metricsSubsystem       = "bloom_gateway"
 )
 
+var (
+	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
+	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
+)
+
 type metrics struct {
 	queueDuration    prometheus.Histogram
 	inflightRequests prometheus.Summary
@@ -158,6 +163,14 @@ type Gateway struct {
 	workerConfig workerConfig
 }
 
+type fixedQueueLimits struct {
+	maxConsumers int
+}
+
+func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
+	return l.maxConsumers
+}
+
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
@@ -167,14 +180,15 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 		workerConfig: workerConfig{
-			maxWaitTime: 200 * time.Millisecond,
-			maxItems:    100,
+			maxWaitTime:               200 * time.Millisecond,
+			maxItems:                  100,
+			processBlocksSequentially: false,
 		},
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
 
-	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, g.queueMetrics)
+	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{100}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
 	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
@@ -284,20 +298,21 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	task, resCh, errCh, err := NewTask(tenantID, req)
+
 	if err != nil {
 		return nil, err
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID)
-	g.queue.Enqueue(tenantID, []string{}, task, 100, func() {
+	g.queue.Enqueue(tenantID, []string{}, task, func() {
 		// When enqueuing, we also add the task to the pending tasks
 		g.pendingTasks.Add(task.ID, task)
 	})
 
 	requestCount := len(req.Refs)
-	// TODO(chaudum): Use pool
-	responses := make([]v1.Output, 0, requestCount)
+	responses := responsesPool.Get(requestCount)
+	defer responsesPool.Put(responses)
 
 	for {
 		select {

@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.31.2
+BUILD_IMAGE_VERSION ?= 0.33.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -427,7 +427,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -836,13 +836,16 @@ dev-k3d-down:
 
 # Trivy is used to scan images for vulnerabilities
 .PHONY: trivy
-trivy: loki-image
+trivy: loki-image build-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
+	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+snyk: loki-image build-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities
