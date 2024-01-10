@@ -1359,6 +1359,31 @@ func TestMapping(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `
+			  (quantile_over_time(0.99,{a=~".+"} | logfmt | unwrap value[1s]) by (a) > 1)
+			and
+			  avg by (a)(rate({a=~".+"}[1s]))
+			`,
+			expr: &syntax.BinOpExpr{
+				SampleExpr: &syntax.RangeAggregationExpr{
+					Operation: syntax.OpRangeTypeQuantile,
+					Params:    float64p(0.8),
+					Left: &syntax.LogRange{
+						Left: &syntax.MatchersExpr{
+							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+						},
+						Unwrap: &syntax.UnwrapExpr{
+							Identifier: "bytes",
+						},
+						Interval: 5 * time.Minute,
+					},
+					Grouping: &syntax.Grouping{
+						Groups: []string{"cluster"},
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
