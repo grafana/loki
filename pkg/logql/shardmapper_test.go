@@ -418,7 +418,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{})
 
 	for _, tc := range []struct {
 		in   string
@@ -1340,6 +1340,25 @@ func TestMapping(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `quantile_over_time(0.8, {foo="bar"} | unwrap bytes [5m]) by (cluster)`,
+			expr: &syntax.RangeAggregationExpr{
+				Operation: syntax.OpRangeTypeQuantile,
+				Params:    float64p(0.8),
+				Left: &syntax.LogRange{
+					Left: &syntax.MatchersExpr{
+						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+					},
+					Unwrap: &syntax.UnwrapExpr{
+						Identifier: "bytes",
+					},
+					Interval: 5 * time.Minute,
+				},
+				Grouping: &syntax.Grouping{
+					Groups: []string{"cluster"},
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
@@ -1419,4 +1438,8 @@ func TestStringTrimming(t *testing.T) {
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})
 	}
+}
+
+func float64p(v float64) *float64 {
+	return &v
 }
