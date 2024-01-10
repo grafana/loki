@@ -62,7 +62,7 @@ limits_config:
   ingestion_burst_size_mb: 50
   reject_old_samples: false
   allow_structured_metadata: true
-  split_queries_by_interval: 24h
+  split_queries_by_interval: 1h
 
 storage_config:
   named_stores:

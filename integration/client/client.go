@@ -480,9 +480,11 @@ type Header struct {
 }
 
 // RunRangeQuery runs a 7d query and returns an error if anything went wrong
+// This function is kept to keep backwards copatibility of existing tests.
+// Better use (*Client).RunRangeQueryWithStartEnd()
 func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
-	start := c.Now.Add(-7 * 24 * time.Hour)
 	end := c.Now.Add(-1 * time.Second)
+	start := c.Now.Add(-7 * 24 * time.Hour)
 	return c.RunRangeQueryWithStartEnd(ctx, query, start, end, extraHeaders...)
 }
 
