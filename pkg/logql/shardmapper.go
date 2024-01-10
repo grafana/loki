@@ -97,31 +97,44 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
+		var err error
+		var lhsMapped, rhsMapped syntax.Expr
+		var lhsBytesPerShard, rhsBytesPerShard uint64
+
 		if e.SampleExpr.Shardable() {
-			lhsMapped, lhsBytesPerShard, err := m.Map(e.SampleExpr, r)
+			lhsMapped, lhsBytesPerShard, err = m.Map(e.SampleExpr, r)
 			if err != nil {
 				return nil, 0, err
 			}
+			_, ok := lhsMapped.(syntax.SampleExpr)
+			if !ok {
+				return nil, 0, badASTMapping(lhsMapped)
+			}
 		} else {
-			lhsMapped := DownstreamSampleExpr{
-				shard: nil,
+			lhsMapped = &DownstreamSampleExpr{
+				shard:      nil,
 				SampleExpr: e.SampleExpr,
 			}
 		}
-		rhsMapped, rhsBytesPerShard, err := m.Map(e.RHS, r)
-		if err != nil {
-			return nil, 0, err
+
+		if e.RHS.Shardable() {
+			rhsMapped, rhsBytesPerShard, err = m.Map(e.RHS, r)
+			if err != nil {
+				return nil, 0, err
+			}
+			_, ok := rhsMapped.(syntax.SampleExpr)
+			if !ok {
+				return nil, 0, badASTMapping(rhsMapped)
+			}
+		} else {
+			rhsMapped = &DownstreamSampleExpr{
+				shard:      nil,
+				SampleExpr: e.RHS,
+			}
 		}
-		lhsSampleExpr, ok := lhsMapped.(syntax.SampleExpr)
-		if !ok {
-			return nil, 0, badASTMapping(lhsMapped)
-		}
-		rhsSampleExpr, ok := rhsMapped.(syntax.SampleExpr)
-		if !ok {
-			return nil, 0, badASTMapping(rhsMapped)
-		}
-		e.SampleExpr = lhsSampleExpr
-		e.RHS = rhsSampleExpr
+
+		e.SampleExpr = lhsMapped.(syntax.SampleExpr)
+		e.RHS = rhsMapped.(syntax.SampleExpr)
 
 		// We take the maximum bytes per shard of both sides of the operation
 		bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
