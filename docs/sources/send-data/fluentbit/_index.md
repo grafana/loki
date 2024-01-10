@@ -8,7 +8,7 @@ weight:  500
 ---
 # Fluent Bit client
 
-[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the Grafana Fluent Bit Plugin described here with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) from fluent bit to ship logs to Loki. 
+[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the Grafana Fluent Bit Plugin described here or with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) fluent-bit to ship logs to Loki. 
 This plugin has more configuration options compared to the built in fluent bit loki plugin.
 You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
@@ -79,6 +79,8 @@ helm install fluent-bit fluent/fluent-bit -f values.yaml
 ```
 
 By default it will collect all containers logs and extract labels from Kubernetes API (`container_name`, `namespace`, etc..).
+
+If you also want to host your Loki insance inside the cluster install the [official Loki helm chart](https://grafana.com/docs/loki/latest/setup/install/helm/).
 
 ### AWS Elastic Container Service (ECS)
 
