@@ -320,6 +320,40 @@ func TestS3Extract(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "STS missing region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "STS with region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role"),
+					"region":      []byte("here"),
+				},
+			},
+		},
+		{
+			name: "STS all set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role"),
+					"region":      []byte("here"),
+					"audience":    []byte("audience"),
+				},
+			},
+		},
 	}
 	for _, tst := range table {
 		tst := tst
