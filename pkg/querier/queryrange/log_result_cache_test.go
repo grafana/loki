@@ -32,7 +32,7 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -74,7 +74,7 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -122,7 +122,7 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -172,7 +172,7 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -248,7 +248,7 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -335,7 +335,7 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
@@ -445,7 +445,7 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splits: map[string]time.Duration{"foo": time.Minute},
+				splitDuration: map[string]time.Duration{"foo": time.Minute},
 			},
 			mockCache,
 			nil,

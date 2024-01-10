@@ -81,17 +81,35 @@ func TestClone(t *testing.T) {
 }
 
 func TestCloneStringLabelFilter(t *testing.T) {
-	expr := newPipelineExpr(
-		newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-		MultiStageExpr{
-			newLogfmtParserExpr(nil),
-			newLabelFilterExpr(&log.StringLabelFilter{Matcher: labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+	for name, tc := range map[string]struct {
+		expr Expr
+	}{
+		"pipeline": {
+			expr: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLogfmtParserExpr(nil),
+					newLabelFilterExpr(&log.StringLabelFilter{Matcher: labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				},
+			),
 		},
-	)
-	actual, err := Clone[Expr](expr)
-	require.NoError(t, err)
+		"filterer": {
+			expr: &LabelFilterExpr{
+				LabelFilterer: &log.LineFilterLabelFilter{
+					Matcher: mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+					Filter:  log.ExistsFilter,
+				},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			actual, err := Clone[Expr](tc.expr)
+			require.NoError(t, err)
 
-	require.Equal(t, expr.Pretty(0), actual.Pretty(0))
+			require.Equal(t, tc.expr.Pretty(0), actual.Pretty(0))
+			require.Equal(t, tc.expr, actual)
+		})
+	}
 }
 
 func TestCloneParseTestCases(t *testing.T) {

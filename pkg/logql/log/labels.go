@@ -134,9 +134,10 @@ type BaseLabelsBuilder struct {
 	// nolint:structcheck
 	errDetails string
 
-	groups            []string
-	parserKeyHints    ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
-	without, noLabels bool
+	groups                       []string
+	parserKeyHints               ParserHint // label key hints for metric queries that allows to limit parser extractions to only this list of labels.
+	without, noLabels            bool
+	referencedStructuredMetadata bool
 
 	resultCache map[uint64]LabelsResult
 	*hasher
@@ -286,6 +287,16 @@ func (b *LabelsBuilder) BaseHas(key string) bool {
 
 // GetWithCategory returns the value and the category of a labels key if it exists.
 func (b *LabelsBuilder) GetWithCategory(key string) (string, LabelCategory, bool) {
+	v, category, ok := b.getWithCategory(key)
+	if category == StructuredMetadataLabel {
+		b.referencedStructuredMetadata = true
+	}
+
+	return v, category, ok
+}
+
+// GetWithCategory returns the value and the category of a labels key if it exists.
+func (b *LabelsBuilder) getWithCategory(key string) (string, LabelCategory, bool) {
 	for category, lbls := range b.add {
 		for _, l := range lbls {
 			if l.Name == key {
@@ -484,22 +495,21 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 	}
 }
 
-func (b *LabelsBuilder) Map() map[string]string {
+func (b *LabelsBuilder) Map() (map[string]string, bool) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
 		}
-		return b.baseMap
+		return b.baseMap, false
 	}
 	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	clear(res)
 	for _, l := range b.buf {
 		res[l.Name] = l.Value
 	}
-	return res
+	return res, true
 }
 
 // LabelsResult returns the LabelsResult from the builder.
@@ -596,9 +606,12 @@ Outer:
 				continue Outer
 			}
 		}
-		for _, la := range b.add {
+		for category, la := range b.add {
 			for _, l := range la {
 				if g == l.Name {
+					if LabelCategory(category) == StructuredMetadataLabel {
+						b.referencedStructuredMetadata = true
+					}
 					b.buf = append(b.buf, l)
 					continue Outer
 				}
@@ -646,11 +659,14 @@ Outer:
 		b.buf = append(b.buf, l)
 	}
 
-	for _, lbls := range b.add {
+	for category, lbls := range b.add {
 	OuterAdd:
 		for _, la := range lbls {
 			for _, lg := range b.groups {
 				if la.Name == lg {
+					if LabelCategory(category) == StructuredMetadataLabel {
+						b.referencedStructuredMetadata = true
+					}
 					continue OuterAdd
 				}
 			}

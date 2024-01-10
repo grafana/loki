@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
+
 	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/grafana/dskit/flagext"
@@ -411,8 +414,8 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: map[string]string{"app": "test", "job": "varlogs"}},
-				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 		{
@@ -428,7 +431,7 @@ func Test_SeriesQuery(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				// Separated by shard number
-				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 		{
@@ -439,7 +442,7 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: map[string]string{"app": "test", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test", "job", "varlogs")},
 			},
 		},
 		{
@@ -450,7 +453,7 @@ func Test_SeriesQuery(t *testing.T) {
 				Groups: []string{`{job="varlogs"}`},
 			},
 			[]logproto.SeriesIdentifier{
-				{Labels: map[string]string{"app": "test2", "job": "varlogs"}},
+				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
 			},
 		},
 	}
@@ -611,16 +614,16 @@ func Test_Iterator(t *testing.T) {
 
 	// assert the order is preserved.
 	var res *logproto.QueryResponse
-	require.NoError(t,
-		sendBatches(context.TODO(), it,
-			fakeQueryServer(
-				func(qr *logproto.QueryResponse) error {
-					res = qr
-					return nil
-				},
-			),
-			int32(2)),
-	)
+	lines, err := sendBatches(context.TODO(), it,
+		fakeQueryServer(
+			func(qr *logproto.QueryResponse) error {
+				res = qr
+				return nil
+			},
+		),
+		int32(2))
+	require.NoError(t, err)
+	require.Equal(t, int32(2), lines)
 	require.Equal(t, 2, len(res.Streams))
 	// each entry translated into a unique stream
 	require.Equal(t, 1, len(res.Streams[0].Entries))
@@ -681,7 +684,12 @@ func Test_PipelineWrapper(t *testing.T) {
 	}
 	instance.pipelineWrapper = wrapper
 
-	it, err := instance.Query(context.TODO(),
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	_, err := tenant.TenantID(ctx)
+	require.NoError(t, err)
+
+	it, err := instance.Query(ctx,
 		logql.SelectLogParams{
 			QueryRequest: &logproto.QueryRequest{
 				Selector:  `{job="3"}`,
@@ -703,16 +711,19 @@ func Test_PipelineWrapper(t *testing.T) {
 		require.NoError(t, it.Error())
 	}
 
+	require.Equal(t, "test-user", wrapper.tenant)
 	require.Equal(t, `{job="3"}`, wrapper.query)
 	require.Equal(t, 10, wrapper.pipeline.sp.called) // we've passed every log line through the wrapper
 }
 
 type testPipelineWrapper struct {
 	query    string
+	tenant   string
 	pipeline *mockPipeline
 }
 
-func (t *testPipelineWrapper) Wrap(pipeline log.Pipeline, query string) log.Pipeline {
+func (t *testPipelineWrapper) Wrap(_ context.Context, pipeline log.Pipeline, query, tenant string) log.Pipeline {
+	t.tenant = tenant
 	t.query = query
 	t.pipeline.wrappedExtractor = pipeline
 	return t.pipeline
@@ -743,6 +754,10 @@ type mockStreamPipeline struct {
 	called    int
 }
 
+func (p *mockStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func (p *mockStreamPipeline) BaseLabels() log.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
@@ -765,7 +780,8 @@ func Test_ExtractorWrapper(t *testing.T) {
 	}
 	instance.extractorWrapper = wrapper
 
-	it, err := instance.QuerySample(context.TODO(),
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+	it, err := instance.QuerySample(ctx,
 		logql.SelectSampleParams{
 			SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: `sum(count_over_time({job="3"}[1m]))`,
@@ -791,10 +807,12 @@ func Test_ExtractorWrapper(t *testing.T) {
 
 type testExtractorWrapper struct {
 	query     string
+	tenant    string
 	extractor *mockExtractor
 }
 
-func (t *testExtractorWrapper) Wrap(extractor log.SampleExtractor, query string) log.SampleExtractor {
+func (t *testExtractorWrapper) Wrap(_ context.Context, extractor log.SampleExtractor, query, tenant string) log.SampleExtractor {
+	t.tenant = tenant
 	t.query = query
 	t.extractor.wrappedExtractor = extractor
 	return t.extractor
@@ -823,6 +841,10 @@ func (p *mockExtractor) Reset() {}
 type mockStreamExtractor struct {
 	wrappedSP log.StreamSampleExtractor
 	called    int
+}
+
+func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
 }
 
 func (p *mockStreamExtractor) BaseLabels() log.LabelsResult {

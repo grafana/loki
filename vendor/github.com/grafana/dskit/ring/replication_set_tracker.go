@@ -63,15 +63,15 @@ type replicationSetContextTracker interface {
 	// The context.CancelFunc will only cancel the context for this instance (ie. if this tracker
 	// is zone-aware, calling the context.CancelFunc should not cancel contexts for other instances
 	// in the same zone).
-	contextFor(instance *InstanceDesc) (context.Context, context.CancelFunc)
+	contextFor(instance *InstanceDesc) (context.Context, context.CancelCauseFunc)
 
 	// Cancels the context for instance previously obtained with contextFor.
 	// This method may cancel the context for other instances if those other instances are part of
 	// the same zone and this tracker is zone-aware.
-	cancelContextFor(instance *InstanceDesc)
+	cancelContextFor(instance *InstanceDesc, cause error)
 
 	// Cancels all contexts previously obtained with contextFor.
-	cancelAllContexts()
+	cancelAllContexts(cause error)
 }
 
 var errResultNotNeeded = errors.New("result from this instance is not needed")
@@ -196,7 +196,7 @@ func (t *defaultResultTracker) startAllRequests() {
 func (t *defaultResultTracker) awaitStart(ctx context.Context, instance *InstanceDesc) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return context.Cause(ctx)
 	case _, ok := <-t.instanceRelease[instance]:
 		if ok {
 			return nil
@@ -208,32 +208,32 @@ func (t *defaultResultTracker) awaitStart(ctx context.Context, instance *Instanc
 
 type defaultContextTracker struct {
 	ctx         context.Context
-	cancelFuncs map[*InstanceDesc]context.CancelFunc
+	cancelFuncs map[*InstanceDesc]context.CancelCauseFunc
 }
 
 func newDefaultContextTracker(ctx context.Context, instances []InstanceDesc) *defaultContextTracker {
 	return &defaultContextTracker{
 		ctx:         ctx,
-		cancelFuncs: make(map[*InstanceDesc]context.CancelFunc, len(instances)),
+		cancelFuncs: make(map[*InstanceDesc]context.CancelCauseFunc, len(instances)),
 	}
 }
 
-func (t *defaultContextTracker) contextFor(instance *InstanceDesc) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(t.ctx)
+func (t *defaultContextTracker) contextFor(instance *InstanceDesc) (context.Context, context.CancelCauseFunc) {
+	ctx, cancel := context.WithCancelCause(t.ctx)
 	t.cancelFuncs[instance] = cancel
 	return ctx, cancel
 }
 
-func (t *defaultContextTracker) cancelContextFor(instance *InstanceDesc) {
+func (t *defaultContextTracker) cancelContextFor(instance *InstanceDesc, cause error) {
 	if cancel, ok := t.cancelFuncs[instance]; ok {
-		cancel()
+		cancel(cause)
 		delete(t.cancelFuncs, instance)
 	}
 }
 
-func (t *defaultContextTracker) cancelAllContexts() {
+func (t *defaultContextTracker) cancelAllContexts(cause error) {
 	for instance, cancel := range t.cancelFuncs {
-		cancel()
+		cancel(cause)
 		delete(t.cancelFuncs, instance)
 	}
 }
@@ -248,14 +248,18 @@ type zoneAwareResultTracker struct {
 	zoneRelease         map[string]chan struct{}
 	zoneShouldStart     map[string]*atomic.Bool
 	pendingZones        []string
+	zoneSorter          ZoneSorter
 	logger              log.Logger
 }
 
-func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int, logger log.Logger) *zoneAwareResultTracker {
+type ZoneSorter func(zones []string) []string
+
+func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int, zoneSorter ZoneSorter, logger log.Logger) *zoneAwareResultTracker {
 	t := &zoneAwareResultTracker{
 		waitingByZone:       make(map[string]int),
 		failuresByZone:      make(map[string]int),
 		maxUnavailableZones: maxUnavailableZones,
+		zoneSorter:          zoneSorter,
 		logger:              logger,
 	}
 
@@ -269,7 +273,19 @@ func newZoneAwareResultTracker(instances []InstanceDesc, maxUnavailableZones int
 		t.minSuccessfulZones = 0
 	}
 
+	if t.zoneSorter == nil {
+		t.zoneSorter = defaultZoneSorter
+	}
+
 	return t
+}
+
+func defaultZoneSorter(zones []string) []string {
+	rand.Shuffle(len(zones), func(i, j int) {
+		zones[i], zones[j] = zones[j], zones[i]
+	})
+
+	return zones
 }
 
 func (t *zoneAwareResultTracker) done(instance *InstanceDesc, err error) {
@@ -338,9 +354,7 @@ func (t *zoneAwareResultTracker) startMinimumRequests() {
 		allZones = append(allZones, zone)
 	}
 
-	rand.Shuffle(len(allZones), func(i, j int) {
-		allZones[i], allZones[j] = allZones[j], allZones[i]
-	})
+	allZones = t.zoneSorter(allZones)
 
 	for i := 0; i < t.minSuccessfulZones; i++ {
 		level.Debug(t.logger).Log("msg", "starting requests to zone", "reason", "initial requests", "zone", allZones[i])
@@ -396,7 +410,7 @@ func (t *zoneAwareResultTracker) releaseZone(zone string, shouldStart bool) {
 func (t *zoneAwareResultTracker) awaitStart(ctx context.Context, instance *InstanceDesc) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return context.Cause(ctx)
 	case <-t.zoneRelease[instance.Zone]:
 		if t.zoneShouldStart[instance.Zone].Load() {
 			return nil
@@ -408,18 +422,18 @@ func (t *zoneAwareResultTracker) awaitStart(ctx context.Context, instance *Insta
 
 type zoneAwareContextTracker struct {
 	contexts    map[*InstanceDesc]context.Context
-	cancelFuncs map[*InstanceDesc]context.CancelFunc
+	cancelFuncs map[*InstanceDesc]context.CancelCauseFunc
 }
 
 func newZoneAwareContextTracker(ctx context.Context, instances []InstanceDesc) *zoneAwareContextTracker {
 	t := &zoneAwareContextTracker{
 		contexts:    make(map[*InstanceDesc]context.Context, len(instances)),
-		cancelFuncs: make(map[*InstanceDesc]context.CancelFunc, len(instances)),
+		cancelFuncs: make(map[*InstanceDesc]context.CancelCauseFunc, len(instances)),
 	}
 
 	for i := range instances {
 		instance := &instances[i]
-		ctx, cancel := context.WithCancel(ctx)
+		ctx, cancel := context.WithCancelCause(ctx)
 		t.contexts[instance] = ctx
 		t.cancelFuncs[instance] = cancel
 	}
@@ -427,26 +441,26 @@ func newZoneAwareContextTracker(ctx context.Context, instances []InstanceDesc) *
 	return t
 }
 
-func (t *zoneAwareContextTracker) contextFor(instance *InstanceDesc) (context.Context, context.CancelFunc) {
+func (t *zoneAwareContextTracker) contextFor(instance *InstanceDesc) (context.Context, context.CancelCauseFunc) {
 	return t.contexts[instance], t.cancelFuncs[instance]
 }
 
-func (t *zoneAwareContextTracker) cancelContextFor(instance *InstanceDesc) {
+func (t *zoneAwareContextTracker) cancelContextFor(instance *InstanceDesc, cause error) {
 	// Why not create a per-zone parent context to make this easier?
 	// If we create a per-zone parent context, we'd need to have some way to cancel the per-zone context when the last of the individual
 	// contexts in a zone are cancelled using the context.CancelFunc returned from contextFor.
 	for i, cancel := range t.cancelFuncs {
 		if i.Zone == instance.Zone {
-			cancel()
+			cancel(cause)
 			delete(t.contexts, i)
 			delete(t.cancelFuncs, i)
 		}
 	}
 }
 
-func (t *zoneAwareContextTracker) cancelAllContexts() {
+func (t *zoneAwareContextTracker) cancelAllContexts(cause error) {
 	for instance, cancel := range t.cancelFuncs {
-		cancel()
+		cancel(cause)
 		delete(t.contexts, instance)
 		delete(t.cancelFuncs, instance)
 	}
