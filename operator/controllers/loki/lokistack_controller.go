@@ -324,7 +324,7 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
 		if err := r.Client.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
-			r.Log.Error(err, "Error getting LokiStack resources in event handler")
+			r.Log.Error(err, "Error listing LokiStack resources for storage CA update")
 			return nil
 		}
 
