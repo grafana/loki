@@ -1,7 +1,6 @@
 package bloomshipper
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"math"
@@ -43,7 +42,7 @@ func NewShipper(client Client, config config.Config, limits Limits, logger log.L
 func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, from, through model.Time) ([]BlockRef, error) {
 	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "from", from, "through", through)
 
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, []uint64{0, math.MaxUint64})
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, [][2]uint64{{0, math.MaxUint64}})
 	if err != nil {
 		return nil, fmt.Errorf("error fetching active block references : %w", err)
 	}
@@ -59,14 +58,8 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
-		case result, ok := <-blocksChannel:
-			if !ok {
-				return nil
-			}
-			err := runCallback(callback, result)
-			if err != nil {
-				return err
-			}
+		case result := <-blocksChannel:
+			return runCallback(callback, result)
 		case err := <-errorsChannel:
 			if err != nil {
 				return fmt.Errorf("error downloading blocks : %w", err)
@@ -86,10 +79,16 @@ func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
 	return nil
 }
 
+// makeFpRanges groups continuous fingerprints into ranges of [2]uint64{minFp, maxFp}
+func makeFpRanges(fingerprints []uint64) [][2]uint64 {
+	panic("makeFpRange() not implemented")
+}
+
 func (s *Shipper) ForEachBlock(ctx context.Context, tenantID string, from, through model.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
 	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
+	fpRanges := makeFpRanges(fingerprints)
 
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, fingerprints)
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, fpRanges)
 	if err != nil {
 		return fmt.Errorf("error fetching active block references : %w", err)
 	}
@@ -112,12 +111,12 @@ func getFirstLast[T any](s []T) (T, T) {
 	return s[0], s[len(s)-1]
 }
 
-func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through model.Time, fingerprints []uint64) ([]BlockRef, error) {
+func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through model.Time, fingerprints [][2]uint64) ([]BlockRef, error) {
 	minFingerprint, maxFingerprint := getFirstLast(fingerprints)
 	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
 		TenantID:       tenantID,
-		MinFingerprint: model.Fingerprint(minFingerprint),
-		MaxFingerprint: model.Fingerprint(maxFingerprint),
+		MinFingerprint: model.Fingerprint(minFingerprint[0]),
+		MaxFingerprint: model.Fingerprint(maxFingerprint[1]),
 		StartTimestamp: from,
 		EndTimestamp:   through,
 	})
@@ -139,7 +138,7 @@ func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from,
 	return activeBlocks, nil
 }
 
-func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp model.Time, fingerprints []uint64) []BlockRef {
+func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp model.Time, fingerprints [][2]uint64) []BlockRef {
 	outdatedBlocks := make(map[string]interface{})
 	for _, meta := range metas {
 		for _, tombstone := range meta.Tombstones {
@@ -165,39 +164,30 @@ func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp model.Ti
 	return blockRefs
 }
 
-// getPosition returns the smallest index of element v in slice s where v > s[i]
-// TODO(chaudum): Use binary search to find index instead of iteration.
-func getPosition[S ~[]E, E cmp.Ordered](s S, v E) int {
-	for i := range s {
-		if v > s[i] {
-			continue
-		}
-		return i
-	}
-	return len(s)
-}
-
-func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp model.Time, fingerprints []uint64) bool {
+// isOutsideRange tests if a given BlockRef b is outside of search boundaries
+// defined by min/max timestamp and min/max fingerprint.
+// Fingerprint ranges must be sorted in ascending order.
+func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp model.Time, fingerprints [][2]uint64) bool {
 	// First, check time range
 	if b.EndTimestamp < startTimestamp || b.StartTimestamp > endTimestamp {
 		return true
 	}
 
 	// Then, check if outside of min/max of fingerprint slice
-	minFp, maxFp := getFirstLast(fingerprints)
+	minFpRange, maxFpRange := getFirstLast(fingerprints)
+	minFp, maxFp := minFpRange[0], maxFpRange[1]
 	if b.MaxFingerprint < minFp || b.MinFingerprint > maxFp {
 		return true
 	}
 
-	// Check if the block range is inside a "gap" in the fingerprint slice
-	// e.g.
-	// fingerprints = [1, 2,          6, 7, 8]
-	// block =              [3, 4, 5]
-	idx := getPosition(fingerprints, b.MinFingerprint)
-	// in case b.MinFingerprint is outside of the fingerprints range, return true
-	// this is already covered in the range check above, but I keep it as a second gate
-	if idx > len(fingerprints)-1 {
-		return true
+	prev := [2]uint64{0, 0}
+	for i := 0; i < len(fingerprints); i++ {
+		fpRange := fingerprints[i]
+		if b.MinFingerprint > prev[1] && b.MaxFingerprint < fpRange[0] {
+			return true
+		}
+		prev = fingerprints[i]
 	}
-	return b.MaxFingerprint < fingerprints[idx]
+
+	return false
 }
