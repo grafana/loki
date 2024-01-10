@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.41.5
 
 - [ENHANCEMENT] Bumped "grafana-agent-operator" depenency chart version to it's latest version
+- [BUGFIX] Added "swift" type object storage to resolve Loki HELM Chart error.
 
 ## 5.41.4
 

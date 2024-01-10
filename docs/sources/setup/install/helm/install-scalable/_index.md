@@ -1,7 +1,7 @@
 ---
 title: Install the simple scalable Helm chart 
 menuTitle: Install scalable Loki
-description: Install Loki in scalable mode.
+description: Installing Loki in simple scalable mode using the Helm chart.
 aliases:
   - ../../../installation/helm/scalable/
   - ../../../installation/helm/install-scalable/

@@ -338,11 +338,7 @@ var rangeMergeMap = map[string]string{
 
 func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	if !expr.Shardable() {
-		exprStats, err := m.shards.GetStats(expr)
-		if err != nil {
-			return nil, 0, err
-		}
-		return expr, exprStats.Bytes, nil
+		return m.noOp(expr)
 	}
 
 	switch expr.Operation {
@@ -437,7 +433,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return nil, 0, err
 		}
 		if shards == 0 || !m.quantileOverTimeSharding {
-			return m.mapSampleExpr(expr, r)
+			return m.noOp(expr)
 		}
 
 		// quantile_over_time() by (foo) ->
@@ -465,12 +461,16 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 
 	default:
 		// don't shard if there's not an appropriate optimization
-		exprStats, err := m.shards.GetStats(expr)
-		if err != nil {
-			return nil, 0, err
-		}
-		return expr, exprStats.Bytes, nil
+		return m.noOp(expr)
 	}
+}
+
+func (m ShardMapper) noOp(expr *syntax.RangeAggregationExpr) (syntax.SampleExpr, uint64, error) {
+	exprStats, err := m.shards.GetStats(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+	return expr, exprStats.Bytes, nil
 }
 
 func badASTMapping(got syntax.Expr) error {
