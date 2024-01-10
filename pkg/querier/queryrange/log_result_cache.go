@@ -181,7 +181,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
-	result := emptyResponse(cachedRequest)
+	result := emptyResponse(lokiReq)
 	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
