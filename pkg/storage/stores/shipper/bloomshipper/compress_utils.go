@@ -43,13 +43,12 @@ func UncompressBloomBlock(block *LazyBlock, workingDirectory string, logger log.
 		return "", fmt.Errorf("error writing data to temp file: %w", err)
 	}
 	level.Info(logger).Log("msg", "extracting archive", "archive", archivePath, "workingDirectory", workingDirectoryPath, "blockPath", block.BlockPath)
-	// TODO: Uncomment after debugging
-	//defer func() {
-	//	err = os.Remove(archivePath)
-	//	if err != nil {
-	//		level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
-	//	}
-	//}()
+	defer func() {
+		err = os.Remove(archivePath)
+		if err != nil {
+			level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
+		}
+	}()
 	err = extractArchive(archivePath, workingDirectoryPath)
 	if err != nil {
 		return "", fmt.Errorf("error extracting archive: %w", err)
