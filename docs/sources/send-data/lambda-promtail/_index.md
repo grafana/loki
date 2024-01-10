@@ -1,7 +1,7 @@
 ---
 title: Lambda Promtail client 
 menuTitle:  Lambda Promtail
-description: How to configure the Lambda Promtail client workflow.
+description: Configuring the Lambda Promtail client to send logs to Loki.
 aliases: 
 - ../clients/lambda-promtail/
 weight:  700

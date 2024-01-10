@@ -1,6 +1,8 @@
 package bloomgateway
 
 import (
+	"context"
+	"math"
 	"sort"
 	"testing"
 	"time"
@@ -9,54 +11,31 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 func TestBloomGatewayClient(t *testing.T) {
-
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
-	l, err := validation.NewOverrides(validation.Limits{BloomGatewayShardSize: 1}, nil)
+	l, err := validation.NewOverrides(validation.Limits{BloomGatewayShardSize: 1, BloomGatewayEnabled: true}, nil)
 	require.NoError(t, err)
 
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
-	t.Run("", func(t *testing.T) {
-		_, err := NewGatewayClient(cfg, l, reg, logger, "loki", nil, false)
+	t.Run("FilterChunks returns response", func(t *testing.T) {
+		c, err := NewClient(cfg, &mockRing{}, l, reg, logger, "loki", nil, false)
 		require.NoError(t, err)
+		res, err := c.FilterChunks(context.Background(), "tenant", model.Now(), model.Now(), nil)
+		require.NoError(t, err)
+		require.Equal(t, []*logproto.GroupedChunkRefs{}, res)
 	})
-}
-
-func TestBloomGatewayClient_SortInstancesByToken(t *testing.T) {
-	input := []ring.InstanceDesc{
-		{Id: "1", Tokens: []uint32{6, 5, 2, 9}},
-		{Id: "2", Tokens: []uint32{3, 4, 7}},
-		{Id: "3", Tokens: []uint32{1, 8, 0}},
-	}
-	expected := []instanceWithToken{
-		{instance: input[2], token: 0},
-		{instance: input[2], token: 1},
-		{instance: input[0], token: 2},
-		{instance: input[1], token: 3},
-		{instance: input[1], token: 4},
-		{instance: input[0], token: 5},
-		{instance: input[0], token: 6},
-		{instance: input[1], token: 7},
-		{instance: input[2], token: 8},
-		{instance: input[0], token: 9},
-	}
-
-	var i int
-	it := newInstanceSortMergeIterator(input)
-	for it.Next() {
-		require.Equal(t, expected[i], it.At())
-		i++
-	}
 }
 
 func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
@@ -183,6 +162,50 @@ func TestBloomGatewayClient_PartitionFingerprintsByAddresses(t *testing.T) {
 	})
 }
 
+func TestBloomGatewayClient_ServerAddressesWithTokenRanges(t *testing.T) {
+	testCases := map[string]struct {
+		instances []ring.InstanceDesc
+		expected  []addrsWithTokenRange
+	}{
+		"one token per instance": {
+			instances: []ring.InstanceDesc{
+				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{math.MaxUint32 / 6 * 1}},
+				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 6 * 3}},
+				{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{math.MaxUint32 / 6 * 5}},
+			},
+			expected: []addrsWithTokenRange{
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: math.MaxUint32 / 6 * 1},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: math.MaxUint32/6*1 + 1, maxToken: math.MaxUint32 / 6 * 3},
+				{id: "instance-3", addrs: []string{"10.0.0.3"}, minToken: math.MaxUint32/6*3 + 1, maxToken: math.MaxUint32 / 6 * 5},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: math.MaxUint32/6*5 + 1, maxToken: math.MaxUint32},
+			},
+		},
+		"MinUint32 and MaxUint32 are tokens in the ring": {
+			instances: []ring.InstanceDesc{
+				{Id: "instance-1", Addr: "10.0.0.1", Tokens: []uint32{0, math.MaxUint32 / 3 * 2}},
+				{Id: "instance-2", Addr: "10.0.0.2", Tokens: []uint32{math.MaxUint32 / 3 * 1, math.MaxUint32}},
+			},
+			expected: []addrsWithTokenRange{
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: 0, maxToken: 0},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: 1, maxToken: math.MaxUint32 / 3},
+				{id: "instance-1", addrs: []string{"10.0.0.1"}, minToken: math.MaxUint32/3*1 + 1, maxToken: math.MaxUint32 / 3 * 2},
+				{id: "instance-2", addrs: []string{"10.0.0.2"}, minToken: math.MaxUint32/3*2 + 1, maxToken: math.MaxUint32},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			subRing := newMockRing(tc.instances)
+			res, err := serverAddressesWithTokenRanges(subRing, tc.instances)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, res)
+		})
+	}
+
+}
+
 func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 
 	logger := log.NewNopLogger()
@@ -194,7 +217,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
-	c, err := NewGatewayClient(cfg, l, reg, logger, "loki", nil, false)
+	c, err := NewClient(cfg, nil, l, reg, logger, "loki", nil, false)
 	require.NoError(t, err)
 
 	instances := []ring.InstanceDesc{
@@ -203,9 +226,9 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 		{Id: "instance-3", Addr: "10.0.0.3", Tokens: []uint32{2014002871, 315617625, 1036168527}},
 	}
 
-	it := newInstanceSortMergeIterator(instances)
+	it := bloomutils.NewInstanceSortMergeIterator(instances)
 	for it.Next() {
-		t.Log(it.At().token, it.At().instance.Addr)
+		t.Log(it.At().MaxToken, it.At().Instance.Addr)
 	}
 
 	testCases := []struct {
@@ -257,7 +280,7 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 			},
 		},
 		{
-			name: "fingerprints with token ranges of a multiple instance are grouped",
+			name: "fingerprints with token ranges of multiple instances are grouped",
 			chunks: []*logproto.GroupedChunkRefs{
 				// instance 1
 				{Fingerprint: 1000000000, Refs: []*logproto.ShortRef{{Checksum: 1}}},
@@ -327,8 +350,8 @@ func TestBloomGatewayClient_GroupFingerprintsByServer(t *testing.T) {
 var _ ring.ReadRing = &mockRing{}
 
 func newMockRing(instances []ring.InstanceDesc) *mockRing {
-	it := newInstanceSortMergeIterator(instances)
-	ranges := make([]instanceWithToken, 0)
+	it := bloomutils.NewInstanceSortMergeIterator(instances)
+	ranges := make([]bloomutils.InstanceWithTokenRange, 0)
 	for it.Next() {
 		ranges = append(ranges, it.At())
 	}
@@ -340,21 +363,21 @@ func newMockRing(instances []ring.InstanceDesc) *mockRing {
 
 type mockRing struct {
 	instances []ring.InstanceDesc
-	ranges    []instanceWithToken
+	ranges    []bloomutils.InstanceWithTokenRange
 }
 
 // Get implements ring.ReadRing.
 func (r *mockRing) Get(key uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	idx, _ := sort.Find(len(r.ranges), func(i int) int {
-		if r.ranges[i].token < key {
+		if r.ranges[i].MaxToken < key {
 			return 1
 		}
-		if r.ranges[i].token > key {
+		if r.ranges[i].MaxToken > key {
 			return -1
 		}
 		return 0
 	})
-	return ring.ReplicationSet{Instances: []ring.InstanceDesc{r.ranges[idx].instance}}, nil
+	return ring.ReplicationSet{Instances: []ring.InstanceDesc{r.ranges[idx].Instance}}, nil
 }
 
 // GetAllHealthy implements ring.ReadRing.
@@ -390,8 +413,8 @@ func (*mockRing) ReplicationFactor() int {
 }
 
 // ShuffleShard implements ring.ReadRing.
-func (*mockRing) ShuffleShard(_ string, _ int) ring.ReadRing {
-	panic("unimplemented")
+func (r *mockRing) ShuffleShard(_ string, _ int) ring.ReadRing {
+	return r
 }
 
 // ShuffleShardWithLookback implements ring.ReadRing.
@@ -402,4 +425,9 @@ func (*mockRing) ShuffleShardWithLookback(_ string, _ int, _ time.Duration, _ ti
 // CleanupShuffleShardCache implements ring.ReadRing.
 func (*mockRing) CleanupShuffleShardCache(_ string) {
 	panic("unimplemented")
+}
+
+func (r *mockRing) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
+	tr := ring.TokenRanges{0, math.MaxUint32}
+	return tr, nil
 }

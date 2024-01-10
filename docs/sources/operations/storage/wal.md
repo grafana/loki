@@ -1,7 +1,7 @@
 ---
 title: Write Ahead Log
 menuTitle:  
-description: Describes the Loki Write Ahead Log (WAL).
+description: Describes how Loki maintains data during a process crash using a Write Ahead Log (WAL).
 weight:  500
 ---
 

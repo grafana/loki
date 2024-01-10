@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -155,6 +156,50 @@ func (c ConcatLogSelectorExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
 }
 
+// QuantileSketchEvalExpr evaluates a quantile sketch to the actual quantile.
+type QuantileSketchEvalExpr struct {
+	syntax.SampleExpr
+	quantileMergeExpr *QuantileSketchMergeExpr
+	quantile          *float64
+}
+
+func (e QuantileSketchEvalExpr) String() string {
+	return fmt.Sprintf("quantileSketchEval<%s>", e.quantileMergeExpr.String())
+}
+
+func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	e.quantileMergeExpr.Walk(f)
+}
+
+type QuantileSketchMergeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e QuantileSketchMergeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("quantileSketchMerge<%s>", sb.String())
+}
+
+func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
 type Shards []astmapper.ShardAnnotation
 
 func (xs Shards) Encode() (encoded []string) {
@@ -188,6 +233,12 @@ type Downstreamable interface {
 
 type DownstreamQuery struct {
 	Params Params
+}
+
+type Resp struct {
+	I   int
+	Res logqlmodel.Result
+	Err error
 }
 
 // Downstreamer is an interface for deferring responsibility for query execution.
@@ -308,6 +359,41 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 
 		return NewConcatStepEvaluator(xs), nil
+	case *QuantileSketchEvalExpr:
+		var queries []DownstreamQuery
+		if e.quantileMergeExpr != nil {
+			for _, d := range e.quantileMergeExpr.downstreams {
+				qry := DownstreamQuery{
+					Params: ParamsWithExpressionOverride{
+						Params:             params,
+						ExpressionOverride: d.SampleExpr,
+					},
+				}
+				if shard := d.shard; shard != nil {
+					qry.Params = ParamsWithShardsOverride{
+						Params:         qry.Params,
+						ShardsOverride: Shards{*shard}.Encode(),
+					}
+				}
+				queries = append(queries, qry)
+			}
+		}
+
+		results, err := ev.Downstream(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded quantile: got (%d), want (1)", len(results))
+		}
+
+		matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix)
+		if !ok {
+			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", results[0].Data)
+		}
+		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
+		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
 
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)

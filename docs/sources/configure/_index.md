@@ -842,6 +842,11 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
+# A comma-separated list of LogQL vector and range aggregations that should be
+# sharded
+# CLI flag: -querier.shard-aggregations
+[shard_aggregations: <string> | default = ""]
+
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
 [cache_index_stats_results: <boolean> | default = false]
@@ -874,6 +879,40 @@ volume_results_cache:
   # Use compression in cache. The default is an empty value '', which disables
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.volume-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache series query results.
+# CLI flag: -querier.cache-series-results
+[cache_series_results: <boolean> | default = false]
+
+# If series_results_cache is not configured and cache_series_results is true,
+# the config for the results cache is used.
+series_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.series-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.series-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache label query results.
+# CLI flag: -querier.cache-label-results
+[cache_label_results: <boolean> | default = false]
+
+# If label_results_cache is not configured and cache_label_results is true, the
+# config for the results cache is used.
+label_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.label-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.label-results-cache.compression
   [compression: <string> | default = ""]
 ```
 
@@ -2281,6 +2320,29 @@ bloom_shipper:
     # the tasks above this limit will fail an error.
     # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+
+  blocks_cache:
+    # Whether embedded cache is enabled.
+    # CLI flag: -blocks-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # Maximum memory size of the cache in MB.
+    # CLI flag: -blocks-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # Maximum number of entries in the cache.
+    # CLI flag: -blocks-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # The time to live for items in the cache before they get purged.
+    # CLI flag: -blocks-cache.ttl
+    [ttl: <duration> | default = 0s]
+
+    # During this period the process waits until the directory becomes not used
+    # and only after this it will be deleted. If the timeout is reached, the
+    # directory is force deleted.
+    # CLI flag: -blocks-cache.remove-directory-graceful-period
+    [remove_directory_graceful_period: <duration> | default = 5m]
 ```
 
 ### chunk_store_config
@@ -2816,6 +2878,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 1h]
 
+# Split metadata queries by a time interval and execute in parallel. The value 0
+# disables splitting metadata queries by time. This also determines how cache
+# keys are chosen when label/series result caching is enabled.
+# CLI flag: -querier.split-metadata-queries-by-interval
+[split_metadata_queries_by_interval: <duration> | default = 1d]
+
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
 # disables the lookback, causing sharding of all queries at all times.
@@ -3015,13 +3083,6 @@ shard_streams:
 # than the the configured time. Default to 7 days. 0s means no limit.
 # CLI flag: -bloom-compactor.max-table-age
 [bloom_compactor_max_table_age: <duration> | default = 168h]
-
-# The minimum age of a table before it is compacted. Do not compact tables newer
-# than the the configured time. Default to 1 hour. 0s means no limit. This is
-# useful to avoid compacting tables that will be updated with out-of-order
-# writes.
-# CLI flag: -bloom-compactor.min-table-age
-[bloom_compactor_min_table_age: <duration> | default = 1h]
 
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
@@ -4255,6 +4316,8 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 - `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.label-results-cache`
+- `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`

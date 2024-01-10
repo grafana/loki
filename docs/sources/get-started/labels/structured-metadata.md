@@ -1,7 +1,7 @@
 ---
 menuTitle: Structured metadata
 title: What is structured metadata
-description: Attaching metadata to logs.
+description: Describes how to enable structure metadata for logs and how to query using structured metadata to filter log lines.
 ---
 # What is structured metadata
 
@@ -15,7 +15,7 @@ Structured metadata was added to chunk format V4 which is used if the schema ver
 
 One of the powerful features of Loki is parsing logs at query time to extract metadata and build labels out of it.
 However, the parsing of logs at query time comes with a cost which can be significantly high for, as an example,
-large json blobs or a poorly written query using complex regex patterns.
+large JSON blobs or a poorly written query using complex regex patterns.
 
 In addition, the data extracted from logs at query time is usually high cardinality, which can’t be stored
 in the index as it would increase the cardinality too much, and therefore reduce the performance of the index.
@@ -42,7 +42,7 @@ You can use labels of structured metadata to filter log line using a [label filt
 For example, if you have a label `trace_id` attached to some of your log lines as structured metadata, you can filter log lines using:
 
 ```logql
-{job="example"} | trace_id="0242ac120002"`
+{job="example"} | trace_id="0242ac120002"
 ```
 
 Of course, you can filter by multiple labels of structured metadata at the same time:

@@ -46,11 +46,7 @@ type tailer struct {
 	conn TailServer
 }
 
-func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*tailer, error) {
-	expr, err := syntax.ParseLogSelector(query, true)
-	if err != nil {
-		return nil, err
-	}
+func newTailer(orgID string, expr syntax.LogSelectorExpr, conn TailServer, maxDroppedStreams int) (*tailer, error) {
 	// Make sure we can build a pipeline. The stream processing code doesn't have a place to handle
 	// this error so make sure we handle it here.
 	pipeline, err := expr.Pipeline()
@@ -66,7 +62,7 @@ func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*ta
 		conn:              conn,
 		droppedStreams:    make([]*logproto.DroppedStream, 0, maxDroppedStreams),
 		maxDroppedStreams: maxDroppedStreams,
-		id:                generateUniqueID(orgID, query),
+		id:                generateUniqueID(orgID, expr.String()),
 		closeChan:         make(chan struct{}),
 		pipeline:          pipeline,
 	}, nil

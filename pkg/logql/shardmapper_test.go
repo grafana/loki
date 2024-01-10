@@ -51,7 +51,7 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 
 	for _, tc := range []struct {
 		in  syntax.SampleExpr
@@ -113,7 +113,7 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -418,7 +418,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{})
 
 	for _, tc := range []struct {
 		in   string
@@ -465,9 +465,11 @@ func TestMapping(t *testing.T) {
 						},
 						MultiStages: syntax.MultiStageExpr{
 							&syntax.LineFilterExpr{
-								Ty:    labels.MatchEqual,
-								Match: "error",
-								Op:    "",
+								LineFilter: syntax.LineFilter{
+									Ty:    labels.MatchEqual,
+									Match: "error",
+									Op:    "",
+								},
 							},
 						},
 					},
@@ -484,9 +486,11 @@ func TestMapping(t *testing.T) {
 							},
 							MultiStages: syntax.MultiStageExpr{
 								&syntax.LineFilterExpr{
-									Ty:    labels.MatchEqual,
-									Match: "error",
-									Op:    "",
+									LineFilter: syntax.LineFilter{
+										Ty:    labels.MatchEqual,
+										Match: "error",
+										Op:    "",
+									},
 								},
 							},
 						},
@@ -1336,6 +1340,25 @@ func TestMapping(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `quantile_over_time(0.8, {foo="bar"} | unwrap bytes [5m]) by (cluster)`,
+			expr: &syntax.RangeAggregationExpr{
+				Operation: syntax.OpRangeTypeQuantile,
+				Params:    float64p(0.8),
+				Left: &syntax.LogRange{
+					Left: &syntax.MatchersExpr{
+						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+					},
+					Unwrap: &syntax.UnwrapExpr{
+						Identifier: "bytes",
+					},
+					Interval: 5 * time.Minute,
+				},
+				Grouping: &syntax.Grouping{
+					Groups: []string{"cluster"},
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
@@ -1409,10 +1432,14 @@ func TestStringTrimming(t *testing.T) {
 		},
 	} {
 		t.Run(tc.expr.String(), func(t *testing.T) {
-			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics)
+			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})
 	}
+}
+
+func float64p(v float64) *float64 {
+	return &v
 }
