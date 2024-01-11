@@ -184,9 +184,11 @@ type Limits struct {
 	BloomGatewayShardSize int  `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size"`
 	BloomGatewayEnabled   bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering"`
 
-	BloomCompactorShardSize                  int           `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
-	BloomCompactorMaxTableAge                time.Duration `yaml:"bloom_compactor_max_table_age" json:"bloom_compactor_max_table_age"`
-	BloomCompactorEnabled                    bool          `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
+	BloomCompactorShardSize   int           `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
+	BloomCompactorMaxTableAge time.Duration `yaml:"bloom_compactor_max_table_age" json:"bloom_compactor_max_table_age"`
+	BloomCompactorEnabled     bool          `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
+
+	BloomCompactorChunksBatchSize            uint          `yaml:"bloom_compactor_chunks_batch_size" json:"bloom_compactor_chunks_batch_size"`
 	BloomNGramLength                         int           `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
 	BloomNGramSkip                           int           `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
 	BloomFalsePositiveRate                   float64       `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
@@ -312,6 +314,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BloomCompactorShardSize, "bloom-compactor.shard-size", 1, "The shard size defines how many bloom compactors should be used by a tenant when computing blooms. If it's set to 0, shuffle sharding is disabled.")
 	f.DurationVar(&l.BloomCompactorMaxTableAge, "bloom-compactor.max-table-age", 7*24*time.Hour, "The maximum age of a table before it is compacted. Do not compact tables older than the the configured time. Default to 7 days. 0s means no limit.")
 	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Whether to compact chunks into bloom filters.")
+	f.UintVar(&l.BloomCompactorChunksBatchSize, "bloom-compactor.chunks-batch-size", 100, "The batch size of the chunks the bloom-compactor downloads at once.")
 	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
 	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 0, "Skip factor for the n-grams created when computing blooms from log lines.")
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
@@ -826,6 +829,10 @@ func (o *Overrides) BloomGatewayCacheKeyInterval(userID string) time.Duration {
 
 func (o *Overrides) BloomGatewayEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomGatewayEnabled
+}
+
+func (o *Overrides) BloomCompactorChunksBatchSize(userID string) uint {
+	return o.getOverridesForUser(userID).BloomCompactorChunksBatchSize
 }
 
 func (o *Overrides) BloomCompactorShardSize(userID string) int {
