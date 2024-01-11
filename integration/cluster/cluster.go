@@ -62,7 +62,6 @@ limits_config:
   ingestion_burst_size_mb: 50
   reject_old_samples: false
   allow_structured_metadata: true
-  split_queries_by_interval: 1h
 
 storage_config:
   named_stores:
@@ -72,7 +71,6 @@ storage_config:
   boltdb_shipper:
     active_index_directory: {{.dataPath}}/boltdb-index
     cache_location: {{.dataPath}}/boltdb-cache
-    build_per_tenant_index: true
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
