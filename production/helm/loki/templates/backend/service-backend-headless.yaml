@@ -28,11 +28,11 @@ spec:
   clusterIP: None
   ports:
     - name: http-metrics
-      port: {{ .Values.loki.server.http_listen_port | default 3100 }}
+      port: {{ .Values.loki.server.http_listen_port }}
       targetPort: http-metrics
       protocol: TCP
     - name: grpc
-      port: {{ .Values.loki.server.grpc_listen_port | default 9095 }}
+      port: {{ .Values.loki.server.grpc_listen_port }}
       targetPort: grpc
       protocol: TCP
   selector:
