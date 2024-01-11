@@ -470,7 +470,7 @@ Signature: `min(a interface{}, i ...interface{}) int64`
 Example:
 
 ```template
-{{ max 1 2 3 }} //output 1
+{{ min 1 2 3 }} //output 1
 ```
 
 ## maxf
