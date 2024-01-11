@@ -149,12 +149,10 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 
 		size := bgWrite.size()
 		// prospectively add new size
-		c.size.Add(int64(size))
-
-		newSize := c.size.Load()
+		newSize := c.size.Add(int64(size))
 		if newSize > int64(c.sizeLimit) {
 			// subtract it since we've exceeded the limit
-			c.size.Add(-int64(size))
+			c.size.Sub(int64(size))
 			c.failStore(ctx, size, num, "queue at byte size limit")
 			return nil
 		}
