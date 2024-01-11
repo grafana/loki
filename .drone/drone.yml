@@ -15,7 +15,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-amd64
+    - 0.33.0-amd64
   when:
     event:
     - pull_request
@@ -33,7 +33,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-amd64
+    - 0.33.0-amd64
     username:
       from_secret: docker_username
   when:
@@ -68,7 +68,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-arm64
+    - 0.33.0-arm64
   when:
     event:
     - pull_request
@@ -86,7 +86,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-arm64
+    - 0.33.0-arm64
     username:
       from_secret: docker_username
   when:
@@ -118,7 +118,7 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image:0.32.0
+    target: loki-build-image:0.33.0
     username:
       from_secret: docker_username
   when:
@@ -2113,6 +2113,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: d94c120886a5681b62aef3b9495ee1bdf2533757d985a2dc201678c88a6b25b7
+hmac: fe7669a21410ae5f2d1ad6b6205fdc582af874f65f7bd6a679731a88174e3a1c
 
 ...
