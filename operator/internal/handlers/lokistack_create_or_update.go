@@ -69,7 +69,7 @@ func CreateOrUpdateLokiStack(
 		return err
 	}
 
-	alertingRules, recordingRules, ruler, ocpOptions, err := rules.BuildOptions(ctx, ll, req, k, &stack)
+	alertingRules, recordingRules, ruler, ocpOptions, err := rules.BuildOptions(ctx, ll, k, &stack)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func CreateOrUpdateLokiStack(
 		GatewayBaseDomain:      baseDomain,
 		Stack:                  stack.Spec,
 		Gates:                  fg,
-		ObjectStorage:          *objStore,
+		ObjectStorage:          objStore,
 		CertRotationRequiredAt: certRotationRequiredAt,
 		AlertingRules:          alertingRules,
 		RecordingRules:         recordingRules,

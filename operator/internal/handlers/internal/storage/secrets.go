@@ -37,10 +37,10 @@ func getSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*cor
 }
 
 // extractSecret reads a k8s secret into a manifest object storage struct if valid.
-func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
+func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (storage.Options, error) {
 	hash, err := hashSecretData(s)
 	if err != nil {
-		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
+		return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
 	}
 
 	storageOpts := storage.Options{
@@ -61,13 +61,13 @@ func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
 		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
 	default:
-		return nil, kverrors.New("unknown secret type", "type", secretType)
+		return storage.Options{}, kverrors.New("unknown secret type", "type", secretType)
 	}
 
 	if err != nil {
-		return nil, err
+		return storage.Options{}, err
 	}
-	return &storageOpts, nil
+	return storageOpts, nil
 }
 
 func hashSecretData(s *corev1.Secret) (string, error) {

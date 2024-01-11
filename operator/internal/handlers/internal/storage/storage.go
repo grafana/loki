@@ -20,15 +20,15 @@ import (
 // - The object storage schema config is invalid.
 // - The object storage CA ConfigMap is missing if one referenced.
 // - The object storage CA ConfigMap contents are invalid.
-func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*storage.Options, error) {
+func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (storage.Options, error) {
 	storageSecret, err := getSecret(ctx, k, stack)
 	if err != nil {
-		return nil, err
+		return storage.Options{}, err
 	}
 
 	objStore, err := extractSecret(storageSecret, stack.Spec.Storage.Secret.Type)
 	if err != nil {
-		return nil, &status.DegradedError{
+		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
 			Reason:  lokiv1.ReasonInvalidObjectStorageSecret,
 			Requeue: false,
@@ -42,7 +42,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		stack.Status.Storage,
 	)
 	if err != nil {
-		return nil, &status.DegradedError{
+		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
 			Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
 			Requeue: false,
@@ -57,7 +57,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 
 	tlsConfig := stack.Spec.Storage.TLS
 	if tlsConfig.CA == "" {
-		return nil, &status.DegradedError{
+		return storage.Options{}, &status.DegradedError{
 			Message: "Missing object storage CA config map",
 			Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
 			Requeue: false,
@@ -66,7 +66,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 
 	cm, err := getCAConfigMap(ctx, k, stack, tlsConfig.CA)
 	if err != nil {
-		return nil, err
+		return storage.Options{}, err
 	}
 
 	caKey := defaultCAKey
@@ -77,7 +77,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 	var caHash string
 	caHash, err = checkCAConfigMap(cm, caKey)
 	if err != nil {
-		return nil, &status.DegradedError{
+		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage CA configmap contents: %s", err),
 			Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
 			Requeue: false,
