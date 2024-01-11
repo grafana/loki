@@ -14,6 +14,16 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
+type fpRange [2]uint64
+
+func (r fpRange) minFp() uint64 {
+	return r[0]
+}
+
+func (r fpRange) maxFp() uint64 {
+	return r[1]
+}
+
 type Shipper struct {
 	client          Client
 	config          config.Config
@@ -42,7 +52,7 @@ func NewShipper(client Client, config config.Config, limits Limits, logger log.L
 func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, from, through model.Time) ([]BlockRef, error) {
 	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "from", from, "through", through)
 
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, [][2]uint64{{0, math.MaxUint64}})
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, []fpRange{{0, math.MaxUint64}})
 	if err != nil {
 		return nil, fmt.Errorf("error fetching active block references : %w", err)
 	}
@@ -106,12 +116,12 @@ func getFirstLast[T any](s []T) (T, T) {
 	return s[0], s[len(s)-1]
 }
 
-func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through model.Time, fingerprints [][2]uint64) ([]BlockRef, error) {
-	minFingerprint, maxFingerprint := getFirstLast(fingerprints)
+func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through model.Time, fingerprints []fpRange) ([]BlockRef, error) {
+	minFpRange, maxFpRange := getFirstLast(fingerprints)
 	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
 		TenantID:       tenantID,
-		MinFingerprint: model.Fingerprint(minFingerprint[0]),
-		MaxFingerprint: model.Fingerprint(maxFingerprint[1]),
+		MinFingerprint: model.Fingerprint(minFpRange.minFp()),
+		MaxFingerprint: model.Fingerprint(maxFpRange.maxFp()),
 		StartTimestamp: from,
 		EndTimestamp:   through,
 	})
@@ -133,7 +143,7 @@ func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from,
 	return activeBlocks, nil
 }
 
-func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp model.Time, fingerprints [][2]uint64) []BlockRef {
+func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp model.Time, fingerprints []fpRange) []BlockRef {
 	outdatedBlocks := make(map[string]interface{})
 	for _, meta := range metas {
 		for _, tombstone := range meta.Tombstones {
@@ -162,7 +172,7 @@ func (s *Shipper) findBlocks(metas []Meta, startTimestamp, endTimestamp model.Ti
 // isOutsideRange tests if a given BlockRef b is outside of search boundaries
 // defined by min/max timestamp and min/max fingerprint.
 // Fingerprint ranges must be sorted in ascending order.
-func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp model.Time, fingerprints [][2]uint64) bool {
+func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp model.Time, fingerprints []fpRange) bool {
 	// First, check time range
 	if b.EndTimestamp < startTimestamp || b.StartTimestamp > endTimestamp {
 		return true
@@ -170,18 +180,17 @@ func isOutsideRange(b *BlockRef, startTimestamp, endTimestamp model.Time, finger
 
 	// Then, check if outside of min/max of fingerprint slice
 	minFpRange, maxFpRange := getFirstLast(fingerprints)
-	minFp, maxFp := minFpRange[0], maxFpRange[1]
-	if b.MaxFingerprint < minFp || b.MinFingerprint > maxFp {
+	if b.MaxFingerprint < minFpRange.minFp() || b.MinFingerprint > maxFpRange.maxFp() {
 		return true
 	}
 
-	prev := [2]uint64{0, 0}
+	prev := fpRange{0, 0}
 	for i := 0; i < len(fingerprints); i++ {
-		fpRange := fingerprints[i]
-		if b.MinFingerprint > prev[1] && b.MaxFingerprint < fpRange[0] {
+		fpr := fingerprints[i]
+		if b.MinFingerprint > prev.maxFp() && b.MaxFingerprint < fpr.minFp() {
 			return true
 		}
-		prev = fingerprints[i]
+		prev = fpr
 	}
 
 	return false
