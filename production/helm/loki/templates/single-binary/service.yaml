@@ -25,7 +25,7 @@ spec:
   type: ClusterIP
   ports:
     - name: http-metrics
-      port: 3100
+      port: {{ .Values.loki.server.http_listen_port }}
       targetPort: http-metrics
       protocol: TCP
     - name: grpc
