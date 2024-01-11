@@ -5,10 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
@@ -28,6 +28,7 @@ func CompressBloomBlock(ref BlockRef, archivePath, localDst string, logger log.L
 
 	blockToUpload.BlockRef = ref
 	blockToUpload.Data = archiveFile
+
 	return blockToUpload, nil
 }
 
@@ -41,8 +42,9 @@ func UncompressBloomBlock(block *LazyBlock, workingDirectory string, logger log.
 	if err != nil {
 		return "", fmt.Errorf("error writing data to temp file: %w", err)
 	}
+	level.Info(logger).Log("msg", "extracting archive", "archive", archivePath, "workingDirectory", workingDirectoryPath, "blockPath", block.BlockPath)
 	defer func() {
-		os.Remove(archivePath)
+		err = os.Remove(archivePath)
 		if err != nil {
 			level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
 		}
@@ -56,7 +58,7 @@ func UncompressBloomBlock(block *LazyBlock, workingDirectory string, logger log.
 
 func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string, error) {
 	defer block.Data.Close()
-	archivePath := filepath.Join(workingDirectoryPath, block.BlockPath[strings.LastIndex(block.BlockPath, "/")+1:])
+	archivePath := filepath.Join(workingDirectoryPath, uuid.New().String())
 
 	archiveFile, err := os.Create(archivePath)
 	if err != nil {
@@ -73,7 +75,7 @@ func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string,
 func extractArchive(archivePath string, workingDirectoryPath string) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
-		return fmt.Errorf("error opening archive file %s: %w", file.Name(), err)
+		return fmt.Errorf("error opening archive file %s: %w", archivePath, err)
 	}
 	return v1.UnTarGz(workingDirectoryPath, file)
 }

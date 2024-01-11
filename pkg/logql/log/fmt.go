@@ -222,8 +222,12 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 	lf.currentTs = ts
 
 	// map now is taking from a pool
-	m := lbs.Map()
-	defer smp.Put(m)
+	m, ret := lbs.Map()
+	defer func() {
+		if ret { // if we return the base map from the labels builder we should not put it back in the pool
+			smp.Put(m)
+		}
+	}()
 	if err := lf.Template.Execute(lf.buf, m); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())

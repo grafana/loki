@@ -1,7 +1,7 @@
 ---
 title: Loki Canary
 menuTitle:  
-description: Loki Canary audits the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
+description: Describes how to use Loki Canary to audit the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
 weight: 
 ---
 # Loki Canary
