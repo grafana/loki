@@ -1,12 +1,10 @@
-package storage_test
+package storage
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-
-	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 )
 
 func TestIsValidConfigMap(t *testing.T) {
@@ -43,7 +41,7 @@ func TestIsValidConfigMap(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			ok := storage.IsValidCAConfigMap(tst.cm, "service-ca.crt")
+			ok := isValidCAConfigMap(tst.cm, "service-ca.crt")
 			require.Equal(t, tst.valid, ok)
 		})
 	}
