@@ -189,7 +189,7 @@ type lazyBloomBuilder struct {
 	bt              compactorTokenizer
 	fpRate          float64
 	logger          log.Logger
-	chunksBatchSize uint
+	chunksBatchSize int
 
 	cur v1.SeriesWithBloom // retured by At()
 	err error              // returned by Err()

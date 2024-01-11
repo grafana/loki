@@ -11,14 +11,14 @@ type chunksBatchesIterator struct {
 	context          context.Context
 	client           chunkClient
 	chunksToDownload []chunk.Chunk
-	batchSize        uint
+	batchSize        int
 
 	currentBatch []chunk.Chunk
 	err          error
 }
 
-func newChunkBatchesIterator(context context.Context, client chunkClient, chunksToDownload []chunk.Chunk, batchSize uint) (*chunksBatchesIterator, error) {
-	if batchSize == 0 {
+func newChunkBatchesIterator(context context.Context, client chunkClient, chunksToDownload []chunk.Chunk, batchSize int) (*chunksBatchesIterator, error) {
+	if batchSize <= 0 {
 		return nil, errors.New("batchSize must be greater than 0")
 	}
 	return &chunksBatchesIterator{context: context, client: client, chunksToDownload: chunksToDownload, batchSize: batchSize}, nil
@@ -29,7 +29,7 @@ func (c *chunksBatchesIterator) Next() bool {
 		return false
 	}
 	batchSize := c.batchSize
-	chunksToDownloadCount := uint(len(c.chunksToDownload))
+	chunksToDownloadCount := len(c.chunksToDownload)
 	if chunksToDownloadCount < batchSize {
 		batchSize = chunksToDownloadCount
 	}

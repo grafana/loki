@@ -129,14 +129,14 @@ func TestShuffleSharding(t *testing.T) {
 type mockLimits struct {
 	*validation.Overrides
 	bloomCompactorShardSize    int
-	chunksDownloadingBatchSize uint
+	chunksDownloadingBatchSize int
 }
 
 func (m mockLimits) BloomCompactorShardSize(_ string) int {
 	return m.bloomCompactorShardSize
 }
 
-func (m mockLimits) BloomCompactorChunksBatchSize(_ string) uint {
+func (m mockLimits) BloomCompactorChunksBatchSize(_ string) int {
 	if m.chunksDownloadingBatchSize != 0 {
 		return m.chunksDownloadingBatchSize
 	}

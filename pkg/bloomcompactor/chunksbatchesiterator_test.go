@@ -13,7 +13,7 @@ import (
 
 func Test_chunksBatchesIterator(t *testing.T) {
 	tests := map[string]struct {
-		batchSize        uint
+		batchSize        int
 		chunksToDownload []chunk.Chunk
 		constructorError error
 
@@ -63,7 +63,7 @@ func Test_chunksBatchesIterator(t *testing.T) {
 				hadNextCount++
 				downloaded := iterator.At()
 				downloadedChunks = append(downloadedChunks, downloaded...)
-				require.LessOrEqual(t, uint(len(downloaded)), data.batchSize)
+				require.LessOrEqual(t, len(downloaded), data.batchSize)
 			}
 			require.Equal(t, data.chunksToDownload, downloadedChunks)
 			require.Equal(t, data.hadNextCount, client.callsCount)
