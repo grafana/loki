@@ -412,8 +412,6 @@ func Test_splitQuery(t *testing.T) {
 
 					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
 					require.NoError(t, err)
-					//require.Equal(t, want, splits)
-
 					if !assert.Equal(t, want, splits) {
 						t.Logf("expected and actual do not match\n")
 						defer t.Fail()
@@ -867,7 +865,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				},
 				&LokiRequest{
 					StartTs: time.Date(2023, 1, 15, 5, 0, 0, 0, time.UTC),
-					EndTs:   time.Date(2023, 1, 15, 5, 5, 30, 0, time.UTC),
+					EndTs:   time.Date(2023, 1, 15, 5, 5, 15, 0, time.UTC),
 					Step:    15 * seconds,
 					Query:   shortRange,
 				},

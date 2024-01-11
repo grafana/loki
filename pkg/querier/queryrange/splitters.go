@@ -217,7 +217,12 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 		s.buildMetricSplits(lokiReq.GetStep(), ingesterQueryInterval, start, end, factory)
 
 		// rebound after ingester queries have been split out
-		end = start
+		//
+		// the end time should now be the boundary of the `query_ingester_within` window, which is "start" currently;
+		// but since start is already step-aligned we need to subtract 1ns to align it down by 1 more step so that we
+		// get a consistent step between splits
+		end, _ = s.alignStartEnd(r.GetStep(), start.Add(-time.Nanosecond), end)
+		// we restore the previous start time (the start time of the query)
 		start = origStart
 
 		// query only overlaps ingester query window, nothing more to do
