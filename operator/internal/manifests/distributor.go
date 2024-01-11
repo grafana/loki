@@ -69,7 +69,8 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelDistributorComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.ObjectStorage.SecretSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(LabelDistributorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Distributor),
+		ServiceAccountName: opts.Name,
+		Affinity:           configureAffinity(LabelDistributorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Distributor),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,

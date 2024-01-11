@@ -2,6 +2,8 @@ package logql
 
 import (
 	"fmt"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -12,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/queue"
 )
 
 const (
@@ -21,9 +24,19 @@ const (
 type ProbabilisticQuantileVector []ProbabilisticQuantileSample
 type ProbabilisticQuantileMatrix []ProbabilisticQuantileVector
 
+var streamHashPool = sync.Pool{
+	New: func() interface{} { return make(map[uint64]int) },
+}
+
 func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (ProbabilisticQuantileVector, error) {
 	// labels hash to vector index map
-	groups := make(map[uint64]int)
+	groups := streamHashPool.Get().(map[uint64]int)
+	defer func() {
+		for key := range groups {
+			delete(groups, key)
+		}
+		streamHashPool.Put(groups)
+	}()
 	for i, sample := range q {
 		groups[sample.Metric.Hash()] = i
 	}
@@ -60,6 +73,12 @@ func (q ProbabilisticQuantileVector) ToProto() *logproto.QuantileSketchVector {
 	return &logproto.QuantileSketchVector{Samples: samples}
 }
 
+func (q ProbabilisticQuantileVector) Release() {
+	for _, s := range q {
+		s.F.Release()
+	}
+}
+
 func ProbabilisticQuantileVectorFromProto(proto *logproto.QuantileSketchVector) (ProbabilisticQuantileVector, error) {
 	out := make([]ProbabilisticQuantileSample, len(proto.Samples))
 	var s ProbabilisticQuantileSample
@@ -78,7 +97,29 @@ func (ProbabilisticQuantileMatrix) String() string {
 	return "QuantileSketchMatrix()"
 }
 
+func (m ProbabilisticQuantileMatrix) Merge(right ProbabilisticQuantileMatrix) (ProbabilisticQuantileMatrix, error) {
+	if len(m) != len(right) {
+		return nil, fmt.Errorf("failed to merge probabilistic quantile matrix: lengths differ %d!=%d", len(m), len(right))
+	}
+	var err error
+	for i, vec := range m {
+		m[i], err = vec.Merge(right[i])
+		if err != nil {
+			return nil, fmt.Errorf("failed to merge probabilistic quantile matrix: %w", err)
+		}
+	}
+
+	return m, nil
+}
+
 func (ProbabilisticQuantileMatrix) Type() promql_parser.ValueType { return QuantileSketchMatrixType }
+
+func (m ProbabilisticQuantileMatrix) Release() {
+	for _, vec := range m {
+		vec.Release()
+	}
+	quantileVectorPool.Put(m)
+}
 
 func (m ProbabilisticQuantileMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	values := make([]*logproto.QuantileSketchVector, len(m))
@@ -157,8 +198,6 @@ func newQuantileSketchIterator(
 	}
 }
 
-//batch
-
 type ProbabilisticQuantileSample struct {
 	T int64
 	F sketch.QuantileSketch
@@ -231,18 +270,26 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
+// quantileVectorPool slice of ProbabilisticQuantileVector [64, 128, 256, ..., 65536]
+var quantileVectorPool = queue.NewSlicePool[ProbabilisticQuantileVector](1<<6, 1<<16, 2)
+
 // JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
-func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator) (promql_parser.Value, error) {
+func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
 
-	result := make([]ProbabilisticQuantileVector, 0)
+	stepCount := int(math.Ceil(float64(params.End().Sub(params.Start()).Nanoseconds()) / float64(params.Step().Nanoseconds())))
+	if stepCount <= 0 {
+		stepCount = 1
+	}
+
+	// The result is released to the pool when the matrix is serialized.
+	result := quantileVectorPool.Get(stepCount)
 
 	for next {
 		result = append(result, vec)
-
 		next, _, r = stepEvaluator.Next()
 		vec = r.QuantileSketchVec()
 		if stepEvaluator.Error() != nil {
@@ -386,6 +433,9 @@ func NewQuantileSketchVectorStepEvaluator(inner StepEvaluator, quantile float64)
 
 func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.inner.Next()
+	if !ok {
+		return false, 0, SampleVector{}
+	}
 	quantileSketchVec := r.QuantileSketchVec()
 
 	vec := make(promql.Vector, len(quantileSketchVec))

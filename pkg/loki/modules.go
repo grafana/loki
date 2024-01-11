@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -332,12 +331,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
-	// If the querier module is not part of this process we need to check if multi-tenant queries are enabled.
-	// If the querier module is part of this process the querier module will configure everything.
-	if !t.Cfg.isModuleEnabled(Querier) && t.Cfg.Querier.MultiTenantQueriesEnabled {
-		tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	}
-
 	httpPushHandlerMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
@@ -383,7 +376,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
 		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
-		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	} else {
 		t.Querier = q
 	}
@@ -1337,8 +1329,9 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var bloomQuerier indexgateway.BloomQuerier
 	if t.Cfg.BloomGateway.Enabled {
-		bloomGatewayClient, err := bloomgateway.NewGatewayClient(
+		bloomGatewayClient, err := bloomgateway.NewClient(
 			t.Cfg.BloomGateway.Client,
+			t.bloomGatewayRingManager.Ring,
 			t.Overrides,
 			prometheus.DefaultRegisterer,
 			logger,
@@ -1349,7 +1342,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		if err != nil {
 			return nil, err
 		}
-		bloomQuerier = bloomgateway.NewBloomQuerier(bloomGatewayClient, logger)
+		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, logger)
 	}
 
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
