@@ -32,7 +32,9 @@ func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (P
 	// labels hash to vector index map
 	groups := streamHashPool.Get().(map[uint64]int)
 	defer func() {
-		clear(groups)
+		for key := range groups {
+			delete(groups, key)
+		}
 		streamHashPool.Put(groups)
 	}()
 	for i, sample := range q {
