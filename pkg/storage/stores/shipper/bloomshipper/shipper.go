@@ -79,23 +79,6 @@ func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
 	return nil
 }
 
-// makeFpRanges groups continuous fingerprints into ranges of [2]uint64{minFp, maxFp}
-func makeFpRanges(fingerprints []uint64) [][2]uint64 {
-	panic("makeFpRange() not implemented")
-}
-
-func (s *Shipper) ForEachBlock(ctx context.Context, tenantID string, from, through model.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
-	level.Debug(s.logger).Log("msg", "ForEachBlock", "tenant", tenantID, "from", from, "through", through, "fingerprints", len(fingerprints))
-	fpRanges := makeFpRanges(fingerprints)
-
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, from, through, fpRanges)
-	if err != nil {
-		return fmt.Errorf("error fetching active block references : %w", err)
-	}
-
-	return s.Fetch(ctx, tenantID, blockRefs, callback)
-}
-
 func (s *Shipper) Stop() {
 	s.client.Stop()
 	s.blockDownloader.stop()
