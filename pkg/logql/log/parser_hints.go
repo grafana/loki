@@ -99,17 +99,17 @@ func (p *Hints) AllRequiredExtracted() bool {
 		return false
 	}
 
-	found := map[string]interface{}{}
-	for _, e := range p.extracted {
-		for _, l := range p.requiredLabels {
-			if e == l {
-				found[l] = nil
+	found := 0
+	for _, l := range p.requiredLabels {
+		for _, e := range p.extracted {
+			if l == e {
+				found++
 				break
 			}
 		}
 	}
 
-	return len(p.requiredLabels) == len(found)
+	return len(p.requiredLabels) == found
 }
 
 func (p *Hints) Reset() {
