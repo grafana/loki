@@ -95,10 +95,21 @@ func (p *Hints) RecordExtracted(key string) {
 }
 
 func (p *Hints) AllRequiredExtracted() bool {
-	if len(p.requiredLabels) == 0 {
+	if len(p.requiredLabels) == 0 || len(p.extracted) < len(p.requiredLabels) {
 		return false
 	}
-	return len(p.extracted) == len(p.requiredLabels)
+
+	found := map[string]interface{}{}
+	for _, e := range p.extracted {
+		for _, l := range p.requiredLabels {
+			if e == l {
+				found[l] = nil
+				break
+			}
+		}
+	}
+
+	return len(p.requiredLabels) == len(found)
 }
 
 func (p *Hints) Reset() {
@@ -162,9 +173,6 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	if without || len(groups) == 0 {
 		return ph
 	}
-
-	ph.requiredLabels = hints
-	ph.shouldPreserveError = containsError(hints)
 
 	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
 }
