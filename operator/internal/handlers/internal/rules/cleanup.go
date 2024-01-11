@@ -8,21 +8,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 // removeRulesConfigMap removes the rules configmaps if any exists.
-func removeRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client) error {
+func removeRulesConfigMap(ctx context.Context, c client.Client, key client.ObjectKey) error {
 	var rulesCmList corev1.ConfigMapList
 
 	err := c.List(ctx, &rulesCmList, &client.ListOptions{
-		Namespace: req.Namespace,
+		Namespace: key.Namespace,
 		LabelSelector: labels.SelectorFromSet(labels.Set{
 			"app.kubernetes.io/component": manifests.LabelRulerComponent,
-			"app.kubernetes.io/instance":  req.Name,
+			"app.kubernetes.io/instance":  key.Name,
 		}),
 	})
 	if err != nil {
@@ -42,9 +41,9 @@ func removeRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client
 }
 
 // removeRuler removes the ruler statefulset if it exists.
-func removeRuler(ctx context.Context, req ctrl.Request, c client.Client) error {
+func removeRuler(ctx context.Context, c client.Client, stack client.ObjectKey) error {
 	// Check if the Statefulset exists before proceeding.
-	key := client.ObjectKey{Name: manifests.RulerName(req.Name), Namespace: req.Namespace}
+	key := client.ObjectKey{Name: manifests.RulerName(stack.Name), Namespace: stack.Namespace}
 
 	var ruler appsv1.StatefulSet
 	if err := c.Get(ctx, key, &ruler); err != nil {

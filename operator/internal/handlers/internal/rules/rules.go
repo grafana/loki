@@ -9,7 +9,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -23,7 +22,6 @@ import (
 func BuildOptions(
 	ctx context.Context,
 	log logr.Logger,
-	req ctrl.Request,
 	k k8s.Client,
 	stack *lokiv1.LokiStack,
 ) ([]lokiv1.AlertingRule, []lokiv1.RecordingRule, manifests.Ruler, manifestsocp.Options, error) {
@@ -35,17 +33,19 @@ func BuildOptions(
 		rulerSecret    *manifests.RulerSecret
 		ruler          manifests.Ruler
 		ocpOpts        manifestsocp.Options
+
+		stackKey = client.ObjectKeyFromObject(stack)
 	)
 
 	if stack.Spec.Rules == nil || !stack.Spec.Rules.Enabled {
 		// Clean up ruler resources
-		err = removeRulesConfigMap(ctx, req, k)
+		err = removeRulesConfigMap(ctx, k, stackKey)
 		if err != nil {
 			log.Error(err, "failed to remove rules ConfigMap")
 			return nil, nil, ruler, ocpOpts, err
 		}
 
-		err = removeRuler(ctx, req, k)
+		err = removeRuler(ctx, k, stackKey)
 		if err != nil {
 			log.Error(err, "failed to remove ruler StatefulSet")
 			return nil, nil, ruler, ocpOpts, err
@@ -54,14 +54,14 @@ func BuildOptions(
 		return nil, nil, ruler, ocpOpts, nil
 	}
 
-	alertingRules, recordingRules, err = list(ctx, k, req.Namespace, stack.Spec.Rules)
+	alertingRules, recordingRules, err = list(ctx, k, stack.Namespace, stack.Spec.Rules)
 	if err != nil {
 		log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
 	}
 
-	rulerConfig, err = getRulerConfig(ctx, k, req)
+	rulerConfig, err = getRulerConfig(ctx, k, stackKey)
 	if err != nil {
-		log.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
+		log.Error(err, "failed to lookup ruler config", "key", stackKey)
 	}
 
 	if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
