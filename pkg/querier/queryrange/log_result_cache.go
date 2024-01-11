@@ -106,7 +106,8 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
 	// skip caching by if interval is unset
-	if interval == 0 {
+	// skip caching when limit is 0 as it would get registerted as empty result in the cache even if that time range contains log lines.
+	if interval == 0 || lokiReq.Limit == 0 {
 		return l.next.Do(ctx, req)
 	}
 	// The first subquery might not be aligned.
