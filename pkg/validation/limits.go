@@ -106,6 +106,7 @@ type Limits struct {
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration         model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
 	MetadataQuerySplitDuration model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	IngesterQuerySplitDuration model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
 	MinShardingLookback        model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 	MaxQueryBytesRead          flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 	MaxQuerierBytesRead        flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
@@ -298,6 +299,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
+
+	_ = l.IngesterQuerySplitDuration.Set("0s")
+	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
 
@@ -572,6 +576,12 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 // MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.
 func (o *Overrides) MetadataQuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MetadataQuerySplitDuration)
+}
+
+// IngesterQuerySplitDuration returns the tenant specific splitby interval applied in the query frontend when querying
+// during the `query_ingesters_within` window.
+func (o *Overrides) IngesterQuerySplitDuration(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).IngesterQuerySplitDuration)
 }
 
 // MaxQueryBytesRead returns the maximum bytes a query can read.

@@ -134,14 +134,17 @@ func CreateOrUpdateLokiStack(
 			caKey = tlsConfig.CAKey
 		}
 
-		if !storage.IsValidCAConfigMap(&cm, caKey) {
+		var caHash string
+		caHash, err = storage.CheckCAConfigMap(&cm, caKey)
+		if err != nil {
 			return &status.DegradedError{
-				Message: "Invalid object storage CA configmap contents: missing key or no contents",
+				Message: fmt.Sprintf("Invalid object storage CA configmap contents: %s", err),
 				Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
 				Requeue: false,
 			}
 		}
 
+		objStore.SecretSHA1 = fmt.Sprintf("%s;%s", objStore.SecretSHA1, caHash)
 		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: caKey}
 	}
 
