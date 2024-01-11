@@ -100,7 +100,6 @@ ingester:
 
 querier:
   multi_tenant_queries_enabled: true
-  query_ingesters_within: 1s
 
 query_scheduler:
   max_outstanding_requests_per_tenant: 2048

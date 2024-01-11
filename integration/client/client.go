@@ -483,7 +483,7 @@ type Header struct {
 // This function is kept to keep backwards copatibility of existing tests.
 // Better use (*Client).RunRangeQueryWithStartEnd()
 func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
-	end := c.Now.Add(-1 * time.Second)
+	end := c.Now.Add(time.Second)
 	start := c.Now.Add(-7 * 24 * time.Hour)
 	return c.RunRangeQueryWithStartEnd(ctx, query, start, end, extraHeaders...)
 }
@@ -499,22 +499,6 @@ func (c *Client) RunRangeQueryWithStartEnd(ctx context.Context, query string, st
 	}
 
 	return c.parseResponse(buf, statusCode)
-}
-
-func (c *Client) rangeQueryURL(query string, start, end time.Time) string {
-	v := url.Values{}
-	v.Set("query", query)
-	v.Set("start", formatTS(start))
-	v.Set("end", formatTS(end))
-
-	u, err := url.Parse(c.baseURL)
-	if err != nil {
-		panic(err)
-	}
-	u.Path = "/loki/api/v1/query_range"
-	u.RawQuery = v.Encode()
-
-	return u.String()
 }
 
 // RunQuery runs a query and returns an error if anything went wrong
@@ -578,6 +562,22 @@ func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
 	}
 
 	return &lokiResp, nil
+}
+
+func (c *Client) rangeQueryURL(query string, start, end time.Time) string {
+	v := url.Values{}
+	v.Set("query", query)
+	v.Set("start", formatTS(start))
+	v.Set("end", formatTS(end))
+
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		panic(err)
+	}
+	u.Path = "/loki/api/v1/query_range"
+	u.RawQuery = v.Encode()
+
+	return u.String()
 }
 
 func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
