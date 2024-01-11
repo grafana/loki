@@ -366,5 +366,4 @@ func isNamespacedResource(obj client.Object) bool {
 	default:
 		return true
 	}
-	p
 }

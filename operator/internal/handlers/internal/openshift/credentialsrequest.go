@@ -17,14 +17,13 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
 const (
 	ccoNamespace = "openshift-cloud-credential-operator"
-
-	CredentialsRequestOwnerAnnotation = "loki.grafana.com/credentialsrequest-owner"
 )
 
 func GetManagedAuthCredentials(ctx context.Context, k k8s.Client, l logr.Logger, stack client.ObjectKey, fg configv1.FeatureGates) (*corev1.Secret, error) {
@@ -68,7 +67,7 @@ func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.Ob
 			Name:      stack.Namespace + "-" + secretKey.Name,
 			Namespace: ccoNamespace,
 			Annotations: map[string]string{
-				CredentialsRequestOwnerAnnotation: stack.String(),
+				openshift.AnnotationCredentialsRequestOwner: stack.String(),
 			},
 		},
 		Spec: cloudcredentialv1.CredentialsRequestSpec{

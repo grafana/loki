@@ -1,5 +1,6 @@
 ## Main
 
+- [11624](https://github.com/grafana/loki/pull/11624) **xperimental**: React to changes in ConfigMap used for storage CA
 - [11481](https://github.com/grafana/loki/pull/11481) **JoaoBraveCoding**: Adds AWS STS support
 - [11533](https://github.com/grafana/loki/pull/11533) **periklis**: Add serviceaccount per LokiStack resource
 - [11158](https://github.com/grafana/loki/pull/11158) **btaani**: operator: Add warning for old schema configuration
