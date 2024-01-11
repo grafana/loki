@@ -1,4 +1,4 @@
-package rules_test
+package rules
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 )
 
 func TestList_AlertingRulesMatchSelector_WithDefaultStackNamespaceRules(t *testing.T) {
@@ -83,7 +82,7 @@ func TestList_AlertingRulesMatchSelector_WithDefaultStackNamespaceRules(t *testi
 		return nil
 	}
 
-	rules, _, err := rules.List(context.TODO(), k, stackNs, rs)
+	rules, _, err := list(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
@@ -185,7 +184,7 @@ func TestList_AlertingRulesMatchSelector_FilteredByNamespaceSelector(t *testing.
 		return nil
 	}
 
-	rules, _, err := rules.List(context.TODO(), k, stackNs, rs)
+	rules, _, err := list(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
@@ -257,7 +256,7 @@ func TestList_RecordingRulesMatchSelector_WithDefaultStackNamespaceRules(t *test
 		return nil
 	}
 
-	_, rules, err := rules.List(context.TODO(), k, stackNs, rs)
+	_, rules, err := list(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
@@ -358,7 +357,7 @@ func TestList_RecordingRulesMatchSelector_FilteredByNamespaceSelector(t *testing
 		return nil
 	}
 
-	_, rules, err := rules.List(context.TODO(), k, stackNs, rs)
+	_, rules, err := list(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)

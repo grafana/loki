@@ -12,9 +12,9 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
-// GetRulerConfig returns the ruler config spec for a lokistack resource or an error.
+// getRulerConfig returns the ruler config spec for a lokistack resource or an error.
 // If the config is not found, we skip without an error.
-func GetRulerConfig(ctx context.Context, k k8s.Client, req ctrl.Request) (*lokiv1.RulerConfigSpec, error) {
+func getRulerConfig(ctx context.Context, k k8s.Client, req ctrl.Request) (*lokiv1.RulerConfigSpec, error) {
 	var rc lokiv1.RulerConfig
 
 	key := client.ObjectKey{Name: req.Name, Namespace: req.Namespace}

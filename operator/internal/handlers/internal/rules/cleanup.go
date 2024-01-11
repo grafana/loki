@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 )
 
-// RemoveRulesConfigMap removes the rules configmaps if any exists.
-func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client) error {
+// removeRulesConfigMap removes the rules configmaps if any exists.
+func removeRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client) error {
 	var rulesCmList corev1.ConfigMapList
 
 	err := c.List(ctx, &rulesCmList, &client.ListOptions{
@@ -41,8 +41,8 @@ func RemoveRulesConfigMap(ctx context.Context, req ctrl.Request, c client.Client
 	return nil
 }
 
-// RemoveRuler removes the ruler statefulset if it exists.
-func RemoveRuler(ctx context.Context, req ctrl.Request, c client.Client) error {
+// removeRuler removes the ruler statefulset if it exists.
+func removeRuler(ctx context.Context, req ctrl.Request, c client.Client) error {
 	// Check if the Statefulset exists before proceeding.
 	key := client.ObjectKey{Name: manifests.RulerName(req.Name), Namespace: req.Namespace}
 

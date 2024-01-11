@@ -231,7 +231,7 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateModes(tst.stack)
+			err := validateModes(tst.stack)
 			if tst.wantErr != "" {
 				require.EqualError(t, err, tst.wantErr)
 			}
@@ -438,7 +438,7 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateModes(tst.stack)
+			err := validateModes(tst.stack)
 			if tst.wantErr != "" {
 				require.EqualError(t, err, tst.wantErr)
 			}
@@ -537,7 +537,7 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateModes(tst.stack)
+			err := validateModes(tst.stack)
 			if tst.wantErr != "" {
 				require.EqualError(t, err, tst.wantErr)
 			}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -20,20 +19,13 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
-	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/serviceaccounts"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
-	manifestsocp "github.com/grafana/loki/operator/internal/manifests/openshift"
-	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
-)
-
-const (
-	defaultCAKey = "service-ca.crt"
 )
 
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
@@ -67,18 +59,17 @@ func CreateOrUpdateLokiStack(
 		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
 
-	objStore, err := getObjectStorageOptions(ctx, k, &stack)
-	if err != nil {
-		return err
-	}
-	objStore.OpenShiftEnabled = fg.OpenShift.Enabled
-
-	baseDomain, tenants, err := getGatewayOptions(ctx, ll, req, k, &stack, fg)
+	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
 		return err
 	}
 
-	alertingRules, recordingRules, ruler, ocpOptions, err := getRulerOptions(ctx, ll, req, k, &stack)
+	baseDomain, tenants, err := gateway.BuildOptions(ctx, ll, k, &stack, fg)
+	if err != nil {
+		return err
+	}
+
+	alertingRules, recordingRules, ruler, ocpOptions, err := rules.BuildOptions(ctx, ll, req, k, &stack)
 	if err != nil {
 		return err
 	}
@@ -220,256 +211,6 @@ func CreateOrUpdateLokiStack(
 	}
 
 	return nil
-}
-
-func getObjectStorageOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*storageoptions.Options, error) {
-	var objStore *storageoptions.Options
-
-	var storageSecret corev1.Secret
-	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
-	if err := k.Get(ctx, key, &storageSecret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, &status.DegradedError{
-				Message: "Missing object storage secret",
-				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
-				Requeue: false,
-			}
-		}
-		return nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
-	}
-
-	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type)
-	if err != nil {
-		return nil, &status.DegradedError{
-			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
-			Reason:  lokiv1.ReasonInvalidObjectStorageSecret,
-			Requeue: false,
-		}
-	}
-
-	storageSchemas, err := storageoptions.BuildSchemaConfig(
-		time.Now().UTC(),
-		stack.Spec.Storage,
-		stack.Status.Storage,
-	)
-	if err != nil {
-		return nil, &status.DegradedError{
-			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
-			Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
-			Requeue: false,
-		}
-	}
-
-	objStore.Schemas = storageSchemas
-
-	if stack.Spec.Storage.TLS == nil {
-		return objStore, nil
-	}
-
-	tlsConfig := stack.Spec.Storage.TLS
-	if tlsConfig.CA == "" {
-		return nil, &status.DegradedError{
-			Message: "Missing object storage CA config map",
-			Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
-			Requeue: false,
-		}
-	}
-
-	var cm corev1.ConfigMap
-	key = client.ObjectKey{Name: tlsConfig.CA, Namespace: stack.Namespace}
-	if err = k.Get(ctx, key, &cm); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, &status.DegradedError{
-				Message: "Missing object storage CA config map",
-				Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
-				Requeue: false,
-			}
-		}
-		return nil, kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
-	}
-
-	caKey := defaultCAKey
-	if tlsConfig.CAKey != "" {
-		caKey = tlsConfig.CAKey
-	}
-
-	var caHash string
-	caHash, err = storage.CheckCAConfigMap(&cm, caKey)
-	if err != nil {
-		return nil, &status.DegradedError{
-			Message: fmt.Sprintf("Invalid object storage CA configmap contents: %s", err),
-			Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
-			Requeue: false,
-		}
-	}
-
-	objStore.SecretSHA1 = fmt.Sprintf("%s;%s", objStore.SecretSHA1, caHash)
-
-	objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: caKey}
-
-	return objStore, nil
-}
-
-func getGatewayOptions(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (string, manifests.Tenants, error) {
-	var (
-		err        error
-		baseDomain string
-		secrets    []*manifests.TenantSecrets
-		configs    map[string]manifests.TenantConfig
-		tenants    manifests.Tenants
-	)
-
-	if !fg.LokiStackGateway {
-		return "", tenants, nil
-	}
-
-	if stack.Spec.Tenants == nil {
-		return "", tenants, &status.DegradedError{
-			Message: "Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
-			Reason:  lokiv1.ReasonInvalidTenantsConfiguration,
-			Requeue: false,
-		}
-	}
-
-	if err = gateway.ValidateModes(*stack); err != nil {
-		return "", tenants, &status.DegradedError{
-			Message: fmt.Sprintf("Invalid tenants configuration: %s", err),
-			Reason:  lokiv1.ReasonInvalidTenantsConfiguration,
-			Requeue: false,
-		}
-	}
-
-	switch stack.Spec.Tenants.Mode {
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
-		baseDomain, err = gateway.GetOpenShiftBaseDomain(ctx, k, req)
-		if err != nil {
-			return "", tenants, err
-		}
-
-		if stack.Spec.Proxy == nil {
-			// If the LokiStack has no proxy set but there is a cluster-wide proxy setting,
-			// set the LokiStack proxy to that.
-			ocpProxy, proxyErr := openshift.GetProxy(ctx, k)
-			if proxyErr != nil {
-				return "", tenants, proxyErr
-			}
-
-			stack.Spec.Proxy = ocpProxy
-		}
-	default:
-		secrets, err = gateway.GetTenantSecrets(ctx, k, req, stack)
-		if err != nil {
-			return "", tenants, err
-		}
-	}
-
-	// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-	configs, err = gateway.GetTenantConfigSecretData(ctx, k, req)
-	if err != nil {
-		log.Error(err, "error in getting tenant secret data")
-	}
-
-	tenants = manifests.Tenants{
-		Secrets: secrets,
-		Configs: configs,
-	}
-
-	return baseDomain, tenants, nil
-}
-
-func getRulerOptions(
-	ctx context.Context,
-	log logr.Logger,
-	req ctrl.Request,
-	k k8s.Client,
-	stack *lokiv1.LokiStack,
-) ([]lokiv1.AlertingRule, []lokiv1.RecordingRule, manifests.Ruler, manifestsocp.Options, error) {
-	var (
-		err            error
-		alertingRules  []lokiv1.AlertingRule
-		recordingRules []lokiv1.RecordingRule
-		rulerConfig    *lokiv1.RulerConfigSpec
-		rulerSecret    *manifests.RulerSecret
-		ruler          manifests.Ruler
-		ocpOpts        manifestsocp.Options
-	)
-
-	if stack.Spec.Rules == nil || !stack.Spec.Rules.Enabled {
-		// Clean up ruler resources
-		err = rules.RemoveRulesConfigMap(ctx, req, k)
-		if err != nil {
-			log.Error(err, "failed to remove rules ConfigMap")
-			return nil, nil, ruler, ocpOpts, err
-		}
-
-		err = rules.RemoveRuler(ctx, req, k)
-		if err != nil {
-			log.Error(err, "failed to remove ruler StatefulSet")
-			return nil, nil, ruler, ocpOpts, err
-		}
-
-		return nil, nil, ruler, ocpOpts, nil
-	}
-
-	alertingRules, recordingRules, err = rules.List(ctx, k, req.Namespace, stack.Spec.Rules)
-	if err != nil {
-		log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
-	}
-
-	rulerConfig, err = rules.GetRulerConfig(ctx, k, req)
-	if err != nil {
-		log.Error(err, "failed to lookup ruler config", "key", req.NamespacedName)
-	}
-
-	if rulerConfig != nil && rulerConfig.RemoteWriteSpec != nil && rulerConfig.RemoteWriteSpec.ClientSpec != nil {
-		var rs corev1.Secret
-		key := client.ObjectKey{Name: rulerConfig.RemoteWriteSpec.ClientSpec.AuthorizationSecretName, Namespace: stack.Namespace}
-		if err = k.Get(ctx, key, &rs); err != nil {
-			if apierrors.IsNotFound(err) {
-				return nil, nil, ruler, ocpOpts, &status.DegradedError{
-					Message: "Missing ruler remote write authorization secret",
-					Reason:  lokiv1.ReasonMissingRulerSecret,
-					Requeue: false,
-				}
-			}
-			return nil, nil, ruler, ocpOpts, kverrors.Wrap(err, "failed to lookup lokistack ruler secret", "name", key)
-		}
-
-		rulerSecret, err = rules.ExtractRulerSecret(&rs, rulerConfig.RemoteWriteSpec.ClientSpec.AuthorizationType)
-		if err != nil {
-			return nil, nil, ruler, ocpOpts, &status.DegradedError{
-				Message: "Invalid ruler remote write authorization secret contents",
-				Reason:  lokiv1.ReasonInvalidRulerSecret,
-				Requeue: false,
-			}
-		}
-	}
-
-	ocpAmEnabled, err := openshift.AlertManagerSVCExists(ctx, stack.Spec, k)
-	if err != nil {
-		log.Error(err, "failed to check OCP AlertManager")
-		return nil, nil, ruler, ocpOpts, err
-	}
-
-	ocpUWAmEnabled, err := openshift.UserWorkloadAlertManagerSVCExists(ctx, stack.Spec, k)
-	if err != nil {
-		log.Error(err, "failed to check OCP User Workload AlertManager")
-		return nil, nil, ruler, ocpOpts, err
-	}
-
-	ruler = manifests.Ruler{
-		Spec:   rulerConfig,
-		Secret: rulerSecret,
-	}
-
-	ocpOpts = manifestsocp.Options{
-		BuildOpts: manifestsocp.BuildOptions{
-			AlertManagerEnabled:             ocpAmEnabled,
-			UserWorkloadAlertManagerEnabled: ocpUWAmEnabled,
-		},
-	}
-
-	return alertingRules, recordingRules, ruler, ocpOpts, nil
 }
 
 func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) (map[string]string, error) {
