@@ -29,7 +29,7 @@ spec:
       targetPort: http-metrics
       protocol: TCP
     - name: grpc
-      port: 9095
+      port: {{ .Values.loki.server.grpc_listen_port }}
       targetPort: grpc
       protocol: TCP
   selector:

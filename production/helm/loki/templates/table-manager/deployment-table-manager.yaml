@@ -61,7 +61,7 @@ spec:
               containerPort: 3100
               protocol: TCP
             - name: grpc
-              containerPort: 9095
+              containerPort: {{ .Values.loki.server.grpc_listen_port }}
               protocol: TCP
           {{- with .Values.tableManager.extraEnv }}
           env:

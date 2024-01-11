@@ -891,7 +891,7 @@ enableServiceLinks: false
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $schedulerAddress := ""}}
 {{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
-{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:%s" .Release.Namespace .Values.global.clusterDomain .Values.loki.server.grpc_listen_port -}}
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}
