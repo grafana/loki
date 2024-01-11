@@ -394,6 +394,43 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
+	// Step 2:
+	case *MergeFirstOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
+
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{*shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		results, err := ev.Downstream(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+
+		return NewMergeFirstOverTimeStepEvaluator(params, xs), nil
 
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
