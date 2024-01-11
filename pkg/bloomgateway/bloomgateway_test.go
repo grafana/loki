@@ -75,7 +75,13 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{
-		From:       parseDayTime("2023-09-01"),
+		From: parseDayTime("2023-09-01"),
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 24 * time.Hour,
+			},
+		},
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v13",
@@ -137,7 +143,13 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{
-		From:       parseDayTime("2023-09-01"),
+		From: parseDayTime("2023-09-01"),
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 24 * time.Hour,
+			},
+		},
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v13",

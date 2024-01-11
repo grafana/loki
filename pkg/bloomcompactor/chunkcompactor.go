@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/uuid"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -135,8 +137,8 @@ func buildBlockFromBlooms(
 				TableName:      job.tableName,
 				MinFingerprint: uint64(job.minFp),
 				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: int64(job.from),
-				EndTimestamp:   int64(job.through),
+				StartTimestamp: job.from,
+				EndTimestamp:   job.through,
 				Checksum:       checksum,
 			},
 			IndexPath: job.indexPath,
@@ -148,7 +150,7 @@ func buildBlockFromBlooms(
 }
 
 func createLocalDirName(workingDir string, job Job) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%s-%s", job.tableName, job.tenantID, job.minFp, job.maxFp, job.from, job.through)
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%d-%d-%s", job.tableName, job.tenantID, job.minFp, job.maxFp, job.from, job.through, uuid.New().String())
 	return filepath.Join(workingDir, dir)
 }
 
@@ -167,7 +169,7 @@ func compactNewChunks(
 		return bloomshipper.Block{}, err
 	}
 
-	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, fpRate)
+	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, fpRate, logger)
 
 	// Build and upload bloomBlock to storage
 	block, err := buildBlockFromBlooms(ctx, logger, builder, bloomIter, job)
@@ -186,6 +188,7 @@ type lazyBloomBuilder struct {
 	client chunkClient
 	bt     compactorTokenizer
 	fpRate float64
+	logger log.Logger
 
 	cur v1.SeriesWithBloom // retured by At()
 	err error              // returned by Err()
@@ -195,7 +198,7 @@ type lazyBloomBuilder struct {
 // which are used by the blockBuilder to write a bloom block.
 // We use an interator to avoid loading all blooms into memory first, before
 // building the block.
-func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, fpRate float64) *lazyBloomBuilder {
+func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, fpRate float64, logger log.Logger) *lazyBloomBuilder {
 	return &lazyBloomBuilder{
 		ctx:    ctx,
 		metas:  v1.NewSliceIter(job.seriesMetas),
@@ -203,13 +206,14 @@ func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt co
 		tenant: job.tenantID,
 		bt:     bt,
 		fpRate: fpRate,
+		logger: logger,
 	}
 }
 
 func (it *lazyBloomBuilder) Next() bool {
 	if !it.metas.Next() {
-		it.err = io.EOF
 		it.cur = v1.SeriesWithBloom{}
+		level.Debug(it.logger).Log("msg", "No seriesMeta")
 		return false
 	}
 	meta := it.metas.At()
@@ -219,6 +223,7 @@ func (it *lazyBloomBuilder) Next() bool {
 	if err != nil {
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
+		level.Debug(it.logger).Log("err in getChunks", err)
 		return false
 	}
 
@@ -226,6 +231,7 @@ func (it *lazyBloomBuilder) Next() bool {
 	if err != nil {
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
+		level.Debug(it.logger).Log("err in buildBloomFromSeries", err)
 		return false
 	}
 	return true

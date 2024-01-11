@@ -121,12 +121,14 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	require.Equal(t, job.tableName, compactedBlock.TableName)
 	require.Equal(t, uint64(fp1), compactedBlock.MinFingerprint)
 	require.Equal(t, uint64(fp2), compactedBlock.MaxFingerprint)
-	require.Equal(t, chunkRef1.MinTime, compactedBlock.StartTimestamp)
-	require.Equal(t, chunkRef2.MaxTime, compactedBlock.EndTimestamp)
+	require.Equal(t, model.Time(chunkRef1.MinTime), compactedBlock.StartTimestamp)
+	require.Equal(t, model.Time(chunkRef2.MaxTime), compactedBlock.EndTimestamp)
 	require.Equal(t, indexPath, compactedBlock.IndexPath)
 }
 
 func TestLazyBloomBuilder(t *testing.T) {
+	logger := log.NewNopLogger()
+
 	label := labels.FromStrings("foo", "bar")
 	fp1 := model.Fingerprint(100)
 	fp2 := model.Fingerprint(999)
@@ -167,7 +169,7 @@ func TestLazyBloomBuilder(t *testing.T) {
 	mbt := &mockBloomTokenizer{}
 	mcc := &mockChunkClient{}
 
-	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, fpRate)
+	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, fpRate, logger)
 
 	// first seriesMeta has 1 chunks
 	require.True(t, it.Next())

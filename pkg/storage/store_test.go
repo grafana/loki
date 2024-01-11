@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	lokilog "github.com/grafana/loki/pkg/logql/log"
-
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -23,10 +21,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	lokilog "github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -44,7 +47,7 @@ var (
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
 	cm         = NewClientMetrics()
-	chunkStore = getLocalStore(cm)
+	chunkStore = getLocalStore("/tmp/benchmark/", cm)
 )
 
 // go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
@@ -187,7 +190,7 @@ func printHeap(b *testing.B, show bool) {
 	}
 }
 
-func getLocalStore(cm ClientMetrics) Store {
+func getLocalStore(path string, cm ClientMetrics) Store {
 	limits, err := validation.NewOverrides(validation.Limits{
 		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
@@ -196,8 +199,8 @@ func getLocalStore(cm ClientMetrics) Store {
 	}
 
 	storeConfig := Config{
-		BoltDBConfig:      local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:          local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		BoltDBConfig:      local.BoltDBConfig{Directory: filepath.Join(path, "index")},
+		FSConfig:          local.FSConfig{Directory: filepath.Join(path, "chunks")},
 		MaxChunkBatchSize: 10,
 	}
 
@@ -207,12 +210,13 @@ func getLocalStore(cm ClientMetrics) Store {
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
 				ObjectType: config.StorageTypeFileSystem,
-				Schema:     "v9",
+				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 168,
 					}},
+				RowShards: 16,
 			},
 		},
 	}
@@ -963,6 +967,10 @@ type mockStreamPipeline struct {
 	called    int
 }
 
+func (p *mockStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func (p *mockStreamPipeline) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
@@ -1042,6 +1050,10 @@ func (p *mockExtractor) Reset() {}
 type mockStreamExtractor struct {
 	wrappedSP lokilog.StreamSampleExtractor
 	called    int
+}
+
+func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
 }
 
 func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
@@ -1850,4 +1862,225 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			require.True(t, ok)
 		}
 	}
+}
+
+func TestQueryReferencingStructuredMetadata(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	tempDir := t.TempDir()
+	store := getLocalStore(tempDir, cm)
+
+	schemaCfg := store.(*LokiStore).schemaCfg
+	periodcfg, err := schemaCfg.SchemaForTime(start)
+	require.NoError(t, err)
+
+	chunkfmt, headfmt, err := periodcfg.ChunkFormat()
+	require.NoError(t, err)
+
+	now := time.Now()
+	chkFrom := now.Add(-50 * time.Second)
+	chkThrough := now
+
+	// add some streams with and without structured metadata
+	for _, withStructuredMetadata := range []bool{true, false} {
+		stream := fmt.Sprintf(`{sm="%v"}`, withStructuredMetadata)
+		lbs, err := syntax.ParseLabels(stream)
+		if err != nil {
+			panic(err)
+		}
+		labelsBuilder := labels.NewBuilder(lbs)
+		labelsBuilder.Set(labels.MetricName, "logs")
+		metric := labelsBuilder.Labels()
+		fp := client.Fingerprint(lbs)
+
+		chunkEnc := chunkenc.NewMemChunk(chunkfmt, chunkenc.EncLZ4_4M, headfmt, 262144, 1572864)
+		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
+			entry := logproto.Entry{
+				Timestamp: ts,
+				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+			}
+
+			if withStructuredMetadata {
+				entry.StructuredMetadata = push.LabelsAdapter{
+					{
+						Name:  "fizz",
+						Value: "buzz",
+					},
+					{
+						Name:  "num",
+						Value: "1",
+					},
+				}
+			}
+			require.NoError(t, chunkEnc.Append(&entry))
+		}
+
+		require.NoError(t, chunkEnc.Close())
+		from, to := chunkEnc.Bounds()
+		c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
+		if err := c.Encode(); err != nil {
+			panic(err)
+		}
+		require.NoError(t, store.Put(ctx, []chunk.Chunk{c}))
+
+		// verify the data by querying it
+		it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  stream,
+			Limit:     1000,
+			Direction: logproto.FORWARD,
+			Start:     chkFrom,
+			End:       chkThrough.Add(time.Minute),
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(stream),
+			},
+		}})
+		require.NoError(t, err)
+
+		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
+			require.True(t, it.Next())
+			expectedEntry := logproto.Entry{
+				Timestamp: ts.Truncate(0),
+				Line:      fmt.Sprintf("ts=%d level=info", ts.Unix()),
+			}
+
+			if withStructuredMetadata {
+				expectedEntry.StructuredMetadata = push.LabelsAdapter{
+					{
+						Name:  "fizz",
+						Value: "buzz",
+					},
+					{
+						Name:  "num",
+						Value: "1",
+					},
+				}
+			}
+			require.Equal(t, expectedEntry, it.Entry())
+		}
+
+		require.False(t, it.Next())
+		require.NoError(t, it.Close())
+	}
+
+	// test cases for logs queries
+	t.Run("logs queries", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			query string
+
+			expectedReferencedStructuredMetadata bool
+		}{
+			{
+				name:  "logs not having structured metadata",
+				query: `{sm="false"}`,
+			},
+			{
+				name:  "not referencing structured metadata in logs having structured metadata",
+				query: `{sm="true"}`,
+			},
+			{
+				name:  "referencing a parsed field",
+				query: `{sm="true"} | logfmt | level="info"`,
+			},
+			{
+				name:  "referencing structured metadata with label filter",
+				query: `{sm="true"} | fizz="buzz"`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata to drop it",
+				query: `{sm="true"} | drop fizz`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctx := user.InjectOrgID(context.Background(), "fake")
+				_, ctx = stats.NewContext(ctx)
+				it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+					Selector:  tc.query,
+					Limit:     1000,
+					Direction: logproto.FORWARD,
+					Start:     chkFrom,
+					End:       chkThrough.Add(time.Minute),
+					Plan: &plan.QueryPlan{
+						AST: syntax.MustParseExpr(tc.query),
+					},
+				}})
+				require.NoError(t, err)
+				numEntries := int64(0)
+				for it.Next() {
+					numEntries++
+				}
+				require.NoError(t, it.Close())
+				require.Equal(t, chkThrough.Unix()-chkFrom.Unix()+1, numEntries)
+
+				statsCtx := stats.FromContext(ctx)
+				require.Equal(t, tc.expectedReferencedStructuredMetadata, statsCtx.Result(0, 0, 0).QueryReferencedStructuredMetadata())
+			})
+		}
+	})
+
+	// test cases for metric queries
+	t.Run("metric queries", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			query string
+
+			expectedReferencedStructuredMetadata bool
+		}{
+			{
+				name:  "logs not having structured metadata",
+				query: `sum(count_over_time({sm="false"}[1m]))`,
+			},
+			{
+				name:  "not referencing structured metadata in logs having structured metadata",
+				query: `sum(count_over_time({sm="true"}[1m]))`,
+			},
+			{
+				name:  "referencing a parsed field",
+				query: `sum by (level) (count_over_time({sm="true"} | logfmt | level="info"[1m]))`,
+			},
+			{
+				name:  "referencing structured metadata with label filter",
+				query: `sum(count_over_time({sm="true"} | fizz="buzz"[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata in by aggregation clause",
+				query: `sum by (fizz) (count_over_time({sm="true"}[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata in without aggregation clause",
+				query: `sum without (fizz) (count_over_time({sm="true"}[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+			{
+				name:  "referencing structured metadata in unwrap",
+				query: `sum(sum_over_time({sm="true"} | unwrap num[1m]))`,
+
+				expectedReferencedStructuredMetadata: true,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctx := user.InjectOrgID(context.Background(), "fake")
+				_, ctx = stats.NewContext(ctx)
+				it, err := store.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery(tc.query, chkFrom, chkThrough.Add(time.Minute), nil)})
+				require.NoError(t, err)
+				numSamples := int64(0)
+				for it.Next() {
+					numSamples++
+				}
+				require.NoError(t, it.Close())
+				require.Equal(t, chkThrough.Unix()-chkFrom.Unix()+1, numSamples)
+
+				statsCtx := stats.FromContext(ctx)
+				require.Equal(t, tc.expectedReferencedStructuredMetadata, statsCtx.Result(0, 0, 0).QueryReferencedStructuredMetadata())
+			})
+		}
+	})
 }
