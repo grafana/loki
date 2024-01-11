@@ -19,6 +19,8 @@ import (
 
 const (
 	ccoNamespace = "openshift-cloud-credential-operator"
+
+	CredentialsRequestOwnerAnnotation = "loki.grafana.com/credentialsrequest-owner"
 )
 
 func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.ObjectKey, sts *ManagedAuthEnv) (client.ObjectKey, error) {
@@ -33,6 +35,9 @@ func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.Ob
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      stack.Namespace + "-" + secretKey.Name,
 			Namespace: ccoNamespace,
+			Annotations: map[string]string{
+				CredentialsRequestOwnerAnnotation: stack.String(),
+			},
 		},
 		Spec: cloudcredentialv1.CredentialsRequestSpec{
 			SecretRef: corev1.ObjectReference{

@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -15,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -216,18 +218,19 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	}
 
 	if r.FeatureGates.OpenShift.Enabled {
-		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
-			Owns(&cloudcredentialv1.CredentialsRequest{}, updateOrDeleteOnlyPred)
+		bld = bld.
+			Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
+			Watches(&cloudcredentialv1.CredentialsRequest{}, r.enqueueForCredentialsRequest(), updateOrDeleteOnlyPred)
+
+		if r.FeatureGates.OpenShift.ClusterTLSPolicy {
+			bld = bld.Watches(&openshiftconfigv1.APIServer{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
+		}
+
+		if r.FeatureGates.OpenShift.ClusterProxy {
+			bld = bld.Watches(&openshiftconfigv1.Proxy{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
+		}
 	} else {
 		bld = bld.Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred)
-	}
-
-	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
-		bld = bld.Watches(&openshiftconfigv1.APIServer{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
-	}
-
-	if r.FeatureGates.OpenShift.ClusterProxy {
-		bld = bld.Watches(&openshiftconfigv1.Proxy{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
 	}
 
 	return bld.Complete(r)
@@ -325,5 +328,36 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 		}
 
 		return requests
+	})
+}
+
+func (r *LokiStackReconciler) enqueueForCredentialsRequest() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		a := obj.GetAnnotations()
+		owner, ok := a[openshift.CredentialsRequestOwnerAnnotation]
+		if !ok {
+			return nil
+		}
+
+		var (
+			ownerParts = strings.Split(owner, "/")
+			namespace  = ownerParts[0]
+			name       = ownerParts[1]
+			key        = client.ObjectKey{Namespace: namespace, Name: name}
+		)
+
+		var stack lokiv1.LokiStack
+		if err := r.Client.Get(ctx, key, &stack); err != nil {
+			if !apierrors.IsNotFound(err) {
+				r.Log.Error(err, "failed retrieving CredentialsRequest owning Lokistack", "key", key)
+			}
+			return nil
+		}
+
+		return []reconcile.Request{
+			{
+				NamespacedName: key,
+			},
+		}
 	})
 }
