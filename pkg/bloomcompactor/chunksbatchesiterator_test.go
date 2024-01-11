@@ -90,7 +90,7 @@ type fakeClient struct {
 	callsCount int
 }
 
-func (f *fakeClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (f *fakeClient) GetChunks(_ context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	f.callsCount++
 	return chunks, nil
 }
