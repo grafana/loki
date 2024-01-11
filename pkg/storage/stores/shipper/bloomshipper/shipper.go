@@ -54,24 +54,36 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 	defer cancelFunc()
 	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blocks)
 
+	// track how many blocks are still remaning to be downloaded
+	remaining := len(blocks)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
-		case result := <-blocksChannel:
-			return runCallback(callback, result)
-		case err := <-errorsChannel:
-			if err != nil {
-				return fmt.Errorf("error downloading blocks : %w", err)
+		case result, sentBeforeClosed := <-blocksChannel:
+			if !sentBeforeClosed {
+				return nil
 			}
+			err := runCallback(callback, result)
+			if err != nil {
+				return err
+			}
+			remaining--
+			if remaining == 0 {
+				return nil
+			}
+		case err := <-errorsChannel:
+			return fmt.Errorf("error downloading blocks : %w", err)
 		}
 	}
 }
 
 func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
-	defer func(result blockWithQuerier) {
-		_ = result.Close()
+	defer func(b blockWithQuerier) {
+		_ = b.Close()
 	}(block)
+
 	err := callback(block.closableBlockQuerier.BlockQuerier, block.MinFingerprint, block.MaxFingerprint)
 	if err != nil {
 		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
