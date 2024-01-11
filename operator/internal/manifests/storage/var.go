@@ -108,7 +108,7 @@ const (
 	KeySwiftUsername = "username"
 
 	saTokenVolumeK8sDirectory = "/var/run/secrets/kubernetes.io/serviceaccount"
-	saTokenVolumeOcpDirectory = "/var/run/secrets/openshift/serviceaccount"
+	SATokenVolumeOcpDirectory = "/var/run/secrets/openshift/serviceaccount"
 	saTokenVolumeName         = "bound-sa-token"
 	saTokenExpiration         = 3600
 

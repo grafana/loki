@@ -282,7 +282,7 @@ func setSATokenPath(opts *Options) {
 	case lokiv1.ObjectStorageSecretS3:
 		opts.S3.WebIdentityTokenFile = saTokenVolumeK8sDirectory
 		if opts.OpenShiftEnabled {
-			opts.S3.WebIdentityTokenFile = saTokenVolumeOcpDirectory
+			opts.S3.WebIdentityTokenFile = SATokenVolumeOcpDirectory
 		}
 	}
 }
