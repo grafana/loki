@@ -106,7 +106,8 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
 	// skip caching by if interval is unset
-	if interval == 0 {
+	// skip caching when limit is 0 as it would get registerted as empty result in the cache even if that time range contains log lines.
+	if interval == 0 || lokiReq.Limit == 0 {
 		return l.next.Do(ctx, req)
 	}
 	// The first subquery might not be aligned.
@@ -181,7 +182,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
-	result := emptyResponse(cachedRequest)
+	result := emptyResponse(lokiReq)
 	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {

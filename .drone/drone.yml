@@ -15,7 +15,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-amd64
+    - 0.33.0-amd64
   when:
     event:
     - pull_request
@@ -33,7 +33,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-amd64
+    - 0.33.0-amd64
     username:
       from_secret: docker_username
   when:
@@ -68,7 +68,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-arm64
+    - 0.33.0-arm64
   when:
     event:
     - pull_request
@@ -86,7 +86,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-arm64
+    - 0.33.0-arm64
     username:
       from_secret: docker_username
   when:
@@ -118,7 +118,7 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image:0.32.0
+    target: loki-build-image:0.33.0
     username:
       from_secret: docker_username
   when:
@@ -182,14 +182,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: check-generated-files
 - commands:
   - cd ..
@@ -199,7 +199,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: clone-target-branch
   when:
     event:
@@ -210,14 +210,14 @@ steps:
   - clone-target-branch
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: test
 - commands:
   - cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test
   depends_on:
   - clone-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: test-target-branch
   when:
     event:
@@ -230,7 +230,7 @@ steps:
   - test
   - test-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: compare-coverage
   when:
     event:
@@ -248,7 +248,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: report-coverage
   when:
     event:
@@ -258,7 +258,7 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -266,7 +266,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -277,21 +277,21 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false check-doc
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: check-doc
 - commands:
   - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: check-format
   when:
     event:
@@ -301,14 +301,21 @@ steps:
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: validate-example-configs
+- commands:
+  - make BUILD_IN_CONTAINER=false validate-dev-cluster-config
+  depends_on:
+  - loki
+  environment: {}
+  image: grafana/loki-build-image:0.33.0
+  name: validate-dev-cluster-config
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: check-example-config-doc
 - commands:
   - mkdir -p /hugo/content/docs/loki/latest
@@ -341,7 +348,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: loki-mixin-check
   when:
     event:
@@ -366,7 +373,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -1772,7 +1779,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1780,7 +1787,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1806,7 +1813,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: publish
   when:
     event:
@@ -1841,7 +1848,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.31.2
+  image: grafana/loki-build-image:0.33.0
   name: build and push
   privileged: true
   volumes:
@@ -2106,6 +2113,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 8ae9cff1a379503d0b568f727d9c12bcb486a5e8d1fc3271deea32f07939baf1
+hmac: fe7669a21410ae5f2d1ad6b6205fdc582af874f65f7bd6a679731a88174e3a1c
 
 ...
