@@ -647,7 +647,7 @@ func (t *Loki) setupModuleManager() error {
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
@@ -694,13 +694,12 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
-	if t.Cfg.isModuleEnabled(IndexGateway) && t.Cfg.BloomGateway.Enabled {
+	if t.Cfg.BloomGateway.Enabled {
 		deps[IndexGateway] = append(deps[IndexGateway], BloomGatewayRing)
 	}
 
-	//TODO(poyzannur) not sure this is needed for BloomCompactor
 	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor)
+		deps[Read] = append(deps[Read], deps[Backend]...)
 	}
 
 	if t.Cfg.InternalServer.Enable {
