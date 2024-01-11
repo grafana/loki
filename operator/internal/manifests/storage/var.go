@@ -107,8 +107,8 @@ const (
 	// KeySwiftPassword is the secret data key for the OpenStack Swift password.
 	KeySwiftUsername = "username"
 
-	SATokenVolumeK8sDirectory = "/var/run/secrets/kubernetes.io/serviceaccount"
-	SATokenVolumeOcpDirectory = "/var/run/secrets/openshift/serviceaccount"
+	saTokenVolumeK8sDirectory = "/var/run/secrets/kubernetes.io/serviceaccount"
+	saTokenVolumeOcpDirectory = "/var/run/secrets/openshift/serviceaccount"
 	saTokenVolumeName         = "bound-sa-token"
 	saTokenExpiration         = 3600
 
@@ -117,5 +117,6 @@ const (
 	storageTLSVolume     = "storage-tls"
 	caDirectory          = "/etc/storage/ca"
 
-	awsDefaultAudience = "sts.amazonaws.com"
+	awsDefaultAudience   = "sts.amazonaws.com"
+	awsOpenShiftAudience = "openshift"
 )

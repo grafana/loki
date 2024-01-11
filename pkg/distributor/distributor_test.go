@@ -1251,12 +1251,14 @@ func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
 type mockTee struct {
 	mu         sync.Mutex
 	duplicated [][]KeyedStream
+	tenant     string
 }
 
-func (mt *mockTee) Duplicate(streams []KeyedStream) {
+func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
+	mt.tenant = tenant
 }
 
 func TestDistributorTee(t *testing.T) {
@@ -1307,5 +1309,7 @@ func TestDistributorTee(t *testing.T) {
 		for j, streams := range td.Streams {
 			assert.Equal(t, tee.duplicated[i][j].Stream.Entries, streams.Entries)
 		}
+
+		require.Equal(t, "test", tee.tenant)
 	}
 }

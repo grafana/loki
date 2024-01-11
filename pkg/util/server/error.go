@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -29,7 +30,10 @@ const (
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
 	status, cerr := ClientHTTPStatusAndError(err)
-	http.Error(w, cerr.Error(), status)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(status)
+	fmt.Fprint(w, cerr.Error())
 }
 
 // ClientHTTPStatusAndError returns error and http status that is "safe" to return to client without

@@ -1,7 +1,7 @@
 ---
 title: Fluentd client
 menuTitle:  Fluentd
-description: Instructions to install, configure, and use the Fluentd client to send logs to Loki.
+description: Instructions for how to install, configure, and use the Fluentd client to send logs to Loki.
 aliases: 
 - ../clients/fluentd/
 weight:  600

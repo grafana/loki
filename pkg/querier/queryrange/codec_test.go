@@ -1556,7 +1556,8 @@ var (
 				"chunksDownloadTime": 0,
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
-				"chunkRefsFetchTime": 0
+				"chunkRefsFetchTime": 0,
+				"queryReferencedStructuredMetadata": false
 			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
@@ -1579,7 +1580,8 @@ var (
 				"chunksDownloadTime": 16,
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
-				"chunkRefsFetchTime": 19
+				"chunkRefsFetchTime": 19,
+				"queryReferencedStructuredMetadata": true
 			}
 		},
 		"cache": {
@@ -1590,7 +1592,8 @@ var (
 				"bytesReceived": 0,
 				"bytesSent": 0,
 				"requests": 0,
-				"downloadTime": 0
+				"downloadTime": 0,
+				"queryLengthServed": 0
 			},
 			"index": {
 				"entriesFound": 0,
@@ -1599,7 +1602,8 @@ var (
 				"bytesReceived": 0,
 				"bytesSent": 0,
 				"requests": 0,
-				"downloadTime": 0
+				"downloadTime": 0,
+				"queryLengthServed": 0
 			},
 		  "statsResult": {
 				"entriesFound": 0,
@@ -1608,7 +1612,28 @@ var (
 				"bytesReceived": 0,
 				"bytesSent": 0,
 				"requests": 0,
-				"downloadTime": 0
+				"downloadTime": 0,
+				"queryLengthServed": 0
+			},
+		  "seriesResult": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0,
+				"queryLengthServed": 0
+			},
+		  "labelResult": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0,
+				"queryLengthServed": 0
 			},
 		  "volumeResult": {
 				"entriesFound": 0,
@@ -1617,7 +1642,8 @@ var (
 				"bytesReceived": 0,
 				"bytesSent": 0,
 				"requests": 0,
-				"downloadTime": 0
+				"downloadTime": 0,
+				"queryLengthServed": 0
 			},
 			"result": {
 				"entriesFound": 0,
@@ -1626,7 +1652,8 @@ var (
 				"bytesReceived": 0,
 				"bytesSent": 0,
 				"requests": 0,
-				"downloadTime": 0
+				"downloadTime": 0,
+				"queryLengthServed": 0
 			}
 		},
 		"summary": {
@@ -1973,10 +2000,11 @@ var (
 					PostFilterLines:   0,
 					TotalDuplicates:   19,
 				},
-				ChunksDownloadTime:    16,
-				TotalChunksRef:        17,
-				TotalChunksDownloaded: 18,
-				ChunkRefsFetchTime:    19,
+				ChunksDownloadTime:        16,
+				TotalChunksRef:            17,
+				TotalChunksDownloaded:     18,
+				ChunkRefsFetchTime:        19,
+				QueryReferencedStructured: true,
 			},
 		},
 
@@ -2003,6 +2031,8 @@ var (
 			Index:        stats.Cache{},
 			StatsResult:  stats.Cache{},
 			VolumeResult: stats.Cache{},
+			SeriesResult: stats.Cache{},
+			LabelResult:  stats.Cache{},
 			Result:       stats.Cache{},
 		},
 	}

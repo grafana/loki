@@ -67,7 +67,6 @@ ingester_client:
     remote_timeout: 1s
 limits_config:
     cardinality_limit: 100000
-    enforce_metric_name: false
     ingestion_burst_size_mb: 5
     ingestion_rate_mb: 2
     ingestion_rate_strategy: global
