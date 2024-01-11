@@ -20,5 +20,5 @@ scrape_configs:
       - localhost
     labels:
       job: varlogs
-      #NOTE: Need to be changed to scrape any additional logs of the system.
+      #NOTE: Need to be modified to scrape any additional logs of the system.
       __path__: /var/log/messages
