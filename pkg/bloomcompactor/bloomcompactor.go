@@ -497,13 +497,12 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 
-	// TODO(poyzannur) enable once debugging is over
-	//defer func() {
-	//	//clean up the bloom directory
-	//	if err := os.RemoveAll(localDst); err != nil {
-	//		level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
-	//	}
-	//}()
+	defer func() {
+		//clean up the bloom directory
+		if err := os.RemoveAll(localDst); err != nil {
+			level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
+		}
+	}()
 
 	var resultingBlock bloomshipper.Block
 	defer func() {
@@ -551,6 +550,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}()
 
 		if err != nil {
+			level.Error(logger).Log("err", err)
 			return err
 		}
 
@@ -565,6 +565,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
 		}
+
 	}
 
 	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
@@ -575,13 +576,12 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
-	// TODO(poyzannur) enable once debugging is over
-	//defer func() {
-	//	err = os.Remove(archivePath)
-	//	if err != nil {
-	//		level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
-	//	}
-	//}()
+	defer func() {
+		err = os.Remove(archivePath)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
+		}
+	}()
 
 	// Do not change the signature of PutBlocks yet.
 	// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.

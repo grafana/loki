@@ -15,7 +15,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-amd64
+    - 0.33.0-amd64
   when:
     event:
     - pull_request
@@ -33,7 +33,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-amd64
+    - 0.33.0-amd64
     username:
       from_secret: docker_username
   when:
@@ -68,7 +68,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-arm64
+    - 0.33.0-arm64
   when:
     event:
     - pull_request
@@ -86,7 +86,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.32.0-arm64
+    - 0.33.0-arm64
     username:
       from_secret: docker_username
   when:
@@ -118,7 +118,7 @@ steps:
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest-build-image.tmpl
-    target: loki-build-image:0.32.0
+    target: loki-build-image:0.33.0
     username:
       from_secret: docker_username
   when:
@@ -303,6 +303,13 @@ steps:
   environment: {}
   image: grafana/loki-build-image:0.33.0
   name: validate-example-configs
+- commands:
+  - make BUILD_IN_CONTAINER=false validate-dev-cluster-config
+  depends_on:
+  - loki
+  environment: {}
+  image: grafana/loki-build-image:0.33.0
+  name: validate-dev-cluster-config
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
@@ -2106,6 +2113,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: f77bf60db54dd4ae7fd08a312e00237e310d542e7e63980ad02dedecda703c76
+hmac: fe7669a21410ae5f2d1ad6b6205fdc582af874f65f7bd6a679731a88174e3a1c
 
 ...
