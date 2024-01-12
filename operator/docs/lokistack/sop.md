@@ -313,7 +313,7 @@ The query queue is currently under high load.
 
 ### Impact
 
-The lokistack has a warning regarding the configured storage schema.
+The LokiStack warns on a newer object storage schema being available for configuration.
 
 ### Summary
 
