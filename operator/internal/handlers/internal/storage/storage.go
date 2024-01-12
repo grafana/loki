@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -64,7 +66,8 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		}
 	}
 
-	cm, err := getCAConfigMap(ctx, k, tlsConfig.CA, stack.Namespace)
+	key := client.ObjectKey{Name: tlsConfig.CA, Namespace: stack.Namespace}
+	cm, err := getCAConfigMap(ctx, k, key)
 	if err != nil {
 		return storage.Options{}, err
 	}
