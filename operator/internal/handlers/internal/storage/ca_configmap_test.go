@@ -3,6 +3,7 @@ package storage_test
 import (
 	"testing"
 
+	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -45,7 +46,7 @@ func TestIsValidConfigMap(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			hash, err := CheckCAConfigMap(tst.cm, "service-ca.crt")
+			hash, err := storage.CheckCAConfigMap(tst.cm, "service-ca.crt")
 
 			require.Equal(t, tst.wantHash, hash)
 			if tst.wantErrorMsg == "" {
