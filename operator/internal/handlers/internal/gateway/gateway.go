@@ -40,7 +40,7 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 		}
 	}
 
-	if err = validateModes(*stack); err != nil {
+	if err = validateModes(stack); err != nil {
 		return "", tenants, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid tenants configuration: %s", err),
 			Reason:  lokiv1.ReasonInvalidTenantsConfiguration,

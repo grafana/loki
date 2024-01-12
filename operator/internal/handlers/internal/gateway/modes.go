@@ -6,7 +6,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-func validateModes(stack lokiv1.LokiStack) error {
+func validateModes(stack *lokiv1.LokiStack) error {
 	if stack.Spec.Tenants.Mode == lokiv1.Static {
 		if stack.Spec.Tenants.Authentication == nil {
 			return kverrors.New("mandatory configuration - missing tenants' authentication configuration")
