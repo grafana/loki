@@ -210,7 +210,9 @@ func (w *worker) stopping(err error) error {
 }
 
 func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
+	storeFetchStart := time.Now()
 	return w.store.ForEach(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
+		w.metrics.storeAccessLatency.WithLabelValues(w.id, "ForEach").Observe(time.Since(storeFetchStart).Seconds())
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
 				processBlock(bq, day, b.tasks)
