@@ -39,7 +39,7 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 	}
 
 	if richLabels := parseECSTask(data.LogGroup); richLabels != nil {
-		labels.Merge(richLabels)
+		labels = labels.Merge(richLabels)
 	}
 
 	labels = applyExtraLabels(labels)
