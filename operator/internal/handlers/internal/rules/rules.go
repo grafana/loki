@@ -19,6 +19,10 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
+// BuildOptions returns the ruler options to generate Kubernetes resource manifests.
+// Or else it returns a degraded error if one of the following cases applies:
+// - When remote write is enabled and the authorization Secret is missing.
+// - When remote wrie is enabled and the authorization Secret data are invalid.
 func BuildOptions(
 	ctx context.Context,
 	log logr.Logger,
@@ -36,23 +40,6 @@ func BuildOptions(
 
 		stackKey = client.ObjectKeyFromObject(stack)
 	)
-
-	if stack.Spec.Rules == nil || !stack.Spec.Rules.Enabled {
-		// Clean up ruler resources
-		err = removeRulesConfigMap(ctx, k, stackKey)
-		if err != nil {
-			log.Error(err, "failed to remove rules ConfigMap")
-			return nil, nil, ruler, ocpOpts, err
-		}
-
-		err = removeRuler(ctx, k, stackKey)
-		if err != nil {
-			log.Error(err, "failed to remove ruler StatefulSet")
-			return nil, nil, ruler, ocpOpts, err
-		}
-
-		return nil, nil, ruler, ocpOpts, nil
-	}
 
 	alertingRules, recordingRules, err = list(ctx, k, stack.Namespace, stack.Spec.Rules)
 	if err != nil {

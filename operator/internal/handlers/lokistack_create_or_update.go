@@ -69,6 +69,10 @@ func CreateOrUpdateLokiStack(
 		return err
 	}
 
+	if err = rules.Cleanup(ctx, ll, k, &stack); err != nil {
+		return err
+	}
+
 	alertingRules, recordingRules, ruler, ocpOptions, err := rules.BuildOptions(ctx, ll, k, &stack)
 	if err != nil {
 		return err
