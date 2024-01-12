@@ -7,8 +7,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-const defaultCAKey = "service-ca.crt"
-
 type caKeyError string
 
 func (e caKeyError) Error() string {

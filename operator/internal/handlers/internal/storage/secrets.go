@@ -21,9 +21,9 @@ import (
 )
 
 func getSecrets(ctx context.Context, k k8s.Client, ll logr.Logger, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
-	var storageSecret corev1.Secret
+	var storageSecret *corev1.Secret
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
-	if err := k.Get(ctx, key, &storageSecret); err != nil {
+	if err := k.Get(ctx, key, storageSecret); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil, &status.DegradedError{
 				Message: "Missing object storage secret",
@@ -34,17 +34,17 @@ func getSecrets(ctx context.Context, k k8s.Client, ll logr.Logger, stack *lokiv1
 		return nil, nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	var managedAuthCreds corev1.Secret
+	var managedAuthCreds *corev1.Secret
 	if fg.OpenShift.Enabled {
 		key := client.ObjectKeyFromObject(stack)
 		creds, err := openshift.GetManagedAuthCredentials(ctx, k, ll, key, fg)
 		if err != nil {
-			return &storageSecret, nil, err
+			return storageSecret, nil, err
 		}
-		managedAuthCreds = *creds
+		managedAuthCreds = creds
 	}
 
-	return &storageSecret, &managedAuthCreds, nil
+	return storageSecret, managedAuthCreds, nil
 }
 
 func extractSecrets(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType, managedAuthSecret *corev1.Secret) (*storage.Options, error) {

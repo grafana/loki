@@ -30,6 +30,10 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
+const (
+	defaultCAKey = "service-ca.crt"
+)
+
 // CreateOrUpdateLokiStack handles LokiStack create and update events.
 func CreateOrUpdateLokiStack(
 	ctx context.Context,

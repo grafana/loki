@@ -18,6 +18,8 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
+const defaultCAKey = "service-ca.crt"
+
 var hashSeparator = []byte(",")
 
 func BuildOptions(ctx context.Context, k k8s.Client, ll logr.Logger, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*storage.Options, error) {
