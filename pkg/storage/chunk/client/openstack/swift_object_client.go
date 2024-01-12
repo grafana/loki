@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/ncw/swift"
@@ -79,43 +80,68 @@ func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObj
 }
 
 func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
-	tlsConfig := &tls.Config{}
-
-	tlsConfig = &tls.Config{
-		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
-	}
-	if cfg.HTTPConfig.CAFile != "" {
-		tlsConfig.RootCAs = x509.NewCertPool()
-		data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
-		if err != nil {
-			return nil, err
+	c := &swift.Connection{}
+	// when defaultTransport comes from the unit test, it's of type "RoundTripperFunc" which we cannot add
+	// TLSClientConfig field to
+	if reflect.TypeOf(defaultTransport).Name() == "*http.Transport" {
+		println(reflect.TypeOf(defaultTransport).Name())
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
 		}
-		tlsConfig.RootCAs.AppendCertsFromPEM(data)
-	}
+		if cfg.HTTPConfig.CAFile != "" {
+			tlsConfig.RootCAs = x509.NewCertPool()
+			data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
+			if err != nil {
+				return nil, err
+			}
+			tlsConfig.RootCAs.AppendCertsFromPEM(data)
+		}
 
-	newTransport := defaultTransport.(*http.Transport)
-	newTransport.TLSClientConfig = tlsConfig
+		newTransport := defaultTransport.(*http.Transport)
+		newTransport.TLSClientConfig = tlsConfig
+		c = &swift.Connection{
+			AuthVersion:    cfg.AuthVersion,
+			AuthUrl:        cfg.AuthURL,
+			Internal:       cfg.Internal,
+			ApiKey:         cfg.Password,
+			UserName:       cfg.Username,
+			UserId:         cfg.UserID,
+			Retries:        cfg.MaxRetries,
+			ConnectTimeout: cfg.ConnectTimeout,
+			Timeout:        cfg.RequestTimeout,
+			TenantId:       cfg.ProjectID,
+			Tenant:         cfg.ProjectName,
+			TenantDomain:   cfg.ProjectDomainName,
+			TenantDomainId: cfg.ProjectDomainID,
+			Domain:         cfg.DomainName,
+			DomainId:       cfg.DomainID,
+			Region:         cfg.RegionName,
+			Transport:      newTransport,
+		}
+
+	} else {
+		c = &swift.Connection{
+			AuthVersion:    cfg.AuthVersion,
+			AuthUrl:        cfg.AuthURL,
+			Internal:       cfg.Internal,
+			ApiKey:         cfg.Password,
+			UserName:       cfg.Username,
+			UserId:         cfg.UserID,
+			Retries:        cfg.MaxRetries,
+			ConnectTimeout: cfg.ConnectTimeout,
+			Timeout:        cfg.RequestTimeout,
+			TenantId:       cfg.ProjectID,
+			Tenant:         cfg.ProjectName,
+			TenantDomain:   cfg.ProjectDomainName,
+			TenantDomainId: cfg.ProjectDomainID,
+			Domain:         cfg.DomainName,
+			DomainId:       cfg.DomainID,
+			Region:         cfg.RegionName,
+			Transport:      defaultTransport,
+		}
+	}
 
 	// Create a connection
-	c := &swift.Connection{
-		AuthVersion:    cfg.AuthVersion,
-		AuthUrl:        cfg.AuthURL,
-		Internal:       cfg.Internal,
-		ApiKey:         cfg.Password,
-		UserName:       cfg.Username,
-		UserId:         cfg.UserID,
-		Retries:        cfg.MaxRetries,
-		ConnectTimeout: cfg.ConnectTimeout,
-		Timeout:        cfg.RequestTimeout,
-		TenantId:       cfg.ProjectID,
-		Tenant:         cfg.ProjectName,
-		TenantDomain:   cfg.ProjectDomainName,
-		TenantDomainId: cfg.ProjectDomainID,
-		Domain:         cfg.DomainName,
-		DomainId:       cfg.DomainID,
-		Region:         cfg.RegionName,
-		Transport:      newTransport,
-	}
 
 	switch {
 	case cfg.UserDomainName != "":
