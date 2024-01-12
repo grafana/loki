@@ -25,9 +25,9 @@ func (e caKeyError) Error() string {
 	return fmt.Sprintf("key not present or data empty: %s", string(e))
 }
 
-func getCAConfigMap(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, name string) (*corev1.ConfigMap, error) {
+func getCAConfigMap(ctx context.Context, k k8s.Client, name, namespace string) (*corev1.ConfigMap, error) {
 	var cm corev1.ConfigMap
-	key := client.ObjectKey{Name: name, Namespace: stack.Namespace}
+	key := client.ObjectKey{Name: name, Namespace: namespace}
 	if err := k.Get(ctx, key, &cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, &status.DegradedError{

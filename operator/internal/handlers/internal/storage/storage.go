@@ -64,7 +64,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		}
 	}
 
-	cm, err := getCAConfigMap(ctx, k, stack, tlsConfig.CA)
+	cm, err := getCAConfigMap(ctx, k, tlsConfig.CA, stack.Namespace)
 	if err != nil {
 		return storage.Options{}, err
 	}
