@@ -117,7 +117,9 @@ func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
 }
 
 func clearCache(cache map[string]interface{}) {
-	clear(cache)
+	for key := range cache {
+		delete(cache, key)
+	}
 }
 
 // prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token

@@ -133,17 +133,18 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, delimiter)
+			list, _, err := periodClient.List(ctx, prefix, "")
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
 			for _, object := range list {
 				metaRef, err := createMetaRef(object.Key, params.TenantID, table)
+
 				if err != nil {
 					return nil, err
 				}
 				if metaRef.MaxFingerprint < uint64(params.MinFingerprint) || uint64(params.MaxFingerprint) < metaRef.MinFingerprint ||
-					metaRef.StartTimestamp.Before(params.StartTimestamp) || metaRef.EndTimestamp.After(params.EndTimestamp) {
+					metaRef.EndTimestamp.Before(params.StartTimestamp) || metaRef.StartTimestamp.After(params.EndTimestamp) {
 					continue
 				}
 				meta, err := b.downloadMeta(ctx, metaRef, periodClient)
