@@ -144,7 +144,7 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 					return nil, err
 				}
 				if metaRef.MaxFingerprint < uint64(params.MinFingerprint) || uint64(params.MaxFingerprint) < metaRef.MinFingerprint ||
-					metaRef.StartTimestamp.Before(params.StartTimestamp) || metaRef.EndTimestamp.After(params.EndTimestamp) {
+					metaRef.EndTimestamp.Before(params.StartTimestamp) || metaRef.StartTimestamp.After(params.EndTimestamp) {
 					continue
 				}
 				meta, err := b.downloadMeta(ctx, metaRef, periodClient)

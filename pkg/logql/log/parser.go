@@ -493,11 +493,13 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				return "", false
 			}
 
-			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			_, alwaysExtract := keys[sanitized]
+			if !alwaysExtract && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			return sanitized, true
 		})
+
 		if !ok {
 			continue
 		}
@@ -530,6 +532,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			}
 		}
 	}
+
 	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 		return line, true
