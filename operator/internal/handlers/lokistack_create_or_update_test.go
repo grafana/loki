@@ -997,7 +997,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage CA configmap contents: missing key or no contents",
+		Message: "Invalid object storage CA configmap contents: key not present or data empty: service-ca.crt",
 		Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
 		Requeue: false,
 	}

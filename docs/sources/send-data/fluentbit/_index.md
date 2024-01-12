@@ -8,7 +8,9 @@ weight:  500
 ---
 # Fluent Bit client
 
-[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the [Grafana Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
+[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the Grafana Fluent Bit Plugin described here or with the [Fluent-bit Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. 
+This plugin has more configuration options compared to the built-in Fluent Bit Loki plugin.
+You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
 ## Usage
 
@@ -63,23 +65,59 @@ To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can u
 
 You can run Fluent Bit as a [Daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use our [Fluent Bit helm chart](https://github.com/grafana/helm-charts/tree/main/charts/fluent-bit):
+To do so you can use the [Fluent Bit helm chart](https://github.com/fluent/helm-charts) with the following `values.yaml` changing the value of `FLUENT_LOKI_URL`:
+
+```yaml
+image:
+  # Here we use the Docker image which has the plugin installed
+  repository: grafana/fluent-bit-plugin-loki
+  tag: main-e2ed1c0
+
+args:
+  - "-e"
+  - "/fluent-bit/bin/out_grafana_loki.so"
+  - --workdir=/fluent-bit/etc
+  - --config=/fluent-bit/etc/conf/fluent-bit.conf
+
+env:
+  # Note that for security reasons you should fetch the credentials through a Kubernetes Secret https://kubernetes.io/docs/concepts/configuration/secret/ . You may use the envFrom for this.
+  - name: FLUENT_LOKI_URL
+    value: https://user:pass@your-loki.endpoint/loki/api/v1/push
+
+config:
+  inputs: |
+    [INPUT]
+        Name tail
+        Tag kube.*
+        Path /var/log/containers/*.log
+        # Be aware that local clusters like docker-desktop or kind use the docker log format and not the cri (https://docs.fluentbit.io/manual/installation/kubernetes#container-runtime-interface-cri-parser)
+        multiline.parser docker, cri
+        Mem_Buf_Limit 5MB
+        Skip_Long_Lines On
+
+  outputs: |
+    [Output]
+        Name grafana-loki
+        Match kube.*
+        Url ${FLUENT_LOKI_URL}
+        Labels {job="fluent-bit"}
+        LabelKeys level,app # this sets the values for actual Loki streams and the other labels are converted to structured_metadata https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/
+        BatchWait 1
+        BatchSize 1001024
+        LineFormat json
+        LogLevel info
+        AutoKubernetesLabels true
+```
 
 ```bash
-helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add fluent https://fluent.github.io/helm-charts
 helm repo update
-helm upgrade --install fluent-bit grafana/fluent-bit \
-    --set loki.serviceName=loki.svc.cluster.local
+helm install fluent-bit fluent/fluent-bit -f values.yaml
 ```
 
 By default it will collect all containers logs and extract labels from Kubernetes API (`container_name`, `namespace`, etc..).
 
-Alternatively you can install the Loki and Fluent Bit all together using:
-
-```bash
-helm upgrade --install loki-stack grafana/loki-stack \
-    --set fluent-bit.enabled=true,promtail.enabled=false
-```
+If you also want to host your Loki instance inside the cluster install the [official Loki helm chart](https://grafana.com/docs/loki/latest/setup/install/helm/).
 
 ### AWS Elastic Container Service (ECS)
 
