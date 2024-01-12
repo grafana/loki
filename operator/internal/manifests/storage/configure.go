@@ -131,7 +131,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		container.Env = append(container.Env, managedAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
-		if opts.OpenShift.ManagedAuthCreds.Name != "" {
+		if opts.ExtraSecretName != "" {
 			volumes = append(volumes, extraCredentialsVolume(opts))
 			container.VolumeMounts = append(container.VolumeMounts, extraCredentialsVolumeMount(opts))
 		}
@@ -183,7 +183,7 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 func managedAuthCredentials(opts Options) []corev1.EnvVar {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		if opts.OpenShift.ManagedAuthCreds.Name != "" {
+		if opts.ExtraSecretName != "" {
 			return []corev1.EnvVar{
 				envVarFromValue(EnvAWSCredentialsFile, path.Join(extraSecretDirectory, KeyAWSCredentialsFilename)),
 				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
@@ -281,7 +281,7 @@ func setSATokenPath(opts *Options) {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
 		opts.S3.WebIdentityTokenFile = saTokenVolumeK8sDirectory
-		if opts.OpenShift.Enabled {
+		if opts.OpenShiftEnabled {
 			opts.S3.WebIdentityTokenFile = SATokenVolumeOcpDirectory
 		}
 	}
@@ -308,7 +308,7 @@ func saTokenVolume(opts Options) corev1.Volume {
 		if opts.S3.Audience != "" {
 			audience = opts.S3.Audience
 		}
-		if opts.OpenShift.Enabled {
+		if opts.OpenShiftEnabled {
 			audience = awsOpenShiftAudience
 		}
 	}
@@ -332,17 +332,17 @@ func saTokenVolume(opts Options) corev1.Volume {
 
 func extraCredentialsVolumeMount(opts Options) corev1.VolumeMount {
 	return corev1.VolumeMount{
-		Name:      opts.OpenShift.ManagedAuthCreds.Name,
+		Name:      opts.ExtraSecretName,
 		MountPath: extraSecretDirectory,
 	}
 }
 
 func extraCredentialsVolume(opts Options) corev1.Volume {
 	return corev1.Volume{
-		Name: opts.OpenShift.ManagedAuthCreds.Name,
+		Name: opts.ExtraSecretName,
 		VolumeSource: corev1.VolumeSource{
 			Secret: &corev1.SecretVolumeSource{
-				SecretName: opts.OpenShift.ManagedAuthCreds.Name,
+				SecretName: opts.ExtraSecretName,
 			},
 		},
 	}

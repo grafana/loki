@@ -13,9 +13,9 @@ func (e caKeyError) Error() string {
 	return fmt.Sprintf("key not present or data empty: %s", string(e))
 }
 
-// checkCAConfigMap checks if the given CA configMap has an non-empty entry for the key used as CA certificate.
+// CheckCAConfigMap checks if the given CA configMap has an non-empty entry for the key used as CA certificate.
 // If the key is present it will return a hash of the current key name and contents.
-func checkCAConfigMap(cm *corev1.ConfigMap, key string) (string, error) {
+func CheckCAConfigMap(cm *corev1.ConfigMap, key string) (string, error) {
 	data := cm.Data[key]
 	if data == "" {
 		return "", caKeyError(key)

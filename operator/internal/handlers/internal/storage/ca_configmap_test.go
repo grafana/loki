@@ -1,4 +1,4 @@
-package storage
+package storage_test
 
 import (
 	"testing"
@@ -45,7 +45,7 @@ func TestIsValidConfigMap(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			hash, err := checkCAConfigMap(tst.cm, "service-ca.crt")
+			hash, err := CheckCAConfigMap(tst.cm, "service-ca.crt")
 
 			require.Equal(t, tst.wantHash, hash)
 			if tst.wantErrorMsg == "" {

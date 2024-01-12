@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
@@ -26,6 +27,7 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 	"github.com/grafana/loki/operator/internal/manifests"
 	manifests_openshift "github.com/grafana/loki/operator/internal/manifests/openshift"
+	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
 )
@@ -65,9 +67,90 @@ func CreateOrUpdateLokiStack(
 		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
 
-	objStore, err := storage.BuildOptions(ctx, k, ll, &stack, fg)
+	var storageSecret corev1.Secret
+	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
+	if err := k.Get(ctx, key, &storageSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return &status.DegradedError{
+				Message: "Missing object storage secret",
+				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
+				Requeue: false,
+			}
+		}
+		return kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
+	}
+
+	stsCreds, err := getSTSCredsFromEnv(ctx, k, ll, client.ObjectKeyFromObject(&stack), fg)
 	if err != nil {
 		return err
+	}
+
+	objStore, err := storage.ExtractSecret(&storageSecret, stack.Spec.Storage.Secret.Type, stsCreds)
+	if err != nil {
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
+			Reason:  lokiv1.ReasonInvalidObjectStorageSecret,
+			Requeue: false,
+		}
+	}
+	objStore.OpenShiftEnabled = fg.OpenShift.Enabled
+
+	storageSchemas, err := storageoptions.BuildSchemaConfig(
+		time.Now().UTC(),
+		stack.Spec.Storage,
+		stack.Status.Storage,
+	)
+	if err != nil {
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
+			Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
+			Requeue: false,
+		}
+	}
+
+	objStore.Schemas = storageSchemas
+
+	if stack.Spec.Storage.TLS != nil {
+		tlsConfig := stack.Spec.Storage.TLS
+
+		if tlsConfig.CA == "" {
+			return &status.DegradedError{
+				Message: "Missing object storage CA config map",
+				Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
+				Requeue: false,
+			}
+		}
+
+		var cm corev1.ConfigMap
+		key := client.ObjectKey{Name: tlsConfig.CA, Namespace: stack.Namespace}
+		if err = k.Get(ctx, key, &cm); err != nil {
+			if apierrors.IsNotFound(err) {
+				return &status.DegradedError{
+					Message: "Missing object storage CA config map",
+					Reason:  lokiv1.ReasonMissingObjectStorageCAConfigMap,
+					Requeue: false,
+				}
+			}
+			return kverrors.Wrap(err, "failed to lookup lokistack object storage CA config map", "name", key)
+		}
+
+		caKey := defaultCAKey
+		if tlsConfig.CAKey != "" {
+			caKey = tlsConfig.CAKey
+		}
+
+		var caHash string
+		caHash, err = storage.CheckCAConfigMap(&cm, caKey)
+		if err != nil {
+			return &status.DegradedError{
+				Message: "Invalid object storage CA configmap contents: missing key or no contents",
+				Reason:  lokiv1.ReasonInvalidObjectStorageCAConfigMap,
+				Requeue: false,
+			}
+		}
+
+		objStore.SecretSHA1 = fmt.Sprintf("%s;%s", objStore.SecretSHA1, caHash)
+		objStore.TLS = &storageoptions.TLSConfig{CA: cm.Name, Key: caKey}
 	}
 
 	var (
@@ -279,7 +362,7 @@ func CreateOrUpdateLokiStack(
 	// updated and another resource is not. This would cause the status to
 	// be possibly misaligned with the configmap, which could lead to
 	// a user possibly being unable to read logs.
-	if err := status.SetStorageSchemaStatus(ctx, k, req, objStore.Schemas); err != nil {
+	if err := status.SetStorageSchemaStatus(ctx, k, req, storageSchemas); err != nil {
 		ll.Error(err, "failed to set storage schema status")
 		return err
 	}
@@ -366,4 +449,32 @@ func isNamespacedResource(obj client.Object) bool {
 	default:
 		return true
 	}
+}
+
+func getSTSCredsFromEnv(ctx context.Context, k k8s.Client, l logr.Logger, stack client.ObjectKey, fg configv1.FeatureGates) (*corev1.Secret, error) {
+	var managedAuthCreds corev1.Secret
+	managedAuthEnv := manifests_openshift.DiscoverManagedAuthEnv()
+	if managedAuthEnv == nil || !fg.OpenShift.Enabled {
+		return nil, nil
+	}
+
+	l.Info("discovered managed authentication credentials cluster", "env", managedAuthEnv)
+
+	managedAuthCredsKey, err := manifests_openshift.CreateCredentialsRequest(ctx, k, stack, managedAuthEnv)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed creating OpenShift CCO CredentialsRequest", "name", stack)
+	}
+
+	if err := k.Get(ctx, managedAuthCredsKey, &managedAuthCreds); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, &status.DegradedError{
+				Message: "Missing OpenShift CCO managed authentication credentials secret",
+				Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+				Requeue: true,
+			}
+		}
+		return nil, kverrors.Wrap(err, "failed to lookup OpenShift CCO managed authentication credentials secret", "name", stack)
+	}
+
+	return &managedAuthCreds, nil
 }

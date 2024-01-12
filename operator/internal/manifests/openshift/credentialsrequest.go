@@ -6,7 +6,6 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/go-logr/logr"
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,45 +13,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/grafana/loki/operator/internal/status"
 )
 
 const (
 	ccoNamespace = "openshift-cloud-credential-operator"
 )
-
-func GetManagedAuthCredentials(ctx context.Context, k k8s.Client, l logr.Logger, stack client.ObjectKey, fg configv1.FeatureGates) (*corev1.Secret, error) {
-	var managedAuthCreds corev1.Secret
-	managedAuthEnv := DiscoverManagedAuthEnv()
-	if managedAuthEnv == nil || !fg.OpenShift.Enabled {
-		return nil, nil
-	}
-
-	l.Info("discovered managed authentication credentials cluster", "env", managedAuthEnv)
-
-	managedAuthCredsKey, err := CreateCredentialsRequest(ctx, k, stack, managedAuthEnv)
-	if err != nil {
-		return nil, kverrors.Wrap(err, "failed creating OpenShift CCO CredentialsRequest", "name", stack)
-	}
-
-	if err := k.Get(ctx, managedAuthCredsKey, &managedAuthCreds); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, &status.DegradedError{
-				Message: "Missing OpenShift CCO managed authentication credentials secret",
-				Reason:  lokiv1.ReasonMissingManagedAuthSecret,
-				Requeue: true,
-			}
-		}
-		return nil, kverrors.Wrap(err, "failed to lookup OpenShift CCO managed authentication credentials secret", "name", stack)
-	}
-
-	return &managedAuthCreds, nil
-}
 
 func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.ObjectKey, sts *ManagedAuthEnv) (client.ObjectKey, error) {
 	var secretKey client.ObjectKey

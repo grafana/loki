@@ -1,53 +1,21 @@
 package storage
 
 import (
-	"context"
 	"crypto/sha1"
 	"fmt"
 	"sort"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/grafana/loki/operator/internal/status"
 )
 
-func getSecrets(ctx context.Context, k k8s.Client, ll logr.Logger, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
-	var storageSecret *corev1.Secret
-	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
-	if err := k.Get(ctx, key, storageSecret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil, &status.DegradedError{
-				Message: "Missing object storage secret",
-				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
-				Requeue: false,
-			}
-		}
-		return nil, nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
-	}
+var hashSeparator = []byte(",")
 
-	var managedAuthCreds *corev1.Secret
-	if fg.OpenShift.Enabled {
-		key := client.ObjectKeyFromObject(stack)
-		creds, err := openshift.GetManagedAuthCredentials(ctx, k, ll, key, fg)
-		if err != nil {
-			return storageSecret, nil, err
-		}
-		managedAuthCreds = creds
-	}
-
-	return storageSecret, managedAuthCreds, nil
-}
-
-func extractSecrets(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType, managedAuthSecret *corev1.Secret) (*storage.Options, error) {
+// ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
+func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType, managedAuthSecret *corev1.Secret) (*storage.Options, error) {
 	hash, err := hashSecretData(s)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
@@ -66,12 +34,8 @@ func extractSecrets(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType,
 			return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
 		}
 
-		storageOpts.OpenShift = storage.OpenShiftOptions{
-			ManagedAuthCreds: storage.ManagedAuthCreds{
-				Name: managedAuthSecret.GetName(),
-				SHA1: extraSHash,
-			},
-		}
+		storageOpts.ExtraSecretName = managedAuthSecret.Name
+		storageOpts.ExtraSecretSHA1 = extraSHash
 	}
 
 	switch secretType {
