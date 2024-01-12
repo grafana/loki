@@ -73,7 +73,7 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 	}
 
 	// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-	configs, err = getTenantConfigSecretData(ctx, k, stack)
+	configs, err = getTenantConfigFromSecret(ctx, k, stack)
 	if err != nil {
 		log.Error(err, "error in getting tenant secret data")
 	}

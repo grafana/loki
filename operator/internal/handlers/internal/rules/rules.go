@@ -45,7 +45,7 @@ func BuildOptions(
 		stackKey = client.ObjectKeyFromObject(stack)
 	)
 
-	alertingRules, recordingRules, err = list(ctx, k, stack.Namespace, stack.Spec.Rules)
+	alertingRules, recordingRules, err = listRules(ctx, k, stack.Namespace, stack.Spec.Rules)
 	if err != nil {
 		log.Error(err, "failed to lookup rules", "spec", stack.Spec.Rules)
 	}
@@ -108,10 +108,10 @@ func BuildOptions(
 
 // listRules returns a slice of AlertingRules and a slice of RecordingRules for the given spec or an error.
 // Three cases apply:
-//  - Return only matching rules in the stack namespace if no namespace selector is given.
-//  - Return only matching rules in the stack namespace and in namespaces matching the namespace selector.
-//  - Return no rules if rules selector does not apply at all.
-func list(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1.RulesSpec) ([]lokiv1.AlertingRule, []lokiv1.RecordingRule, error) {
+//   - Return only matching rules in the stack namespace if no namespace selector is given.
+//   - Return only matching rules in the stack namespace and in namespaces matching the namespace selector.
+//   - Return no rules if rules selector does not apply at all.
+func listRules(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1.RulesSpec) ([]lokiv1.AlertingRule, []lokiv1.RecordingRule, error) {
 	nsl, err := selectRulesNamespaces(ctx, k, stackNs, rs)
 	if err != nil {
 		return nil, nil, err

@@ -35,9 +35,9 @@ type openShiftSpec struct {
 	CookieSecret   string `json:"cookieSecret"`
 }
 
-// getTenantConfigSecretData returns the tenantName, tenantId, cookieSecret
+// getTenantConfigFromSecret returns the tenantName, tenantId, cookieSecret
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
-func getTenantConfigSecretData(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (map[string]manifests.TenantConfig, error) {
+func getTenantConfigFromSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (map[string]manifests.TenantConfig, error) {
 	var tenantSecret corev1.Secret
 	key := client.ObjectKey{Name: manifests.GatewayName(stack.Name), Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &tenantSecret); err != nil {

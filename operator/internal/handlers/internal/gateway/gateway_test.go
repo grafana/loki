@@ -337,7 +337,7 @@ func TestBuildOptions_MissingTenantsSpec_SetDegraded(t *testing.T) {
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
+		Message: "Invalid tenants configuration: TenantsSpec cannot be nil when gateway flag is enabled",
 		Reason:  lokiv1.ReasonInvalidTenantsConfiguration,
 		Requeue: false,
 	}

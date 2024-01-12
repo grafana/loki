@@ -60,7 +60,7 @@ func TestGetTenantConfigSecretData_SecretExist(t *testing.T) {
 		return nil
 	}
 
-	ts, err := getTenantConfigSecretData(context.TODO(), k, s)
+	ts, err := getTenantConfigFromSecret(context.TODO(), k, s)
 	require.NotNil(t, ts)
 	require.NoError(t, err)
 
@@ -97,7 +97,7 @@ func TestGetTenantConfigSecretData_SecretNotExist(t *testing.T) {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	ts, err := getTenantConfigSecretData(context.TODO(), k, s)
+	ts, err := getTenantConfigFromSecret(context.TODO(), k, s)
 	require.Nil(t, ts)
 	require.Error(t, err)
 }

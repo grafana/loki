@@ -322,7 +322,7 @@ func TestList_AlertingRulesMatchSelector_WithDefaultStackNamespaceRules(t *testi
 		return nil
 	}
 
-	rules, _, err := list(context.TODO(), k, stackNs, rs)
+	rules, _, err := listRules(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
@@ -424,7 +424,7 @@ func TestList_AlertingRulesMatchSelector_FilteredByNamespaceSelector(t *testing.
 		return nil
 	}
 
-	rules, _, err := list(context.TODO(), k, stackNs, rs)
+	rules, _, err := listRules(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
@@ -496,7 +496,7 @@ func TestList_RecordingRulesMatchSelector_WithDefaultStackNamespaceRules(t *test
 		return nil
 	}
 
-	_, rules, err := list(context.TODO(), k, stackNs, rs)
+	_, rules, err := listRules(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
@@ -597,7 +597,7 @@ func TestList_RecordingRulesMatchSelector_FilteredByNamespaceSelector(t *testing
 		return nil
 	}
 
-	_, rules, err := list(context.TODO(), k, stackNs, rs)
+	_, rules, err := listRules(context.TODO(), k, stackNs, rs)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, rules)
