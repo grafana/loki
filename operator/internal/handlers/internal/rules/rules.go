@@ -29,6 +29,10 @@ func BuildOptions(
 	k k8s.Client,
 	stack *lokiv1.LokiStack,
 ) ([]lokiv1.AlertingRule, []lokiv1.RecordingRule, manifests.Ruler, manifestsocp.Options, error) {
+	if stack.Spec.Rules == nil || !stack.Spec.Rules.Enabled {
+		return nil, nil, manifests.Ruler{}, manifestsocp.Options{}, nil
+	}
+
 	var (
 		err            error
 		alertingRules  []lokiv1.AlertingRule
