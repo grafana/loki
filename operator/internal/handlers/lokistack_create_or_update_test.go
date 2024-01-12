@@ -536,8 +536,6 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 		},
 	}
 
-	// GetStub looks up the CR first, so we need to return our fake stack
-	// return NotFound for everything else to trigger create.
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		_, isLokiStack := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
@@ -644,8 +642,6 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 		},
 	}
 
-	// GetStub looks up the CR first, so we need to return our fake stack
-	// return NotFound for everything else to trigger create.
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		_, isLokiStack := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {

@@ -120,8 +120,6 @@ func TestBuildOptions_WhenInvalidTenantsConfiguration_SetDegraded(t *testing.T) 
 		},
 	}
 
-	// GetStub looks up the CR first, so we need to return our fake stack
-	// return NotFound for everything else to trigger create.
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		_, isLokiStack := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && isLokiStack {
@@ -209,8 +207,6 @@ func TestBuildOptions_WhenMissingGatewaySecret_SetDegraded(t *testing.T) {
 		},
 	}
 
-	// GetStub looks up the CR first, so we need to return our fake stack
-	// return NotFound for everything else to trigger create.
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		o, ok := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
@@ -298,8 +294,6 @@ func TestBuildOptions_WhenInvalidGatewaySecret_SetDegraded(t *testing.T) {
 		},
 	}
 
-	// GetStub looks up the CR first, so we need to return our fake stack
-	// return NotFound for everything else to trigger create.
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		o, ok := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
@@ -373,8 +367,6 @@ func TestBuildOptions_MissingTenantsSpec_SetDegraded(t *testing.T) {
 		},
 	}
 
-	// GetStub looks up the CR first, so we need to return our fake stack
-	// return NotFound for everything else to trigger create.
 	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		o, ok := object.(*lokiv1.LokiStack)
 		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
