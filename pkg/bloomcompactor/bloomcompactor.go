@@ -535,8 +535,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
-		resultingBlock, err = compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
+		resultingBlock, err = compactNewChunks(ctx, logger, job, bt, storeClient.chunk, builder, c.limits)
 		if err != nil {
 			return level.Error(logger).Log("msg", "failed compacting new chunks", "err", err)
 		}
@@ -545,7 +544,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
 		level.Info(logger).Log("msg", "already compacted metas exists, use mergeBlockBuilder")
 
-		var populate = createPopulateFunc(ctx, logger, job, storeClient, bt)
+		var populate = createPopulateFunc(ctx, job, storeClient, bt, c.limits)
 
 		seriesIter := makeSeriesIterFromSeriesMeta(job)
 
