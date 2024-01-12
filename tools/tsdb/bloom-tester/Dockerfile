@@ -6,7 +6,7 @@ WORKDIR /src/bloom-tester
 
 RUN make bloom-tester
 
-FROM alpine:3.18.4
+FROM alpine:3.18.5
 RUN apk add --update --no-cache ca-certificates
 COPY --from=build /src/bloom-tester/tools/tsdb/bloom-tester/bloom-tester /usr/bin/bloom-tester
 ENTRYPOINT [ "/usr/bin/bloom-tester", "--config.file=/etc/loki/config.yaml" ]

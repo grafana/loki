@@ -62,9 +62,7 @@ func (m ShardMapper) Parse(parsed syntax.Expr) (noop bool, bytesPerShard uint64,
 		return false, 0, nil, err
 	}
 
-	originalStr := parsed.String()
-	mappedStr := mapped.String()
-	noop = originalStr == mappedStr
+	noop = isNoOp(parsed, mapped)
 	if noop {
 		m.metrics.ParsedQueries.WithLabelValues(NoopKey).Inc()
 	} else {
@@ -97,32 +95,62 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
-		lhsMapped, lhsBytesPerShard, err := m.Map(e.SampleExpr, r)
-		if err != nil {
-			return nil, 0, err
-		}
-		rhsMapped, rhsBytesPerShard, err := m.Map(e.RHS, r)
-		if err != nil {
-			return nil, 0, err
-		}
-		lhsSampleExpr, ok := lhsMapped.(syntax.SampleExpr)
-		if !ok {
-			return nil, 0, badASTMapping(lhsMapped)
-		}
-		rhsSampleExpr, ok := rhsMapped.(syntax.SampleExpr)
-		if !ok {
-			return nil, 0, badASTMapping(rhsMapped)
-		}
-		e.SampleExpr = lhsSampleExpr
-		e.RHS = rhsSampleExpr
-
-		// We take the maximum bytes per shard of both sides of the operation
-		bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
-
-		return e, bytesPerShard, nil
+		return m.mapBinOpExpr(e, r)
 	default:
 		return nil, 0, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
 	}
+}
+
+func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*syntax.BinOpExpr, uint64, error) {
+	// In a BinOp expression both sides need to be either executed locally or wrapped
+	// into a downstream expression to be executed on the querier, since the default
+	// evaluator on the query frontend cannot select logs or samples.
+	// However, it can evaluate literals and vectors.
+
+	// check if LHS is shardable by mapping the tree
+	// only wrap in downstream expression if the mapping is a no-op and the
+	// expression is a vector or literal
+	lhsMapped, lhsBytesPerShard, err := m.Map(e.SampleExpr, r)
+	if err != nil {
+		return nil, 0, err
+	}
+	if isNoOp(e.SampleExpr, lhsMapped) && !isLiteralOrVector(lhsMapped) {
+		lhsMapped = DownstreamSampleExpr{
+			shard:      nil,
+			SampleExpr: e.SampleExpr,
+		}
+	}
+
+	// check if RHS is shardable by mapping the tree
+	// only wrap in downstream expression if the mapping is a no-op and the
+	// expression is a vector or literal
+	rhsMapped, rhsBytesPerShard, err := m.Map(e.RHS, r)
+	if err != nil {
+		return nil, 0, err
+	}
+	if isNoOp(e.RHS, rhsMapped) && !isLiteralOrVector(rhsMapped) {
+		// TODO: check if literal or vector
+		rhsMapped = DownstreamSampleExpr{
+			shard:      nil,
+			SampleExpr: e.RHS,
+		}
+	}
+
+	lhsSampleExpr, ok := lhsMapped.(syntax.SampleExpr)
+	if !ok {
+		return nil, 0, badASTMapping(lhsMapped)
+	}
+	rhsSampleExpr, ok := rhsMapped.(syntax.SampleExpr)
+	if !ok {
+		return nil, 0, badASTMapping(rhsMapped)
+	}
+	e.SampleExpr = lhsSampleExpr
+	e.RHS = rhsSampleExpr
+
+	// We take the maximum bytes per shard of both sides of the operation
+	bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
+
+	return e, bytesPerShard, nil
 }
 
 func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstreamRecorder) (syntax.LogSelectorExpr, uint64, error) {
@@ -338,7 +366,7 @@ var rangeMergeMap = map[string]string{
 
 func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	if !expr.Shardable() {
-		return m.noOp(expr)
+		return noOp(expr, m.shards)
 	}
 
 	switch expr.Operation {
@@ -433,7 +461,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return nil, 0, err
 		}
 		if shards == 0 || !m.quantileOverTimeSharding {
-			return m.noOp(expr)
+			return noOp(expr, m.shards)
 		}
 
 		// quantile_over_time() by (foo) ->
@@ -461,16 +489,30 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 
 	default:
 		// don't shard if there's not an appropriate optimization
-		return m.noOp(expr)
+		return noOp(expr, m.shards)
 	}
 }
 
-func (m ShardMapper) noOp(expr *syntax.RangeAggregationExpr) (syntax.SampleExpr, uint64, error) {
-	exprStats, err := m.shards.GetStats(expr)
+func noOp[E syntax.Expr](expr E, shards ShardResolver) (E, uint64, error) {
+	exprStats, err := shards.GetStats(expr)
 	if err != nil {
-		return nil, 0, err
+		var empty E
+		return empty, 0, err
 	}
 	return expr, exprStats.Bytes, nil
+}
+
+func isNoOp(left syntax.Expr, right syntax.Expr) bool {
+	return left.String() == right.String()
+}
+
+func isLiteralOrVector(e syntax.Expr) bool {
+	switch e.(type) {
+	case *syntax.VectorExpr, *syntax.LiteralExpr:
+		return true
+	default:
+		return false
+	}
 }
 
 func badASTMapping(got syntax.Expr) error {
