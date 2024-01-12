@@ -2884,6 +2884,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-metadata-queries-by-interval
 [split_metadata_queries_by_interval: <duration> | default = 1d]
 
+# Interval to use for time-based splitting when a request is within the
+# `query_ingesters_within` window; defaults to `split-queries-by-interval` by
+# setting to 0.
+# CLI flag: -querier.split-ingester-queries-by-interval
+[split_ingester_queries_by_interval: <duration> | default = 0s]
+
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
 # disables the lookback, causing sharding of all queries at all times.

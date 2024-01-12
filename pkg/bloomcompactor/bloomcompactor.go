@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
@@ -166,10 +167,18 @@ func New(
 			return nil, errors.Wrap(err, "create index shipper")
 		}
 
+		// The ObjectClient does not expose the key encoder it uses,
+		// so check the concrete type and set the FSEncoder if needed.
+		var keyEncoder chunk_client.KeyEncoder
+		switch objectClient.(type) {
+		case *local.FSObjectClient:
+			keyEncoder = chunk_client.FSEncoder
+		}
+
 		c.storeClients[periodicConfig.From] = storeClient{
 			object:       objectClient,
 			index:        index_storage.NewIndexStorageClient(objectClient, periodicConfig.IndexTables.PathPrefix),
-			chunk:        chunk_client.NewClient(objectClient, nil, schemaConfig),
+			chunk:        chunk_client.NewClient(objectClient, keyEncoder, schemaConfig),
 			indexShipper: indexShipper,
 		}
 	}
@@ -275,7 +284,7 @@ func (c *Compactor) compactTable(ctx context.Context, logger log.Logger, tableNa
 		return fmt.Errorf("index store client not found for period starting at %s", schemaCfg.From.String())
 	}
 
-	_, tenants, err := sc.index.ListFiles(ctx, tableName, false)
+	_, tenants, err := sc.index.ListFiles(ctx, tableName, true)
 	if err != nil {
 		return fmt.Errorf("failed to list files for table %s: %w", tableName, err)
 	}
@@ -497,13 +506,12 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
 	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
 
-	// TODO(poyzannur) enable once debugging is over
-	//defer func() {
-	//	//clean up the bloom directory
-	//	if err := os.RemoveAll(localDst); err != nil {
-	//		level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
-	//	}
-	//}()
+	defer func() {
+		//clean up the bloom directory
+		if err := os.RemoveAll(localDst); err != nil {
+			level.Error(logger).Log("msg", "failed to remove block directory", "dir", localDst, "err", err)
+		}
+	}()
 
 	var resultingBlock bloomshipper.Block
 	defer func() {
@@ -551,6 +559,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}()
 
 		if err != nil {
+			level.Error(logger).Log("err", err)
 			return err
 		}
 
@@ -565,6 +574,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
 		}
+
 	}
 
 	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
@@ -575,13 +585,12 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		return err
 	}
 
-	// TODO(poyzannur) enable once debugging is over
-	//defer func() {
-	//	err = os.Remove(archivePath)
-	//	if err != nil {
-	//		level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
-	//	}
-	//}()
+	defer func() {
+		err = os.Remove(archivePath)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
+		}
+	}()
 
 	// Do not change the signature of PutBlocks yet.
 	// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
