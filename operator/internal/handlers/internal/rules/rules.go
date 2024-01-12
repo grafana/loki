@@ -19,10 +19,10 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
-// BuildOptions returns the ruler options to generate Kubernetes resource manifests.
-// Or else it returns a degraded error if one of the following cases applies:
-// - When remote write is enabled and the authorization Secret is missing.
-// - When remote wrie is enabled and the authorization Secret data are invalid.
+// BuildOptions returns the ruler options needed to generate Kubernetes resource manifests.
+// The returned error can be a status.DegradedError in the following cases:
+//   - When remote write is enabled and the authorization Secret is missing.
+//   - When remote write is enabled and the authorization Secret data is invalid.
 func BuildOptions(
 	ctx context.Context,
 	log logr.Logger,
@@ -106,10 +106,11 @@ func BuildOptions(
 	return alertingRules, recordingRules, ruler, ocpOpts, nil
 }
 
-// ist returns a slice of AlertingRules and a slice of RecordingRules for the given spec or an error. Three cases apply:
-// - Return only matching rules in the stack namespace if no namespace selector given.
-// - Return only matching rules in the stack namespace and in namespaces matching the namespace selector.
-// - Return no rules if rules selector does not apply at all.
+// listRules returns a slice of AlertingRules and a slice of RecordingRules for the given spec or an error.
+// Three cases apply:
+//  - Return only matching rules in the stack namespace if no namespace selector is given.
+//  - Return only matching rules in the stack namespace and in namespaces matching the namespace selector.
+//  - Return no rules if rules selector does not apply at all.
 func list(ctx context.Context, k k8s.Client, stackNs string, rs *lokiv1.RulesSpec) ([]lokiv1.AlertingRule, []lokiv1.RecordingRule, error) {
 	nsl, err := selectRulesNamespaces(ctx, k, stackNs, rs)
 	if err != nil {

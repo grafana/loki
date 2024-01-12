@@ -14,11 +14,11 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
-// BuildOptions returns the lokistack-gateway options to generate Kubernets resource
-// manifests for the lokistack-gateway. Or else it returns a degraded error if one
-// of the following cases applies:
-// - The tenants spec is missing.
-// - The tenants spec is invalid.
+// BuildOptions returns the options needed to generate Kubernetes resource
+// manifests for the lokistack-gateway.
+// The returned error can be a status.DegradedError in the following cases:
+//   - The tenants spec is missing.
+//   - The tenants spec is invalid.
 func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (string, manifests.Tenants, error) {
 	var (
 		err        error
@@ -34,7 +34,7 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 
 	if stack.Spec.Tenants == nil {
 		return "", tenants, &status.DegradedError{
-			Message: "Invalid tenants configuration - TenantsSpec cannot be nil when gateway flag is enabled",
+			Message: "Invalid tenants configuration: TenantsSpec cannot be nil when gateway flag is enabled",
 			Reason:  lokiv1.ReasonInvalidTenantsConfiguration,
 			Requeue: false,
 		}

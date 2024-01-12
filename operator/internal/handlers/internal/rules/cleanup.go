@@ -39,7 +39,6 @@ func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *v1.LokiS
 	return nil
 }
 
-// removeRulesConfigMap removes the rules configmaps if any exists.
 func removeRulesConfigMap(ctx context.Context, c client.Client, key client.ObjectKey) error {
 	var rulesCmList corev1.ConfigMapList
 
@@ -66,7 +65,6 @@ func removeRulesConfigMap(ctx context.Context, c client.Client, key client.Objec
 	return nil
 }
 
-// removeRuler removes the ruler statefulset if it exists.
 func removeRuler(ctx context.Context, c client.Client, stack client.ObjectKey) error {
 	// Check if the Statefulset exists before proceeding.
 	key := client.ObjectKey{Name: manifests.RulerName(stack.Name), Namespace: stack.Namespace}

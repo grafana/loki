@@ -6,7 +6,6 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-// validateModes validates the tenants mode specification.
 func validateModes(stack lokiv1.LokiStack) error {
 	if stack.Spec.Tenants.Mode == lokiv1.Static {
 		if stack.Spec.Tenants.Authentication == nil {
