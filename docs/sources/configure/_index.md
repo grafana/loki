@@ -5140,7 +5140,7 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # CLI flag: -<prefix>.swift.insecure-skip-verify
 [insecure_skip_verify: <boolean> | default = false]
 
-# Path to the trusted CA file that signed the SSL certificate of the S3
+# Path to the trusted CA file that signed the SSL certificate of the swift
 # endpoint.
 # CLI flag: -<prefix>.swift.ca-file
 [ca_file: <string> | default = ""]
