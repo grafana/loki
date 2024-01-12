@@ -19,7 +19,7 @@ import (
 // Cleanup removes the ruler component's statefulset and configmaps if available, or
 // else it returns an error to retry the reconciliation loop.
 func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *v1.LokiStack) error {
-	if stack.Spec.Rules == nil || !stack.Spec.Rules.Enabled {
+	if stack.Spec.Rules != nil && stack.Spec.Rules.Enabled {
 		return nil
 	}
 
