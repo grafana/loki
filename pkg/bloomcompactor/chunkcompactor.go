@@ -158,7 +158,6 @@ func createLocalDirName(workingDir string, job Job) string {
 func compactNewChunks(ctx context.Context,
 	logger log.Logger,
 	job Job,
-	fpRate float64,
 	bt compactorTokenizer,
 	storeClient chunkClient,
 	builder blockBuilder,
@@ -169,7 +168,7 @@ func compactNewChunks(ctx context.Context,
 		return bloomshipper.Block{}, err
 	}
 
-	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, fpRate, logger, limits)
+	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, logger, limits)
 
 	// Build and upload bloomBlock to storage
 	block, err := buildBlockFromBlooms(ctx, logger, builder, bloomIter, job)
@@ -199,14 +198,14 @@ type lazyBloomBuilder struct {
 // which are used by the blockBuilder to write a bloom block.
 // We use an interator to avoid loading all blooms into memory first, before
 // building the block.
-func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, fpRate float64, logger log.Logger, limits Limits) *lazyBloomBuilder {
+func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, logger log.Logger, limits Limits) *lazyBloomBuilder {
 	return &lazyBloomBuilder{
 		ctx:             ctx,
 		metas:           v1.NewSliceIter(job.seriesMetas),
 		client:          client,
 		tenant:          job.tenantID,
 		bt:              bt,
-		fpRate:          fpRate,
+		fpRate:          limits.BloomFalsePositiveRate(job.tenantID),
 		logger:          logger,
 		chunksBatchSize: limits.BloomCompactorChunksBatchSize(job.tenantID),
 	}

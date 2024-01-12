@@ -59,12 +59,12 @@ func Test_chunksBatchesIterator(t *testing.T) {
 			hadNextCount := 0
 			var downloadedChunks []chunk.Chunk
 			for iterator.Next() {
-				require.NoError(t, iterator.Err())
 				hadNextCount++
 				downloaded := iterator.At()
 				downloadedChunks = append(downloadedChunks, downloaded...)
 				require.LessOrEqual(t, len(downloaded), data.batchSize)
 			}
+			require.NoError(t, iterator.Err())
 			require.Equal(t, data.chunksToDownload, downloadedChunks)
 			require.Equal(t, data.hadNextCount, client.callsCount)
 			require.Equal(t, data.hadNextCount, hadNextCount)

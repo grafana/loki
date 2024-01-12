@@ -36,7 +36,7 @@ func (c *chunksBatchesIterator) Next() bool {
 	chunksToDownload := c.chunksToDownload[:batchSize]
 	c.chunksToDownload = c.chunksToDownload[batchSize:]
 	c.currentBatch, c.err = c.client.GetChunks(c.context, chunksToDownload)
-	return true
+	return c.err == nil
 }
 
 func (c *chunksBatchesIterator) Err() error {

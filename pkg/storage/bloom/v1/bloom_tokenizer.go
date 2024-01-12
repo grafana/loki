@@ -83,22 +83,18 @@ func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
 }
 
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
-func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunksBatchesIterator Iterator[[]chunk.Chunk]) error {
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks Iterator[[]chunk.Chunk]) error {
 	startTime := time.Now().UnixMilli()
 	level.Debug(util_log.Logger).Log("msg", "PopulateSeriesWithBloom")
 
 	clearCache(bt.cache)
 	chunkTotalUncompressedSize := 0
 
-	for chunksBatchesIterator.Next() {
-		if err := chunksBatchesIterator.Err(); err != nil {
-			level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
-			return fmt.Errorf("error downloading chunks batch: %w", err)
-		}
-		chunks := chunksBatchesIterator.At()
-		for idx := range chunks {
-			lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-			tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
+	for chunks.Next() {
+		chunksBatch := chunks.At()
+		for idx := range chunksBatch {
+			lc := chunksBatch[idx].Data.(*chunkenc.Facade).LokiChunk()
+			tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunksBatch[idx].ChunkRef)
 			chunkTotalUncompressedSize += lc.UncompressedSize()
 
 			itr, err := lc.Iterator(
@@ -106,7 +102,7 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 				time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 				time.Unix(0, math.MaxInt64),
 				logproto.FORWARD,
-				log.NewNoopPipeline().ForStream(chunks[idx].Metric),
+				log.NewNoopPipeline().ForStream(chunksBatch[idx].Metric),
 			)
 			if err != nil {
 				level.Error(util_log.Logger).Log("msg", "chunk iterator cannot be created", "err", err)
@@ -153,11 +149,15 @@ func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBlo
 
 			}
 			seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
-				Start:    chunks[idx].From,
-				End:      chunks[idx].Through,
-				Checksum: chunks[idx].Checksum,
+				Start:    chunksBatch[idx].From,
+				End:      chunksBatch[idx].Through,
+				Checksum: chunksBatch[idx].Checksum,
 			})
 		} // for each chunk
+	}
+	if err := chunks.Err(); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
+		return fmt.Errorf("error downloading chunks batch: %w", err)
 	}
 
 	endTime := time.Now().UnixMilli()

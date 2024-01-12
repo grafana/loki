@@ -300,7 +300,7 @@ func TestLimitsValidation_deletionMode(t *testing.T) {
 		{mode: "something-else", expected: deletionmode.ErrUnknownMode},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
-			limits := Limits{DeletionMode: tc.mode, BloomCompactorChunksBatchSize: 1}
+			limits := Limits{DeletionMode: tc.mode}
 			require.ErrorIs(t, limits.Validate(), tc.expected)
 		})
 	}

@@ -130,6 +130,11 @@ type mockLimits struct {
 	*validation.Overrides
 	bloomCompactorShardSize    int
 	chunksDownloadingBatchSize int
+	fpRate                     float64
+}
+
+func (m mockLimits) BloomFalsePositiveRate(_ string) float64 {
+	return m.fpRate
 }
 
 func (m mockLimits) BloomCompactorShardSize(_ string) int {

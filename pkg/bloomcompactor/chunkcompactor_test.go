@@ -110,7 +110,7 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	pbb := mockPersistentBlockBuilder{}
 
 	// Run Compaction
-	compactedBlock, err := compactNewChunks(context.Background(), logger, job, fpRate, &mbt, &mcc, &pbb, mockLimits{})
+	compactedBlock, err := compactNewChunks(context.Background(), logger, job, &mbt, &mcc, &pbb, mockLimits{fpRate: fpRate})
 
 	// Validate Compaction Succeeds
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestLazyBloomBuilder(t *testing.T) {
 	mbt := &mockBloomTokenizer{}
 	mcc := &mockChunkClient{}
 
-	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, fpRate, logger, mockLimits{chunksDownloadingBatchSize: 10})
+	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, logger, mockLimits{chunksDownloadingBatchSize: 10, fpRate: fpRate})
 
 	// first seriesMeta has 1 chunks
 	require.True(t, it.Next())
