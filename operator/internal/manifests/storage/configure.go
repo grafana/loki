@@ -8,6 +8,7 @@ import (
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
@@ -125,7 +126,14 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		MountPath: secretDirectory,
 	})
 
-	container.Env = append(container.Env, staticAuthCredentials(opts)...)
+	if managedAuthEnabled(opts) {
+		setSATokenPath(&opts)
+		container.Env = append(container.Env, managedAuthCredentials(opts)...)
+		volumes = append(volumes, saTokenVolume(opts))
+		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
+	} else {
+		container.Env = append(container.Env, staticAuthCredentials(opts)...)
+	}
 	container.Env = append(container.Env, serverSideEncryption(opts)...)
 
 	return corev1.PodSpec{
@@ -162,6 +170,18 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 		return []corev1.EnvVar{
 			envVarFromSecret(EnvSwiftUsername, secretName, KeySwiftUsername),
 			envVarFromSecret(EnvSwiftPassword, secretName, KeySwiftPassword),
+		}
+	default:
+		return []corev1.EnvVar{}
+	}
+}
+
+func managedAuthCredentials(opts Options) []corev1.EnvVar {
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
+			envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
 		}
 	default:
 		return []corev1.EnvVar{}
@@ -234,5 +254,67 @@ func envVarFromValue(name, value string) corev1.EnvVar {
 	return corev1.EnvVar{
 		Name:  name,
 		Value: value,
+	}
+}
+
+func managedAuthEnabled(opts Options) bool {
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		return opts.S3 != nil && opts.S3.STS
+	default:
+		return false
+	}
+}
+
+func setSATokenPath(opts *Options) {
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		opts.S3.WebIdentityTokenFile = saTokenVolumeK8sDirectory
+		if opts.OpenShiftEnabled {
+			opts.S3.WebIdentityTokenFile = saTokenVolumeOcpDirectory
+		}
+	}
+}
+
+func saTokenVolumeMount(opts Options) corev1.VolumeMount {
+	var tokenPath string
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretS3:
+		tokenPath = opts.S3.WebIdentityTokenFile
+	}
+	return corev1.VolumeMount{
+		Name:      saTokenVolumeName,
+		MountPath: tokenPath,
+	}
+}
+
+func saTokenVolume(opts Options) corev1.Volume {
+	var audience string
+	storeType := opts.SharedStore
+	switch storeType {
+	case lokiv1.ObjectStorageSecretS3:
+		audience = awsDefaultAudience
+		if opts.S3.Audience != "" {
+			audience = opts.S3.Audience
+		}
+		if opts.OpenShiftEnabled {
+			audience = awsOpenShiftAudience
+		}
+	}
+	return corev1.Volume{
+		Name: saTokenVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{
+					{
+						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+							ExpirationSeconds: pointer.Int64(saTokenExpiration),
+							Path:              corev1.ServiceAccountTokenKey,
+							Audience:          audience,
+						},
+					},
+				},
+			},
+		},
 	}
 }

@@ -101,7 +101,7 @@ type Config struct {
 	Tracing       tracing.Config       `yaml:"tracing"`
 	Analytics     analytics.Config     `yaml:"analytics"`
 
-	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
+	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 
 	Common common.Config `yaml:"common,omitempty"`
 
@@ -136,9 +136,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"It will, however, distort metrics, because it is counted as live memory. ",
 	)
 
-	//TODO(trevorwhitney): flip this to false with Loki 3.0
-	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
-		"The default will be flipped to false in the next Loki release.")
+	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", false, "Deprecated. Set to true to enable the legacy read mode which includes the components from the backend target. "+
+		"This setting is deprecated and will be removed in the next minor release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
 
@@ -647,7 +646,7 @@ func (t *Loki) setupModuleManager() error {
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
@@ -694,13 +693,12 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
-	if t.Cfg.isModuleEnabled(IndexGateway) && t.Cfg.BloomGateway.Enabled {
+	if t.Cfg.BloomGateway.Enabled {
 		deps[IndexGateway] = append(deps[IndexGateway], BloomGatewayRing)
 	}
 
-	//TODO(poyzannur) not sure this is needed for BloomCompactor
 	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor)
+		deps[Read] = append(deps[Read], deps[Backend]...)
 	}
 
 	if t.Cfg.InternalServer.Enable {
