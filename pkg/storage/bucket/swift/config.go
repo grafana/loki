@@ -26,6 +26,16 @@ type Config struct {
 	MaxRetries        int           `yaml:"max_retries"`
 	ConnectTimeout    time.Duration `yaml:"connect_timeout"`
 	RequestTimeout    time.Duration `yaml:"request_timeout"`
+	HTTPConfig        HTTPConfig    `yaml:"http_config"`
+}
+
+// HTTPConfig stores the http.Transport configuration
+type HTTPConfig struct {
+	Timeout               time.Duration `yaml:"timeout"`
+	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
+	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
+	CAFile                string        `yaml:"ca_file"`
 }
 
 // RegisterFlags registers the flags for Swift storage
@@ -54,6 +64,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, prefix+"swift.max-retries", 3, "Max retries on requests error.")
 	f.DurationVar(&cfg.ConnectTimeout, prefix+"swift.connect-timeout", 10*time.Second, "Time after which a connection attempt is aborted.")
 	f.DurationVar(&cfg.RequestTimeout, prefix+"swift.request-timeout", 5*time.Second, "Time after which an idle request is aborted. The timeout watchdog is reset each time some data is received, so the timeout triggers after X time no data is received on a request.")
+	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"swift.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
+	f.DurationVar(&cfg.HTTPConfig.Timeout, prefix+"swift.http.timeout", 0, "Timeout specifies a time limit for requests made by swift Client.")
+	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"swift.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
+	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"swift.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
+	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"swift.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the swift endpoint.")
 }
 
 func (cfg *Config) Validate() error {

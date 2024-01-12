@@ -3,10 +3,13 @@ package openstack
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ncw/swift"
@@ -76,6 +79,23 @@ func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObj
 }
 
 func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
+	tlsConfig := &tls.Config{}
+
+	tlsConfig = &tls.Config{
+		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
+	}
+	if cfg.HTTPConfig.CAFile != "" {
+		tlsConfig.RootCAs = x509.NewCertPool()
+		data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.RootCAs.AppendCertsFromPEM(data)
+	}
+
+	newTransport := defaultTransport.(*http.Transport)
+	newTransport.TLSClientConfig = tlsConfig
+
 	// Create a connection
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
@@ -94,7 +114,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 		Domain:         cfg.DomainName,
 		DomainId:       cfg.DomainID,
 		Region:         cfg.RegionName,
-		Transport:      defaultTransport,
+		Transport:      newTransport,
 	}
 
 	switch {
