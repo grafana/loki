@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/grafana/dskit/concurrency"
 
@@ -74,7 +75,7 @@ func makeBlockIterFromBlocks(ctx context.Context, logger log.Logger,
 	return blockIters, blockPaths, nil
 }
 
-func createPopulateFunc(ctx context.Context, logger log.Logger, job Job, storeClient storeClient, bt *v1.BloomTokenizer) func(series *v1.Series, bloom *v1.Bloom) error {
+func createPopulateFunc(ctx context.Context, job Job, storeClient storeClient, bt *v1.BloomTokenizer, limits Limits) func(series *v1.Series, bloom *v1.Bloom) error {
 	return func(series *v1.Series, bloom *v1.Bloom) error {
 		bloomForChks := v1.SeriesWithBloom{
 			Series: series,
@@ -95,12 +96,11 @@ func createPopulateFunc(ctx context.Context, logger log.Logger, job Job, storeCl
 			}
 		}
 
-		chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
+		batchesIterator, err := newChunkBatchesIterator(ctx, storeClient.chunk, chunkRefs, limits.BloomCompactorChunksBatchSize(job.tenantID))
 		if err != nil {
-			level.Error(logger).Log("msg", "failed downloading chunks", "err", err)
-			return err
+			return fmt.Errorf("error creating chunks batches iterator: %w", err)
 		}
-		err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
+		err = bt.PopulateSeriesWithBloom(&bloomForChks, batchesIterator)
 		if err != nil {
 			return err
 		}

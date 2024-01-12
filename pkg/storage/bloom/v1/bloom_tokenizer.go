@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -82,75 +83,82 @@ func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
 }
 
 // PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
-func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks []chunk.Chunk) error {
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *SeriesWithBloom, chunks Iterator[[]chunk.Chunk]) error {
 	startTime := time.Now().UnixMilli()
 	level.Debug(util_log.Logger).Log("msg", "PopulateSeriesWithBloom")
 
 	clearCache(bt.cache)
 	chunkTotalUncompressedSize := 0
 
-	for idx := range chunks {
-		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
-		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
-		chunkTotalUncompressedSize += lc.UncompressedSize()
+	for chunks.Next() {
+		chunksBatch := chunks.At()
+		for idx := range chunksBatch {
+			lc := chunksBatch[idx].Data.(*chunkenc.Facade).LokiChunk()
+			tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunksBatch[idx].ChunkRef)
+			chunkTotalUncompressedSize += lc.UncompressedSize()
 
-		itr, err := lc.Iterator(
-			context.Background(),
-			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
-			time.Unix(0, math.MaxInt64),
-			logproto.FORWARD,
-			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
-		)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "chunk iterator cannot be created", "err", err)
-			return err
-		}
+			itr, err := lc.Iterator(
+				context.Background(),
+				time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
+				time.Unix(0, math.MaxInt64),
+				logproto.FORWARD,
+				log.NewNoopPipeline().ForStream(chunksBatch[idx].Metric),
+			)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "chunk iterator cannot be created", "err", err)
+				return err
+			}
 
-		defer itr.Close()
+			defer itr.Close()
 
-		for itr.Next() && itr.Error() == nil {
-			chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
-			for chunkTokenizer.Next() {
-				tok := chunkTokenizer.At()
-				if tok != nil {
-					str := string(tok)
-					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-					if !found {
-						bt.cache[str] = nil
+			for itr.Next() && itr.Error() == nil {
+				chunkTokenizer := NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
+				for chunkTokenizer.Next() {
+					tok := chunkTokenizer.At()
+					if tok != nil {
+						str := string(tok)
+						_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+						if !found {
+							bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+							seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
-						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-							clearCache(bt.cache)
+							if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+								clearCache(bt.cache)
+							}
 						}
 					}
 				}
-			}
-			lineTokenizer := bt.lineTokenizer.Tokens(itr.Entry().Line)
-			for lineTokenizer.Next() {
-				tok := lineTokenizer.At()
-				if tok != nil {
-					str := string(tok)
-					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-					if !found {
-						bt.cache[str] = nil
+				lineTokenizer := bt.lineTokenizer.Tokens(itr.Entry().Line)
+				for lineTokenizer.Next() {
+					tok := lineTokenizer.At()
+					if tok != nil {
+						str := string(tok)
+						_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+						if !found {
+							bt.cache[str] = nil
 
-						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+							seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
-						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-							clearCache(bt.cache)
+							if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+								clearCache(bt.cache)
+							}
 						}
 					}
 				}
-			}
 
-		}
-		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
-			Start:    chunks[idx].From,
-			End:      chunks[idx].Through,
-			Checksum: chunks[idx].Checksum,
-		})
-	} // for each chunk
+			}
+			seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, ChunkRef{
+				Start:    chunksBatch[idx].From,
+				End:      chunksBatch[idx].Through,
+				Checksum: chunksBatch[idx].Checksum,
+			})
+		} // for each chunk
+	}
+	if err := chunks.Err(); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
+		return fmt.Errorf("error downloading chunks batch: %w", err)
+	}
 
 	endTime := time.Now().UnixMilli()
 
