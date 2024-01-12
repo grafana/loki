@@ -1,5 +1,6 @@
 ## Main
 
+- [11671](https://github.com/grafana/loki/pull/11671) **JoaoBraveCoding**: Update mixins to fix structured metadata dashboards
 - [11624](https://github.com/grafana/loki/pull/11624) **xperimental**: React to changes in ConfigMap used for storage CA
 - [11481](https://github.com/grafana/loki/pull/11481) **JoaoBraveCoding**: Adds AWS STS support
 - [11533](https://github.com/grafana/loki/pull/11533) **periklis**: Add serviceaccount per LokiStack resource
