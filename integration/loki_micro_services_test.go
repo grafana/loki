@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/grafana/loki/integration/client"
@@ -1101,7 +1102,7 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 				"-target=index-gateway",
 			)...,
 		)
-		_ = clu.AddComponent(
+		tBloomGateway = clu.AddComponent(
 			"bloom-gateway",
 			append(
 				commonFlags,
@@ -1186,6 +1187,9 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
 	cliIndexGateway.Now = now
 
+	cliBloomGateway := client.New(tenantID, "", tBloomGateway.HTTPURL())
+	cliBloomGateway.Now = now
+
 	lineTpl := `caller=loki_micro_services_test.go msg="push log line" id="%s"`
 	// ingest logs from 10 different pods
 	// each line contains a random, unique string
@@ -1221,22 +1225,44 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	expectedLine := fmt.Sprintf(lineTpl, uniqueStrings[randIdx])
 	require.Equal(t, expectedLine, resp.Data.Stream[0].Values[0][1])
 
-	// TODO(chaudum):
-	// verify that bloom blocks have actually been used for querying
-	// atm, we can only verify by logs, so we should add appropriate metrics for
-	// uploaded/downloaded blocks and metas
+	// verify metrics that observe usage of block for filtering
+	bloomGwMetrics, err := cliBloomGateway.Metrics()
+	require.NoError(t, err)
+
+	mf, err := extractMetricFamily("loki_bloom_gateway_store_latency", bloomGwMetrics)
+	require.NoError(t, err)
+
+	count := getValueFromMetricFamilyWithFunc(mf, &dto.LabelPair{
+		Name:  proto.String("operation"),
+		Value: proto.String("ForEach"),
+	}, func(m *dto.Metric) uint64 {
+		return m.Histogram.GetSampleCount()
+	})
+	require.Equal(t, uint64(1), count)
+
+	unfilteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_pre_filtering", bloomGwMetrics)
+	require.Equal(t, float64(10), unfilteredCount)
+
+	filteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_post_filtering", bloomGwMetrics)
+	require.Equal(t, float64(1), filteredCount)
 }
 
 func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
+	return getValueFromMetricFamilyWithFunc(mf, lbs[0], func(m *dto.Metric) float64 { return m.Counter.GetValue() })
+}
+
+func getValueFromMetricFamilyWithFunc[R any](mf *dto.MetricFamily, lbs *dto.LabelPair, f func(*dto.Metric) R) R {
+	eq := func(e *dto.LabelPair) bool {
+		return e.GetName() == lbs.GetName() && e.GetValue() == lbs.GetValue()
+	}
+	var zero R
 	for _, m := range mf.Metric {
-		if !assert.ObjectsAreEqualValues(lbs, m.GetLabel()) {
+		if !slices.ContainsFunc(m.GetLabel(), eq) {
 			continue
 		}
-
-		return m.Counter.GetValue()
+		return f(m)
 	}
-
-	return 0
+	return zero
 }
 
 func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
