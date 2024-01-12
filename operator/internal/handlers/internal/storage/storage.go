@@ -12,14 +12,14 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
-// BuildOptions returns the object storage build time options for generating manifests
-// which require access to object storage buckets. It returns a degraded error if one of
-// the following cases apply:
+// BuildOptions returns the object storage options to generate Kubernetes resource  manifests
+// which require access to object storage buckets. Or else it returns  a degraded error if one
+// of the following cases applies:
 // - The user-provided object storage secret is missing.
-// - The object storage Secret contents are invalid.
+// - The object storage Secret data are invalid.
 // - The object storage schema config is invalid.
 // - The object storage CA ConfigMap is missing if one referenced.
-// - The object storage CA ConfigMap contents are invalid.
+// - The object storage CA ConfigMap data are invalid.
 func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (storage.Options, error) {
 	storageSecret, err := getSecret(ctx, k, stack)
 	if err != nil {

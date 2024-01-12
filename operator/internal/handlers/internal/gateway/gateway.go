@@ -14,8 +14,9 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
-// BuildOptions returns the required options for generating the lokistack-gateway
-// manifests. It returns a degraded error if one of the following cases apply:
+// BuildOptions returns the lokistack-gateway options to generate Kubernets resource
+// manifests for the lokistack-gateway. Or else it returns a degraded error if one
+// of the following cases applies:
 // - The tenants spec is missing.
 // - The tenants spec is invalid.
 func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (string, manifests.Tenants, error) {
