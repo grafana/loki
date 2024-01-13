@@ -189,3 +189,27 @@ func (e *firstOverTimeStepEvaluator) hasNext() bool {
 func (*firstOverTimeStepEvaluator) Close() error { return nil }
 
 func (*firstOverTimeStepEvaluator) Error() error { return nil }
+
+func newLastWithTimestampIterator(
+	it iter.PeekingSampleIterator,
+	selRange, step, start, end, offset int64) RangeVectorIterator {
+	inner := &batchRangeVectorIterator{
+		iter:     it,
+		step:     step,
+		end:      end,
+		selRange: selRange,
+		metrics:  map[string]labels.Labels{},
+		window:   map[string]*promql.Series{},
+		agg:      nil,
+		current:  end + step, // first loop iteration will set it to end
+		offset:   offset,
+	}
+	return &lastWithTimestampBatchRangeVectorIterator{
+		batchRangeVectorIterator: inner,
+	}
+}
+
+type lastWithTimestampBatchRangeVectorIterator struct {
+	*batchRangeVectorIterator
+	at []promql.Sample
+}
