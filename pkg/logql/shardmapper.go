@@ -527,7 +527,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		downstreams := make([]DownstreamSampleExpr, 0, shards)
-		expr.Operation = syntax.OpRangeTypeFirstWithTimestamp
+		expr.Operation = syntax.OpRangeTypeLastWithTimestamp
 		for shard := shards - 1; shard >= 0; shard-- {
 			downstreams = append(downstreams, DownstreamSampleExpr{
 				shard: &astmapper.ShardAnnotation{

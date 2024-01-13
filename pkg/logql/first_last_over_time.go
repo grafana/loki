@@ -71,7 +71,7 @@ func newLastWithTimestampIterator(
 		metrics:  map[string]labels.Labels{},
 		window:   map[string]*promql.Series{},
 		agg:      nil,
-		current:  end + step, // first loop iteration will set it to end
+		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
 	}
 	return &lastWithTimestampBatchRangeVectorIterator{
@@ -321,7 +321,7 @@ func (e *lastOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 			}
 
 			// Merge
-			if vec[j].T > series.Floats[0].T {
+			if vec[j].T < series.Floats[0].T {
 				vec[j].F = series.Floats[0].F
 				vec[j].T = series.Floats[0].T
 			}
