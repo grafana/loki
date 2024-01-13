@@ -2884,6 +2884,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.split-metadata-queries-by-interval
 [split_metadata_queries_by_interval: <duration> | default = 1d]
 
+# Interval to use for time-based splitting when a request is within the
+# `query_ingesters_within` window; defaults to `split-queries-by-interval` by
+# setting to 0.
+# CLI flag: -querier.split-ingester-queries-by-interval
+[split_ingester_queries_by_interval: <duration> | default = 0s]
+
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
 # disables the lookback, causing sharding of all queries at all times.
@@ -3087,6 +3093,10 @@ shard_streams:
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
+
+# The batch size of the chunks the bloom-compactor downloads at once.
+# CLI flag: -bloom-compactor.chunks-batch-size
+[bloom_compactor_chunks_batch_size: <int> | default = 100]
 
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length

@@ -1,24 +1,46 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha1"
 	"fmt"
 	"sort"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+	"github.com/grafana/loki/operator/internal/status"
 )
 
 var hashSeparator = []byte(",")
 
-// ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
+func getSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*corev1.Secret, error) {
+	var storageSecret corev1.Secret
+	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
+	if err := k.Get(ctx, key, &storageSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, &status.DegradedError{
+				Message: "Missing object storage secret",
+				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
+				Requeue: false,
+			}
+		}
+		return nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
+	}
+
+	return &storageSecret, nil
+}
+
+// extractSecret reads a k8s secret into a manifest object storage struct if valid.
+func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (storage.Options, error) {
 	hash, err := hashSecretData(s)
 	if err != nil {
-		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
+		return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
 	}
 
 	storageOpts := storage.Options{
@@ -39,13 +61,13 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
 		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
 	default:
-		return nil, kverrors.New("unknown secret type", "type", secretType)
+		return storage.Options{}, kverrors.New("unknown secret type", "type", secretType)
 	}
 
 	if err != nil {
-		return nil, err
+		return storage.Options{}, err
 	}
-	return &storageOpts, nil
+	return storageOpts, nil
 }
 
 func hashSecretData(s *corev1.Secret) (string, error) {
@@ -126,37 +148,62 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 
 func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
-	endpoint := s.Data[storage.KeyAWSEndpoint]
-	if len(endpoint) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSEndpoint)
-	}
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
 		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSBucketNames)
 	}
-	id := s.Data[storage.KeyAWSAccessKeyID]
-	if len(id) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeyID)
-	}
-	secret := s.Data[storage.KeyAWSAccessKeySecret]
-	if len(secret) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
-	}
 
-	// Extract and validate optional fields
-	region := s.Data[storage.KeyAWSRegion]
+	var (
+		// Fields related with static authentication
+		endpoint = s.Data[storage.KeyAWSEndpoint]
+		id       = s.Data[storage.KeyAWSAccessKeyID]
+		secret   = s.Data[storage.KeyAWSAccessKeySecret]
+		// Fields related with STS authentication
+		roleArn  = s.Data[storage.KeyAWSRoleArn]
+		audience = s.Data[storage.KeyAWSAudience]
+		// Optional fields
+		region = s.Data[storage.KeyAWSRegion]
+	)
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
 	if err != nil {
 		return nil, err
 	}
 
-	return &storage.S3StorageConfig{
-		Endpoint: string(endpoint),
-		Buckets:  string(buckets),
-		Region:   string(region),
-		SSE:      sseCfg,
-	}, nil
+	cfg := &storage.S3StorageConfig{
+		Buckets: string(buckets),
+		Region:  string(region),
+		SSE:     sseCfg,
+	}
+
+	switch {
+	case len(roleArn) == 0:
+		cfg.Endpoint = string(endpoint)
+
+		if len(endpoint) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSEndpoint)
+		}
+		if len(id) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeyID)
+		}
+		if len(secret) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
+		}
+
+		return cfg, nil
+	// TODO(JoaoBraveCoding) For CCO integration here we will first check if we get a secret, OS use-case
+	case len(roleArn) != 0: // Extract STS from user provided values
+		cfg.STS = true
+		cfg.Audience = string(audience)
+
+		// In the STS case region is not an optional field
+		if len(region) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSRegion)
+		}
+		return cfg, nil
+	default:
+		return nil, kverrors.New("missing secret fields for static or sts authentication")
+	}
 }
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
