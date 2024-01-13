@@ -1,24 +1,46 @@
 package storage
 
 import (
+	"context"
 	"crypto/sha1"
 	"fmt"
 	"sort"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
+	"github.com/grafana/loki/operator/internal/status"
 )
 
 var hashSeparator = []byte(",")
 
-// ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
-func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (*storage.Options, error) {
+func getSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*corev1.Secret, error) {
+	var storageSecret corev1.Secret
+	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
+	if err := k.Get(ctx, key, &storageSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, &status.DegradedError{
+				Message: "Missing object storage secret",
+				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
+				Requeue: false,
+			}
+		}
+		return nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
+	}
+
+	return &storageSecret, nil
+}
+
+// extractSecret reads a k8s secret into a manifest object storage struct if valid.
+func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (storage.Options, error) {
 	hash, err := hashSecretData(s)
 	if err != nil {
-		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
+		return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
 	}
 
 	storageOpts := storage.Options{
@@ -39,13 +61,13 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
 		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
 	default:
-		return nil, kverrors.New("unknown secret type", "type", secretType)
+		return storage.Options{}, kverrors.New("unknown secret type", "type", secretType)
 	}
 
 	if err != nil {
-		return nil, err
+		return storage.Options{}, err
 	}
-	return &storageOpts, nil
+	return storageOpts, nil
 }
 
 func hashSecretData(s *corev1.Secret) (string, error) {

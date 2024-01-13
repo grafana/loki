@@ -3094,6 +3094,10 @@ shard_streams:
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
 
+# The batch size of the chunks the bloom-compactor downloads at once.
+# CLI flag: -bloom-compactor.chunks-batch-size
+[bloom_compactor_chunks_batch_size: <int> | default = 100]
+
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length
 [bloom_ngram_length: <int> | default = 4]

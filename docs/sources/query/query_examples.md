@@ -50,7 +50,7 @@ These LogQL query examples have explanations of what the queries accomplish.
         != "grafana_com"
         |= "session opened"
         != "sudo: "
-        |regexp "(^(?P<user>\\S+ {1,2}){11})"
+        | regexp "(^(?P<user>\\S+ {1,2}){11})"
         | line_format "USER = {{.user}}"
     ```
 
