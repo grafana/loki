@@ -59,7 +59,7 @@ func TestChunkCompactor_BuildBloomFromSeries(t *testing.T) {
 	chunks := []chunk.Chunk{createTestChunk(fp, label)}
 
 	mbt := mockBloomTokenizer{}
-	bloom, err := buildBloomFromSeries(seriesMeta, fpRate, &mbt, chunks)
+	bloom, err := buildBloomFromSeries(seriesMeta, fpRate, &mbt, v1.NewSliceIter([][]chunk.Chunk{chunks}))
 	require.NoError(t, err)
 	require.Equal(t, seriesMeta.seriesFP, bloom.Series.Fingerprint)
 	require.Equal(t, chunks, mbt.chunks)
@@ -110,7 +110,7 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	pbb := mockPersistentBlockBuilder{}
 
 	// Run Compaction
-	compactedBlock, err := compactNewChunks(context.Background(), logger, job, fpRate, &mbt, &mcc, &pbb)
+	compactedBlock, err := compactNewChunks(context.Background(), logger, job, &mbt, &mcc, &pbb, mockLimits{fpRate: fpRate})
 
 	// Validate Compaction Succeeds
 	require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestLazyBloomBuilder(t *testing.T) {
 	mbt := &mockBloomTokenizer{}
 	mcc := &mockChunkClient{}
 
-	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, fpRate, logger)
+	it := newLazyBloomBuilder(context.Background(), job, mcc, mbt, logger, mockLimits{chunksDownloadingBatchSize: 10, fpRate: fpRate})
 
 	// first seriesMeta has 1 chunks
 	require.True(t, it.Next())
@@ -199,8 +199,10 @@ type mockBloomTokenizer struct {
 	chunks []chunk.Chunk
 }
 
-func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(_ *v1.SeriesWithBloom, c []chunk.Chunk) error {
-	mbt.chunks = append(mbt.chunks, c...)
+func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(_ *v1.SeriesWithBloom, c v1.Iterator[[]chunk.Chunk]) error {
+	for c.Next() {
+		mbt.chunks = append(mbt.chunks, c.At()...)
+	}
 	return nil
 }
 
