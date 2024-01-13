@@ -131,9 +131,10 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		container.Env = append(container.Env, managedAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
-		if opts.ExtraSecretName != "" {
-			volumes = append(volumes, extraCredentialsVolume(opts))
-			container.VolumeMounts = append(container.VolumeMounts, extraCredentialsVolumeMount(opts))
+
+		if opts.OpenShift.CloudCredentials.SecretName != "" {
+			volumes = append(volumes, managedAuthVolume(opts))
+			container.VolumeMounts = append(container.VolumeMounts, managedAuthVolumeMount(opts))
 		}
 	} else {
 		container.Env = append(container.Env, staticAuthCredentials(opts)...)
@@ -183,7 +184,7 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 func managedAuthCredentials(opts Options) []corev1.EnvVar {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		if opts.ExtraSecretName != "" {
+		if opts.OpenShift.CloudCredentials.SecretName != "" {
 			return []corev1.EnvVar{
 				envVarFromValue(EnvAWSCredentialsFile, path.Join(extraSecretDirectory, KeyAWSCredentialsFilename)),
 				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
@@ -281,7 +282,7 @@ func setSATokenPath(opts *Options) {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
 		opts.S3.WebIdentityTokenFile = saTokenVolumeK8sDirectory
-		if opts.OpenShiftEnabled {
+		if opts.OpenShift.Enabled {
 			opts.S3.WebIdentityTokenFile = SATokenVolumeOcpDirectory
 		}
 	}
@@ -308,7 +309,7 @@ func saTokenVolume(opts Options) corev1.Volume {
 		if opts.S3.Audience != "" {
 			audience = opts.S3.Audience
 		}
-		if opts.OpenShiftEnabled {
+		if opts.OpenShift.Enabled {
 			audience = awsOpenShiftAudience
 		}
 	}
@@ -330,19 +331,19 @@ func saTokenVolume(opts Options) corev1.Volume {
 	}
 }
 
-func extraCredentialsVolumeMount(opts Options) corev1.VolumeMount {
+func managedAuthVolumeMount(opts Options) corev1.VolumeMount {
 	return corev1.VolumeMount{
-		Name:      opts.ExtraSecretName,
+		Name:      opts.OpenShift.CloudCredentials.SecretName,
 		MountPath: extraSecretDirectory,
 	}
 }
 
-func extraCredentialsVolume(opts Options) corev1.Volume {
+func managedAuthVolume(opts Options) corev1.Volume {
 	return corev1.Volume{
-		Name: opts.ExtraSecretName,
+		Name: opts.OpenShift.CloudCredentials.SecretName,
 		VolumeSource: corev1.VolumeSource{
 			Secret: &corev1.SecretVolumeSource{
-				SecretName: opts.ExtraSecretName,
+				SecretName: opts.OpenShift.CloudCredentials.SecretName,
 			},
 		},
 	}

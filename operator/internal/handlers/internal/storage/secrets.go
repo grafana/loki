@@ -11,66 +11,102 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
 var hashSeparator = []byte(",")
 
-func getSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*corev1.Secret, error) {
-	var storageSecret corev1.Secret
+func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
+	var (
+		storageSecret     corev1.Secret
+		managedAuthSecret corev1.Secret
+		stackKey          = client.ObjectKeyFromObject(stack)
+	)
+
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &storageSecret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, &status.DegradedError{
+			return nil, nil, &status.DegradedError{
 				Message: "Missing object storage secret",
 				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
 				Requeue: false,
 			}
 		}
-		return nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
+		return nil, nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	return &storageSecret, nil
+	if fg.OpenShift.Enabled {
+		managedAuthEnv := openshift.DiscoverManagedAuthEnv()
+		if managedAuthEnv == nil {
+			return &storageSecret, nil, nil
+		}
+
+		managedAuthCredsKey, err := openshift.CreateCredentialsRequest(ctx, k, stackKey, managedAuthEnv)
+		if err != nil {
+			return nil, nil, kverrors.Wrap(err, "failed creating OpenShift CCO CredentialsRequest", "name", stackKey)
+		}
+
+		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, nil, &status.DegradedError{
+					Message: "Missing OpenShift CCO managed authentication credentials secret",
+					Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+					Requeue: true,
+				}
+			}
+			return nil, nil, kverrors.Wrap(err, "failed to lookup OpenShift CCO managed authentication credentials secret", "name", stack)
+		}
+
+		return &storageSecret, &managedAuthSecret, nil
+	}
+
+	return &storageSecret, nil, nil
 }
 
-// extractSecret reads a k8s secret into a manifest object storage struct if valid.
-func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (storage.Options, error) {
-	hash, err := hashSecretData(s)
+// extractSecrets reads a k8s secret into a manifest object storage struct if valid.
+func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managedAuth *corev1.Secret) (storage.Options, error) {
+	hash, err := hashSecretData(objStore)
 	if err != nil {
 		return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
 	}
 
 	storageOpts := storage.Options{
-		SecretName:  s.Name,
+		SecretName:  objStore.Name,
 		SecretSHA1:  hash,
 		SharedStore: secretType,
 	}
 
-	// if managedAuthSecret != nil {
-	//	var extraSHash string
-	//	extraSHash, err = hashSecretData(managedAuthSecret)
-	//	if err != nil {
-	//		return nil, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
-	//	}
+	if managedAuth != nil {
+		var managedAuthHash string
+		managedAuthHash, err = hashSecretData(managedAuth)
+		if err != nil {
+			return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", client.ObjectKeyFromObject(managedAuth))
+		}
 
-	//	storageOpts.ExtraSecretName = managedAuthSecret.Name
-	//	storageOpts.ExtraSecretSHA1 = extraSHash
-	// }
+		storageOpts.OpenShift = storage.OpenShiftOptions{
+			CloudCredentials: storage.CloudCredentials{
+				SecretName: managedAuth.Name,
+				SHA1:       managedAuthHash,
+			},
+		}
+	}
 
 	switch secretType {
 	case lokiv1.ObjectStorageSecretAzure:
-		storageOpts.Azure, err = extractAzureConfigSecret(s)
+		storageOpts.Azure, err = extractAzureConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretGCS:
-		storageOpts.GCS, err = extractGCSConfigSecret(s)
+		storageOpts.GCS, err = extractGCSConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, err = extractS3ConfigSecret(s, managedAuthSecret)
+		storageOpts.S3, err = extractS3ConfigSecret(objStore, managedAuth)
 	case lokiv1.ObjectStorageSecretSwift:
-		storageOpts.Swift, err = extractSwiftConfigSecret(s)
+		storageOpts.Swift, err = extractSwiftConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
-		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
+		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(objStore)
 	default:
 		return storage.Options{}, kverrors.New("unknown secret type", "type", secretType)
 	}

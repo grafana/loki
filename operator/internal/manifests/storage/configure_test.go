@@ -393,13 +393,17 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage S3 in STS Mode in OpenShift",
 			opts: Options{
-				SecretName:       "test",
-				ExtraSecretName:  "extra-secret",
-				OpenShiftEnabled: true,
-				SharedStore:      lokiv1.ObjectStorageSecretS3,
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
 					STS:      true,
 					Audience: "test",
+				},
+				OpenShift: OpenShiftOptions{
+					Enabled: true,
+					CloudCredentials: CloudCredentials{
+						SecretName: "extra-secret",
+					},
 				},
 			},
 			dpl: &appsv1.Deployment{
