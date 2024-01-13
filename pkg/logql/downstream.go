@@ -229,6 +229,34 @@ func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
+type MergeLastOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e MergeLastOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeLastOverTime<%s>", sb.String())
+}
+
+func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
 type Shards []astmapper.ShardAnnotation
 
 func (xs Shards) Encode() (encoded []string) {
