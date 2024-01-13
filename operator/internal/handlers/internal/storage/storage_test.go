@@ -134,7 +134,7 @@ func TestBuildOptions_WhenMissingSecret_SetDegraded(t *testing.T) {
 	require.Equal(t, degradedErr, err)
 }
 
-func TestBuildOptions_WhenMissingManagedAuthSecret_SetDegraded(t *testing.T) {
+func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
@@ -145,22 +145,13 @@ func TestBuildOptions_WhenMissingManagedAuthSecret_SetDegraded(t *testing.T) {
 	}
 
 	fg := configv1.FeatureGates{
-		ServiceMonitors:            false,
-		ServiceMonitorTLSEndpoints: false,
-		BuiltInCertManagement: configv1.BuiltInCertManagement{
-			Enabled:        true,
-			CACertValidity: "10m",
-			CACertRefresh:  "5m",
-			CertValidity:   "2m",
-			CertRefresh:    "1m",
-		},
 		OpenShift: configv1.OpenShiftFeatureGates{
 			Enabled: true,
 		},
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Missing OpenShift CCO managed authentication credentials secret",
+		Message: "Missing OpenShift cloud credentials secret",
 		Reason:  lokiv1.ReasonMissingManagedAuthSecret,
 		Requeue: true,
 	}

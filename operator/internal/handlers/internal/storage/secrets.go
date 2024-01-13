@@ -54,7 +54,7 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil, nil, &status.DegradedError{
-					Message: "Missing OpenShift CCO managed authentication credentials secret",
+					Message: "Missing OpenShift cloud credentials secret",
 					Reason:  lokiv1.ReasonMissingManagedAuthSecret,
 					Requeue: true,
 				}

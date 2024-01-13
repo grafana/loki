@@ -20,6 +20,7 @@ import (
 //   - The object storage schema config is invalid.
 //   - The object storage CA ConfigMap is missing if one referenced.
 //   - The object storage CA ConfigMap data is invalid.
+//   - The object storage managed auth secret is missing (Only on OpenShift STS-clusters)
 func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (storage.Options, error) {
 	storageSecret, managedAuthSecret, err := getSecrets(ctx, k, stack, fg)
 	if err != nil {
