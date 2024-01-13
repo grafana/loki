@@ -515,7 +515,32 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		return &MergeFirstOverTimeExpr{
 			downstreams: downstreams,
 		}, bytesPerShard, nil
+	case syntax.OpRangeTypeLast:
+		potentialConflict := syntax.ReducesLabels(expr)
+		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
+			return m.mapSampleExpr(expr, r)
+		}
 
+		shards, bytesPerShard, err := m.shards.Shards(expr)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		downstreams := make([]DownstreamSampleExpr, 0, shards)
+		expr.Operation = syntax.OpRangeTypeFirstWithTimestamp
+		for shard := shards - 1; shard >= 0; shard-- {
+			downstreams = append(downstreams, DownstreamSampleExpr{
+				shard: &astmapper.ShardAnnotation{
+					Shard: shard,
+					Of:    shards,
+				},
+				SampleExpr: expr,
+			})
+		}
+
+		return &MergeLastOverTimeExpr{
+			downstreams: downstreams,
+		}, bytesPerShard, nil
 	default:
 		// don't shard if there's not an appropriate optimization
 		return noOp(expr, m.shards)
