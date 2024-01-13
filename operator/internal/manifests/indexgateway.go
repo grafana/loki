@@ -73,7 +73,7 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 // NewIndexGatewayStatefulSet creates a statefulset object for an index-gateway
 func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.ObjectStorage.SecretSHA1, opts.CertRotationRequiredAt)
+	a := commonAnnotations(opts)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: opts.Name,
 		Affinity:           configureAffinity(LabelIndexGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.IndexGateway),
