@@ -66,6 +66,8 @@ func TestMappingEquivalence(t *testing.T) {
 		// Step 1:
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
