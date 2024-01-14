@@ -20,8 +20,6 @@ import (
 type workerConfig struct {
 	maxWaitTime time.Duration
 	maxItems    int
-
-	processBlocksSequentially bool
 }
 
 type workerMetrics struct {
@@ -188,11 +186,7 @@ func (w *worker) running(ctx context.Context) error {
 					blockRefs = append(blockRefs, b.blockRef)
 				}
 
-				if w.cfg.processBlocksSequentially {
-					err = w.processBlocksSequentially(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
-				} else {
-					err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
-				}
+				err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
 				if err != nil {
 					for _, t := range tasks {
 						t.ErrCh <- err
@@ -225,20 +219,6 @@ func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant strin
 		}
 		return nil
 	})
-}
-
-func (w *worker) processBlocksSequentially(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
-	storeFetchStart := time.Now()
-	blockQueriers, err := w.store.GetBlockQueriersForBlockRefs(taskCtx, tenant, blockRefs)
-	w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriersForBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
-	if err != nil {
-		return err
-	}
-
-	for i := range blockQueriers {
-		processBlock(blockQueriers[i].BlockQuerier, day, boundedRefs[i].tasks)
-	}
-	return nil
 }
 
 func processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {

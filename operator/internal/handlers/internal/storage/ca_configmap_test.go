@@ -1,19 +1,18 @@
-package storage_test
+package storage
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-
-	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
 )
 
-func TestIsValidConfigMap(t *testing.T) {
+func TestCheckValidConfigMap(t *testing.T) {
 	type test struct {
-		name  string
-		cm    *corev1.ConfigMap
-		valid bool
+		name         string
+		cm           *corev1.ConfigMap
+		wantHash     string
+		wantErrorMsg string
 	}
 	table := []test{
 		{
@@ -23,11 +22,13 @@ func TestIsValidConfigMap(t *testing.T) {
 					"service-ca.crt": "has-some-data",
 				},
 			},
-			valid: true,
+			wantHash:     "de6ae206d4920549d21c24ad9721e87a9b1ec7dc",
+			wantErrorMsg: "",
 		},
 		{
-			name: "missing `service-ca.crt` key",
-			cm:   &corev1.ConfigMap{},
+			name:         "missing `service-ca.crt` key",
+			cm:           &corev1.ConfigMap{},
+			wantErrorMsg: "key not present or data empty: service-ca.crt",
 		},
 		{
 			name: "missing CA content",
@@ -36,6 +37,7 @@ func TestIsValidConfigMap(t *testing.T) {
 					"service-ca.crt": "",
 				},
 			},
+			wantErrorMsg: "key not present or data empty: service-ca.crt",
 		},
 	}
 	for _, tst := range table {
@@ -43,8 +45,14 @@ func TestIsValidConfigMap(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			ok := storage.IsValidCAConfigMap(tst.cm, "service-ca.crt")
-			require.Equal(t, tst.valid, ok)
+			hash, err := checkCAConfigMap(tst.cm, "service-ca.crt")
+
+			require.Equal(t, tst.wantHash, hash)
+			if tst.wantErrorMsg == "" {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantErrorMsg)
+			}
 		})
 	}
 }

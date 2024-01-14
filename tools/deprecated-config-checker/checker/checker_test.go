@@ -39,6 +39,7 @@ var (
 	}
 
 	expectedConfigDeprecates = []string{
+		"legacy-read-mode",
 		"ruler.remote_write.client",
 		"index_gateway.ring.replication_factor",
 		"storage_config.bigtable",
