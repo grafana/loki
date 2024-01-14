@@ -24,7 +24,7 @@ const (
 
 func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.ObjectKey, sts *ManagedAuthEnv) (client.ObjectKey, error) {
 	var secretKey client.ObjectKey
-	providerSpec, secretName, err := encodeProvideSpec(stack.Name, sts)
+	providerSpec, secretName, err := encodeProviderSpec(stack.Name, sts)
 	if err != nil {
 		return secretKey, kverrors.Wrap(err, "failed encoding credentialsrequest provider spec")
 	}
@@ -60,7 +60,7 @@ func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.Ob
 	return secretKey, nil
 }
 
-func encodeProvideSpec(stackKey string, maEnv *ManagedAuthEnv) (*runtime.RawExtension, string, error) {
+func encodeProviderSpec(stackKey string, maEnv *ManagedAuthEnv) (*runtime.RawExtension, string, error) {
 	var (
 		spec       runtime.Object
 		secretName string
