@@ -5,13 +5,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/grafana/dskit/flagext"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
