@@ -74,6 +74,7 @@
 #### Promtail
 
 * [10752](https://github.com/grafana/loki/pull/10752) **gonzalesraul**: structured_metadata: enable structured_metadata convert labels
+* [11511](https://github.com/grafana/loki/pull/11511) **kavirajk**: chore(promtail): Improve default configuration that is shipped with rpm/deb packages to avoid possible high CPU utilisation if there are lots of files inside `/var/log`.
 
 ##### Enhancements
 
