@@ -226,7 +226,8 @@ func extractS3ConfigSecret(s *corev1.Secret, managedAuthSecret *corev1.Secret) (
 	switch {
 	case managedAuthSecret != nil:
 		cfg.STS = true
-		cfg.Audience = "openshift"
+		cfg.Audience = storage.AWSOpenShiftAudience
+		// Do not allow users overriding the role arn provided on Loki Operator installation
 		if len(roleArn) != 0 {
 			return nil, kverrors.New("extra secret field set", "field", storage.KeyAWSRoleArn)
 		}

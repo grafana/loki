@@ -402,7 +402,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				OpenShift: OpenShiftOptions{
 					Enabled: true,
 					CloudCredentials: CloudCredentials{
-						SecretName: "extra-secret",
+						SecretName: "cloud-credentials",
 					},
 				},
 			},
@@ -438,15 +438,15 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											MountPath: "/var/run/secrets/openshift/serviceaccount",
 										},
 										{
-											Name:      "extra-secret",
+											Name:      "cloud-credentials",
 											ReadOnly:  false,
-											MountPath: "/etc/storage/extra-secrets",
+											MountPath: "/etc/storage/managed-auth",
 										},
 									},
 									Env: []corev1.EnvVar{
 										{
 											Name:  "AWS_SHARED_CREDENTIALS_FILE",
-											Value: "/etc/storage/extra-secrets/credentials",
+											Value: "/etc/storage/managed-auth/credentials",
 										},
 										{
 											Name:  "AWS_SDK_LOAD_CONFIG",
@@ -481,10 +481,10 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: "extra-secret",
+									Name: "cloud-credentials",
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
-											SecretName: "extra-secret",
+											SecretName: "cloud-credentials",
 										},
 									},
 								},
@@ -950,6 +950,110 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "test",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "object storage S3 in STS Mode in OpenShift",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
+				S3: &S3StorageConfig{
+					STS:      true,
+					Audience: "test",
+				},
+				OpenShift: OpenShiftOptions{
+					Enabled: true,
+					CloudCredentials: CloudCredentials{
+						SecretName: "cloud-credentials",
+					},
+				},
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      saTokenVolumeName,
+											ReadOnly:  false,
+											MountPath: "/var/run/secrets/openshift/serviceaccount",
+										},
+										{
+											Name:      "cloud-credentials",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/managed-auth",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name:  "AWS_SHARED_CREDENTIALS_FILE",
+											Value: "/etc/storage/managed-auth/credentials",
+										},
+										{
+											Name:  "AWS_SDK_LOAD_CONFIG",
+											Value: "true",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: saTokenVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										Projected: &corev1.ProjectedVolumeSource{
+											Sources: []corev1.VolumeProjection{
+												{
+													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+														Audience:          "openshift",
+														ExpirationSeconds: pointer.Int64(3600),
+														Path:              corev1.ServiceAccountTokenKey,
+													},
+												},
+											},
+										},
+									},
+								},
+								{
+									Name: "cloud-credentials",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "cloud-credentials",
 										},
 									},
 								},

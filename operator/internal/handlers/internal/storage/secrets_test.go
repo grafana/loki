@@ -374,6 +374,74 @@ func TestS3Extract(t *testing.T) {
 	}
 }
 
+func TestS3Extract_WithManagedAuth(t *testing.T) {
+	type test struct {
+		name              string
+		secret            *corev1.Secret
+		managedAuthSecret *corev1.Secret
+		wantErr           bool
+	}
+	table := []test{
+		{
+			name:              "missing role-arn",
+			secret:            &corev1.Secret{},
+			managedAuthSecret: &corev1.Secret{},
+			wantErr:           true,
+		},
+		{
+			name:              "missing region",
+			secret:            &corev1.Secret{},
+			managedAuthSecret: &corev1.Secret{},
+			wantErr:           true,
+		},
+		{
+			name: "override role arn not allowed",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"role_arn": []byte("role-arn"),
+				},
+			},
+			managedAuthSecret: &corev1.Secret{},
+			wantErr:           true,
+		},
+		{
+			name: "STS all set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"region":      []byte("a-region"),
+				},
+			},
+			managedAuthSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "managed-auth"},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretS3, tst.secret, tst.managedAuthSecret)
+			if !tst.wantErr {
+				require.NoError(t, err)
+				require.NotEmpty(t, opts.SecretName)
+				require.NotEmpty(t, opts.SecretSHA1)
+				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
+				require.True(t, opts.S3.STS)
+				require.Equal(t, opts.S3.Audience, "openshift")
+				require.Equal(t, opts.OpenShift.CloudCredentials.SecretName, tst.managedAuthSecret.Name)
+				require.NotEmpty(t, opts.OpenShift.CloudCredentials.SHA1)
+			}
+			if tst.wantErr {
+				require.NotNil(t, err)
+			}
+		})
+	}
+}
+
 func TestSwiftExtract(t *testing.T) {
 	type test struct {
 		name    string

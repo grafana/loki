@@ -186,7 +186,7 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 	case lokiv1.ObjectStorageSecretS3:
 		if opts.OpenShift.CloudCredentials.SecretName != "" {
 			return []corev1.EnvVar{
-				envVarFromValue(EnvAWSCredentialsFile, path.Join(extraSecretDirectory, KeyAWSCredentialsFilename)),
+				envVarFromValue(EnvAWSCredentialsFile, path.Join(managedAuthSecretDirectory, KeyAWSCredentialsFilename)),
 				envVarFromValue(EnvAWSSdkLoadConfig, "true"),
 			}
 		} else {
@@ -310,7 +310,7 @@ func saTokenVolume(opts Options) corev1.Volume {
 			audience = opts.S3.Audience
 		}
 		if opts.OpenShift.Enabled {
-			audience = awsOpenShiftAudience
+			audience = AWSOpenShiftAudience
 		}
 	}
 	return corev1.Volume{
@@ -334,7 +334,7 @@ func saTokenVolume(opts Options) corev1.Volume {
 func managedAuthVolumeMount(opts Options) corev1.VolumeMount {
 	return corev1.VolumeMount{
 		Name:      opts.OpenShift.CloudCredentials.SecretName,
-		MountPath: extraSecretDirectory,
+		MountPath: managedAuthSecretDirectory,
 	}
 }
 

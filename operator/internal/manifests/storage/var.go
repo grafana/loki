@@ -112,11 +112,11 @@ const (
 	saTokenVolumeName         = "bound-sa-token"
 	saTokenExpiration         = 3600
 
-	secretDirectory      = "/etc/storage/secrets"
-	extraSecretDirectory = "/etc/storage/extra-secrets"
-	storageTLSVolume     = "storage-tls"
-	caDirectory          = "/etc/storage/ca"
+	secretDirectory            = "/etc/storage/secrets"
+	managedAuthSecretDirectory = "/etc/storage/managed-auth"
+	storageTLSVolume           = "storage-tls"
+	caDirectory                = "/etc/storage/ca"
 
 	awsDefaultAudience   = "sts.amazonaws.com"
-	awsOpenShiftAudience = "openshift"
+	AWSOpenShiftAudience = "openshift"
 )
