@@ -133,17 +133,18 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, delimiter)
+			list, _, err := periodClient.List(ctx, prefix, "")
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
 			for _, object := range list {
 				metaRef, err := createMetaRef(object.Key, params.TenantID, table)
+
 				if err != nil {
 					return nil, err
 				}
 				if metaRef.MaxFingerprint < uint64(params.MinFingerprint) || uint64(params.MaxFingerprint) < metaRef.MinFingerprint ||
-					metaRef.StartTimestamp.Before(params.StartTimestamp) || metaRef.EndTimestamp.After(params.EndTimestamp) {
+					metaRef.EndTimestamp.Before(params.StartTimestamp) || metaRef.StartTimestamp.After(params.EndTimestamp) {
 					continue
 				}
 				meta, err := b.downloadMeta(ctx, metaRef, periodClient)
@@ -232,6 +233,12 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
+
+		_, err = block.Data.Seek(0, 0)
+		if err != nil {
+			return fmt.Errorf("error uploading block file: %w", err)
+		}
+
 		err = objectClient.PutObject(ctx, key, block.Data)
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)

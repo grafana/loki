@@ -210,7 +210,8 @@ func TestResult_Merge(t *testing.T) {
 				EntriesFound:     2,
 			},
 			Result: Cache{
-				EntriesStored: 3,
+				EntriesStored:     3,
+				QueryLengthServed: int64(3 * time.Hour),
 			},
 		},
 		Summary: Summary{
@@ -272,7 +273,8 @@ func TestResult_Merge(t *testing.T) {
 				EntriesFound:     2 * 2,
 			},
 			Result: Cache{
-				EntriesStored: 2 * 3,
+				EntriesStored:     2 * 3,
+				QueryLengthServed: int64(2 * 3 * time.Hour),
 			},
 		},
 		Summary: Summary{
@@ -325,6 +327,7 @@ func TestCaches(t *testing.T) {
 
 	statsCtx.AddCacheRequest(ChunkCache, 5)
 	statsCtx.AddCacheEntriesStored(ResultCache, 3)
+	statsCtx.AddCacheQueryLengthServed(ResultCache, 3*time.Hour)
 	statsCtx.AddCacheEntriesRequested(IndexCache, 22)
 	statsCtx.AddCacheBytesRetrieved(ChunkCache, 1024)
 	statsCtx.AddCacheBytesSent(ChunkCache, 512)
@@ -341,7 +344,8 @@ func TestCaches(t *testing.T) {
 			EntriesFound:     2,
 		},
 		Result: Cache{
-			EntriesStored: 3,
+			EntriesStored:     3,
+			QueryLengthServed: int64(time.Hour * 3),
 		},
 	}, statsCtx.Caches())
 }

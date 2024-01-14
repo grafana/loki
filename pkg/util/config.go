@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/version"
@@ -37,4 +38,11 @@ func PrintConfig(w io.Writer, config interface{}) error {
 	}
 	fmt.Fprintf(w, "---\n# Loki Config\n# %s\n%s\n\n", version.Info(), string(lc))
 	return nil
+}
+
+// IngesterQueryOptions exists because querier.Config cannot be passed directly to the queryrange package
+// due to an import cycle.
+type IngesterQueryOptions interface {
+	QueryStoreOnly() bool
+	QueryIngestersWithin() time.Duration
 }

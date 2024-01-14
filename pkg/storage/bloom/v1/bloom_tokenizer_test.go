@@ -123,7 +123,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 		Series: &series,
 	}
 
-	err := bt.PopulateSeriesWithBloom(&swb, chunks)
+	err := bt.PopulateSeriesWithBloom(&swb, NewSliceIter([][]chunk.Chunk{chunks}))
 	require.NoError(t, err)
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	itr := tokenizer.Tokens(testLine)
@@ -171,7 +171,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			Series: &series,
 		}
 
-		err := bt.PopulateSeriesWithBloom(&swb, chunks)
+		err := bt.PopulateSeriesWithBloom(&swb, NewSliceIter([][]chunk.Chunk{chunks}))
 		require.NoError(b, err)
 	}
 }
