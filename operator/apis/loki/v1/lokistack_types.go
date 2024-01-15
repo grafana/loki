@@ -1062,6 +1062,9 @@ const (
 	ReasonMissingObjectStorageSecret LokiStackConditionReason = "MissingObjectStorageSecret"
 	// ReasonInvalidObjectStorageSecret when the format of the secret is invalid.
 	ReasonInvalidObjectStorageSecret LokiStackConditionReason = "InvalidObjectStorageSecret"
+	// ReasonMissingCredentialsRequest when the required request for managed auth credentials to object
+	// storage is missing.
+	ReasonMissingCredentialsRequest LokiStackConditionReason = "MissingCredentialsRequest"
 	// ReasonMissingManagedAuthSecret when the required secret for managed auth credentials to object
 	// storage is missing.
 	ReasonMissingManagedAuthSecret LokiStackConditionReason = "MissingManagedAuthenticationSecret"

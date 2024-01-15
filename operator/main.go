@@ -22,6 +22,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
+	manifestsocp "github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/operator"
 	"github.com/grafana/loki/operator/internal/validation"
@@ -126,6 +127,19 @@ func main() {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
 			os.Exit(1)
 		}
+	}
+
+	if managedAuthEnv := manifestsocp.DiscoverManagedAuthEnv(); ctrlCfg.Gates.OpenShift.Enabled && managedAuthEnv != nil {
+		if err = (&lokictrl.CredentialsRequestsReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+			Log:    logger.WithName("controllers").WithName("lokistack-credentialsrequest"),
+		}).SetupWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create controller", "controller", "lokistack-credentialsrequest")
+			os.Exit(1)
+		}
+
+		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
 	}
 
 	if ctrlCfg.Gates.LokiStackWebhook {

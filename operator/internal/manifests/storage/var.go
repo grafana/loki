@@ -119,4 +119,6 @@ const (
 
 	awsDefaultAudience   = "sts.amazonaws.com"
 	AWSOpenShiftAudience = "openshift"
+
+	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )

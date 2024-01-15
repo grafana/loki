@@ -14,7 +14,6 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
 )
@@ -25,7 +24,6 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 	var (
 		storageSecret     corev1.Secret
 		managedAuthSecret corev1.Secret
-		stackKey          = client.ObjectKeyFromObject(stack)
 	)
 
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
@@ -40,17 +38,17 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 		return nil, nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	if fg.OpenShift.Enabled {
-		managedAuthEnv := openshift.DiscoverManagedAuthEnv()
-		if managedAuthEnv == nil {
-			return &storageSecret, nil, nil
+	if fg.OpenShift.ManagedAuthEnv {
+		secretName, ok := stack.Annotations[storage.AnnotationCredentialsRequestsSecretRef]
+		if !ok {
+			return nil, nil, &status.DegradedError{
+				Message: "Missing OpenShift cloud credentials request",
+				Reason:  lokiv1.ReasonMissingCredentialsRequest,
+				Requeue: true,
+			}
 		}
 
-		managedAuthCredsKey, err := openshift.CreateCredentialsRequest(ctx, k, stackKey, managedAuthEnv)
-		if err != nil {
-			return nil, nil, kverrors.Wrap(err, "failed creating OpenShift CCO CredentialsRequest", "name", stackKey)
-		}
-
+		managedAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
 		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil, nil, &status.DegradedError{
