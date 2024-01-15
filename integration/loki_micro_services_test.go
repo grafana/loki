@@ -1062,7 +1062,7 @@ func TestCategorizedLabels(t *testing.T) {
 
 func TestBloomFiltersEndToEnd(t *testing.T) {
 	commonFlags := []string{
-		"-bloom-compactor.compaction-interval=2s",
+		"-bloom-compactor.compaction-interval=10s",
 		"-bloom-compactor.enable-compaction=true",
 		"-bloom-compactor.enabled=true",
 		"-bloom-gateway.enable-filtering=true",
@@ -1137,7 +1137,7 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 				"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			)...,
 		)
-		_ = clu.AddComponent(
+		tBloomCompactor = clu.AddComponent(
 			"bloom-compactor",
 			append(
 				commonFlags,
@@ -1190,6 +1190,9 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	cliBloomGateway := client.New(tenantID, "", tBloomGateway.HTTPURL())
 	cliBloomGateway.Now = now
 
+	cliBloomCompactor := client.New(tenantID, "", tBloomCompactor.HTTPURL())
+	cliBloomCompactor.Now = now
+
 	lineTpl := `caller=loki_micro_services_test.go msg="push log line" id="%s"`
 	// ingest logs from 10 different pods
 	// each line contains a random, unique string
@@ -1210,7 +1213,13 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	require.NoError(t, tIngester.Restart())
 
 	// wait for compactor to compact index and for bloom compactor to build bloom filters
-	time.Sleep(10 * time.Second)
+	require.Eventually(t, func() bool {
+		// verify metrics that observe usage of block for filtering
+		metrics, err := cliBloomCompactor.Metrics()
+		require.NoError(t, err)
+		successfulRunCount := getMetricValue(t, "loki_bloomcompactor_runs_completed_total", metrics)
+		return successfulRunCount >= 1
+	}, 30*time.Second, time.Second)
 
 	// use bloom gateway to perform needle in the haystack queries
 	randIdx := rand.Intn(len(uniqueStrings))
@@ -1232,6 +1241,12 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	mf, err := extractMetricFamily("loki_bloom_gateway_store_latency", bloomGwMetrics)
 	require.NoError(t, err)
 
+	unfilteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_pre_filtering", bloomGwMetrics)
+	require.Equal(t, float64(10), unfilteredCount)
+
+	filteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_post_filtering", bloomGwMetrics)
+	require.Equal(t, float64(1), filteredCount)
+
 	count := getValueFromMetricFamilyWithFunc(mf, &dto.LabelPair{
 		Name:  proto.String("operation"),
 		Value: proto.String("ForEach"),
@@ -1239,12 +1254,6 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 		return m.Histogram.GetSampleCount()
 	})
 	require.Equal(t, uint64(1), count)
-
-	unfilteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_pre_filtering", bloomGwMetrics)
-	require.Equal(t, float64(10), unfilteredCount)
-
-	filteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_post_filtering", bloomGwMetrics)
-	require.Equal(t, float64(1), filteredCount)
 }
 
 func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
