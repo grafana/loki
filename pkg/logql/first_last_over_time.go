@@ -106,7 +106,7 @@ func (r *lastWithTimestampBatchRangeVectorIterator) agg(samples []promql.FPoint)
 	if len(samples) == 0 {
 		return promql.FPoint{F: math.NaN(), T: 0}
 	}
-	return samples[0]
+	return samples[len(samples)-1]
 }
 
 // Step 8
