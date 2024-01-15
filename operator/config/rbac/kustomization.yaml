@@ -9,3 +9,4 @@ resources:
 - auth_proxy_client_clusterrole.yaml
 - prometheus_role.yaml
 - prometheus_role_binding.yaml
+- service_account.yaml
