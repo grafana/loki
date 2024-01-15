@@ -204,7 +204,11 @@ func (h *SeriesPageHeaderWithOffset) Decode(dec *encoding.Decbuf) error {
 }
 
 type SeriesHeader struct {
-	NumSeries         int
+	NumSeries int
+	SeriesBounds
+}
+
+type SeriesBounds struct {
 	FromFp, ThroughFp model.Fingerprint
 	FromTs, ThroughTs model.Time
 }
@@ -220,8 +224,10 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 	}
 
 	res := SeriesHeader{
-		FromFp:    xs[0].FromFp,
-		ThroughFp: xs[len(xs)-1].ThroughFp,
+		SeriesBounds: SeriesBounds{
+			FromFp:    xs[0].FromFp,
+			ThroughFp: xs[len(xs)-1].ThroughFp,
+		},
 	}
 
 	for _, x := range xs {

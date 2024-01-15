@@ -504,7 +504,8 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	metasMatchingJob, blocksMatchingJob := matchingBlocks(metas, job)
 
 	localDst := createLocalDirName(c.cfg.WorkingDirectory, job)
-	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip())
+	maxBlockSize := c.limits.BloomCompactorMaxBlockSize(job.tenantID)
+	blockOptions := v1.NewBlockOptions(bt.GetNGramLength(), bt.GetNGramSkip(), maxBlockSize)
 
 	defer func() {
 		//clean up the bloom directory
@@ -513,10 +514,12 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 	}()
 
-	var resultingBlock bloomshipper.Block
+	var resultingBlocks []bloomshipper.Block
 	defer func() {
-		if resultingBlock.Data != nil {
-			_ = resultingBlock.Data.Close()
+		for _, resultingBlock := range resultingBlocks {
+			if resultingBlock.Data != nil {
+				_ = resultingBlock.Data.Close()
+			}
 		}
 	}()
 
@@ -535,7 +538,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		resultingBlock, err = compactNewChunks(ctx, logger, job, bt, storeClient.chunk, builder, c.limits)
+		resultingBlocks, err = compactNewChunks(ctx, logger, job, bt, storeClient.chunk, builder, c.limits)
 		if err != nil {
 			return level.Error(logger).Log("msg", "failed compacting new chunks", "err", err)
 		}
@@ -546,7 +549,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 		var populate = createPopulateFunc(ctx, job, storeClient, bt, c.limits)
 
-		seriesIter := makeSeriesIterFromSeriesMeta(job)
+		seriesIter := v1.NewPeekingIter[*v1.Series](makeSeriesIterFromSeriesMeta(job))
 
 		blockIters, blockPaths, err := makeBlockIterFromBlocks(ctx, logger, c.bloomShipperClient, blocksMatchingJob, c.cfg.WorkingDirectory)
 		defer func() {
@@ -568,7 +571,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		resultingBlock, err = mergeCompactChunks(logger, populate, mergeBlockBuilder, blockIters, seriesIter, job)
+		resultingBlocks, err = mergeCompactChunks(logger, populate, mergeBlockBuilder, blockIters, seriesIter, job)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
@@ -576,24 +579,33 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 	}
 
-	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
+	level.Debug(logger).Log("msg", "blocks created", "resultingBlocks", len(resultingBlocks))
 
-	blockToUpload, err := bloomshipper.CompressBloomBlock(resultingBlock.BlockRef, archivePath, localDst, logger)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
-		return err
+	blocksToUpload := make([]bloomshipper.Block, 0, len(resultingBlocks))
+	archivesPaths := make([]string, 0, len(resultingBlocks))
+	for _, block := range resultingBlocks {
+		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
+		blockToUpload, err := bloomshipper.CompressBloomBlock(block.BlockRef, archivePath, block.BlockRef.BlockPath, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
+			return err
+		}
+		blocksToUpload = append(blocksToUpload, blockToUpload)
+		archivesPaths = append(archivesPaths, archivePath)
 	}
 
 	defer func() {
-		err = os.Remove(archivePath)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
+		for _, archivePath := range archivesPaths {
+			err = os.Remove(archivePath)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
+			}
 		}
 	}()
 
 	// Do not change the signature of PutBlocks yet.
 	// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
-	storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
+	storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, blocksToUpload)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed uploading blocks to storage", "err", err)
 		return err

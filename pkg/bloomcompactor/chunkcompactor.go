@@ -31,38 +31,73 @@ type chunkClient interface {
 }
 
 type blockBuilder interface {
-	BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error)
+	// BuildFrom build a block from the given iterator.
+	// If the data is too large to fit in a single block, the iterator won't be consumed completely. In this case,
+	// call BuildFrom again with the same iterator to build the next block.
+	BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (string, uint32, v1.SeriesBounds, error)
+	// Data returns a reader for the last block built by BuildFrom.
 	Data() (io.ReadSeekCloser, error)
 }
 
 type PersistentBlockBuilder struct {
-	builder  *v1.BlockBuilder
-	localDst string
+	blockOptions     v1.BlockOptions
+	lastBlockIdx     uint64
+	baseLocalDst     string
+	currentBlockPath string
 }
 
 func NewPersistentBlockBuilder(localDst string, blockOptions v1.BlockOptions) (*PersistentBlockBuilder, error) {
-	// write bloom to a local dir
-	b, err := v1.NewBlockBuilder(blockOptions, v1.NewDirectoryBlockWriter(localDst))
-	if err != nil {
-		return nil, err
-	}
 	builder := PersistentBlockBuilder{
-		builder:  b,
-		localDst: localDst,
+		blockOptions: blockOptions,
+		baseLocalDst: localDst,
 	}
+
 	return &builder, nil
 }
 
-func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
-	return p.builder.BuildFrom(itr)
+func (p *PersistentBlockBuilder) getNextBuilder() (*v1.BlockBuilder, error) {
+	// write bloom to a local dir
+	blockPath := filepath.Join(p.baseLocalDst, fmt.Sprintf("%d", p.lastBlockIdx))
+	builder, err := v1.NewBlockBuilder(p.blockOptions, v1.NewDirectoryBlockWriter(blockPath))
+	if err != nil {
+		return nil, err
+	}
+	p.currentBlockPath = blockPath
+	p.lastBlockIdx++
+	return builder, nil
 }
 
-func (p *PersistentBlockBuilder) mergeBuild(builder *v1.MergeBuilder) (uint32, error) {
-	return builder.Build(p.builder)
+func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (string, uint32, v1.SeriesBounds, error) {
+
+	b, err := p.getNextBuilder()
+	if err != nil {
+		return "", 0, v1.SeriesBounds{}, err
+	}
+
+	checksum, bounds, err := b.BuildFrom(itr)
+	if err != nil {
+		return "", 0, v1.SeriesBounds{}, err
+	}
+
+	return p.currentBlockPath, checksum, bounds, nil
+}
+
+func (p *PersistentBlockBuilder) mergeBuild(builder *v1.MergeBuilder) (string, uint32, v1.SeriesBounds, error) {
+	b, err := p.getNextBuilder()
+	if err != nil {
+		return "", 0, v1.SeriesBounds{}, err
+	}
+
+	checksum, bounds, err := builder.Build(b)
+	if err != nil {
+		return "", 0, v1.SeriesBounds{}, err
+	}
+
+	return p.currentBlockPath, checksum, bounds, nil
 }
 
 func (p *PersistentBlockBuilder) Data() (io.ReadSeekCloser, error) {
-	blockFile, err := os.Open(filepath.Join(p.localDst, v1.BloomFileName))
+	blockFile, err := os.Open(filepath.Join(p.currentBlockPath, v1.BloomFileName))
 	if err != nil {
 		return nil, err
 	}
@@ -87,10 +122,13 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks v1.Iterator[[]chunk.Chunk]) (v1.SeriesWithBloom, error) {
+	chunkRefs := makeChunkRefsFromChunkMetas(seriesMeta.chunkRefs)
+
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
 			Fingerprint: seriesMeta.seriesFP,
+			Chunks:      chunkRefs,
 		},
 		Bloom: &v1.Bloom{
 			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
@@ -106,47 +144,62 @@ func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compa
 }
 
 // TODO Test this when bloom block size check is implemented
-func buildBlockFromBlooms(
+func buildBlocksFromBlooms(
 	ctx context.Context,
 	logger log.Logger,
 	builder blockBuilder,
-	blooms v1.Iterator[v1.SeriesWithBloom],
+	blooms v1.PeekingIterator[v1.SeriesWithBloom],
 	job Job,
-) (bloomshipper.Block, error) {
+) ([]bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
-		return bloomshipper.Block{}, err
+		return []bloomshipper.Block{}, err
 	}
 
-	checksum, err := builder.BuildFrom(blooms)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed writing to bloom", "err", err)
-		return bloomshipper.Block{}, err
-	}
+	// TODO(salvacorts): Reuse buffer
+	blocks := make([]bloomshipper.Block, 0)
 
-	data, err := builder.Data()
-	if err != nil {
-		level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
-		return bloomshipper.Block{}, err
-	}
+	for {
+		// Create blocks until the iterator is empty
+		if _, hasNext := blooms.Peek(); !hasNext {
+			break
+		}
 
-	block := bloomshipper.Block{
-		BlockRef: bloomshipper.BlockRef{
-			Ref: bloomshipper.Ref{
-				TenantID:       job.tenantID,
-				TableName:      job.tableName,
-				MinFingerprint: uint64(job.minFp),
-				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: job.from,
-				EndTimestamp:   job.through,
-				Checksum:       checksum,
+		if err := ctx.Err(); err != nil {
+			return []bloomshipper.Block{}, err
+		}
+
+		blockPath, checksum, bounds, err := builder.BuildFrom(blooms)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed writing to bloom", "err", err)
+			return []bloomshipper.Block{}, err
+		}
+
+		data, err := builder.Data()
+		if err != nil {
+			level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
+			return []bloomshipper.Block{}, err
+		}
+
+		blocks = append(blocks, bloomshipper.Block{
+			BlockRef: bloomshipper.BlockRef{
+				Ref: bloomshipper.Ref{
+					TenantID:       job.tenantID,
+					TableName:      job.tableName,
+					MinFingerprint: uint64(bounds.FromFp),
+					MaxFingerprint: uint64(bounds.ThroughFp),
+					StartTimestamp: bounds.FromTs,
+					EndTimestamp:   bounds.ThroughTs,
+					Checksum:       checksum,
+				},
+				IndexPath: job.indexPath,
+				BlockPath: blockPath,
 			},
-			IndexPath: job.indexPath,
-		},
-		Data: data,
+			Data: data,
+		})
 	}
 
-	return block, nil
+	return blocks, nil
 }
 
 func createLocalDirName(workingDir string, job Job) string {
@@ -162,22 +215,22 @@ func compactNewChunks(ctx context.Context,
 	storeClient chunkClient,
 	builder blockBuilder,
 	limits Limits,
-) (bloomshipper.Block, error) {
+) ([]bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
-		return bloomshipper.Block{}, err
+		return []bloomshipper.Block{}, err
 	}
 
-	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, logger, limits)
+	bloomIter := v1.NewPeekingIter[v1.SeriesWithBloom](newLazyBloomBuilder(ctx, job, storeClient, bt, logger, limits))
 
 	// Build and upload bloomBlock to storage
-	block, err := buildBlockFromBlooms(ctx, logger, builder, bloomIter, job)
+	blocks, err := buildBlocksFromBlooms(ctx, logger, builder, bloomIter, job)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed building bloomBlocks", "err", err)
-		return bloomshipper.Block{}, err
+		return []bloomshipper.Block{}, err
 	}
 
-	return block, nil
+	return blocks, nil
 }
 
 type lazyBloomBuilder struct {

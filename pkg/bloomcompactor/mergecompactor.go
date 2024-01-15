@@ -4,31 +4,36 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/grafana/dskit/concurrency"
-
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/dskit/concurrency"
+
+	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
+
+func makeChunkRefsFromChunkMetas(chunks index.ChunkMetas) v1.ChunkRefs {
+	chunkRefs := make(v1.ChunkRefs, 0, len(chunks))
+	for _, chk := range chunks {
+		chunkRefs = append(chunkRefs, v1.ChunkRef{
+			Start:    chk.From(),
+			End:      chk.Through(),
+			Checksum: chk.Checksum,
+		})
+	}
+	return chunkRefs
+}
 
 func makeSeriesIterFromSeriesMeta(job Job) *v1.SliceIter[*v1.Series] {
 	// Satisfy types for series
 	seriesFromSeriesMeta := make([]*v1.Series, len(job.seriesMetas))
 
 	for i, s := range job.seriesMetas {
-		crefs := make([]v1.ChunkRef, len(s.chunkRefs))
-		for j, chk := range s.chunkRefs {
-			crefs[j] = v1.ChunkRef{
-				Start:    chk.From(),
-				End:      chk.Through(),
-				Checksum: chk.Checksum,
-			}
-		}
+		crefs := makeChunkRefsFromChunkMetas(s.chunkRefs)
 		seriesFromSeriesMeta[i] = &v1.Series{
 			Fingerprint: s.seriesFP,
 			Chunks:      crefs,
@@ -108,42 +113,57 @@ func createPopulateFunc(ctx context.Context, job Job, storeClient storeClient, b
 	}
 }
 
-func mergeCompactChunks(logger log.Logger,
+func mergeCompactChunks(
+	logger log.Logger,
 	populate func(*v1.Series, *v1.Bloom) error,
 	mergeBlockBuilder *PersistentBlockBuilder,
-	blockIters []v1.PeekingIterator[*v1.SeriesWithBloom], seriesIter *v1.SliceIter[*v1.Series],
-	job Job) (bloomshipper.Block, error) {
+	blockIters []v1.PeekingIterator[*v1.SeriesWithBloom],
+	seriesIter v1.PeekingIterator[*v1.Series],
+	job Job,
+) ([]bloomshipper.Block, error) {
 
 	mergeBuilder := v1.NewMergeBuilder(
 		blockIters,
 		seriesIter,
 		populate)
 
-	checksum, err := mergeBlockBuilder.mergeBuild(mergeBuilder)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed merging the blooms", "err", err)
-		return bloomshipper.Block{}, err
-	}
-	data, err := mergeBlockBuilder.Data()
-	if err != nil {
-		level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
-		return bloomshipper.Block{}, err
+	// TODO(salvacorts): Reuse buffer
+	mergedBlocks := make([]bloomshipper.Block, 0)
+
+	for {
+		// Merge/Create blocks until there are no more series to process
+		if _, hasNext := seriesIter.Peek(); !hasNext {
+			break
+		}
+
+		blockPath, checksum, bounds, err := mergeBlockBuilder.mergeBuild(mergeBuilder)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed merging the blooms", "err", err)
+			return []bloomshipper.Block{}, err
+		}
+		data, err := mergeBlockBuilder.Data()
+		if err != nil {
+			level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
+			return []bloomshipper.Block{}, err
+		}
+
+		mergedBlocks = append(mergedBlocks, bloomshipper.Block{
+			BlockRef: bloomshipper.BlockRef{
+				Ref: bloomshipper.Ref{
+					TenantID:       job.tenantID,
+					TableName:      job.tableName,
+					MinFingerprint: uint64(bounds.FromFp),
+					MaxFingerprint: uint64(bounds.ThroughFp),
+					StartTimestamp: bounds.FromTs,
+					EndTimestamp:   bounds.ThroughTs,
+					Checksum:       checksum,
+				},
+				IndexPath: job.indexPath,
+				BlockPath: blockPath,
+			},
+			Data: data,
+		})
 	}
 
-	mergedBlock := bloomshipper.Block{
-		BlockRef: bloomshipper.BlockRef{
-			Ref: bloomshipper.Ref{
-				TenantID:       job.tenantID,
-				TableName:      job.tableName,
-				MinFingerprint: uint64(job.minFp),
-				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: job.from,
-				EndTimestamp:   job.through,
-				Checksum:       checksum,
-			},
-			IndexPath: job.indexPath,
-		},
-		Data: data,
-	}
-	return mergedBlock, nil
+	return mergedBlocks, nil
 }

@@ -19,6 +19,8 @@ const (
 type BlockWriter interface {
 	Index() (io.WriteCloser, error)
 	Blooms() (io.WriteCloser, error)
+
+	// Size returns the sum of the index and bloom files sizes in bytes
 	Size() (int, error) // byte size of accumualted index & blooms
 }
 

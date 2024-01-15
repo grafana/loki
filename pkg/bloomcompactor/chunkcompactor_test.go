@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"io"
 	"testing"
 	"time"
@@ -70,8 +71,8 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 	logger := log.NewNopLogger()
 	label := labels.FromStrings("foo", "bar")
 	fp1 := model.Fingerprint(100)
-	fp2 := model.Fingerprint(999)
-	fp3 := model.Fingerprint(200)
+	fp2 := model.Fingerprint(200)
+	fp3 := model.Fingerprint(999)
 
 	chunkRef1 := index.ChunkMeta{
 		Checksum: 1,
@@ -107,23 +108,113 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 
 	mbt := mockBloomTokenizer{}
 	mcc := mockChunkClient{}
-	pbb := mockPersistentBlockBuilder{}
 
-	// Run Compaction
-	compactedBlock, err := compactNewChunks(context.Background(), logger, job, &mbt, &mcc, &pbb, mockLimits{fpRate: fpRate})
+	for _, tc := range []struct {
+		name           string
+		blockSize      int
+		expectedBlocks []bloomshipper.BlockRef
+	}{
+		{
+			name:      "unlimited block size",
+			blockSize: 0,
+			expectedBlocks: []bloomshipper.BlockRef{
+				{
+					Ref: bloomshipper.Ref{
+						TenantID:       job.tenantID,
+						TableName:      job.tableName,
+						MinFingerprint: 100,
+						MaxFingerprint: 999,
+						StartTimestamp: 1,
+						EndTimestamp:   999,
+					},
+				},
+			},
+		},
+		{
+			name:      "limited block size",
+			blockSize: 1024, // Enough to result into two blocks
+			expectedBlocks: []bloomshipper.BlockRef{
+				{
+					Ref: bloomshipper.Ref{
+						TenantID:       job.tenantID,
+						TableName:      job.tableName,
+						MinFingerprint: 100,
+						MaxFingerprint: 200,
+						StartTimestamp: 1,
+						EndTimestamp:   999,
+					},
+				},
+				{
+					Ref: bloomshipper.Ref{
+						TenantID:       job.tenantID,
+						TableName:      job.tableName,
+						MinFingerprint: 999,
+						MaxFingerprint: 999,
+						StartTimestamp: 1,
+						EndTimestamp:   999,
+					},
+				},
+			},
+		},
+		{
+			name:      "block contains at least one series",
+			blockSize: 1,
+			expectedBlocks: []bloomshipper.BlockRef{
+				{
+					Ref: bloomshipper.Ref{
+						TenantID:       job.tenantID,
+						TableName:      job.tableName,
+						MinFingerprint: 100,
+						MaxFingerprint: 100,
+						StartTimestamp: 1,
+						EndTimestamp:   99,
+					},
+				},
+				{
+					Ref: bloomshipper.Ref{
+						TenantID:       job.tenantID,
+						TableName:      job.tableName,
+						MinFingerprint: 200,
+						MaxFingerprint: 200,
+						StartTimestamp: 1,
+						EndTimestamp:   999,
+					},
+				},
+				{
+					Ref: bloomshipper.Ref{
+						TenantID:       job.tenantID,
+						TableName:      job.tableName,
+						MinFingerprint: 999,
+						MaxFingerprint: 999,
+						StartTimestamp: 1,
+						EndTimestamp:   999,
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			localDst := createLocalDirName(t.TempDir(), job)
+			blockOpts := v1.NewBlockOptions(1, 1, tc.blockSize)
+			pbb, err := NewPersistentBlockBuilder(localDst, blockOpts)
+			require.NoError(t, err)
 
-	// Validate Compaction Succeeds
-	require.NoError(t, err)
-	require.NotNil(t, compactedBlock)
+			// Run Compaction
+			compactedBlocks, err := compactNewChunks(context.Background(), logger, job, &mbt, &mcc, pbb, mockLimits{fpRate: fpRate})
+			require.NoError(t, err)
+			require.Len(t, compactedBlocks, len(tc.expectedBlocks))
 
-	// Validate Compacted Block has expected data
-	require.Equal(t, job.tenantID, compactedBlock.TenantID)
-	require.Equal(t, job.tableName, compactedBlock.TableName)
-	require.Equal(t, uint64(fp1), compactedBlock.MinFingerprint)
-	require.Equal(t, uint64(fp2), compactedBlock.MaxFingerprint)
-	require.Equal(t, model.Time(chunkRef1.MinTime), compactedBlock.StartTimestamp)
-	require.Equal(t, model.Time(chunkRef2.MaxTime), compactedBlock.EndTimestamp)
-	require.Equal(t, indexPath, compactedBlock.IndexPath)
+			for i, compactedBlock := range compactedBlocks {
+				require.Equal(t, tc.expectedBlocks[i].TenantID, compactedBlock.Ref.TenantID)
+				require.Equal(t, tc.expectedBlocks[i].TableName, compactedBlock.Ref.TableName)
+				require.Equal(t, tc.expectedBlocks[i].MinFingerprint, compactedBlock.Ref.MinFingerprint)
+				require.Equal(t, tc.expectedBlocks[i].MaxFingerprint, compactedBlock.Ref.MaxFingerprint)
+				require.Equal(t, tc.expectedBlocks[i].StartTimestamp, compactedBlock.Ref.StartTimestamp)
+				require.Equal(t, tc.expectedBlocks[i].EndTimestamp, compactedBlock.Ref.EndTimestamp)
+				require.Equal(t, indexPath, compactedBlock.IndexPath)
+			}
+		})
+	}
 }
 
 func TestLazyBloomBuilder(t *testing.T) {
@@ -220,8 +311,8 @@ func (mcc *mockChunkClient) GetChunks(_ context.Context, chks []chunk.Chunk) ([]
 type mockPersistentBlockBuilder struct {
 }
 
-func (pbb *mockPersistentBlockBuilder) BuildFrom(_ v1.Iterator[v1.SeriesWithBloom]) (uint32, error) {
-	return 0, nil
+func (pbb *mockPersistentBlockBuilder) BuildFrom(_ v1.Iterator[v1.SeriesWithBloom]) (string, uint32, v1.SeriesBounds, error) {
+	return "", 0, v1.SeriesBounds{}, nil
 }
 
 func (pbb *mockPersistentBlockBuilder) Data() (io.ReadSeekCloser, error) {

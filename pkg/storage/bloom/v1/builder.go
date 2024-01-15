@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"math"
 	"sort"
 
 	"github.com/pkg/errors"
@@ -26,11 +27,12 @@ type BlockOptions struct {
 type BlockBuilder struct {
 	opts BlockOptions
 
+	writer BlockWriter
 	index  *IndexBuilder
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
+func NewBlockOptions(NGramLength, NGramSkip uint64, blockSize int) BlockOptions {
 	return BlockOptions{
 		schema: Schema{
 			version:     byte(1),
@@ -39,6 +41,7 @@ func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10, // 0.01MB
+		BlockSize:      blockSize,
 	}
 }
 
@@ -54,6 +57,7 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, erro
 
 	return &BlockBuilder{
 		opts:   opts,
+		writer: writer,
 		index:  NewIndexBuilder(opts, index),
 		blooms: NewBloomBlockBuilder(opts, blooms),
 	}, nil
@@ -64,26 +68,89 @@ type SeriesWithBloom struct {
 	Bloom  *Bloom
 }
 
-func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
+type updatableBounds SeriesBounds
+
+func newUpdatableBounds() updatableBounds {
+	return updatableBounds{
+		FromTs:    model.Latest,
+		ThroughTs: model.Earliest,
+		FromFp:    model.Fingerprint(math.MaxInt64),
+		ThroughFp: model.Fingerprint(0),
+	}
+}
+
+func (b *updatableBounds) update(series *Series) {
+	minFrom := model.Latest
+	maxThrough := model.Earliest
+	for _, chunk := range series.Chunks {
+		if minFrom > chunk.Start {
+			minFrom = chunk.Start
+		}
+		if maxThrough < chunk.End {
+			maxThrough = chunk.End
+		}
+	}
+
+	if b.FromTs.After(minFrom) {
+		b.FromTs = minFrom
+	}
+	if b.ThroughTs.Before(maxThrough) {
+		b.ThroughTs = maxThrough
+	}
+	if b.FromFp > series.Fingerprint {
+		b.FromFp = series.Fingerprint
+	}
+	if b.ThroughFp < series.Fingerprint {
+		b.ThroughFp = series.Fingerprint
+	}
+}
+
+func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, SeriesBounds, error) {
+	bounds := newUpdatableBounds()
+
 	for itr.Next() {
-		if err := b.AddSeries(itr.At()); err != nil {
-			return 0, err
+		series := itr.At()
+		if err := b.AddSeries(series); err != nil {
+			return 0, SeriesBounds{}, err
 		}
 
+		bounds.update(series.Series)
+
+		full, err := b.BlockIsFull()
+		if err != nil {
+			return 0, SeriesBounds{}, err
+		}
+		if full {
+			break
+		}
 	}
 
 	if err := itr.Err(); err != nil {
-		return 0, errors.Wrap(err, "iterating series with blooms")
+		return 0, SeriesBounds{}, errors.Wrap(err, "iterating series with blooms")
 	}
 
 	checksum, err := b.blooms.Close()
 	if err != nil {
-		return 0, errors.Wrap(err, "closing bloom file")
+		return 0, SeriesBounds{}, errors.Wrap(err, "closing bloom file")
 	}
 	if err := b.index.Close(); err != nil {
-		return 0, errors.Wrap(err, "closing series file")
+		return 0, SeriesBounds{}, errors.Wrap(err, "closing series file")
 	}
-	return checksum, nil
+	return checksum, SeriesBounds(bounds), nil
+}
+
+func (b *BlockBuilder) BlockIsFull() (bool, error) {
+	// if the block size is 0, the max size is unlimited
+	if b.opts.BlockSize == 0 {
+		return false, nil
+	}
+
+	size, err := b.writer.Size()
+	if err != nil {
+		return false, errors.Wrap(err, "getting block size")
+	}
+
+	return size >= b.opts.BlockSize, nil
 }
 
 func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
@@ -394,10 +461,12 @@ func (b *IndexBuilder) flushPage() error {
 		DecompressedLen: decompressedLen,
 		SeriesHeader: SeriesHeader{
 			NumSeries: b.page.Count(),
-			FromFp:    b.fromFp,
-			ThroughFp: b.previousFp,
-			FromTs:    b.fromTs,
-			ThroughTs: b.throughTs,
+			SeriesBounds: SeriesBounds{
+				FromFp:    b.fromFp,
+				ThroughFp: b.previousFp,
+				FromTs:    b.fromTs,
+				ThroughTs: b.throughTs,
+			},
 		},
 	}
 
@@ -487,7 +556,7 @@ type MergeBuilder struct {
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
-func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
+func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store PeekingIterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
@@ -495,11 +564,16 @@ func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[
 	}
 }
 
+func (mb *MergeBuilder) HasPendingData() bool {
+	return mb.store.Next()
+}
+
 // NB: this will build one block. Ideally we would build multiple blocks once a target size threshold is met
 // but this gives us a good starting point.
-func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
+func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, SeriesBounds, error) {
 	var (
 		nextInBlocks *SeriesWithBloom
+		bounds       = newUpdatableBounds()
 	)
 
 	// Turn the list of blocks into a single iterator that returns the next series
@@ -563,21 +637,31 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 				},
 				cur.Bloom,
 			); err != nil {
-				return 0, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+				return 0, SeriesBounds{}, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
 			}
 		}
 
 		if err := builder.AddSeries(*cur); err != nil {
-			return 0, errors.Wrap(err, "adding series to block")
+			return 0, SeriesBounds{}, errors.Wrap(err, "adding series to block")
+		}
+
+		bounds.update(cur.Series)
+
+		full, err := builder.BlockIsFull()
+		if err != nil {
+			return 0, SeriesBounds{}, errors.Wrap(err, "checking if block is full")
+		}
+		if full {
+			break
 		}
 	}
 
 	checksum, err := builder.blooms.Close()
 	if err != nil {
-		return 0, errors.Wrap(err, "closing bloom file")
+		return 0, SeriesBounds{}, errors.Wrap(err, "closing bloom file")
 	}
 	if err := builder.index.Close(); err != nil {
-		return 0, errors.Wrap(err, "closing series file")
+		return 0, SeriesBounds{}, errors.Wrap(err, "closing series file")
 	}
-	return checksum, nil
+	return checksum, SeriesBounds(bounds), nil
 }

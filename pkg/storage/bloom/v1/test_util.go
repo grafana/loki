@@ -38,7 +38,7 @@ func MakeBlockQuerier(t testing.TB, fromFp, throughFp model.Fingerprint, fromTs,
 	)
 	require.Nil(t, err)
 	itr := NewSliceIter[SeriesWithBloom](data)
-	_, err = builder.BuildFrom(itr)
+	_, _, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader)
 	return NewBlockQuerier(block), data

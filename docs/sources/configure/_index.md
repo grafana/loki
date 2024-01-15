@@ -3098,6 +3098,12 @@ shard_streams:
 # CLI flag: -bloom-compactor.chunks-batch-size
 [bloom_compactor_chunks_batch_size: <int> | default = 100]
 
+# The maximum bloom block size. Default is unlimited. The actual block size
+# might exceed this limit since blooms will be added to blocks until the block
+# exceeds the maximum block size.
+# CLI flag: -bloom-compactor.max-block-size
+[bloom_compactor_max_block_size: <int> | default = 0B]
+
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length
 [bloom_ngram_length: <int> | default = 4]

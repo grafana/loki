@@ -33,7 +33,7 @@ func TestArchive(t *testing.T) {
 
 	require.Nil(t, err)
 	itr := NewSliceIter[SeriesWithBloom](data)
-	_, err = builder.BuildFrom(itr)
+	_, _, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 
 	reader := NewDirectoryBlockReader(dir1)

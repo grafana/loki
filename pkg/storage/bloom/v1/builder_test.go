@@ -67,7 +67,7 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 
 			require.Nil(t, err)
 			itr := NewSliceIter[SeriesWithBloom](data)
-			_, err = builder.BuildFrom(itr)
+			_, _, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 			block := NewBlock(tc.reader)
 			querier := NewBlockQuerier(block)
@@ -146,7 +146,7 @@ func TestMergeBuilder(t *testing.T) {
 
 		require.Nil(t, err)
 		itr := NewSliceIter[SeriesWithBloom](data[min:max])
-		_, err = builder.BuildFrom(itr)
+		_, _, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
 		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(NewBlock(reader))))
 	}
@@ -158,11 +158,13 @@ func TestMergeBuilder(t *testing.T) {
 
 	// storage should contain references to all the series we ingested,
 	// regardless of block allocation/overlap.
-	storeItr := NewMapIter[SeriesWithBloom, *Series](
-		NewSliceIter[SeriesWithBloom](data),
-		func(swb SeriesWithBloom) *Series {
-			return swb.Series
-		},
+	storeItr := NewPeekingIter[*Series](
+		NewMapIter[SeriesWithBloom, *Series](
+			NewSliceIter[SeriesWithBloom](data),
+			func(swb SeriesWithBloom) *Series {
+				return swb.Series
+			},
+		),
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
@@ -178,7 +180,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	_, err = mergeBuilder.Build(builder)
+	_, _, err = mergeBuilder.Build(builder)
 	require.Nil(t, err)
 
 	block := NewBlock(reader)
