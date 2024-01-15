@@ -103,7 +103,7 @@ func NewIndexStatsCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		log,
 		c,
-		IndexStatsSplitter{cacheKeyLimits{limits, transformer}},
+		IndexStatsSplitter{cacheKeyLimits{limits, transformer, iqo}},
 		limits,
 		merger,
 		IndexStatsExtractor{},

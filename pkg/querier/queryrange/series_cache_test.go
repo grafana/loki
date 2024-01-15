@@ -77,6 +77,7 @@ func TestSeriesCache(t *testing.T) {
 			cache.NewMockCache(),
 			nil,
 			nil,
+			nil,
 			func(_ context.Context, _ []string, _ queryrangebase.Request) int {
 				return 1
 			},

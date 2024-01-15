@@ -186,6 +186,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	case *LokiSeriesRequest, *LabelRequest:
 		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.MetadataQuerySplitDuration)
 	default:
+		// TODO everywhere else we use SmallestPositiveNonZeroDurationPerTenant for this limit; why max here?
 		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
 	}
 

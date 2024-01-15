@@ -13,16 +13,20 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type cacheKeySeries struct {
 	Limits
 	transformer UserIDTransformer
+	iqo         util.IngesterQueryOptions
 }
 
 // GenerateCacheKey generates a cache key based on the userID, matchers, split duration and the interval of the request.
 func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	sr := r.(*LokiSeriesRequest)
+
+	// TODO(dannyk): replace with the below once we've confirmed we want to use same split for metadata queries
 	split := i.MetadataQuerySplitDuration(userID)
 
 	var currentInterval int64
@@ -88,7 +92,7 @@ func NewSeriesCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		logger,
 		c,
-		cacheKeySeries{limits, transformer},
+		cacheKeySeries{limits, transformer, iqo},
 		limits,
 		merger,
 		seriesExtractor{},

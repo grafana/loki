@@ -111,7 +111,7 @@ func NewVolumeCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		log,
 		c,
-		VolumeSplitter{cacheKeyLimits{limits, transformer}},
+		VolumeSplitter{cacheKeyLimits{limits, transformer, iqo}},
 		limits,
 		merger,
 		VolumeExtractor{},

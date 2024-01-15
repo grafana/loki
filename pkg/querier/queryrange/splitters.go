@@ -98,7 +98,7 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 
 	start, end, needsIngesterSplits := ingesterQueryBounds(execTime, s.iqo, req)
 
-	if ingesterQueryInterval := validation.MaxDurationPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 && needsIngesterSplits {
+	if ingesterQueryInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 && needsIngesterSplits {
 		// perform splitting using special interval (`split_ingester_queries_by_interval`)
 		util.ForInterval(ingesterQueryInterval, start, end, endTimeInclusive, factory)
 
@@ -212,7 +212,7 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 	start, end, needsIngesterSplits = ingesterQueryBounds(execTime, s.iqo, lokiReq)
 	start, end = s.alignStartEnd(r.GetStep(), start, end)
 
-	if ingesterQueryInterval := validation.MaxDurationPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 && needsIngesterSplits {
+	if ingesterQueryInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 && needsIngesterSplits {
 		// perform splitting using special interval (`split_ingester_queries_by_interval`)
 		s.buildMetricSplits(lokiReq.GetStep(), ingesterQueryInterval, start, end, factory)
 
