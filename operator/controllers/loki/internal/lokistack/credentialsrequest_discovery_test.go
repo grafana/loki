@@ -28,7 +28,7 @@ func TestAnnotateForCredentialsRequest_ReturnError_WhenLokiStackMissing(t *testi
 	require.Error(t, err)
 }
 
-func TestAnnotateForCredentialsRequest_ReturnError_WhenAnnotationExists(t *testing.T) {
+func TestAnnotateForCredentialsRequest_DoNothing_WhenAnnotationExists(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 
 	annotationVal := "ns-my-stack-aws-creds"
@@ -52,10 +52,11 @@ func TestAnnotateForCredentialsRequest_ReturnError_WhenAnnotationExists(t *testi
 	}
 
 	err := AnnotateForCredentialsRequest(context.Background(), k, stackKey, annotationVal)
-	require.ErrorIs(t, err, ErrAnnotationAlreadyExists)
+	require.NoError(t, err)
+	require.Equal(t, 0, k.UpdateCallCount())
 }
 
-func TestAnnotateForCredentialsRequest_UpdateLokistack_WhenAnnotationMissinga(t *testing.T) {
+func TestAnnotateForCredentialsRequest_UpdateLokistack_WhenAnnotationMissing(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 
 	annotationVal := "ns-my-stack-aws-creds"

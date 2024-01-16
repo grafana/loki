@@ -2,7 +2,6 @@ package lokistack
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -11,10 +10,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
-var ErrAnnotationAlreadyExists = errors.New("credentialsRequestsSecretRef annotation already exists")
-
-// AnnotateForCredentialsRequest adds/updates the `loki.grafana.com/credentials-request-secret-ref` annotation
-// to the named Lokistack. If no LokiStack is found, then skip reconciliation.
+// AnnotateForCredentialsRequest adds the `loki.grafana.com/credentials-request-secret-ref` annotation
+// to the named Lokistack. If no LokiStack is found, then skip reconciliation. Or else return an error.
 func AnnotateForCredentialsRequest(ctx context.Context, k k8s.Client, key client.ObjectKey, secretRef string) error {
 	stack, err := getLokiStack(ctx, k, key)
 	if stack == nil || err != nil {
@@ -22,7 +19,7 @@ func AnnotateForCredentialsRequest(ctx context.Context, k k8s.Client, key client
 	}
 
 	if val, ok := stack.Annotations[storage.AnnotationCredentialsRequestsSecretRef]; ok && val == secretRef {
-		return ErrAnnotationAlreadyExists
+		return nil
 	}
 
 	if err := updateAnnotation(ctx, k, stack, storage.AnnotationCredentialsRequestsSecretRef, secretRef); err != nil {
