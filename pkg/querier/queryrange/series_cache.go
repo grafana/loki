@@ -9,11 +9,16 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type cacheKeySeries struct {
@@ -97,9 +102,28 @@ func NewSeriesCacheMiddleware(
 		merger,
 		seriesExtractor{},
 		cacheGenNumberLoader,
-		shouldCache,
+		func(ctx context.Context, r queryrangebase.Request) bool {
+			return shouldCacheMetadataReq(ctx, logger, shouldCache, r, limits)
+		},
 		parallelismForReq,
 		retentionEnabled,
 		metrics,
 	)
+}
+
+func shouldCacheMetadataReq(ctx context.Context, logger log.Logger, shouldCache queryrangebase.ShouldCacheFn, req queryrangebase.Request, l Limits) bool {
+	if shouldCache != nil && !shouldCache(ctx, req) {
+		return false
+	}
+
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to determine if metadata request should be cached. won't cache", "err", err)
+		return false
+	}
+
+	cacheFreshnessCapture := func(id string) time.Duration { return l.MaxMetadataCacheFreshness(ctx, id) }
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
+
+	return maxCacheFreshness == 0 || model.Time(req.GetEnd().UnixMilli()).Before(model.Now().Add(-maxCacheFreshness))
 }
