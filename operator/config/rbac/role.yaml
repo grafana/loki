@@ -54,6 +54,9 @@ rules:
   verbs:
   - create
   - delete
+  - get
+  - list
+  - watch
 - apiGroups:
   - config.openshift.io
   resources:

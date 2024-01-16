@@ -27,7 +27,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		return storage.Options{}, err
 	}
 
-	objStore, err := extractSecrets(stack.Spec.Storage.Secret.Type, storageSecret, managedAuthSecret)
+	objStore, err := extractSecrets(stack.Spec.Storage.Secret.Type, storageSecret, managedAuthSecret, fg)
 	if err != nil {
 		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),

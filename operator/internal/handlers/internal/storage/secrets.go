@@ -67,7 +67,7 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 }
 
 // extractSecrets reads a k8s secret into a manifest object storage struct if valid.
-func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managedAuth *corev1.Secret) (storage.Options, error) {
+func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managedAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
 	hash, err := hashSecretData(objStore)
 	if err != nil {
 		return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
@@ -79,7 +79,8 @@ func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managed
 		SharedStore: secretType,
 	}
 
-	if managedAuth != nil {
+	isManagedAuth := fg.OpenShift.Enabled && fg.OpenShift.ManagedAuthEnv
+	if isManagedAuth {
 		var managedAuthHash string
 		managedAuthHash, err = hashSecretData(managedAuth)
 		if err != nil {
@@ -100,7 +101,7 @@ func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managed
 	case lokiv1.ObjectStorageSecretGCS:
 		storageOpts.GCS, err = extractGCSConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, err = extractS3ConfigSecret(objStore, managedAuth)
+		storageOpts.S3, err = extractS3ConfigSecret(objStore, isManagedAuth)
 	case lokiv1.ObjectStorageSecretSwift:
 		storageOpts.Swift, err = extractSwiftConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
@@ -191,7 +192,7 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret, managedAuthSecret *corev1.Secret) (*storage.S3StorageConfig, error) {
+func extractS3ConfigSecret(s *corev1.Secret, isManagedAuth bool) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
@@ -222,7 +223,7 @@ func extractS3ConfigSecret(s *corev1.Secret, managedAuthSecret *corev1.Secret) (
 	}
 
 	switch {
-	case managedAuthSecret != nil:
+	case isManagedAuth:
 		cfg.STS = true
 		cfg.Audience = storage.AWSOpenShiftAudience
 		// Do not allow users overriding the role arn provided on Loki Operator installation

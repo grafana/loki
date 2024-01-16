@@ -100,6 +100,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	var (
+		managedAuthEnv   = manifestsocp.DiscoverManagedAuthEnv()
+		isManagedAuthEnv = ctrlCfg.Gates.OpenShift.Enabled && managedAuthEnv != nil
+	)
+	if isManagedAuthEnv {
+		logger.Info("discovered OpenShift Cluster with a managed authentication environment")
+		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
+	}
+
 	if err = (&lokictrl.LokiStackReconciler{
 		Client:       mgr.GetClient(),
 		Log:          logger.WithName("controllers").WithName("lokistack"),
@@ -129,7 +138,7 @@ func main() {
 		}
 	}
 
-	if managedAuthEnv := manifestsocp.DiscoverManagedAuthEnv(); ctrlCfg.Gates.OpenShift.Enabled && managedAuthEnv != nil {
+	if isManagedAuthEnv {
 		if err = (&lokictrl.CredentialsRequestsReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
@@ -138,8 +147,6 @@ func main() {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-credentialsrequest")
 			os.Exit(1)
 		}
-
-		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
 	}
 
 	if ctrlCfg.Gates.LokiStackWebhook {
