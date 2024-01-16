@@ -1,19 +1,39 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 )
 
-// OptionsAndFrom will use a supplied type and convert to Options
-// any options already set on Options will be ignored, this is used to allow
-// cli flags to override anything specified in the config file.
-func OptionsAndFrom(o manager.Options, loader ControllerManagerConfiguration) (manager.Options, error) {
+// LoadConfig initializes the controller configuration, optionally overriding the defaults
+// from a provided configuration file.
+func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, ctrl.Options, error) {
+	options := ctrl.Options{Scheme: scheme}
+	if configFile == "" {
+		return &configv1.ProjectConfig{}, options, nil
+	}
+
+	ctrlCfg := &configv1.ProjectConfig{}
+	if configFile != "" {
+		var err error
+		options, err = optionsAndFrom(options, File().AtPath(configFile).OfKind(ctrlCfg))
+		if err != nil {
+			return nil, options, fmt.Errorf("failed to parse controller manager config file: %w", err)
+		}
+	}
+
+	return ctrlCfg, options, nil
+}
+
+func optionsAndFrom(o manager.Options, loader ControllerManagerConfiguration) (manager.Options, error) {
 	newObj, err := loader.Complete()
 	if err != nil {
 		return o, err

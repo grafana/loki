@@ -60,14 +60,10 @@ func main() {
 
 	var err error
 
-	ctrlCfg := ctrlconfigv1.ProjectConfig{}
-	options := ctrl.Options{Scheme: scheme}
-	if configFile != "" {
-		options, err = config.OptionsAndFrom(options, config.File().AtPath(configFile).OfKind(&ctrlCfg))
-		if err != nil {
-			logger.Error(err, "failed to parse controller manager config file")
-			os.Exit(1)
-		}
+	ctrlCfg, options, err := config.LoadConfig(scheme, configFile)
+	if err != nil {
+		logger.Error(err, "failed to load operator configuration")
+		os.Exit(1)
 	}
 
 	if ctrlCfg.Gates.LokiStackAlerts && !ctrlCfg.Gates.ServiceMonitors {
