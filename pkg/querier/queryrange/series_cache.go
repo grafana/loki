@@ -26,8 +26,7 @@ type cacheKeySeries struct {
 func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	sr := r.(*LokiSeriesRequest)
 
-	// TODO(dannyk): replace with the below once we've confirmed we want to use same split for metadata queries
-	split := i.MetadataQuerySplitDuration(userID)
+	split := SplitIntervalForTimeRange(i.iqo, i.Limits, i.MetadataQuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
@@ -38,11 +37,12 @@ func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r r
 		userID = i.transformer(ctx, userID)
 	}
 
-	matchers := sr.GetMatch()
-	sort.Strings(matchers)
-	matcherStr := strings.Join(matchers, ",")
+	return fmt.Sprintf("series:%s:%s:%d:%d", userID, i.joinMatchers(sr.GetMatch()), currentInterval, split)
+}
 
-	return fmt.Sprintf("series:%s:%s:%d:%d", userID, matcherStr, currentInterval, split)
+func (i cacheKeySeries) joinMatchers(matchers []string) string {
+	sort.Strings(matchers)
+	return strings.Join(matchers, ",")
 }
 
 type seriesExtractor struct{}

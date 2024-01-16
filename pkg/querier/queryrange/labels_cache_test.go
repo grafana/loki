@@ -336,6 +336,8 @@ func TestLabelQueryCacheKey(t *testing.T) {
 					r.LabelRequest.Query = query
 				}
 
+				// we use regex here because cache key always refers to the current time to get the ingester query window,
+				// and therefore we can't know the current interval apriori without duplicating the logic
 				var pattern *regexp.Regexp
 				if values {
 					pattern = regexp.MustCompile(fmt.Sprintf(`labelvalues:%s:%s:%s:(\d+):%d`, tc.tenantID, labelName, regexp.QuoteMeta(query), tc.expectedSplit))
