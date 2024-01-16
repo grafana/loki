@@ -1,12 +1,17 @@
 package config
 
 import (
+	"errors"
 	"fmt"
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	"os"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"os"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 )
+
+var errConfigFileLoading = errors.New("could not read file at path")
 
 func loadConfigFile(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, error) {
 	content, err := os.ReadFile(configFile)
