@@ -21,37 +21,29 @@ func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectCon
 		return &configv1.ProjectConfig{}, options, nil
 	}
 
-	ctrlCfg := &configv1.ProjectConfig{}
-	if configFile != "" {
-		var err error
-		options, err = optionsAndFrom(options, File().AtPath(configFile).OfKind(ctrlCfg))
-		if err != nil {
-			return nil, options, fmt.Errorf("failed to parse controller manager config file: %w", err)
-		}
+	ctrlCfg, err := loadConfigFile(scheme, configFile)
+	if err != nil {
+		return nil, options, fmt.Errorf("failed to parse controller manager config file: %w", err)
 	}
 
+	options = mergeOptionsFromFile(options, ctrlCfg)
 	return ctrlCfg, options, nil
 }
 
-func optionsAndFrom(o manager.Options, loader ControllerManagerConfiguration) (manager.Options, error) {
-	newObj, err := loader.Complete()
-	if err != nil {
-		return o, err
+func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manager.Options {
+	o = setLeaderElectionConfig(o, cfg.ControllerManagerConfigurationSpec)
+
+	if o.MetricsBindAddress == "" && cfg.Metrics.BindAddress != "" {
+		o.MetricsBindAddress = cfg.Metrics.BindAddress
 	}
 
-	o = setLeaderElectionConfig(o, newObj)
-
-	if o.MetricsBindAddress == "" && newObj.Metrics.BindAddress != "" {
-		o.MetricsBindAddress = newObj.Metrics.BindAddress
-	}
-
-	if o.HealthProbeBindAddress == "" && newObj.Health.HealthProbeBindAddress != "" {
-		o.HealthProbeBindAddress = newObj.Health.HealthProbeBindAddress
+	if o.HealthProbeBindAddress == "" && cfg.Health.HealthProbeBindAddress != "" {
+		o.HealthProbeBindAddress = cfg.Health.HealthProbeBindAddress
 	}
 
 	//nolint:staticcheck
-	if o.Port == 0 && newObj.Webhook.Port != nil {
-		o.Port = *newObj.Webhook.Port
+	if o.Port == 0 && cfg.Webhook.Port != nil {
+		o.Port = *cfg.Webhook.Port
 	}
 
 	//nolint:staticcheck
@@ -61,7 +53,7 @@ func optionsAndFrom(o manager.Options, loader ControllerManagerConfiguration) (m
 		})
 	}
 
-	return o, nil
+	return o
 }
 
 func setLeaderElectionConfig(o manager.Options, obj configv1.ControllerManagerConfigurationSpec) manager.Options {
