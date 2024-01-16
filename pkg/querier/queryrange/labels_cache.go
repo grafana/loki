@@ -92,7 +92,7 @@ func NewLabelsCacheMiddleware(
 		labelsExtractor{},
 		cacheGenNumberLoader,
 		func(ctx context.Context, r queryrangebase.Request) bool {
-			return shouldCacheMetadataReq(logger, ctx, shouldCache, r, limits)
+			return shouldCacheMetadataReq(ctx, logger, shouldCache, r, limits)
 		},
 		parallelismForReq,
 		retentionEnabled,

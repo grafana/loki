@@ -98,7 +98,7 @@ func NewSeriesCacheMiddleware(
 		seriesExtractor{},
 		cacheGenNumberLoader,
 		func(ctx context.Context, r queryrangebase.Request) bool {
-			return shouldCacheMetadataReq(logger, ctx, shouldCache, r, limits)
+			return shouldCacheMetadataReq(ctx, logger, shouldCache, r, limits)
 		},
 		parallelismForReq,
 		retentionEnabled,
@@ -106,7 +106,7 @@ func NewSeriesCacheMiddleware(
 	)
 }
 
-func shouldCacheMetadataReq(logger log.Logger, ctx context.Context, shouldCache queryrangebase.ShouldCacheFn, req queryrangebase.Request, l Limits) bool {
+func shouldCacheMetadataReq(ctx context.Context, logger log.Logger, shouldCache queryrangebase.ShouldCacheFn, req queryrangebase.Request, l Limits) bool {
 	if shouldCache != nil && !shouldCache(ctx, req) {
 		return false
 	}
