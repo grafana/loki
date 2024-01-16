@@ -2,7 +2,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"io"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 

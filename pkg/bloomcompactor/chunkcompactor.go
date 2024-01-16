@@ -68,7 +68,6 @@ func (p *PersistentBlockBuilder) getNextBuilder() (*v1.BlockBuilder, error) {
 }
 
 func (p *PersistentBlockBuilder) BuildFrom(itr v1.Iterator[v1.SeriesWithBloom]) (string, uint32, v1.SeriesBounds, error) {
-
 	b, err := p.getNextBuilder()
 	if err != nil {
 		return "", 0, v1.SeriesBounds{}, err

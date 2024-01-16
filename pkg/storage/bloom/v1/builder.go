@@ -110,17 +110,12 @@ func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, SeriesB
 
 	for itr.Next() {
 		series := itr.At()
-		if err := b.AddSeries(series); err != nil {
-			return 0, SeriesBounds{}, err
-		}
-
 		bounds.update(series.Series)
-
-		full, err := b.BlockIsFull()
+		blockFull, err := b.AddSeries(series)
 		if err != nil {
 			return 0, SeriesBounds{}, err
 		}
-		if full {
+		if blockFull {
 			break
 		}
 	}
@@ -139,7 +134,7 @@ func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, SeriesB
 	return checksum, SeriesBounds(bounds), nil
 }
 
-func (b *BlockBuilder) BlockIsFull() (bool, error) {
+func (b *BlockBuilder) blockIsFull() (bool, error) {
 	// if the block size is 0, the max size is unlimited
 	if b.opts.BlockSize == 0 {
 		return false, nil
@@ -153,20 +148,25 @@ func (b *BlockBuilder) BlockIsFull() (bool, error) {
 	return size >= b.opts.BlockSize, nil
 }
 
-func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
+func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 	offset, err := b.blooms.Append(series)
 	if err != nil {
-		return errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
+		return false, errors.Wrapf(err, "writing bloom for series %v", series.Series.Fingerprint)
 	}
 
 	if err := b.index.Append(SeriesWithOffset{
 		Offset: offset,
 		Series: *series.Series,
 	}); err != nil {
-		return errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
+		return false, errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
 	}
 
-	return nil
+	full, err := b.blockIsFull()
+	if err != nil {
+		return false, errors.Wrap(err, "checking if block is full")
+	}
+
+	return full, nil
 }
 
 type BloomBlockBuilder struct {
@@ -556,7 +556,7 @@ type MergeBuilder struct {
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
-func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store PeekingIterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
+func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
@@ -641,17 +641,12 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, SeriesBounds, erro
 			}
 		}
 
-		if err := builder.AddSeries(*cur); err != nil {
+		bounds.update(cur.Series)
+		blockFull, err := builder.AddSeries(*cur)
+		if err != nil {
 			return 0, SeriesBounds{}, errors.Wrap(err, "adding series to block")
 		}
-
-		bounds.update(cur.Series)
-
-		full, err := builder.BlockIsFull()
-		if err != nil {
-			return 0, SeriesBounds{}, errors.Wrap(err, "checking if block is full")
-		}
-		if full {
+		if blockFull {
 			break
 		}
 	}
