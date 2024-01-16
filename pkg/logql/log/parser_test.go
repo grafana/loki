@@ -28,7 +28,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"pod_uuid", "foo",
 				"pod_deployment_ref", "foobar",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"numeric",
@@ -37,7 +37,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.FromStrings("counter", "1",
 				"price__net_", "5.56909",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"escaped",
@@ -47,7 +47,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"price__net_", "5.56909",
 				"foo", `foo\"bar`,
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"utf8 error rune",
@@ -57,21 +57,21 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"price__net_", "5.56909",
 				"foo", "",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"skip arrays",
 			[]byte(`{"counter":1, "price": {"net_":["10","20"]}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("counter", "1"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"bad key replaced",
 			[]byte(`{"cou-nter":1}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("cou_nter", "1"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"errors",
@@ -80,7 +80,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.FromStrings("__error__", "JSONParserErr",
 				"__error_details__", "Value looks like object, but can't find closing '}' symbol",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"errors hints",
@@ -103,7 +103,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"next_err", "false",
 				"pod_deployment_ref", "foobar",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 	}
 	for _, tt := range tests {
@@ -254,7 +254,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("app", "foo"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"alternate syntax",
@@ -264,7 +264,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("test", "value"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"multiple fields",
@@ -277,7 +277,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("app", "foo",
 				"namespace", "prod",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"utf8",
@@ -287,7 +287,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("utf8", "value"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"nested field",
@@ -297,7 +297,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"nested field alternate syntax",
@@ -307,7 +307,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"nested field alternate syntax 2",
@@ -317,7 +317,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"nested field alternate syntax 3",
@@ -327,7 +327,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"array element",
@@ -337,7 +337,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("param", "1"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"full array",
@@ -347,7 +347,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("params", "[1,2,3]"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"full object",
@@ -357,7 +357,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("deployment", `{"ref":"foobar", "params": [1,2,3]}`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"expression matching nothing",
@@ -367,7 +367,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("nope", ""),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"null field",
@@ -378,7 +378,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("nf", ""), // null is coerced to an empty string
 
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"boolean field",
@@ -388,7 +388,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("bool", `false`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"label override",
@@ -400,7 +400,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("uuid", "bar",
 				"uuid_extracted", "foo",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"non-matching expression",
@@ -412,7 +412,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("uuid", "bar",
 				"request_size", "",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"empty line",
@@ -422,7 +422,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", ""),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"existing labels are not affected",
@@ -434,7 +434,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"uuid", "",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"invalid JSON line",
@@ -446,7 +446,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				logqlmodel.ErrorLabel, errJSON,
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"invalid JSON line with hints",
@@ -469,7 +469,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"nested escaped object",
@@ -481,7 +481,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"app", `{ "key": "value", "key2":"value2"}`,
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 	}
 	for _, tt := range tests {
@@ -745,7 +745,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error__", "LogfmtParserErr",
 				"__error_details__", "logfmt syntax error at pos 8 : unexpected '='",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"not logfmt with hints",
@@ -765,7 +765,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("buzz", "foo"),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"key alone logfmt",
@@ -774,7 +774,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"bar", "foo"),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"quoted logfmt",
@@ -784,7 +784,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "foo bar",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"escaped control chars in logfmt",
@@ -794,7 +794,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "foo\nbar\tbaz",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"literal control chars in logfmt",
@@ -804,7 +804,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "foo\nbar\tbaz",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"escaped slash logfmt",
@@ -814,7 +814,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", `foo ba\r baz`,
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"literal newline and escaped slash logfmt",
@@ -824,7 +824,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "foo bar\nb\\az",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"double property logfmt",
@@ -835,7 +835,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"latency", "10ms",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"duplicate from line property",
@@ -845,7 +845,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "10ms",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"duplicate property",
@@ -856,7 +856,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"foobar", "10ms",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"invalid key names",
@@ -868,7 +868,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"test_dash", "foo",
 			),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"nil",
@@ -876,7 +876,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
 			nil,
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"empty key",
@@ -891,7 +891,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error__", "LogfmtParserErr",
 				"__error_details__", "logfmt syntax error at pos 15 : unexpected '='",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"error rune in key",
@@ -905,7 +905,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error__", "LogfmtParserErr",
 				"__error_details__", "logfmt syntax error at pos 20 : invalid key",
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"double quote in key",
@@ -919,7 +919,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error__", "LogfmtParserErr",
 				"__error_details__", `logfmt syntax error at pos 17 : unexpected '"'`,
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"= in value",
@@ -932,7 +932,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error__", "LogfmtParserErr",
 				"__error_details__", `logfmt syntax error at pos 7 : unexpected '='`,
 			),
-			noParserHints,
+			NoParserHints(),
 		},
 	}
 
@@ -1199,7 +1199,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"cluster", "us-central1",
 			),
 			[]byte(`some message`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"wrong json",
@@ -1209,7 +1209,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"__error_details__", "expecting json object(6), but it is not",
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"empty line",
@@ -1217,7 +1217,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.FromStrings("cluster", "us-central1"),
 			labels.FromStrings("cluster", "us-central1"),
 			[]byte(``),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"wrong json with hints",
@@ -1239,7 +1239,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"cluster", "us-central1",
 			),
 			[]byte(`["foo","bar"]`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"should rename",
@@ -1253,7 +1253,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"cluster", "us-central1",
 			),
 			[]byte(`some message`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"should not change log and labels if no packed entry",
@@ -1265,7 +1265,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"cluster", "us-central1",
 			),
 			[]byte(`{"bar":1,"app":"foo","namespace":"prod","pod":{"uid":"1"}}`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"non json with escaped quotes",
@@ -1277,7 +1277,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"cluster", "us-central1",
 			),
 			[]byte(`I0303 17:49:45.976518    1526 kubelet_getters.go:178] "Pod status updated" pod="openshift-etcd/etcd-ip-10-0-150-50.us-east-2.compute.internal" status=Running`),
-			noParserHints,
+			NoParserHints(),
 		},
 		{
 			"invalid key names",
@@ -1288,7 +1288,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 				"test_dash", "foo",
 			),
 			[]byte(`some message`),
-			noParserHints,
+			NoParserHints(),
 		},
 	}
 	for _, tt := range tests {
