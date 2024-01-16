@@ -339,6 +339,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	responses := responsesPool.Get(requestCount)
 	defer responsesPool.Put(responses)
 
+outer:
 	for {
 		select {
 		case <-ctx.Done():
@@ -351,19 +352,24 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
 			// wait for all parts of the full response
 			if len(responses) == requestCount {
-				for _, o := range responses {
-					if o.Removals.Len() == 0 {
-						continue
-					}
-					// we must not remove items from req.Refs as long as the worker may iterater over them
-					g.removeNotMatchingChunks(req, o)
-				}
-				g.metrics.addUnfilteredCount(numChunksUnfiltered)
-				g.metrics.addFilteredCount(len(req.Refs))
-				return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+				break outer
 			}
 		}
 	}
+
+	for _, o := range responses {
+		if o.Removals.Len() == 0 {
+			continue
+		}
+		// we must not remove items from req.Refs as long as the worker may iterater over them
+		g.removeNotMatchingChunks(req, o)
+	}
+
+	g.metrics.addUnfilteredCount(numChunksUnfiltered)
+	g.metrics.addFilteredCount(len(req.Refs))
+
+	level.Debug(g.logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
+	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
 func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) {

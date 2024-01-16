@@ -221,20 +221,17 @@ func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant strin
 	return w.store.ForEach(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
-				w.processBlock(bq, day, b.tasks)
-				return nil
+				return w.processBlock(bq, day, b.tasks)
 			}
 		}
 		return nil
 	})
 }
 
-func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
+func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) error {
 	schema, err := blockQuerier.Schema()
 	if err != nil {
-		for _, t := range tasks {
-			t.ErrCh <- errors.Wrap(err, "failed to get block schema")
-		}
+		return err
 	}
 
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
@@ -243,13 +240,13 @@ func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, task
 
 	start := time.Now()
 	err = fq.Run()
+	duration := time.Since(start).Seconds()
 
-	label := "success"
 	if err != nil {
-		label = "failure"
-		for _, t := range tasks {
-			t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
-		}
+		w.metrics.bloomQueryLatency.WithLabelValues(w.id, "failure").Observe(duration)
+		return err
 	}
-	w.metrics.bloomQueryLatency.WithLabelValues(w.id, label).Observe(time.Since(start).Seconds())
+
+	w.metrics.bloomQueryLatency.WithLabelValues(w.id, "success").Observe(duration)
+	return nil
 }
