@@ -1745,6 +1745,10 @@ with the select cluster size.</p>
 </tr><tr><td><p>&#34;InvalidTenantsConfiguration&#34;</p></td>
 <td><p>ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.</p>
 </td>
+</tr><tr><td><p>&#34;MissingCredentialsRequest&#34;</p></td>
+<td><p>ReasonMissingCredentialsRequest when the required request for managed auth credentials to object
+storage is missing.</p>
+</td>
 </tr><tr><td><p>&#34;MissingGatewayTenantAuthenticationConfig&#34;</p></td>
 <td><p>ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config</p>
 </td>
