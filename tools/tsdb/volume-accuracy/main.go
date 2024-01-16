@@ -39,6 +39,7 @@ func main() {
 	// Starts rounded to the second
 	starts := []time.Time{
 		time.Unix(time.Now().Unix(), 0),
+		time.Unix(time.Now().Unix(), 0).Add(-3 * time.Hour),
 		time.Unix(time.Now().Unix(), 0).Add(-24 * time.Hour),
 	}
 
@@ -125,7 +126,7 @@ func (a *accumulation) Add(metric string, start time.Time, interval model.Durati
 
 func (a *accumulation) Write(w io.Writer) {
 	// Header
-	fmt.Fprintf(w, "%-40s\t%40s\t%20s\t%20s\t%20s\t%20s\n", "stream", "start", "interval", "bytes over time", "volume", "relative error")
+	fmt.Fprintf(w, "%-40s\t%40s\t%10s\t%15s\t%15s\t%15s\n", "stream", "start", "interval", "bytes over time", "volume", "relative error")
 
 	// Content
 	for i := range a.metric {
@@ -133,6 +134,6 @@ func (a *accumulation) Write(w io.Writer) {
 		actual := a.volume[i]
 		relativeError := math.Abs(1 - actual/expected)
 
-		fmt.Fprintf(w, "%-40s\t%40s\t%20s\t%20.f\t%20.f\t%20f\n", a.metric[i], a.start[i], a.interval[i], expected, actual, relativeError)
+		fmt.Fprintf(w, "%-40s\t%40s\t%10s\t%15.f\t%15.f\t%15f\n", a.metric[i], a.start[i], a.interval[i], expected, actual, relativeError)
 	}
 }
