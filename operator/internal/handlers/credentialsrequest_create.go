@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
+// CreateCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
+// to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
 func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.ObjectKey) (string, error) {
 	managedAuthEnv := openshift.DiscoverManagedAuthEnv()
 	if managedAuthEnv == nil {
