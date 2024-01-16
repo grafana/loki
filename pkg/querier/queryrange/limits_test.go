@@ -54,18 +54,18 @@ func TestLimits(t *testing.T) {
 	)
 }
 
-func TestIngesterQueryWindowCacheKey(t *testing.T) {
+func TestMetricQueryCacheKey(t *testing.T) {
 	const (
-		defaultTenant   = "a"
-		alternateTenant = "b"
-		query           = `sum(rate({foo="bar"}[1]))`
-		defaultSplit    = time.Hour
-		ingesterSplit   = 90 * time.Minute
+		defaultTenant       = "a"
+		alternateTenant     = "b"
+		query               = `sum(rate({foo="bar"}[1]))`
+		defaultSplit        = time.Hour
+		ingesterSplit       = 90 * time.Minute
+		ingesterQueryWindow = defaultSplit * 3
 	)
 
 	var (
-		step                = (15 * time.Second).Milliseconds()
-		ingesterQueryWindow = defaultSplit * 3
+		step = (15 * time.Second).Milliseconds()
 	)
 
 	l := fakeLimits{
@@ -131,6 +131,8 @@ func TestIngesterQueryWindowCacheKey(t *testing.T) {
 				Step:    step,
 			}
 
+			// we use regex here because cache key always refers to the current time to get the ingester query window,
+			// and therefore we can't know the current interval apriori without duplicating the logic
 			pattern := regexp.MustCompile(fmt.Sprintf(`%s:%s:%d:(\d+):%d`, tc.tenantID, regexp.QuoteMeta(query), step, tc.expectedSplit))
 			require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tc.tenantID, r))
 		})
