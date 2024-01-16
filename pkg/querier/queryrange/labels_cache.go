@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -91,7 +92,19 @@ func NewLabelsCacheMiddleware(
 		merger,
 		labelsExtractor{},
 		cacheGenNumberLoader,
-		shouldCache,
+		func(ctx context.Context, r queryrangebase.Request) bool {
+			if shouldCache != nil && !shouldCache(ctx, r) {
+				return false
+			}
+
+			cacheReq, err := shouldCacheMetadataReq(ctx, r, limits)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to determine if metadata request should be cached. Won't cache", "err", err)
+				return false
+			}
+
+			return cacheReq
+		},
 		parallelismForReq,
 		retentionEnabled,
 		metrics,
