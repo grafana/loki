@@ -25,9 +25,7 @@ type cacheKeyLabels struct {
 func (i cacheKeyLabels) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	lr := r.(*LabelRequest)
 
-	// TODO(dannyk): replace with the below once we've confirmed we want to use same split for metadata queries
-	// split := SplitIntervalForTimeRange(l.iqo, l.Limits, l.MetadataQuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
-	split := i.MetadataQuerySplitDuration(userID)
+	split := SplitIntervalForTimeRange(i.iqo, i.Limits, i.MetadataQuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
