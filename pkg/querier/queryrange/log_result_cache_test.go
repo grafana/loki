@@ -532,7 +532,7 @@ func Test_LogResultCacheDifferentLimit(t *testing.T) {
 		lrc = NewLogResultCache(
 			log.NewNopLogger(),
 			fakeLimits{
-				splitDuration: map[string]time.Duration{"foo": time.Minute},
+				splits: map[string]time.Duration{"foo": time.Minute},
 			},
 			cache.NewMockCache(),
 			nil,
