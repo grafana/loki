@@ -66,7 +66,8 @@ func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg c
 	return &storageSecret, nil, nil
 }
 
-// extractSecrets reads a k8s secret into a manifest object storage struct if valid.
+// extractSecrets reads the k8s obj storage secret into a manifest object storage struct if valid.
+// The managed auth is also read into the manifest object under the right circumstances.
 func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managedAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
 	hash, err := hashSecretData(objStore)
 	if err != nil {
