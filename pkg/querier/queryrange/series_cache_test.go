@@ -312,3 +312,113 @@ func TestSeriesCache(t *testing.T) {
 		}
 	})
 }
+
+func TestSeriesCache_freshness(t *testing.T) {
+	testTime := time.Now().Add(-1 * time.Hour)
+	from, through := util.RoundToMilliseconds(testTime.Add(-1*time.Hour), testTime)
+
+	for _, tt := range []struct {
+		name                      string
+		req                       *LokiSeriesRequest
+		shouldCache               bool
+		maxMetadataCacheFreshness time.Duration
+	}{
+		{
+			name: "max metadata freshness not set",
+			req: &LokiSeriesRequest{
+				StartTs: from.Time(),
+				EndTs:   through.Time(),
+				Match:   []string{`{namespace=~".*"}`},
+				Path:    seriesAPIPath,
+			},
+			shouldCache: true,
+		},
+		{
+			name: "req overlaps with max cache freshness window",
+			req: &LokiSeriesRequest{
+				StartTs: from.Time(),
+				EndTs:   through.Time(),
+				Match:   []string{`{namespace=~".*"}`},
+				Path:    seriesAPIPath,
+			},
+			maxMetadataCacheFreshness: 24 * time.Hour,
+			shouldCache:               false,
+		},
+		{
+			name: "req does not overlap max cache freshness window",
+			req: &LokiSeriesRequest{
+				StartTs: from.Add(-24 * time.Hour).Time(),
+				EndTs:   through.Add(-24 * time.Hour).Time(),
+				Match:   []string{`{namespace=~".*"}`},
+				Path:    seriesAPIPath,
+			},
+			maxMetadataCacheFreshness: 24 * time.Hour,
+			shouldCache:               true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cacheMiddleware, err := NewSeriesCacheMiddleware(
+				log.NewNopLogger(),
+				fakeLimits{
+					metadataSplitDuration: map[string]time.Duration{
+						"fake": 24 * time.Hour,
+					},
+					maxMetadataCacheFreshness: tt.maxMetadataCacheFreshness,
+				},
+				DefaultCodec,
+				cache.NewMockCache(),
+				nil,
+				nil,
+				func(_ context.Context, _ []string, _ queryrangebase.Request) int {
+					return 1
+				},
+				false,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+
+			seriesResp := &LokiSeriesResponse{
+				Status:  "success",
+				Version: uint32(loghttp.VersionV1),
+				Data: []logproto.SeriesIdentifier{
+					{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "eu-west"}, {Key: "namespace", Value: "prod"}},
+					},
+				},
+				Statistics: stats.Result{
+					Summary: stats.Summary{
+						Splits: 1,
+					},
+				},
+			}
+
+			called := 0
+			handler := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				called++
+
+				// should request the entire length with no partitioning as nothing is cached yet.
+				require.Equal(t, tt.req.GetStart(), r.GetStart())
+				require.Equal(t, tt.req.GetEnd(), r.GetEnd())
+
+				return seriesResp, nil
+			}))
+
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			got, err := handler.Do(ctx, tt.req)
+			require.NoError(t, err)
+			require.Equal(t, 1, called) // called actual handler, as not cached.
+			require.Equal(t, seriesResp, got)
+
+			called = 0
+			got, err = handler.Do(ctx, tt.req)
+			require.NoError(t, err)
+			if !tt.shouldCache {
+				require.Equal(t, 1, called)
+			} else {
+				require.Equal(t, 0, called)
+			}
+			require.Equal(t, seriesResp, got)
+		})
+	}
+}
