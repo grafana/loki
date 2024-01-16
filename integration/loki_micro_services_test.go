@@ -1218,7 +1218,8 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 		metrics, err := cliBloomCompactor.Metrics()
 		require.NoError(t, err)
 		successfulRunCount := getMetricValue(t, "loki_bloomcompactor_runs_completed_total", metrics)
-		return successfulRunCount >= 1
+		t.Log("successful bloom compactor runs", successfulRunCount)
+		return successfulRunCount == 1
 	}, 30*time.Second, time.Second)
 
 	// use bloom gateway to perform needle in the haystack queries
@@ -1238,18 +1239,18 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	bloomGwMetrics, err := cliBloomGateway.Metrics()
 	require.NoError(t, err)
 
-	mf, err := extractMetricFamily("loki_bloom_gateway_store_latency", bloomGwMetrics)
-	require.NoError(t, err)
-
 	unfilteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_pre_filtering", bloomGwMetrics)
 	require.Equal(t, float64(10), unfilteredCount)
 
 	filteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_post_filtering", bloomGwMetrics)
 	require.Equal(t, float64(1), filteredCount)
 
+	mf, err := extractMetricFamily("loki_bloom_gateway_bloom_query_latency", bloomGwMetrics)
+	require.NoError(t, err)
+
 	count := getValueFromMetricFamilyWithFunc(mf, &dto.LabelPair{
-		Name:  proto.String("operation"),
-		Value: proto.String("ForEach"),
+		Name:  proto.String("status"),
+		Value: proto.String("success"),
 	}, func(m *dto.Metric) uint64 {
 		return m.Histogram.GetSampleCount()
 	})

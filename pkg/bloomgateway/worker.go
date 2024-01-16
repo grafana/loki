@@ -27,6 +27,7 @@ type workerMetrics struct {
 	dequeueErrors      *prometheus.CounterVec
 	dequeueWaitTime    *prometheus.SummaryVec
 	storeAccessLatency *prometheus.HistogramVec
+	bloomQueryLatency  *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -50,6 +51,13 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "dequeue_wait_time",
 			Help:      "Time spent waiting for dequeuing tasks from queue",
 		}, labels),
+		bloomQueryLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "bloom_query_latency",
+			Help:      "Latency in seconds of processing bloom blocks",
+		}, append(labels, "status")),
+		// TODO(chaudum): Move this metric into the bloomshipper
 		storeAccessLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
@@ -210,12 +218,10 @@ func (w *worker) stopping(err error) error {
 }
 
 func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
-	storeFetchStart := time.Now()
 	return w.store.ForEach(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
-		w.metrics.storeAccessLatency.WithLabelValues(w.id, "ForEach").Observe(time.Since(storeFetchStart).Seconds())
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
-				processBlock(bq, day, b.tasks)
+				w.processBlock(bq, day, b.tasks)
 				return nil
 			}
 		}
@@ -223,7 +229,7 @@ func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant strin
 	})
 }
 
-func processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
+func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		for _, t := range tasks {
@@ -234,10 +240,16 @@ func processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
 	it := newTaskMergeIterator(day, tokenizer, tasks...)
 	fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
+
+	start := time.Now()
 	err = fq.Run()
+
+	label := "success"
 	if err != nil {
+		label = "failure"
 		for _, t := range tasks {
 			t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
 		}
 	}
+	w.metrics.bloomQueryLatency.WithLabelValues(w.id, label).Observe(time.Since(start).Seconds())
 }
