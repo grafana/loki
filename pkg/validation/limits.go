@@ -302,6 +302,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 
+	// with metadata caching, it is not possible to extract a subset of labels/series from a cached extent because unlike samples they are not associated with a timestamp.
+	// as a result, we could return inaccurate results. example: returning results from an entire 1h extent for a 5m query
+	// Setting max_metadata_cache_freshness to 24h should help us avoid caching recent data and preseve the correctness.
+	// For the portion of the request beyond the freshness window, granularity of the cached metadata results is determined by split_metadata_queries_by_interval.
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
 

@@ -98,17 +98,7 @@ func NewSeriesCacheMiddleware(
 		seriesExtractor{},
 		cacheGenNumberLoader,
 		func(ctx context.Context, r queryrangebase.Request) bool {
-			if shouldCache != nil && !shouldCache(ctx, r) {
-				return false
-			}
-
-			cacheReq, err := shouldCacheMetadataReq(ctx, r, limits)
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to determine if metadata request should be cached. Won't cache", "err", err)
-				return false
-			}
-
-			return cacheReq
+			return shouldCacheMetadataReq(logger, ctx, shouldCache, r, limits)
 		},
 		parallelismForReq,
 		retentionEnabled,
@@ -116,14 +106,19 @@ func NewSeriesCacheMiddleware(
 	)
 }
 
-func shouldCacheMetadataReq(ctx context.Context, req queryrangebase.Request, l Limits) (bool, error) {
+func shouldCacheMetadataReq(logger log.Logger, ctx context.Context, shouldCache queryrangebase.ShouldCacheFn, req queryrangebase.Request, l Limits) bool {
+	if shouldCache != nil && !shouldCache(ctx, req) {
+		return false
+	}
+
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return false, err
+		level.Error(logger).Log("msg", "failed to determine if metadata request should be cached. won't cache", "err", err)
+		return false
 	}
 
 	cacheFreshnessCapture := func(id string) time.Duration { return l.MaxMetadataCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 
-	return maxCacheFreshness == 0 || model.Time(req.GetEnd().UnixMilli()).Before(model.Now().Add(-maxCacheFreshness)), nil
+	return maxCacheFreshness == 0 || model.Time(req.GetEnd().UnixMilli()).Before(model.Now().Add(-maxCacheFreshness))
 }
