@@ -326,10 +326,9 @@ The schema configuration does not contain the most recent schema version and nee
 ### Access Required
 
 - Console access to the cluster
-- Edit access to the deployed operator and Loki namespace:
+- Edit access to the namespace where the LokiStack is deployed:
   - OpenShift
     - `openshift-logging` (LokiStack)
-    - `openshift-operators-redhat` (Loki Operator)
 
 ### Steps
 
