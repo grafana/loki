@@ -52,7 +52,7 @@ var (
 		[]string{"size", "stack_id"},
 	)
 
-	lokiStackWarningsCount = prometheus.NewGaugeVec(
+	lokistackSchemaUpgradesRequired = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "lokistack_warnings_count",
 			Help: "Counts the number of warnings set on a LokiStack.",
@@ -121,6 +121,7 @@ func Collect(spec *lokiv1.LokiStackSpec, stackName string) {
 
 func setLokistackSchemaUpgradesRequired(identifier string, active bool) {
 	lokistackSchemaUpgradesRequired.With(prometheus.Labels{
+		"reason":   string(lokiv1.ReasonStorageNeedsSchemaUpdate),
 		"stack_id": identifier,
 	}).Set(boolValue(active))
 }
