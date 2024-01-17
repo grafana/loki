@@ -18,7 +18,7 @@ func SetStorageSchemaStatus(ctx context.Context, k k8s.Client, req ctrl.Request,
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
-		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
+		return kverrors.Wrap(err, "failed to lookup lokistack")
 	}
 
 	s.Status.Storage = lokiv1.LokiStackStorageStatus{

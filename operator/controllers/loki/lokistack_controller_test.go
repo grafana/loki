@@ -59,6 +59,7 @@ func TestLokiStackController_RegistersCustomResourceForCreateOrUpdate(t *testing
 	b.ForReturns(b)
 	b.OwnsReturns(b)
 	b.WatchesReturns(b)
+	b.WithLogConstructorReturns(b)
 
 	err := c.buildController(b)
 	require.NoError(t, err)
@@ -186,6 +187,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		b.ForReturns(b)
 		b.OwnsReturns(b)
 		b.WatchesReturns(b)
+		b.WithLogConstructorReturns(b)
 
 		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
 		err := c.buildController(b)
@@ -264,6 +266,7 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		b.ForReturns(b)
 		b.OwnsReturns(b)
 		b.WatchesReturns(b)
+		b.WithLogConstructorReturns(b)
 
 		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
 		err := c.buildController(b)
@@ -276,4 +279,19 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		require.Equal(t, tst.src, src)
 		require.Equal(t, tst.pred, opts[0])
 	}
+}
+
+func TestLokiStackController_RegistersLokiStackLogConstructor(t *testing.T) {
+	b := &k8sfakes.FakeBuilder{}
+	k := &k8sfakes.FakeClient{}
+	c := &LokiStackReconciler{Client: k, Scheme: scheme}
+
+	b.ForReturns(b)
+	b.OwnsReturns(b)
+	b.WatchesReturns(b)
+	b.WithLogConstructorReturns(b)
+
+	err := c.buildController(b)
+	require.NoError(t, err)
+	require.Equal(t, 1, b.WithLogConstructorCallCount())
 }

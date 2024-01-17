@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -18,8 +19,8 @@ import (
 
 func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s.Client, pod *corev1.Pod) error {
 	var err error
-
-	ll := log.WithValues("lokistack-pod-zone-annotation event", "createOrUpdatePodWithLabelPred", "pod", pod.Name)
+	podRef := klog.KRef(pod.Namespace, pod.Name)
+	ll := log.WithValues("event", eventAnnotateAvailabilityZoneLabels, "pod", podRef)
 
 	nodeName := pod.Spec.NodeName
 	if nodeName == "" {
@@ -29,19 +30,22 @@ func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s
 	node := &corev1.Node{}
 	key := client.ObjectKey{Name: nodeName}
 	if err = c.Get(ctx, key, node); err != nil {
-		return kverrors.Wrap(err, "failed to lookup node", "name", nodeName)
+		return kverrors.Wrap(err, "failed to lookup node", "node", nodeName)
 	}
 
 	labelsAnnotation, ok := pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels]
 	if !ok {
-		return kverrors.New("zone-aware pod is missing node-labels annotation", "annotation", lokiv1.AnnotationAvailabilityZoneLabels)
+		return kverrors.New("failed to get node's availability zone labels from pod annotation",
+			"node", nodeName,
+			"pod", podRef,
+			"annotation", lokiv1.AnnotationAvailabilityZoneLabels,
+		)
 	}
 	labelKeys := strings.Split(labelsAnnotation, ",")
 
 	availabilityZone, err := getAvailabilityZone(labelKeys, node.Labels)
 	if err != nil {
-		ll.Error(err, "failed to get pod availability zone", "name", pod.Name)
-		return kverrors.Wrap(err, "failed to get pod availability zone", "name", pod.Name)
+		return kverrors.Wrap(err, "failed to get current availability zone", "pod", podRef)
 	}
 
 	// Stop early if there is no annotation to set.
@@ -57,13 +61,14 @@ func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s
 		},
 	})
 	if err != nil {
-		return kverrors.Wrap(err, "could not format the annotations patch", "name", availabilityZone)
+		return kverrors.Wrap(err, "failed to marshal JSON patch for pod", "pod", podRef, "zone", availabilityZone)
 	}
 
 	if err = c.Patch(ctx, pod, client.RawPatch(types.StrategicMergePatchType, mergePatch)); err != nil && !errors.IsNotFound(err) {
-		ll.Error(err, "could not patch the pod annotations", "name", pod.Name)
-		return kverrors.Wrap(err, "Error patching the pod annotations", "name", pod.Name)
+		return kverrors.Wrap(err, "failed to patch pod with availability zone annotations", "pod", podRef)
 	}
+
+	ll.Info("successfully patched availability zone annotations")
 
 	return nil
 }

@@ -23,16 +23,16 @@ import (
 // CreateUpdateDeleteCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
 // to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
 func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, scheme *runtime.Scheme, managedAuth *config.ManagedAuthConfig, k k8s.Client, req ctrl.Request) error {
-	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createCredentialsRequest")
+	ll := log.WithValues("event", eventCreateUpdateDeleteCredentialsRequest)
 
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
 			// maybe the user deleted it before we could react? Either way this isn't an issue
-			ll.Error(err, "could not find the requested LokiStack", "name", req.String())
+			ll.Error(err, "could not find the requested LokiStack")
 			return nil
 		}
-		return kverrors.Wrap(err, "failed to lookup LokiStack", "name", req.String())
+		return kverrors.Wrap(err, "failed to lookup LokiStack")
 	}
 
 	if !hasManagedCredentialMode(&stack) {
@@ -44,11 +44,11 @@ func CreateUpdateDeleteCredentialsRequest(ctx context.Context, log logr.Logger, 
 				return nil
 			}
 
-			return kverrors.Wrap(err, "failed to lookup CredentialsRequest", "name", req.String())
+			return kverrors.Wrap(err, "failed to lookup CredentialsRequest")
 		}
 
 		if err := k.Delete(ctx, &credReq); err != nil {
-			return kverrors.Wrap(err, "failed to remove CredentialsRequest", "name", req.String())
+			return kverrors.Wrap(err, "failed to remove CredentialsRequest")
 		}
 		return nil
 	}

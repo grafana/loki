@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -56,8 +57,7 @@ func removeRulesConfigMap(ctx context.Context, c client.Client, key client.Objec
 	for _, rulesCm := range rulesCmList.Items {
 		if err := c.Delete(ctx, &rulesCm, &client.DeleteOptions{}); err != nil {
 			return kverrors.Wrap(err, "failed to delete ConfigMap",
-				"name", rulesCm.Name,
-				"namespace", rulesCm.Namespace,
+				"configmap", klog.KRef(rulesCm.Namespace, rulesCm.Name),
 			)
 		}
 	}
@@ -75,13 +75,12 @@ func removeRuler(ctx context.Context, c client.Client, stack client.ObjectKey) e
 			// resource doesnt exist, so nothing to do.
 			return nil
 		}
-		return kverrors.Wrap(err, "failed to lookup Statefulset", "name", key)
+		return kverrors.Wrap(err, "failed to lookup Statefulset", "statefulset", klog.KRef(key.Namespace, key.Name))
 	}
 
 	if err := c.Delete(ctx, &ruler, &client.DeleteOptions{}); err != nil {
 		return kverrors.Wrap(err, "failed to delete statefulset",
-			"name", ruler.Name,
-			"namespace", ruler.Namespace,
+			"statefulset", klog.KRef(key.Namespace, key.Name),
 		)
 	}
 

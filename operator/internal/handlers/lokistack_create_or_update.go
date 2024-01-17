@@ -37,16 +37,16 @@ func CreateOrUpdateLokiStack(
 	s *runtime.Scheme,
 	fg configv1.FeatureGates,
 ) (lokiv1.CredentialMode, error) {
-	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
+	ll := log.WithValues("event", eventCreateOrUpdateLokiStack)
 
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
 			// maybe the user deleted it before we could react? Either way this isn't an issue
-			ll.Error(err, "could not find the requested loki stack", "name", req.NamespacedName)
+			ll.Error(err, "could not find the requested loki stack")
 			return "", nil
 		}
-		return "", kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
+		return "", kverrors.Wrap(err, "failed to lookup lokistack")
 	}
 
 	img := os.Getenv(manifests.EnvRelatedImageLoki)
@@ -195,7 +195,7 @@ func CreateOrUpdateLokiStack(
 			continue
 		}
 
-		msg := fmt.Sprintf("Resource has been %s", op)
+		msg := fmt.Sprintf("resource has been %s", op)
 		switch op {
 		case ctrlutil.OperationResultNone:
 			l.V(1).Info(msg)
@@ -205,7 +205,7 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if errCount > 0 {
-		return "", kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
+		return "", kverrors.New("failed to configure lokistack resources")
 	}
 
 	// 1x.demo is used only for development, so the metrics will not

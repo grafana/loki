@@ -6,6 +6,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
+	"github.com/go-logr/logr"
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
@@ -100,7 +101,7 @@ func main() {
 
 	if err = (&lokictrl.LokiStackReconciler{
 		Client:       mgr.GetClient(),
-		Log:          logger.WithName("controllers").WithName("lokistack"),
+		Log:          newLoggerSink(logger, lokictrl.LokiStackCtrlName),
 		Scheme:       mgr.GetScheme(),
 		FeatureGates: ctrlCfg.Gates,
 		AuthConfig:   managedAuth,
@@ -120,7 +121,7 @@ func main() {
 		if err = (&lokictrl.DashboardsReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Log:        logger.WithName("controllers").WithName("lokistack-dashboards"),
+			Log:        newLoggerSink(logger, lokictrl.DashboardsCtrlName),
 			OperatorNs: ns,
 		}).SetupWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
@@ -137,7 +138,7 @@ func main() {
 	}
 	if err = (&lokictrl.AlertingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("alertingrule"),
+		Log:    newLoggerSink(logger, lokictrl.AlertingRuleCtrlName),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "alertingrule")
@@ -156,7 +157,7 @@ func main() {
 	}
 	if err = (&lokictrl.RecordingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("recordingrule"),
+		Log:    newLoggerSink(logger, lokictrl.RecordingRuleCtrlName),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "recordingrule")
@@ -175,6 +176,7 @@ func main() {
 	}
 	if err = (&lokictrl.RulerConfigReconciler{
 		Client: mgr.GetClient(),
+		Log:    newLoggerSink(logger, lokictrl.RulerConfigCtrlName),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "rulerconfig")
@@ -190,7 +192,7 @@ func main() {
 	if ctrlCfg.Gates.BuiltInCertManagement.Enabled {
 		if err = (&lokictrl.CertRotationReconciler{
 			Client:       mgr.GetClient(),
-			Log:          logger.WithName("controllers").WithName("certrotation"),
+			Log:          newLoggerSink(logger, lokictrl.CertRotationCtrlName),
 			Scheme:       mgr.GetScheme(),
 			FeatureGates: ctrlCfg.Gates,
 		}).SetupWithManager(mgr); err != nil {
@@ -201,7 +203,7 @@ func main() {
 
 	if err = (&lokictrl.LokiStackZoneAwarePodReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("lokistack-zoneaware-pod"),
+		Log:    newLoggerSink(logger, lokictrl.LokiStackZoneLabelsCtrlName),
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "lokistack-zoneaware-pod")
 		os.Exit(1)
@@ -225,4 +227,8 @@ func main() {
 		logger.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func newLoggerSink(log logr.Logger, controllerName string) logr.Logger {
+	return log.WithName("controller").WithName(controllerName)
 }

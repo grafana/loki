@@ -18,7 +18,7 @@ func IsManaged(ctx context.Context, req ctrl.Request, k k8s.Client) (bool, error
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
-		return false, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
+		return false, kverrors.Wrap(err, "failed to lookup lokistack")
 	}
 	return stack.Spec.ManagementState == lokiv1.ManagementStateManaged, nil
 }

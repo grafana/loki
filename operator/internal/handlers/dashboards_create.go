@@ -6,7 +6,6 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client" //nolint:typecheck
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -17,7 +16,9 @@ import (
 )
 
 // CreateDashboards handles the LokiStack dashboards create events.
-func CreateDashboards(ctx context.Context, log logr.Logger, operatorNs string, k k8s.Client, s *runtime.Scheme) error {
+func CreateDashboards(ctx context.Context, log logr.Logger, k k8s.Client, operatorNs string) error {
+	ll := log.WithValues("event", eventCreateDashboards)
+
 	objs, err := openshift.BuildDashboards(operatorNs)
 	if err != nil {
 		return kverrors.Wrap(err, "failed to build dashboard manifests")
@@ -25,22 +26,27 @@ func CreateDashboards(ctx context.Context, log logr.Logger, operatorNs string, k
 
 	var errCount int32
 	for _, obj := range objs {
+		l := ll.WithValues(
+			"object_name", obj.GetName(),
+			"object_kind", obj.GetObjectKind(),
+		)
+
 		desired := obj.DeepCopyObject().(client.Object)
 		mutateFn := manifests.MutateFuncFor(obj, desired, nil)
 
 		op, err := ctrl.CreateOrUpdate(ctx, k, obj, mutateFn)
 		if err != nil {
-			log.Error(err, "failed to configure resource")
+			l.Error(err, "failed to configure resource")
 			errCount++
 			continue
 		}
 
-		msg := fmt.Sprintf("Resource has been %s", op)
+		msg := fmt.Sprintf("resource has been %s", op)
 		switch op {
 		case ctrlutil.OperationResultNone:
-			log.V(1).Info(msg)
+			l.V(1).Info(msg)
 		default:
-			log.Info(msg)
+			l.Info(msg)
 		}
 	}
 

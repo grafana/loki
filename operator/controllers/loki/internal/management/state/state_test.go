@@ -103,7 +103,7 @@ func TestIsManaged_WhenError_ReturnNotManagedWithError(t *testing.T) {
 		{
 			name:     "any other api error",
 			apierror: badReqErr,
-			wantErr:  kverrors.Wrap(badReqErr, "failed to lookup lokistack", "name", r.NamespacedName),
+			wantErr:  kverrors.Wrap(badReqErr, "failed to lookup lokistack"),
 		},
 	}
 	for _, tst := range table {
