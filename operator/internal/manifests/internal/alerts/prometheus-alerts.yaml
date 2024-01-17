@@ -175,7 +175,7 @@ groups:
     for: 15m
     labels:
       severity: warning
-  - alert: lokistackSchemaUpgradesRequired
+  - alert: LokistackSchemaUpgradesRequired
     annotations:
       message: |-
         Object storage schema needs upgrade.
