@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
 
+## 5.41.7
+
+- [FEATURE] Add support to disable specific alert rules
+
 ## 5.41.6
 
 - [BUGFIX] Added missing namespace to query-scheduler-discovery service when deploying loki in a specific namespace.

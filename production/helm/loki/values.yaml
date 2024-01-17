@@ -583,6 +583,12 @@ monitoring:
     enabled: true
     # -- Include alerting rules
     alerting: true
+    # -- Specify which individual alerts should be disabled
+    # -- Instead of turning off each alert one by one, set the .monitoring.rules.alerting value to false instead.
+    # -- If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.
+    disabled: {}
+    #  LokiRequestErrors: true
+    #  LokiRequestPanics: true
     # -- Alternative namespace to create PrometheusRule resources in
     namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
