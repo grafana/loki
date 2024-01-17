@@ -75,11 +75,14 @@ For release 2.9 the components are:
 - Ruler
 - Table Manager (deprecated)
 
-TIP: You can see the complete list of targets for your version of Loki by running Loki with the flag `-list-targets`, for example:
+{{% admonition type="tip" %}}
+You can see the complete list of targets for your version of Loki by running Loki with the flag `-list-targets`, for example:
 
 ```bash
 docker run docker.io/grafana/loki:2.9.2 -config.file=/etc/loki/local-config.yaml -list-targets
 ```
+{{% /admonition %}}
+
 ![Microservices mode diagram](../microservices-mode.png "Microservices mode")
 
 Running components as individual microservices provides more granularity, letting you scale each component as individual microservices, to better match your specific use case.
