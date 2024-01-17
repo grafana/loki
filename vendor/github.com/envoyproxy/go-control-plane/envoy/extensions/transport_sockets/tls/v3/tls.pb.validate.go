@@ -359,9 +359,47 @@ func (m *DownstreamTlsContext) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.SessionTicketKeysType.(type) {
+	if all {
+		switch v := interface{}(m.GetFullScanCertsOnSniMismatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, DownstreamTlsContextValidationError{
+					field:  "FullScanCertsOnSniMismatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, DownstreamTlsContextValidationError{
+					field:  "FullScanCertsOnSniMismatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetFullScanCertsOnSniMismatch()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return DownstreamTlsContextValidationError{
+				field:  "FullScanCertsOnSniMismatch",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
 
+	switch v := m.SessionTicketKeysType.(type) {
 	case *DownstreamTlsContext_SessionTicketKeys:
+		if v == nil {
+			err := DownstreamTlsContextValidationError{
+				field:  "SessionTicketKeysType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetSessionTicketKeys()).(type) {
@@ -393,6 +431,16 @@ func (m *DownstreamTlsContext) validate(all bool) error {
 		}
 
 	case *DownstreamTlsContext_SessionTicketKeysSdsSecretConfig:
+		if v == nil {
+			err := DownstreamTlsContextValidationError{
+				field:  "SessionTicketKeysType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetSessionTicketKeysSdsSecretConfig()).(type) {
@@ -424,8 +472,19 @@ func (m *DownstreamTlsContext) validate(all bool) error {
 		}
 
 	case *DownstreamTlsContext_DisableStatelessSessionResumption:
+		if v == nil {
+			err := DownstreamTlsContextValidationError{
+				field:  "SessionTicketKeysType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 		// no validation rules for DisableStatelessSessionResumption
-
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -771,17 +830,6 @@ func (m *CommonTlsContext) validate(all bool) error {
 
 	}
 
-	if len(m.GetTlsCertificateSdsSecretConfigs()) > 2 {
-		err := CommonTlsContextValidationError{
-			field:  "TlsCertificateSdsSecretConfigs",
-			reason: "value must contain no more than 2 item(s)",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
-
 	for idx, item := range m.GetTlsCertificateSdsSecretConfigs() {
 		_, _ = idx, item
 
@@ -961,9 +1009,18 @@ func (m *CommonTlsContext) validate(all bool) error {
 		}
 	}
 
-	switch m.ValidationContextType.(type) {
-
+	switch v := m.ValidationContextType.(type) {
 	case *CommonTlsContext_ValidationContext:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetValidationContext()).(type) {
@@ -995,6 +1052,16 @@ func (m *CommonTlsContext) validate(all bool) error {
 		}
 
 	case *CommonTlsContext_ValidationContextSdsSecretConfig:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetValidationContextSdsSecretConfig()).(type) {
@@ -1026,6 +1093,16 @@ func (m *CommonTlsContext) validate(all bool) error {
 		}
 
 	case *CommonTlsContext_CombinedValidationContext:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetCombinedValidationContext()).(type) {
@@ -1057,6 +1134,16 @@ func (m *CommonTlsContext) validate(all bool) error {
 		}
 
 	case *CommonTlsContext_ValidationContextCertificateProvider:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetValidationContextCertificateProvider()).(type) {
@@ -1088,6 +1175,16 @@ func (m *CommonTlsContext) validate(all bool) error {
 		}
 
 	case *CommonTlsContext_ValidationContextCertificateProviderInstance:
+		if v == nil {
+			err := CommonTlsContextValidationError{
+				field:  "ValidationContextType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetValidationContextCertificateProviderInstance()).(type) {
@@ -1118,6 +1215,8 @@ func (m *CommonTlsContext) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -1232,9 +1331,20 @@ func (m *CommonTlsContext_CertificateProvider) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.Config.(type) {
-
+	oneofConfigPresent := false
+	switch v := m.Config.(type) {
 	case *CommonTlsContext_CertificateProvider_TypedConfig:
+		if v == nil {
+			err := CommonTlsContext_CertificateProviderValidationError{
+				field:  "Config",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofConfigPresent = true
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -1266,6 +1376,9 @@ func (m *CommonTlsContext_CertificateProvider) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofConfigPresent {
 		err := CommonTlsContext_CertificateProviderValidationError{
 			field:  "Config",
 			reason: "value is required",
@@ -1274,7 +1387,6 @@ func (m *CommonTlsContext_CertificateProvider) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

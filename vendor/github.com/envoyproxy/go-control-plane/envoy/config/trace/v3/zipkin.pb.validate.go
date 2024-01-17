@@ -114,6 +114,8 @@ func (m *ZipkinConfig) validate(all bool) error {
 
 	// no validation rules for CollectorHostname
 
+	// no validation rules for SplitSpansForRequest
+
 	if len(errors) > 0 {
 		return ZipkinConfigMultiError(errors)
 	}

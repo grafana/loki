@@ -193,9 +193,20 @@ func (m *PathTransformation_Operation) validate(all bool) error {
 
 	var errors []error
 
-	switch m.OperationSpecifier.(type) {
-
+	oneofOperationSpecifierPresent := false
+	switch v := m.OperationSpecifier.(type) {
 	case *PathTransformation_Operation_NormalizePathRfc_3986:
+		if v == nil {
+			err := PathTransformation_OperationValidationError{
+				field:  "OperationSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofOperationSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetNormalizePathRfc_3986()).(type) {
@@ -227,6 +238,17 @@ func (m *PathTransformation_Operation) validate(all bool) error {
 		}
 
 	case *PathTransformation_Operation_MergeSlashes_:
+		if v == nil {
+			err := PathTransformation_OperationValidationError{
+				field:  "OperationSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofOperationSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetMergeSlashes()).(type) {
@@ -258,6 +280,9 @@ func (m *PathTransformation_Operation) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofOperationSpecifierPresent {
 		err := PathTransformation_OperationValidationError{
 			field:  "OperationSpecifier",
 			reason: "value is required",
@@ -266,7 +291,6 @@ func (m *PathTransformation_Operation) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

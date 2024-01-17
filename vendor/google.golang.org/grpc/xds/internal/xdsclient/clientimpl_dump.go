@@ -22,42 +22,32 @@ import (
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
-func mergeMaps(maps []map[string]xdsresource.UpdateWithMD) map[string]xdsresource.UpdateWithMD {
-	ret := make(map[string]xdsresource.UpdateWithMD)
-	for _, m := range maps {
-		for k, v := range m {
-			ret[k] = v
+func appendMaps(dst, src map[string]map[string]xdsresource.UpdateWithMD) {
+	// Iterate through the resource types.
+	for rType, srcResources := range src {
+		// Lookup/create the resource type specific map in the destination.
+		dstResources := dst[rType]
+		if dstResources == nil {
+			dstResources = make(map[string]xdsresource.UpdateWithMD)
+			dst[rType] = dstResources
+		}
+
+		// Iterate through the resources within the resource type in the source,
+		// and copy them over to the destination.
+		for name, update := range srcResources {
+			dstResources[name] = update
 		}
 	}
-	return ret
 }
 
-func (c *clientImpl) dump(t xdsresource.ResourceType) map[string]xdsresource.UpdateWithMD {
+// DumpResources returns the status and contents of all xDS resources.
+func (c *clientImpl) DumpResources() map[string]map[string]xdsresource.UpdateWithMD {
 	c.authorityMu.Lock()
 	defer c.authorityMu.Unlock()
-	maps := make([]map[string]xdsresource.UpdateWithMD, 0, len(c.authorities))
+	dumps := make(map[string]map[string]xdsresource.UpdateWithMD)
 	for _, a := range c.authorities {
-		maps = append(maps, a.dump(t))
+		dump := a.dumpResources()
+		appendMaps(dumps, dump)
 	}
-	return mergeMaps(maps)
-}
-
-// DumpLDS returns the status and contents of LDS.
-func (c *clientImpl) DumpLDS() map[string]xdsresource.UpdateWithMD {
-	return c.dump(xdsresource.ListenerResource)
-}
-
-// DumpRDS returns the status and contents of RDS.
-func (c *clientImpl) DumpRDS() map[string]xdsresource.UpdateWithMD {
-	return c.dump(xdsresource.RouteConfigResource)
-}
-
-// DumpCDS returns the status and contents of CDS.
-func (c *clientImpl) DumpCDS() map[string]xdsresource.UpdateWithMD {
-	return c.dump(xdsresource.ClusterResource)
-}
-
-// DumpEDS returns the status and contents of EDS.
-func (c *clientImpl) DumpEDS() map[string]xdsresource.UpdateWithMD {
-	return c.dump(xdsresource.EndpointsResource)
+	return dumps
 }

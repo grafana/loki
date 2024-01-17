@@ -1,8 +1,9 @@
 ---
-title: Configuration
+title: Docker-driver configuration
+menuTitle: Configuration
 description: Configuring the Docker Driver 
 ---
-# Configuration
+# Docker-driver configuration
 
 The Docker daemon on each machine has a default logging driver and
 each container will use the default driver unless configured otherwise.
@@ -124,7 +125,7 @@ next section for all supported options.
 While you can provide `loki-pipeline-stage-file` it can be hard to mount the configuration file to the driver root filesystem.
 This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined. Pipeline stages are run at last on every lines.
 
-The example [docker-compose](https://github.com/grafana/loki/blob/master/cmd/docker-driver/docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
+The example [docker-compose](https://github.com/grafana/loki/blob/main/cmd/docker-driver/docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
 
 ```yaml
 version: "3"

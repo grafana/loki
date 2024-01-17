@@ -29,12 +29,11 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.28.3
+BUILD_IMAGE_VERSION := 0.29.3-go1.20.10
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-FETCH_TAGS :=$(shell ./tools/fetch-tags)
 IMAGE_TAG := $(shell ./tools/image-tag)
 
 # Version info for binaries
@@ -791,3 +790,18 @@ dev-k3d-enterprise-logs:
 
 dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
+
+# Trivy is used to scan images for vulnerabilities
+.PHONY: trivy
+trivy: loki-image
+	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy fs go.mod
+
+# Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
+.PHONY: snyk
+snyk: loki-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	snyk code test
+
+.PHONY: scan-vulnerabilities
+scan-vulnerabilities: trivy snyk

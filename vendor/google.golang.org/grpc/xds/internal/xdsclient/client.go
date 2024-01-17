@@ -34,7 +34,6 @@ type XDSClient interface {
 	WatchRouteConfig(string, func(xdsresource.RouteConfigUpdate, error)) func()
 	WatchCluster(string, func(xdsresource.ClusterUpdate, error)) func()
 	WatchEndpoints(string, func(xdsresource.EndpointsUpdate, error)) func()
-	ReportLoad(*bootstrap.ServerConfig) (*load.Store, func())
 
 	// WatchResource uses xDS to discover the resource associated with the
 	// provided resource name. The resource type implementation determines how
@@ -46,15 +45,20 @@ type XDSClient interface {
 	// instead use a resource-type-specific wrapper API provided by the relevant
 	// resource type implementation.
 	//
+	//
+	// During a race (e.g. an xDS response is received while the user is calling
+	// cancel()), there's a small window where the callback can be called after
+	// the watcher is canceled. Callers need to handle this case.
+	//
 	// TODO: Once this generic client API is fully implemented and integrated,
 	// delete the resource type specific watch APIs on this interface.
 	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
 
-	DumpLDS() map[string]xdsresource.UpdateWithMD
-	DumpRDS() map[string]xdsresource.UpdateWithMD
-	DumpCDS() map[string]xdsresource.UpdateWithMD
-	DumpEDS() map[string]xdsresource.UpdateWithMD
+	// DumpResources returns the status of the xDS resources. Returns a map of
+	// resource type URLs to a map of resource names to resource state.
+	DumpResources() map[string]map[string]xdsresource.UpdateWithMD
+
+	ReportLoad(*bootstrap.ServerConfig) (*load.Store, func())
 
 	BootstrapConfig() *bootstrap.Config
-	Close()
 }

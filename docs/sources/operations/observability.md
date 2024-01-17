@@ -105,7 +105,7 @@ Review your emitted metrics before scraping with Prometheus, and configure the s
 
 ## Mixins
 
-The Loki repository has a [mixin](https://github.com/grafana/loki/blob/master/production/loki-mixin) that includes a
+The Loki repository has a [mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin) that includes a
 set of dashboards, recording rules, and alerts. Together, the mixin gives you a
 comprehensive package for monitoring Loki in production.
 

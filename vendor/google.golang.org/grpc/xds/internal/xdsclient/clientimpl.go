@@ -37,7 +37,7 @@ type clientImpl struct {
 	config             *bootstrap.Config
 	logger             *grpclog.PrefixLogger
 	watchExpiryTimeout time.Duration
-	serializer         *callbackSerializer
+	serializer         *grpcsync.CallbackSerializer
 	serializerClose    func()
 	resourceTypes      *resourceTypeRegistry
 
@@ -68,11 +68,8 @@ func (c *clientImpl) BootstrapConfig() *bootstrap.Config {
 	return c.config
 }
 
-// Close closes the gRPC connection to the management server.
-//
-// TODO: ensure that all underlying transports are closed before this function
-// returns.
-func (c *clientImpl) Close() {
+// close closes the gRPC connection to the management server.
+func (c *clientImpl) close() {
 	if c.done.HasFired() {
 		return
 	}

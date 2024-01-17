@@ -15,13 +15,29 @@
  * limitations under the License.
  */
 
+// Package xdsresource implements the xDS data model layer.
+//
+// Provides resource-type specific functionality to unmarshal xDS protos into
+// internal data structures that contain only fields gRPC is interested in.
+// These internal data structures are passed to components in the xDS stack
+// (resolver/balancers/server) that have expressed interest in receiving
+// updates to specific resources.
 package xdsresource
 
 import (
-	"google.golang.org/grpc/internal/grpclog"
+	"google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
+
+func init() {
+	internal.ResourceTypeMapForTesting = make(map[string]interface{})
+	internal.ResourceTypeMapForTesting[version.V3ListenerURL] = listenerType
+	internal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
+	internal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType
+	internal.ResourceTypeMapForTesting[version.V3EndpointsURL] = endpointsType
+}
 
 // Producer contains a single method to discover resource configuration from a
 // remote management server using xDS APIs.
@@ -65,20 +81,17 @@ type ResourceWatcher interface {
 // Type wraps all resource-type specific functionality. Each supported resource
 // type will provide an implementation of this interface.
 type Type interface {
-	// V2TypeURL is the xDS type URL of this resource type for v2 transport.
-	V2TypeURL() string
+	// TypeURL is the xDS type URL of this resource type for v3 transport.
+	TypeURL() string
 
-	// V3TypeURL is the xDS type URL of this resource type for v3 transport.
-	V3TypeURL() string
-
-	// TypeEnum is an enumerated value for this resource type. This can be used
-	// for logging/debugging purposes, as well in cases where the resource type
-	// is to be uniquely identified but the actual functionality provided by the
-	// resource type is not required.
+	// TypeName identifies resources in a transport protocol agnostic way. This
+	// can be used for logging/debugging purposes, as well in cases where the
+	// resource type name is to be uniquely identified but the actual
+	// functionality provided by the resource type is not required.
 	//
-	// TODO: once Type is renamed to ResourceType, rename ResourceType to
-	// ResourceTypeEnum.
-	TypeEnum() ResourceType
+	// TODO: once Type is renamed to ResourceType, rename TypeName to
+	// ResourceTypeName.
+	TypeName() string
 
 	// AllResourcesRequiredInSotW indicates whether this resource type requires
 	// that all resources be present in every SotW response from the server. If
@@ -118,8 +131,6 @@ type DecodeOptions struct {
 	// BootstrapConfig contains the bootstrap configuration passed to the
 	// top-level xdsClient. This contains useful data for resource validation.
 	BootstrapConfig *bootstrap.Config
-	// Logger is to be used for emitting logs during the Decode operation.
-	Logger *grpclog.PrefixLogger
 }
 
 // DecodeResult is the result of a decode operation.
@@ -135,22 +146,17 @@ type DecodeResult struct {
 // type implementations, which can then embed this struct and get the methods
 // implemented here for free.
 type resourceTypeState struct {
-	v2TypeURL                  string
-	v3TypeURL                  string
-	typeEnum                   ResourceType
+	typeURL                    string
+	typeName                   string
 	allResourcesRequiredInSotW bool
 }
 
-func (r resourceTypeState) V2TypeURL() string {
-	return r.v2TypeURL
+func (r resourceTypeState) TypeURL() string {
+	return r.typeURL
 }
 
-func (r resourceTypeState) V3TypeURL() string {
-	return r.v3TypeURL
-}
-
-func (r resourceTypeState) TypeEnum() ResourceType {
-	return r.typeEnum
+func (r resourceTypeState) TypeName() string {
+	return r.typeName
 }
 
 func (r resourceTypeState) AllResourcesRequiredInSotW() bool {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -374,6 +375,32 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 	}
 
 	assert.ElementsMatch(t, actual, expected, "QueueConfig capacity do not match")
+}
+
+func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
+	require.NotPanics(t, func() {
+		reg := setupRegistry(t, cfg, newFakeLimits())
+		var wg sync.WaitGroup
+		for i := 0; i < 1000; i++ {
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_, err := reg.getTenantConfig(enabledRWTenant)
+				require.NoError(t, err)
+			}(reg)
+
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_, err := reg.getTenantConfig(additionalHeadersRWTenant)
+				require.NoError(t, err)
+			}(reg)
+		}
+
+		wg.Wait()
+	})
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {

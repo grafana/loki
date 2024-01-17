@@ -18,6 +18,31 @@ type Log struct {
 	LogRequestHeaders     bool // LogRequestHeaders true -> dump http headers at debug log level
 	LogRequestAtInfoLevel bool // LogRequestAtInfoLevel true -> log requests at info log level
 	SourceIPs             *SourceIPExtractor
+	HttpHeadersToExclude  map[string]bool
+}
+
+var defaultExcludedHeaders = map[string]bool{
+	"Cookie":        true,
+	"X-Csrf-Token":  true,
+	"Authorization": true,
+}
+
+func NewLogMiddleware(log logging.Interface, logRequestHeaders bool, logRequestAtInfoLevel bool, sourceIPs *SourceIPExtractor, headersList []string) Log {
+	httpHeadersToExclude := map[string]bool{}
+	for header := range defaultExcludedHeaders {
+		httpHeadersToExclude[header] = true
+	}
+	for _, header := range headersList {
+		httpHeadersToExclude[header] = true
+	}
+
+	return Log{
+		Log:                   log,
+		LogRequestHeaders:     logRequestHeaders,
+		LogRequestAtInfoLevel: logRequestAtInfoLevel,
+		SourceIPs:             sourceIPs,
+		HttpHeadersToExclude:  httpHeadersToExclude,
+	}
 }
 
 // logWithRequest information from the request and context as fields.
@@ -45,7 +70,7 @@ func (l Log) Wrap(next http.Handler) http.Handler {
 		uri := r.RequestURI // capture the URI before running next, as it may get rewritten
 		requestLog := l.logWithRequest(r)
 		// Log headers before running 'next' in case other interceptors change the data.
-		headers, err := dumpRequest(r)
+		headers, err := dumpRequest(r, l.HttpHeadersToExclude)
 		if err != nil {
 			headers = nil
 			requestLog.Errorf("Could not dump request headers: %v", err)
@@ -95,15 +120,15 @@ var Logging = Log{
 	Log: logging.Global(),
 }
 
-func dumpRequest(req *http.Request) ([]byte, error) {
+func dumpRequest(req *http.Request, httpHeadersToExclude map[string]bool) ([]byte, error) {
 	var b bytes.Buffer
 
+	// In case users initialize the Log middleware using the exported struct, skip the default headers anyway
+	if len(httpHeadersToExclude) == 0 {
+		httpHeadersToExclude = defaultExcludedHeaders
+	}
 	// Exclude some headers for security, or just that we don't need them when debugging
-	err := req.Header.WriteSubset(&b, map[string]bool{
-		"Cookie":        true,
-		"X-Csrf-Token":  true,
-		"Authorization": true,
-	})
+	err := req.Header.WriteSubset(&b, httpHeadersToExclude)
 	if err != nil {
 		return nil, err
 	}

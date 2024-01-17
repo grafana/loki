@@ -1,8 +1,9 @@
 ---
-title: Installation
+title: Install Promtail
+menuTitle: Installation
 description: Install Promtail
 ---
-# Installation
+# Install Promtail
 
 Promtail is distributed as a binary, in a Docker container,
 or there is a Helm chart to install it in a Kubernetes cluster.

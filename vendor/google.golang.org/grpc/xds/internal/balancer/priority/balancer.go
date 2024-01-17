@@ -105,7 +105,7 @@ type priorityBalancer struct {
 }
 
 func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
-	b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	b.logger.Debugf("Received an update with balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
@@ -205,6 +205,7 @@ func (b *priorityBalancer) UpdateSubConnState(sc balancer.SubConn, state balance
 
 func (b *priorityBalancer) Close() {
 	b.bg.Close()
+	b.childBalancerStateUpdate.Close()
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -247,7 +248,10 @@ type resumePickerUpdates struct {
 func (b *priorityBalancer) run() {
 	for {
 		select {
-		case u := <-b.childBalancerStateUpdate.Get():
+		case u, ok := <-b.childBalancerStateUpdate.Get():
+			if !ok {
+				return
+			}
 			b.childBalancerStateUpdate.Load()
 			// Needs to handle state update in a goroutine, because each state
 			// update needs to start/close child policy, could result in

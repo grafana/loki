@@ -195,7 +195,7 @@ To configure the Loki output plugin add this section to fluent-bit.conf
     RemoveKeys key1,key2
 ```
 
-A full [example configuration file](https://github.com/grafana/loki/blob/master/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
+A full [example configuration file](https://github.com/grafana/loki/blob/main/clients/cmd/fluent-bit/fluent-bit.conf) is also available in the Loki repository.
 
 ### Running multiple plugin instances
 

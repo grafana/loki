@@ -16,28 +16,30 @@
  *
  */
 
-// Package clusterresolver contains EDS balancer implementation.
+// Package clusterresolver contains the implementation of the
+// xds_cluster_resolver_experimental LB policy which resolves endpoint addresses
+// using a list of one or more discovery mechanisms.
 package clusterresolver
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
-	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/internal/balancer/nop"
 	"google.golang.org/grpc/internal/buffer"
+	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
+	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
 	"google.golang.org/grpc/xds/internal/balancer/priority"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
@@ -62,13 +64,13 @@ type bb struct{}
 func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
 	priorityBuilder := balancer.Get(priority.Name)
 	if priorityBuilder == nil {
-		logger.Errorf("priority balancer is needed but not registered")
-		return nil
+		logger.Errorf("%q LB policy is needed but not registered", priority.Name)
+		return nop.NewBalancer(cc, fmt.Errorf("%q LB policy is needed but not registered", priority.Name))
 	}
 	priorityConfigParser, ok := priorityBuilder.(balancer.ConfigParser)
 	if !ok {
-		logger.Errorf("priority balancer builder is not a config parser")
-		return nil
+		logger.Errorf("%q LB policy does not implement a config parser", priority.Name)
+		return nop.NewBalancer(cc, fmt.Errorf("%q LB policy does not implement a config parser", priority.Name))
 	}
 
 	b := &clusterResolverBalancer{
@@ -97,26 +99,58 @@ func (bb) Name() string {
 	return Name
 }
 
-func (bb) ParseConfig(c json.RawMessage) (serviceconfig.LoadBalancingConfig, error) {
-	var cfg LBConfig
-	if err := json.Unmarshal(c, &cfg); err != nil {
-		return nil, fmt.Errorf("unable to unmarshal balancer config %s into cluster-resolver config, error: %v", string(c), err)
+func (bb) ParseConfig(j json.RawMessage) (serviceconfig.LoadBalancingConfig, error) {
+	odBuilder := balancer.Get(outlierdetection.Name)
+	if odBuilder == nil {
+		// Shouldn't happen, registered through imported Outlier Detection,
+		// defensive programming.
+		return nil, fmt.Errorf("%q LB policy is needed but not registered", outlierdetection.Name)
 	}
-	if lbp := cfg.XDSLBPolicy; lbp != nil && !strings.EqualFold(lbp.Name, roundrobin.Name) && !strings.EqualFold(lbp.Name, ringhash.Name) {
-		return nil, fmt.Errorf("unsupported child policy with name %q, not one of {%q,%q}", lbp.Name, roundrobin.Name, ringhash.Name)
+	odParser, ok := odBuilder.(balancer.ConfigParser)
+	if !ok {
+		// Shouldn't happen, imported Outlier Detection builder has this method.
+		return nil, fmt.Errorf("%q LB policy does not implement a config parser", outlierdetection.Name)
 	}
-	return &cfg, nil
+
+	var cfg *LBConfig
+	if err := json.Unmarshal(j, &cfg); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal balancer config %s into cluster-resolver config, error: %v", string(j), err)
+	}
+
+	if envconfig.XDSOutlierDetection {
+		for i, dm := range cfg.DiscoveryMechanisms {
+			lbCfg, err := odParser.ParseConfig(dm.OutlierDetection)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing Outlier Detection config %v: %v", dm.OutlierDetection, err)
+			}
+			odCfg, ok := lbCfg.(*outlierdetection.LBConfig)
+			if !ok {
+				// Shouldn't happen, Parser built at build time with Outlier Detection
+				// builder pulled from gRPC LB Registry.
+				return nil, fmt.Errorf("odParser returned config with unexpected type %T: %v", lbCfg, lbCfg)
+			}
+			cfg.DiscoveryMechanisms[i].outlierDetection = *odCfg
+		}
+	}
+	if err := json.Unmarshal(cfg.XDSLBPolicy, &cfg.xdsLBPolicy); err != nil {
+		// This will never occur, valid configuration is emitted from the xDS
+		// Client. Validity is already checked in the xDS Client, however, this
+		// double validation is present because Unmarshalling and Validating are
+		// coupled into one json.Unmarshal operation). We will switch this in
+		// the future to two separate operations.
+		return nil, fmt.Errorf("error unmarshaling xDS LB Policy: %v", err)
+	}
+	return cfg, nil
 }
 
-// ccUpdate wraps a clientConn update received from gRPC (pushed from the
-// xdsResolver).
+// ccUpdate wraps a clientConn update received from gRPC.
 type ccUpdate struct {
 	state balancer.ClientConnState
 	err   error
 }
 
 // scUpdate wraps a subConn update received from gRPC. This is directly passed
-// on to the child balancer.
+// on to the child policy.
 type scUpdate struct {
 	subConn balancer.SubConn
 	state   balancer.SubConnState
@@ -124,10 +158,8 @@ type scUpdate struct {
 
 type exitIdle struct{}
 
-// clusterResolverBalancer manages xdsClient and the actual EDS balancer implementation that
-// does load balancing.
-//
-// It currently has only an clusterResolverBalancer. Later, we may add fallback.
+// clusterResolverBalancer resolves endpoint addresses using a list of one or
+// more discovery mechanisms.
 type clusterResolverBalancer struct {
 	cc              balancer.ClientConn
 	bOpts           balancer.BuildOptions
@@ -150,22 +182,21 @@ type clusterResolverBalancer struct {
 	watchUpdateReceived bool
 }
 
-// handleClientConnUpdate handles a ClientConnUpdate received from gRPC. Good
-// updates lead to registration of EDS and DNS watches. Updates with error lead
-// to cancellation of existing watch and propagation of the same error to the
-// child balancer.
+// handleClientConnUpdate handles a ClientConnUpdate received from gRPC.
+//
+// A good update results in creation of endpoint resolvers for the configured
+// discovery mechanisms. An update with an error results in cancellation of any
+// existing endpoint resolution and propagation of the same to the child policy.
 func (b *clusterResolverBalancer) handleClientConnUpdate(update *ccUpdate) {
-	// We first handle errors, if any, and then proceed with handling the
-	// update, only if the status quo has changed.
 	if err := update.err; err != nil {
 		b.handleErrorFromUpdate(err, true)
 		return
 	}
 
-	b.logger.Infof("Receive update from resolver, balancer config: %v", pretty.ToJSON(update.state.BalancerConfig))
+	b.logger.Infof("Received new balancer config: %v", pretty.ToJSON(update.state.BalancerConfig))
 	cfg, _ := update.state.BalancerConfig.(*LBConfig)
 	if cfg == nil {
-		b.logger.Warningf("xds: unexpected LoadBalancingConfig type: %T", update.state.BalancerConfig)
+		b.logger.Warningf("Ignoring unsupported balancer configuration of type: %T", update.state.BalancerConfig)
 		return
 	}
 
@@ -173,23 +204,19 @@ func (b *clusterResolverBalancer) handleClientConnUpdate(update *ccUpdate) {
 	b.configRaw = update.state.ResolverState.ServiceConfig
 	b.resourceWatcher.updateMechanisms(cfg.DiscoveryMechanisms)
 
+	// The child policy is created only after all configured discovery
+	// mechanisms have been successfully returned endpoints. If that is not the
+	// case, we return early.
 	if !b.watchUpdateReceived {
-		// If update was not received, wait for it.
 		return
 	}
-	// If eds resp was received before this, the child policy was created. We
-	// need to generate a new balancer config and send it to the child, because
-	// certain fields (unrelated to EDS watch) might have changed.
-	if err := b.updateChildConfig(); err != nil {
-		b.logger.Warningf("failed to update child policy config: %v", err)
-	}
+	b.updateChildConfig()
 }
 
-// handleWatchUpdate handles a watch update from the xDS Client. Good updates
-// lead to clientConn updates being invoked on the underlying child balancer.
-func (b *clusterResolverBalancer) handleWatchUpdate(update *resourceUpdate) {
+// handleResourceUpdate handles a resource update or error from the resource
+// resolver by propagating the same to the child LB policy.
+func (b *clusterResolverBalancer) handleResourceUpdate(update *resourceUpdate) {
 	if err := update.err; err != nil {
-		b.logger.Warningf("Watch error from xds-client %p: %v", b.xdsClient, err)
 		b.handleErrorFromUpdate(err, false)
 		return
 	}
@@ -197,84 +224,84 @@ func (b *clusterResolverBalancer) handleWatchUpdate(update *resourceUpdate) {
 	b.watchUpdateReceived = true
 	b.priorities = update.priorities
 
-	// A new EDS update triggers new child configs (e.g. different priorities
-	// for the priority balancer), and new addresses (the endpoints come from
-	// the EDS response).
-	if err := b.updateChildConfig(); err != nil {
-		b.logger.Warningf("failed to update child policy's balancer config: %v", err)
-	}
+	// An update from the resource resolver contains resolved endpoint addresses
+	// for all configured discovery mechanisms ordered by priority. This is used
+	// to generate configuration for the priority LB policy.
+	b.updateChildConfig()
 }
 
-// updateChildConfig builds a balancer config from eb's cached eds resp and
-// service config, and sends that to the child balancer. Note that it also
-// generates the addresses, because the endpoints come from the EDS resp.
+// updateChildConfig builds child policy configuration using endpoint addresses
+// returned by the resource resolver and child policy configuration provided by
+// parent LB policy.
 //
-// If child balancer doesn't already exist, one will be created.
-func (b *clusterResolverBalancer) updateChildConfig() error {
-	// Child was build when the first EDS resp was received, so we just build
-	// the config and addresses.
+// A child policy is created if one doesn't already exist. The newly built
+// configuration is then pushed to the child policy.
+func (b *clusterResolverBalancer) updateChildConfig() {
 	if b.child == nil {
 		b.child = newChildBalancer(b.priorityBuilder, b.cc, b.bOpts)
 	}
 
-	childCfgBytes, addrs, err := buildPriorityConfigJSON(b.priorities, b.config.XDSLBPolicy)
+	childCfgBytes, addrs, err := buildPriorityConfigJSON(b.priorities, &b.config.xdsLBPolicy)
 	if err != nil {
-		return fmt.Errorf("failed to build priority balancer config: %v", err)
+		b.logger.Warningf("Failed to build child policy config: %v", err)
+		return
 	}
 	childCfg, err := b.priorityConfigParser.ParseConfig(childCfgBytes)
 	if err != nil {
-		return fmt.Errorf("failed to parse generated priority balancer config, this should never happen because the config is generated: %v", err)
+		b.logger.Warningf("Failed to parse child policy config. This should never happen because the config was generated: %v", err)
+		return
 	}
-	b.logger.Infof("build balancer config: %v", pretty.ToJSON(childCfg))
-	return b.child.UpdateClientConnState(balancer.ClientConnState{
+	b.logger.Infof("Built child policy config: %v", pretty.ToJSON(childCfg))
+
+	if err := b.child.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{
 			Addresses:     addrs,
 			ServiceConfig: b.configRaw,
 			Attributes:    b.attrsWithClient,
 		},
 		BalancerConfig: childCfg,
+	}); err != nil {
+		b.logger.Warningf("Failed to push config to child policy: %v", err)
+	}
+}
+
+// handleErrorFromUpdate handles errors from the parent LB policy and endpoint
+// resolvers. fromParent is true if error is from the parent LB policy. In both
+// cases, the error is propagated to the child policy, if one exists.
+func (b *clusterResolverBalancer) handleErrorFromUpdate(err error, fromParent bool) {
+	b.logger.Warningf("Received error: %v", err)
+
+	// A resource-not-found error from the parent LB policy means that the LDS
+	// or CDS resource was removed. This should result in endpoint resolvers
+	// being stopped here.
+	//
+	// A resource-not-found error from the EDS endpoint resolver means that the
+	// EDS resource was removed. No action needs to be taken for this, and we
+	// should continue watching the same EDS resource.
+	if fromParent && xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceNotFound {
+		b.resourceWatcher.stop()
+	}
+
+	if b.child != nil {
+		b.child.ResolverError(err)
+		return
+	}
+	b.cc.UpdateState(balancer.State{
+		ConnectivityState: connectivity.TransientFailure,
+		Picker:            base.NewErrPicker(err),
 	})
 }
 
-// handleErrorFromUpdate handles both the error from parent ClientConn (from CDS
-// balancer) and the error from xds client (from the watcher). fromParent is
-// true if error is from parent ClientConn.
-//
-// If the error is connection error, it should be handled for fallback purposes.
-//
-// If the error is resource-not-found:
-// - If it's from CDS balancer (shows as a resolver error), it means LDS or CDS
-// resources were removed. The EDS watch should be canceled.
-// - If it's from xds client, it means EDS resource were removed. The EDS
-// watcher should keep watching.
-// In both cases, the sub-balancers will be receive the error.
-func (b *clusterResolverBalancer) handleErrorFromUpdate(err error, fromParent bool) {
-	b.logger.Warningf("Received error: %v", err)
-	if fromParent && xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceNotFound {
-		// This is an error from the parent ClientConn (can be the parent CDS
-		// balancer), and is a resource-not-found error. This means the resource
-		// (can be either LDS or CDS) was removed. Stop the EDS watch.
-		b.resourceWatcher.stop()
-	}
-	if b.child != nil {
-		b.child.ResolverError(err)
-	} else {
-		// If eds balancer was never created, fail the RPCs with errors.
-		b.cc.UpdateState(balancer.State{
-			ConnectivityState: connectivity.TransientFailure,
-			Picker:            base.NewErrPicker(err),
-		})
-	}
-
-}
-
-// run is a long-running goroutine which handles all updates from gRPC and
-// xdsClient. All methods which are invoked directly by gRPC or xdsClient simply
-// push an update onto a channel which is read and acted upon right here.
+// run is a long-running goroutine that handles updates from gRPC and endpoint
+// resolvers. The methods handling the individual updates simply push them onto
+// a channel which is read and acted upon from here.
 func (b *clusterResolverBalancer) run() {
 	for {
 		select {
-		case u := <-b.updateCh.Get():
+		case u, ok := <-b.updateCh.Get():
+			if !ok {
+				return
+			}
 			b.updateCh.Load()
 			switch update := u.(type) {
 			case *ccUpdate:
@@ -283,7 +310,7 @@ func (b *clusterResolverBalancer) run() {
 				// SubConn updates are simply handed over to the underlying
 				// child balancer.
 				if b.child == nil {
-					b.logger.Errorf("xds: received scUpdate {%+v} with no child balancer", update)
+					b.logger.Errorf("Received a SubConn update {%+v} with no child policy", update)
 					break
 				}
 				b.child.UpdateSubConnState(update.subConn, update.state)
@@ -301,9 +328,9 @@ func (b *clusterResolverBalancer) run() {
 				}
 			}
 		case u := <-b.resourceWatcher.updateChannel:
-			b.handleWatchUpdate(u)
+			b.handleResourceUpdate(u)
 
-		// Close results in cancellation of the EDS watch and closing of the
+		// Close results in stopping the endpoint resolvers and closing the
 		// underlying child policy and is the only way to exit this goroutine.
 		case <-b.closed.Done():
 			b.resourceWatcher.stop()
@@ -312,6 +339,7 @@ func (b *clusterResolverBalancer) run() {
 				b.child.Close()
 				b.child = nil
 			}
+			b.updateCh.Close()
 			// This is the *ONLY* point of return from this function.
 			b.logger.Infof("Shutdown")
 			b.done.Fire()
@@ -322,12 +350,9 @@ func (b *clusterResolverBalancer) run() {
 
 // Following are methods to implement the balancer interface.
 
-// UpdateClientConnState receives the serviceConfig (which contains the
-// clusterName to watch for in CDS) and the xdsClient object from the
-// xdsResolver.
 func (b *clusterResolverBalancer) UpdateClientConnState(state balancer.ClientConnState) error {
 	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received ClientConnState {%+v} after clusterResolverBalancer was closed", state)
+		b.logger.Warningf("Received update from gRPC {%+v} after close", state)
 		return errBalancerClosed
 	}
 
@@ -347,7 +372,7 @@ func (b *clusterResolverBalancer) UpdateClientConnState(state balancer.ClientCon
 // ResolverError handles errors reported by the xdsResolver.
 func (b *clusterResolverBalancer) ResolverError(err error) {
 	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received resolver error {%v} after clusterResolverBalancer was closed", err)
+		b.logger.Warningf("Received resolver error {%v} after close", err)
 		return
 	}
 	b.updateCh.Put(&ccUpdate{err: err})
@@ -356,7 +381,7 @@ func (b *clusterResolverBalancer) ResolverError(err error) {
 // UpdateSubConnState handles subConn updates from gRPC.
 func (b *clusterResolverBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received subConn update {%v, %v} after clusterResolverBalancer was closed", sc, state)
+		b.logger.Warningf("Received subConn update {%v, %v} after close", sc, state)
 		return
 	}
 	b.updateCh.Put(&scUpdate{subConn: sc, state: state})

@@ -83,13 +83,13 @@ var (
 // Caller must hold b.mu.
 func (b *priorityBalancer) syncPriority(childUpdating string) {
 	if b.inhibitPickerUpdates {
-		b.logger.Infof("Skipping update from child with name %q", childUpdating)
+		b.logger.Debugf("Skipping update from child policy %q", childUpdating)
 		return
 	}
 	for p, name := range b.priorities {
 		child, ok := b.children[name]
 		if !ok {
-			b.logger.Warningf("child with name %q is not found in children", name)
+			b.logger.Warningf("Priority name %q is not found in list of child policies", name)
 			continue
 		}
 
@@ -99,12 +99,12 @@ func (b *priorityBalancer) syncPriority(childUpdating string) {
 			(child.state.ConnectivityState == connectivity.Connecting && child.initTimer != nil) ||
 			p == len(b.priorities)-1 {
 			if b.childInUse != child.name || child.name == childUpdating {
-				b.logger.Warningf("childInUse, childUpdating: %q, %q", b.childInUse, child.name)
+				b.logger.Debugf("childInUse, childUpdating: %q, %q", b.childInUse, child.name)
 				// If we switch children or the child in use just updated its
 				// picker, push the child's picker to the parent.
 				b.cc.UpdateState(child.state)
 			}
-			b.logger.Infof("switching to (%q, %v) in syncPriority", child.name, p)
+			b.logger.Debugf("Switching to (%q, %v) in syncPriority", child.name, p)
 			b.switchToChild(child, p)
 			break
 		}
@@ -119,7 +119,7 @@ func (b *priorityBalancer) stopSubBalancersLowerThanPriority(p int) {
 		name := b.priorities[i]
 		child, ok := b.children[name]
 		if !ok {
-			b.logger.Warningf("child with name %q is not found in children", name)
+			b.logger.Warningf("Priority name %q is not found in list of child policies", name)
 			continue
 		}
 		child.stop()
@@ -173,11 +173,11 @@ func (b *priorityBalancer) handleChildStateUpdate(childName string, s balancer.S
 	// necessary.
 	child, ok := b.children[childName]
 	if !ok {
-		b.logger.Warningf("priority: child balancer not found for child %v", childName)
+		b.logger.Warningf("Child policy not found for %q", childName)
 		return
 	}
 	if !child.started {
-		b.logger.Warningf("priority: ignoring update from child %q which is not in started state: %+v", childName, s)
+		b.logger.Warningf("Ignoring update from child policy %q which is not in started state: %+v", childName, s)
 		return
 	}
 	child.state = s

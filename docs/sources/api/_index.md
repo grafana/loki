@@ -1362,8 +1362,8 @@ $ curl -G -s  "http://localhost:3100/api/prom/label" | jq
 `/api/prom/push` is the endpoint used to send log entries to Loki. The default
 behavior is for the POST body to be a snappy-compressed protobuf message:
 
-- [Protobuf definition](https://github.com/grafana/loki/tree/master/pkg/logproto/logproto.proto)
-- [Go client library](https://github.com/grafana/loki/tree/master/pkg/promtail/client/client.go)
+- [Protobuf definition](https://github.com/grafana/loki/tree/main/pkg/logproto/logproto.proto)
+- [Go client library](https://github.com/grafana/loki/tree/main/pkg/promtail/client/client.go)
 
 Alternatively, if the `Content-Type` header is set to `application/json`, a
 JSON post body can be sent in the following format:

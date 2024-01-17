@@ -18,6 +18,7 @@
 package outlierdetection
 
 import (
+	"fmt"
 	"unsafe"
 
 	"google.golang.org/grpc/balancer"
@@ -65,4 +66,8 @@ func (scw *subConnWrapper) uneject() {
 		scw:       scw,
 		isEjected: false,
 	})
+}
+
+func (scw *subConnWrapper) String() string {
+	return fmt.Sprintf("%+v", scw.addresses)
 }

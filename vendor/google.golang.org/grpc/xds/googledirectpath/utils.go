@@ -21,7 +21,7 @@ package googledirectpath
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -47,7 +47,7 @@ func getFromMetadata(timeout time.Duration, urlStr string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("metadata server returned resp with non-OK: %v", resp)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed reading from metadata server: %v", err)
 	}
