@@ -180,7 +180,7 @@ groups:
       message: |-
         Object storage schema needs upgrade.
       summary: "The applied storage schema config is old and should be upgraded."
-    expr: lokistack_schema_upgrades_required
+    expr: sum by(stack_id) (lokistack_schema_upgrades_required) > 0
     labels:
       severity: warning
       resource: '{{ $labels.stack_id}}'
