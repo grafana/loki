@@ -51,12 +51,13 @@ var (
 		},
 		[]string{"size", "stack_id"},
 	)
-	lokistackSchemaUpgradesRequired = prometheus.NewGaugeVec(
+
+	lokiStackWarningsCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "lokistack_schema_upgrades_required",
-			Help: "An object storage schema needs upgrade",
+			Name: "lokistack_warnings_count",
+			Help: "Counts the number of warnings set on a LokiStack.",
 		},
-		[]string{"stack_id"},
+		[]string{"reason", "stack_id"},
 	)
 )
 
