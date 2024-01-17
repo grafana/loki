@@ -27,6 +27,7 @@ type workerMetrics struct {
 	dequeueErrors      *prometheus.CounterVec
 	dequeueWaitTime    *prometheus.SummaryVec
 	storeAccessLatency *prometheus.HistogramVec
+	bloomQueryLatency  *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -50,6 +51,13 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "dequeue_wait_time",
 			Help:      "Time spent waiting for dequeuing tasks from queue",
 		}, labels),
+		bloomQueryLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "bloom_query_latency",
+			Help:      "Latency in seconds of processing bloom blocks",
+		}, append(labels, "status")),
+		// TODO(chaudum): Move this metric into the bloomshipper
 		storeAccessLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
@@ -213,29 +221,32 @@ func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant strin
 	return w.store.ForEach(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
-				processBlock(bq, day, b.tasks)
-				return nil
+				return w.processBlock(bq, day, b.tasks)
 			}
 		}
 		return nil
 	})
 }
 
-func processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
+func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) error {
 	schema, err := blockQuerier.Schema()
 	if err != nil {
-		for _, t := range tasks {
-			t.ErrCh <- errors.Wrap(err, "failed to get block schema")
-		}
+		return err
 	}
 
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
 	it := newTaskMergeIterator(day, tokenizer, tasks...)
 	fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
+
+	start := time.Now()
 	err = fq.Run()
+	duration := time.Since(start).Seconds()
+
 	if err != nil {
-		for _, t := range tasks {
-			t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
-		}
+		w.metrics.bloomQueryLatency.WithLabelValues(w.id, "failure").Observe(duration)
+		return err
 	}
+
+	w.metrics.bloomQueryLatency.WithLabelValues(w.id, "success").Observe(duration)
+	return nil
 }

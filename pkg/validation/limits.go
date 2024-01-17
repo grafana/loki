@@ -97,6 +97,7 @@ type Limits struct {
 	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
 	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxMetadataCacheFreshness  model.Duration   `yaml:"max_metadata_cache_freshness" json:"max_metadata_cache_freshness"`
 	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
 	MaxQueriersPerTenant       uint             `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	MaxQueryCapacity           float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
@@ -277,6 +278,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxCacheFreshness.Set("10m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
+	_ = l.MaxMetadataCacheFreshness.Set("24h")
+	f.Var(&l.MaxMetadataCacheFreshness, "frontend.max-metadata-cache-freshness", "Do not cache metadata request if the end time is within the frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such limits. Defaults to 24h.")
+
 	_ = l.MaxStatsCacheFreshness.Set("10m")
 	f.Var(&l.MaxStatsCacheFreshness, "frontend.max-stats-cache-freshness", "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature (default).")
 
@@ -298,6 +302,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 
+	// with metadata caching, it is not possible to extract a subset of labels/series from a cached extent because unlike samples they are not associated with a timestamp.
+	// as a result, we could return inaccurate results. example: returning results from an entire 1h extent for a 5m query
+	// Setting max_metadata_cache_freshness to 24h should help us avoid caching recent data and preseve the correctness.
+	// For the portion of the request beyond the freshness window, granularity of the cached metadata results is determined by split_metadata_queries_by_interval.
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
 
@@ -622,6 +630,10 @@ func (o *Overrides) QueryTimeout(_ context.Context, userID string) time.Duration
 
 func (o *Overrides) MaxCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
+}
+
+func (o *Overrides) MaxMetadataCacheFreshness(_ context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxMetadataCacheFreshness)
 }
 
 func (o *Overrides) MaxStatsCacheFreshness(_ context.Context, userID string) time.Duration {
