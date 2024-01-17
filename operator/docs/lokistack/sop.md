@@ -332,4 +332,4 @@ The schema configuration does not contain the most recent schema version and nee
 
 ### Steps
 
-- Add a new object storage schema V13 in a future EffectiveDate
+- Add a new object storage schema V13 with a future EffectiveDate
