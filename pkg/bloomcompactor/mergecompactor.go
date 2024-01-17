@@ -147,7 +147,7 @@ func mergeCompactChunks(
 			return []bloomshipper.Block{}, err
 		}
 
-		mergedBlocks = append(mergedBlocks, bloomshipper.Block{
+		mergedBlock := bloomshipper.Block{
 			BlockRef: bloomshipper.BlockRef{
 				Ref: bloomshipper.Ref{
 					TenantID:       job.tenantID,
@@ -162,7 +162,20 @@ func mergeCompactChunks(
 				BlockPath: blockPath,
 			},
 			Data: data,
-		})
+		}
+		mergedBlocks = append(mergedBlocks, mergedBlock)
+		level.Debug(logger).Log(
+			"msg", "merged bloom block",
+			"TenantID", mergedBlock.TenantID,
+			"MinFingerprint", mergedBlock.MinFingerprint,
+			"MaxFingerprint", mergedBlock.MaxFingerprint,
+			"StartTimestamp", mergedBlock.StartTimestamp,
+			"EndTimestamp", mergedBlock.EndTimestamp,
+			"Checksum", mergedBlock.Checksum,
+			"TableName", mergedBlock.TableName,
+			"IndexPath", mergedBlock.IndexPath,
+			"BlockPath", mergedBlock.BlockPath,
+		)
 	}
 
 	return mergedBlocks, nil

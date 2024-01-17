@@ -180,7 +180,7 @@ func buildBlocksFromBlooms(
 			return []bloomshipper.Block{}, err
 		}
 
-		blocks = append(blocks, bloomshipper.Block{
+		block := bloomshipper.Block{
 			BlockRef: bloomshipper.BlockRef{
 				Ref: bloomshipper.Ref{
 					TenantID:       job.tenantID,
@@ -195,7 +195,20 @@ func buildBlocksFromBlooms(
 				BlockPath: blockPath,
 			},
 			Data: data,
-		})
+		}
+		blocks = append(blocks, block)
+		level.Debug(logger).Log(
+			"msg", "built bloom block",
+			"TenantID", block.TenantID,
+			"MinFingerprint", block.MinFingerprint,
+			"MaxFingerprint", block.MaxFingerprint,
+			"StartTimestamp", block.StartTimestamp,
+			"EndTimestamp", block.EndTimestamp,
+			"Checksum", block.Checksum,
+			"TableName", block.TableName,
+			"IndexPath", block.IndexPath,
+			"BlockPath", block.BlockPath,
+		)
 	}
 
 	return blocks, nil
