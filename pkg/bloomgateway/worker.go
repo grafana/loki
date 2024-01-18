@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -111,16 +112,17 @@ func (w *worker) running(ctx context.Context) error {
 		select {
 
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Wrapf(ctx.Err(), "shutting down worker %s", w.id)
 
 		default:
-			taskCtx := context.Background()
+			iterationCtx := context.Background()
 			dequeueStart := time.Now()
-			items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems, w.cfg.maxWaitTime)
+			items, newIdx, err := w.queue.DequeueMany(iterationCtx, idx, w.id, w.cfg.maxItems, w.cfg.maxWaitTime)
 			w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
 			if err != nil {
 				// We only return an error if the queue is stopped and dequeuing did not yield any items
 				if err == queue.ErrStopped && len(items) == 0 {
+					level.Error(w.logger).Log("msg", "queue is stopped")
 					return err
 				}
 				w.metrics.dequeueErrors.WithLabelValues(w.id).Inc()
@@ -146,6 +148,13 @@ func (w *worker) running(ctx context.Context) error {
 				level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 				w.tasks.Delete(task.ID)
 
+				// check if task was already cancelled while it was waiting in the queue
+				if task.Err() != nil {
+					level.Debug(w.logger).Log("msg", "skipping cancelled task", "task", task.ID, "err", task.Err())
+					task.Close()
+					continue
+				}
+
 				fromDay, throughDay := task.Bounds()
 
 				if fromDay.Equal(throughDay) {
@@ -158,13 +167,23 @@ func (w *worker) running(ctx context.Context) error {
 			}
 
 			for day, tasks := range tasksPerDay {
+				// Remove tasks that are already cancelled
+				tasks = slices.DeleteFunc(tasks, func(t Task) bool {
+					return t.Err() != nil
+				})
+				// no tasks to process, continue with next day
+				if len(tasks) == 0 {
+					continue
+				}
+
 				logger := log.With(w.logger, "day", day)
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
 				storeFetchStart := time.Now()
-				blockRefs, err := w.shipper.GetBlockRefs(taskCtx, tasks[0].Tenant, toModelTime(day), toModelTime(day.Add(Day).Add(-1*time.Nanosecond)))
+				blockRefs, err := w.shipper.GetBlockRefs(iterationCtx, tasks[0].Tenant, toModelTime(day), toModelTime(day.Add(Day).Add(-1*time.Nanosecond)))
 				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
 				if err != nil {
+					// send error to error channel of each task
 					for _, t := range tasks {
 						t.ErrCh <- err
 					}
@@ -194,8 +213,17 @@ func (w *worker) running(ctx context.Context) error {
 					blockRefs = append(blockRefs, b.blockRef)
 				}
 
-				err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
+				// Remove tasks that are already cancelled
+				tasks = slices.DeleteFunc(tasks, func(t Task) bool {
+					return t.Err() != nil
+				})
+				// no tasks to process, continue with next day
+				if len(tasks) == 0 {
+					continue
+				}
+				err = w.processBlocksWithCallback(iterationCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
 				if err != nil {
+					// send error to error channel of each task
 					for _, t := range tasks {
 						t.ErrCh <- err
 					}
@@ -204,9 +232,15 @@ func (w *worker) running(ctx context.Context) error {
 				}
 			}
 
+			// close channels because everything is sent
+			for _, tasks := range tasksPerDay {
+				for _, task := range tasks {
+					task.Close()
+				}
+			}
+
 			// return dequeued items back to the pool
 			w.queue.ReleaseRequests(items)
-
 		}
 	}
 }
@@ -217,18 +251,18 @@ func (w *worker) stopping(err error) error {
 	return nil
 }
 
-func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
-	return w.shipper.Fetch(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
+func (w *worker) processBlocksWithCallback(ctx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
+	return w.shipper.Fetch(ctx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
-				return w.processBlock(bq, day, b.tasks)
+				return w.processBlock(ctx, bq, day, b.tasks)
 			}
 		}
 		return nil
 	})
 }
 
-func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) error {
+func (w *worker) processBlock(ctx context.Context, blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) error {
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		return err
@@ -237,6 +271,16 @@ func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, task
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
 	it := newTaskMergeIterator(day, tokenizer, tasks...)
 	fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	for _, t := range tasks {
+		if t.Err() != nil {
+			return t.ctx.Err()
+		}
+	}
 
 	start := time.Now()
 	err = fq.Run()

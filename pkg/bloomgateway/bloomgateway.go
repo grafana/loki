@@ -315,7 +315,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	task, resCh, errCh, err := NewTask(tenantID, req)
+	task, resCh, errCh, err := NewTask(ctx, tenantID, req)
 
 	if err != nil {
 		return nil, err
@@ -336,8 +336,14 @@ outer:
 	for {
 		select {
 		case <-ctx.Done():
+			// stop forwarding items from the sender to the receiver
+			// because it won't be consumed any more
+			task.Cancel()
 			return nil, errors.Wrap(ctx.Err(), "waiting for results")
 		case err := <-errCh:
+			// stop forwarding items from the sender to the receiver
+			// because it won't be consumed any more
+			task.Cancel()
 			return nil, errors.Wrap(err, "waiting for results")
 		case res := <-resCh:
 			responses = append(responses, res)

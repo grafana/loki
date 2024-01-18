@@ -1,6 +1,7 @@
 package bloomgateway
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -20,11 +21,34 @@ func TestTask(t *testing.T) {
 			From:    ts.Add(-1 * time.Hour),
 			Through: ts,
 		}
-		task, _, _, err := NewTask("tenant", req)
+		task, _, _, err := NewTask(context.TODO(), "tenant", req)
 		require.NoError(t, err)
 		from, through := task.Bounds()
 		require.Equal(t, getDayTime(req.From), from)
 		require.Equal(t, getDayTime(req.Through), through)
+		task.Close()
+	})
+
+	t.Run("multiple tasks that share the same channels can be closed multiple times", func(t *testing.T) {
+		ts := model.Now()
+		req := &logproto.FilterChunkRefRequest{
+			From:    ts.Add(-1 * time.Hour),
+			Through: ts,
+		}
+		task, _, _, err := NewTask(context.TODO(), "tenant", req)
+		require.NoError(t, err)
+
+		n := 10
+		tasks := make([]Task, n)
+
+		for i := 0; i < n; i++ {
+			tasks[i] = task.Copy([]*logproto.GroupedChunkRefs{})
+		}
+		for i := 0; i < n; i++ {
+			require.NotPanics(t, func() {
+				tasks[i].Close()
+			})
+		}
 	})
 }
 
@@ -41,24 +65,27 @@ func TestTaskMergeIterator(t *testing.T) {
 			Through: ts.Add(-2 * time.Hour),
 			Refs:    []*logproto.GroupedChunkRefs{},
 		}
-		t1, _, _, err := NewTask(tenant, r1)
+		t1, _, _, err := NewTask(context.TODO(), tenant, r1)
 		require.NoError(t, err)
+		t.Cleanup(t1.Close)
 
 		r2 := &logproto.FilterChunkRefRequest{
 			From:    ts.Add(-1 * time.Hour),
 			Through: ts,
 			Refs:    []*logproto.GroupedChunkRefs{},
 		}
-		t2, _, _, err := NewTask(tenant, r2)
+		t2, _, _, err := NewTask(context.TODO(), tenant, r2)
 		require.NoError(t, err)
+		t.Cleanup(t2.Close)
 
 		r3 := &logproto.FilterChunkRefRequest{
 			From:    ts.Add(-1 * time.Hour),
 			Through: ts,
 			Refs:    []*logproto.GroupedChunkRefs{},
 		}
-		t3, _, _, err := NewTask(tenant, r3)
+		t3, _, _, err := NewTask(context.TODO(), tenant, r3)
 		require.NoError(t, err)
+		t.Cleanup(t3.Close)
 
 		it := newTaskMergeIterator(day, tokenizer, t1, t2, t3)
 		// nothing to iterate over
@@ -75,7 +102,7 @@ func TestTaskMergeIterator(t *testing.T) {
 				}},
 			},
 		}
-		t1, _, _, err := NewTask(tenant, r1)
+		t1, _, _, err := NewTask(context.TODO(), tenant, r1)
 		require.NoError(t, err)
 
 		r2 := &logproto.FilterChunkRefRequest{
@@ -90,7 +117,7 @@ func TestTaskMergeIterator(t *testing.T) {
 				}},
 			},
 		}
-		t2, _, _, err := NewTask(tenant, r2)
+		t2, _, _, err := NewTask(context.TODO(), tenant, r2)
 		require.NoError(t, err)
 
 		r3 := &logproto.FilterChunkRefRequest{
@@ -102,7 +129,7 @@ func TestTaskMergeIterator(t *testing.T) {
 				}},
 			},
 		}
-		t3, _, _, err := NewTask(tenant, r3)
+		t3, _, _, err := NewTask(context.TODO(), tenant, r3)
 		require.NoError(t, err)
 
 		it := newTaskMergeIterator(day, tokenizer, t1, t2, t3)
@@ -194,7 +221,7 @@ func TestChunkIterForDay(t *testing.T) {
 			}},
 		}
 
-		task, _, _, _ := NewTask(tenant, input)
+		task, _, _, _ := NewTask(context.TODO(), tenant, input)
 		it := task.ChunkIterForDay(day)
 
 		output := make([]*logproto.GroupedChunkRefs, 0, len(input.Refs))

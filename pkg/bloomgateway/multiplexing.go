@@ -1,11 +1,14 @@
 package bloomgateway
 
 import (
+	"context"
+	"math/rand"
 	"sort"
 	"time"
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -15,8 +18,53 @@ const (
 	Day = 24 * time.Hour
 )
 
+var (
+	entropy = rand.New(rand.NewSource(time.Now().UnixNano()))
+)
+
 type tokenSettings struct {
 	nGramLen int
+}
+
+// ChanPipe is a pipe for channels
+// It consists of a chan for sending and a chan for receiving.
+// Items sent to the chan for sending are forwarded to the chan for reiving.
+// In order to clean up the goroutine that does the forwardning
+// the chan for sending needs to be closed when finished.
+type ChanPipe[T any] struct {
+	snd chan T
+	rcv chan T
+}
+
+// Snd returns the channel for sending to the pipe.
+func (ch ChanPipe[T]) Snd() chan<- T {
+	return ch.snd
+}
+
+// Rcv returns the channel for reiving from the pipe.
+func (ch ChanPipe[T]) Rcv() <-chan T {
+	return ch.rcv
+}
+
+// The sender needs to close the channel once it's done sending to it.
+// Otherwise the forwarder in the gorouting never exits.
+func (ch ChanPipe[T]) forward(ctx context.Context) {
+	for o := range ch.snd {
+		if ctx.Err() == nil {
+			ch.rcv <- o
+		}
+	}
+}
+
+// NewChanPipe returns a new pipe of channels.
+// The sender is responsible for closing the sender channel.
+func NewChanPipe[T any](ctx context.Context, n int) ChanPipe[T] {
+	ch := ChanPipe[T]{
+		snd: make(chan T, n),
+		rcv: make(chan T, n),
+	}
+	go ch.forward(ctx)
+	return ch
 }
 
 // Task is the data structure that is enqueued to the internal queue and dequeued by query workers
@@ -27,30 +75,49 @@ type Task struct {
 	Tenant string
 	// Request is the original request
 	Request *logproto.FilterChunkRefRequest
+
 	// ErrCh is a send-only channel to write an error to
 	ErrCh chan<- error
 	// ResCh is a send-only channel to write partial responses to
 	ResCh chan<- v1.Output
+
+	// closed indicates whether the channels of this task are already closed
+	// this is needed because copied tasks share the same channels
+	// and closing an already closed channel results in a panic
+	closed *atomic.Bool
+
+	// ctx is the task's context
+	ctx      context.Context
+	cancelFn context.CancelFunc
 }
 
 // NewTask returns a new Task that can be enqueued to the task queue.
 // In addition, it returns a result and an error channel, as well
 // as an error if the instantiation fails.
-func NewTask(tenantID string, req *logproto.FilterChunkRefRequest) (Task, chan v1.Output, chan error, error) {
-	key, err := ulid.New(ulid.Now(), nil)
+func NewTask(ctx context.Context, tenantID string, req *logproto.FilterChunkRefRequest) (Task, <-chan v1.Output, <-chan error, error) {
+	key, err := ulid.New(ulid.Now(), entropy)
+
 	if err != nil {
 		return Task{}, nil, nil, err
 	}
-	errCh := make(chan error, 1)
-	resCh := make(chan v1.Output, 1)
+
+	ctx, cancelFn := context.WithCancel(ctx)
+	errPipe := NewChanPipe[error](ctx, 1)
+	resPipe := NewChanPipe[v1.Output](ctx, 1)
+
 	task := Task{
-		ID:      key,
-		Tenant:  tenantID,
-		Request: req,
-		ErrCh:   errCh,
-		ResCh:   resCh,
+		ID:       key,
+		Tenant:   tenantID,
+		Request:  req,
+		ErrCh:    errPipe.Snd(),
+		ResCh:    resPipe.Snd(),
+		ctx:      ctx,
+		cancelFn: cancelFn,
+
+		closed: atomic.NewBool(false),
 	}
-	return task, resCh, errCh, nil
+
+	return task, resPipe.Rcv(), errPipe.Rcv(), nil
 }
 
 // Copy returns a copy of the existing task but with a new slice of chunks
@@ -64,14 +131,34 @@ func (t Task) Copy(refs []*logproto.GroupedChunkRefs) Task {
 			Filters: t.Request.Filters,
 			Refs:    refs,
 		},
-		ErrCh: t.ErrCh,
-		ResCh: t.ResCh,
+		ErrCh:  t.ErrCh,
+		ResCh:  t.ResCh,
+		ctx:    t.ctx,
+		closed: t.closed,
 	}
 }
 
 // Bounds returns the day boundaries of the task
 func (t Task) Bounds() (time.Time, time.Time) {
 	return getDayTime(t.Request.From), getDayTime(t.Request.Through)
+}
+
+func (t Task) Err() error {
+	return t.ctx.Err()
+}
+
+func (t Task) Cancel() {
+	t.cancelFn()
+}
+
+func (t Task) Close() {
+	// Multiple tasks can share the same ErrCh and ResCh.
+	// This is the case when a task initially spans across mutliple days and is
+	// split up into multiple tasks each only spanning one respective day.
+	if t.closed.CompareAndSwap(false, true) {
+		close(t.ErrCh)
+		close(t.ResCh)
+	}
 }
 
 func (t Task) ChunkIterForDay(day time.Time) v1.Iterator[*logproto.GroupedChunkRefs] {
