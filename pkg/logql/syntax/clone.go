@@ -230,7 +230,9 @@ func cloneLabelFilterer(filter log.LabelFilterer) log.LabelFilterer {
 		}
 		return copied
 	case *log.LineFilterLabelFilter:
-		copied := &log.LineFilterLabelFilter{}
+		copied := &log.LineFilterLabelFilter{
+			Filter: concrete.Filter,
+		}
 		if concrete.Matcher != nil {
 			copied.Matcher = mustNewMatcher(concrete.Type, concrete.Name, concrete.Value)
 		}
@@ -258,9 +260,11 @@ func (v *cloneVisitor) VisitLabelParser(e *LabelParserExpr) {
 
 func (v *cloneVisitor) VisitLineFilter(e *LineFilterExpr) {
 	copied := &LineFilterExpr{
-		Ty:        e.Ty,
-		Match:     e.Match,
-		Op:        e.Op,
+		LineFilter: LineFilter{
+			Ty:    e.Ty,
+			Match: e.Match,
+			Op:    e.Op,
+		},
 		IsOrChild: e.IsOrChild,
 	}
 

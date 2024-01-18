@@ -62,6 +62,7 @@ var queryTests = []struct {
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
+						"queryReferencedStructuredMetadata": false,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -85,6 +86,7 @@ var queryTests = []struct {
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
+						"queryReferencedStructuredMetadata": false,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -106,7 +108,8 @@ var queryTests = []struct {
 						"bytesReceived": 0,
 						"bytesSent": 0,
 						"requests": 0,
-						"downloadTime": 0
+						"downloadTime": 0,
+						"queryLengthServed": 0
 					},
 					"index": {
 						"entriesFound": 0,
@@ -115,7 +118,8 @@ var queryTests = []struct {
 						"bytesReceived": 0,
 						"bytesSent": 0,
 						"requests": 0,
-						"downloadTime": 0
+						"downloadTime": 0,
+						"queryLengthServed": 0
 					},
 					"statsResult": {
 						"entriesFound": 0,
@@ -124,7 +128,28 @@ var queryTests = []struct {
 						"bytesReceived": 0,
 						"bytesSent": 0,
 						"requests": 0,
-						"downloadTime": 0
+						"downloadTime": 0,
+						"queryLengthServed": 0
+					},
+					"seriesResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0,
+						"queryLengthServed": 0
+					},
+					"labelResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0,
+						"queryLengthServed": 0
 					},
 					"volumeResult": {
 						"entriesFound": 0,
@@ -133,7 +158,8 @@ var queryTests = []struct {
 						"bytesReceived": 0,
 						"bytesSent": 0,
 						"requests": 0,
-						"downloadTime": 0
+						"downloadTime": 0,
+						"queryLengthServed": 0
 					},
 					"result": {
 						"entriesFound": 0,
@@ -142,7 +168,8 @@ var queryTests = []struct {
 						"bytesReceived": 0,
 						"bytesSent": 0,
 						"requests": 0,
-						"downloadTime": 0
+						"downloadTime": 0,
+						"queryLengthServed": 0
 					}
 				},
 				"summary": {

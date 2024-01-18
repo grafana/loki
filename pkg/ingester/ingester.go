@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	lokilog "github.com/grafana/loki/pkg/logql/log"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -99,7 +101,10 @@ type Config struct {
 
 	WAL WALConfig `yaml:"wal,omitempty" doc:"description=The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file systems in order to guarantee persistence of acknowledged data in the event of a process crash."`
 
-	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
+	ChunkFilterer          chunk.RequestChunkFilterer     `yaml:"-"`
+	PipelineWrapper        lokilog.PipelineWrapper        `yaml:"-"`
+	SampleExtractorWrapper lokilog.SampleExtractorWrapper `yaml:"-"`
+
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -227,7 +232,9 @@ type Ingester struct {
 
 	wal WAL
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter      chunk.RequestChunkFilterer
+	extractorWrapper lokilog.SampleExtractorWrapper
+	pipelineWrapper  lokilog.PipelineWrapper
 
 	streamRateCalculator *StreamRateCalculator
 
@@ -304,11 +311,27 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetChunkFilterer(i.cfg.ChunkFilterer)
 	}
 
+	if i.cfg.PipelineWrapper != nil {
+		i.SetPipelineWrapper(i.cfg.PipelineWrapper)
+	}
+
+	if i.cfg.SampleExtractorWrapper != nil {
+		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
+	}
+
 	return i, nil
 }
 
 func (i *Ingester) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
+}
+
+func (i *Ingester) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {
+	i.extractorWrapper = wrapper
+}
+
+func (i *Ingester) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
+	i.pipelineWrapper = wrapper
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -837,7 +860,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator, i.writeLogManager)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager)
 		if err != nil {
 			return nil, err
 		}
@@ -848,9 +871,12 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 }
 
 // Query the ingests for log streams matching a set of matchers.
-func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) error {
+func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querier_QueryServer) (err error) {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+
+	start := time.Now().UTC()
+	var lines int32
 
 	if req.Plan == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
@@ -861,6 +887,17 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 			AST: parsed,
 		}
 	}
+
+	defer func() {
+		status := "successful"
+		if err != nil {
+			status = "failed"
+		}
+		statsCtx := stats.FromContext(ctx)
+		execTime := time.Since(start)
+		logql.RecordIngesterStreamsQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, req.Limit, lines, req.Shards,
+			statsCtx.Result(execTime, time.Duration(0), 0))
+	}()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -903,14 +940,17 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		batchLimit = -1
 	}
 
-	return sendBatches(ctx, it, queryServer, batchLimit)
+	lines, err = sendBatches(ctx, it, queryServer, batchLimit)
+	return err
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
-func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
+func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) (err error) {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
 	sp := opentracing.SpanFromContext(ctx)
+	start := time.Now().UTC()
+	var lines int32
 
 	// If the plan is empty we want all series to be returned.
 	if req.Plan == nil {
@@ -922,6 +962,17 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			AST: parsed,
 		}
 	}
+
+	defer func() {
+		status := "successful"
+		if err != nil {
+			status = "failed"
+		}
+		statsCtx := stats.FromContext(ctx)
+		execTime := time.Since(start)
+		logql.RecordIngesterSeriesQueryMetrics(ctx, i.logger, req.Start, req.End, req.Selector, status, lines, req.Shards,
+			statsCtx.Result(execTime, time.Duration(0), 0))
+	}()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -961,7 +1012,8 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendSampleBatches(ctx, it, queryServer)
+	lines, err = sendSampleBatches(ctx, it, queryServer)
+	return err
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
@@ -1008,7 +1060,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, matchers...)
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil))
 	if err != nil {
 		return nil, err
 	}

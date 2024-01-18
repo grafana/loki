@@ -420,7 +420,12 @@ func TestCompactor_TableLocking(t *testing.T) {
 						if tc.applyRetention {
 							require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						} else {
-							require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
+							// we only lock table during first run so second run should reset the skip count metric to 0
+							skipCount := float64(0)
+							if n == 1 {
+								skipCount = 1
+							}
+							require.Equal(t, skipCount, testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						}
 					}
 

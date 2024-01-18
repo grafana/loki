@@ -5,9 +5,11 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -36,12 +38,17 @@ func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
 
 // convertToSearches converts a list of line filter expressions to a list of
 // byte slices that can be used with the bloom filters.
-// TODO(chaudum): Currently this function only supports equality matchers,
-// but we eventually also want to support regex matchers.
-func convertToSearches(filters []*logproto.LineFilterExpression) [][]byte {
-	searches := make([][]byte, 0, len(filters))
+func convertToSearches(filters []syntax.LineFilter, t *v1.NGramTokenizer) [][]byte {
+	searches := make([][]byte, 0, (13-t.N)*len(filters))
 	for _, f := range filters {
-		searches = append(searches, []byte(f.Match))
+		if f.Ty == labels.MatchEqual {
+			it := t.Tokens(f.Match)
+			for it.Next() {
+				key := make([]byte, t.N)
+				_ = copy(key, it.At())
+				searches = append(searches, key)
+			}
+		}
 	}
 	return searches
 }
