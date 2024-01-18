@@ -193,3 +193,51 @@ func TestMergeBuilder(t *testing.T) {
 		querier,
 	)
 }
+
+func TestBlockBuilderDifferentChecksumsForTwoBlooms(t *testing.T) {
+	data1, _ := mkBasicSeriesWithBlooms(4, 100, 0x0011, 0x11aa, 1234, 123400)
+
+	data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0xffff, 0, 10000)
+
+	// directory for directory reader+writer
+	tmpDir1 := t.TempDir()
+	tmpDir2 := t.TempDir()
+
+	writer1 := NewDirectoryBlockWriter(tmpDir1)
+	writer2 := NewDirectoryBlockWriter(tmpDir2)
+
+	schema := Schema{
+		version:     DefaultSchemaVersion,
+		encoding:    chunkenc.EncSnappy,
+		nGramLength: 10,
+		nGramSkip:   2,
+	}
+
+	builder1, err := NewBlockBuilder(
+		BlockOptions{
+			schema:         schema,
+			SeriesPageSize: 100,
+			BloomPageSize:  10 << 10,
+		},
+		writer1,
+	)
+	require.Nil(t, err)
+
+	builder2, err := NewBlockBuilder(
+		BlockOptions{
+			schema:         schema,
+			SeriesPageSize: 100,
+			BloomPageSize:  10 << 10,
+		},
+		writer2,
+	)
+	require.Nil(t, err)
+
+	itr1 := NewSliceIter[SeriesWithBloom](data1)
+	checksum1, err := builder1.BuildFrom(itr1)
+
+	itr2 := NewSliceIter[SeriesWithBloom](data2)
+	checksum2, err := builder2.BuildFrom(itr2)
+	require.NotEqual(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
+
+}
