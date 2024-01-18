@@ -74,7 +74,7 @@ func newUpdatableBounds() updatableBounds {
 	return updatableBounds{
 		FromTs:    model.Latest,
 		ThroughTs: model.Earliest,
-		FromFp:    model.Fingerprint(math.MaxInt64),
+		FromFp:    model.Fingerprint(math.MaxUint64),
 		ThroughFp: model.Fingerprint(0),
 	}
 }

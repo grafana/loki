@@ -200,8 +200,8 @@ func buildBlocksFromBlooms(
 		level.Debug(logger).Log(
 			"msg", "built bloom block",
 			"TenantID", block.TenantID,
-			"MinFingerprint", block.MinFingerprint,
-			"MaxFingerprint", block.MaxFingerprint,
+			"MinFingerprint", fmt.Sprintf("%x", block.MinFingerprint),
+			"MaxFingerprint", fmt.Sprintf("%x", block.MaxFingerprint),
 			"StartTimestamp", block.StartTimestamp,
 			"EndTimestamp", block.EndTimestamp,
 			"Checksum", block.Checksum,

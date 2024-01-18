@@ -27,6 +27,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"golang.org/x/exp/slices"
 	"math"
 	"math/rand"
 	"os"
@@ -422,6 +423,17 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			level.Debug(logger).Log("msg", "skipping index because it does not have any matching series", "table", tableName, "index", idx.Name())
 			return nil
 		}
+
+		// Sort seriesMetas by fingerprint to avoid overlapping blocks
+		slices.SortFunc(seriesMetas, func(a, b seriesMeta) int {
+			if a.seriesFP < b.seriesFP {
+				return -1
+			}
+			if a.seriesFP > b.seriesFP {
+				return 1
+			}
+			return 0
+		})
 
 		job := NewJob(tenant, tableName, idx.Path(), seriesMetas)
 		jobLogger := log.With(logger, "job", job.String())
