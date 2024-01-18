@@ -235,7 +235,8 @@ func TestBlockReset(t *testing.T) {
 			rounds[i] = append(rounds[i], querier.At().Series.Fingerprint)
 		}
 
-		querier.Seek(0) // reset at end
+		err = querier.Seek(0) // reset at end
+		require.Nil(t, err)
 	}
 
 	require.Equal(t, rounds[0], rounds[1])
