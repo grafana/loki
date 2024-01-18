@@ -11,18 +11,21 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/pkg/util"
 )
 
 type cacheKeyLabels struct {
 	Limits
 	transformer UserIDTransformer
+	iqo         util.IngesterQueryOptions
 }
 
 // GenerateCacheKey generates a cache key based on the userID, split duration and the interval of the request.
 // It also includes the label name and the provided query for label values request.
 func (i cacheKeyLabels) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	lr := r.(*LabelRequest)
-	split := i.MetadataQuerySplitDuration(userID)
+
+	split := SplitIntervalForTimeRange(i.iqo, i.Limits, i.MetadataQuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
@@ -77,6 +80,7 @@ func NewLabelsCacheMiddleware(
 	merger queryrangebase.Merger,
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
+	iqo util.IngesterQueryOptions,
 	shouldCache queryrangebase.ShouldCacheFn,
 	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
@@ -86,12 +90,14 @@ func NewLabelsCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		logger,
 		c,
-		cacheKeyLabels{limits, transformer},
+		cacheKeyLabels{limits, transformer, iqo},
 		limits,
 		merger,
 		labelsExtractor{},
 		cacheGenNumberLoader,
-		shouldCache,
+		func(ctx context.Context, r queryrangebase.Request) bool {
+			return shouldCacheMetadataReq(ctx, logger, shouldCache, r, limits)
+		},
 		parallelismForReq,
 		retentionEnabled,
 		metrics,

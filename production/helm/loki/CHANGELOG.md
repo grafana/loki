@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Bumped "grafana-agent-operator" depenency chart version to it's latest version
 
+## 5.41.7
+
+- [FEATURE] Add support to disable specific alert rules
+
 ## 5.41.6
 
 - [BUGFIX] Added missing namespace to query-scheduler-discovery service when deploying loki in a specific namespace.
