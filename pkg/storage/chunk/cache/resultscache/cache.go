@@ -50,7 +50,7 @@ type ResultsCache struct {
 	next                 Handler
 	cache                cache.Cache
 	limits               Limits
-	splitter             KeyGenerator
+	keyGen               KeyGenerator
 	cacheGenNumberLoader CacheGenNumberLoader
 	retentionEnabled     bool
 	extractor            Extractor
@@ -86,7 +86,7 @@ func NewResultsCache(
 		next:                 next,
 		cache:                c,
 		limits:               limits,
-		splitter:             keyGen,
+		keyGen:               keyGen,
 		cacheGenNumberLoader: cacheGenNumberLoader,
 		retentionEnabled:     retentionEnabled,
 		extractor:            extractor,
@@ -115,7 +115,7 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
+		key      = s.keyGen.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []Extent
 		response Response
 	)
