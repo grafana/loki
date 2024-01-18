@@ -157,7 +157,7 @@ type LabelsBuilder struct {
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
 func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
 	if parserKeyHints == nil {
-		parserKeyHints = noParserHints
+		parserKeyHints = NoParserHints()
 	}
 
 	const labelsCapacity = 16
@@ -179,7 +179,7 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 
 // NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
-	return NewBaseLabelsBuilderWithGrouping(nil, noParserHints, false, false)
+	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
 }
 
 // ForLabels creates a labels builder for a given labels set as base.
