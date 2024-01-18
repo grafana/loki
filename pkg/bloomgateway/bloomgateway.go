@@ -80,8 +80,10 @@ var (
 )
 
 type metrics struct {
-	queueDuration    prometheus.Histogram
-	inflightRequests prometheus.Summary
+	queueDuration       prometheus.Histogram
+	inflightRequests    prometheus.Summary
+	chunkRefsUnfiltered prometheus.Counter
+	chunkRefsFiltered   prometheus.Counter
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -102,7 +104,27 @@ func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *
 			MaxAge:     time.Minute,
 			AgeBuckets: 6,
 		}),
+		chunkRefsUnfiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "chunkrefs_pre_filtering",
+			Help:      "Total amount of chunk refs pre filtering. Does not count chunk refs in failed requests.",
+		}),
+		chunkRefsFiltered: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "chunkrefs_post_filtering",
+			Help:      "Total amount of chunk refs post filtering.",
+		}),
 	}
+}
+
+func (m *metrics) addUnfilteredCount(n int) {
+	m.chunkRefsUnfiltered.Add(float64(n))
+}
+
+func (m *metrics) addFilteredCount(n int) {
+	m.chunkRefsFiltered.Add(float64(n))
 }
 
 // SyncMap is a map structure which can be synchronized using the RWMutex
@@ -284,8 +306,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
+	numChunksUnfiltered := len(req.Refs)
+
 	// Shortcut if request does not contain filters
 	if len(req.Filters) == 0 {
+		g.metrics.addUnfilteredCount(numChunksUnfiltered)
+		g.metrics.addFilteredCount(len(req.Refs))
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
 		}, nil
@@ -313,6 +339,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	responses := responsesPool.Get(requestCount)
 	defer responsesPool.Put(responses)
 
+outer:
 	for {
 		select {
 		case <-ctx.Done():
@@ -325,17 +352,24 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
 			// wait for all parts of the full response
 			if len(responses) == requestCount {
-				for _, o := range responses {
-					if res.Removals.Len() == 0 {
-						continue
-					}
-					// we must not remove items from req.Refs as long as the worker may iterater over them
-					g.removeNotMatchingChunks(req, o)
-				}
-				return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+				break outer
 			}
 		}
 	}
+
+	for _, o := range responses {
+		if o.Removals.Len() == 0 {
+			continue
+		}
+		// we must not remove items from req.Refs as long as the worker may iterater over them
+		g.removeNotMatchingChunks(req, o)
+	}
+
+	g.metrics.addUnfilteredCount(numChunksUnfiltered)
+	g.metrics.addFilteredCount(len(req.Refs))
+
+	level.Debug(g.logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
+	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
 func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) {
