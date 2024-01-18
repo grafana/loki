@@ -17,9 +17,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
-	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 type Config struct {
@@ -54,10 +54,11 @@ type RequestHandler interface {
 	Do(context.Context, queryrangebase.Request) (queryrangebase.Response, error)
 }
 
-// Decodes httpgrpc.HTTPRequests to queryrangebase.Requests. This is used by the
-// frontend and scheduler processor for backwards compatibility.
-type GRPCCodec interface {
+// Decodes httpgrpc.HTTPRequests or QueryRequests to queryrangebase.Requests. This is used by the
+// frontend and scheduler processor.
+type RequestCodec interface {
 	DecodeHTTPGrpcRequest(context.Context, *httpgrpc.HTTPRequest) (queryrangebase.Request, context.Context, error)
+	QueryRequestUnwrap(context.Context, *queryrange.QueryRequest) (queryrangebase.Request, context.Context, error)
 }
 
 // Single processor handles all streaming operations to query-frontend or query-scheduler to fetch queries
@@ -69,7 +70,7 @@ type processor interface {
 	// This method must react on context being finished, and stop when that happens.
 	//
 	// processorManager (not processor) is responsible for starting as many goroutines as needed for each connection.
-	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string)
+	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address, workerID string)
 
 	// notifyShutdown notifies the remote query-frontend or query-scheduler that the querier is
 	// shutting down.
@@ -93,7 +94,7 @@ type querierWorker struct {
 	metrics *Metrics
 }
 
-func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer, codec GRPCCodec) (services.Service, error) {
+func NewQuerierWorker(cfg Config, rng ring.ReadRing, handler RequestHandler, logger log.Logger, reg prometheus.Registerer, codec RequestCodec) (services.Service, error) {
 	if cfg.QuerierID == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
@@ -149,7 +150,7 @@ func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logg
 	}
 
 	if ring != nil {
-		w, err := lokiutil.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		w, err := util.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}

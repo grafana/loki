@@ -40,6 +40,7 @@ import (
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -56,6 +57,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/fakeauth"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -70,11 +72,6 @@ type Config struct {
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
-
-	// TODO(dannyk): Remove these config options before next release; they don't need to be configurable.
-	//				 These are only here to allow us to test the new functionality.
-	UseBufferedLogger bool `yaml:"use_buffered_logger" doc:"hidden"`
-	UseSyncLogger     bool `yaml:"use_sync_logger" doc:"hidden"`
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
@@ -104,16 +101,18 @@ type Config struct {
 	Tracing       tracing.Config       `yaml:"tracing"`
 	Analytics     analytics.Config     `yaml:"analytics"`
 
-	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
+	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 
 	Common common.Config `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
+
+	MetricsNamespace string `yaml:"metrics_namespace"`
 }
 
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
-	c.Server.MetricsNamespace = "loki"
+	c.Server.MetricsNamespace = constants.Loki
 	c.Server.ExcludeRequestInLog = true
 
 	// Set the default module list to 'all'
@@ -136,14 +135,13 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"The ballast will not consume physical memory, because it is never read from. "+
 			"It will, however, distort metrics, because it is counted as live memory. ",
 	)
-	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Deprecated. Uses a line-buffered logger to improve performance.")
-	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Deprecated. Forces all lines logged to hold a mutex to serialize writes.")
 
-	//TODO(trevorwhitney): flip this to false with Loki 3.0
-	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
-		"The default will be flipped to false in the next Loki release.")
+	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", false, "Deprecated. Set to true to enable the legacy read mode which includes the components from the backend target. "+
+		"This setting is deprecated and will be removed in the next minor release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
+
+	f.StringVar(&c.MetricsNamespace, "metrics-namespace", constants.Loki, "Namespace of the metrics that in previous releases had cortex as namespace. This setting is deprecated and will be removed in the next minor release.")
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -244,14 +242,9 @@ func (c *Config) Validate() error {
 	if err := c.CompactorConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.ChunkStoreConfig.Validate(util_log.Logger); err != nil {
+	if err := c.ChunkStoreConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
-	// TODO(cyriltovena): remove when MaxLookBackPeriod in the storage will be fully deprecated.
-	if c.ChunkStoreConfig.MaxLookBackPeriod > 0 {
-		c.LimitsConfig.MaxQueryLookback = c.ChunkStoreConfig.MaxLookBackPeriod
-	}
-
 	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
@@ -277,6 +270,12 @@ func (c *Config) isModuleEnabled(m string) bool {
 type Frontend interface {
 	services.Service
 	CheckReady(_ context.Context) error
+}
+
+// Codec defines methods to encode and decode requests from HTTP, httpgrpc and Protobuf.
+type Codec interface {
+	transport.Codec
+	worker.RequestCodec
 }
 
 // Loki is the root datastructure for Loki.
@@ -323,9 +322,11 @@ type Loki struct {
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
+	Tee                distributor.Tee
 	HTTPAuthMiddleware middleware.Interface
 
-	Codec worker.GRPCCodec
+	Codec   Codec
+	Metrics *server.Metrics
 }
 
 // New makes a new Loki.
@@ -334,6 +335,7 @@ func New(cfg Config) (*Loki, error) {
 		Cfg:                 cfg,
 		clientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
+		Codec:               queryrange.DefaultCodec,
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
@@ -644,7 +646,7 @@ func (t *Loki) setupModuleManager() error {
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 	}
@@ -690,9 +692,13 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
-	//TODO(poyzannur) not sure this is needed for BloomCompactor
+	// Add bloom gateway ring in client mode to IndexGateway service dependencies if bloom filtering is enabled.
+	if t.Cfg.BloomGateway.Enabled {
+		deps[IndexGateway] = append(deps[IndexGateway], BloomGatewayRing)
+	}
+
 	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor)
+		deps[Read] = append(deps[Read], deps[Backend]...)
 	}
 
 	if t.Cfg.InternalServer.Enable {

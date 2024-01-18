@@ -15,6 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
+var errExpectedSingleCert = errors.New("Expected a single certificate")
+
 func TestSignerRotation_ReturnErrorOnMissingIssuer(t *testing.T) {
 	c := signerRotation{}
 	_, err := c.NewCertificate(1 * time.Hour)
@@ -330,7 +332,7 @@ func signCertificate(template *x509.Certificate, requestKey stdcrypto.PublicKey,
 		return nil, err
 	}
 	if len(certs) != 1 {
-		return nil, errors.New("Expected a single certificate")
+		return nil, errExpectedSingleCert
 	}
 	return certs[0], nil
 }

@@ -12,19 +12,14 @@ import (
 )
 
 const (
-	bloomFileName  = "bloom"
-	seriesFileName = "series"
+	BloomFileName  = "bloom"
+	SeriesFileName = "series"
 )
 
 type BlockWriter interface {
 	Index() (io.WriteCloser, error)
 	Blooms() (io.WriteCloser, error)
 	Size() (int, error) // byte size of accumualted index & blooms
-}
-
-type BlockReader interface {
-	Index() (io.ReadSeeker, error)
-	Blooms() (io.ReadSeeker, error)
 }
 
 // in memory impl
@@ -71,12 +66,12 @@ func (b *DirectoryBlockWriter) Init() error {
 			return errors.Wrap(err, "creating bloom block dir")
 		}
 
-		b.index, err = os.Create(filepath.Join(b.dir, seriesFileName))
+		b.index, err = os.Create(filepath.Join(b.dir, SeriesFileName))
 		if err != nil {
 			return errors.Wrap(err, "creating series file")
 		}
 
-		b.blooms, err = os.Create(filepath.Join(b.dir, bloomFileName))
+		b.blooms, err = os.Create(filepath.Join(b.dir, BloomFileName))
 		if err != nil {
 			return errors.Wrap(err, "creating bloom file")
 		}
@@ -115,72 +110,4 @@ func (b *DirectoryBlockWriter) Size() (int, error) {
 		size += int(info.Size())
 	}
 	return size, nil
-}
-
-// In memory reader
-type ByteReader struct {
-	index, blooms *bytes.Buffer
-}
-
-func NewByteReader(index, blooms *bytes.Buffer) *ByteReader {
-	return &ByteReader{index: index, blooms: blooms}
-}
-
-func (r *ByteReader) Index() (io.ReadSeeker, error) {
-	return bytes.NewReader(r.index.Bytes()), nil
-}
-
-func (r *ByteReader) Blooms() (io.ReadSeeker, error) {
-	return bytes.NewReader(r.blooms.Bytes()), nil
-}
-
-// File reader
-type DirectoryBlockReader struct {
-	dir           string
-	blooms, index *os.File
-
-	initialized bool
-}
-
-func NewDirectoryBlockReader(dir string) *DirectoryBlockReader {
-	return &DirectoryBlockReader{
-		dir:         dir,
-		initialized: false,
-	}
-}
-
-func (r *DirectoryBlockReader) Init() error {
-	if !r.initialized {
-		var err error
-		r.index, err = os.Open(filepath.Join(r.dir, seriesFileName))
-		if err != nil {
-			return errors.Wrap(err, "opening series file")
-		}
-
-		r.blooms, err = os.Open(filepath.Join(r.dir, bloomFileName))
-		if err != nil {
-			return errors.Wrap(err, "opening bloom file")
-		}
-
-		r.initialized = true
-	}
-	return nil
-}
-
-func (r *DirectoryBlockReader) Index() (io.ReadSeeker, error) {
-	if !r.initialized {
-		if err := r.Init(); err != nil {
-			return nil, err
-		}
-	}
-	return r.index, nil
-}
-
-func (r *DirectoryBlockReader) Blooms() (io.ReadSeeker, error) {
-	if !r.initialized {
-		if err := r.Init(); err != nil {
-			return nil, err
-		}
-	}
-	return r.blooms, nil
 }

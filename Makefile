@@ -37,12 +37,14 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.30.1
+BUILD_IMAGE_VERSION ?= 0.33.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-IMAGE_TAG := $(shell ./tools/image-tag)
+BUILD_IMAGE_PREFIX ?= grafana
+
+IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
@@ -101,17 +103,15 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
-DOCKER_BUILDKIT=1
-OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
-BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+DOCKER_BUILDKIT ?= 1
+BUILD_IMAGE = BUILD_IMAGE=$(BUILD_IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+PUSH_OCI=docker push
+TAG_OCI=docker tag
 ifeq ($(CI), true)
-	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=img push
-	TAG_OCI=img tag
+	OCI_PLATFORMS=--platform=linux/amd64,linux/arm64
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 else
-	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=docker push
-	TAG_OCI=docker tag
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg $(BUILD_IMAGE)
 endif
 
 binfmt:
@@ -427,7 +427,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -565,7 +565,6 @@ promtail-image: ## build the promtail docker image
 promtail-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
-promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image: ## build the promtail debug docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
 
@@ -578,7 +577,6 @@ loki-image: ## build the loki docker image
 loki-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
-loki-debug-image: OCI_PLATFORMS=
 loki-debug-image: ## build the debug loki docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
@@ -620,17 +618,23 @@ logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 
 
-# build-image (only amd64)
-build-image: OCI_PLATFORMS=
-build-image: ## build the docker build image
+# build-image
+ensure-buildx-builder:
+ifeq ($(CI),true)
+	./tools/ensure-buildx-builder.sh
+else
+	@echo "skipping buildx setup"
+endif
+
+build-image: ensure-buildx-builder
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
-	$(call push,loki-build-image,latest)
+	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
+	$(SUDO) $(BUILD_OCI) -o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 
 # loki-operator
 loki-operator-image:
@@ -797,6 +801,9 @@ EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 validate-example-configs: loki
 	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
+validate-dev-cluster-config: loki
+	./cmd/loki/loki -config.file=./tools/dev/loki-boltdb-storage-s3/config/loki.yaml -verify-config
+
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
@@ -831,5 +838,18 @@ dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
 
 # Trivy is used to scan images for vulnerabilities
-trivy: loki-image
+.PHONY: trivy
+trivy: loki-image build-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
+	trivy fs go.mod
+
+# Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
+.PHONY: snyk
+snyk: loki-image build-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
+	snyk code test
+
+.PHONY: scan-vulnerabilities
+scan-vulnerabilities: trivy snyk

@@ -19,15 +19,16 @@ func TestMergeDedupeIter(t *testing.T) {
 		queriers[i] = NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](dataPtr))
 	}
 
-	mbq := NewMergeBlockQuerier(queriers...)
+	mbq := NewHeapIterForSeriesWithBloom(queriers...)
 	eq := func(a, b *SeriesWithBloom) bool {
 		return a.Series.Fingerprint == b.Series.Fingerprint
 	}
 	merge := func(a, _ *SeriesWithBloom) *SeriesWithBloom {
 		return a
 	}
-	deduper := NewMergeDedupingIter[*SeriesWithBloom](
+	deduper := NewDedupingIter[*SeriesWithBloom, *SeriesWithBloom](
 		eq,
+		id[*SeriesWithBloom],
 		merge,
 		NewPeekingIter[*SeriesWithBloom](mbq),
 	)

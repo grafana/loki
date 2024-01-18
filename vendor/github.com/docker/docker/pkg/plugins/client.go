@@ -18,6 +18,12 @@ import (
 
 const (
 	defaultTimeOut = 30
+
+	// dummyHost is a hostname used for local communication.
+	//
+	// For local communications (npipe://, unix://), the hostname is not used,
+	// but we need valid and meaningful hostname.
+	dummyHost = "plugin.moby.localhost"
 )
 
 func newTransport(addr string, tlsConfig *tlsconfig.Options) (transport.Transport, error) {
@@ -44,8 +50,12 @@ func newTransport(addr string, tlsConfig *tlsconfig.Options) (transport.Transpor
 		return nil, err
 	}
 	scheme := httpScheme(u)
-
-	return transport.NewHTTPTransport(tr, scheme, socket), nil
+	hostName := u.Host
+	if hostName == "" || u.Scheme == "unix" || u.Scheme == "npipe" {
+		// Override host header for non-tcp connections.
+		hostName = dummyHost
+	}
+	return transport.NewHTTPTransport(tr, scheme, hostName), nil
 }
 
 // NewClient creates a new plugin client (http).
@@ -217,13 +227,13 @@ func (c *Client) callWithRetry(serviceMethod string, data io.Reader, retry bool,
 }
 
 func backoff(retries int) time.Duration {
-	b, max := 1, defaultTimeOut
-	for b < max && retries > 0 {
+	b, maxTimeout := 1, defaultTimeOut
+	for b < maxTimeout && retries > 0 {
 		b *= 2
 		retries--
 	}
-	if b > max {
-		b = max
+	if b > maxTimeout {
+		b = maxTimeout
 	}
 	return time.Duration(b) * time.Second
 }

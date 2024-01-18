@@ -22,6 +22,8 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/distributor/writefailures"
@@ -30,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -38,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	mathutil "github.com/grafana/loki/pkg/util/math"
@@ -56,22 +60,22 @@ const (
 
 var (
 	memoryStreams = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_memory_streams",
 		Help:      "The total number of streams in memory per tenant.",
 	}, []string{"tenant"})
 	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_memory_streams_labels_bytes",
 		Help:      "Total bytes of labels of the streams in memory.",
 	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_streams_created_total",
 		Help:      "The total number of streams created per tenant.",
 	}, []string{"tenant"})
 	streamsRemovedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "ingester_streams_removed_total",
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})
@@ -108,6 +112,8 @@ type instance struct {
 	metrics *ingesterMetrics
 
 	chunkFilter          chunk.RequestChunkFilterer
+	pipelineWrapper      log.PipelineWrapper
+	extractorWrapper     log.SampleExtractorWrapper
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
@@ -125,6 +131,8 @@ func newInstance(
 	metrics *ingesterMetrics,
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
+	pipelineWrapper log.PipelineWrapper,
+	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 ) (*instance, error) {
@@ -152,7 +160,9 @@ func newInstance(
 		metrics:               metrics,
 		flushOnShutdownSwitch: flushOnShutdownSwitch,
 
-		chunkFilter: chunkFilter,
+		chunkFilter:      chunkFilter,
+		pipelineWrapper:  pipelineWrapper,
+		extractorWrapper: extractorWrapper,
 
 		streamRateCalculator: streamRateCalculator,
 
@@ -418,6 +428,15 @@ func (i *instance) Query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
+	if i.pipelineWrapper != nil {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		pipeline = i.pipelineWrapper.Wrap(ctx, pipeline, expr.String(), userID)
+	}
+
 	stats := stats.FromContext(ctx)
 	var iters []iter.EntryIterator
 
@@ -461,6 +480,15 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
+	}
+
+	if i.extractorWrapper != nil {
+		userID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, expr.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -571,9 +599,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		err = i.forMatchingStreams(ctx, req.Start, nil, shard, func(stream *stream) error {
 			// consider the stream only if it overlaps the request time range
 			if shouldConsiderStream(stream, req.Start, req.End) {
-				series = append(series, logproto.SeriesIdentifier{
-					Labels: stream.labels.Map(),
-				})
+				series = append(series, logproto.SeriesIdentifierFromLabels(stream.labels))
 			}
 			return nil
 		})
@@ -596,9 +622,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 						return nil
 					}
 
-					dedupedSeries[key] = logproto.SeriesIdentifier{
-						Labels: stream.labels.Map(),
-					}
+					dedupedSeries[key] = logproto.SeriesIdentifierFromLabels(stream.labels)
 				}
 				return nil
 			})
@@ -925,8 +949,9 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) (int32, error) {
 	stats := stats.FromContext(ctx)
+	var lines int32
 
 	// send until the limit is reached.
 	for limit != 0 && !isDone(ctx) {
@@ -936,7 +961,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
-			return err
+			return lines, err
 		}
 
 		if limit > 0 {
@@ -945,46 +970,49 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
+		lines += int32(batchSize)
 
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return err
+			return lines, err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Streams) == 0 {
-			return nil
+			return lines, err
 		}
 
 		stats.Reset()
 	}
-	return nil
+	return lines, nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) (int32, error) {
+	var lines int32
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
-			return err
+			return lines, err
 		}
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
+		lines += int32(size)
 		if isDone(ctx) {
 			break
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
-			return err
+			return lines, err
 		}
 
 		// We check this after sending an empty batch to make sure stats are sent
 		if len(batch.Series) == 0 {
-			return nil
+			return lines, nil
 		}
 
 		stats.Reset()
@@ -993,7 +1021,7 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 	}
 
-	return nil
+	return lines, nil
 }
 
 func shouldConsiderStream(stream *stream, reqFrom, reqThrough time.Time) bool {

@@ -26,11 +26,21 @@ var (
 		"storage_config.boltdb_shipper.use_boltdb_shipper_as_backup",
 		"storage_config.aws.sse_encryption",
 		"storage_config.s3.sse_encryption",
+		"chunk_store_config.max_look_back_period",
+		"storage_config.boltdb_shipper.shared_store",
+		"storage_config.boltdb_shipper.shared_store_key_prefix",
+		"storage_config.tsdb_shipper.shared_store",
+		"storage_config.tsdb_shipper.shared_store_key_prefix",
+		"compactor.deletion_mode",
+		"compactor.shared_store",
+		"compactor.shared_store_key_prefix",
+		"limits_config.enforce_metric_name",
+		"limits_config.ruler_evaluation_delay_duration",
 	}
 
 	expectedConfigDeprecates = []string{
+		"legacy-read-mode",
 		"ruler.remote_write.client",
-		"compactor.deletion_mode",
 		"index_gateway.ring.replication_factor",
 		"storage_config.bigtable",
 		"storage_config.cassandra",
@@ -38,9 +48,7 @@ var (
 		"storage_config.grpc_store",
 		"storage_config.aws.dynamodb",
 		"chunk_store_config.write_dedupe_cache_config",
-		"chunk_store_config.max_look_back_period",
 		"limits_config.unordered_writes",
-		"limits_config.ruler_evaluation_delay_duration",
 		"limits_config.ruler_remote_write_url",
 		"limits_config.ruler_remote_write_timeout",
 		"limits_config.ruler_remote_write_headers",
@@ -75,11 +83,15 @@ var (
 		"schema_config.configs.[8].object_store",
 	}
 
-	expectedRuntimeConfigDeletes = []string{}
+	expectedRuntimeConfigDeletes = []string{
+		"overrides.foo.ruler_evaluation_delay_duration",
+		"overrides.foo.enforce_metric_name",
+		"overrides.bar.ruler_evaluation_delay_duration",
+		"overrides.bar.enforce_metric_name",
+	}
 
 	expectedRuntimeConfigDeprecates = []string{
 		"overrides.foo.unordered_writes",
-		"overrides.foo.ruler_evaluation_delay_duration",
 		"overrides.foo.ruler_remote_write_url",
 		"overrides.foo.ruler_remote_write_timeout",
 		"overrides.foo.ruler_remote_write_headers",
@@ -97,7 +109,6 @@ var (
 		"overrides.foo.per_tenant_override_period",
 		"overrides.foo.allow_deletes",
 		"overrides.bar.unordered_writes",
-		"overrides.bar.ruler_evaluation_delay_duration",
 		"overrides.bar.ruler_remote_write_url",
 		"overrides.bar.ruler_remote_write_timeout",
 		"overrides.bar.ruler_remote_write_headers",

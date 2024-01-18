@@ -1,255 +1,221 @@
 package main
 
 import (
-	"encoding/binary"
-	"unicode/utf8"
+	"context"
+	"math"
+	"time"
 
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/pkg/util/constants"
+
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
+
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/encoding"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-type Token struct {
-	Key   []byte
-	Value string
-}
-
-type Tokenizer interface {
-	Tokens(line string) []Token
-	getSkip() int
-	getMin() int
-	getMax() int
+type metrics struct {
+	sbfCreationTime    prometheus.Counter   // time spent creating sbfs
+	chunkSize          prometheus.Histogram // uncompressed size of all chunks summed per series
+	bloomSize          prometheus.Histogram // size of the bloom filter in bytes
+	hammingWeightRatio prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
+	estimatedCount     prometheus.Histogram // estimated number of elements in the bloom filter
 }
 
 /*
-type logfmtTokenizer struct {
-	parser *log.LogfmtParser
-	lbls   *log.LabelsBuilder
-}
-
-func (t *logfmtTokenizer) Tokens(line string) []Token {
-	t.lbls.Reset()
-	t.parser.Process(0, []byte(line), t.lbls)
-	ls := t.lbls.LabelsResult().Labels()
-	res := make([]Token, 0, len(ls))
-	for _, l := range ls {
-		res = append(res, Token{Key: l.Name, Value: l.Value})
-	}
-	return res
-}
-
-func newLogfmtTokenizer() *logfmtTokenizer {
-	return &logfmtTokenizer{
-		// non strict, allow empty values
-		parser: log.NewLogfmtParser(false, true),
-		lbls:   log.NewBaseLabelsBuilder().ForLabels(nil, 0),
-	}
-}
-
+BloomTokenizer is a utility that converts either Loki chunks or individual lines into tokens.
+These tokens are n-grams, representing adjacent letters, that are used to populate a bloom filter.
+https://en.wikipedia.org/wiki/Bloom_filter
+Bloom filters are utilized for faster lookups of log lines.
 */
+type BloomTokenizer struct {
+	metrics *metrics
 
-type ngramTokenizer struct {
-	// [min,max) exclusivity
-	min, max, skip      int
-	buffers             [][]rune // circular buffers used for ngram generation
-	runeBuffer          []byte   // buffer used for token generation
-	tokenBuffer         []Token  // buffer used for holding tokens that is returned
-	internalTokenBuffer []Token  // circular buffer for tokens
+	lineTokenizer *v1.NGramTokenizer
+	cache         map[string]interface{}
 }
 
-func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
-	capacity := max - min
-	t := &ngramTokenizer{
-		min:     min,
-		max:     max,
-		skip:    skip,
-		buffers: make([][]rune, capacity),
+const cacheSize = 150000
+const bloomTokenizerMetricsSubsystem = "bloom_tokenizer"
+const eightBits = 8
+
+// NewBloomTokenizer returns a new instance of the Bloom Tokenizer.
+// Warning: the tokens returned use the same byte slice to reduce allocations. This has two consequences:
+// 1) The token slices generated must not be mutated externally
+// 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
+// 2) This is not thread safe.
+func NewBloomTokenizer(reg prometheus.Registerer, NGramLength, NGramSkip int) (*BloomTokenizer, error) {
+	t := &BloomTokenizer{
+		metrics: newMetrics(reg, constants.Loki, bloomTokenizerMetricsSubsystem),
 	}
-	for i := t.min; i < t.max; i++ {
-		t.buffers[i-t.min] = make([]rune, i)
+	t.cache = make(map[string]interface{}, cacheSize)
+	t.lineTokenizer = v1.NewNGramTokenizer(NGramLength, NGramSkip)
+
+	level.Info(util_log.Logger).Log("bloom tokenizer created")
+
+	return t, nil
+}
+
+func (bt *BloomTokenizer) SetLineTokenizer(t *v1.NGramTokenizer) {
+	bt.lineTokenizer = t
+}
+
+func (bt *BloomTokenizer) GetNGramLength() uint64 {
+	return uint64(bt.lineTokenizer.N)
+}
+
+func (bt *BloomTokenizer) GetNGramSkip() uint64 {
+	return uint64(bt.lineTokenizer.Skip)
+}
+
+func newMetrics(r prometheus.Registerer, namespace, subsystem string) *metrics {
+	return &metrics{
+		sbfCreationTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name:      "bloom_creation_time",
+			Help:      "Time spent creating scalable bloom filters",
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_chunk_series_size",
+			Help:      "Uncompressed size of chunks in a series",
+			Buckets:   prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_size",
+			Help:      "Size of the bloom filter in bytes",
+			Buckets:   prometheus.ExponentialBucketsRange(128, 16777216, 8),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		hammingWeightRatio: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_hamming_weight_ratio",
+			Help:      "Ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter",
+			Buckets:   prometheus.ExponentialBucketsRange(0.001, 1, 12),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
+		estimatedCount: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:      "bloom_estimated_count",
+			Help:      "Estimated number of elements in the bloom filter",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 33554432, 10),
+			Namespace: namespace,
+			Subsystem: subsystem,
+		}),
 	}
-	t.runeBuffer = make([]byte, 0, max*4)
-	t.tokenBuffer = make([]Token, 0, 1024)
-	t.internalTokenBuffer = make([]Token, 0, 1024)
-	for i := 0; i < cap(t.internalTokenBuffer); i++ {
-		tok := Token{}
-		tok.Key = make([]byte, 0, 132)
-		t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
-	}
-
-	return t
 }
 
-func (t *ngramTokenizer) getSkip() int {
-	return t.skip
+func clearCache(cache map[string]interface{}) {
+	clear(cache)
 }
 
-func (t *ngramTokenizer) getMin() int {
-	return t.min
+// prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
+// of specific ngram length, along with the length of the prefix.
+// It ensures enough capacity for the prefix and the token so additional tokens can be created
+// without allocations by appending them to the prefix length
+func prefixedToken(ngram int, chk logproto.ChunkRef) ([]byte, int) {
+	var enc encoding.Encbuf
+	enc.PutBE64(uint64(chk.From))
+	enc.PutBE64(uint64(chk.Through))
+	enc.PutBE32(chk.Checksum)
+	prefixLn := enc.Len() // record the length of the prefix
+
+	enc.PutBytes(make([]byte, ngram*v1.MaxRuneLen)) // ensure enough capacity for the ngram
+
+	// return the underlying byte slice and the length of the prefix
+	return enc.Get(), prefixLn
 }
 
-func (t *ngramTokenizer) getMax() int {
-	return t.max
-}
+// PopulateSeriesWithBloom is intended to be called on the write path, and is used to populate the bloom filter for a given series.
+func (bt *BloomTokenizer) PopulateSeriesWithBloom(seriesWithBloom *v1.SeriesWithBloom, chunks []chunk.Chunk) error {
+	startTime := time.Now().UnixMilli()
 
-func (t *ngramTokenizer) Tokens(line string) []Token {
-	t.tokenBuffer = t.tokenBuffer[:0] // Reset the result slice
-	var i int                         // rune index (not position that is measured in the range loop)
-	numToks := 0
-	for _, r := range line {
+	clearCache(bt.cache)
+	chunkTotalUncompressedSize := 0
 
-		// j is the index of the buffer to use
-		for j := 0; j < (t.max - t.min); j++ {
-			// n is the length of the ngram
-			n := j + t.min
-			// pos is the position in the buffer to overwrite
-			pos := i % n
-			t.buffers[j][pos] = r
+	for idx := range chunks {
+		lc := chunks[idx].Data.(*chunkenc.Facade).LokiChunk()
+		tokenBuf, prefixLn := prefixedToken(bt.lineTokenizer.N, chunks[idx].ChunkRef)
+		chunkTotalUncompressedSize += lc.UncompressedSize()
 
-			if i >= n-1 && (i+1-n)%(t.skip+1) == 0 {
-				t.runeBuffer = reassemble(t.buffers[j], (i+1)%n, t.runeBuffer)
-				//fmt.Println(numToks, cap(t.internalTokenBuffer), len(t.internalTokenBuffer))
-				if numToks >= cap(t.internalTokenBuffer) || numToks == len(t.internalTokenBuffer) {
-					tok := Token{}
-					tok.Key = make([]byte, 0, 132)
-					t.internalTokenBuffer = append(t.internalTokenBuffer, tok)
+		itr, err := lc.Iterator(
+			context.Background(),
+			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
+			time.Unix(0, math.MaxInt64),
+			logproto.FORWARD,
+			log.NewNoopPipeline().ForStream(chunks[idx].Metric),
+		)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "chunk iterator cannot be created", "err", err)
+			return err
+		}
+
+		defer itr.Close()
+
+		for itr.Next() && itr.Error() == nil {
+			chunkTokenizer := v1.NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(itr.Entry().Line))
+			for chunkTokenizer.Next() {
+				tok := chunkTokenizer.At()
+				if tok != nil {
+					str := string(tok)
+					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+					if !found {
+						bt.cache[str] = nil
+
+						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
+
+						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+							clearCache(bt.cache)
+						}
+					}
 				}
-				//fmt.Println(numToks, cap(t.internalTokenBuffer), len(t.internalTokenBuffer))
-				t.internalTokenBuffer[numToks].Key = t.internalTokenBuffer[numToks].Key[:0]
-				t.internalTokenBuffer[numToks].Key = append(t.internalTokenBuffer[numToks].Key, t.runeBuffer...)
-				t.internalTokenBuffer[numToks].Value = string(t.internalTokenBuffer[numToks].Key)
-				numToks++
 			}
-		}
-		i++
-	}
-	t.tokenBuffer = append(t.tokenBuffer, t.internalTokenBuffer[:numToks]...)
-	return t.tokenBuffer
-}
+			lineTokenizer := bt.lineTokenizer.Tokens(itr.Entry().Line)
+			for lineTokenizer.Next() {
+				tok := lineTokenizer.At()
+				if tok != nil {
+					str := string(tok)
+					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+					if !found {
+						bt.cache[str] = nil
 
-func (t *ngramTokenizer) OldTokens(line string) []Token {
-	t.tokenBuffer = t.tokenBuffer[:0] // Reset the result slice
-	var i int                         // rune index (not position that is measured in the range loop)
-	for _, r := range line {
+						seriesWithBloom.Bloom.ScalableBloomFilter.TestAndAdd(tok)
 
-		// j is the index of the buffer to use
-		for j := 0; j < (t.max - t.min); j++ {
-			// n is the length of the ngram
-			n := j + t.min
-			// pos is the position in the buffer to overwrite
-			pos := i % n
-			t.buffers[j][pos] = r
-
-			if i >= n-1 && (i+1-n)%(t.skip+1) == 0 {
-				t.runeBuffer = reassemble(t.buffers[j], (i+1)%n, t.runeBuffer)
-				b := Token{}
-				b.Key = make([]byte, 0, 132) // TODO: Yeah, that's too big but I didn't fee like doing the math at the end of the day
-				b.Key = append(b.Key, t.runeBuffer...)
-				b.Value = string(b.Key)
-				t.tokenBuffer = append(t.tokenBuffer, b)
+						if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+							clearCache(bt.cache)
+						}
+					}
+				}
 			}
+
 		}
-		i++
-	}
-	return t.tokenBuffer
-}
+		seriesWithBloom.Series.Chunks = append(seriesWithBloom.Series.Chunks, v1.ChunkRef{
+			Start:    chunks[idx].From,
+			End:      chunks[idx].Through,
+			Checksum: chunks[idx].Checksum,
+		})
+	} // for each chunk
 
-func reassemble(buf []rune, pos int, result []byte) []byte {
-	result = result[:0] // Reset the result slice
-	for i := 0; i < len(buf); i++ {
-		cur := (pos + i) % len(buf)
-		result = utf8.AppendRune(result, buf[cur])
-	}
-	return result
-}
+	endTime := time.Now().UnixMilli()
 
-type WrappedTokenizer struct {
-	t           Tokenizer
-	f           func(Token) Token
-	tokenBuffer []Token
-	prefix      []byte
-	i64buf      []byte
-	i32buf      []byte
-}
-
-func (w *WrappedTokenizer) Tokens(line string) []Token {
-	w.tokenBuffer = w.tokenBuffer[:0] // Reset the result slice
-	toks := w.t.Tokens(line)
-	for _, tok := range toks {
-		w.tokenBuffer = append(w.tokenBuffer, w.f(tok))
-	}
-	return append(w.tokenBuffer, toks...)
-}
-
-func (w *WrappedTokenizer) getSkip() int {
-	return w.t.getSkip()
-}
-
-func (w *WrappedTokenizer) getMin() int {
-	return w.t.getMin()
-}
-
-func (w *WrappedTokenizer) getMax() int {
-	return w.t.getMax()
-}
-
-func ChunkIDTokenizer(chk logproto.ChunkRef, t Tokenizer) *WrappedTokenizer {
-	//prefix := fmt.Sprintf("%d:%d:%d:", chk.From, chk.Through, chk.Checksum)
-	p := make([]byte, 0, 256)
-	i64buf := make([]byte, binary.MaxVarintLen64)
-	i32buf := make([]byte, 4)
-
-	binary.PutVarint(i64buf, int64(chk.From))
-	p = append(p, i64buf...)
-	p = append(p, 58)
-	binary.PutVarint(i64buf, int64(chk.Through))
-	p = append(p, i64buf...)
-	p = append(p, 58)
-	binary.LittleEndian.PutUint32(i32buf, chk.Checksum)
-	p = append(p, i32buf...)
-	p = append(p, 58)
-
-	return &WrappedTokenizer{
-		t: t,
-		f: func(tok Token) Token {
-			tok.Key = append(append(tok.Key, p...), tok.Key...)[len(tok.Key):]
-			tok.Value = string(tok.Key)
-			return tok
-		},
-		tokenBuffer: make([]Token, 0, 1024),
-		prefix:      p,
-		i64buf:      i64buf,
-		i32buf:      i32buf,
-	}
-}
-
-func ChunkIDTokenizerHalfInit(t Tokenizer) *WrappedTokenizer {
-	p := make([]byte, 0, 256)
-	return &WrappedTokenizer{
-		t:           t,
-		tokenBuffer: make([]Token, 0, 1024),
-		prefix:      p,
-		i64buf:      make([]byte, binary.MaxVarintLen64),
-		i32buf:      make([]byte, 4),
-	}
-}
-
-func (w *WrappedTokenizer) reinit(chk logproto.ChunkRef) {
-	//prefix := fmt.Sprintf("%d:%d:%d:", chk.From, chk.Through, chk.Checksum)
-	w.prefix = w.prefix[:0]
-
-	//w.prefix = fmt.Appendf(w.prefix, "%d:%d:%d:", chk.From, chk.Through, chk.Checksum)
-	binary.PutVarint(w.i64buf, int64(chk.From))
-	w.prefix = append(w.prefix, w.i64buf...)
-	w.prefix = append(w.prefix, 58)
-	binary.PutVarint(w.i64buf, int64(chk.Through))
-	w.prefix = append(w.prefix, w.i64buf...)
-	w.prefix = append(w.prefix, 58)
-	binary.LittleEndian.PutUint32(w.i32buf, chk.Checksum)
-	w.prefix = append(w.prefix, w.i32buf...)
-	w.prefix = append(w.prefix, 58)
-
-	w.f = func(tok Token) Token {
-		tok.Key = append(append(tok.Key, w.prefix...), tok.Key...)[len(tok.Key):]
-		tok.Value = string(tok.Key)
-		return tok
-	}
+	fillRatio := seriesWithBloom.Bloom.ScalableBloomFilter.FillRatio()
+	bt.metrics.hammingWeightRatio.Observe(fillRatio)
+	bt.metrics.estimatedCount.Observe(
+		float64(estimatedCount(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
+	)
+	bt.metrics.bloomSize.Observe(float64(seriesWithBloom.Bloom.ScalableBloomFilter.Capacity() / eightBits))
+	bt.metrics.sbfCreationTime.Add(float64(endTime - startTime))
+	bt.metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
+	return nil
 }

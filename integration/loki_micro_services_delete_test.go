@@ -216,6 +216,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	validateQueryResponse := func(expectedStreams []client.StreamValues, resp *client.Response) {
 		t.Helper()
+		assert.Equal(t, "success", resp.Status)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
 		require.Len(t, resp.Data.Stream, len(expectedStreams))
@@ -408,7 +409,7 @@ func getMetricValue(t *testing.T, metricName, metrics string) float64 {
 }
 
 func pushRequestToClientStreamValues(t *testing.T, p pushRequest) []client.StreamValues {
-	logsByStream := map[string][][]string{}
+	logsByStream := map[string][]client.Entry{}
 	for _, entry := range p.entries {
 		lb := labels.NewBuilder(labels.FromMap(p.stream))
 		for _, l := range entry.StructuredMetadata {

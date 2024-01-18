@@ -7,7 +7,7 @@ weight: 200
 # Single Store BoltDB (boltdb-shipper)
 
 {{% admonition type="note" %}}
-Note that single store BoltDB Shipper is a legacy storage option and is not recommended for new deployments. The [TSDB]({{< relref "./tsdb" >}}) index is the recommended index.
+Single store BoltDB Shipper is a legacy storage option and is not recommended for new deployments. The [TSDB]({{< relref "./tsdb" >}}) index is the recommended index.
 {{% /admonition %}}
 
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
@@ -41,7 +41,6 @@ storage_config:
 
   boltdb_shipper:
     active_index_directory: /loki/index
-    shared_store: gcs
     cache_location: /loki/boltdb-cache
 ```
 
@@ -76,7 +75,10 @@ they both having shipped files for day `18371` and `18372` with prefix `loki_ind
         └── ingester-1-1587254400.gz
         ...
 ```
-**Note:** We also add a timestamp to names of the files to randomize the names to avoid overwriting files when running Ingesters with same name and not have a persistent storage. Timestamps not shown here for simplification.
+
+{{% admonition type="note" %}}
+Loki also adds a timestamp to names of the files to randomize the names to avoid overwriting files when running Ingesters with same name and not have a persistent storage. Timestamps not shown here for simplification.
+{{% /admonition %}}
 
 Let us talk about more in depth about how both Ingesters and Queriers work when running them with BoltDB Shipper.
 
@@ -87,7 +89,9 @@ and the BoltDB Shipper looks for new and updated files in that directory at 1 mi
 When running Loki in microservices mode, there could be multiple ingesters serving write requests.
 Each ingester generates BoltDB files locally.
 
-**Note:** To avoid any loss of index when an ingester crashes, we recommend running ingesters as a statefulset (when using Kubernetes) with a persistent storage for storing index files.
+{{% admonition type="note" %}}
+To avoid any loss of index when an ingester crashes, we recommend running ingesters as a StatefulSet (when using Kubernetes) with a persistent storage for storing index files.
+{{% /admonition %}}
 
 When chunks are flushed, they are available for reads in the object store instantly. The index is not available instantly, since we upload every 15 minutes with the BoltDB shipper.
 Ingesters expose a new RPC for letting queriers query the ingester's local index for chunks which were recently flushed, but its index might not be available yet with queriers.
@@ -133,7 +137,9 @@ While using `boltdb-shipper` avoid configuring WriteDedupe cache since it is use
 Compactor is a BoltDB Shipper specific service that reduces the index size by deduping the index and merging all the files to a single file per table.
 We recommend running a Compactor since a single Ingester creates 96 files per day which include a lot of duplicate index entries and querying multiple files per table adds up the overall query latency.
 
-**Note:** There should be only 1 compactor instance running at a time that otherwise could create problems and may lead to data loss.
+{{% admonition type="note" %}}
+There should be only one compactor instance running at a time that otherwise could create problems and may lead to data loss.
+{{% /admonition %}}
 
 Example compactor configuration with GCS:
 
@@ -144,7 +150,6 @@ The compactor is an optional but suggested component that combines and deduplica
 ```yaml
 compactor:
   working_directory: /loki/compactor
-  shared_store: gcs
 
 storage_config:
   gcs:

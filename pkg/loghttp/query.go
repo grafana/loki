@@ -240,7 +240,10 @@ func (s Streams) ToProto() []logproto.Stream {
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
 		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
-		result = append(result, logproto.Stream{Labels: s.Labels.String(), Entries: entries})
+		result = append(result, logproto.Stream{
+			Labels:  s.Labels.String(),
+			Entries: entries,
+		})
 	}
 	return result
 }

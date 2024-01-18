@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -21,13 +23,13 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 	// compute value size such that 10 entries account to exactly 1MB.
 	// adding one more entry to the cache would result in eviction when MaxSizeMB is configured to a value of 1.
 	// value cap = target size of each entry (0.1MB) - size of cache entry with empty value.
-	valueCap := (1e6 / cnt) - sizeOf(&cacheEntry{
-		key: "00",
+	valueCap := (1e6 / cnt) - sizeOf(&Entry[string, []byte]{
+		Key: "00",
 	})
 
-	itemTemplate := &cacheEntry{
-		key:   "00",
-		value: make([]byte, 0, valueCap),
+	itemTemplate := &Entry[string, []byte]{
+		Key:   "00",
+		Value: make([]byte, 0, valueCap),
 	}
 
 	tests := []struct {
@@ -45,7 +47,11 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		c := NewEmbeddedCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
+		removedEntriesCount := atomic.NewInt64(0)
+		onEntryRemoved := func(key string, value []byte) {
+			removedEntriesCount.Inc()
+		}
+		c := NewTypedEmbeddedCache[string, []byte](test.name, test.cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)
 		ctx := context.Background()
 
 		// Check put / get works
@@ -66,6 +72,7 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(replacedReason)), float64(0))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -79,7 +86,9 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 		}
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(0))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(replacedReason)), float64(0))
+		assert.Equal(t, int64(0), removedEntriesCount.Load())
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -101,6 +110,8 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(replacedReason)), float64(evicted))
+		assert.Equalf(t, int64(evicted+evicted), removedEntriesCount.Load(), "%d items were evicted and %d items were replaced", evicted, evicted)
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -119,6 +130,8 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
+		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(replacedReason)), float64(evicted))
+		assert.Equal(t, int64(evicted+evicted), removedEntriesCount.Load(), "During this step the count of the calls must not be changed because we do read-only operations")
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
@@ -146,12 +159,16 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))
 		assert.Equal(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(reason)), float64(evicted))
+		assert.Equalf(t, testutil.ToFloat64(c.entriesEvicted.WithLabelValues(replacedReason)), float64(evicted+evicted),
+			"During this step we replace %d more items", evicted)
+		assert.Equalf(t, int64(evicted+evicted+evicted), removedEntriesCount.Load(), "During this step we replace %d more items", evicted)
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(cnt))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(len(c.entries)))
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
 		c.Stop()
+		assert.Equal(t, int64(evicted*3), removedEntriesCount.Load(), "onEntryRemoved must not be called for the items during the stop")
 	}
 }
 
@@ -159,9 +176,9 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	key1, key2, key3, key4 := "01", "02", "03", "04"
 	data1, data2, data3, data4 := genBytes(32), genBytes(64), genBytes(128), genBytes(32)
 
-	memorySz := sizeOf(&cacheEntry{key: key1, value: data1}) +
-		sizeOf(&cacheEntry{key: key2, value: data2}) +
-		sizeOf(&cacheEntry{key: key3, value: data3})
+	memorySz := sizeOf(&Entry[string, []byte]{Key: key1, Value: data1}) +
+		sizeOf(&Entry[string, []byte]{Key: key2, Value: data2}) +
+		sizeOf(&Entry[string, []byte]{Key: key3, Value: data3})
 
 	cfg := EmbeddedCacheConfig{
 		MaxSizeItems:  3,
@@ -169,7 +186,11 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 		PurgeInterval: 50 * time.Millisecond,
 	}
 
-	c := NewEmbeddedCache("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test")
+	removedEntriesCount := atomic.NewInt64(0)
+	onEntryRemoved := func(key string, value []byte) {
+		removedEntriesCount.Inc()
+	}
+	c := NewTypedEmbeddedCache[string, []byte]("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test", sizeOf, onEntryRemoved)
 	ctx := context.Background()
 
 	err := c.Store(ctx, []string{key1, key2, key3, key4}, [][]byte{data1, data2, data3, data4})
@@ -189,6 +210,7 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	assert.Equal(t, float64(len(c.entries)), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(memorySz), testutil.ToFloat64(c.memoryBytes))
+	assert.Equal(t, int64(1), removedEntriesCount.Load(), "on removal callback had to be called for key1")
 
 	// Expire the item.
 	time.Sleep(2 * cfg.TTL)
@@ -202,6 +224,7 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	assert.Equal(t, float64(len(c.entries)), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(memorySz), testutil.ToFloat64(c.memoryBytes))
+	assert.Equal(t, int64(4), removedEntriesCount.Load(), "on removal callback had to be called for all 3 expired entries")
 
 	c.Stop()
 }
