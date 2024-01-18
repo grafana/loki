@@ -556,7 +556,6 @@ func newRangeAggEvaluator(
 		return &QuantileSketchStepEvaluator{
 			iter: iter,
 		}, nil
-	// Step 6
 	case syntax.OpRangeTypeFirstWithTimestamp:
 		iter := newFirstWithTimestampIterator(
 			it,

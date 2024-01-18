@@ -1170,8 +1170,7 @@ const (
 	// internal expressions not represented in LogQL. These are used to
 	// evaluate expressions differently resulting in intermediate formats
 	// that are not consumable by LogQL clients but are used for sharding.
-	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
-	// Step 5
+	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
 	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
 )
 

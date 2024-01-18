@@ -34,7 +34,6 @@ type firstWithTimestampBatchRangeVectorIterator struct {
 	at []promql.Sample
 }
 
-// Step 7
 func (r *firstWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
@@ -60,7 +59,6 @@ func (r *firstWithTimestampBatchRangeVectorIterator) agg(samples []promql.FPoint
 	return samples[0]
 }
 
-// Step 8
 type firstOverTimeStepEvaluator struct {
 	start, end, ts time.Time
 	step           time.Duration

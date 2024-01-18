@@ -63,7 +63,6 @@ func TestMappingEquivalence(t *testing.T) {
 			`,
 			false,
 		},
-		// Step 1:
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates

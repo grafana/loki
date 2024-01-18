@@ -128,7 +128,7 @@ func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*
 	if err != nil {
 		return nil, 0, err
 	}
-	if isNoOp(e.SampleExpr, rhsMapped) && !isLiteralOrVector(rhsMapped) {
+	if isNoOp(e.RHS, rhsMapped) && !isLiteralOrVector(rhsMapped) {
 		// TODO: check if literal or vector
 		rhsMapped = DownstreamSampleExpr{
 			shard:      nil,
@@ -487,7 +487,6 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			quantile: expr.Params,
 		}, bytesPerShard, nil
 
-	// Step 4
 	case syntax.OpRangeTypeFirst:
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {

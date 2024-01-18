@@ -200,7 +200,6 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
-// Step 3
 type MergeFirstOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
@@ -423,7 +422,6 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
-	// Step 2:
 	case *MergeFirstOverTimeExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 

@@ -165,6 +165,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `querier.tsdb-max-query-parallelism`                   | 128         | 512         | - |
 | `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
 | `validation.max-label-names-per-series`                | 15          | 30          | - |
+| `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
 {{% /responsive-table %}}
 
 #### Write dedupe cache is deprecated
