@@ -22,6 +22,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
+	"github.com/grafana/loki/operator/internal/config"
 	manifestsocp "github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/operator"
@@ -61,14 +62,10 @@ func main() {
 
 	var err error
 
-	ctrlCfg := ctrlconfigv1.ProjectConfig{}
-	options := ctrl.Options{Scheme: scheme}
-	if configFile != "" {
-		options, err = options.AndFrom(ctrl.ConfigFile().AtPath(configFile).OfKind(&ctrlCfg)) //nolint:staticcheck
-		if err != nil {
-			logger.Error(err, "failed to parse controller manager config file")
-			os.Exit(1)
-		}
+	ctrlCfg, options, err := config.LoadConfig(scheme, configFile)
+	if err != nil {
+		logger.Error(err, "failed to load operator configuration")
+		os.Exit(1)
 	}
 
 	if ctrlCfg.Gates.LokiStackAlerts && !ctrlCfg.Gates.ServiceMonitors {
