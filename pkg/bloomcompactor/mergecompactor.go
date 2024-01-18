@@ -3,10 +3,10 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
 

@@ -3,15 +3,14 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"os"
 	"path/filepath"
 
-	"github.com/google/uuid"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"

@@ -27,7 +27,6 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"math"
 	"math/rand"
 	"os"
@@ -43,6 +42,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/exp/slices"
 
 	"path/filepath"
 
