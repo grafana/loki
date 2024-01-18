@@ -388,6 +388,10 @@ func TestLabelQueryCacheKey(t *testing.T) {
 			start:         time.Now().Add(-6 * time.Hour),
 			end:           time.Now().Add(-5 * time.Hour),
 			expectedSplit: defaultSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       false,
+			},
 		},
 		{
 			name:          "within ingester query window",
