@@ -81,10 +81,10 @@ func NewRangeMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
 // be executed by the downstream engine.
 // It returns a boolean indicating whether a rewrite was possible, the
 // rewritten sample expression, and an error in case the rewrite failed.
-func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
-	origExpr, err := syntax.ParseSampleExpr(query)
-	if err != nil {
-		return true, nil, err
+func (m RangeMapper) Parse(expr syntax.Expr) (bool, syntax.Expr, error) {
+	origExpr, ok := expr.(syntax.SampleExpr)
+	if !ok {
+		return true, nil, errors.New("only sample expression supported")
 	}
 
 	recorder := m.metrics.downstreamRecorder()
@@ -120,7 +120,7 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 // is pushed down to the downstream expression.
 func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.VectorAggregationExpr, recorder *downstreamRecorder) (syntax.SampleExpr, error) {
 	// immediately clone the passed expr to avoid mutating the original
-	expr = clone(expr)
+	expr = syntax.MustClone(expr)
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		return m.mapVectorAggregationExpr(e, recorder)
@@ -177,7 +177,7 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 // Example: expression `count_over_time({app="foo"}[10m])` returns 10m
 func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 	var rangeInterval time.Duration
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			rangeInterval = concrete.Left.Interval
@@ -190,7 +190,7 @@ func getRangeInterval(expr syntax.SampleExpr) time.Duration {
 // such as `| json` or `| logfmt`, that would result in an exploding amount of series in downstream queries.
 func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 	found := false
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.LogfmtParserExpr:
 			found = true
@@ -277,8 +277,8 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 // appendDownstream adds expression expr with a range interval 'interval' and offset 'offset' to the downstreams list.
 // Returns the updated downstream ConcatSampleExpr.
 func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, interval time.Duration, offset time.Duration) *ConcatSampleExpr {
-	sampleExpr := clone(expr)
-	sampleExpr.Walk(func(e interface{}) {
+	sampleExpr := syntax.MustClone(expr)
+	sampleExpr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			concrete.Left.Interval = interval
@@ -300,7 +300,7 @@ func getOffsets(expr syntax.SampleExpr) []time.Duration {
 	// Expect to always find at most 1 offset, so preallocate it accordingly
 	offsets := make([]time.Duration, 0, 1)
 
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			offsets = append(offsets, concrete.Left.Offset)
@@ -490,18 +490,4 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 	default:
 		return false
 	}
-}
-
-// clone returns a copy of the given sample expression
-// This is needed whenever we want to modify the existing query tree.
-// clone is identical to syntax.Expr.Clone() but with the additional type
-// casting for syntax.SampleExpr.
-func clone(expr syntax.SampleExpr) syntax.SampleExpr {
-	e, err := syntax.ParseSampleExpr(expr.String())
-	if err != nil {
-		panic(
-			errors.Wrapf(err, "error cloning query: %s", expr.String()),
-		)
-	}
-	return e
 }

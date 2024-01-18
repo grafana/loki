@@ -30,6 +30,7 @@ const emptyStats = `{
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
+			"queryReferencedStructuredMetadata": false,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -53,6 +54,7 @@ const emptyStats = `{
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
+			"queryReferencedStructuredMetadata": false,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -74,7 +76,8 @@ const emptyStats = `{
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"index": {
 			"entriesFound": 0,
@@ -83,7 +86,8 @@ const emptyStats = `{
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"statsResult": {
 			"entriesFound": 0,
@@ -92,7 +96,28 @@ const emptyStats = `{
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"seriesResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
+		},
+		"labelResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"volumeResult": {
 			"entriesFound": 0,
@@ -101,7 +126,8 @@ const emptyStats = `{
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		},
 		"result": {
 			"entriesFound": 0,
@@ -110,7 +136,8 @@ const emptyStats = `{
 			"bytesReceived": 0,
 			"bytesSent": 0,
 			"requests": 0,
-			"downloadTime": 0
+			"downloadTime": 0,
+			"queryLengthServed": 0
 		}
 	},
 	"summary": {
@@ -177,7 +204,7 @@ var queryTestWithEncodingFlags = []struct {
 							"test": "test"
 						},
 						"values":[
-							[ "123456789012345", "super line"],
+							[ "123456789012345", "super line", {}],
 							[ "123456789012346", "super line with labels", {
 								"structuredMetadata": {
 									"foo": "a",
@@ -410,7 +437,6 @@ var labelTests = []struct {
 }
 
 // covers responses from /loki/api/v1/tail
-// TODO(salvacorts): Support encoding flags. And fix serialized structured metadata labels which shouldn't be there unless the categorize flag is set.
 var tailTests = []struct {
 	actual   legacy.TailResponse
 	expected string
@@ -451,7 +477,7 @@ var tailTests = []struct {
 					},
 					"values":[
 						[ "123456789012345", "super line"],
-						[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
+						[ "123456789012346", "super line with labels" ]
 					]
 				}
 			],
@@ -464,6 +490,90 @@ var tailTests = []struct {
 				}
 			]
 		}`,
+	},
+}
+
+var tailTestWithEncodingFlags = []struct {
+	actual        legacy.TailResponse
+	encodingFlags httpreq.EncodingFlags
+	expected      string
+}{
+	{
+		actual: legacy.TailResponse{
+			Streams: []logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 123456789012345),
+							Line:      "super line",
+						},
+						{
+							Timestamp: time.Unix(0, 123456789012346),
+							Line:      "super line with labels",
+							StructuredMetadata: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+						},
+						{
+							Timestamp: time.Unix(0, 123456789012347),
+							Line:      "super line with labels msg=text",
+							StructuredMetadata: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+							Parsed: []logproto.LabelAdapter{
+								{Name: "msg", Value: "text"},
+							},
+						},
+					},
+					Labels: `{test="test"}`,
+				},
+			},
+			DroppedEntries: []legacy.DroppedEntry{
+				{
+					Timestamp: time.Unix(0, 123456789022345),
+					Labels:    "{test=\"test\"}",
+				},
+			},
+		},
+		encodingFlags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
+		expected: fmt.Sprintf(`{
+			"streams": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line", {}],
+						[ "123456789012346", "super line with labels", {
+							"structuredMetadata": {
+								"foo": "a",
+								"bar": "b" 
+							} 
+						}],
+						[ "123456789012347", "super line with labels msg=text", {
+							"structuredMetadata": {
+								"foo": "a",
+								"bar": "b" 
+							},
+							"parsed": {
+								"msg": "text"
+							}
+						}]
+					]
+				}
+			],
+			"dropped_entries": [
+				{
+					"timestamp": "123456789022345",
+					"labels": {
+						"test": "test"
+					}
+				}
+			],
+			"encodingFlags": ["%s"]
+		}`, httpreq.FlagCategorizeLabels),
 	},
 }
 
@@ -515,15 +625,18 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 
 func Test_MarshalTailResponse(t *testing.T) {
 	for i, tailTest := range tailTests {
-		// convert logproto to model objects
-		model, err := NewTailResponse(tailTest.actual)
+		var b bytes.Buffer
+		err := WriteTailResponseJSON(tailTest.actual, &b, nil)
 		require.NoError(t, err)
 
-		// marshal model object
-		bytes, err := json.Marshal(model)
+		require.JSONEqf(t, tailTest.expected, b.String(), "Tail Test %d failed", i)
+	}
+	for i, tailTest := range tailTestWithEncodingFlags {
+		var b bytes.Buffer
+		err := WriteTailResponseJSON(tailTest.actual, &b, tailTest.encodingFlags)
 		require.NoError(t, err)
 
-		require.JSONEqf(t, tailTest.expected, string(bytes), "Tail Test %d failed", i)
+		require.JSONEqf(t, tailTest.expected, b.String(), "Tail Test %d failed", i)
 	}
 }
 
@@ -606,16 +719,10 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 			logproto.SeriesResponse{
 				Series: []logproto.SeriesIdentifier{
 					{
-						Labels: map[string]string{
-							"a": "1",
-							"b": "2",
-						},
+						Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2"),
 					},
 					{
-						Labels: map[string]string{
-							"c": "3",
-							"d": "4",
-						},
+						Labels: logproto.MustNewSeriesEntries("c", "3", "d", "4"),
 					},
 				},
 			},
@@ -726,7 +833,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 								"test": "test"
 							},
 							"values":[
-								[ "123456789012346", "super line"]
+								[ "123456789012346", "super line", {}]
 							]
 						},
 						{
@@ -879,7 +986,7 @@ func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
 		js := json.NewStream(json.ConfigFastest, &buf, 0)
-		err := encodeResult(w.Value, js, httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels))
+		err := encodeResult(w.Value, js, nil)
 		require.NoError(t, err)
 		js.Flush()
 		actual := buf.String()
@@ -925,10 +1032,11 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 				{Timestamp: time.Unix(0, 2), Labels: `{app="dropped"}`},
 			},
 		},
-			WebsocketWriterFunc(func(i int, b []byte) error {
+			NewWebsocketJSONWriter(WebsocketWriterFunc(func(i int, b []byte) error {
 				require.Equal(t, `{"streams":[{"stream":{"app":"foo"},"values":[["1","foobar"]]}],"dropped_entries":[{"timestamp":"2","labels":{"app":"dropped"}}]}`, string(b))
 				return nil
-			}),
+			})),
+			nil,
 		),
 	)
 }

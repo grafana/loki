@@ -70,9 +70,12 @@ func (b *Block) Blooms() *LazyBloomIter {
 	return NewLazyBloomIter(b)
 }
 
+type LazySchema func() (Schema, error)
+
 type BlockQuerier struct {
 	series *LazySeriesIter
 	blooms *LazyBloomIter
+	schema LazySchema
 
 	cur *SeriesWithBloom
 }
@@ -81,7 +84,17 @@ func NewBlockQuerier(b *Block) *BlockQuerier {
 	return &BlockQuerier{
 		series: NewLazySeriesIter(b),
 		blooms: NewLazyBloomIter(b),
+		schema: func() (Schema, error) {
+			if err := b.LoadHeaders(); err != nil {
+				return Schema{}, err
+			}
+			return b.index.schema, nil
+		},
 	}
+}
+
+func (bq *BlockQuerier) Schema() (Schema, error) {
+	return bq.schema()
 }
 
 func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
@@ -124,7 +137,7 @@ func (bq *BlockQuerier) Err() error {
 
 // CheckChunksForSeries checks if the given chunks pass a set of searches in the given bloom block.
 // It returns the list of chunks which will need to be downloaded for a query based on the initial list
-// passed as the `chks` argument. Chunks will be removed from the result set if they they are indexed in the bloom
+// passed as the `chks` argument. Chunks will be removed from the result set if they are indexed in the bloom
 // and fail to pass all the searches.
 func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRefs, searches [][]byte) (ChunkRefs, error) {
 	if err := bq.Seek(fp); err != nil {

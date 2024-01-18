@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/extract"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -34,27 +35,27 @@ import (
 
 var (
 	indexLookupsPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_index_lookups_per_query",
 		Help:      "Distribution of #index lookups per query.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, 5),
 	})
 	preIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_series_pre_intersection_per_query",
 		Help:      "Distribution of #series (pre intersection) per query.",
 		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	postIntersectionPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_series_post_intersection_per_query",
 		Help:      "Distribution of #series (post intersection) per query.",
 		// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
 		Buckets: prometheus.ExponentialBuckets(10, 8, 6),
 	})
 	chunksPerQuery = promauto.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "chunk_store_chunks_per_query",
 		Help:      "Distribution of #chunks per query.",
 		// For 100k series for 7 week, could be 1.2m - 10*(8^(7-1)) = 2.6m.
@@ -149,10 +150,10 @@ func (c *IndexReaderWriter) calculateIndexEntries(ctx context.Context, from, thr
 	return result, missing, nil
 }
 
-func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	log := util_log.WithContext(ctx, util_log.Logger)
 	// Check there is a metric name matcher of type equal,
-	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(allMatchers)
+	metricNameMatcher, matchers, ok := extract.MetricNameMatcherFromMatchers(predicate.Matchers)
 	if !ok || metricNameMatcher.Type != labels.MatchEqual {
 		return nil, storageerrors.ErrQueryMustContainMetricName
 	}
@@ -210,7 +211,7 @@ func (c chunkGroup) Less(i, j int) bool {
 }
 
 func (c *IndexReaderWriter) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
-	chks, err := c.GetChunkRefs(ctx, userID, from, through, matchers...)
+	chks, err := c.GetChunkRefs(ctx, userID, from, through, chunk.Predicate{Matchers: matchers})
 	if err != nil {
 		return nil, err
 	}

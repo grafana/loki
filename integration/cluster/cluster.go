@@ -24,6 +24,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/integration/util"
+
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -41,7 +42,6 @@ server:
   grpc_listen_port: 0
   grpc_server_max_recv_msg_size: 110485813
   grpc_server_max_send_msg_size: 110485813
-
 
 common:
   path_prefix: {{.dataPath}}
@@ -69,15 +69,27 @@ storage_config:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
-    active_index_directory: {{.dataPath}}/index
+    active_index_directory: {{.dataPath}}/boltdb-index
     cache_location: {{.dataPath}}/boltdb-cache
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
+  bloom_shipper:
+    working_directory: {{.dataPath}}/bloom-shipper
+    blocks_downloading_queue:
+      workers_count: 1
+
+bloom_gateway:
+  enabled: false
+
+bloom_compactor:
+  enabled: false
+  working_directory: {{.dataPath}}/bloom-compactor
 
 compactor:
-  working_directory: {{.dataPath}}/retention
+  working_directory: {{.dataPath}}/compactor
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false
@@ -152,14 +164,14 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	resetMetricRegistry()
-	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
+	sharedPath, err := os.MkdirTemp("", "loki-shared-data-")
 	if err != nil {
 		panic(err.Error())
 	}
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(filepath.Join(sharedPath, "loki-overrides.yaml"), []byte(`overrides:`), 0777)
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0777)
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -316,12 +328,12 @@ func port(addr string) string {
 func (c *Component) writeConfig() error {
 	var err error
 
-	configFile, err := os.CreateTemp("", "loki-config")
+	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
 
-	c.dataPath, err = os.MkdirTemp("", "loki-data")
+	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
@@ -406,6 +418,8 @@ func (c *Component) run() error {
 		c.configFile,
 		"-limits.per-user-override-config",
 		c.overridesFile,
+		"-limits.per-user-override-period",
+		"1s",
 	), flagset); err != nil {
 		return err
 	}

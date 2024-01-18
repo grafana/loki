@@ -299,6 +299,7 @@ func Benchmark_Query(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err = indexClient.query(context.Background(), entry, func(_ index.Query, read index.ReadBatchResult) bool {
 			iter := read.Iterator()
+			//nolint:revive
 			for iter.Next() {
 			}
 			return true

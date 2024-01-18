@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
 	"net/textproto"
 	"strings"
 	"sync"
@@ -18,7 +19,6 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -29,13 +29,14 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/queue"
+	"github.com/grafana/loki/pkg/scheduler/limits"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/util/validation"
 )
 
 var errSchedulerIsNotRunning = errors.New("scheduler is not running")
@@ -114,7 +115,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, schedulerLimits Limits, log log.Logger, ringManager *lokiring.RingManager, registerer prometheus.Registerer, metricsNamespace string) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
@@ -123,38 +124,43 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 		}
 	}
 
-	queueMetrics := queue.NewMetrics("query_scheduler", registerer)
+	queueMetrics := queue.NewMetrics(registerer, metricsNamespace, "query_scheduler")
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
-		limits: limits,
+		limits: schedulerLimits,
 
 		pendingRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
 		queueMetrics:       queueMetrics,
 		ringManager:        ringManager,
-		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics),
+		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, limits.NewQueueLimits(schedulerLimits), queueMetrics),
 	}
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_query_scheduler_queue_duration_seconds",
-		Help:    "Time spend by requests in queue before getting picked up by a querier.",
-		Buckets: prometheus.DefBuckets,
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_queue_duration_seconds",
+		Help:      "Time spend by requests in queue before getting picked up by a querier.",
+		Buckets:   prometheus.DefBuckets,
 	})
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_querier_clients",
-		Help: "Number of querier worker clients currently connected to the query-scheduler.",
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_connected_querier_clients",
+		Help:      "Number of querier worker clients currently connected to the query-scheduler.",
 	}, s.requestQueue.GetConnectedConsumersMetric)
 	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_connected_frontend_clients",
-		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_connected_frontend_clients",
+		Help:      "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
 	s.schedulerRunning = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_running",
-		Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
+		Namespace: metricsNamespace,
+		Name:      "query_scheduler_running",
+		Help:      "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
 	})
 	s.inflightRequests = promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-		Name:       "cortex_query_scheduler_inflight_requests",
+		Namespace:  metricsNamespace,
+		Name:       "query_scheduler_inflight_requests",
 		Help:       "Number of inflight requests (either queued or processing) sampled at a regular interval. Quantile buckets keep track of inflight requests over the last 60s.",
 		Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.02, 0.8: 0.02, 0.9: 0.01, 0.95: 0.01, 0.99: 0.001},
 		MaxAge:     time.Minute,
@@ -184,17 +190,14 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *lokiri
 	return s, nil
 }
 
-// Limits needed for the Query Scheduler - interface used for decoupling.
-type Limits interface {
-	// MaxQueriersPerUser returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	MaxQueriersPerUser(user string) int
-}
+type Limits limits.Limits
 
 type schedulerRequest struct {
 	frontendAddress string
 	tenantID        string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
+	queryRequest    *queryrange.QueryRequest
 	statsEnabled    bool
 
 	queueTime time.Time
@@ -327,8 +330,8 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	// Extract tracing information from headers in HTTP request. FrontendContext doesn't have the correct tracing
 	// information, since that is a long-running request.
 	tracer := opentracing.GlobalTracer()
-	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg.HttpRequest)
-	if err != nil {
+	parentSpanContext, err := lokigrpc.GetParentSpanForRequest(tracer, msg)
+	if err != nil && err != opentracing.ErrSpanContextNotFound {
 		return err
 	}
 
@@ -336,7 +339,8 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		frontendAddress: frontendAddr,
 		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
-		request:         msg.HttpRequest,
+		request:         msg.GetHttpRequest(),
+		queryRequest:    msg.GetQueryRequest(),
 		statsEnabled:    msg.StatsEnabled,
 	}
 
@@ -346,13 +350,6 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.queueSpan, req.ctx = opentracing.StartSpanFromContextWithTracer(ctx, tracer, "queued", opentracing.ChildOf(parentSpanContext))
 	req.queueTime = now
 	req.ctxCancel = cancel
-
-	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(req.tenantID)
-	if err != nil {
-		return err
-	}
-	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
 	var queuePath []string
 	if s.cfg.MaxQueueHierarchyLevels > 0 {
@@ -372,7 +369,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	}
 
 	s.activeUsers.UpdateUserTimestamp(req.tenantID, now)
-	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, maxQueriers, func() {
+	return s.requestQueue.Enqueue(req.tenantID, queuePath, req, func() {
 		shouldCancel = false
 
 		s.pendingRequestsMu.Lock()
@@ -428,10 +425,15 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		r.queueSpan.Finish()
 
 		// Add HTTP header to the request containing the query queue time
-		r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
-			Key:    textproto.CanonicalMIMEHeaderKey(string(lokihttpreq.QueryQueueTimeHTTPHeader)),
-			Values: []string{reqQueueTime.String()},
-		})
+		if r.request != nil {
+			r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
+				Key:    textproto.CanonicalMIMEHeaderKey(string(lokihttpreq.QueryQueueTimeHTTPHeader)),
+				Values: []string{reqQueueTime.String()},
+			})
+		}
+		if r.queryRequest != nil {
+			r.queryRequest.Metadata[string(lokihttpreq.QueryQueueTimeHTTPHeader)] = reqQueueTime.String()
+		}
 
 		/*
 		  We want to dequeue the next unexpired request from the chosen tenant queue.
@@ -476,13 +478,22 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	// monitoring the contexts in a select and cancel things appropriately.
 	errCh := make(chan error, 1)
 	go func() {
-		err := querier.Send(&schedulerpb.SchedulerToQuerier{
+		msg := &schedulerpb.SchedulerToQuerier{
 			UserID:          req.tenantID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
-			HttpRequest:     req.request,
-			StatsEnabled:    req.statsEnabled,
-		})
+			Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
+				HttpRequest: req.request,
+			},
+			StatsEnabled: req.statsEnabled,
+		}
+		// Override HttpRequest if new request type is set.
+		if req.queryRequest != nil {
+			msg.Request = &schedulerpb.SchedulerToQuerier_QueryRequest{
+				QueryRequest: req.queryRequest,
+			}
+		}
+		err := querier.Send(msg)
 		if err != nil {
 			errCh <- err
 			return
@@ -536,9 +547,11 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 	userCtx := user.InjectOrgID(ctx, req.tenantID)
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
-		HttpResponse: &httpgrpc.HTTPResponse{
-			Code: http.StatusInternalServerError,
-			Body: []byte(requestErr.Error()),
+		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
+			HttpResponse: &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(requestErr.Error()),
+			},
 		},
 	})
 

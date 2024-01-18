@@ -598,7 +598,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "cortex_ingester_flush_queue_length{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}",
+                        "expr": "loki_ingester_flush_queue_length{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"} or cortex_ingester_flush_queue_length{cluster=\"$cluster\", job=~\"$namespace/(loki|enterprise-logs)-write\"}",
                         "format": "time_series",
                         "intervalFactor": 2,
                         "legendFormat": "{{pod}}",

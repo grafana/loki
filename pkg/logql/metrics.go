@@ -2,7 +2,6 @@ package logql
 
 import (
 	"context"
-	"hash/fnv"
 	"strconv"
 	"strings"
 	"time"
@@ -19,19 +18,23 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
+	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
-	QueryTypeMetric  = "metric"
-	QueryTypeFilter  = "filter"
-	QueryTypeLimited = "limited"
-	QueryTypeLabels  = "labels"
-	QueryTypeSeries  = "series"
-	QueryTypeStats   = "stats"
-	QueryTypeVolume  = "volume"
+	QueryTypeMetric          = "metric"
+	QueryTypeFilter          = "filter"
+	QueryTypeLimited         = "limited"
+	QueryTypeLabels          = "labels"
+	QueryTypeSeries          = "series"
+	QueryTypeIngesterStreams = "ingester_streams"
+	QueryTypeIngesterSeries  = "ingester_series"
+	QueryTypeStats           = "stats"
+	QueryTypeVolume          = "volume"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -41,38 +44,38 @@ const (
 
 var (
 	bytesPerSecond = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "logql_querystats_bytes_processed_per_seconds",
 		Help:      "Distribution of bytes processed per second for LogQL queries.",
 		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB 30GB, 40GB 50GB 60GB
 		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9, 30 * 1e9, 40 * 1e9, 50 * 1e9, 60 * 1e9},
 	}, []string{"status_code", "type", "range", "latency_type", "sharded"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "logql_querystats_latency_seconds",
 		Help:      "Distribution of latency for LogQL queries.",
 		// 0.25 0.5 1 2 4 8 16 32 64 128
 		Buckets: prometheus.ExponentialBuckets(0.250, 2, 10),
 	}, []string{"status_code", "type", "range"})
 	chunkDownloadLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "logql_querystats_chunk_download_latency_seconds",
 		Help:      "Distribution of chunk downloads latency for LogQL queries.",
 		// 0.25 0.5 1 2 4 8 16 32 64 128
 		Buckets: prometheus.ExponentialBuckets(0.250, 2, 10),
 	}, []string{"status_code", "type", "range"})
 	duplicatesTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "logql_querystats_duplicates_total",
 		Help:      "Total count of duplicates found while executing LogQL queries.",
 	})
 	chunkDownloadedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "logql_querystats_downloaded_chunk_total",
 		Help:      "Total count of chunks downloaded found while executing LogQL queries.",
 	}, []string{"status_code", "type", "range"})
 	ingesterLineTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "logql_querystats_ingester_sent_lines_total",
 		Help:      "Total count of lines sent from ingesters while executing LogQL queries.",
 	})
@@ -97,7 +100,7 @@ func RecordRangeAndInstantQueryMetrics(
 		latencyType   = latencyTypeFast
 		returnedLines = 0
 	)
-	queryType, err := QueryType(p.Query())
+	queryType, err := QueryType(p.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
@@ -118,8 +121,8 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
-		"query", p.Query(),
-		"query_hash", HashedQuery(p.Query()),
+		"query", p.QueryString(),
+		"query_hash", util.HashedQuery(p.QueryString()),
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),
@@ -141,6 +144,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
+		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,
@@ -159,6 +163,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_req", stats.Caches.Result.EntriesRequested,
 		"cache_result_hit", stats.Caches.Result.EntriesFound,
 		"cache_result_download_time", stats.Caches.Result.CacheDownloadTime(),
+		"cache_result_query_length_served", stats.Caches.Result.CacheQueryLengthServed(),
 	}...)
 
 	logValues = append(logValues, tagsToKeyValues(queryTags)...)
@@ -184,12 +189,6 @@ func RecordRangeAndInstantQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)
-}
-
-func HashedQuery(query string) uint32 {
-	h := fnv.New32()
-	_, _ = h.Write([]byte(query))
-	return h.Sum32()
 }
 
 func RecordLabelQueryMetrics(
@@ -224,8 +223,13 @@ func RecordLabelQueryMetrics(
 		"status", status,
 		"label", label,
 		"query", query,
-		"query_hash", HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned,
+		"cache_label_results_req", stats.Caches.LabelResult.EntriesRequested,
+		"cache_label_results_hit", stats.Caches.LabelResult.EntriesFound,
+		"cache_label_results_stored", stats.Caches.LabelResult.EntriesStored,
+		"cache_label_results_download_time", stats.Caches.LabelResult.CacheDownloadTime(),
+		"cache_label_results_query_length_served", stats.Caches.LabelResult.CacheQueryLengthServed(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
@@ -245,6 +249,64 @@ func fixLogger(ctx context.Context, logger log.Logger) log.Logger {
 func PrintMatches(matches []string) string {
 	// not using comma (,) as separator as matcher may already have comma (e.g: `{a="b", c="d"}`)
 	return strings.Join(matches, ":")
+}
+
+func RecordIngesterStreamsQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, limit uint32, returnedLines int32, shards []string, stats logql_stats.Result) {
+	recordIngesterQueryMetrics(ctx, QueryTypeIngesterStreams, log, start, end, query, status, &limit, returnedLines, shards, stats)
+}
+
+func RecordIngesterSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, query string, status string, returnedLines int32, shards []string, stats logql_stats.Result) {
+	recordIngesterQueryMetrics(ctx, QueryTypeIngesterSeries, log, start, end, query, status, nil, returnedLines, shards, stats)
+}
+
+func recordIngesterQueryMetrics(ctx context.Context, queryType string, log log.Logger, start, end time.Time, query string, status string, limit *uint32, returnedLines int32, shards []string, stats logql_stats.Result) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	logValues := make([]interface{}, 0, 23)
+	logValues = append(logValues,
+		"latency", latencyType,
+		"query_type", queryType,
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"returned_lines", returnedLines,
+		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
+		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_bytes_structured_metadata", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalStructuredMetadataBytesProcessed)), " ", "", 1),
+		"lines_per_second", stats.Summary.LinesProcessedPerSecond,
+		"total_lines", stats.Summary.TotalLinesProcessed,
+		"post_filter_lines", stats.Summary.TotalPostFilterLines,
+		"total_entries", stats.Summary.TotalEntriesReturned,
+		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime())
+
+	if limit != nil {
+		logValues = append(logValues,
+			"limit", *limit)
+	}
+	shard := extractShard(shards)
+	if shard != nil {
+		logValues = append(logValues,
+			"shard_num", shard.Shard,
+			"shard_count", shard.Of,
+		)
+	}
+
+	level.Info(logger).Log(logValues...)
 }
 
 func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end time.Time, match []string, status string, shards []string, stats logql_stats.Result) {
@@ -275,8 +337,14 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"match", PrintMatches(match),
-		"query_hash", HashedQuery(PrintMatches(match)),
-		"total_entries", stats.Summary.TotalEntriesReturned)
+		"query_hash", util.HashedQuery(PrintMatches(match)),
+		"total_entries", stats.Summary.TotalEntriesReturned,
+		"cache_series_results_req", stats.Caches.SeriesResult.EntriesRequested,
+		"cache_series_results_hit", stats.Caches.SeriesResult.EntriesFound,
+		"cache_series_results_stored", stats.Caches.SeriesResult.EntriesStored,
+		"cache_series_results_download_time", stats.Caches.SeriesResult.CacheDownloadTime(),
+		"cache_series_results_query_length_served", stats.Caches.SeriesResult.CacheQueryLengthServed(),
+	)
 
 	if shard != nil {
 		logValues = append(logValues,
@@ -315,7 +383,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"query", query,
-		"query_hash", HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
 
 	level.Info(logger).Log(logValues...)
@@ -345,7 +413,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"latency", latencyType,
 		"query_type", queryType,
 		"query", query,
-		"query_hash", HashedQuery(query),
+		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
@@ -363,6 +431,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
 		"cache_volume_results_stored", stats.Caches.VolumeResult.EntriesStored,
 		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
+		"cache_volume_results_query_length_served", stats.Caches.VolumeResult.CacheQueryLengthServed(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
@@ -378,11 +447,7 @@ func recordUsageStats(queryType string, stats logql_stats.Result) {
 	}
 }
 
-func QueryType(query string) (string, error) {
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return "", err
-	}
+func QueryType(expr syntax.Expr) (string, error) {
 	switch e := expr.(type) {
 	case syntax.SampleExpr:
 		return QueryTypeMetric, nil

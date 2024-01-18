@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
 var (
@@ -25,7 +26,7 @@ var (
 type PrometheusExtractor struct{}
 
 // Extract wraps the original prometheus cache extractor
-func (PrometheusExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+func (PrometheusExtractor) Extract(start, end int64, res resultscache.Response, resStart, resEnd int64) resultscache.Response {
 	response := extractor.Extract(start, end, res.(*LokiPromResponse).Response, resStart, resEnd)
 	return &LokiPromResponse{
 		Response: response.(*queryrangebase.PrometheusResponse),
@@ -125,6 +126,12 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 }
 
 func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
+
+	// Make sure nil is not encoded as null.
+	if p.Response.Data.Result == nil {
+		p.Response.Data.Result = []queryrangebase.SampleStream{}
+	}
+
 	// embed response and add statistics.
 	return jsonStd.Marshal(struct {
 		Status string `json:"status"`

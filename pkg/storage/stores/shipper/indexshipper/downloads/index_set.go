@@ -209,14 +209,27 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 	}
 	defer t.indexMtx.rUnlock()
 
+	logger := util_log.WithContext(ctx, t.logger)
+	level.Debug(logger).Log("index-files-count", len(t.index))
+
+	if len(t.index) == 0 {
+		return nil
+	}
+
+	// shortcut; if there's only one index, there's no need for bounded concurrency
+	if len(t.index) == 1 {
+		for i := range t.index {
+			idx := t.index[i]
+			return callback(t.userID == "", idx)
+		}
+	}
+
+	//nolint:ineffassign,staticcheck
 	g, ctx := errgroup.WithContext(ctx)
 	if t.maxConcurrent == 0 {
 		panic("maxConcurrent cannot be 0, indexSet is being initialized without setting maxConcurrent")
 	}
 	g.SetLimit(t.maxConcurrent)
-
-	logger := util_log.WithContext(ctx, t.logger)
-	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	for i := range t.index {
 		idx := t.index[i]

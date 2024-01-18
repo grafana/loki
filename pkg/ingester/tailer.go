@@ -46,11 +46,7 @@ type tailer struct {
 	conn TailServer
 }
 
-func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*tailer, error) {
-	expr, err := syntax.ParseLogSelector(query, true)
-	if err != nil {
-		return nil, err
-	}
+func newTailer(orgID string, expr syntax.LogSelectorExpr, conn TailServer, maxDroppedStreams int) (*tailer, error) {
 	// Make sure we can build a pipeline. The stream processing code doesn't have a place to handle
 	// this error so make sure we handle it here.
 	pipeline, err := expr.Pipeline()
@@ -66,7 +62,7 @@ func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*ta
 		conn:              conn,
 		droppedStreams:    make([]*logproto.DroppedStream, 0, maxDroppedStreams),
 		maxDroppedStreams: maxDroppedStreams,
-		id:                generateUniqueID(orgID, query),
+		id:                generateUniqueID(orgID, expr.String()),
 		closeChan:         make(chan struct{}),
 		pipeline:          pipeline,
 	}, nil
@@ -151,7 +147,7 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata)...)
 		if !ok {
 			continue
 		}
@@ -163,8 +159,10 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 			streams[parsedLbs.Hash()] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: e.Timestamp,
-			Line:      newLine,
+			Timestamp:          e.Timestamp,
+			Line:               newLine,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+			Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
 		})
 	}
 	streamsResult := make([]*logproto.Stream, 0, len(streams))

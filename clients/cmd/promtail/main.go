@@ -107,7 +107,7 @@ func main() {
 		exit(1)
 	}
 	serverCfg := &config.Config.ServerConfig.Config
-	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, true, false)
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)

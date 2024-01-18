@@ -29,12 +29,16 @@ import (
 	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
+)
+
+const (
+	DefaultNGramLength = 4
+	DefaultNGramSkip   = 0
 )
 
 func execute() {
@@ -45,30 +49,32 @@ func execute() {
 
 	flag.Parse()
 
-	objectClient, err := storage.NewObjectClient(conf.StorageConfig.TSDBShipperConfig.SharedStoreType, conf.StorageConfig, clientMetrics)
+	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
+	helpers.ExitErr("find period config for bucket", err)
+
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
 
-	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
-
 	openFn := func(p string) (shipperindex.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+		return tsdb.OpenShippableTSDB(p)
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		periodCfg.IndexTables.PathPrefix,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,
 		openFn,
-		tableRanges[len(tableRanges)-1],
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,
 	)
 	helpers.ExitErr("creating index shipper", err)
 
-	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
+	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
 	level.Info(util_log.Logger).Log("tenants", strings.Join(tenants, ","), "table", tableName)
 	helpers.ExitErr("resolving tenants", err)
 
@@ -88,18 +94,10 @@ func execute() {
 }
 
 var (
-	three      = bt.NewNGramTokenizer(3, 4, 0)
-	threeSkip1 = bt.NewNGramTokenizer(3, 4, 1)
-	threeSkip2 = bt.NewNGramTokenizer(3, 4, 2)
-	threeSkip3 = bt.NewNGramTokenizer(3, 4, 3)
-	four       = bt.NewNGramTokenizer(4, 5, 0)
-	fourSkip1  = bt.NewNGramTokenizer(4, 5, 1)
-	fourSkip2  = bt.NewNGramTokenizer(4, 5, 2)
-	five       = bt.NewNGramTokenizer(5, 6, 0)
-	six        = bt.NewNGramTokenizer(6, 7, 0)
+	three = bt.NewNGramTokenizer(3, 0)
+	four  = bt.NewNGramTokenizer(4, 0)
 
-	onePctError  = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
-	fivePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.05, 0.8) }
+	onePctError = func() *filter.ScalableBloomFilter { return filter.NewScalableBloomFilter(1024, 0.01, 0.8) }
 )
 
 var experiments = []Experiment{
@@ -266,9 +264,9 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
 	var n int // count iterated series
-	//pool := newPool(runtime.NumCPU())
-	//pool := newPool(1)
-	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer)
+	// pool := newPool(runtime.NumCPU())
+	// pool := newPool(1)
+	bloomTokenizer, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
@@ -349,8 +347,20 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										startTime := time.Now().UnixMilli()
 
 										sbf := experiment.bloom()
-										bloomTokenizer.PopulateSBF(sbf, got)
-
+										bloom := bt.Bloom{
+											ScalableBloomFilter: *sbf,
+										}
+										series := bt.Series{
+											Fingerprint: fp,
+										}
+										swb := bt.SeriesWithBloom{
+											Bloom:  &bloom,
+											Series: &series,
+										}
+										err := bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
+										if err != nil {
+											level.Error(util_log.Logger).Log("msg", "failed populating SeriesWithBloom", "err", err)
+										}
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
 											metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))
@@ -360,7 +370,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 												float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 											)
 
-											writeSBF(sbf,
+											writeSBF(&swb.Bloom.ScalableBloomFilter,
 												os.Getenv("DIR"),
 												fmt.Sprint(bucketPrefix, experiment.name),
 												os.Getenv("BUCKET"),
@@ -370,7 +380,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 											metrics.sbfCreationTime.WithLabelValues(experiment.name).Add(float64(endTime - startTime))
 											metrics.sbfsCreated.WithLabelValues(experiment.name).Inc()
-											metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 
 											if err != nil {
 												helpers.ExitErr("writing sbf to file", err)
@@ -496,7 +505,7 @@ func writeSBFToFile(sbf *filter.ScalableBloomFilter, filename string) error {
 	return err
 }
 
-func writeSBFToObjectStorage(sbf *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
+func writeSBFToObjectStorage(_ *filter.ScalableBloomFilter, objectStorageFilename, localFilename string, objectClient client.ObjectClient) {
 	// Probably a better way to do this than to reopen the file, but it's late
 	file, err := os.Open(localFilename)
 	if err != nil {

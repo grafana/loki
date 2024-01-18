@@ -113,11 +113,11 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterBoltdbShipperDefaults(r)
 		}
 
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterTSDBShipperDefaults(r)
 		}
 
 		applyEmbeddedCacheConfig(r)
@@ -575,11 +575,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
+func betterBoltdbShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -593,11 +589,7 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 	}
 }
 
-func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
+func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -627,14 +619,32 @@ func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 
 	indexStatsCacheConfig := r.QueryRange.StatsCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
+		prefix := indexStatsCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.StatsCacheConfig.CacheConfig.Prefix = prefix
 	}
 
 	volumeCacheConfig := r.QueryRange.VolumeCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(volumeCacheConfig) {
+		prefix := volumeCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.VolumeCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	seriesCacheConfig := r.QueryRange.SeriesCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(seriesCacheConfig) {
+		prefix := seriesCacheConfig.Prefix
+		r.QueryRange.SeriesCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.SeriesCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	labelsCacheConfig := r.QueryRange.LabelsCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(labelsCacheConfig) {
+		prefix := labelsCacheConfig.Prefix
+		r.QueryRange.LabelsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.LabelsCacheConfig.CacheConfig.Prefix = prefix
 	}
 }
 

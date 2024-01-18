@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	loki_net "github.com/grafana/loki/pkg/util/net"
@@ -721,66 +720,12 @@ storage_config:
 			assert.EqualValues(t, 27, config.StorageConfig.GCSConfig.ChunkBufferSize)
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
-
-		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
-			configString := `common:
-  storage:
-    s3:
-      s3: s3://foo-bucket/example
-      access_key_id: abc123
-      secret_access_key: def789
-compactor:
-  shared_store: gcs`
-			config, _ := testContext(configString, nil)
-
-			assert.Equal(t, "gcs", config.CompactorConfig.SharedStoreType)
-		})
 	})
 
-	t.Run("when using boltdb storage type", func(t *testing.T) {
-		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
+	t.Run("boltdb shipper apply common path prefix", func(t *testing.T) {
+		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {
+
 			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-
-storage_config:
-  boltdb_shipper:
-    shared_store: s3
-
-compactor:
-  shared_store: s3`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
-		})
-
-		t.Run("shared store types provided via command line take precedence", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-			assert.Equal(t, config.StorageTypeS3, cfg.CompactorConfig.SharedStoreType)
-		})
-
-		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {})
-		const boltdbSchemaConfig = `---
 common:
   path_prefix: /opt/loki
 schema_config:
@@ -792,14 +737,14 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+			config, _ := testContext(boltdbSchemaConfig, nil)
 
-		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
-	})
+			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+		})
 
-	t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
-		const boltdbSchemaConfig = `---
+		t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
+			const boltdbSchemaConfig = `---
 common:
   path_prefix: /opt/loki/
 schema_config:
@@ -811,10 +756,12 @@ schema_config:
       index:
         prefix: index_
         period: 24h`
-		config, _ := testContext(boltdbSchemaConfig, []string{"-boltdb.shipper.compactor.shared-store", "s3", "-boltdb.shipper.shared-store", "s3"})
+			config, _ := testContext(boltdbSchemaConfig, nil)
 
-		assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-		assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+
+		})
 	})
 
 	t.Run("ingester final sleep config", func(t *testing.T) {
@@ -990,6 +937,7 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.StatsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
@@ -1003,17 +951,20 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.index-stats-results-cache.", config.QueryRange.StatsCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
@@ -1029,6 +980,7 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, config.QueryRange.VolumeCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
@@ -1042,18 +994,107 @@ query_range:
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.True(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.volume-results-cache.", config.QueryRange.VolumeCacheConfig.CacheConfig.Prefix)
 			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+	})
+
+	t.Run("for the series results cache config", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  series_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.QueryRange.SeriesCacheConfig.CacheConfig.Redis.Endpoint)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  series_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.SeriesCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.SeriesCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.series-results-cache.", config.QueryRange.SeriesCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.SeriesCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+	})
+
+	t.Run("for the labels results cache config", func(t *testing.T) {
+		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  label_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "endpoint.redis.org", config.QueryRange.LabelsCacheConfig.CacheConfig.Redis.Endpoint)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  label_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.LabelsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+		})
+
+		t.Run("embedded cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.LabelsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.EqualValues(t, "frontend.label-results-cache.", config.QueryRange.LabelsCacheConfig.CacheConfig.Prefix)
+			assert.False(t, config.QueryRange.LabelsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 		})
 	})
 }

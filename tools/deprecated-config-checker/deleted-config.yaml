@@ -28,9 +28,23 @@ ruler:
 
 storage_config:
   boltdb_shipper:
+    shared_store: "object_store setting in the period_config will be used to configure the store for the index."
+    shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
     use_boltdb_shipper_as_backup: "Since TSDB is now stable and the recommended index type, the setting has become irrelevant and therefore was removed. The previous default value false is applied."
+  tsdb_shipper:
+    shared_store: "object_store setting in the period_config will be used to configure the store for the index."
+    shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
   aws: *s3_deletes
   s3: *s3_deletes
 
+compactor:
+  deletion_mode: "Use global or per-tenant deletion_mode configuration from limits_config."
+  shared_store: "Compactor will now operate on all the object stores configured in period config where the index type is either tsdb or boltdb-shipper. -compactor.delete-request-store to configure the store for delete requests is now a required field."
+  shared_store_key_prefix: "Use -compactor.delete-request-store.key-prefix to configure the path prefix under which the delete requests are stored."
+
 chunk_store_config:
   max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
+
+limits_config:
+  ruler_evaluation_delay_duration: "This setting is removed."
+  enforce_metric_name: "This setting is removed."

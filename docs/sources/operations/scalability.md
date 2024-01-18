@@ -36,7 +36,7 @@ which informed the implementation._
 
 By default, the `ruler` component embeds a query engine to evaluate rules. This generally works fine, except when rules
 are complex or have to process a large amount of data regularly. Poor performance of the `ruler` manifests as recording rules metrics
-with gaps or missed alerts. This situation can be detected by alerting on the `cortex_prometheus_rule_group_iterations_missed_total` metric
+with gaps or missed alerts. This situation can be detected by alerting on the `loki_prometheus_rule_group_iterations_missed_total` metric
 when it has a non-zero value.
 
 A solution to this problem is to externalize rule evaluation from the `ruler` process. The `ruler` embedded query engine
@@ -66,7 +66,9 @@ this will result in far lower `ruler` resource usage because the majority of the
 The LogQL queries coming from the `ruler` will be executed against the given `query-frontend` service.
 Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` prefix is used.
 
-> **Note:** Queries that fail to execute are _not_ retried.
+{{% admonition type="note" %}}
+Queries that fail to execute are _not_ retried.
+{{% /admonition %}}
 
 ### Limits and Observability
 

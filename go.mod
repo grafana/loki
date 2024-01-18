@@ -1,6 +1,8 @@
 module github.com/grafana/loki
 
-go 1.20
+go 1.21
+
+toolchain go1.21.3
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
@@ -24,16 +26,16 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
-	github.com/cristalhq/hedgedhttp v0.7.2
+	github.com/cristalhq/hedgedhttp v0.9.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
-	github.com/docker/docker v24.0.4+incompatible
-	github.com/docker/go-plugins-helpers v0.0.0-20181025120712-1e6269c305b8
+	github.com/docker/docker v24.0.7+incompatible
+	github.com/docker/go-plugins-helpers v0.0.0-20211224144127-6eecb7beb651
 	github.com/drone/envsubst v1.0.3
 	github.com/dustin/go-humanize v1.0.1
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fatih/color v1.15.0
 	github.com/felixge/fgprof v0.9.3
-	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
+	github.com/fluent/fluent-bit-go v0.0.0-20230731091245-a7a013e2473c
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.0
@@ -45,13 +47,13 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/google/go-cmp v0.5.9
 	github.com/google/renameio/v2 v2.0.0
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20231017083947-7b512eb54d47
+	github.com/grafana/dskit v0.0.0-20240104111617-ea101a3b86eb
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20231023152154-6947259a0586
+	github.com/grafana/gomemcache v0.0.0-20231204155601-7de47a8c3cb0
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -59,12 +61,12 @@ require (
 	github.com/hashicorp/consul/api v1.25.1
 	github.com/hashicorp/golang-lru v0.6.0
 	github.com/imdario/mergo v0.3.16
-	github.com/influxdata/go-syslog/v3 v3.0.1-0.20201128200927-a1889d947b48
+	github.com/influxdata/go-syslog/v3 v3.0.1-0.20230911200830-875f5bc594a4
 	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.16.7
+	github.com/klauspost/compress v1.17.3
 	github.com/klauspost/pgzip v1.2.5
 	github.com/mattn/go-ieproxy v0.0.1
 	github.com/minio/minio-go/v7 v7.0.61
@@ -104,7 +106,7 @@ require (
 	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.132.0
-	google.golang.org/grpc v1.58.3
+	google.golang.org/grpc v1.59.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -113,7 +115,7 @@ require (
 
 require (
 	github.com/Azure/go-autorest/autorest v0.11.29
-	github.com/DataDog/sketches-go v1.4.2
+	github.com/DataDog/sketches-go v1.4.4
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.13.1
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
@@ -123,7 +125,7 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gogo/googleapis v1.4.0
-	github.com/grafana/loki/pkg/push v0.0.0-20231023154132-0a7737e7c7eb
+	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.86.0
@@ -135,10 +137,11 @@ require (
 	go.opentelemetry.io/collector/pdata v1.0.0-rcv0015
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b
-	golang.org/x/oauth2 v0.10.0
+	golang.org/x/oauth2 v0.11.0
 	golang.org/x/text v0.13.0
 	google.golang.org/protobuf v1.31.0
 	k8s.io/apimachinery v0.28.1
+	k8s.io/utils v0.0.0-20230711102312-30195339c3c7
 )
 
 require (
@@ -232,6 +235,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.2.5 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
 	github.com/gophercloud/gophercloud v1.5.0 // indirect
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.6 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -304,7 +308,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/collector/featuregate v1.0.0-rcv0015 // indirect
 	go.opentelemetry.io/collector/semconv v0.81.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.42.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0 // indirect
 	go.opentelemetry.io/otel v1.18.0 // indirect
 	go.opentelemetry.io/otel/metric v1.18.0 // indirect
 	go.opentelemetry.io/otel/trace v1.18.0 // indirect
@@ -316,7 +320,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230913181813-007df8e322eb // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230822172742-b8732ec3820d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230920204549-e6e6cdab5c13 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -326,7 +330,6 @@ require (
 	k8s.io/client-go v0.28.1 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
-	k8s.io/utils v0.0.0-20230711102312-30195339c3c7 // indirect
 	rsc.io/binaryregexp v0.2.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.3.0 // indirect

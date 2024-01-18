@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -191,6 +192,60 @@ func EncodeResult(data parser.Value, statistics stats.Result, s *jsoniter.Stream
 	return nil
 }
 
+func EncodeTailResult(data legacy.TailResponse, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+	s.WriteObjectStart()
+	s.WriteObjectField("streams")
+	err := encodeStreams(data.Streams, s, encodeFlags)
+	if err != nil {
+		return err
+	}
+
+	if len(data.DroppedEntries) > 0 {
+		s.WriteMore()
+		s.WriteObjectField("dropped_entries")
+		err = encodeDroppedEntries(data.DroppedEntries, s)
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(encodeFlags) > 0 {
+		s.WriteMore()
+		s.WriteObjectField("encodingFlags")
+		if err := encodeEncodingFlags(s, encodeFlags); err != nil {
+			return err
+		}
+	}
+
+	s.WriteObjectEnd()
+	return nil
+}
+
+func encodeDroppedEntries(entries []legacy.DroppedEntry, s *jsoniter.Stream) error {
+	s.WriteArrayStart()
+	defer s.WriteArrayEnd()
+
+	for i, entry := range entries {
+		if i > 0 {
+			s.WriteMore()
+		}
+
+		ds, err := NewDroppedStream(&entry)
+		if err != nil {
+			return err
+		}
+
+		jsonEntry, err := ds.MarshalJSON()
+		if err != nil {
+			return err
+		}
+
+		s.WriteRaw(string(jsonEntry))
+	}
+
+	return nil
+}
+
 func encodeEncodingFlags(s *jsoniter.Stream, flags httpreq.EncodingFlags) error {
 	s.WriteArrayStart()
 	defer s.WriteArrayEnd()
@@ -329,7 +384,6 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpre
 	encodeLabels(logproto.FromLabelsToLabelAdapters(lbls), s)
 
 	s.WriteObjectEnd()
-	s.Flush()
 
 	s.WriteMore()
 	s.WriteObjectField("values")
@@ -347,7 +401,7 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpre
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
 
-		if categorizeLabels && (len(e.StructuredMetadata) > 0 || len(e.Parsed) > 0) {
+		if categorizeLabels {
 			s.WriteMore()
 			s.WriteObjectStart()
 
@@ -373,8 +427,6 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpre
 			s.WriteObjectEnd()
 		}
 		s.WriteArrayEnd()
-
-		s.Flush()
 	}
 
 	s.WriteArrayEnd()

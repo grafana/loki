@@ -221,7 +221,14 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 	lf.currentLine = line
 	lf.currentTs = ts
 
-	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
+	// map now is taking from a pool
+	m, ret := lbs.Map()
+	defer func() {
+		if ret { // if we return the base map from the labels builder we should not put it back in the pool
+			smp.Put(m)
+		}
+	}()
+	if err := lf.Template.Execute(lf.buf, m); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())
 		return line, true
@@ -380,7 +387,8 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 	lf.currentLine = l
 	lf.currentTs = ts
 
-	var data interface{}
+	var m = smp.Get()
+	defer smp.Put(m)
 	for _, f := range lf.formats {
 		if f.Rename {
 			v, category, ok := lbs.GetWithCategory(f.Value)
@@ -391,10 +399,10 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			continue
 		}
 		lf.buf.Reset()
-		if data == nil {
-			data = lbs.Map()
+		if len(m) == 0 {
+			lbs.IntoMap(m)
 		}
-		if err := f.tmpl.Execute(lf.buf, data); err != nil {
+		if err := f.tmpl.Execute(lf.buf, m); err != nil {
 			lbs.SetErr(errTemplateFormat)
 			lbs.SetErrorDetails(err.Error())
 			continue

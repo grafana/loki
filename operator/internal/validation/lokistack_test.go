@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/validation"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/validation"
 )
 
 var ltt = []struct {
@@ -407,7 +406,7 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -431,7 +430,7 @@ func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 			ctx := context.Background()
 
 			v := &validation.LokiStackValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.LokiStack{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

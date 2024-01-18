@@ -25,7 +25,7 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec GRPCCodec) processor {
+func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, codec RequestCodec) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
@@ -39,7 +39,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, co
 // This should be used by Frontend V1.
 type frontendProcessor struct {
 	handler        RequestHandler
-	codec          GRPCCodec
+	codec          RequestCodec
 	maxMessageSize int
 	querierID      string
 
@@ -58,7 +58,7 @@ func (fp *frontendProcessor) notifyShutdown(ctx context.Context, conn *grpc.Clie
 }
 
 // runOne loops, trying to establish a stream to the frontend to begin request processing.
-func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string) {
+func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address, _ string) {
 	client := frontendv1pb.NewFrontendClient(conn)
 
 	backoff := backoff.New(ctx, processorBackoffConfig)
@@ -122,7 +122,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 
 	tracer := opentracing.GlobalTracer()
 	// Ignore errors here. If we cannot get parent span, we just don't create new one.
-	parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request)
+	parentSpanContext, _ := httpgrpcutil.GetParentSpanForHTTPRequest(tracer, request)
 	if parentSpanContext != nil {
 		queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "frontend_processor_runRequest", opentracing.ChildOf(parentSpanContext))
 		defer queueSpan.Finish()
@@ -135,7 +135,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response := handle(ctx, request, fp.handler, fp.codec)
+	response := handleHTTPRequest(ctx, request, fp.handler, fp.codec)
 
 	// Ensure responses that are too big are not retried.
 	if len(response.Body) >= fp.maxMessageSize {

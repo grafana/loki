@@ -6,9 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 func TestNewTimeoutConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
@@ -60,15 +59,19 @@ func TestNewTimeoutConfig_ReturnsCustomConfig_WhenLimitsSpecNotEmpty_UseMaxTenan
 						QueryTimeout: "10m",
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					"tenant-a": {
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							QueryTimeout: "10m",
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "10m",
+							},
 						},
 					},
 					"tenant-b": {
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							QueryTimeout: "20m",
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "20m",
+							},
 						},
 					},
 				},
@@ -99,15 +102,19 @@ func TestNewTimeoutConfig_ReturnsCustomConfig_WhenTenantLimitsSpecOnly_ReturnsUs
 	s := lokiv1.LokiStack{
 		Spec: lokiv1.LokiStackSpec{
 			Limits: &lokiv1.LimitsSpec{
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					"tenant-a": {
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							QueryTimeout: "10m",
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "10m",
+							},
 						},
 					},
 					"tenant-b": {
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							QueryTimeout: "20m",
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "20m",
+							},
 						},
 					},
 				},
@@ -160,15 +167,19 @@ func TestNewTimeoutConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *te
 						QueryTimeout: "10m",
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					"tenant-a": {
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							QueryTimeout: "invalid",
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "invalid",
+							},
 						},
 					},
 					"tenant-b": {
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							QueryTimeout: "20m",
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "20m",
+							},
 						},
 					},
 				},

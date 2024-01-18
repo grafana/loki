@@ -175,11 +175,16 @@ func Test_Retention(t *testing.T) {
 	}
 }
 
-type noopWriter struct{}
+type noopWriter struct {
+	count int64
+}
 
-func (noopWriter) Put(_ []byte) error { return nil }
-func (noopWriter) Count() int64       { return 0 }
-func (noopWriter) Close() error       { return nil }
+func (n *noopWriter) Put(_ []byte) error {
+	n.count++
+	return nil
+}
+func (n *noopWriter) Count() int64 { return n.count }
+func (n *noopWriter) Close() error { return nil }
 
 func Test_EmptyTable(t *testing.T) {
 	schema := allSchemas[0]
@@ -197,11 +202,11 @@ func Test_EmptyTable(t *testing.T) {
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
 	// Set a very low retention to make sure all chunks are marked for deletion which will create an empty table.
-	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
+	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
 
-	_, _, err = markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
 	require.Equal(t, err, errNoChunksFound)
 }
 
@@ -632,6 +637,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 		expectedDeletedSeries []map[uint64]struct{}
 		expectedEmpty         []bool
 		expectedModified      []bool
+		numChunksDeleted      []int64
 	}{
 		{
 			name: "no chunk and series deleted",
@@ -651,6 +657,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedModified: []bool{
 				false,
+			},
+			numChunksDeleted: []int64{
+				0,
 			},
 		},
 		{
@@ -675,6 +684,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedModified: []bool{
 				false,
 			},
+			numChunksDeleted: []int64{
+				0,
+			},
 		},
 		{
 			name: "only one chunk in store which gets deleted",
@@ -694,6 +706,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedModified: []bool{
 				true,
+			},
+			numChunksDeleted: []int64{
+				1,
 			},
 		},
 		{
@@ -723,6 +738,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedModified: []bool{
 				true,
 			},
+			numChunksDeleted: []int64{
+				1,
+			},
 		},
 		{
 			name: "one of two chunks deleted",
@@ -746,6 +764,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedModified: []bool{
 				true,
+			},
+			numChunksDeleted: []int64{
+				1,
 			},
 		},
 		{
@@ -779,6 +800,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedModified: []bool{
 				true,
 			},
+			numChunksDeleted: []int64{
+				1,
+			},
 		},
 		{
 			name: "one big chunk partially deleted for yesterdays table without rewrite",
@@ -801,6 +825,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 			expectedModified: []bool{
 				true, true,
+			},
+			numChunksDeleted: []int64{
+				1, 0,
 			},
 		},
 		{
@@ -825,6 +852,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expectedModified: []bool{
 				true, true,
 			},
+			numChunksDeleted: []int64{
+				1, 0,
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -847,10 +877,12 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				seriesCleanRecorder := newSeriesCleanRecorder(table)
 
 				cr := newChunkRewriter(store.chunkClient, table.name, table)
-				empty, isModified, err := markForDelete(context.Background(), 0, table.name, noopWriter{}, seriesCleanRecorder, expirationChecker, cr, util_log.Logger)
+				marker := &noopWriter{}
+				empty, isModified, err := markForDelete(context.Background(), 0, table.name, marker, seriesCleanRecorder, expirationChecker, cr, util_log.Logger)
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedEmpty[i], empty)
 				require.Equal(t, tc.expectedModified[i], isModified)
+				require.Equal(t, tc.numChunksDeleted[i], marker.count)
 
 				require.EqualValues(t, tc.expectedDeletedSeries[i], seriesCleanRecorder.deletedSeries[userID])
 			}
@@ -884,7 +916,7 @@ func TestDeleteTimeout(t *testing.T) {
 			context.Background(),
 			tc.timeout,
 			table.name,
-			noopWriter{},
+			&noopWriter{},
 			newSeriesCleanRecorder(table),
 			expirationChecker,
 			newChunkRewriter(store.chunkClient, table.name, table),
@@ -925,7 +957,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	require.Len(t, tables, 8)
 
 	for i, table := range tables {
-		empty, _, err := markForDelete(context.Background(), 0, table.name, noopWriter{}, table,
+		empty, _, err := markForDelete(context.Background(), 0, table.name, &noopWriter{}, table,
 			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil, util_log.Logger)
 		require.NoError(t, err)
 		if i == 7 {
@@ -948,12 +980,14 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 func TestMigrateMarkers(t *testing.T) {
 	t.Run("nothing to migrate", func(t *testing.T) {
 		workDir := t.TempDir()
-		require.NoError(t, CopyMarkers(workDir, "store-1"))
-		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
+		dst := path.Join(workDir, "store-1_2023-10-19")
+		require.NoError(t, CopyMarkers(workDir, dst))
+		require.NoDirExists(t, path.Join(workDir, dst, MarkersFolder))
 	})
 
 	t.Run("migrate markers dir", func(t *testing.T) {
 		workDir := t.TempDir()
+		dst := path.Join(workDir, "store-1_2023-10-19")
 		require.NoError(t, os.Mkdir(path.Join(workDir, MarkersFolder), 0755))
 
 		markers := []string{"foo", "bar", "buzz"}
@@ -962,8 +996,8 @@ func TestMigrateMarkers(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		require.NoError(t, CopyMarkers(workDir, "store-1"))
-		targetDir := path.Join(workDir, "store-1", MarkersFolder)
+		require.NoError(t, CopyMarkers(workDir, dst))
+		targetDir := path.Join(dst, MarkersFolder)
 		require.DirExists(t, targetDir)
 		for _, marker := range markers {
 			require.FileExists(t, path.Join(targetDir, marker))
@@ -975,11 +1009,12 @@ func TestMigrateMarkers(t *testing.T) {
 
 	t.Run("file named markers should not be migrated", func(t *testing.T) {
 		workDir := t.TempDir()
+		dst := path.Join(workDir, "store-1_2023-10-19")
 		f, err := os.Create(path.Join(workDir, MarkersFolder))
 		require.NoError(t, err)
 		defer f.Close()
 
-		require.NoError(t, CopyMarkers(workDir, "store-1"))
-		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
+		require.NoError(t, CopyMarkers(workDir, dst))
+		require.NoDirExists(t, path.Join(dst, MarkersFolder))
 	})
 }

@@ -69,7 +69,7 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 
 // RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
 func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
-	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return logqlmodel.Result{}, err
 	}
 
@@ -84,7 +84,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
-	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return logqlmodel.Result{}, err
 	}
 
@@ -145,6 +145,9 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	encodingFlags := httpreq.ExtractEncodingFlags(r)
+	version := loghttp.GetVersion(r.RequestURI)
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
@@ -163,7 +166,7 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	tailer, err := q.querier.Tail(r.Context(), req)
+	tailer, err := q.querier.Tail(r.Context(), req, encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	if err != nil {
 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
 			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
@@ -178,6 +181,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 
 	ticker := time.NewTicker(wsPingPeriod)
 	defer ticker.Stop()
+
+	connWriter := marshal.NewWebsocketJSONWriter(conn)
 
 	var response *loghttp_legacy.TailResponse
 	responseChan := tailer.getResponseChan()
@@ -196,10 +201,10 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 					break
 				} else if tailer.stopped {
 					return
-				} else {
-					level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
-					break
 				}
+
+				level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
+				break
 			}
 		}
 		doneChan <- struct{}{}
@@ -209,8 +214,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case response = <-responseChan:
 			var err error
-			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, conn)
+			if version == loghttp.VersionV1 {
+				err = marshal.WriteTailResponseJSON(*response, connWriter, encodingFlags)
 			} else {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}
@@ -338,15 +343,10 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	return resp, nil
 }
 
-func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	expr, err := syntax.ParseExpr(query)
-	if err != nil {
-		return err
 	}
 
 	// entry limit does not apply to metric queries.

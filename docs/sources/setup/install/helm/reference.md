@@ -369,6 +369,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>clusterLabelOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's cluster label</td>
@@ -1040,6 +1049,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>gateway.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.extraEnv</td>
 			<td>list</td>
 			<td>Environment variables to add to the gateway pods</td>
@@ -1254,6 +1272,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.resolver</td>
+			<td>string</td>
+			<td>Allows overriding the DNS resolver address nginx will use.</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.serverSnippet</td>
 			<td>string</td>
 			<td>Allows appending custom configuration to the server block</td>
@@ -1442,6 +1469,15 @@ null
 			<td>gateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -1991,7 +2027,6 @@ null
 			<td>Limits config</td>
 			<td><pre lang="json">
 {
-  "enforce_metric_name": false,
   "max_cache_freshness_per_query": "10m",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
@@ -2217,6 +2252,7 @@ null
   },
   "s3": {
     "accessKeyId": null,
+    "backoff_config": {},
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -2226,8 +2262,38 @@ null
     "secretAccessKey": null,
     "signatureVersion": null
   },
+  "swift": {
+    "auth_url": null,
+    "auth_version": null,
+    "connect_timeout": null,
+    "container_name": null,
+    "domain_id": null,
+    "domain_name": null,
+    "internal": null,
+    "max_retries": null,
+    "password": null,
+    "project_domain_id": null,
+    "project_domain_name": null,
+    "project_id": null,
+    "project_name": null,
+    "region_name": null,
+    "request_timeout": null,
+    "user_domain_id": null,
+    "user_domain_name": null,
+    "user_id": null,
+    "username": null
+  },
   "type": "s3"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.storage.s3.backoff_config</td>
+			<td>object</td>
+			<td>Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2261,6 +2327,17 @@ null
 			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.tracing</td>
+			<td>object</td>
+			<td>Enable tracing</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
 </pre>
 </td>
 		</tr>
@@ -2627,6 +2704,15 @@ true
 			<td>monitoring.rules.annotations</td>
 			<td>object</td>
 			<td>Additional annotations for the rules PrometheusRule resource</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.disabled</td>
+			<td>object</td>
+			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3046,6 +3132,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>networkPolicy.flavor</td>
+			<td>string</td>
+			<td>Specifies whether the policies created will be standard Network Policies (flavor: kubernetes) or Cilium Network Policies (flavor: cilium)</td>
+			<td><pre lang="json">
+"kubernetes"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>networkPolicy.ingress.namespaceSelector</td>
 			<td>object</td>
 			<td>Specifies the namespaces which are allowed to access the http port</td>
@@ -3445,6 +3540,15 @@ null
 			<td>read.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for read pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for read pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4352,15 +4456,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>tracing.jaegerAgentHost</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>write.affinity</td>
 			<td>string</td>
 			<td>Affinity for write pods. Passed through `tpl` and, thus, to be configured as string</td>
@@ -4482,6 +4577,15 @@ null
 			<td>write.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the write</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the write pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4745,6 +4849,15 @@ null
 			<td>write.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for write pods</td>
 			<td><pre lang="json">
 []
 </pre>
