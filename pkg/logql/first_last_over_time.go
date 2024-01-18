@@ -114,7 +114,6 @@ type firstOverTimeStepEvaluator struct {
 	start, end, ts time.Time
 	step           time.Duration
 	matrices       []promql.Matrix
-	streamVec      map[int64]int
 }
 
 func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEvaluator {
@@ -128,18 +127,12 @@ func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEv
 		step  = params.Step()
 	)
 
-	index := make(map[int64]int, 0)
-	for i, series := range m[1] {
-		index[int64(series.Metric.Hash())] = i
-	}
-
 	return &firstOverTimeStepEvaluator{
-		start:     start,
-		end:       end,
-		ts:        start.Add(-step), // will be corrected on first Next() call
-		step:      step,
-		matrices:  m,
-		streamVec: index,
+		start:    start,
+		end:      end,
+		ts:       start.Add(-step), // will be corrected on first Next() call
+		step:     step,
+		matrices: m,
 	}
 }
 
@@ -160,30 +153,9 @@ func (e *firstOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 
 	// Process first result
 	// len(e.matrices) >= 1 was check during creation
-	for s, series := range e.matrices[0] {
-		if len(series.Floats) == 0 || !e.inRange(series.Floats[0].T, ts) {
-			continue
-		}
-
-		vec = append(vec, promql.Sample{
-			Metric: series.Metric,
-			T:      series.Floats[0].T,
-			F:      series.Floats[0].F,
-		})
-
-		e.pop(0, s)
-	}
-
-	if len(e.matrices) == 1 {
-		return ok, ts, SampleVector(vec)
-	}
-
-	if len(vec) == 0 {
-		return e.hasNext(), ts, SampleVector(vec)
-	}
 
 	// Merge other results
-	for i, m := range e.matrices[1:] {
+	for i, m := range e.matrices {
 		// TODO: verify length and same labels/metric
 		for j, series := range m {
 
@@ -192,19 +164,35 @@ func (e *firstOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 			}
 
 			// Merge
-			if vec[j].T > series.Floats[0].T {
+			if len(vec) < len(e.matrices) {
+				vec = append(vec, promql.Sample{
+					Metric: series.Metric,
+					T:      series.Floats[0].T,
+					F:      series.Floats[0].F,
+				})
+			} else if vec[j].T > series.Floats[0].T {
 				vec[j].F = series.Floats[0].F
 				vec[j].T = series.Floats[0].T
 			}
 
 			// We've omitted the first matrix. That's why +1.
-			e.pop(i+1, j)
+			e.pop(i, j)
 		}
 	}
 
 	// Align vector timestamps with step
 	for i := range vec {
 		vec[i].T = ts
+	}
+
+	if len(e.matrices) == 1 {
+		//fmt.Println("just one matrix!!!")
+		//fmt.Println("length of vec: ", len(vec))
+		return ok, ts, SampleVector(vec)
+	}
+
+	if len(vec) == 0 {
+		return e.hasNext(), ts, SampleVector(vec)
 	}
 
 	return true, ts, SampleVector(vec)
@@ -243,7 +231,6 @@ type lastOverTimeStepEvaluator struct {
 	start, end, ts time.Time
 	step           time.Duration
 	matrices       []promql.Matrix
-	streamVec      map[int64]int
 }
 
 func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEvaluator {
@@ -257,18 +244,12 @@ func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEva
 		step  = params.Step()
 	)
 
-	index := make(map[int64]int, 0)
-	for i, series := range m[1] {
-		index[int64(series.Metric.Hash())] = i
-	}
-
 	return &lastOverTimeStepEvaluator{
-		start:     start,
-		end:       end,
-		ts:        start.Add(-step), // will be corrected on first Next() call
-		step:      step,
-		matrices:  m,
-		streamVec: index,
+		start:    start,
+		end:      end,
+		ts:       start.Add(-step), // will be corrected on first Next() call
+		step:     step,
+		matrices: m,
 	}
 }
 
@@ -289,30 +270,9 @@ func (e *lastOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 
 	// Process first result
 	// len(e.matrices) >= 1 was check during creation
-	for s, series := range e.matrices[0] {
-		if len(series.Floats) == 0 || !e.inRange(series.Floats[0].T, ts) {
-			continue
-		}
-
-		vec = append(vec, promql.Sample{
-			Metric: series.Metric,
-			T:      series.Floats[0].T,
-			F:      series.Floats[0].F,
-		})
-
-		e.pop(0, s)
-	}
-
-	if len(e.matrices) == 1 {
-		return ok, ts, SampleVector(vec)
-	}
-
-	if len(vec) == 0 {
-		return e.hasNext(), ts, SampleVector(vec)
-	}
 
 	// Merge other results
-	for i, m := range e.matrices[1:] {
+	for i, m := range e.matrices {
 		// TODO: verify length and same labels/metric
 		for j, series := range m {
 
@@ -321,19 +281,33 @@ func (e *lastOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 			}
 
 			// Merge
-			if vec[j].T < series.Floats[0].T {
+			if len(vec) < len(e.matrices) {
+				vec = append(vec, promql.Sample{
+					Metric: series.Metric,
+					T:      series.Floats[0].T,
+					F:      series.Floats[0].F,
+				})
+			} else if vec[j].T < series.Floats[0].T {
 				vec[j].F = series.Floats[0].F
 				vec[j].T = series.Floats[0].T
 			}
 
 			// We've omitted the first matrix. That's why +1.
-			e.pop(i+1, j)
+			e.pop(i, j)
 		}
 	}
 
 	// Align vector timestamps with step
 	for i := range vec {
 		vec[i].T = ts
+	}
+
+	if len(e.matrices) == 1 {
+		return ok, ts, SampleVector(vec)
+	}
+
+	if len(vec) == 0 {
+		return e.hasNext(), ts, SampleVector(vec)
 	}
 
 	return true, ts, SampleVector(vec)
