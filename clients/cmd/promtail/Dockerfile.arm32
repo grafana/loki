@@ -14,7 +14,7 @@ FROM debian:bullseye-slim
 RUN echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/sources.list
 RUN apt-get update && \
   apt-get install -qy \
-  tzdata ca-certificates
+  tzdata ca-certificates wget
 RUN apt-get install -t bullseye-backports -qy libsystemd-dev && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 COPY --from=build /src/loki/clients/cmd/promtail/promtail /usr/bin/promtail
