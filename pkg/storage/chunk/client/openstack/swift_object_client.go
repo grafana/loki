@@ -79,7 +79,6 @@ func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObj
 }
 
 func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
-	c := &swift.Connection{}
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
 	}
@@ -94,7 +93,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 
 	newTransport := defaultTransport.(*http.Transport)
 	newTransport.TLSClientConfig = tlsConfig
-	c = &swift.Connection{
+	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
 		AuthUrl:        cfg.AuthURL,
 		Internal:       cfg.Internal,
