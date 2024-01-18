@@ -5,8 +5,12 @@
     "hideTypePatterns": [
         "ParseError$",
         "List$",
+        "ControllerHealth$",
         "ControllerManagerConfiguration$",
-        "ControllerManagerConfigurationSpec$"
+        "ControllerManagerConfigurationSpec$",
+        "ControllerMetrics$",
+        "ControllerWebhook$",
+        "ProjectConfig$"
     ],
     "externalPackages": [
         {
