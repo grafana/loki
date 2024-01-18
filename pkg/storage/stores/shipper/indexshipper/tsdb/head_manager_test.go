@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -389,20 +390,22 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Schema:     "v11",
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 				{
 					Schema:     "v11",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 			},
 		}, {
@@ -411,20 +414,22 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Schema:     "v12",
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 				{
 					Schema:     "v12",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 			},
 		}, {
@@ -433,20 +438,22 @@ func TestBuildLegacyWALs(t *testing.T) {
 					Schema:     "v13",
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 				{
 					Schema:     "v13",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 					IndexType:  config.TSDBType,
 					ObjectType: config.StorageTypeFileSystem,
-					IndexTables: config.PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{
+							Prefix: "index_",
+							Period: time.Hour * 24,
+						}},
 				},
 			},
 		},
@@ -529,13 +536,13 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, IndexCfg{Config: shipperCfg}, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger(), nil)
+				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger())
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),
 					c.User,
 					0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
-					labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+					chunk.NewPredicate([]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+")}, nil),
 				)
 				require.Nil(t, err)
 				require.Equal(t, tc.expectedChunks, refs)

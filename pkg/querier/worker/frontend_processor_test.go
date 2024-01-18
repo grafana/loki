@@ -39,7 +39,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 		running.Store(true)
 		defer running.Store(false)
 
-		mgr.processQueriesOnSingleStream(ctx, cc, "test:12345")
+		mgr.processQueriesOnSingleStream(ctx, cc, "test:12345", "")
 	}()
 
 	test.Poll(t, time.Second, true, func() interface{} {

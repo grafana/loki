@@ -41,7 +41,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 		requestHandler.On("Do", mock.Anything, mock.Anything).Return(&queryrange.LokiResponse{}, nil)
 
-		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
 
 		// We expect at this point, the execution context has been canceled too.
 		require.Error(t, loopClient.Context().Err())
@@ -61,9 +61,11 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			case 1:
 				return &schedulerpb.SchedulerToQuerier{
 					QueryID: 1,
-					HttpRequest: &httpgrpc.HTTPRequest{
-						Method: "GET",
-						Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
+					Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
+						HttpRequest: &httpgrpc.HTTPRequest{
+							Method: "GET",
+							Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
+						},
 					},
 					FrontendAddress: "127.0.0.2",
 					UserID:          "user-1",
@@ -89,7 +91,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 		}).Return(&queryrange.LokiResponse{}, nil)
 
 		startTime := time.Now()
-		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
 		assert.GreaterOrEqual(t, time.Since(startTime), time.Second)
 
 		// We expect at this point, the execution context has been canceled too.
@@ -120,7 +122,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 		requestHandler.On("Do", mock.Anything, mock.Anything).Return(&queryrange.LokiResponse{}, nil)
 
-		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
 
 		// We expect no error in the log.
 		assert.NotContains(t, logs.String(), "error")

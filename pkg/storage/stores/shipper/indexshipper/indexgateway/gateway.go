@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
@@ -48,7 +49,7 @@ type IndexClientWithRange struct {
 }
 
 type BloomQuerier interface {
-	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error)
+	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, filters ...syntax.LineFilter) ([]*logproto.ChunkRef, error)
 }
 
 type Gateway struct {
@@ -202,7 +203,9 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	if err != nil {
 		return nil, err
 	}
-	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, matchers...)
+
+	predicate := chunk.NewPredicate(matchers, req.Filters)
+	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate)
 	if err != nil {
 		return nil, err
 	}
@@ -216,8 +219,11 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		}
 	}
 
+	initialChunkCount := len(result.Refs)
+
 	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled) or if there are not filters.
 	if g.bloomQuerier == nil || len(req.Filters) == 0 {
+		level.Info(g.log).Log("msg", "chunk filtering is not enabled or there is no line filter", "filters", len(req.Filters))
 		return result, nil
 	}
 
@@ -231,6 +237,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	result.Refs = chunkRefs
+	level.Info(g.log).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs))
 	return result, nil
 }
 

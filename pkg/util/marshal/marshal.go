@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
@@ -24,8 +25,9 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		version := loghttp.GetVersion(r.RequestURI)
+		encodeFlags := httpreq.ExtractEncodingFlags(r)
 		if version == loghttp.VersionV1 {
-			return WriteQueryResponseJSON(result.Data, result.Statistics, w)
+			return WriteQueryResponseJSON(result.Data, result.Statistics, w, encodeFlags)
 		}
 
 		return marshal_legacy.WriteQueryResponseJSON(result, w)
@@ -48,10 +50,10 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(data parser.Value, statistics stats.Result, w io.Writer) error {
+func WriteQueryResponseJSON(data parser.Value, statistics stats.Result, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
-	err := EncodeResult(data, statistics, s)
+	err := EncodeResult(data, statistics, s, encodeFlags)
 	if err != nil {
 		return fmt.Errorf("could not write JSON response: %w", err)
 	}
@@ -79,18 +81,38 @@ type WebsocketWriter interface {
 	WriteMessage(int, []byte) error
 }
 
+type websocketJSONWriter struct {
+	WebsocketWriter
+}
+
+func (w *websocketJSONWriter) Write(p []byte) (n int, err error) {
+	err = w.WriteMessage(websocket.TextMessage, p)
+	if err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+func NewWebsocketJSONWriter(ws WebsocketWriter) io.Writer {
+	return &websocketJSONWriter{ws}
+}
+
 // WriteTailResponseJSON marshals the legacy.TailResponse to v1 loghttp JSON and
-// then writes it to the provided connection.
-func WriteTailResponseJSON(r legacy.TailResponse, c WebsocketWriter) error {
-	v1Response, err := NewTailResponse(r)
+// then writes it to the provided writer.
+func WriteTailResponseJSON(r legacy.TailResponse, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
+	// TODO(salvacorts): I think we can dismiss the new TailResponse and be an alias of legacy.TailResponse
+	// v1Response, err := NewTailResponse(r)
+	// if err != nil {
+	// 	return err
+	// }
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+
+	err := EncodeTailResult(r, s, encodeFlags)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not write JSON tail response: %w", err)
 	}
-	data, err := jsoniter.Marshal(v1Response)
-	if err != nil {
-		return err
-	}
-	return c.WriteMessage(websocket.TextMessage, data)
+	return s.Flush()
 }
 
 // WriteSeriesResponseJSON marshals a logproto.SeriesResponse to v1 loghttp JSON and then
@@ -102,7 +124,11 @@ func WriteSeriesResponseJSON(series []logproto.SeriesIdentifier, w io.Writer) er
 	}
 
 	for _, series := range series {
-		adapter.Data = append(adapter.Data, series.GetLabels())
+		m := make(map[string]string, 0)
+		for _, pair := range series.GetLabels() {
+			m[pair.Key] = pair.Value
+		}
+		adapter.Data = append(adapter.Data, m)
 	}
 
 	s := jsoniter.ConfigFastest.BorrowStream(w)

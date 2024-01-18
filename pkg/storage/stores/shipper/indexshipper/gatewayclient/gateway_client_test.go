@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -191,7 +192,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 		cfg.Mode = indexgateway.RingMode
 		cfg.Ring = igwRing
 
-		c, err := NewGatewayClient(cfg, nil, o, logger)
+		c, err := NewGatewayClient(cfg, nil, o, logger, constants.Loki)
 		require.NoError(t, err)
 		require.NotNil(t, c)
 
@@ -222,7 +223,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 		cfg.Mode = indexgateway.RingMode
 		cfg.Ring = igwRing
 
-		c, err := NewGatewayClient(cfg, nil, o, logger)
+		c, err := NewGatewayClient(cfg, nil, o, logger, constants.Loki)
 		require.NoError(t, err)
 		require.NotNil(t, c)
 
@@ -253,7 +254,7 @@ func TestGatewayClient(t *testing.T) {
 	cfg.PoolConfig = clientpool.PoolConfig{ClientCleanupPeriod: 500 * time.Millisecond}
 
 	overrides, _ := validation.NewOverrides(validation.Limits{}, nil)
-	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, logger)
+	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, logger, constants.Loki)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
@@ -440,11 +441,11 @@ func TestDoubleRegistration(t *testing.T) {
 		Address: "my-store-address:1234",
 	}
 
-	client, err := NewGatewayClient(clientCfg, r, o, logger)
+	client, err := NewGatewayClient(clientCfg, r, o, logger, constants.Loki)
 	require.NoError(t, err)
 	defer client.Stop()
 
-	client, err = NewGatewayClient(clientCfg, r, o, logger)
+	client, err = NewGatewayClient(clientCfg, r, o, logger, constants.Loki)
 	require.NoError(t, err)
 	defer client.Stop()
 }

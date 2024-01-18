@@ -13,13 +13,11 @@
 #       _msg: "Use tsdb (preferred) or boltdb-shipper instead."
 #
 # Note that even though the configs in schema_config takes a list, here we specify the deprecated fields for each item in the list.
+legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
 
 ruler:
   remote_write:
     client: "Use clients instead."
-
-compactor:
-  deletion_mode: "Use global or per-tenant deletion_mode configuration from limits_config."
 
 index_gateway:
   ring:
@@ -44,12 +42,10 @@ storage_config:
 
 chunk_store_config:
   write_dedupe_cache_config: "Write dedupe cache is deprecated along with deprecated index types. Consider using TSDB index which does not require a write dedupe cache."
-  max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
 
 ## NOTE: This will also be used to validate per-tenant overrides.
 limits_config:
   unordered_writes: "Will be eventually removed."
-  ruler_evaluation_delay_duration: "Will be eventually removed."
   ruler_remote_write_url: "Use ruler_remote_write_config instead."
   ruler_remote_write_timeout: "Use ruler_remote_write_config instead."
   ruler_remote_write_headers: "Use ruler_remote_write_config instead."

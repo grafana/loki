@@ -12,14 +12,15 @@ import (
 )
 
 type Schema struct {
-	version  byte
-	encoding chunkenc.Encoding
+	version                byte
+	encoding               chunkenc.Encoding
+	nGramLength, nGramSkip uint64
 }
 
 // byte length
 func (s Schema) Len() int {
-	// magic number + version + encoding
-	return 4 + 1 + 1
+	// magic number + version + encoding + ngram length + ngram skip
+	return 4 + 1 + 1 + 8 + 8
 }
 
 func (s *Schema) DecompressorPool() chunkenc.ReaderPool {
@@ -35,6 +36,9 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(s.version)
 	enc.PutByte(byte(s.encoding))
+	enc.PutBE64(s.nGramLength)
+	enc.PutBE64(s.nGramSkip)
+
 }
 
 func (s *Schema) DecodeFrom(r io.ReadSeeker) error {
@@ -64,7 +68,14 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Wrap(err, "parsing encoding")
 	}
 
+	s.nGramLength = dec.Be64()
+	s.nGramSkip = dec.Be64()
+
 	return dec.Err()
+}
+
+func (s Schema) NGramLen() int {
+	return int(s.nGramLength)
 }
 
 // Block index is a set of series pages along with
@@ -196,6 +207,10 @@ type SeriesHeader struct {
 	NumSeries         int
 	FromFp, ThroughFp model.Fingerprint
 	FromTs, ThroughTs model.Time
+}
+
+func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
+	return h.ThroughFp >= other.FromFp && h.FromFp <= other.ThroughFp
 }
 
 // build one aggregated header for the entire block
@@ -333,7 +348,7 @@ func (d *SeriesPageDecoder) Err() error {
 
 type Series struct {
 	Fingerprint model.Fingerprint
-	Chunks      []ChunkRef
+	Chunks      ChunkRefs
 }
 
 type SeriesWithOffset struct {

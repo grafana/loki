@@ -1,19 +1,22 @@
 package main
 
 import (
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 )
 
 type Experiment struct {
 	name          string
-	tokenizer     Tokenizer
+	tokenizer     *v1.NGramTokenizer
 	bloom         func() *filter.ScalableBloomFilter
 	encodeChunkID bool
 }
 
-func NewExperiment(name string, tokenizer Tokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
+func NewExperiment(name string, tokenizer *v1.NGramTokenizer, encodeChunkID bool, bloom func() *filter.ScalableBloomFilter) Experiment {
 	return Experiment{
 		name:          name,
 		tokenizer:     tokenizer,
@@ -35,7 +38,7 @@ func NewQueryExperiment(name string, searchString string) QueryExperiment {
 const ExperimentLabel = "experiment"
 const QueryExperimentLabel = "query_experiment"
 const LookupResultType = "lookup_result_type"
-const FalsePositive = "false_postive"
+const FalsePositive = "false_positive"
 const FalseNegative = "false_negative"
 const TruePositive = "true_positive"
 const TrueNegative = "true_negative"

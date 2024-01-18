@@ -22,8 +22,9 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
 		require.Equal(t, logproto.Entry{
-			Timestamp: time.Unix(0, exp[i].t),
-			Line:      exp[i].s,
+			Timestamp:          time.Unix(0, exp[i].t),
+			Line:               exp[i].s,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(exp[i].structuredMetadata),
 		}, got.Entry())
 		require.Equal(t, exp[i].structuredMetadata.String(), got.Labels())
 		i++
@@ -445,22 +446,10 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	// ensure head block has data
 	require.Equal(t, false, c.head.IsEmpty())
 
-	forward, err := c.Iterator(
-		context.Background(),
-		time.Unix(0, 0),
-		time.Unix(100, 0),
-		logproto.FORWARD,
-		noopStreamPipeline,
-	)
+	forward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.FORWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
-	backward, err := c.Iterator(
-		context.Background(),
-		time.Unix(0, 0),
-		time.Unix(100, 0),
-		logproto.BACKWARD,
-		noopStreamPipeline,
-	)
+	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.BACKWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
 	smpl := c.SampleIterator(

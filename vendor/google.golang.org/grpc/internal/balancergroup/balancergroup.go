@@ -328,6 +328,11 @@ func (bg *BalancerGroup) AddWithClientConn(id, balancerName string, cc balancer.
 	// caching is disabled.
 	if bg.outgoingStarted && bg.deletedBalancerCache != nil {
 		if old, ok := bg.deletedBalancerCache.Remove(id); ok {
+			if bg.logger.V(2) {
+				bg.logger.Infof("Removing and reusing child policy of type %q for locality %q from the balancer cache", balancerName, id)
+				bg.logger.Infof("Number of items remaining in the balancer cache: %d", bg.deletedBalancerCache.Len())
+			}
+
 			sbc, _ = old.(*subBalancerWrapper)
 			if sbc != nil && sbc.builder != builder {
 				// If the sub-balancer in cache was built with a different
@@ -403,7 +408,7 @@ func (bg *BalancerGroup) Remove(id string) {
 
 	sbToRemove, ok := bg.idToBalancerConfig[id]
 	if !ok {
-		bg.logger.Infof("balancer group: trying to remove a non-existing locality from balancer group: %v", id)
+		bg.logger.Errorf("Child policy for locality %q does not exist in the balancer group", id)
 		bg.outgoingMu.Unlock()
 		return
 	}
@@ -418,7 +423,17 @@ func (bg *BalancerGroup) Remove(id string) {
 	}
 
 	if bg.deletedBalancerCache != nil {
+		if bg.logger.V(2) {
+			bg.logger.Infof("Adding child policy for locality %q to the balancer cache", id)
+			bg.logger.Infof("Number of items remaining in the balancer cache: %d", bg.deletedBalancerCache.Len())
+		}
+
 		bg.deletedBalancerCache.Add(id, sbToRemove, func() {
+			if bg.logger.V(2) {
+				bg.logger.Infof("Removing child policy for locality %q from the balancer cache after timeout", id)
+				bg.logger.Infof("Number of items remaining in the balancer cache: %d", bg.deletedBalancerCache.Len())
+			}
+
 			// A sub-balancer evicted from the timeout cache needs to closed
 			// and its subConns need to removed, unconditionally. There is a
 			// possibility that a sub-balancer might be removed (thereby

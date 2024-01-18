@@ -1,6 +1,6 @@
 package syntax
 
-type WalkFn = func(e interface{})
+type WalkFn = func(e Expr)
 
 func walkAll(f WalkFn, xs ...Walkable) {
 	for _, x := range xs {

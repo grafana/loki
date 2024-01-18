@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
@@ -50,16 +51,18 @@ type Tailer struct {
 	querierTailClients    map[string]logproto.Querier_TailClient // addr -> grpc clients for tailing logs from ingesters
 	querierTailClientsMtx sync.RWMutex
 
-	stopped         bool
-	delayFor        time.Duration
-	responseChan    chan *loghttp.TailResponse
-	closeErrChan    chan error
-	tailMaxDuration time.Duration
+	stopped          bool
+	delayFor         time.Duration
+	responseChan     chan *loghttp.TailResponse
+	closeErrChan     chan error
+	tailMaxDuration  time.Duration
+	categorizeLabels bool
 
 	// if we are not seeing any response from ingester,
 	// how long do we want to wait by going into sleep
 	waitEntryThrottle time.Duration
 	metrics           *Metrics
+	logger            log.Logger
 }
 
 func (t *Tailer) readTailClients() {
@@ -87,11 +90,11 @@ func (t *Tailer) loop() {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
 			if err := t.checkIngesterConnections(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "Error reconnecting to disconnected ingesters", "err", err)
+				level.Error(t.logger).Log("msg", "Error reconnecting to disconnected ingesters", "err", err)
 			}
 		case <-tailMaxDurationTicker.C:
 			if err := t.close(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
+				level.Error(t.logger).Log("msg", "Error closing Tailer", "err", err)
 			}
 			t.closeErrChan <- errors.New("reached tail max duration limit")
 			return
@@ -137,12 +140,12 @@ func (t *Tailer) loop() {
 			if numClients == 0 {
 				// All the connections to ingesters are dropped, try reconnecting or return error
 				if err := t.checkIngesterConnections(); err != nil {
-					level.Error(util_log.Logger).Log("msg", "Error reconnecting to ingesters", "err", err)
+					level.Error(t.logger).Log("msg", "Error reconnecting to ingesters", "err", err)
 				} else {
 					continue
 				}
 				if err := t.close(); err != nil {
-					level.Error(util_log.Logger).Log("msg", "Error closing Tailer", "err", err)
+					level.Error(t.logger).Log("msg", "Error closing Tailer", "err", err)
 				}
 				t.closeErrChan <- errors.New("all ingesters closed the connection")
 				return
@@ -209,7 +212,7 @@ func (t *Tailer) readTailClient(addr string, querierTailClient logproto.Querier_
 	var err error
 	defer t.dropTailClient(addr)
 
-	logger := util_log.WithContext(querierTailClient.Context(), util_log.Logger)
+	logger := util_log.WithContext(querierTailClient.Context(), t.logger)
 	for {
 		if t.stopped {
 			if err := querierTailClient.CloseSend(); err != nil {
@@ -234,7 +237,12 @@ func (t *Tailer) pushTailResponseFromIngester(resp *logproto.TailResponse) {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	t.openStreamIterator.Push(iter.NewStreamIterator(*resp.Stream))
+	itr := iter.NewStreamIterator(*resp.Stream)
+	if t.categorizeLabels {
+		itr = iter.NewCategorizeLabelsIterator(itr)
+	}
+
+	t.openStreamIterator.Push(itr)
 }
 
 // finds oldest entry by peeking at open stream iterator.
@@ -305,10 +313,17 @@ func newTailer(
 	tailDisconnectedIngesters func([]string) (map[string]logproto.Querier_TailClient, error),
 	tailMaxDuration time.Duration,
 	waitEntryThrottle time.Duration,
+	categorizeLabels bool,
 	m *Metrics,
+	logger log.Logger,
 ) *Tailer {
+	historicEntriesIter := historicEntries
+	if categorizeLabels {
+		historicEntriesIter = iter.NewCategorizeLabelsIterator(historicEntries)
+	}
+
 	t := Tailer{
-		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntries}, logproto.FORWARD),
+		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntriesIter}, logproto.FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),
@@ -317,7 +332,9 @@ func newTailer(
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,
 		waitEntryThrottle:         waitEntryThrottle,
+		categorizeLabels:          categorizeLabels,
 		metrics:                   m,
+		logger:                    logger,
 	}
 
 	t.metrics.tailsActive.Inc()

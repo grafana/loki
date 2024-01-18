@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -46,7 +47,7 @@ var (
 )
 
 var cosRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "cos_request_duration_seconds",
 	Help:      "Time spent doing cos requests.",
 	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},

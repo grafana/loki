@@ -1,7 +1,7 @@
 ---
 title: Promtail and Log Rotation 
 menuTitle:  Configure log rotation
-description: Promtail and Log Rotation
+description: Configuring Promtail log rotation.
 aliases: 
 - ../../clients/promtail/logrotation/
 weight:  500
@@ -18,7 +18,9 @@ At any point in time, there may be three processes working on a log file as show
 2. Tailer - A reader that reads log lines as they are appended, for example, agents like Promtail.
 3. Log Rotator - A process that rotates the log file either based on time (for example, scheduled every day) or size (for example, a log file reached its maximum size).
 
-> **NOTE:** Here `fd` defines a file descriptor. Once a file is open for read or write, The Operating System returns a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
+{{% admonition type="note" %}}
+Here `fd` defines a file descriptor. Once a file is open for read or write, The Operating System returns a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
+{{% /admonition %}}
 
 One of the critical components here is the log rotator. Let's understand how it impacts other components like the appender and tailer.
 
@@ -96,7 +98,9 @@ You can [configure](https://kubernetes.io/docs/concepts/cluster-administration/l
 
 Both should be part of the `kubelet` config. If you run a managed version of Kubernetes in Cloud, refer to your cloud provider documentation for configuring `kubelet`. Examples [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/node-system-config#create), [AKS](https://learn.microsoft.com/en-us/azure/aks/custom-node-configuration#use-custom-node-configuration) and [EKS](https://eksctl.io/usage/customizing-the-kubelet/#customizing-kubelet-configuration).
 
-> **NOTE:** Log rotation managed by `kubelet` supports only rename + create and doesn't support copy + truncate.
+{{% admonition type="note" %}}
+Log rotation managed by `kubelet` supports only rename + create and doesn't support copy + truncate.
+{{% /admonition %}}
 
 If `kubelet` is not configured to manage the log rotation, then it's up to the Container Runtime Interface (CRI) the cluster uses. Alternatively, log rotation can be managed by the `logrotate` utility in the Kubernetes node itself.
 
@@ -138,7 +142,9 @@ Example `/etc/docker/daemon.json`:
 
 If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrotate` utility can be used on the Kubernetes nodes as explained previously.
 
-> **NOTE:** We recommend using kubelet for log rotation.
+{{% admonition type="note" %}}
+We recommend using kubelet for log rotation.
+{{% /admonition %}}
 
 ## Configure Promtail
 

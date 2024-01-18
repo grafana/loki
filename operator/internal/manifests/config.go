@@ -47,9 +47,9 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 			Name:   lokiConfigMapName(opt.Name),
 			Labels: commonLabels(opt.Name),
 		},
-		BinaryData: map[string][]byte{
-			config.LokiConfigFileName:        c,
-			config.LokiRuntimeConfigFileName: rc,
+		Data: map[string]string{
+			config.LokiConfigFileName:        string(c),
+			config.LokiRuntimeConfigFileName: string(rc),
 		},
 	}, sha1C, nil
 }
@@ -117,6 +117,21 @@ func ConfigOptions(opt Options) config.Options {
 		opt.Stack.Replication.Factor = opt.Stack.ReplicationFactor
 	}
 
+	// Build a slice of with the shippers that are being used in the config
+	// booleans used to prevent duplicates
+	shippers := []string{}
+	boltdb := false
+	tsdb := false
+	for _, schema := range opt.Stack.Storage.Schemas {
+		if !boltdb && (schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12) {
+			shippers = append(shippers, "boltdb")
+			boltdb = true
+		} else if !tsdb {
+			shippers = append(shippers, "tsdb")
+			tsdb = true
+		}
+	}
+
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
@@ -175,6 +190,7 @@ func ConfigOptions(opt Options) config.Options {
 			Directory:             walDirectory,
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
+		Shippers:              shippers,
 		ObjectStorage:         opt.ObjectStorage,
 		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
