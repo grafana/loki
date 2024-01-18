@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -28,7 +29,7 @@ func makeChunkRefsFromChunkMetas(chunks index.ChunkMetas) v1.ChunkRefs {
 	return chunkRefs
 }
 
-func makeSeriesIterFromSeriesMeta(job Job) *v1.SliceIter[*v1.Series] {
+func makeSeriesIterFromSeriesMeta(job Job) *v1.PeekIter[*v1.Series] {
 	// Satisfy types for series
 	seriesFromSeriesMeta := make([]*v1.Series, len(job.seriesMetas))
 
@@ -39,7 +40,7 @@ func makeSeriesIterFromSeriesMeta(job Job) *v1.SliceIter[*v1.Series] {
 			Chunks:      crefs,
 		}
 	}
-	return v1.NewSliceIter(seriesFromSeriesMeta)
+	return v1.NewPeekingIter[*v1.Series](v1.NewSliceIter(seriesFromSeriesMeta))
 }
 
 func makeBlockIterFromBlocks(ctx context.Context, logger log.Logger,
@@ -114,6 +115,7 @@ func createPopulateFunc(ctx context.Context, job Job, storeClient storeClient, b
 }
 
 func mergeCompactChunks(
+	ctx context.Context,
 	logger log.Logger,
 	populate func(*v1.Series, *v1.Bloom) error,
 	mergeBlockBuilder *PersistentBlockBuilder,
@@ -136,15 +138,17 @@ func mergeCompactChunks(
 			break
 		}
 
+		if err := ctx.Err(); err != nil {
+			return []bloomshipper.Block{}, err
+		}
+
 		blockPath, checksum, bounds, err := mergeBlockBuilder.mergeBuild(mergeBuilder)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed merging the blooms", "err", err)
-			return []bloomshipper.Block{}, err
+			return []bloomshipper.Block{}, errors.Wrap(err, "failed to merge blooms")
 		}
 		data, err := mergeBlockBuilder.Data()
 		if err != nil {
-			level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
-			return []bloomshipper.Block{}, err
+			return []bloomshipper.Block{}, errors.Wrap(err, "failed to read blooms")
 		}
 
 		mergedBlock := bloomshipper.Block{

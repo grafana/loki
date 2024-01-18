@@ -68,10 +68,10 @@ type SeriesWithBloom struct {
 	Bloom  *Bloom
 }
 
-type updatableBounds SeriesBounds
+type UpdatableBounds SeriesBounds
 
-func newUpdatableBounds() updatableBounds {
-	return updatableBounds{
+func NewUpdatableBounds() UpdatableBounds {
+	return UpdatableBounds{
 		FromTs:    model.Latest,
 		ThroughTs: model.Earliest,
 		FromFp:    model.Fingerprint(math.MaxUint64),
@@ -79,7 +79,7 @@ func newUpdatableBounds() updatableBounds {
 	}
 }
 
-func (b *updatableBounds) update(series *Series) {
+func (b *UpdatableBounds) Update(series Series) {
 	minFrom := model.Latest
 	maxThrough := model.Earliest
 	for _, chunk := range series.Chunks {
@@ -106,11 +106,11 @@ func (b *updatableBounds) update(series *Series) {
 }
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, SeriesBounds, error) {
-	bounds := newUpdatableBounds()
+	bounds := NewUpdatableBounds()
 
 	for itr.Next() {
 		series := itr.At()
-		bounds.update(series.Series)
+		bounds.Update(*series.Series)
 		blockFull, err := b.AddSeries(series)
 		if err != nil {
 			return 0, SeriesBounds{}, err
@@ -134,7 +134,7 @@ func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, SeriesB
 	return checksum, SeriesBounds(bounds), nil
 }
 
-func (b *BlockBuilder) blockIsFull() (bool, error) {
+func (b *BlockBuilder) isBlockFull() (bool, error) {
 	// if the block size is 0, the max size is unlimited
 	if b.opts.BlockSize == 0 {
 		return false, nil
@@ -161,7 +161,7 @@ func (b *BlockBuilder) AddSeries(series SeriesWithBloom) (bool, error) {
 		return false, errors.Wrapf(err, "writing index for series %v", series.Series.Fingerprint)
 	}
 
-	full, err := b.blockIsFull()
+	full, err := b.isBlockFull()
 	if err != nil {
 		return false, errors.Wrap(err, "checking if block is full")
 	}
@@ -573,7 +573,7 @@ func (mb *MergeBuilder) HasPendingData() bool {
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, SeriesBounds, error) {
 	var (
 		nextInBlocks *SeriesWithBloom
-		bounds       = newUpdatableBounds()
+		bounds       = NewUpdatableBounds()
 	)
 
 	// Turn the list of blocks into a single iterator that returns the next series
@@ -641,7 +641,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, SeriesBounds, erro
 			}
 		}
 
-		bounds.update(cur.Series)
+		bounds.Update(*cur.Series)
 		blockFull, err := builder.AddSeries(*cur)
 		if err != nil {
 			return 0, SeriesBounds{}, errors.Wrap(err, "adding series to block")

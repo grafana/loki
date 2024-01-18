@@ -1,11 +1,10 @@
 package bloomcompactor
 
 import (
-	"math"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -18,10 +17,7 @@ type seriesMeta struct {
 type Job struct {
 	tableName, tenantID, indexPath string
 	seriesMetas                    []seriesMeta
-
-	// We compute them lazily. Unset value is 0.
-	from, through model.Time
-	minFp, maxFp  model.Fingerprint
+	v1.SeriesBounds
 }
 
 // NewJob returns a new compaction Job.
@@ -31,55 +27,23 @@ func NewJob(
 	indexPath string,
 	seriesMetas []seriesMeta,
 ) Job {
-	j := Job{
-		tenantID:    tenantID,
-		tableName:   tableName,
-		indexPath:   indexPath,
-		seriesMetas: seriesMetas,
+	bounds := v1.NewUpdatableBounds()
+	for _, series := range seriesMetas {
+		bounds.Update(v1.Series{
+			Fingerprint: series.seriesFP,
+			Chunks:      makeChunkRefsFromChunkMetas(series.chunkRefs),
+		})
 	}
-	j.computeBounds()
-	return j
+
+	return Job{
+		tenantID:     tenantID,
+		tableName:    tableName,
+		indexPath:    indexPath,
+		seriesMetas:  seriesMetas,
+		SeriesBounds: v1.SeriesBounds(bounds),
+	}
 }
 
 func (j *Job) String() string {
 	return j.tableName + "_" + j.tenantID + "_"
-}
-
-func (j *Job) computeBounds() {
-	if len(j.seriesMetas) == 0 {
-		return
-	}
-
-	minFrom := model.Latest
-	maxThrough := model.Earliest
-
-	minFp := model.Fingerprint(math.MaxInt64)
-	maxFp := model.Fingerprint(0)
-
-	for _, seriesMeta := range j.seriesMetas {
-		// calculate timestamp boundaries
-		for _, chunkRef := range seriesMeta.chunkRefs {
-			from, through := chunkRef.Bounds()
-			if minFrom > from {
-				minFrom = from
-			}
-			if maxThrough < through {
-				maxThrough = through
-			}
-		}
-
-		// calculate fingerprint boundaries
-		if minFp > seriesMeta.seriesFP {
-			minFp = seriesMeta.seriesFP
-		}
-		if maxFp < seriesMeta.seriesFP {
-			maxFp = seriesMeta.seriesFP
-		}
-	}
-
-	j.from = minFrom
-	j.through = maxThrough
-
-	j.minFp = minFp
-	j.maxFp = maxFp
 }

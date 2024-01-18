@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -46,13 +47,13 @@ type PersistentBlockBuilder struct {
 	currentBlockPath string
 }
 
-func NewPersistentBlockBuilder(localDst string, blockOptions v1.BlockOptions) (*PersistentBlockBuilder, error) {
+func NewPersistentBlockBuilder(localDst string, blockOptions v1.BlockOptions) *PersistentBlockBuilder {
 	builder := PersistentBlockBuilder{
 		blockOptions: blockOptions,
 		baseLocalDst: localDst,
 	}
 
-	return &builder, nil
+	return &builder
 }
 
 func (p *PersistentBlockBuilder) getNextBuilder() (*v1.BlockBuilder, error) {
@@ -121,13 +122,10 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 }
 
 func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks v1.Iterator[[]chunk.Chunk]) (v1.SeriesWithBloom, error) {
-	chunkRefs := makeChunkRefsFromChunkMetas(seriesMeta.chunkRefs)
-
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
 			Fingerprint: seriesMeta.seriesFP,
-			Chunks:      chunkRefs,
 		},
 		Bloom: &v1.Bloom{
 			ScalableBloomFilter: *filter.NewDefaultScalableBloomFilter(fpRate),
@@ -170,14 +168,13 @@ func buildBlocksFromBlooms(
 
 		blockPath, checksum, bounds, err := builder.BuildFrom(blooms)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed writing to bloom", "err", err)
-			return []bloomshipper.Block{}, err
+			return []bloomshipper.Block{}, errors.Wrap(err, "failed to write bloom")
 		}
 
 		data, err := builder.Data()
 		if err != nil {
 			level.Error(logger).Log("msg", "failed reading bloom data", "err", err)
-			return []bloomshipper.Block{}, err
+			return []bloomshipper.Block{}, errors.Wrap(err, "failed to read bloom")
 		}
 
 		block := bloomshipper.Block{
@@ -215,7 +212,7 @@ func buildBlocksFromBlooms(
 }
 
 func createLocalDirName(workingDir string, job Job) string {
-	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%d-%d-%s", job.tableName, job.tenantID, job.minFp, job.maxFp, job.from, job.through, uuid.New().String())
+	dir := fmt.Sprintf("bloomBlock-%s-%s-%s-%s-%d-%d-%s", job.tableName, job.tenantID, job.FromFp, job.ThroughFp, job.FromTs, job.ThroughTs, uuid.New().String())
 	return filepath.Join(workingDir, dir)
 }
 

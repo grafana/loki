@@ -196,8 +196,7 @@ func TestChunkCompactor_CompactNewChunks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			localDst := createLocalDirName(t.TempDir(), job)
 			blockOpts := v1.NewBlockOptions(1, 1, tc.blockSize)
-			pbb, err := NewPersistentBlockBuilder(localDst, blockOpts)
-			require.NoError(t, err)
+			pbb := NewPersistentBlockBuilder(localDst, blockOpts)
 
 			// Run Compaction
 			compactedBlocks, err := compactNewChunks(context.Background(), logger, job, &mbt, &mcc, pbb, mockLimits{fpRate: fpRate})
@@ -290,9 +289,17 @@ type mockBloomTokenizer struct {
 	chunks []chunk.Chunk
 }
 
-func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(_ *v1.SeriesWithBloom, c v1.Iterator[[]chunk.Chunk]) error {
+func (mbt *mockBloomTokenizer) PopulateSeriesWithBloom(s *v1.SeriesWithBloom, c v1.Iterator[[]chunk.Chunk]) error {
 	for c.Next() {
-		mbt.chunks = append(mbt.chunks, c.At()...)
+		chunks := c.At()
+		for _, chk := range chunks {
+			s.Series.Chunks = append(s.Series.Chunks, v1.ChunkRef{
+				Start:    chk.From,
+				End:      chk.Through,
+				Checksum: chk.Checksum,
+			})
+			mbt.chunks = append(mbt.chunks, chk)
+		}
 	}
 	return nil
 }
@@ -305,7 +312,7 @@ type mockChunkClient struct {
 func (mcc *mockChunkClient) GetChunks(_ context.Context, chks []chunk.Chunk) ([]chunk.Chunk, error) {
 	mcc.requestCount++
 	mcc.chunkCount += len(chks)
-	return nil, nil
+	return chks, nil
 }
 
 type mockPersistentBlockBuilder struct {

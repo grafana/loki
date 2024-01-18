@@ -497,10 +497,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
-		MinFingerprint: job.minFp,
-		MaxFingerprint: job.maxFp,
-		StartTimestamp: job.from,
-		EndTimestamp:   job.through,
+		MinFingerprint: job.FromFp,
+		MaxFingerprint: job.ThroughFp,
+		StartTimestamp: job.FromTs,
+		EndTimestamp:   job.ThroughTs,
 	}
 	var metas []bloomshipper.Meta
 	//TODO  Configure pool for these to avoid allocations
@@ -544,7 +544,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		// No matching existing blocks for this job, compact all series from scratch
 		level.Info(logger).Log("msg", "No matching existing blocks for this job, compact all series from scratch")
 
-		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
+		builder := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed creating block builder", "err", err)
 			return err
@@ -561,7 +561,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 
 		var populate = createPopulateFunc(ctx, job, storeClient, bt, c.limits)
 
-		seriesIter := v1.NewPeekingIter[*v1.Series](makeSeriesIterFromSeriesMeta(job))
+		seriesIter := makeSeriesIterFromSeriesMeta(job)
 
 		blockIters, blockPaths, err := makeBlockIterFromBlocks(ctx, logger, c.bloomShipperClient, blocksMatchingJob, c.cfg.WorkingDirectory)
 		defer func() {
@@ -577,13 +577,13 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		mergeBlockBuilder, err := NewPersistentBlockBuilder(localDst, blockOptions)
+		mergeBlockBuilder := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed creating block builder", "err", err)
 			return err
 		}
 
-		resultingBlocks, err = mergeCompactChunks(logger, populate, mergeBlockBuilder, blockIters, seriesIter, job)
+		resultingBlocks, err = mergeCompactChunks(ctx, logger, populate, mergeBlockBuilder, blockIters, seriesIter, job)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
@@ -635,10 +635,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			Ref: bloomshipper.Ref{
 				TenantID:       job.tenantID,
 				TableName:      job.tableName,
-				MinFingerprint: uint64(job.minFp),
-				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: job.from,
-				EndTimestamp:   job.through,
+				MinFingerprint: uint64(job.FromFp),
+				MaxFingerprint: uint64(job.ThroughFp),
+				StartTimestamp: job.FromTs,
+				EndTimestamp:   job.ThroughTs,
 				Checksum:       rand.Uint32(), // Discuss if checksum is needed for Metas, why should we read all data again.
 			},
 		},
