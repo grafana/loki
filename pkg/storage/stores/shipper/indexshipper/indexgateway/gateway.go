@@ -204,7 +204,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
-	predicate := chunk.NewPredicate(matchers, *(&req.Filters))
+	predicate := chunk.NewPredicate(matchers, req.Filters)
 	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate)
 	if err != nil {
 		return nil, err
@@ -219,8 +219,11 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		}
 	}
 
+	initialChunkCount := len(result.Refs)
+
 	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled) or if there are not filters.
 	if g.bloomQuerier == nil || len(req.Filters) == 0 {
+		level.Info(g.log).Log("msg", "chunk filtering is not enabled or there is no line filter", "filters", len(req.Filters))
 		return result, nil
 	}
 
@@ -234,6 +237,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	result.Refs = chunkRefs
+	level.Info(g.log).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs))
 	return result, nil
 }
 
