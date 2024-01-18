@@ -2830,6 +2830,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 10m]
 
+# Do not cache metadata request if the end time is within the
+# frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such
+# limits. Defaults to 24h.
+# CLI flag: -frontend.max-metadata-cache-freshness
+[max_metadata_cache_freshness: <duration> | default = 1d]
+
 # Do not cache requests with an end time that falls within Now minus this
 # duration. 0 disables this feature (default).
 # CLI flag: -frontend.max-stats-cache-freshness
@@ -3093,6 +3099,10 @@ shard_streams:
 # Whether to compact chunks into bloom filters.
 # CLI flag: -bloom-compactor.enable-compaction
 [bloom_compactor_enable_compaction: <boolean> | default = false]
+
+# The batch size of the chunks the bloom-compactor downloads at once.
+# CLI flag: -bloom-compactor.chunks-batch-size
+[bloom_compactor_chunks_batch_size: <int> | default = 100]
 
 # Length of the n-grams created when computing blooms from log lines.
 # CLI flag: -bloom-compactor.ngram-length

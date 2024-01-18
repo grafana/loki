@@ -22,7 +22,7 @@ import (
 )
 
 type compactorTokenizer interface {
-	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunks []chunk.Chunk) error
+	PopulateSeriesWithBloom(bloom *v1.SeriesWithBloom, chunkBatchesIterator v1.Iterator[[]chunk.Chunk]) error
 }
 
 type chunkClient interface {
@@ -86,7 +86,7 @@ func makeChunkRefs(chksMetas []tsdbindex.ChunkMeta, tenant string, fp model.Fing
 	return chunkRefs
 }
 
-func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks []chunk.Chunk) (v1.SeriesWithBloom, error) {
+func buildBloomFromSeries(seriesMeta seriesMeta, fpRate float64, tokenizer compactorTokenizer, chunks v1.Iterator[[]chunk.Chunk]) (v1.SeriesWithBloom, error) {
 	// Create a bloom for this series
 	bloomForChks := v1.SeriesWithBloom{
 		Series: &v1.Series{
@@ -155,21 +155,20 @@ func createLocalDirName(workingDir string, job Job) string {
 }
 
 // Compacts given list of chunks, uploads them to storage and returns a list of bloomBlocks
-func compactNewChunks(
-	ctx context.Context,
+func compactNewChunks(ctx context.Context,
 	logger log.Logger,
 	job Job,
-	fpRate float64,
 	bt compactorTokenizer,
 	storeClient chunkClient,
 	builder blockBuilder,
+	limits Limits,
 ) (bloomshipper.Block, error) {
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 	if err := ctx.Err(); err != nil {
 		return bloomshipper.Block{}, err
 	}
 
-	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, fpRate, logger)
+	bloomIter := newLazyBloomBuilder(ctx, job, storeClient, bt, logger, limits)
 
 	// Build and upload bloomBlock to storage
 	block, err := buildBlockFromBlooms(ctx, logger, builder, bloomIter, job)
@@ -182,13 +181,14 @@ func compactNewChunks(
 }
 
 type lazyBloomBuilder struct {
-	ctx    context.Context
-	metas  v1.Iterator[seriesMeta]
-	tenant string
-	client chunkClient
-	bt     compactorTokenizer
-	fpRate float64
-	logger log.Logger
+	ctx             context.Context
+	metas           v1.Iterator[seriesMeta]
+	tenant          string
+	client          chunkClient
+	bt              compactorTokenizer
+	fpRate          float64
+	logger          log.Logger
+	chunksBatchSize int
 
 	cur v1.SeriesWithBloom // retured by At()
 	err error              // returned by Err()
@@ -198,15 +198,16 @@ type lazyBloomBuilder struct {
 // which are used by the blockBuilder to write a bloom block.
 // We use an interator to avoid loading all blooms into memory first, before
 // building the block.
-func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, fpRate float64, logger log.Logger) *lazyBloomBuilder {
+func newLazyBloomBuilder(ctx context.Context, job Job, client chunkClient, bt compactorTokenizer, logger log.Logger, limits Limits) *lazyBloomBuilder {
 	return &lazyBloomBuilder{
-		ctx:    ctx,
-		metas:  v1.NewSliceIter(job.seriesMetas),
-		client: client,
-		tenant: job.tenantID,
-		bt:     bt,
-		fpRate: fpRate,
-		logger: logger,
+		ctx:             ctx,
+		metas:           v1.NewSliceIter(job.seriesMetas),
+		client:          client,
+		tenant:          job.tenantID,
+		bt:              bt,
+		fpRate:          limits.BloomFalsePositiveRate(job.tenantID),
+		logger:          logger,
+		chunksBatchSize: limits.BloomCompactorChunksBatchSize(job.tenantID),
 	}
 }
 
@@ -218,20 +219,18 @@ func (it *lazyBloomBuilder) Next() bool {
 	}
 	meta := it.metas.At()
 
-	// Get chunks data from list of chunkRefs
-	chks, err := it.client.GetChunks(it.ctx, makeChunkRefs(meta.chunkRefs, it.tenant, meta.seriesFP))
+	batchesIterator, err := newChunkBatchesIterator(it.ctx, it.client, makeChunkRefs(meta.chunkRefs, it.tenant, meta.seriesFP), it.chunksBatchSize)
 	if err != nil {
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
-		level.Debug(it.logger).Log("err in getChunks", err)
+		level.Debug(it.logger).Log("msg", "err creating chunks batches iterator", "err", err)
 		return false
 	}
-
-	it.cur, err = buildBloomFromSeries(meta, it.fpRate, it.bt, chks)
+	it.cur, err = buildBloomFromSeries(meta, it.fpRate, it.bt, batchesIterator)
 	if err != nil {
 		it.err = err
 		it.cur = v1.SeriesWithBloom{}
-		level.Debug(it.logger).Log("err in buildBloomFromSeries", err)
+		level.Debug(it.logger).Log("msg", "err in buildBloomFromSeries", "err", err)
 		return false
 	}
 	return true

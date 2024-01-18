@@ -13,13 +13,13 @@ func TestValidateModes_StaticMode(t *testing.T) {
 	type test struct {
 		name    string
 		wantErr string
-		stack   lokiv1.LokiStack
+		stack   *lokiv1.LokiStack
 	}
 	table := []test{
 		{
 			name:    "missing authentication spec",
 			wantErr: "mandatory configuration - missing tenants' authentication configuration",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -39,7 +39,7 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		{
 			name:    "missing roles spec",
 			wantErr: "mandatory configuration - missing roles configuration",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -74,7 +74,7 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		{
 			name:    "missing role bindings spec",
 			wantErr: "mandatory configuration - missing role bindings configuration",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -117,7 +117,7 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		{
 			name:    "incompatible OPA URL provided",
 			wantErr: "incompatible configuration - OPA URL not required for mode static",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -174,7 +174,7 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		{
 			name:    "all set",
 			wantErr: "",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -231,7 +231,7 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateModes(tst.stack)
+			err := validateModes(tst.stack)
 			if tst.wantErr != "" {
 				require.EqualError(t, err, tst.wantErr)
 			}
@@ -243,13 +243,13 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 	type test struct {
 		name    string
 		wantErr string
-		stack   lokiv1.LokiStack
+		stack   *lokiv1.LokiStack
 	}
 	table := []test{
 		{
 			name:    "missing authentication spec",
 			wantErr: "mandatory configuration - missing tenants configuration",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -269,7 +269,7 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		{
 			name:    "missing OPA URL spec",
 			wantErr: "mandatory configuration - missing OPA Url",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -304,7 +304,7 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		{
 			name:    "incompatible roles configuration provided",
 			wantErr: "incompatible configuration - static roles not required for mode dynamic",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -349,7 +349,7 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		{
 			name:    "incompatible roleBindings configuration provided",
 			wantErr: "incompatible configuration - static roleBindings not required for mode dynamic",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -398,7 +398,7 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		{
 			name:    "all set",
 			wantErr: "",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -438,7 +438,7 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateModes(tst.stack)
+			err := validateModes(tst.stack)
 			if tst.wantErr != "" {
 				require.EqualError(t, err, tst.wantErr)
 			}
@@ -450,13 +450,13 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 	type test struct {
 		name    string
 		wantErr string
-		stack   lokiv1.LokiStack
+		stack   *lokiv1.LokiStack
 	}
 	table := []test{
 		{
 			name:    "incompatible authentication spec provided",
 			wantErr: "incompatible configuration - custom tenants configuration not required",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -488,7 +488,7 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 		{
 			name:    "incompatible authorization spec provided",
 			wantErr: "incompatible configuration - custom tenants configuration not required",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -514,7 +514,7 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 		{
 			name:    "all set",
 			wantErr: "",
-			stack: lokiv1.LokiStack{
+			stack: &lokiv1.LokiStack{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "LokiStack",
 				},
@@ -537,7 +537,7 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := ValidateModes(tst.stack)
+			err := validateModes(tst.stack)
 			if tst.wantErr != "" {
 				require.EqualError(t, err, tst.wantErr)
 			}
