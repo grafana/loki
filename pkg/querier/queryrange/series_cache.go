@@ -17,18 +17,21 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type cacheKeySeries struct {
 	Limits
 	transformer UserIDTransformer
+	iqo         util.IngesterQueryOptions
 }
 
 // GenerateCacheKey generates a cache key based on the userID, matchers, split duration and the interval of the request.
 func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
 	sr := r.(*LokiSeriesRequest)
-	split := i.MetadataQuerySplitDuration(userID)
+
+	split := SplitIntervalForTimeRange(i.iqo, i.Limits, i.MetadataQuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
@@ -39,11 +42,12 @@ func (i cacheKeySeries) GenerateCacheKey(ctx context.Context, userID string, r r
 		userID = i.transformer(ctx, userID)
 	}
 
-	matchers := sr.GetMatch()
-	sort.Strings(matchers)
-	matcherStr := strings.Join(matchers, ",")
+	return fmt.Sprintf("series:%s:%s:%d:%d", userID, i.joinMatchers(sr.GetMatch()), currentInterval, split)
+}
 
-	return fmt.Sprintf("series:%s:%s:%d:%d", userID, matcherStr, currentInterval, split)
+func (i cacheKeySeries) joinMatchers(matchers []string) string {
+	sort.Strings(matchers)
+	return strings.Join(matchers, ",")
 }
 
 type seriesExtractor struct{}
@@ -83,6 +87,7 @@ func NewSeriesCacheMiddleware(
 	merger queryrangebase.Merger,
 	c cache.Cache,
 	cacheGenNumberLoader queryrangebase.CacheGenNumberLoader,
+	iqo util.IngesterQueryOptions,
 	shouldCache queryrangebase.ShouldCacheFn,
 	parallelismForReq queryrangebase.ParallelismForReqFn,
 	retentionEnabled bool,
@@ -92,7 +97,7 @@ func NewSeriesCacheMiddleware(
 	return queryrangebase.NewResultsCacheMiddleware(
 		logger,
 		c,
-		cacheKeySeries{limits, transformer},
+		cacheKeySeries{limits, transformer, iqo},
 		limits,
 		merger,
 		seriesExtractor{},
