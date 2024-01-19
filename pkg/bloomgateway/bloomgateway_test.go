@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -182,6 +183,59 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		WorkerConcurrency:       4,
 		MaxOutstandingPerTenant: 1024,
 	}
+
+	t.Run("request cancellation does not result in channel locking", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		require.NoError(t, err)
+
+		now := mktime("2023-10-03 10:00")
+
+		bqs, data := createBlockQueriers(t, 10, now.Add(-24*time.Hour), now, 0, 1024)
+		mockStore := newMockBloomStore(bqs)
+		mockStore.delay = 250 * time.Millisecond
+		gw.bloomShipper = mockStore
+
+		err = gw.initServices()
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			time.Sleep(10 * time.Millisecond)
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				offset := now.Add(time.Duration(idx) * time.Hour)
+				req := &logproto.FilterChunkRefRequest{
+					From:    offset.Add(-24 * time.Hour),
+					Through: offset,
+					Refs:    groupRefs(t, chunkRefs),
+					Filters: []syntax.LineFilter{
+						{Ty: labels.MatchEqual, Match: "does not match"},
+					},
+				}
+
+				ctx, cancelFn := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+				ctx = user.InjectOrgID(ctx, tenantID)
+				t.Cleanup(cancelFn)
+
+				_, err = gw.FilterChunkRefs(ctx, req)
+				require.ErrorContains(t, err, context.DeadlineExceeded.Error())
+			}(i)
+		}
+
+		// waits 6s
+		wg.Wait()
+	})
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
@@ -370,12 +424,17 @@ func newMockBloomStore(bqs []bloomshipper.BlockQuerierWithFingerprintRange) *moc
 
 type mockBloomStore struct {
 	bqs []bloomshipper.BlockQuerierWithFingerprintRange
+	// mock how long it takes to serve block queriers
+	delay time.Duration
+	// mock response error when serving block queriers in ForEach
+	err error
 }
 
 var _ bloomshipper.Interface = &mockBloomStore{}
 
-// GetBlockRefs implements bloomshipper.Interface
+// GetBlockRefs implements bloomshipper.Store.
 func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _, _ model.Time) ([]bloomshipper.BlockRef, error) {
+	time.Sleep(s.delay)
 	blocks := make([]bloomshipper.BlockRef, 0, len(s.bqs))
 	for i := range s.bqs {
 		blocks = append(blocks, bloomshipper.BlockRef{
@@ -392,8 +451,13 @@ func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _, _ mod
 // Stop implements bloomshipper.Interface
 func (s *mockBloomStore) Stop() {}
 
-// Fetch implements bloomshipper.Interface
+// ForEach implements bloomshipper.Store.
 func (s *mockBloomStore) Fetch(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
+	if s.err != nil {
+		time.Sleep(s.delay)
+		return s.err
+	}
+
 	shuffled := make([]bloomshipper.BlockQuerierWithFingerprintRange, len(s.bqs))
 	_ = copy(shuffled, s.bqs)
 
@@ -403,7 +467,11 @@ func (s *mockBloomStore) Fetch(_ context.Context, _ string, _ []bloomshipper.Blo
 
 	for _, bq := range shuffled {
 		// ignore errors in the mock
-		_ = callback(bq.BlockQuerier, uint64(bq.MinFp), uint64(bq.MaxFp))
+		time.Sleep(s.delay)
+		err := callback(bq.BlockQuerier, uint64(bq.MinFp), uint64(bq.MaxFp))
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
