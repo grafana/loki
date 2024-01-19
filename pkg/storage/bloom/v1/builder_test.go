@@ -241,186 +241,71 @@ func TestBlockReset(t *testing.T) {
 	require.Equal(t, rounds[0], rounds[1])
 }
 
-func TestBlocksWithDifferentFPsSameTsShouldNotHaveEqualChecksum(t *testing.T) {
-	// directory for directory reader+writer
-	tmpDir := t.TempDir()
-	tmpDir2 := t.TempDir()
-	writer := NewDirectoryBlockWriter(tmpDir)
-	writer2 := NewDirectoryBlockWriter(tmpDir2)
-
-	schema := Schema{
-		version:     DefaultSchemaVersion,
-		encoding:    chunkenc.EncSnappy,
-		nGramLength: 10,
-		nGramSkip:   2,
+func TestBlockChecksums(t *testing.T) {
+	testCases := []struct {
+		name         string
+		fingerprint1 model.Fingerprint
+		fingerprint2 model.Fingerprint
+		timestamp1   model.Time
+		timestamp2   model.Time
+		expectEqual  bool
+	}{
+		{"DifferentFPsSameTs", 0x0000, 0x1111, 0, 0, false},
+		{"SameFPsDifferentTs", 0xffff, 0xffff, 0, 123400, false},
+		{"DifferentFPsDifferentTs", 0x0000, 0x11aa, 0, 10000, false},
+		{"SameFPsSameTs", 0xffff, 0xffff, 0, 0, true},
 	}
 
-	builder, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer,
-	)
-	require.Nil(t, err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			tmpDir2 := t.TempDir()
+			writer := NewDirectoryBlockWriter(tmpDir)
+			writer2 := NewDirectoryBlockWriter(tmpDir2)
 
-	builder2, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer2,
-	)
-	require.Nil(t, err)
+			schema := Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 10,
+				nGramSkip:   2,
+			}
 
-	// same number of series, different FPs, same TSs
-	data1, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0x1111, 0, 10000)
-	data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0xffff, 0, 10000)
+			builder, err := NewBlockBuilder(
+				BlockOptions{
+					schema:         schema,
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer,
+			)
+			require.Nil(t, err)
 
-	itr1 := NewSliceIter[SeriesWithBloom](data1)
-	checksum1, err := builder.BuildFrom(itr1)
-	require.NoError(t, err)
-	itr2 := NewSliceIter[SeriesWithBloom](data2)
-	checksum2, err := builder2.BuildFrom(itr2)
-	require.NoError(t, err)
-	require.NotEqual(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
-}
+			builder2, err := NewBlockBuilder(
+				BlockOptions{
+					schema:         schema,
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer2,
+			)
+			require.Nil(t, err)
 
-func TestBlocksWithSameFPsDifferentTsShouldNotHaveEqualChecksum(t *testing.T) {
-	// directory for directory reader+writer
-	tmpDir := t.TempDir()
-	tmpDir2 := t.TempDir()
-	writer := NewDirectoryBlockWriter(tmpDir)
-	writer2 := NewDirectoryBlockWriter(tmpDir2)
+			data1, _ := mkBasicSeriesWithBlooms(4, 100, 0, tc.fingerprint1, tc.timestamp1, 10000)
+			data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, tc.fingerprint2, tc.timestamp2, 10000)
 
-	schema := Schema{
-		version:     DefaultSchemaVersion,
-		encoding:    chunkenc.EncSnappy,
-		nGramLength: 10,
-		nGramSkip:   2,
+			itr1 := NewSliceIter[SeriesWithBloom](data1)
+			checksum1, err := builder.BuildFrom(itr1)
+			require.NoError(t, err)
+
+			itr2 := NewSliceIter[SeriesWithBloom](data2)
+			checksum2, err := builder2.BuildFrom(itr2)
+			require.NoError(t, err)
+
+			if tc.expectEqual {
+				require.Equal(t, checksum1, checksum2, "checksums should be equal")
+			} else {
+				require.NotEqual(t, checksum1, checksum2, "checksums should not be equal")
+			}
+		})
 	}
-
-	builder, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer,
-	)
-
-	builder2, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer2,
-	)
-	require.Nil(t, err)
-	// same number of series, same FPs, different TSs
-	data1, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0xffff, 1234, 123400)
-	data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0xffff, 0, 10000)
-
-	itr1 := NewSliceIter[SeriesWithBloom](data1)
-	checksum1, err := builder.BuildFrom(itr1)
-	require.NoError(t, err)
-	itr2 := NewSliceIter[SeriesWithBloom](data2)
-	checksum2, err := builder2.BuildFrom(itr2)
-	require.NoError(t, err)
-	require.NotEqual(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
-}
-
-func TestBlocksWithDifferentFPsDifferentTsShouldNotHaveEqualChecksum(t *testing.T) {
-	// directory for directory reader+writer
-	tmpDir := t.TempDir()
-	tmpDir2 := t.TempDir()
-	writer := NewDirectoryBlockWriter(tmpDir)
-	writer2 := NewDirectoryBlockWriter(tmpDir2)
-
-	schema := Schema{
-		version:     DefaultSchemaVersion,
-		encoding:    chunkenc.EncSnappy,
-		nGramLength: 10,
-		nGramSkip:   2,
-	}
-
-	builder, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer,
-	)
-
-	builder2, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer2,
-	)
-	require.Nil(t, err)
-
-	// same number of series, different FPs, different TSs
-	data1, _ := mkBasicSeriesWithBlooms(4, 100, 0x0011, 0x11aa, 1234, 123400)
-	data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0xffff, 0, 10000)
-
-	itr1 := NewSliceIter[SeriesWithBloom](data1)
-	checksum1, err := builder.BuildFrom(itr1)
-	require.NoError(t, err)
-	itr2 := NewSliceIter[SeriesWithBloom](data2)
-	checksum2, err := builder2.BuildFrom(itr2)
-	require.NoError(t, err)
-	require.NotEqual(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
-}
-
-func TestBlocksWithSameFPsSameTsShouldHaveEqualChecksum(t *testing.T) {
-	// directory for directory reader+writer
-	tmpDir := t.TempDir()
-	tmpDir2 := t.TempDir()
-	writer := NewDirectoryBlockWriter(tmpDir)
-	writer2 := NewDirectoryBlockWriter(tmpDir2)
-
-	schema := Schema{
-		version:     DefaultSchemaVersion,
-		encoding:    chunkenc.EncSnappy,
-		nGramLength: 10,
-		nGramSkip:   2,
-	}
-
-	builder, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer,
-	)
-
-	builder2, err := NewBlockBuilder(
-		BlockOptions{
-			schema:         schema,
-			SeriesPageSize: 100,
-			BloomPageSize:  10 << 10,
-		},
-		writer2,
-	)
-	require.Nil(t, err)
-
-	// same number of series, same FPs, same TSs
-	data1, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0xffff, 0, 10000)
-	data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, 0xffff, 0, 10000)
-
-	itr1 := NewSliceIter[SeriesWithBloom](data1)
-	checksum1, err := builder.BuildFrom(itr1)
-	require.NoError(t, err)
-	itr2 := NewSliceIter[SeriesWithBloom](data2)
-	checksum2, err := builder2.BuildFrom(itr2)
-	require.NoError(t, err)
-	require.Equal(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
 }
