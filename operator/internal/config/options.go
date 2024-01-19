@@ -59,10 +59,6 @@ func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manage
 		o.HealthProbeBindAddress = cfg.Health.HealthProbeBindAddress
 	}
 
-	if o.PprofBindAddress == "" && cfg.Profiler.BindAddress != "" {
-		o.PprofBindAddress = cfg.Profiler.BindAddress
-	}
-
 	if cfg.Webhook.Port != nil {
 		o.WebhookServer = webhook.NewServer(webhook.Options{
 			Port: *cfg.Webhook.Port,
