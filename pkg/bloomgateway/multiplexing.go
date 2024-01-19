@@ -113,8 +113,7 @@ func NewTask(ctx context.Context, tenantID string, req *logproto.FilterChunkRefR
 		ResCh:    resPipe.Snd(),
 		ctx:      ctx,
 		cancelFn: cancelFn,
-
-		closed: atomic.NewBool(false),
+		closed:   atomic.NewBool(false),
 	}
 
 	return task, resPipe.Rcv(), errPipe.Rcv(), nil

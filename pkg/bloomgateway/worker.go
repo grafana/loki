@@ -235,6 +235,7 @@ func (w *worker) running(ctx context.Context) error {
 			// close channels because everything is sent
 			for _, tasks := range tasksPerDay {
 				for _, task := range tasks {
+					level.Debug(w.logger).Log("msg", "close task", "task", task.ID, "closed", task.closed.Load())
 					task.Close()
 				}
 			}

@@ -228,7 +228,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				ctx = user.InjectOrgID(ctx, tenantID)
 				t.Cleanup(cancelFn)
 
-				_, err = gw.FilterChunkRefs(ctx, req)
+				_, err := gw.FilterChunkRefs(ctx, req)
 				require.ErrorContains(t, err, context.DeadlineExceeded.Error())
 			}(i)
 		}
