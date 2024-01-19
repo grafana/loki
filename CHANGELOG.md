@@ -62,6 +62,7 @@
 * [10542](https://github.com/grafana/loki/pull/10542) **chaudum**: Remove legacy deployment mode for ingester (Deployment, without WAL) and instead always run them as StatefulSet.
 
 ## 2.9.2 (2023-10-16)
+* [11654](https://github.com/grafana/loki/pull/11654) **dannykopping** Cache: atomically check background cache size limit correctly. 
 
 ### All Changes
 
