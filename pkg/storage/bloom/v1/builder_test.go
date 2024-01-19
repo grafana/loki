@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -194,6 +195,52 @@ func TestMergeBuilder(t *testing.T) {
 	)
 }
 
+func TestBlockReset(t *testing.T) {
+	numSeries := 100
+	numKeysPerSeries := 10000
+	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
+
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	schema := Schema{
+		version:     DefaultSchemaVersion,
+		encoding:    chunkenc.EncSnappy,
+		nGramLength: 10,
+		nGramSkip:   2,
+	}
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			schema:         schema,
+			SeriesPageSize: 100,
+			BloomPageSize:  10 << 10,
+		},
+		writer,
+	)
+	require.Nil(t, err)
+	itr := NewSliceIter[SeriesWithBloom](data)
+	_, err = builder.BuildFrom(itr)
+	require.Nil(t, err)
+	block := NewBlock(reader)
+	querier := NewBlockQuerier(block)
+
+	rounds := make([][]model.Fingerprint, 2)
+
+	for i := 0; i < len(rounds); i++ {
+		for querier.Next() {
+			rounds[i] = append(rounds[i], querier.At().Series.Fingerprint)
+		}
+
+		err = querier.Seek(0) // reset at end
+		require.Nil(t, err)
+	}
+
+	require.Equal(t, rounds[0], rounds[1])
+}
+
 func TestBlocksWithDifferentFPsSameTsShouldNotHaveEqualChecksum(t *testing.T) {
 	// directory for directory reader+writer
 	tmpDir := t.TempDir()
@@ -216,6 +263,7 @@ func TestBlocksWithDifferentFPsSameTsShouldNotHaveEqualChecksum(t *testing.T) {
 		},
 		writer,
 	)
+	require.Nil(t, err)
 
 	builder2, err := NewBlockBuilder(
 		BlockOptions{
