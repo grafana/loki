@@ -153,6 +153,9 @@ type ControllerManagerConfigurationSpec struct {
 	// +optional
 	Metrics ControllerMetrics `json:"metrics,omitempty"`
 
+	// Profiler contains the controller profiler configuration
+	Profiler ControllerProfiler `json:"profiler,omitempty"`
+
 	// Health contains the controller health configuration
 	// +optional
 	Health ControllerHealth `json:"health,omitempty"`
@@ -168,6 +171,14 @@ type ControllerMetrics struct {
 	// for serving prometheus metrics.
 	// It can be set to "0" to disable the metrics serving.
 	// +optional
+	BindAddress string `json:"bindAddress,omitempty"`
+}
+
+// ControllerProfiler defines the metrics configs.
+type ControllerProfiler struct {
+	// BindAddress is the TCP address that the controller should bind to
+	// for serving Go profiler endpoints.
+	// It can be set to "0" to disable the profiler serving.
 	BindAddress string `json:"bindAddress,omitempty"`
 }
 
