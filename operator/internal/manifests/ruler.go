@@ -202,8 +202,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
-			RevisionHistoryLimit: ptr.To[int32](10),
-			Replicas:             ptr.To[int32](opts.Stack.Template.Ruler.Replicas),
+			RevisionHistoryLimit: ptr.To(defaultRevHistoryLimit),
+			Replicas:             ptr.To(opts.Stack.Template.Ruler.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},

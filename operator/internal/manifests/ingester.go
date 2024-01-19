@@ -163,8 +163,8 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: ptr.To[int32](10),
-			Replicas:             ptr.To[int32](opts.Stack.Template.Ingester.Replicas),
+			RevisionHistoryLimit: ptr.To(defaultRevHistoryLimit),
+			Replicas:             ptr.To(opts.Stack.Template.Ingester.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},

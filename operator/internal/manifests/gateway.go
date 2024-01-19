@@ -244,7 +244,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To[int32](opts.Stack.Template.Gateway.Replicas),
+			Replicas: ptr.To(opts.Stack.Template.Gateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},

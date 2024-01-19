@@ -308,7 +308,7 @@ func saTokenVolume(opts Options) corev1.Volume {
 				Sources: []corev1.VolumeProjection{
 					{
 						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-							ExpirationSeconds: ptr.To[int64](saTokenExpiration),
+							ExpirationSeconds: ptr.To(saTokenExpiration),
 							Path:              corev1.ServiceAccountTokenKey,
 							Audience:          audience,
 						},
