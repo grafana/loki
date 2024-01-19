@@ -233,8 +233,10 @@ func TestBlocksWithDifferentFPsSameTsShouldNotHaveEqualChecksum(t *testing.T) {
 
 	itr1 := NewSliceIter[SeriesWithBloom](data1)
 	checksum1, err := builder.BuildFrom(itr1)
+	require.NoError(t, err)
 	itr2 := NewSliceIter[SeriesWithBloom](data2)
 	checksum2, err := builder2.BuildFrom(itr2)
+	require.NoError(t, err)
 	require.NotEqual(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
 }
 
@@ -276,8 +278,10 @@ func TestBlocksWithSameFPsDifferentTsShouldNotHaveEqualChecksum(t *testing.T) {
 
 	itr1 := NewSliceIter[SeriesWithBloom](data1)
 	checksum1, err := builder.BuildFrom(itr1)
+	require.NoError(t, err)
 	itr2 := NewSliceIter[SeriesWithBloom](data2)
 	checksum2, err := builder2.BuildFrom(itr2)
+	require.NoError(t, err)
 	require.NotEqual(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
 }
 
@@ -320,8 +324,10 @@ func TestBlocksWithDifferentFPsDifferentTsShouldNotHaveEqualChecksum(t *testing.
 
 	itr1 := NewSliceIter[SeriesWithBloom](data1)
 	checksum1, err := builder.BuildFrom(itr1)
+	require.NoError(t, err)
 	itr2 := NewSliceIter[SeriesWithBloom](data2)
 	checksum2, err := builder2.BuildFrom(itr2)
+	require.NoError(t, err)
 	require.NotEqual(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
 }
 
@@ -364,7 +370,9 @@ func TestBlocksWithSameFPsSameTsShouldHaveEqualChecksum(t *testing.T) {
 
 	itr1 := NewSliceIter[SeriesWithBloom](data1)
 	checksum1, err := builder.BuildFrom(itr1)
+	require.NoError(t, err)
 	itr2 := NewSliceIter[SeriesWithBloom](data2)
 	checksum2, err := builder2.BuildFrom(itr2)
+	require.NoError(t, err)
 	require.Equal(t, checksum1, checksum2, "checksum is %d  %d", checksum1, checksum2)
 }
