@@ -135,7 +135,7 @@ func TestAzureExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure)
+			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -186,7 +186,7 @@ func TestGCSExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretGCS)
+			_, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretGCS)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}
@@ -320,13 +320,47 @@ func TestS3Extract(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "STS missing region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "STS with region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role"),
+					"region":      []byte("here"),
+				},
+			},
+		},
+		{
+			name: "STS all set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role"),
+					"region":      []byte("here"),
+					"audience":    []byte("audience"),
+				},
+			},
+		},
 	}
 	for _, tst := range table {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretS3)
+			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretS3)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -475,7 +509,7 @@ func TestSwiftExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift)
+			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -549,7 +583,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := ExtractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud)
+			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud)
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)

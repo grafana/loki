@@ -1,7 +1,7 @@
 ---
 title: Filesystem object store
 menuTitle:  Filesystem object store
-description: Describes the filesystem object store
+description: Describes the features and limitations of using a filesystem object store with Loki.
 weight:  300
 ---
 # Filesystem object store

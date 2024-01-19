@@ -1,7 +1,7 @@
 ---
 title: Configure storage
 menuTitle: Configure storage 
-description: Configure Loki storage
+description: Configuring Loki storage with the Helm Chart.
 aliases:
   - ../../../installation/helm/configure-storage/
   - ../../../installation/helm/storage

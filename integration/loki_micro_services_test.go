@@ -3,16 +3,20 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log/level"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/grafana/loki/integration/client"
@@ -1056,16 +1060,219 @@ func TestCategorizedLabels(t *testing.T) {
 	}
 }
 
-func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
-	for _, m := range mf.Metric {
-		if !assert.ObjectsAreEqualValues(lbs, m.GetLabel()) {
-			continue
-		}
-
-		return m.Counter.GetValue()
+func TestBloomFiltersEndToEnd(t *testing.T) {
+	commonFlags := []string{
+		"-bloom-compactor.compaction-interval=10s",
+		"-bloom-compactor.enable-compaction=true",
+		"-bloom-compactor.enabled=true",
+		"-bloom-gateway.enable-filtering=true",
+		"-bloom-gateway.enabled=true",
+		"-compactor.compaction-interval=1s",
+		"-frontend.default-validity=0s",
+		"-ingester.flush-on-shutdown=true",
+		"-ingester.wal-enabled=false",
+		"-query-scheduler.use-scheduler-ring=false",
+		"-store.index-cache-read.embedded-cache.enabled=true",
 	}
 
-	return 0
+	tenantID := randStringRunes()
+
+	clu := cluster.New(
+		level.DebugValue(),
+		cluster.SchemaWithTSDB,
+		func(c *cluster.Cluster) { c.SetSchemaVer("v13") },
+	)
+
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	var (
+		tDistributor = clu.AddComponent(
+			"distributor",
+			append(
+				commonFlags,
+				"-target=distributor",
+			)...,
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			append(
+				commonFlags,
+				"-target=index-gateway",
+			)...,
+		)
+		tBloomGateway = clu.AddComponent(
+			"bloom-gateway",
+			append(
+				commonFlags,
+				"-target=bloom-gateway",
+			)...,
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			append(
+				commonFlags,
+				"-target=ingester",
+				"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			)...,
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			append(
+				commonFlags,
+				"-target=query-scheduler",
+				"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			)...,
+		)
+		tCompactor = clu.AddComponent(
+			"compactor",
+			append(
+				commonFlags,
+				"-target=compactor",
+				"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			)...,
+		)
+		tBloomCompactor = clu.AddComponent(
+			"bloom-compactor",
+			append(
+				commonFlags,
+				"-target=bloom-compactor",
+				"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			)...,
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			append(
+				commonFlags,
+				"-target=query-frontend",
+				"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+				"-common.compactor-address="+tCompactor.HTTPURL(),
+				"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			)...,
+		)
+		_ = clu.AddComponent(
+			"querier",
+			append(
+				commonFlags,
+				"-target=querier",
+				"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+				"-common.compactor-address="+tCompactor.HTTPURL(),
+				"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			)...,
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	now := time.Now()
+
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+
+	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
+	cliIndexGateway.Now = now
+
+	cliBloomGateway := client.New(tenantID, "", tBloomGateway.HTTPURL())
+	cliBloomGateway.Now = now
+
+	cliBloomCompactor := client.New(tenantID, "", tBloomCompactor.HTTPURL())
+	cliBloomCompactor.Now = now
+
+	lineTpl := `caller=loki_micro_services_test.go msg="push log line" id="%s"`
+	// ingest logs from 10 different pods
+	// each line contains a random, unique string
+	// that string is used to verify filtering using bloom gateway
+	uniqueStrings := make([]string, 600)
+	for i := 0; i < len(uniqueStrings); i++ {
+		id := randStringRunes()
+		id = fmt.Sprintf("%s-%d", id, i)
+		uniqueStrings[i] = id
+		pod := fmt.Sprintf("pod-%d", i%10)
+		line := fmt.Sprintf(lineTpl, id)
+		err := cliDistributor.PushLogLine(line, now.Add(-1*time.Hour).Add(time.Duration(i-len(uniqueStrings))*time.Second), nil, map[string]string{"pod": pod})
+		require.NoError(t, err)
+	}
+
+	// restart ingester to flush chunks and that there are zero chunks in memory
+	require.NoError(t, cliIngester.Flush())
+	require.NoError(t, tIngester.Restart())
+
+	// wait for compactor to compact index and for bloom compactor to build bloom filters
+	require.Eventually(t, func() bool {
+		// verify metrics that observe usage of block for filtering
+		metrics, err := cliBloomCompactor.Metrics()
+		require.NoError(t, err)
+		successfulRunCount := getMetricValue(t, "loki_bloomcompactor_runs_completed_total", metrics)
+		t.Log("successful bloom compactor runs", successfulRunCount)
+		return successfulRunCount == 1
+	}, 30*time.Second, time.Second)
+
+	// use bloom gateway to perform needle in the haystack queries
+	randIdx := rand.Intn(len(uniqueStrings))
+	q := fmt.Sprintf(`{job="varlog"} |= "%s"`, uniqueStrings[randIdx])
+	end := now.Add(-1 * time.Second)
+	start := end.Add(-24 * time.Hour)
+	resp, err := cliQueryFrontend.RunRangeQueryWithStartEnd(context.Background(), q, start, end)
+	require.NoError(t, err)
+
+	// verify response
+	require.Len(t, resp.Data.Stream, 1)
+	expectedLine := fmt.Sprintf(lineTpl, uniqueStrings[randIdx])
+	require.Equal(t, expectedLine, resp.Data.Stream[0].Values[0][1])
+
+	// verify metrics that observe usage of block for filtering
+	bloomGwMetrics, err := cliBloomGateway.Metrics()
+	require.NoError(t, err)
+
+	unfilteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_pre_filtering", bloomGwMetrics)
+	require.Equal(t, float64(10), unfilteredCount)
+
+	filteredCount := getMetricValue(t, "loki_bloom_gateway_chunkrefs_post_filtering", bloomGwMetrics)
+	require.Equal(t, float64(1), filteredCount)
+
+	mf, err := extractMetricFamily("loki_bloom_gateway_bloom_query_latency", bloomGwMetrics)
+	require.NoError(t, err)
+
+	count := getValueFromMetricFamilyWithFunc(mf, &dto.LabelPair{
+		Name:  proto.String("status"),
+		Value: proto.String("success"),
+	}, func(m *dto.Metric) uint64 {
+		return m.Histogram.GetSampleCount()
+	})
+	require.Equal(t, uint64(1), count)
+}
+
+func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
+	return getValueFromMetricFamilyWithFunc(mf, lbs[0], func(m *dto.Metric) float64 { return m.Counter.GetValue() })
+}
+
+func getValueFromMetricFamilyWithFunc[R any](mf *dto.MetricFamily, lbs *dto.LabelPair, f func(*dto.Metric) R) R {
+	eq := func(e *dto.LabelPair) bool {
+		return e.GetName() == lbs.GetName() && e.GetValue() == lbs.GetValue()
+	}
+	var zero R
+	for _, m := range mf.Metric {
+		if !slices.ContainsFunc(m.GetLabel(), eq) {
+			continue
+		}
+		return f(m)
+	}
+	return zero
 }
 
 func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
