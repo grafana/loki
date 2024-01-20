@@ -76,7 +76,11 @@ func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, from, throu
 func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef, callback ForEachBlockCallback) error {
 	cancelContext, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
-	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blocks)
+
+	resCh, errCh, err := s.blockDownloader.fetch(cancelContext, tenantID, blocks)
+	if err != nil {
+		return err
+	}
 
 	// track how many blocks are still remaning to be downloaded
 	remaining := len(blocks)
@@ -85,7 +89,9 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
-		case result, sentBeforeClosed := <-blocksChannel:
+		case err := <-errCh:
+			return fmt.Errorf("failed to fetch blocks: %w", err)
+		case result, sentBeforeClosed := <-resCh:
 			if !sentBeforeClosed {
 				return nil
 			}
@@ -97,8 +103,6 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 			if remaining == 0 {
 				return nil
 			}
-		case err := <-errorsChannel:
-			return fmt.Errorf("error downloading blocks : %w", err)
 		}
 	}
 }
