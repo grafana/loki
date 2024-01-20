@@ -41,7 +41,7 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 		},
 	}, blockClient, overrides, log.NewNopLogger(), prometheus.DefaultRegisterer)
 	require.NoError(t, err)
-	blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
+	blocksCh, errorsCh, _ := downloader.fetch(context.Background(), "fake", blockReferences)
 	downloadedBlocks := make(map[string]any, len(blockReferences))
 	done := make(chan bool)
 	go func() {
@@ -110,7 +110,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			t.Cleanup(downloader.stop)
 			require.NoError(t, err)
 
-			blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
+			blocksCh, errorsCh, _ := downloader.fetch(context.Background(), "fake", blockReferences)
 			downloadedBlocks := make(map[string]any, len(blockReferences))
 			done := make(chan bool)
 			go func() {
@@ -131,7 +131,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
 			require.Equal(t, int32(20), blockClient.getBlockCalls.Load())
 
-			blocksCh, errorsCh = downloader.downloadBlocks(context.Background(), "fake", blockReferences)
+			blocksCh, errorsCh, _ = downloader.fetch(context.Background(), "fake", blockReferences)
 			downloadedBlocks = make(map[string]any, len(blockReferences))
 			done = make(chan bool)
 			go func() {
@@ -203,7 +203,7 @@ func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
 				waitGroup.Add(1)
 				go func() {
 					defer waitGroup.Done()
-					blocksCh, errCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
+					blocksCh, errCh, _ := downloader.fetch(context.Background(), "fake", blockReferences)
 					var err error
 					select {
 					case <-blocksCh:
