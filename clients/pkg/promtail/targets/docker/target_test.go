@@ -27,7 +27,13 @@ func Test_DockerTarget(t *testing.T) {
 	h := func(w http.ResponseWriter, r *http.Request) {
 		switch path := r.URL.Path; {
 		case strings.HasSuffix(path, "/logs"):
-			dat, err := os.ReadFile("testdata/flog.log")
+			var filePath string
+			if strings.Contains(r.URL.RawQuery, "since=0") {
+				filePath = "testdata/flog.log"
+			} else {
+				filePath = "testdata/flog_after_restart.log"
+			}
+			dat, err := os.ReadFile(filePath)
 			require.NoError(t, err)
 			_, err = w.Write(dat)
 			require.NoError(t, err)
@@ -59,7 +65,7 @@ func Test_DockerTarget(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = NewTarget(
+	target, err := NewTarget(
 		NewMetrics(prometheus.NewRegistry()),
 		logger,
 		entryHandler,
@@ -92,4 +98,28 @@ func Test_DockerTarget(t *testing.T) {
 		actualLines = append(actualLines, entry.Line)
 	}
 	require.ElementsMatch(t, actualLines, expectedLines)
+
+	// restart target to simulate container restart
+	target.startIfNotRunning()
+	entryHandler.Clear()
+	require.Eventually(t, func() bool {
+		return len(entryHandler.Received()) >= 5
+	}, 5*time.Second, 100*time.Millisecond)
+
+	receivedAfterRestart := entryHandler.Received()
+	sort.Slice(receivedAfterRestart, func(i, j int) bool {
+		return receivedAfterRestart[i].Timestamp.Before(receivedAfterRestart[j].Timestamp)
+	})
+	actualLinesAfterRestart := make([]string, 0, 5)
+	for _, entry := range receivedAfterRestart[:5] {
+		actualLinesAfterRestart = append(actualLinesAfterRestart, entry.Line)
+	}
+	expectedLinesAfterRestart := []string{
+		"243.115.12.215 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /morph/exploit/granular HTTP/1.0\" 500 26468",
+		"221.41.123.237 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /user-centric/whiteboard HTTP/2.0\" 205 22487",
+		"89.111.144.144 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /open-source/e-commerce HTTP/1.0\" 401 11092",
+		"62.180.191.187 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /cultivate/integrate/technologies HTTP/2.0\" 302 12979",
+		"156.249.2.192 - - [09/Dec/2023:09:16:57 +0000] \"POST /revolutionize/mesh/metrics HTTP/2.0\" 401 5297",
+	}
+	require.ElementsMatch(t, actualLinesAfterRestart, expectedLinesAfterRestart)
 }

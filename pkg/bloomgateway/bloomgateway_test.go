@@ -277,7 +277,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		// replace store implementation and re-initialize workers and sub-services
 		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
-		gw.bloomStore = newMockBloomStore(bqs)
+		gw.bloomShipper = newMockBloomStore(bqs)
 		err = gw.initServices()
 		require.NoError(t, err)
 
@@ -331,7 +331,6 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			res, err := gw.FilterChunkRefs(ctx, req)
 			require.NoError(t, err)
-
 			expectedResponse := &logproto.FilterChunkRefResponse{
 				ChunkRefs: inputChunkRefs[:1],
 			}
@@ -373,15 +372,10 @@ type mockBloomStore struct {
 	bqs []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
-var _ bloomshipper.Store = &mockBloomStore{}
+var _ bloomshipper.Interface = &mockBloomStore{}
 
-// GetBlockQueriersForBlockRefs implements bloomshipper.Store.
-func (s *mockBloomStore) GetBlockQueriersForBlockRefs(_ context.Context, _ string, _ []bloomshipper.BlockRef) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
-	return s.bqs, nil
-}
-
-// GetBlockRefs implements bloomshipper.Store.
-func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _, _ time.Time) ([]bloomshipper.BlockRef, error) {
+// GetBlockRefs implements bloomshipper.Interface
+func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _, _ model.Time) ([]bloomshipper.BlockRef, error) {
 	blocks := make([]bloomshipper.BlockRef, 0, len(s.bqs))
 	for i := range s.bqs {
 		blocks = append(blocks, bloomshipper.BlockRef{
@@ -395,15 +389,11 @@ func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _, _ tim
 	return blocks, nil
 }
 
-// GetBlockQueriers implements bloomshipper.Store.
-func (s *mockBloomStore) GetBlockQueriers(_ context.Context, _ string, _, _ time.Time, _ []uint64) ([]bloomshipper.BlockQuerierWithFingerprintRange, error) {
-	return s.bqs, nil
-}
-
+// Stop implements bloomshipper.Interface
 func (s *mockBloomStore) Stop() {}
 
-// ForEach implements bloomshipper.Store.
-func (s *mockBloomStore) ForEach(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
+// Fetch implements bloomshipper.Interface
+func (s *mockBloomStore) Fetch(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
 	shuffled := make([]bloomshipper.BlockQuerierWithFingerprintRange, len(s.bqs))
 	_ = copy(shuffled, s.bqs)
 

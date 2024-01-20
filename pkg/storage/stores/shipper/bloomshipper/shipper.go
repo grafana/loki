@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
@@ -22,6 +23,19 @@ func (r fpRange) minFp() uint64 {
 
 func (r fpRange) maxFp() uint64 {
 	return r[1]
+}
+
+type BlockQuerierWithFingerprintRange struct {
+	*v1.BlockQuerier
+	MinFp, MaxFp model.Fingerprint
+}
+
+type ForEachBlockCallback func(bq *v1.BlockQuerier, minFp, maxFp uint64) error
+
+type Interface interface {
+	GetBlockRefs(ctx context.Context, tenant string, from, through model.Time) ([]BlockRef, error)
+	Fetch(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
+	Stop()
 }
 
 type Shipper struct {
