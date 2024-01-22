@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -230,8 +230,8 @@ func TestCreateOrRotateCertificates_SetsOwnerRefOnAllObjects(t *testing.T) {
 		Kind:               stack.Kind,
 		Name:               stack.Name,
 		UID:                stack.UID,
-		Controller:         pointer.Bool(true),
-		BlockOwnerDeletion: pointer.Bool(true),
+		Controller:         ptr.To(true),
+		BlockOwnerDeletion: ptr.To(true),
 	}
 
 	k.CreateStub = func(_ context.Context, o client.Object, _ ...client.CreateOption) error {
@@ -376,8 +376,8 @@ func TestCreateOrRotateCertificates_WhenGetReturnsNoError_UpdateObjects(t *testi
 					Kind:               "LokiStack",
 					Name:               "my-stack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
-					Controller:         pointer.Bool(true),
-					BlockOwnerDeletion: pointer.Bool(true),
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
 				},
 			},
 		},
@@ -530,8 +530,8 @@ func TestCreateOrRotateCertificates_WhenUpdateReturnsError_ContinueWithOtherObje
 					Kind:               "LokiStack",
 					Name:               "someStack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
-					Controller:         pointer.Bool(true),
-					BlockOwnerDeletion: pointer.Bool(true),
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
 				},
 			},
 		},
