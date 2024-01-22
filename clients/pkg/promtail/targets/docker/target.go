@@ -222,6 +222,7 @@ func (t *Target) process(r io.Reader, logStream string) {
 		}
 		t.metrics.dockerEntries.Inc()
 		t.positions.Put(positions.CursorKey(t.containerName), ts.Unix())
+		t.since = ts.Unix()
 	}
 }
 
