@@ -1,5 +1,6 @@
 ## Main
 
+- [11708](https://github.com/grafana/loki/pull/11708) **btaani**: Add support for Swift TLS CA configuration
 - [11671](https://github.com/grafana/loki/pull/11671) **JoaoBraveCoding**: Update mixins to fix structured metadata dashboards
 - [11624](https://github.com/grafana/loki/pull/11624) **xperimental**: React to changes in ConfigMap used for storage CA
 - [11481](https://github.com/grafana/loki/pull/11481) **JoaoBraveCoding**: Adds AWS STS support
