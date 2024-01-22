@@ -8,7 +8,7 @@ import (
 	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
@@ -308,7 +308,7 @@ func saTokenVolume(opts Options) corev1.Volume {
 				Sources: []corev1.VolumeProjection{
 					{
 						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-							ExpirationSeconds: pointer.Int64(saTokenExpiration),
+							ExpirationSeconds: ptr.To(saTokenExpiration),
 							Path:              corev1.ServiceAccountTokenKey,
 							Audience:          audience,
 						},

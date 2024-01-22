@@ -2,8 +2,6 @@ package main
 
 import (
 	"flag"
-	"net/http"
-	"net/http/pprof"
 	"os"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -215,35 +213,9 @@ func main() {
 	logger.Info("registering metrics")
 	metrics.RegisterMetricCollectors()
 
-	logger.Info("Registering profiling endpoints.")
-	err = registerProfiler(mgr)
-	if err != nil {
-		logger.Error(err, "failed to register extra pprof handler")
-		os.Exit(1)
-	}
-
 	logger.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		logger.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func registerProfiler(m ctrl.Manager) error {
-	endpoints := map[string]http.HandlerFunc{
-		"/debug/pprof/":        pprof.Index,
-		"/debug/pprof/cmdline": pprof.Cmdline,
-		"/debug/pprof/profile": pprof.Profile,
-		"/debug/pprof/symbol":  pprof.Symbol,
-		"/debug/pprof/trace":   pprof.Trace,
-	}
-
-	for path, handler := range endpoints {
-		err := m.AddMetricsExtraHandler(path, handler)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
