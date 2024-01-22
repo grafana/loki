@@ -493,6 +493,10 @@ func TestStringer(t *testing.T) {
 			out: `{app="foo"} |= "foo" or "bar"`,
 		},
 		{
+			in:  `{app="foo"} |= "foo" or "bar" |= "baz" or "bal"`,
+			out: `{app="foo"} |= "foo" or "bar" |= "baz" or "bal"`,
+		},
+		{
 			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
 			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
 		},
