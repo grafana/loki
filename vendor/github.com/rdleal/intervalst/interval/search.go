@@ -1,7 +1,7 @@
 package interval
 
 // Find returns the value which interval key exactly matches with the given start and end interval.
-// It returns true as the second return value if an exactly matching interval key is found in the tree;
+// It returns true as the second return value if an exaclty matching interval key is found in the tree;
 // otherwise, false.
 func (st *SearchTree[V, T]) Find(start, end T) (V, bool) {
 	st.mu.RLock()
@@ -290,7 +290,7 @@ func selectInterval[V, T any](root *node[V, T], k int) (interval[V, T], bool) {
 }
 
 // Find returns the values which interval key exactly matches with the given start and end interval.
-// It returns true as the second return value if an exactly matching interval key is found in the tree;
+// It returns true as the second return value if an exaclty matching interval key is found in the tree;
 // otherwise, false.
 func (st *MultiValueSearchTree[V, T]) Find(start, end T) ([]V, bool) {
 	st.mu.RLock()
