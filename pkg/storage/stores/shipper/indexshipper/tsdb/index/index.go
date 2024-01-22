@@ -2295,7 +2295,8 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 		if curMarker.subsetOf(from, through) {
 			// use aggregated stats for this page
-			res.addRaw(curMarker.ChunksInPage, curMarker.KB, curMarker.Entries)
+			res.AddChunkMarker(curMarker)
+			//res.addRaw(curMarker.ChunksInPage, curMarker.KB, curMarker.Entries)
 			continue
 		}
 

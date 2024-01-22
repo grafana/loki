@@ -169,7 +169,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 		filterer = i.chunkFilter.ForRequest(ctx)
 	}
 
-	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+	return i.forPostings(ctx, shard, matchers, func(p index.Postings) error {
 		for p.Next() {
 			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
@@ -195,7 +195,6 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 func (i *TSDBIndex) forPostings(
 	_ context.Context,
 	shard *index.ShardAnnotation,
-	_, _ model.Time,
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
@@ -281,7 +280,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 }
 
 func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+	return i.forPostings(ctx, shard, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer
@@ -355,7 +354,7 @@ func (i *TSDBIndex) Volume(
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 
-	return i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
+	return i.forPostings(ctx, shard, matchers, func(p index.Postings) error {
 		var ls labels.Labels
 		var filterer chunk.Filterer
 		if i.chunkFilter != nil {

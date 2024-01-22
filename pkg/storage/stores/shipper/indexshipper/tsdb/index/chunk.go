@@ -4,9 +4,11 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
+	"github.com/rdleal/intervalst/interval"
 
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/encoding"
+	utilsMath "github.com/grafana/loki/pkg/util/math"
 )
 
 // Meta holds information about a chunk of data.
@@ -24,6 +26,39 @@ type ChunkMeta struct {
 func (c ChunkMeta) From() model.Time                 { return model.Time(c.MinTime) }
 func (c ChunkMeta) Through() model.Time              { return model.Time(c.MaxTime) }
 func (c ChunkMeta) Bounds() (model.Time, model.Time) { return c.From(), c.Through() }
+
+// Sub subtracts the other chunk from c if the overlap. If the other is completely
+func Sub(l, r *ChunkMeta) []*ChunkMeta {
+	if !overlap(l.MinTime, l.MaxTime, r.MinTime, r.MaxTime) {
+		return []*ChunkMeta{l}
+	}
+
+	totalTime := l.MaxTime - l.MinTime
+	leadingTime := utilsMath.Max64(0, r.MinTime - l.MinTime)
+	trailingTime := utilsMath.Max64(0, l.MaxTime - r.MaxTime)
+
+	res := make([]*ChunkMeta, 0)
+	if leadingTime > 0 {
+		factor := float64(leadingTime) / float64(totalTime)
+		res  = append(res, &ChunkMeta{
+			MinTime: l.MinTime,
+			MaxTime: l.MinTime + leadingTime,
+			KB: uint32(factor * float64(l.KB)),
+			Entries: uint32(factor * float64(l.Entries)),
+		})
+	}
+	if trailingTime > 0 {
+		factor := float64(trailingTime) / float64(totalTime)
+		res  = append(res, &ChunkMeta{
+			MinTime: l.MaxTime - trailingTime,
+			MaxTime: l.MaxTime,
+			KB: uint32(factor * float64(l.KB)),
+			Entries: uint32(factor * float64(l.Entries)),
+		})
+	}
+
+	return res
+}
 
 type ChunkMetas []ChunkMeta
 
@@ -236,6 +271,7 @@ type chunkPageMarkers []chunkPageMarker
 
 type ChunkStats struct {
 	Chunks, KB, Entries uint64
+	i                   *interval.MultiValueSearchTree[*ChunkMeta, int64]
 }
 
 func (cs *ChunkStats) addRaw(chunks int, kb, entries uint32) {
@@ -244,9 +280,47 @@ func (cs *ChunkStats) addRaw(chunks int, kb, entries uint32) {
 	cs.Entries += uint64(entries)
 }
 
+func (cs *ChunkStats) AddChunkMarker(marker chunkPageMarker) {
+	if cs.i == nil {
+		cs.i = interval.NewMultiValueSearchTree[*ChunkMeta, int64](cmp)
+	}
+
+	chk := &ChunkMeta{
+		MinTime: marker.MinTime,
+		MaxTime: marker.MaxTime,
+		KB:      marker.KB,
+		Entries: marker.Entries,
+	}
+	rest := []*ChunkMeta{chk}
+	if intersections, ok := cs.i.AllIntersections(marker.MinTime, marker.MaxTime); ok {
+		for _, i := range intersections {
+			newRest := make([]*ChunkMeta, 0)
+			for _, r := range rest {
+				newRest = append(newRest, Sub(r, i)...)
+			}
+			rest = newRest
+		}
+	} 
+
+	for _, r := range rest {
+		cs.i.Insert(r.MinTime, r.MaxTime, r)
+		cs.addRaw(marker.ChunksInPage, r.KB, r.Entries)
+	}
+}
+
 func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
+	if cs.i == nil {
+		cs.i = interval.NewMultiValueSearchTree[*ChunkMeta, int64](cmp)
+	}
+
+	cs.i.Insert(chk.MinTime, chk.MaxTime, chk)
+
 	factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
 	kb := uint32(float64(chk.KB) * factor)
 	entries := uint32(float64(chk.Entries) * factor)
 	cs.addRaw(1, kb, entries)
+}
+
+var cmp = func(t1, t2 int64) int {
+	return int(t1 - t2)
 }
