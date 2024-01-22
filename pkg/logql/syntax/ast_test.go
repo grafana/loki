@@ -384,6 +384,13 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
 		},
 		{
+			`{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo buzz", true}, {"bar fizz", true}, {"bar", false}, {"none", false}},
+		},
+		{
 			`{app="foo"} != "foo" or "bar"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
