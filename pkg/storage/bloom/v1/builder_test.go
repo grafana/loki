@@ -241,3 +241,123 @@ func TestBlockReset(t *testing.T) {
 
 	require.Equal(t, rounds[0], rounds[1])
 }
+
+// This test is a basic roundtrip test for the merge builder.
+// It creates one set of blocks with the same (duplicate) data, and another set of blocks with
+// disjoint data. It then merges the two sets of blocks and ensures that the merged blocks contain
+// one copy of the first set (duplicate data) and one copy of the second set (disjoint data).
+func TestMergeBuilder_Roundtrip(t *testing.T) {
+	numSeries := 100
+	numKeysPerSeries := 100
+	minTs, maxTs := model.Time(0), model.Time(10000)
+	xs, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, minTs, maxTs)
+
+	var data [][]*SeriesWithBloom
+
+	// First, we build the blocks
+
+	sets := []int{
+		2, // 2 blocks containint the same data
+		1, // 1 block containing disjoint data
+	}
+
+	for i, copies := range sets {
+		for j := 0; j < copies; j++ {
+			// references for linking in memory reader+writer
+			indexBuf := bytes.NewBuffer(nil)
+			bloomsBuf := bytes.NewBuffer(nil)
+
+			writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+			reader := NewByteReader(indexBuf, bloomsBuf)
+
+			builder, err := NewBlockBuilder(
+				BlockOptions{
+					schema: Schema{
+						version:  DefaultSchemaVersion,
+						encoding: chunkenc.EncSnappy,
+					},
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer,
+			)
+
+			require.Nil(t, err)
+			// each set of copies gets a different slice of the data
+			minIdx, maxIdx := i*len(xs)/len(sets), (i+1)*len(xs)/len(sets)
+			itr := NewSliceIter[SeriesWithBloom](xs[minIdx:maxIdx])
+			_, err = builder.BuildFrom(itr)
+			require.Nil(t, err)
+			block := NewBlock(reader)
+			querier := NewBlockQuerier(block)
+
+			// rather than use the block querier directly, collect it's data
+			// so we can use it in a few places later
+			var tmp []*SeriesWithBloom
+			for querier.Next() {
+				tmp = append(tmp, querier.At())
+			}
+			data = append(data, tmp)
+		}
+	}
+
+	// we keep 2 copies of the data as iterators. One for the blocks, and one for the "store"
+	// which will force it to reference the same series
+	var blocks []PeekingIterator[*SeriesWithBloom]
+	var store []PeekingIterator[*SeriesWithBloom]
+
+	for _, x := range data {
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](x)))
+		store = append(store, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](x)))
+	}
+
+	orderedStore := NewHeapIterForSeriesWithBloom(store...)
+	dedupedStore := NewDedupingIter[*SeriesWithBloom, *Series](
+		func(a *SeriesWithBloom, b *Series) bool {
+			return a.Series.Fingerprint == b.Fingerprint
+		},
+		func(swb *SeriesWithBloom) *Series {
+			return swb.Series
+		},
+		func(a *SeriesWithBloom, b *Series) *Series {
+			if len(a.Series.Chunks) > len(b.Chunks) {
+				return a.Series
+			}
+			return b
+		},
+		NewPeekingIter[*SeriesWithBloom](orderedStore),
+	)
+
+	// build the new block from the old ones
+	indexBuf, bloomBuf := bytes.NewBuffer(nil), bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomBuf)
+	reader := NewByteReader(indexBuf, bloomBuf)
+	mb := NewMergeBuilder(
+		blocks,
+		dedupedStore,
+		func(s *Series, b *Bloom) error {
+			// We're not actually indexing new data in this test
+			return nil
+		},
+	)
+	builder, err := NewBlockBuilder(NewBlockOptions(4, 0), writer)
+	require.Nil(t, err)
+
+	checksum, err := mb.Build(builder)
+	require.Nil(t, err)
+	require.Equal(t, uint32(0x779633b5), checksum)
+
+	// ensure the new block contains one copy of all the data
+	// by comparing it against an iterator over the source data
+	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader))
+	sourceItr := NewSliceIter[*SeriesWithBloom](PointerSlice[SeriesWithBloom](xs))
+
+	EqualIterators[*SeriesWithBloom](
+		t,
+		func(a, b *SeriesWithBloom) {
+			require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
+		},
+		sourceItr,
+		mergedBlockQuerier,
+	)
+}
