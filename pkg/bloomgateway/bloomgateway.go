@@ -355,7 +355,7 @@ outer:
 			continue
 		}
 		// we must not remove items from req.Refs as long as the worker may iterater over them
-		g.removeNotMatchingChunks(req, o)
+		removeNotMatchingChunks(req, o, g.logger)
 	}
 
 	g.metrics.addUnfilteredCount(numChunksUnfiltered)
@@ -365,7 +365,7 @@ outer:
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
-func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) {
+func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output, logger log.Logger) {
 	// binary search index of fingerprint
 	idx := sort.Search(len(req.Refs), func(i int) bool {
 		return req.Refs[i].Fingerprint >= uint64(res.Fp)
@@ -373,7 +373,7 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	// fingerprint not found
 	if idx >= len(req.Refs) {
-		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
+		level.Error(logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
 		return
 	}
 
@@ -387,10 +387,11 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	for i := range res.Removals {
 		toRemove := res.Removals[i]
-		for j := range req.Refs[idx].Refs {
+		for j := 0; j < len(req.Refs[idx].Refs); j++ {
 			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
 				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
 				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
+				j-- // since we removed the current item at index, we have to redo the same index
 			}
 		}
 	}
