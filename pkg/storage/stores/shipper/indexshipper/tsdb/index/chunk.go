@@ -34,25 +34,25 @@ func Sub(l, r *ChunkMeta) []*ChunkMeta {
 	}
 
 	totalTime := l.MaxTime - l.MinTime
-	leadingTime := utilsMath.Max64(0, r.MinTime - l.MinTime)
-	trailingTime := utilsMath.Max64(0, l.MaxTime - r.MaxTime)
+	leadingTime := utilsMath.Max64(0, r.MinTime-l.MinTime)
+	trailingTime := utilsMath.Max64(0, l.MaxTime-r.MaxTime)
 
 	res := make([]*ChunkMeta, 0)
 	if leadingTime > 0 {
 		factor := float64(leadingTime) / float64(totalTime)
-		res  = append(res, &ChunkMeta{
+		res = append(res, &ChunkMeta{
 			MinTime: l.MinTime,
 			MaxTime: l.MinTime + leadingTime,
-			KB: uint32(factor * float64(l.KB)),
+			KB:      uint32(factor * float64(l.KB)),
 			Entries: uint32(factor * float64(l.Entries)),
 		})
 	}
 	if trailingTime > 0 {
 		factor := float64(trailingTime) / float64(totalTime)
-		res  = append(res, &ChunkMeta{
+		res = append(res, &ChunkMeta{
 			MinTime: l.MaxTime - trailingTime,
 			MaxTime: l.MaxTime,
-			KB: uint32(factor * float64(l.KB)),
+			KB:      uint32(factor * float64(l.KB)),
 			Entries: uint32(factor * float64(l.Entries)),
 		})
 	}
@@ -300,10 +300,10 @@ func (cs *ChunkStats) AddChunkMarker(marker chunkPageMarker) {
 			}
 			rest = newRest
 		}
-	} 
+	}
 
 	for _, r := range rest {
-		cs.i.Insert(r.MinTime, r.MaxTime, r)
+		cs.i.Insert(r.MinTime, r.MaxTime, r) // nolint:errcheck
 		cs.addRaw(marker.ChunksInPage, r.KB, r.Entries)
 	}
 }
@@ -313,12 +313,25 @@ func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
 		cs.i = interval.NewMultiValueSearchTree[*ChunkMeta, int64](cmp)
 	}
 
-	cs.i.Insert(chk.MinTime, chk.MaxTime, chk)
+	rest := []*ChunkMeta{chk}
+	if intersections, ok := cs.i.AllIntersections(chk.MinTime, chk.MaxTime); ok {
+		for _, i := range intersections {
+			newRest := make([]*ChunkMeta, 0)
+			for _, r := range rest {
+				newRest = append(newRest, Sub(r, i)...)
+			}
+			rest = newRest
+		}
+	}
 
-	factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
-	kb := uint32(float64(chk.KB) * factor)
-	entries := uint32(float64(chk.Entries) * factor)
-	cs.addRaw(1, kb, entries)
+	for _, chk := range rest {
+		cs.i.Insert(chk.MinTime, chk.MaxTime, chk) // nolint:errcheck
+		factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
+		kb := uint32(float64(chk.KB) * factor)
+		entries := uint32(float64(chk.Entries) * factor)
+
+		cs.addRaw(1, kb, entries)
+	}
 }
 
 var cmp = func(t1, t2 int64) int {
