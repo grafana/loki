@@ -6,7 +6,9 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
-var noParserHints = &Hints{}
+func NoParserHints() ParserHint {
+	return &Hints{}
+}
 
 // ParserHint are hints given to LogQL parsers.
 // This is specially useful for parser that extract implicitly all possible label keys.

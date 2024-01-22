@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"testing"
 	"time"
 
@@ -75,6 +76,7 @@ func TestSeriesCache(t *testing.T) {
 			},
 			DefaultCodec,
 			cache.NewMockCache(),
+			nil,
 			nil,
 			nil,
 			func(_ context.Context, _ []string, _ queryrangebase.Request) int {
@@ -311,4 +313,204 @@ func TestSeriesCache(t *testing.T) {
 			require.Equal(t, 1, called, name)
 		}
 	})
+}
+
+func TestSeriesCache_freshness(t *testing.T) {
+	testTime := time.Now().Add(-1 * time.Hour)
+	from, through := util.RoundToMilliseconds(testTime.Add(-1*time.Hour), testTime)
+
+	for _, tt := range []struct {
+		name                      string
+		req                       *LokiSeriesRequest
+		shouldCache               bool
+		maxMetadataCacheFreshness time.Duration
+	}{
+		{
+			name: "max metadata freshness not set",
+			req: &LokiSeriesRequest{
+				StartTs: from.Time(),
+				EndTs:   through.Time(),
+				Match:   []string{`{namespace=~".*"}`},
+				Path:    seriesAPIPath,
+			},
+			shouldCache: true,
+		},
+		{
+			name: "req overlaps with max cache freshness window",
+			req: &LokiSeriesRequest{
+				StartTs: from.Time(),
+				EndTs:   through.Time(),
+				Match:   []string{`{namespace=~".*"}`},
+				Path:    seriesAPIPath,
+			},
+			maxMetadataCacheFreshness: 24 * time.Hour,
+			shouldCache:               false,
+		},
+		{
+			name: "req does not overlap max cache freshness window",
+			req: &LokiSeriesRequest{
+				StartTs: from.Add(-24 * time.Hour).Time(),
+				EndTs:   through.Add(-24 * time.Hour).Time(),
+				Match:   []string{`{namespace=~".*"}`},
+				Path:    seriesAPIPath,
+			},
+			maxMetadataCacheFreshness: 24 * time.Hour,
+			shouldCache:               true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cacheMiddleware, err := NewSeriesCacheMiddleware(
+				log.NewNopLogger(),
+				fakeLimits{
+					metadataSplitDuration: map[string]time.Duration{
+						"fake": 24 * time.Hour,
+					},
+					maxMetadataCacheFreshness: tt.maxMetadataCacheFreshness,
+				},
+				DefaultCodec,
+				cache.NewMockCache(),
+				nil,
+				nil,
+				nil,
+				func(_ context.Context, _ []string, _ queryrangebase.Request) int {
+					return 1
+				},
+				false,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+
+			seriesResp := &LokiSeriesResponse{
+				Status:  "success",
+				Version: uint32(loghttp.VersionV1),
+				Data: []logproto.SeriesIdentifier{
+					{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "eu-west"}, {Key: "namespace", Value: "prod"}},
+					},
+				},
+				Statistics: stats.Result{
+					Summary: stats.Summary{
+						Splits: 1,
+					},
+				},
+			}
+
+			called := 0
+			handler := cacheMiddleware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				called++
+
+				// should request the entire length with no partitioning as nothing is cached yet.
+				require.Equal(t, tt.req.GetStart(), r.GetStart())
+				require.Equal(t, tt.req.GetEnd(), r.GetEnd())
+
+				return seriesResp, nil
+			}))
+
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			got, err := handler.Do(ctx, tt.req)
+			require.NoError(t, err)
+			require.Equal(t, 1, called) // called actual handler, as not cached.
+			require.Equal(t, seriesResp, got)
+
+			called = 0
+			got, err = handler.Do(ctx, tt.req)
+			require.NoError(t, err)
+			if !tt.shouldCache {
+				require.Equal(t, 1, called)
+			} else {
+				require.Equal(t, 0, called)
+			}
+			require.Equal(t, seriesResp, got)
+		})
+	}
+}
+
+func TestSeriesQueryCacheKey(t *testing.T) {
+	const (
+		defaultTenant       = "a"
+		alternateTenant     = "b"
+		defaultSplit        = time.Hour
+		ingesterSplit       = 90 * time.Minute
+		ingesterQueryWindow = defaultSplit * 3
+	)
+
+	l := fakeLimits{
+		metadataSplitDuration: map[string]time.Duration{defaultTenant: defaultSplit, alternateTenant: defaultSplit},
+		ingesterSplitDuration: map[string]time.Duration{defaultTenant: ingesterSplit},
+	}
+
+	cases := []struct {
+		name, tenantID string
+		start, end     time.Time
+		expectedSplit  time.Duration
+		iqo            util.IngesterQueryOptions
+		values         bool
+	}{
+		{
+			name:          "outside ingester query window",
+			tenantID:      defaultTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-5 * time.Hour),
+			expectedSplit: defaultSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       false,
+			},
+		},
+		{
+			name:          "within ingester query window",
+			tenantID:      defaultTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			expectedSplit: ingesterSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       false,
+			},
+		},
+		{
+			name:          "within ingester query window, but query store only",
+			tenantID:      defaultTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			expectedSplit: defaultSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       true,
+			},
+		},
+		{
+			name:          "within ingester query window, but no ingester split duration configured",
+			tenantID:      alternateTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			expectedSplit: defaultSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       false,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			matchers := []string{`{namespace="prod"}`, `{service="foo"}`}
+
+			keyGen := cacheKeySeries{l, nil, tc.iqo}
+
+			r := &LokiSeriesRequest{
+				StartTs: tc.start,
+				EndTs:   tc.end,
+				Match:   matchers,
+				Path:    seriesAPIPath,
+			}
+
+			// we use regex here because cache key always refers to the current time to get the ingester query window,
+			// and therefore we can't know the current interval apriori without duplicating the logic
+			pattern := regexp.MustCompile(fmt.Sprintf(`series:%s:%s:(\d+):%d`, tc.tenantID, regexp.QuoteMeta(keyGen.joinMatchers(matchers)), tc.expectedSplit))
+
+			require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tc.tenantID, r))
+		})
+	}
 }

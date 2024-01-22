@@ -2710,6 +2710,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules.disabled</td>
+			<td>object</td>
+			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.enabled</td>
 			<td>bool</td>
 			<td>If enabled, create PrometheusRule resource with Loki recording rules</td>
