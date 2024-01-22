@@ -62,7 +62,7 @@ sse:
   type: test-type
   kms_key_id: test-kms-key-id
   kms_encryption_context: test-kms-encryption-context
-http:
+http_config:
   idle_conn_timeout: 2s
   response_header_timeout: 3s
   insecure_skip_verify: true
@@ -245,6 +245,15 @@ func TestConfig_Validate(t *testing.T) {
 		"should pass if valid storage signature version is set": {
 			Config{SignatureVersion: SignatureVersionV4, StorageClass: aws.StorageClassStandardInfrequentAccess},
 			nil,
+		},
+		"should fail on invalid endpoint prefix": {
+			Config{
+				Endpoint:         "foobar.s3.eu-central-1.amazonaws.com",
+				BucketName:       "foobar",
+				SignatureVersion: SignatureVersionV4,
+				StorageClass:     aws.StorageClassStandard,
+			},
+			errInvalidEndpointPrefix,
 		},
 	}
 

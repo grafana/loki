@@ -492,6 +492,13 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	if size < int64(partSize) {
 		partSize = 0
 	}
+
+	// Cloning map since minio may modify it
+	userMetadata := make(map[string]string, len(b.putUserMetadata))
+	for k, v := range b.putUserMetadata {
+		userMetadata[k] = v
+	}
+
 	if _, err := b.client.PutObject(
 		ctx,
 		b.name,
@@ -501,7 +508,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		minio.PutObjectOptions{
 			PartSize:             partSize,
 			ServerSideEncryption: sse,
-			UserMetadata:         b.putUserMetadata,
+			UserMetadata:         userMetadata,
 			StorageClass:         b.storageClass,
 			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 			// ensure we pin this number to four.

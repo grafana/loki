@@ -433,7 +433,7 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 
 		opsDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "objstore_bucket_operation_duration_seconds",
-			Help:        "Duration of successful operations against the bucket",
+			Help:        "Duration of successful operations against the bucket per operation - iter operations include time spent on each callback.",
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 		}, []string{"operation"}),
@@ -458,11 +458,12 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		bkt.opsDuration.WithLabelValues(op)
 		bkt.opsFetchedBytes.WithLabelValues(op)
 	}
-	// fetched bytes only relevant for get and getrange
+
+	// fetched bytes only relevant for get, getrange and upload
 	for _, op := range []string{
 		OpGet,
 		OpGetRange,
-		// TODO: Add uploads
+		OpUpload,
 	} {
 		bkt.opsTransferredBytes.WithLabelValues(op)
 	}
@@ -503,12 +504,14 @@ func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string)
 	const op = OpIter
 	b.ops.WithLabelValues(op).Inc()
 
+	start := time.Now()
 	err := b.bkt.Iter(ctx, dir, f, options...)
 	if err != nil {
 		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 	}
+	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return err
 }
 
@@ -592,15 +595,25 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 	const op = OpUpload
 	b.ops.WithLabelValues(op).Inc()
 
-	start := time.Now()
-	if err := b.bkt.Upload(ctx, name, r); err != nil {
+	trc := newTimingReadCloser(
+		NopCloserWithSize(r),
+		op,
+		b.opsDuration,
+		b.opsFailures,
+		b.isOpFailureExpected,
+		nil,
+		b.opsTransferredBytes,
+	)
+	defer trc.Close()
+	err := b.bkt.Upload(ctx, name, trc)
+	if err != nil {
 		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
 	}
 	b.lastSuccessfulUploadTime.SetToCurrentTime()
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+
 	return nil
 }
 
@@ -692,7 +705,10 @@ func (rc *timingReadCloser) Close() error {
 
 func (rc *timingReadCloser) Read(b []byte) (n int, err error) {
 	n, err = rc.ReadCloser.Read(b)
-	rc.fetchedBytes.WithLabelValues(rc.op).Add(float64(n))
+	if rc.fetchedBytes != nil {
+		rc.fetchedBytes.WithLabelValues(rc.op).Add(float64(n))
+	}
+
 	rc.readBytes += int64(n)
 	// Report metric just once.
 	if !rc.alreadyGotErr && err != nil && err != io.EOF {

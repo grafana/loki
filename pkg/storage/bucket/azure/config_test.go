@@ -48,7 +48,7 @@ connection_string: test-connection-string
 container_name: test-container-name
 endpoint_suffix: test-endpoint-suffix
 max_retries: 1
-http:
+http_config:
   idle_conn_timeout: 2s
   response_header_timeout: 3s
   insecure_skip_verify: true

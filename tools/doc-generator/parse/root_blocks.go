@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
+	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -273,5 +274,10 @@ storage_config:
         endpoint: s3://foo-bucket
         region: us-west1
 Named store from this example can be used by setting object_store to store-1 in period_config.`},
+		{
+			Name:       "ruler_storage_config",
+			StructType: []reflect.Type{reflect.TypeOf(rulestore.Config{})},
+			Desc:       "The ruler_storage_config configures ruler storage backend.",
+		},
 	}
 )

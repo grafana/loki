@@ -14,6 +14,9 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#33](https://github.com/thanos-io/objstore/pull/33) Tracing: Add `ContextWithTracer()` to inject the tracer into the context.
 - [#34](https://github.com/thanos-io/objstore/pull/34) Fix ignored options when creating shared credential Azure client.
 - [#62](https://github.com/thanos-io/objstore/pull/62) S3: Fix ignored context cancellation in `Iter` method.
+- [#77](https://github.com/thanos-io/objstore/pull/77) Fix buckets wrapped with metrics from being unable to determine object sizes in `Upload`.
+- [#78](https://github.com/thanos-io/objstore/pull/78) S3: Fix possible concurrent modification of the PutUserMetadata map.
+- [#79](https://github.com/thanos-io/objstore/pull/79) Metrics: Fix `objstore_bucket_operation_duration_seconds` for `iter` operations.
 
 ### Added
 - [#15](https://github.com/thanos-io/objstore/pull/15) Add Oracle Cloud Infrastructure Object Storage Bucket support.
@@ -27,9 +30,11 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#61](https://github.com/thanos-io/objstore/pull/61) Add OpenTelemetry TracingBucket.
     > This also changes the behaviour of `client.NewBucket`. Now it returns, uninstrumented and untraced bucket.
     You can combine `objstore.WrapWithMetrics` and `tracing/{opentelemetry,opentracing}.WrapWithTraces` to have old behavior.
+- [#69](https://github.com/thanos-io/objstore/pull/69) [#66](https://github.com/thanos-io/objstore/pull/66) Add `objstore_bucket_operation_transferred_bytes` that counts the number of total bytes read from the bucket operation Get/GetRange and also counts the number of total bytes written to the bucket operation Upload.
 - [#64](https://github.com/thanos-io/objstore/pull/64) OCI: OKE Workload Identity support.
 - [#73](https://github.com/thanos-io/objstore/pull/73) Аdded file path to erros from DownloadFile
 - [#51](https://github.com/thanos-io/objstore/pull/51) Azure: Support using connection string authentication.
+- [#76](https://github.com/thanos-io/objstore/pull/76) GCS: Query for object names only in `Iter` to possibly improve performance when listing objects.
 
 ### Changed
 - [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.

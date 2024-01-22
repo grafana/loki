@@ -108,10 +108,16 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		delimiter = ""
 	}
 
-	it := b.bkt.Objects(ctx, &storage.Query{
+	query := &storage.Query{
 		Prefix:    dir,
 		Delimiter: delimiter,
-	})
+	}
+	err := query.SetAttrSelection([]string{"Name"})
+	if err != nil {
+		return err
+	}
+
+	it := b.bkt.Objects(ctx, query)
 	for {
 		select {
 		case <-ctx.Done():

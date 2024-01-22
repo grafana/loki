@@ -37,6 +37,7 @@ var (
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
 	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")
+	errInvalidEndpointPrefix       = errors.New("the endpoint must not prefixed with the bucket name")
 )
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.
@@ -65,7 +66,7 @@ type Config struct {
 	StorageClass     string         `yaml:"storage_class"`
 
 	SSE  SSEConfig  `yaml:"sse"`
-	HTTP HTTPConfig `yaml:"http"`
+	HTTP HTTPConfig `yaml:"http_config"`
 }
 
 // RegisterFlags registers the flags for s3 storage with the provided prefix
@@ -92,6 +93,13 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
+	}
+
+	if cfg.Endpoint != "" {
+		endpoint := strings.Split(cfg.Endpoint, ".")
+		if cfg.BucketName != "" && endpoint[0] != "" && endpoint[0] == cfg.BucketName {
+			return errInvalidEndpointPrefix
+		}
 	}
 
 	if err := aws.ValidateStorageClass(cfg.StorageClass); err != nil {
