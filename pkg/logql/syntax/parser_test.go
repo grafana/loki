@@ -3138,6 +3138,29 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
+	{
+		in: `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+		exp: newPipelineExpr(
+			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStageExpr{
+				&LineFilterExpr{
+					Left: newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", "foo"), newLineFilterExpr(labels.MatchEqual, "", "bar")),
+					LineFilter: LineFilter{
+						Ty:    labels.MatchEqual,
+						Match: "buzz",
+					},
+					Or: &LineFilterExpr{
+						LineFilter: LineFilter{
+							Ty:    labels.MatchEqual,
+							Match: "fizz",
+						},
+						IsOrChild: true,
+					},
+					IsOrChild: false,
+				},
+			},
+		),
+	},
 }
 
 func TestParse(t *testing.T) {
