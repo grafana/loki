@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
-	"github.com/rdleal/intervalst/interval"
 
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -140,6 +139,25 @@ func (c ChunkMetas) Finalize() ChunkMetas {
 
 }
 
+// Stats returns the ChunkStats. It tries to accommodate for overlapping chunks.
+func (c ChunkMetas) Stats(from, through int64) ChunkStats {
+	sort.Sort(c)
+
+	res := ChunkStats{}
+
+	// TODO: deduplicate
+
+	for _, chk := range c {
+		if overlap(from, through, chk.MinTime, chk.MaxTime) {
+			res.AddChunk(&chk, from, through)
+		} else if chk.MinTime >= through {
+			break
+		}
+	}
+
+	return res
+}
+
 // Add adds ChunkMeta at the right place in order. It assumes existing ChunkMetas have already been sorted by using Finalize.
 // There is no chance of a data loss even if the chunks are not sorted because the chunk would anyways be added so the assumption is relatively safe.
 func (c ChunkMetas) Add(chk ChunkMeta) ChunkMetas {
@@ -271,7 +289,6 @@ type chunkPageMarkers []chunkPageMarker
 
 type ChunkStats struct {
 	Chunks, KB, Entries uint64
-	i                   *interval.MultiValueSearchTree[*ChunkMeta, int64]
 }
 
 func (cs *ChunkStats) addRaw(chunks int, kb, entries uint32) {
@@ -280,60 +297,10 @@ func (cs *ChunkStats) addRaw(chunks int, kb, entries uint32) {
 	cs.Entries += uint64(entries)
 }
 
-func (cs *ChunkStats) AddChunkMarker(marker chunkPageMarker) {
-	if cs.i == nil {
-		cs.i = interval.NewMultiValueSearchTree[*ChunkMeta, int64](cmp)
-	}
-
-	chk := &ChunkMeta{
-		MinTime: marker.MinTime,
-		MaxTime: marker.MaxTime,
-		KB:      marker.KB,
-		Entries: marker.Entries,
-	}
-	rest := []*ChunkMeta{chk}
-	if intersections, ok := cs.i.AllIntersections(marker.MinTime, marker.MaxTime); ok {
-		for _, i := range intersections {
-			newRest := make([]*ChunkMeta, 0)
-			for _, r := range rest {
-				newRest = append(newRest, Sub(r, i)...)
-			}
-			rest = newRest
-		}
-	}
-
-	for _, r := range rest {
-		cs.i.Insert(r.MinTime, r.MaxTime, r) // nolint:errcheck
-		cs.addRaw(marker.ChunksInPage, r.KB, r.Entries)
-	}
-}
-
 func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
-	if cs.i == nil {
-		cs.i = interval.NewMultiValueSearchTree[*ChunkMeta, int64](cmp)
-	}
+	factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
+	kb := uint32(float64(chk.KB) * factor)
+	entries := uint32(float64(chk.Entries) * factor)
 
-	rest := []*ChunkMeta{chk}
-	if intersections, ok := cs.i.AllIntersections(chk.MinTime, chk.MaxTime); ok {
-		for _, i := range intersections {
-			newRest := make([]*ChunkMeta, 0)
-			for _, r := range rest {
-				newRest = append(newRest, Sub(r, i)...)
-			}
-			rest = newRest
-		}
-	}
-
-	for _, chk := range rest {
-		cs.i.Insert(chk.MinTime, chk.MaxTime, chk) // nolint:errcheck
-		factor := util.GetFactorOfTime(from, through, chk.MinTime, chk.MaxTime)
-		kb := uint32(float64(chk.KB) * factor)
-		entries := uint32(float64(chk.Entries) * factor)
-
-		cs.addRaw(1, kb, entries)
-	}
-}
-
-var cmp = func(t1, t2 int64) int {
-	return int(t1 - t2)
+	cs.addRaw(1, kb, entries)
 }

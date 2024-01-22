@@ -1329,7 +1329,6 @@ github.com/prometheus/prometheus/web/api/v1
 github.com/rcrowley/go-metrics
 # github.com/rdleal/intervalst v1.2.2
 ## explicit; go 1.19
-github.com/rdleal/intervalst/interval
 # github.com/richardartoul/molecule v1.0.0
 ## explicit; go 1.13
 github.com/richardartoul/molecule
