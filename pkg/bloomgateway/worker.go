@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -136,7 +137,7 @@ func (w *worker) running(ctx context.Context) error {
 			}
 			w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
 
-			tasksPerDay := make(map[time.Time][]Task)
+			tasksByDay := make(map[time.Time][]Task)
 
 			for _, item := range items {
 				task, ok := item.(Task)
@@ -158,15 +159,16 @@ func (w *worker) running(ctx context.Context) error {
 				fromDay, throughDay := task.Bounds()
 
 				if fromDay.Equal(throughDay) {
-					tasksPerDay[fromDay] = append(tasksPerDay[fromDay], task)
+					tasksByDay[fromDay] = append(tasksByDay[fromDay], task)
 				} else {
+					level.Debug(w.logger).Log("msg", "task spans across multiple days", "from", fromDay, "through", throughDay)
 					for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
-						tasksPerDay[i] = append(tasksPerDay[i], task)
+						tasksByDay[i] = append(tasksByDay[i], task)
 					}
 				}
 			}
 
-			for day, tasks := range tasksPerDay {
+			for day, tasks := range tasksByDay {
 				// Remove tasks that are already cancelled
 				tasks = slices.DeleteFunc(tasks, func(t Task) bool {
 					return t.Err() != nil
@@ -207,21 +209,8 @@ func (w *worker) running(ctx context.Context) error {
 					continue
 				}
 
-				boundedRefs := partitionFingerprintRange(tasks, blockRefs)
-				blockRefs = blockRefs[:0]
-				for _, b := range boundedRefs {
-					blockRefs = append(blockRefs, b.blockRef)
-				}
-
-				// Remove tasks that are already cancelled
-				tasks = slices.DeleteFunc(tasks, func(t Task) bool {
-					return t.Err() != nil
-				})
-				// no tasks to process, continue with next day
-				if len(tasks) == 0 {
-					continue
-				}
-				err = w.processBlocksWithCallback(iterationCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
+				partitionedTasks := partitionFingerprintRange(tasks, blockRefs)
+				err = w.processBlocksWithCallback(iterationCtx, tasks[0].Tenant, day, partitionedTasks)
 				if err != nil {
 					// send error to error channel of each task
 					for _, t := range tasks {
@@ -233,7 +222,7 @@ func (w *worker) running(ctx context.Context) error {
 			}
 
 			// close channels because everything is sent
-			for _, tasks := range tasksPerDay {
+			for _, tasks := range tasksByDay {
 				for _, task := range tasks {
 					level.Debug(w.logger).Log("msg", "close task", "task", task.ID, "closed", task.closed.Load())
 					task.Close()
@@ -252,14 +241,18 @@ func (w *worker) stopping(err error) error {
 	return nil
 }
 
-func (w *worker) processBlocksWithCallback(ctx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
+func (w *worker) processBlocksWithCallback(ctx context.Context, tenant string, day time.Time, boundedRefs []boundedTasks) error {
+	blockRefs := make([]bloomshipper.BlockRef, 0, len(boundedRefs))
+	for _, b := range boundedRefs {
+		blockRefs = append(blockRefs, b.blockRef)
+	}
 	return w.shipper.Fetch(ctx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
 				return w.processBlock(ctx, bq, day, b.tasks)
 			}
 		}
-		return nil
+		return fmt.Errorf("no overlapping blocks for range %x-%x", minFp, maxFp)
 	})
 }
 
