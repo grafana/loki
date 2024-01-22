@@ -145,7 +145,7 @@ func (w *worker) running(ctx context.Context) error {
 					w.queue.ReleaseRequests(items)
 					return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 				}
-				level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
+				level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID, "closed", task.closed)
 				w.tasks.Delete(task.ID)
 
 				// check if task was already cancelled while it was waiting in the queue

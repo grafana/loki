@@ -333,6 +333,41 @@ func TestMaxQueueSize(t *testing.T) {
 	})
 }
 
+func TestDequeueMany(t *testing.T) {
+	t.Run("single DequeueMany call returns subsequent requests for tenant", func(t *testing.T) {
+		nw := 3  // number of workers
+		nr := 10 // number of requests per worker
+
+		queue := NewRequestQueue(1000, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "test"))
+		for i := 0; i < nw; i++ {
+			queue.RegisterConsumerConnection(fmt.Sprintf("worker-%d", i))
+		}
+
+		res := make([][]Request, nw)
+		var wg sync.WaitGroup
+		for i := 0; i < nw; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				ctx := context.Background()
+				res[idx], _, _ = queue.DequeueMany(ctx, StartIndexWithLocalQueue, fmt.Sprintf("worker-%d", idx), nr, time.Second)
+			}(i)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+		for i := 0; i < nw*nr; i++ {
+			assert.NoError(t, queue.Enqueue("tenant", []string{}, i, nil))
+		}
+
+		wg.Wait()
+		assert.ElementsMatch(t, res, [][]Request{
+			{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			{10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+			{20, 21, 22, 23, 24, 25, 26, 27, 28, 29},
+		})
+	})
+}
+
 func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, msg string) {
 	t.Helper()
 

@@ -58,10 +58,12 @@ type RequestQueue struct {
 
 	connectedConsumers *atomic.Int32
 
-	mtx     sync.Mutex
-	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
-	queues  *tenantQueues
-	stopped bool
+	mtx  sync.Mutex
+	cond contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
+
+	dequeuManyMtx sync.Mutex
+	queues        *tenantQueues
+	stopped       bool
 
 	metrics *Metrics
 	pool    *SlicePool[Request]
@@ -139,8 +141,10 @@ func (q *RequestQueue) ReleaseRequests(items []Request) {
 // The caller is responsible for returning the dequeued requests back to the
 // pool by calling ReleaseRequests(items).
 func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consumerID string, maxItems int, maxWait time.Duration) ([]Request, QueueIndex, error) {
-	// create a context for dequeuing with a max time we want to wait to fulfill the desired maxItems
+	q.dequeuManyMtx.Lock()
+	defer q.dequeuManyMtx.Unlock()
 
+	// create a context for dequeuing with a max time we want to wait to fulfill the desired maxItems
 	dequeueCtx, cancel := context.WithTimeout(ctx, maxWait)
 	defer cancel()
 
