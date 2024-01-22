@@ -297,8 +297,9 @@ func (d *SeriesPageDecoder) Next() bool {
 }
 
 func (d *SeriesPageDecoder) Seek(fp model.Fingerprint) {
-	if fp > d.header.ThroughFp || fp < d.header.FromFp {
-		// shortcut: we know the fingerprint is not in this page
+	if fp > d.header.ThroughFp {
+		// shortcut: we know the fingerprint is too large so nothing in this page
+		// will match the seek call, which returns the first found fingerprint >= fp.
 		// so masquerade the index as if we've already iterated through
 		d.i = d.header.NumSeries
 	}

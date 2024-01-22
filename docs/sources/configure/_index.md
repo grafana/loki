@@ -731,6 +731,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
 
+# Comma-separated list of request header names to include in query logs. Applies
+# to both query stats and slow queries logs.
+# CLI flag: -frontend.log-query-request-headers
+[log_query_request_headers: <string> | default = ""]
+
 # Max body size for downstream prometheus.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]
@@ -2829,6 +2834,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 10m]
+
+# Do not cache metadata request if the end time is within the
+# frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such
+# limits. Defaults to 24h.
+# CLI flag: -frontend.max-metadata-cache-freshness
+[max_metadata_cache_freshness: <duration> | default = 1d]
 
 # Do not cache requests with an end time that falls within Now minus this
 # duration. 0 disables this feature (default).

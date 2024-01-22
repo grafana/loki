@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
@@ -376,7 +376,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 												{
 													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
 														Audience:          "test",
-														ExpirationSeconds: pointer.Int64(3600),
+														ExpirationSeconds: ptr.To[int64](3600),
 														Path:              corev1.ServiceAccountTokenKey,
 													},
 												},
@@ -469,7 +469,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 												{
 													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
 														Audience:          "openshift",
-														ExpirationSeconds: pointer.Int64(3600),
+														ExpirationSeconds: ptr.To[int64](3600),
 														Path:              corev1.ServiceAccountTokenKey,
 													},
 												},

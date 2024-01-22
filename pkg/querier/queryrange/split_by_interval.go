@@ -186,7 +186,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	case *LokiSeriesRequest, *LabelRequest:
 		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.MetadataQuerySplitDuration)
 	default:
-		interval = validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
+		interval = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, h.limits.QuerySplitDuration)
 	}
 
 	// skip split by if unset

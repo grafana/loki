@@ -39,6 +39,7 @@ func TestVolumeCache(t *testing.T) {
 			c,
 			nil,
 			nil,
+			nil,
 			func(_ context.Context, _ []string, _ queryrangebase.Request) int {
 				return 1
 			},
@@ -302,6 +303,7 @@ func TestVolumeCache_RecentData(t *testing.T) {
 				WithSplitByLimits(lim, 24*time.Hour),
 				DefaultCodec,
 				c,
+				nil,
 				nil,
 				nil,
 				func(_ context.Context, _ []string, _ queryrangebase.Request) int {
