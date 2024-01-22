@@ -128,8 +128,9 @@ const (
 var (
 	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
 
-	defaultConfigMapMode = int32(420)
-	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
+	defaultRevHistoryLimit int32 = 10
+	defaultConfigMapMode   int32 = 420
+	volumeFileSystemMode         = corev1.PersistentVolumeFilesystem
 )
 
 func commonAnnotations(configHash, objStoreHash, rotationRequiredAt string) map[string]string {
