@@ -67,11 +67,14 @@ func TestTaskMergeIterator(t *testing.T) {
 
 	t.Run("merge multiple tasks in ascending fingerprint order", func(t *testing.T) {
 		r1 := &logproto.FilterChunkRefRequest{
-			From:    ts.Add(-3 * time.Hour),
-			Through: ts.Add(-2 * time.Hour),
+			From:    ts.Add(-1 * time.Hour),
+			Through: ts,
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-3 * time.Hour), Through: ts.Add(-2 * time.Hour), Checksum: 100},
+					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 200},
+				}},
+				{Fingerprint: 300, Tenant: tenant, Refs: []*logproto.ShortRef{
+					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 500},
 				}},
 			},
 		}
@@ -83,7 +86,7 @@ func TestTaskMergeIterator(t *testing.T) {
 			Through: ts,
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
-					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 200},
+					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 100},
 				}},
 				{Fingerprint: 200, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 300},
@@ -111,13 +114,13 @@ func TestTaskMergeIterator(t *testing.T) {
 		require.True(t, it.Next())
 		r := it.At()
 		require.Equal(t, model.Fingerprint(100), r.Fp)
-		require.Equal(t, uint32(100), r.Chks[0].Checksum)
+		require.Equal(t, uint32(200), r.Chks[0].Checksum)
 
 		// second item
 		require.True(t, it.Next())
 		r = it.At()
 		require.Equal(t, model.Fingerprint(100), r.Fp)
-		require.Equal(t, uint32(200), r.Chks[0].Checksum)
+		require.Equal(t, uint32(100), r.Chks[0].Checksum)
 
 		// third item
 		require.True(t, it.Next())
