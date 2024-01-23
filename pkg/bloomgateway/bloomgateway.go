@@ -27,8 +27,6 @@ of line filter expressions.
 			             |
 			       bloomgateway.Worker
 			             |
-			       bloomshipper.Store
-			             |
 			      bloomshipper.Shipper
 			             |
 	     bloomshipper.BloomFileClient
@@ -171,9 +169,9 @@ type Gateway struct {
 	workerMetrics *workerMetrics
 	queueMetrics  *queue.Metrics
 
-	queue       *queue.RequestQueue
-	activeUsers *util.ActiveUsersCleanupService
-	bloomStore  bloomshipper.Store
+	queue        *queue.RequestQueue
+	activeUsers  *util.ActiveUsersCleanupService
+	bloomShipper bloomshipper.Interface
 
 	sharding ShardingStrategy
 
@@ -222,13 +220,8 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		return nil, err
 	}
 
-	bloomStore, err := bloomshipper.NewBloomStore(bloomShipper)
-	if err != nil {
-		return nil, err
-	}
-
 	// We need to keep a reference to be able to call Stop() on shutdown of the gateway.
-	g.bloomStore = bloomStore
+	g.bloomShipper = bloomShipper
 
 	if err := g.initServices(); err != nil {
 		return nil, err
@@ -243,7 +236,7 @@ func (g *Gateway) initServices() error {
 	svcs := []services.Service{g.queue, g.activeUsers}
 	for i := 0; i < g.cfg.WorkerConcurrency; i++ {
 		id := fmt.Sprintf("bloom-query-worker-%d", i)
-		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
+		w := newWorker(id, g.workerConfig, g.queue, g.bloomShipper, g.pendingTasks, g.logger, g.workerMetrics)
 		svcs = append(svcs, w)
 	}
 	g.serviceMngr, err = services.NewManager(svcs...)
@@ -295,7 +288,7 @@ func (g *Gateway) running(ctx context.Context) error {
 }
 
 func (g *Gateway) stopping(_ error) error {
-	g.bloomStore.Stop()
+	g.bloomShipper.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 

@@ -74,7 +74,7 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 func Test_blockDownloader_downloadBlock(t *testing.T) {
 	tests := map[string]struct {
 		cacheEnabled                bool
-		expectedTotalGetBlocksCalls int
+		expectedTotalGetBlocksCalls int32
 	}{
 		"cache disabled": {
 			cacheEnabled:                false,
@@ -129,7 +129,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			case <-done:
 			}
 			require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
-			require.Equal(t, 20, blockClient.getBlockCalls)
+			require.Equal(t, int32(20), blockClient.getBlockCalls.Load())
 
 			blocksCh, errorsCh = downloader.downloadBlocks(context.Background(), "fake", blockReferences)
 			downloadedBlocks = make(map[string]any, len(blockReferences))
@@ -150,7 +150,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			case <-done:
 			}
 			require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
-			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls)
+			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls.Load())
 		})
 	}
 }
@@ -158,7 +158,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
 	tests := map[string]struct {
 		cacheEnabled                bool
-		expectedTotalGetBlocksCalls int
+		expectedTotalGetBlocksCalls int32
 	}{
 		"requests to blockClient must be deduplicated by blockPath if cache is enabled": {
 			cacheEnabled:                true,
@@ -195,7 +195,7 @@ func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
 			t.Cleanup(downloader.stop)
 			require.NoError(t, err)
 
-			blocksDownloadedCount := atomic.Uint32{}
+			var blocksDownloadedCount atomic.Uint32
 			mutex := sync.Mutex{}
 			multiError := util.MultiError{}
 			waitGroup := sync.WaitGroup{}
@@ -225,7 +225,7 @@ func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
 
 			require.NoError(t, multiError.Err())
 			require.Equal(t, uint32(10), blocksDownloadedCount.Load())
-			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls)
+			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls.Load())
 		})
 	}
 }
@@ -340,11 +340,11 @@ type blockSupplier func() LazyBlock
 type mockBlockClient struct {
 	responseDelay time.Duration
 	mockData      map[string]blockSupplier
-	getBlockCalls int
+	getBlockCalls atomic.Int32
 }
 
 func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (LazyBlock, error) {
-	m.getBlockCalls++
+	m.getBlockCalls.Inc()
 	time.Sleep(m.responseDelay)
 	supplier, exists := m.mockData[reference.BlockPath]
 	if exists {
