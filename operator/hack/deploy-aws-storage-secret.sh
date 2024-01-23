@@ -58,5 +58,5 @@ else
     )
 fi
 
-echo kubectl --ignore-not-found=true -n "${namespace}" delete secret test
-echo kubectl -n "${namespace}" create secret generic test "${create_secret_args[@]}"
+kubectl --ignore-not-found=true -n "${namespace}" delete secret test
+kubectl -n "${namespace}" create secret generic test "${create_secret_args[@]}"
