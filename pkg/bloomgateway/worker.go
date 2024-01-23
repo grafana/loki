@@ -162,13 +162,14 @@ func (w *worker) running(ctx context.Context) error {
 					tasksByDay[fromDay] = append(tasksByDay[fromDay], task)
 				} else {
 					level.Debug(w.logger).Log("msg", "task spans across multiple days", "from", fromDay, "through", throughDay)
-					for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
+					for i := fromDay; i.Before(throughDay); i = i.Add(Day) {
 						tasksByDay[i] = append(tasksByDay[i], task)
 					}
 				}
 			}
 
 			for day, tasks := range tasksByDay {
+
 				// Remove tasks that are already cancelled
 				tasks = slices.DeleteFunc(tasks, func(t Task) bool {
 					return t.Err() != nil

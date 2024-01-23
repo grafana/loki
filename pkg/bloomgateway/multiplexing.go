@@ -122,7 +122,7 @@ func NewTask(ctx context.Context, tenantID string, req *logproto.FilterChunkRefR
 // Copy returns a copy of the existing task but with a new slice of chunks
 func (t Task) Copy(refs []*logproto.GroupedChunkRefs) Task {
 	return Task{
-		ID:     t.ID,
+		ID:     ulid.ULID{}, // discard original ID
 		Tenant: t.Tenant,
 		Request: &logproto.FilterChunkRefRequest{
 			From:    t.Request.From,
