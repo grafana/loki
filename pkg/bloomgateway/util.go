@@ -73,16 +73,6 @@ func convertToChunkRefs(refs []*logproto.ShortRef) v1.ChunkRefs {
 	return result
 }
 
-// getFirstLast returns the first and last item of a fingerprint slice
-// It assumes an ascending sorted list of fingerprints.
-func getFirstLast[T any](s []T) (T, T) {
-	var zero T
-	if len(s) == 0 {
-		return zero, zero
-	}
-	return s[0], s[len(s)-1]
-}
-
 type boundedTasks struct {
 	blockRef bloomshipper.BlockRef
 	tasks    []Task
