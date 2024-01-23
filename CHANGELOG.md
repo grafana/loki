@@ -13,7 +13,7 @@
 * [11587](https://github.com/grafana/loki/pull/11587) **trevorwhitney** Fix semantics of label parsing logic of metrics and logs queries. Both only parse the first label if multiple extractions into the same label are requested.
 
 ##### Security
-* [117xx](https://github.com/grafana/loki/pull/117xx) Update `golang.org/x/crypto` to `v0.18.0`
+* [11745](https://github.com/grafana/loki/pull/11745) Update `golang.org/x/crypto` to `v0.18.0`
 
 ## 2.9.3 (2023-10-16)
 
