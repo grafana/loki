@@ -143,6 +143,7 @@ func (d *BloomPageDecoder) Err() error {
 
 type BloomPageHeader struct {
 	N, Offset, Len, DecompressedLen int
+	Hash                            uint32
 }
 
 func (h *BloomPageHeader) Encode(enc *encoding.Encbuf) {
@@ -150,6 +151,7 @@ func (h *BloomPageHeader) Encode(enc *encoding.Encbuf) {
 	enc.PutUvarint(h.Offset)
 	enc.PutUvarint(h.Len)
 	enc.PutUvarint(h.DecompressedLen)
+	enc.PutBE32(h.Hash)
 }
 
 func (h *BloomPageHeader) Decode(dec *encoding.Decbuf) error {
@@ -157,6 +159,7 @@ func (h *BloomPageHeader) Decode(dec *encoding.Decbuf) error {
 	h.Offset = dec.Uvarint()
 	h.Len = dec.Uvarint()
 	h.DecompressedLen = dec.Uvarint()
+	h.Hash = dec.Be32()
 	return dec.Err()
 }
 

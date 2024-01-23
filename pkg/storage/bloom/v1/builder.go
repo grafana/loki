@@ -233,6 +233,7 @@ func (b *BloomBlockBuilder) flushPage() error {
 		Offset:          b.offset,
 		Len:             compressedLen,
 		DecompressedLen: decompressedLen,
+		Hash:            crc32Hash.Sum32(),
 	}
 	b.pages = append(b.pages, header)
 	b.offset += compressedLen
