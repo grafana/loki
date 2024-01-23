@@ -99,7 +99,7 @@ func writeInt32(h hash.Hash32, value int32) {
 func writeUInt64(h hash.Hash32, value uint64) {
 	// Convert int32 to little-endian byte slice
 	bytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(bytes, uint64(value))
+	binary.BigEndian.PutUint64(bytes, value)
 	h.Write(bytes)
 }
 
