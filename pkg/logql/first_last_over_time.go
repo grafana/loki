@@ -34,7 +34,6 @@ type firstWithTimestampBatchRangeVectorIterator struct {
 	at []promql.Sample
 }
 
-// Step 7
 func (r *firstWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
@@ -140,19 +139,13 @@ func (e *firstOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 
 	var (
 		vec promql.Vector
-		ok  bool
 	)
-
-	// TODO: build index metric to vec pos
 
 	e.ts = e.ts.Add(e.step)
 	if e.ts.After(e.end) {
 		return false, 0, nil
 	}
 	ts := e.ts.UnixNano() / int64(time.Millisecond)
-
-	// Process first result
-	// len(e.matrices) >= 1 was check during creation
 
 	// Merge other results
 	for i, m := range e.matrices {
@@ -164,7 +157,7 @@ func (e *firstOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 			}
 
 			// Merge
-			if len(vec) < len(e.matrices) {
+			if len(vec) < len(m) {
 				vec = append(vec, promql.Sample{
 					Metric: series.Metric,
 					T:      series.Floats[0].T,
@@ -183,12 +176,6 @@ func (e *firstOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 	// Align vector timestamps with step
 	for i := range vec {
 		vec[i].T = ts
-	}
-
-	if len(e.matrices) == 1 {
-		//fmt.Println("just one matrix!!!")
-		//fmt.Println("length of vec: ", len(vec))
-		return ok, ts, SampleVector(vec)
 	}
 
 	if len(vec) == 0 {
@@ -257,19 +244,13 @@ func (e *lastOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 
 	var (
 		vec promql.Vector
-		ok  bool
 	)
-
-	// TODO: build index metric to vec pos
 
 	e.ts = e.ts.Add(e.step)
 	if e.ts.After(e.end) {
 		return false, 0, nil
 	}
 	ts := e.ts.UnixNano() / int64(time.Millisecond)
-
-	// Process first result
-	// len(e.matrices) >= 1 was check during creation
 
 	// Merge other results
 	for i, m := range e.matrices {
@@ -281,7 +262,7 @@ func (e *lastOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 			}
 
 			// Merge
-			if len(vec) < len(e.matrices) {
+			if len(vec) < len(m) {
 				vec = append(vec, promql.Sample{
 					Metric: series.Metric,
 					T:      series.Floats[0].T,
@@ -300,14 +281,6 @@ func (e *lastOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 	// Align vector timestamps with step
 	for i := range vec {
 		vec[i].T = ts
-	}
-
-	if len(e.matrices) == 1 {
-		return ok, ts, SampleVector(vec)
-	}
-
-	if len(vec) == 0 {
-		return e.hasNext(), ts, SampleVector(vec)
 	}
 
 	return true, ts, SampleVector(vec)
