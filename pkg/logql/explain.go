@@ -63,12 +63,8 @@ func (e *QuantileSketchVectorStepEvaluator) Explain(parent Node) {
 	e.inner.Explain(b)
 }
 
-func (e *firstOverTimeStepEvaluator) Explain(parent Node) {
+func (e *mergeOverTimeStepEvaluator) Explain(parent Node) {
 	parent.Child("MergeFirstOverTime")
-}
-
-func (e *lastOverTimeStepEvaluator) Explain(parent Node) {
-	parent.Child("MergeLastOverTime")
 }
 
 func (EmptyEvaluator) Explain(parent Node) {
