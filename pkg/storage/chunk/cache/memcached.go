@@ -11,12 +11,18 @@ import (
 	"github.com/go-kit/log"
 	instr "github.com/grafana/dskit/instrument"
 	"github.com/grafana/gomemcache/memcache"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/math"
+)
+
+var (
+	ErrMemcachedFetchStoppedByClient  = errors.New("memcached fetch stopped by client")
+	ErrMemcachedWorkerStoppedByClient = errors.New("memcached worker stopped by client")
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -177,6 +183,12 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
 			select {
 			case <-c.closed:
+				// This is just return from the goroutine. We return correct error `ErrMemcachedWorkerStoppedByClient` during
+				// results creation below which is what sent to client calling this function.
+				return
+			case <-ctx.Done():
+				// This is just return from the goroutine. We return correct error `ctx.Err()` during
+				// results creation below which is what sent to client calling this function.
 				return
 			default:
 				c.inputCh <- &work{
@@ -205,6 +217,10 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		// Also we do close(resultsCh) in the same goroutine so <-resultCh may never return.
 		select {
 		case <-c.closed:
+			err = ErrMemcachedWorkerStoppedByClient
+			return
+		case <-ctx.Done():
+			err = errors.Wrap(ctx.Err(), ErrMemcachedFetchStoppedByClient.Error())
 			return
 		default:
 			result := <-resultsCh
@@ -214,11 +230,14 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	close(resultsCh)
 
 	for _, result := range results {
-		found = append(found, result.found...)
-		bufs = append(bufs, result.bufs...)
-		missed = append(missed, result.missed...)
-		if result.err != nil {
-			err = result.err
+		// Some results may be nil if passed `ctx` is canceled or timeout before completion.
+		if result != nil {
+			found = append(found, result.found...)
+			bufs = append(bufs, result.bufs...)
+			missed = append(missed, result.missed...)
+			if result.err != nil {
+				err = result.err
+			}
 		}
 	}
 
