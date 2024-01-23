@@ -238,7 +238,6 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
           distributor:: [
             utils.selector.eq('namespace', '$namespace'),
             utils.selector.re('job', '.+-distributor-http'),
-            utils.selector.eq('route', 'loki_api_v1_push'),
           ],
           ingester:: [
             utils.selector.eq('namespace', '$namespace'),
