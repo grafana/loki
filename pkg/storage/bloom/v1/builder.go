@@ -80,10 +80,12 @@ func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) 
 	if err != nil {
 		return 0, errors.Wrap(err, "closing bloom file")
 	}
-	if err := b.index.Close(); err != nil {
+	checksum2, err := b.index.Close()
+
+	if err != nil {
 		return 0, errors.Wrap(err, "closing series file")
 	}
-	return checksum, nil
+	return checksum + checksum2, nil
 }
 
 func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
@@ -414,10 +416,10 @@ func (b *IndexBuilder) flushPage() error {
 	return nil
 }
 
-func (b *IndexBuilder) Close() error {
+func (b *IndexBuilder) Close() (uint32, error) {
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
-			return errors.Wrap(err, "flushing final series page")
+			return 0, errors.Wrap(err, "flushing final series page")
 		}
 	}
 
@@ -437,9 +439,9 @@ func (b *IndexBuilder) Close() error {
 	b.scratch.PutHash(crc32Hash)
 	_, err := b.writer.Write(b.scratch.Get())
 	if err != nil {
-		return errors.Wrap(err, "writing series page headers")
+		return 0, errors.Wrap(err, "writing series page headers")
 	}
-	return errors.Wrap(b.writer.Close(), "closing series writer")
+	return crc32Hash.Sum32(), errors.Wrap(b.writer.Close(), "closing series writer")
 }
 
 // SortBlocksIntoOverlappingGroups sorts a list of blocks into a sorted list of lists,
@@ -576,8 +578,9 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	if err != nil {
 		return 0, errors.Wrap(err, "closing bloom file")
 	}
-	if err := builder.index.Close(); err != nil {
+	checksum2, err := builder.index.Close()
+	if err != nil {
 		return 0, errors.Wrap(err, "closing series file")
 	}
-	return checksum, nil
+	return checksum + checksum2, nil
 }
