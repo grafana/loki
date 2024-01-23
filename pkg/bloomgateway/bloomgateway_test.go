@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -183,6 +184,51 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		MaxOutstandingPerTenant: 1024,
 	}
 
+	t.Run("shipper error is propagated", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		require.NoError(t, err)
+
+		now := mktime("2023-10-03 10:00")
+
+		bqs, data := createBlockQueriers(t, 10, now.Add(-24*time.Hour), now, 0, 1000)
+		mockStore := newMockBloomStore(bqs)
+		mockStore.err = errors.New("failed to fetch block")
+		gw.bloomShipper = mockStore
+
+		err = gw.initServices()
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 10)
+
+		// saturate workers
+		// then send additional request
+		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
+			req := &logproto.FilterChunkRefRequest{
+				From:    now.Add(-24 * time.Hour),
+				Through: now,
+				Refs:    groupRefs(t, chunkRefs),
+				Filters: []syntax.LineFilter{
+					{Ty: labels.MatchEqual, Match: "does not match"},
+				},
+			}
+
+			ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx = user.InjectOrgID(ctx, tenantID)
+			t.Cleanup(cancelFn)
+
+			res, err := gw.FilterChunkRefs(ctx, req)
+			require.ErrorContainsf(t, err, "request failed: failed to fetch block", "%+v", res)
+		}
+	})
+
 	t.Run("request cancellation does not result in channel locking", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
@@ -226,7 +272,6 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			res, err := gw.FilterChunkRefs(ctx, req)
 			require.ErrorContainsf(t, err, context.DeadlineExceeded.Error(), "%+v", res)
 		}
-
 	})
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
