@@ -1079,7 +1079,7 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	tenantID := randStringRunes()
 
 	clu := cluster.New(
-		level.DebugValue(),
+		level.WarnValue(),
 		cluster.SchemaWithTSDB,
 		func(c *cluster.Cluster) { c.SetSchemaVer("v13") },
 	)
