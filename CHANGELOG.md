@@ -11,7 +11,7 @@
 
 ##### Security
 
-* [11743](https://github.com/grafana/loki/pull/11743) Update `https://github.com/grafana/loki/pull/11743` to `v0.18.0`
+* [11743](https://github.com/grafana/loki/pull/11743) Update `golang.org/x/crypto` to `v0.18.0`
 
 ##### Changes
 
