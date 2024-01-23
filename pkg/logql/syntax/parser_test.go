@@ -3140,11 +3140,23 @@ var ParseTestCases = []struct {
 	},
 	{
 		in: `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
-		exp: newPipelineExpr(
-			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
-			MultiStageExpr{
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStages: MultiStageExpr{
 				&LineFilterExpr{
-					Left: newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", "foo"), newLineFilterExpr(labels.MatchEqual, "", "bar")),
+					Left: newOrLineFilter(
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    labels.MatchEqual,
+								Match: "foo",
+							},
+						},
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    labels.MatchEqual,
+								Match: "bar",
+							},
+						}),
 					LineFilter: LineFilter{
 						Ty:    labels.MatchEqual,
 						Match: "buzz",
@@ -3159,7 +3171,7 @@ var ParseTestCases = []struct {
 					IsOrChild: false,
 				},
 			},
-		),
+		},
 	},
 }
 
