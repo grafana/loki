@@ -237,7 +237,7 @@ func TestChunkMetasStats(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf(tc.desc), func(t *testing.T) {
-			stats := ChunkMetas(tc.chks).Stats(tc.from, tc.through)
+			stats := ChunkMetas(tc.chks).Stats(tc.from, tc.through, true)
 			require.Equal(t, tc.exp, stats)
 		})
 	}
