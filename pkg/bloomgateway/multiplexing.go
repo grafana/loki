@@ -85,7 +85,6 @@ func (t Task) ChunkIterForDay(day time.Time) *FilterIter[*logproto.GroupedChunkR
 	}
 
 	filterFn := func(a *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
-		fmt.Println("filter", a.Fingerprint)
 		minTs, maxTs := getFromThrough(a.Refs)
 
 		// in most cases, all chunks are within day range
