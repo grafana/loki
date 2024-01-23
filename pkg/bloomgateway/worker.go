@@ -140,6 +140,11 @@ func (w *worker) running(ctx context.Context) error {
 			tasksByDay := make(map[time.Time][]Task)
 
 			for _, item := range items {
+				if item == nil {
+					// this should never happen, but it's a safety measure
+					w.queue.ReleaseRequests(items)
+					return errors.New("dequeued item is nil")
+				}
 				task, ok := item.(Task)
 				if !ok {
 					// This really should never happen, because only the bloom gateway itself can enqueue tasks.
