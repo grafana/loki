@@ -65,13 +65,13 @@ func TestAzureExtract(t *testing.T) {
 	type test struct {
 		name    string
 		secret  *corev1.Secret
-		wantErr bool
+		wantErr string
 	}
 	table := []test{
 		{
 			name:    "missing environment",
 			secret:  &corev1.Secret{},
-			wantErr: true,
+			wantErr: "missing secret field",
 		},
 		{
 			name: "missing container",
@@ -80,7 +80,7 @@ func TestAzureExtract(t *testing.T) {
 					"environment": []byte("here"),
 				},
 			},
-			wantErr: true,
+			wantErr: "missing secret field",
 		},
 		{
 			name: "missing account_name",
@@ -90,10 +90,10 @@ func TestAzureExtract(t *testing.T) {
 					"container":   []byte("this,that"),
 				},
 			},
-			wantErr: true,
+			wantErr: "missing secret field",
 		},
 		{
-			name: "missing account_key",
+			name: "no account_key or client_id",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -102,10 +102,64 @@ func TestAzureExtract(t *testing.T) {
 					"account_name": []byte("id"),
 				},
 			},
-			wantErr: true,
+			wantErr: errAzureNoCredentials.Error(),
 		},
 		{
-			name: "all mandatory set",
+			name: "both account_key and client_id set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"account_key":  []byte("test-account-key"),
+					"client_id":    []byte("test-client-id"),
+				},
+			},
+			wantErr: errAzureMixedCredentials.Error(),
+		},
+		{
+			name: "missing tenant_id",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"client_id":    []byte("test-client-id"),
+				},
+			},
+			wantErr: "missing secret field",
+		},
+		{
+			name: "missing subscription_id",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment": []byte("here"),
+					"container":   []byte("this,that"),
+					"client_id":   []byte("test-client-id"),
+					"tenant_id":   []byte("test-tenant-id"),
+				},
+			},
+			wantErr: "missing secret field",
+		},
+		{
+			name: "missing region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":     []byte("here"),
+					"container":       []byte("this,that"),
+					"client_id":       []byte("test-client-id"),
+					"tenant_id":       []byte("test-tenant-id"),
+					"subscription_id": []byte("test-subscription"),
+				},
+			},
+			wantErr: "missing secret field",
+		},
+		{
+			name: "mandatory for normal authentication set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -113,6 +167,21 @@ func TestAzureExtract(t *testing.T) {
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
 					"account_key":  []byte("secret"),
+				},
+			},
+		},
+		{
+			name: "mandatory for workload-identity set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":     []byte("here"),
+					"container":       []byte("this,that"),
+					"account_name":    []byte("test-account-name"),
+					"client_id":       []byte("test-client-id"),
+					"tenant_id":       []byte("test-tenant-id"),
+					"subscription_id": []byte("test-subscription-id"),
+					"region":          []byte("test-region"),
 				},
 			},
 		},
@@ -136,14 +205,13 @@ func TestAzureExtract(t *testing.T) {
 			t.Parallel()
 
 			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure)
-			if !tst.wantErr {
+			if tst.wantErr == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretAzure)
-			}
-			if tst.wantErr {
-				require.NotNil(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantErr)
 			}
 		})
 	}

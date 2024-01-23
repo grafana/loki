@@ -13,7 +13,13 @@ common:
       environment: {{ .Env }}
       container_name: {{ .Container }}
       account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
+      {{- if .WorkloadIdentity }}
+      use_federated_token: true
+      client_id: ${AZURE_CLIENT_ID}
+      tenant_id: ${AZURE_TENANT_ID}
+      {{- else }}
       account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
+      {{- end }}
       {{- with .EndpointSuffix }}
       endpoint_suffix: {{ . }}
       {{- end }}

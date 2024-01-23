@@ -56,11 +56,11 @@ func ConfigureStatefulSet(d *appsv1.StatefulSet, opts Options) error {
 // With this, the deployment will expose credentials specific environment variables.
 func configureDeployment(d *appsv1.Deployment, opts Options) error {
 	p := ensureObjectStoreCredentials(&d.Spec.Template.Spec, opts)
-
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
 
+	ensurePodLabels(&d.Spec.Template, opts)
 	return nil
 }
 
@@ -83,11 +83,11 @@ func configureDeploymentCA(d *appsv1.Deployment, tls *TLSConfig) error {
 // With this, the statefulset will expose credentials specific environment variable.
 func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
 	p := ensureObjectStoreCredentials(&s.Spec.Template.Spec, opts)
-
 	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
 
+	ensurePodLabels(&s.Spec.Template, opts)
 	return nil
 }
 
@@ -183,8 +183,30 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 			envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
 			envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
 		}
+	case lokiv1.ObjectStorageSecretAzure:
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
+			envVarFromSecret(EnvAzureClientID, opts.SecretName, KeyAzureStorageClientID),
+			envVarFromSecret(EnvAzureTenantID, opts.SecretName, KeyAzureStorageTenantID),
+			envVarFromSecret(EnvAzureSubscriptionID, opts.SecretName, KeyAzureStorageSubscriptionID),
+			envVarFromSecret(EnvAzureRegion, opts.SecretName, KeyAzureStorageRegion),
+			envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
+		}
 	default:
 		return []corev1.EnvVar{}
+	}
+}
+
+func ensurePodLabels(templateSpec *corev1.PodTemplateSpec, opts Options) {
+	switch opts.SharedStore {
+	case lokiv1.ObjectStorageSecretAzure:
+		if managedAuthEnabled(opts) {
+			if templateSpec.Labels == nil {
+				templateSpec.Labels = map[string]string{}
+			}
+
+			templateSpec.Labels[azurePodLabelWorkloadIdentity] = "true"
+		}
 	}
 }
 
@@ -261,6 +283,8 @@ func managedAuthEnabled(opts Options) bool {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
 		return opts.S3 != nil && opts.S3.STS
+	case lokiv1.ObjectStorageSecretAzure:
+		return opts.Azure != nil && opts.Azure.WorkloadIdentity
 	default:
 		return false
 	}
@@ -281,6 +305,8 @@ func saTokenVolumeMount(opts Options) corev1.VolumeMount {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
 		tokenPath = opts.S3.WebIdentityTokenFile
+	case lokiv1.ObjectStorageSecretAzure:
+		tokenPath = azureTokenVolumeDirectory
 	}
 	return corev1.VolumeMount{
 		Name:      saTokenVolumeName,
@@ -300,6 +326,8 @@ func saTokenVolume(opts Options) corev1.Volume {
 		if opts.OpenShiftEnabled {
 			audience = awsOpenShiftAudience
 		}
+	case lokiv1.ObjectStorageSecretAzure:
+		audience = azureDefaultAudience
 	}
 	return corev1.Volume{
 		Name: saTokenVolumeName,

@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -159,6 +160,146 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "test",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "object storage Azure with WIF",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				Azure: &AzureStorageConfig{
+					WorkloadIdentity: true,
+				},
+			},
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								azurePodLabelWorkloadIdentity: "true",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      saTokenVolumeName,
+											ReadOnly:  false,
+											MountPath: "/var/run/secrets/azure/serviceaccount",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAzureStorageAccountName,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageAccountName,
+												},
+											},
+										},
+										{
+											Name: EnvAzureClientID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageClientID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureTenantID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageTenantID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureSubscriptionID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageSubscriptionID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureRegion,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageRegion,
+												},
+											},
+										},
+										{
+											Name:  EnvAzureFederatedTokenFile,
+											Value: "/var/run/secrets/azure/serviceaccount/token",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: saTokenVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										Projected: &corev1.ProjectedVolumeSource{
+											Sources: []corev1.VolumeProjection{
+												{
+													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+														Audience:          azureDefaultAudience,
+														ExpirationSeconds: ptr.To[int64](3600),
+														Path:              corev1.ServiceAccountTokenKey,
+													},
+												},
+											},
 										},
 									},
 								},

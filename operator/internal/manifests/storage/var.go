@@ -13,12 +13,22 @@ const (
 	EnvAWSSseKmsEncryptionContext = "AWS_SSE_KMS_ENCRYPTION_CONTEXT"
 	// EnvAWSRoleArn is the environment variable to specify the AWS role ARN secret for the federated identity workflow.
 	EnvAWSRoleArn = "AWS_ROLE_ARN"
-	// EnvAWSWebIdentityToken is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
+	// EnvAWSWebIdentityTokenFile is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
 	EnvAWSWebIdentityTokenFile = "AWS_WEB_IDENTITY_TOKEN_FILE"
 	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
 	EnvAzureStorageAccountName = "AZURE_STORAGE_ACCOUNT_NAME"
 	// EnvAzureStorageAccountKey is the environment variable to specify the Azure storage account key to access the container.
 	EnvAzureStorageAccountKey = "AZURE_STORAGE_ACCOUNT_KEY"
+	// EnvAzureClientID is the environment variable used to pass the Managed Identity client-ID to the container.
+	EnvAzureClientID = "AZURE_CLIENT_ID"
+	// EnvAzureTenantID is the environment variable used to pass the Managed Identity tenant-ID to the container.
+	EnvAzureTenantID = "AZURE_TENANT_ID"
+	// EnvAzureSubscriptionID is the environment variable used to pass the Managed Identity subscription-ID to the container.
+	EnvAzureSubscriptionID = "AZURE_SUBSCRIPTION_ID"
+	// EnvAzureRegion is the environment variable used to pass the Azure region to the container.
+	EnvAzureRegion = "AZURE_REGION"
+	// EnvAzureFederatedTokenFile is the environment variable used to store the path to the Managed Identity token.
+	EnvAzureFederatedTokenFile = "AZURE_FEDERATED_TOKEN_FILE"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
 	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
 	// EnvSwiftPassword is the environment variable to specify the OpenStack Swift password.
@@ -60,10 +70,18 @@ const (
 	KeyAzureStorageAccountKey = "account_key"
 	// KeyAzureStorageAccountName is the secret data key for the Azure storage account name.
 	KeyAzureStorageAccountName = "account_name"
+	// KeyAzureStorageClientID contains the UUID of the Managed Identity accessing the storage.
+	KeyAzureStorageClientID = "client_id"
+	// KeyAzureStorageTenantID contains the UUID of the Tenant hosting the Managed Identity.
+	KeyAzureStorageTenantID = "tenant_id"
+	// KeyAzureStorageSubscriptionID contains the UUID of the subscription hosting the Managed Identity.
+	KeyAzureStorageSubscriptionID = "subscription_id"
 	// KeyAzureStorageContainerName is the secret data key for the Azure storage container name.
 	KeyAzureStorageContainerName = "container"
 	// KeyAzureStorageEndpointSuffix is the secret data key for the Azure storage endpoint URL suffix.
 	KeyAzureStorageEndpointSuffix = "endpoint_suffix"
+	// KeyAzureStorageRegion contains the region the storage container is situated in.
+	KeyAzureStorageRegion = "region"
 	// KeyAzureEnvironmentName is the secret data key for the Azure cloud environment name.
 	KeyAzureEnvironmentName = "environment"
 
@@ -112,4 +130,8 @@ const (
 
 	awsDefaultAudience   = "sts.amazonaws.com"
 	awsOpenShiftAudience = "openshift"
+
+	azureDefaultAudience          = "api://AzureADTokenExchange"
+	azurePodLabelWorkloadIdentity = "azure.workload.identity/use"
+	azureTokenVolumeDirectory     = "/var/run/secrets/azure/serviceaccount"
 )

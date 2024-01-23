@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -17,7 +18,12 @@ import (
 	"github.com/grafana/loki/operator/internal/status"
 )
 
-var hashSeparator = []byte(",")
+var (
+	errAzureNoCredentials    = errors.New("azure storage secret does contain neither account_key or client_id")
+	errAzureMixedCredentials = errors.New("azure storage secret can not contain both account_key and client_id")
+
+	hashSeparator = []byte(",")
+)
 
 func getSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*corev1.Secret, error) {
 	var storageSecret corev1.Secret
@@ -109,23 +115,61 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 	if len(container) == 0 {
 		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageContainerName)
 	}
-	name := s.Data[storage.KeyAzureStorageAccountName]
-	if len(name) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountName)
-	}
-	key := s.Data[storage.KeyAzureStorageAccountKey]
-	if len(key) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountKey)
+	workloadIdentity, err := validateAzureCredentials(s)
+	if err != nil {
+		return nil, err
 	}
 
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 
 	return &storage.AzureStorageConfig{
-		Env:            string(env),
-		Container:      string(container),
-		EndpointSuffix: string(endpointSuffix),
+		Env:              string(env),
+		Container:        string(container),
+		EndpointSuffix:   string(endpointSuffix),
+		WorkloadIdentity: workloadIdentity,
 	}, nil
+}
+
+func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err error) {
+	accountName := s.Data[storage.KeyAzureStorageAccountName]
+	accountKey := s.Data[storage.KeyAzureStorageAccountKey]
+	clientID := s.Data[storage.KeyAzureStorageClientID]
+	tenantID := s.Data[storage.KeyAzureStorageTenantID]
+	subscriptionID := s.Data[storage.KeyAzureStorageSubscriptionID]
+	region := s.Data[storage.KeyAzureStorageRegion]
+
+	if len(accountName) == 0 {
+		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountName)
+	}
+
+	if len(accountKey) == 0 && len(clientID) == 0 {
+		return false, errAzureNoCredentials
+	}
+
+	if len(accountKey) > 0 && len(clientID) > 0 {
+		return false, errAzureMixedCredentials
+	}
+
+	if len(accountKey) > 0 {
+		// have both account_name and account_key -> no workload identity federation
+		return false, nil
+	}
+
+	// assume workload-identity from here on
+	if len(tenantID) == 0 {
+		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageTenantID)
+	}
+
+	if len(subscriptionID) == 0 {
+		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageSubscriptionID)
+	}
+
+	if len(region) == 0 {
+		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageRegion)
+	}
+
+	return true, nil
 }
 
 func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {
