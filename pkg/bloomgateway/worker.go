@@ -247,15 +247,15 @@ func (w *worker) stopping(err error) error {
 	return nil
 }
 
-func (w *worker) processBlocksWithCallback(ctx context.Context, tenant string, day time.Time, boundedRefs []boundedTasks) error {
-	blockRefs := make([]bloomshipper.BlockRef, 0, len(boundedRefs))
-	for _, b := range boundedRefs {
-		blockRefs = append(blockRefs, b.blockRef)
+func (w *worker) processBlocksWithCallback(ctx context.Context, tenant string, day time.Time, partitionedTasks []boundedTasks) error {
+	blockRefs := make([]bloomshipper.BlockRef, 0, len(partitionedTasks))
+	for _, pt := range partitionedTasks {
+		blockRefs = append(blockRefs, pt.blockRef)
 	}
 	return w.shipper.Fetch(ctx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
-		for _, b := range boundedRefs {
-			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
-				return w.processBlock(ctx, bq, day, b.tasks)
+		for _, pt := range partitionedTasks {
+			if pt.blockRef.MinFingerprint == minFp && pt.blockRef.MaxFingerprint == maxFp {
+				return w.processBlock(ctx, bq, day, pt.tasks)
 			}
 		}
 		return fmt.Errorf("no overlapping blocks for range %x-%x", minFp, maxFp)
