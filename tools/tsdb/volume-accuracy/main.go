@@ -10,12 +10,14 @@ import (
 
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 // go build ./tools/tsdb/volume-accuracy && LOKI_ADDR="https://..." LOKI_USERNAME="***" LOKI_PASSWORD="***" ./tools/tsdb/volume-accuracy/volume-accuracy
@@ -45,9 +47,17 @@ func main() {
 
 	acc := &accumulation{}
 
+	matchers := []*labels.Matcher{
+		{
+			Type:  labels.MatchEqual,
+			Name:  "cluster",
+			Value: "dev-us-central-0",
+		},
+	}
+
 	for _, now := range starts {
 		for _, interval := range intervals {
-			err := getStreamVolume(client, acc, now, interval)
+			err := getStreamVolume(client, acc, now, interval, matchers)
 			if err != nil {
 				log.Fatalf("%s", err)
 			}
@@ -57,8 +67,9 @@ func main() {
 	acc.Write(os.Stdout)
 }
 
-func getStreamVolume(client client.Client, acc *accumulation, now time.Time, interval model.Duration) error {
-	instantQueryString := fmt.Sprintf(`sum by (cluster) (bytes_over_time({cluster="prod-us-central-0"}[%s]))`, interval)
+func getStreamVolume(client client.Client, acc *accumulation, now time.Time, interval model.Duration, matchers []*labels.Matcher) error {
+	expr := syntax.MatchersExpr{Mts: matchers}
+	instantQueryString := fmt.Sprintf(`sum by (cluster) (bytes_over_time(%s[%s]))`, expr.String(), interval)
 	instantQuery := newQuery(instantQueryString, now)
 
 	resp, err := client.Query(instantQuery.QueryString, instantQuery.Limit, instantQuery.Start, logproto.BACKWARD, false)
@@ -67,7 +78,7 @@ func getStreamVolume(client client.Client, acc *accumulation, now time.Time, int
 	}
 	byteOverTimeResult := resp.Data.Result.(loghttp.Vector)
 
-	volumeQueryString := `{cluster="prod-us-central-0"}`
+	volumeQueryString := expr.String()
 	volumeQuery := newVolumeQuery(volumeQueryString, now, time.Duration(interval))
 	vr, err := client.GetVolume(volumeQuery)
 	if err != nil {
