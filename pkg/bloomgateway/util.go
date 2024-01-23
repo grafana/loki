@@ -15,7 +15,7 @@ import (
 )
 
 func getDayTime(ts model.Time) time.Time {
-	return time.Date(ts.Time().Year(), ts.Time().Month(), ts.Time().Day(), 0, 0, 0, 0, time.UTC)
+	return ts.Time().UTC().Truncate(Day)
 }
 
 // getFromThrough assumes a list of ShortRefs sorted by From time
