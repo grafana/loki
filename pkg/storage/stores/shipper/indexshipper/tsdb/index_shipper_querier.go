@@ -134,31 +134,32 @@ func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, t
 	return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
-type resultAccumulator struct {
+type resultAccumulator[V, R any] struct {
 	mtx   sync.Mutex
-	items []interface{}
-	merge func(xs []interface{}) (interface{}, error)
+	items []V
+	merge func(xs []V) (R, error)
 }
 
-func newResultAccumulator(merge func(xs []interface{}) (interface{}, error)) *resultAccumulator {
-	return &resultAccumulator{
+func newResultAccumulator[V, R any](merge func(xs []V) (R, error)) *resultAccumulator[V, R] {
+	return &resultAccumulator[V, R]{
 		merge: merge,
 	}
 }
 
-func (acc *resultAccumulator) Add(item interface{}) {
+func (acc *resultAccumulator[V, R]) Add(item V) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 	acc.items = append(acc.items, item)
 
 }
 
-func (acc *resultAccumulator) Merge() (interface{}, error) {
+func (acc *resultAccumulator[V, R]) Merge() (R, error) {
 	acc.mtx.Lock()
 	defer acc.mtx.Unlock()
 
 	if len(acc.items) == 0 {
-		return nil, ErrEmptyAccumulator
+		var empty R
+		return empty, ErrEmptyAccumulator
 	}
 
 	return acc.merge(acc.items)
