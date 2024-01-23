@@ -10,6 +10,8 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 )
 
+// newFirstWithTimestampIterator returns an iterator the returns the first value
+// of a windowed aggregation.
 func newFirstWithTimestampIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64) RangeVectorIterator {
@@ -52,6 +54,14 @@ func (r *firstWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 	return ts, SampleVector(r.at)
 }
 
+// The inner batchRangeVectorIterator has preloaded valid samples into each
+// series (see the window filed and load). They're in increasing timestamp
+// order (see next, moves the current timestamp forward by step). So this
+// means that for each downstreamed shard of a first_over_time, selecting the
+// first sample here in each iterator is getting us the earliest timestamped
+// value. Later on when we merge we select the earliest from all the shards.
+//
+// For last_over_time we would do the opposite and select the last element.
 func (r *firstWithTimestampBatchRangeVectorIterator) agg(samples []promql.FPoint) promql.FPoint {
 	if len(samples) == 0 {
 		return promql.FPoint{F: math.NaN(), T: 0}
@@ -78,6 +88,8 @@ func newLastWithTimestampIterator(
 	}
 }
 
+// lastWithTimestampBatchRangeVectorIterator returns an iterator that returns the
+// last point in a windowed aggregation.
 type lastWithTimestampBatchRangeVectorIterator struct {
 	*batchRangeVectorIterator
 	at []promql.Sample
@@ -129,7 +141,6 @@ func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 
 	// Merge other results
 	for i, m := range e.matrices {
-		// TODO: verify length and same labels/metric
 		for j, series := range m {
 
 			if len(series.Floats) == 0 || !e.inRange(series.Floats[0].T, ts) {
@@ -137,7 +148,6 @@ func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 			}
 
 			vec = e.merge(vec, j, len(m), series)
-
 			e.pop(i, j)
 		}
 	}
@@ -154,6 +164,7 @@ func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 	return true, ts, SampleVector(vec)
 }
 
+// pop drops the float of the s'th series in the r'th matrix.
 func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 	if len(e.matrices[r][s].Floats) <= 1 {
 		e.matrices[r][s].Floats = nil
@@ -162,9 +173,9 @@ func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 	e.matrices[r][s].Floats = e.matrices[r][s].Floats[1:]
 }
 
+// inRange returns true if t is in step range of ts.
 func (e *mergeOverTimeStepEvaluator) inRange(t, ts int64) bool {
-	previous := ts - e.step.Milliseconds()
-	return previous <= t && t < ts
+	return (ts-e.step.Milliseconds()) <= t && t < ts
 }
 
 func (e *mergeOverTimeStepEvaluator) hasNext() bool {
