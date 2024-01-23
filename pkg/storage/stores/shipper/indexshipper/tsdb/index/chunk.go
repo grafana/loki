@@ -146,6 +146,16 @@ func (c ChunkMetas) Stats(from, through int64) ChunkStats {
 	res := ChunkStats{}
 
 	// TODO: deduplicate
+	if len(c) > 1 {
+		last := c[0]
+		for i := 1; i < len(c); i++ {
+			cur := c[i]
+			if cur.MinTime < last.MinTime {
+			}
+
+			...
+		}
+	}
 
 	for _, chk := range c {
 		if overlap(from, through, chk.MinTime, chk.MaxTime) {
