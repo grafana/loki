@@ -1,0 +1,41 @@
+fail_fast: false
+default_install_hook_types: [pre-commit, commit-msg]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+  - repo: local
+    hooks:
+      - id: conventional-commit-msg-validation
+        name: commit message conventional validation
+        language: pygrep
+        entry: '^(?:fixup! )?(breaking|build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\([\w\-\.]+\))?(!)?: ([\w `])+([\s\S]*)'
+        args: [--multiline, --negate]
+        stages: [commit-msg]
+      - id: commit-msg-needs-to-be-signed-off
+        name: commit message needs to be signed off
+        language: pygrep
+        entry: "^Signed-off-by:"
+        args: [--multiline, --negate]
+        stages: [commit-msg]
+      - id: gofmt
+        name: gofmt
+        description: Format files with gofmt.
+        entry: gofmt -l
+        language: golang
+        files: \.go$
+        args: []
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.16.3
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.52.2
+    hooks:
+      - id: golangci-lint
