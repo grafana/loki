@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"hash"
 	"io"
@@ -86,6 +87,34 @@ func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) 
 		return 0, errors.Wrap(err, "closing series file")
 	}
 	return checksum + checksum2, nil
+}
+
+func writeInt32(h hash.Hash32, value int32) {
+	// Convert int32 to little-endian byte slice
+	bytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(bytes, uint32(value))
+	h.Write(bytes)
+}
+
+func writeUInt64(h hash.Hash32, value uint64) {
+	// Convert int32 to little-endian byte slice
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(value))
+	h.Write(bytes)
+}
+
+func (b *BlockBuilder) calcuateBlockOptionsHash() uint32 {
+	crc32Hash := Crc32HashPool.Get()
+	defer Crc32HashPool.Put(crc32Hash)
+	writeInt32(crc32Hash, int32(b.opts.schema.version))
+	writeInt32(crc32Hash, int32(b.opts.schema.encoding))
+	writeUInt64(crc32Hash, b.opts.schema.nGramLength)
+	writeUInt64(crc32Hash, b.opts.schema.nGramSkip)
+	writeUInt64(crc32Hash, uint64(b.opts.SeriesPageSize))
+	writeUInt64(crc32Hash, uint64(b.opts.BloomPageSize))
+	writeUInt64(crc32Hash, uint64(b.opts.BlockSize))
+
+	return crc32Hash.Sum32()
 }
 
 func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
@@ -582,5 +611,5 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	if err != nil {
 		return 0, errors.Wrap(err, "closing series file")
 	}
-	return checksum + checksum2, nil
+	return checksum + checksum2 + builder.calcuateBlockOptionsHash(), nil
 }
