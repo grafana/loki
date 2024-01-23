@@ -140,21 +140,34 @@ func (c ChunkMetas) Finalize() ChunkMetas {
 }
 
 // Stats returns the ChunkStats. It tries to accommodate for overlapping chunks.
-func (c ChunkMetas) Stats(from, through int64) ChunkStats {
+func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 	sort.Sort(c)
 
 	res := ChunkStats{}
 
-	// TODO: deduplicate
-	if len(c) > 1 {
+	if len(c) > 1 && deduplicate {
 		last := c[0]
-		for i := 1; i < len(c); i++ {
-			cur := c[i]
-			if cur.MinTime < last.MinTime {
+		n := 1
+		for _, cur := range c[1:] {
+			// Skip chunk if it's a subset of the last one
+			if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
+				continue
 			}
+			c[n] = cur
 
-			...
+			if cur.MinTime < last.MaxTime {
+				// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
+				// -> [last.MaxTime, cur.MaxTime) is the new interval
+				// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))
+				factor := float64(cur.MaxTime-last.MaxTime) / float64(cur.MaxTime-cur.MinTime)
+				c[n].KB = uint32(factor * float64(c[n].KB))
+				c[n].Entries = uint32(factor * float64(c[n].Entries))
+				c[n].MinTime = last.MaxTime
+			}
+			last = c[n]
+			n++
 		}
+		c = c[:n]
 	}
 
 	for _, chk := range c {

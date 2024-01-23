@@ -2331,7 +2331,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 		}
 	}
 
-	return chunkMetas.Stats(from, through), d.Err()
+	return chunkMetas.Stats(from, through, false), d.Err()
 
 }
 
@@ -2345,7 +2345,7 @@ func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, 
 		}
 		prevMaxT = chunkMeta.MaxTime
 	}
-	return chunkMetas.Stats(from, through), d.Err()
+	return chunkMetas.Stats(from, through, false), d.Err()
 }
 
 func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
@@ -2357,7 +2357,7 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 		return ChunkStats{}, err
 	}
 
-	return ChunkMetas(chks).Stats(from, through), nil
+	return ChunkMetas(chks).Stats(from, through, false), nil
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
