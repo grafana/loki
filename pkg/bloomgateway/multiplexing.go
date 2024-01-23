@@ -74,61 +74,58 @@ func (t Task) Bounds() (time.Time, time.Time) {
 	return getDayTime(t.Request.From), getDayTime(t.Request.Through)
 }
 
-func (t Task) ChunkIterForDay(day time.Time) v1.Iterator[*logproto.GroupedChunkRefs] {
-	cf := filterGroupedChunkRefsByDay{day: day}
+func (t Task) ChunkIterForDay(day time.Time) *FilterIter[*logproto.GroupedChunkRefs] {
+
+	containsFn := func(a *logproto.GroupedChunkRefs) bool {
+		from, through := getFromThrough(a.Refs)
+		if from.Time().After(day.Add(Day)) || through.Time().Before(day) {
+			return false
+		}
+		return true
+	}
+
+	filterFn := func(a *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
+		fmt.Println("filter", a.Fingerprint)
+		minTs, maxTs := getFromThrough(a.Refs)
+
+		// in most cases, all chunks are within day range
+		if minTs.Time().Compare(day) >= 0 && maxTs.Time().Before(day.Add(Day)) {
+			return a
+		}
+
+		// case where certain chunks are outside of day range
+		// using binary search to get min and max index of chunks that fall into the day range
+		min := sort.Search(len(a.Refs), func(i int) bool {
+			start := a.Refs[i].From.Time()
+			end := a.Refs[i].Through.Time()
+			return start.Compare(day) >= 0 || end.Compare(day) >= 0
+		})
+
+		max := sort.Search(len(a.Refs), func(i int) bool {
+			start := a.Refs[i].From.Time()
+			return start.Compare(day.Add(Day)) > 0
+		})
+
+		return &logproto.GroupedChunkRefs{
+			Tenant:      a.Tenant,
+			Fingerprint: a.Fingerprint,
+			Refs:        a.Refs[min:max],
+		}
+	}
+
 	return &FilterIter[*logproto.GroupedChunkRefs]{
 		iter:      v1.NewSliceIter(t.Request.Refs),
-		matches:   cf.contains,
-		transform: cf.filter,
+		match:     containsFn,
+		transform: filterFn,
 	}
 }
 
-type filterGroupedChunkRefsByDay struct {
-	day time.Time
-}
-
-func (cf filterGroupedChunkRefsByDay) contains(a *logproto.GroupedChunkRefs) bool {
-	from, through := getFromThrough(a.Refs)
-	if from.Time().After(cf.day.Add(Day)) || through.Time().Before(cf.day) {
-		return false
-	}
-	return true
-}
-
-func (cf filterGroupedChunkRefsByDay) filter(a *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
-	minTs, maxTs := getFromThrough(a.Refs)
-
-	// in most cases, all chunks are within day range
-	if minTs.Time().Compare(cf.day) >= 0 && maxTs.Time().Before(cf.day.Add(Day)) {
-		return a
-	}
-
-	// case where certain chunks are outside of day range
-	// using binary search to get min and max index of chunks that fall into the day range
-	min := sort.Search(len(a.Refs), func(i int) bool {
-		start := a.Refs[i].From.Time()
-		end := a.Refs[i].Through.Time()
-		return start.Compare(cf.day) >= 0 || end.Compare(cf.day) >= 0
-	})
-
-	max := sort.Search(len(a.Refs), func(i int) bool {
-		start := a.Refs[i].From.Time()
-		return start.Compare(cf.day.Add(Day)) > 0
-	})
-
-	return &logproto.GroupedChunkRefs{
-		Tenant:      a.Tenant,
-		Fingerprint: a.Fingerprint,
-		Refs:        a.Refs[min:max],
-	}
-}
-
-type Predicate[T any] func(a T) bool
+type Match[T any] func(a T) bool
 type Transform[T any] func(a T) T
 
 type FilterIter[T any] struct {
 	iter      v1.Iterator[T]
-	matches   Predicate[T]
+	match     Match[T]
 	transform Transform[T]
 	cache     T
 	zero      T // zero value of the return type of Next()
@@ -140,7 +137,7 @@ func (it *FilterIter[T]) Next() bool {
 		it.cache = it.zero
 		return false
 	}
-	for next && !it.matches(it.iter.At()) {
+	for next && !it.match(it.iter.At()) {
 		next = it.iter.Next()
 		if !next {
 			it.cache = it.zero
