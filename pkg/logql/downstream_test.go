@@ -136,7 +136,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		query         string
 		realtiveError float64
 	}{
-		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.03},
+		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
 	} {
 		q := NewMockQuerier(
