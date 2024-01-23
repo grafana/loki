@@ -24,7 +24,7 @@ func TestFusedQuerier(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
@@ -116,7 +116,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},

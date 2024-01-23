@@ -21,7 +21,7 @@ func TestArchive(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},

@@ -17,6 +17,10 @@ type Schema struct {
 	nGramLength, nGramSkip uint64
 }
 
+func (s Schema) Compatible(other Schema) bool {
+	return s == other
+}
+
 // byte length
 func (s Schema) Len() int {
 	// magic number + version + encoding + ngram length + ngram skip

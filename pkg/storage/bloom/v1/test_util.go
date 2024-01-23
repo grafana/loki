@@ -25,7 +25,7 @@ func MakeBlockQuerier(t testing.TB, fromFp, throughFp model.Fingerprint, fromTs,
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:     DefaultSchemaVersion,
 				encoding:    chunkenc.EncSnappy,
 				nGramLength: 4, // see DefaultNGramLength in bloom_tokenizer_test.go

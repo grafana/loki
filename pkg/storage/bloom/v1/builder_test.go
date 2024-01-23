@@ -59,7 +59,7 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					schema:         schema,
+					Schema:         schema,
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 				},
@@ -117,7 +117,7 @@ func TestMergeBuilder(t *testing.T) {
 	blocks := make([]PeekingIterator[*SeriesWithBloom], 0, nBlocks)
 	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
-		schema: Schema{
+		Schema: Schema{
 			version:  DefaultSchemaVersion,
 			encoding: chunkenc.EncSnappy,
 		},
@@ -214,7 +214,7 @@ func TestBlockReset(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema:         schema,
+			Schema:         schema,
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
 		},
@@ -272,7 +272,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					schema: Schema{
+					Schema: Schema{
 						version:  DefaultSchemaVersion,
 						encoding: chunkenc.EncSnappy,
 					},
