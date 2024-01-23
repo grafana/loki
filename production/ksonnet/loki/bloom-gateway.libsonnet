@@ -47,7 +47,7 @@
               blocks_cache: {
                 enabled: true,
                 max_size_mb: error 'set bloom_shipper.blocks_cache.max_size_mb to ~80% of available disk size',
-                ttl: 3600 * 24,  // 24h
+                ttl: '24h',
               },
             },
           },
