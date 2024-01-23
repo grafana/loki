@@ -304,6 +304,13 @@ steps:
   image: grafana/loki-build-image:0.33.0
   name: validate-example-configs
 - commands:
+  - make BUILD_IN_CONTAINER=false validate-dev-cluster-config
+  depends_on:
+  - validate-example-configs
+  environment: {}
+  image: grafana/loki-build-image:0.33.0
+  name: validate-dev-cluster-config
+- commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
@@ -2106,6 +2113,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 30f2fb121d8271e00dc2ae8fe83a32e0e22fd2bd268609d0c3f295033fcd4fb6
+hmac: 457592d17208477ceb480f81dbdb88f7b95a5ad015c88d9d6fed06c2422a52f9
 
 ...

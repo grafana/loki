@@ -20,8 +20,6 @@ import (
 type workerConfig struct {
 	maxWaitTime time.Duration
 	maxItems    int
-
-	processBlocksSequentially bool
 }
 
 type workerMetrics struct {
@@ -29,6 +27,7 @@ type workerMetrics struct {
 	dequeueErrors      *prometheus.CounterVec
 	dequeueWaitTime    *prometheus.SummaryVec
 	storeAccessLatency *prometheus.HistogramVec
+	bloomQueryLatency  *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -52,6 +51,13 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "dequeue_wait_time",
 			Help:      "Time spent waiting for dequeuing tasks from queue",
 		}, labels),
+		bloomQueryLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "bloom_query_latency",
+			Help:      "Latency in seconds of processing bloom blocks",
+		}, append(labels, "status")),
+		// TODO(chaudum): Move this metric into the bloomshipper
 		storeAccessLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
@@ -72,18 +78,18 @@ type worker struct {
 	id      string
 	cfg     workerConfig
 	queue   *queue.RequestQueue
-	store   bloomshipper.Store
+	shipper bloomshipper.Interface
 	tasks   *pendingTasks
 	logger  log.Logger
 	metrics *workerMetrics
 }
 
-func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, store bloomshipper.Store, tasks *pendingTasks, logger log.Logger, metrics *workerMetrics) *worker {
+func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, shipper bloomshipper.Interface, tasks *pendingTasks, logger log.Logger, metrics *workerMetrics) *worker {
 	w := &worker{
 		id:      id,
 		cfg:     cfg,
 		queue:   queue,
-		store:   store,
+		shipper: shipper,
 		tasks:   tasks,
 		logger:  log.With(logger, "worker", id),
 		metrics: metrics,
@@ -156,7 +162,7 @@ func (w *worker) running(ctx context.Context) error {
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
 				storeFetchStart := time.Now()
-				blockRefs, err := w.store.GetBlockRefs(taskCtx, tasks[0].Tenant, day, day.Add(Day).Add(-1*time.Nanosecond))
+				blockRefs, err := w.shipper.GetBlockRefs(taskCtx, tasks[0].Tenant, toModelTime(day), toModelTime(day.Add(Day).Add(-1*time.Nanosecond)))
 				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
 				if err != nil {
 					for _, t := range tasks {
@@ -188,11 +194,7 @@ func (w *worker) running(ctx context.Context) error {
 					blockRefs = append(blockRefs, b.blockRef)
 				}
 
-				if w.cfg.processBlocksSequentially {
-					err = w.processBlocksSequentially(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
-				} else {
-					err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
-				}
+				err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
 				if err != nil {
 					for _, t := range tasks {
 						t.ErrCh <- err
@@ -216,46 +218,39 @@ func (w *worker) stopping(err error) error {
 }
 
 func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
-	return w.store.ForEach(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
+	return w.shipper.Fetch(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
-				processBlock(bq, day, b.tasks)
-				return nil
+				return w.processBlock(bq, day, b.tasks)
 			}
 		}
 		return nil
 	})
 }
 
-func (w *worker) processBlocksSequentially(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
-	storeFetchStart := time.Now()
-	blockQueriers, err := w.store.GetBlockQueriersForBlockRefs(taskCtx, tenant, blockRefs)
-	w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockQueriersForBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
-	if err != nil {
-		return err
-	}
-
-	for i := range blockQueriers {
-		processBlock(blockQueriers[i].BlockQuerier, day, boundedRefs[i].tasks)
-	}
-	return nil
-}
-
-func processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) {
+func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) error {
 	schema, err := blockQuerier.Schema()
 	if err != nil {
-		for _, t := range tasks {
-			t.ErrCh <- errors.Wrap(err, "failed to get block schema")
-		}
+		return err
 	}
 
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
 	it := newTaskMergeIterator(day, tokenizer, tasks...)
 	fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
+
+	start := time.Now()
 	err = fq.Run()
+	duration := time.Since(start).Seconds()
+
 	if err != nil {
-		for _, t := range tasks {
-			t.ErrCh <- errors.Wrap(err, "failed to run chunk check")
-		}
+		w.metrics.bloomQueryLatency.WithLabelValues(w.id, "failure").Observe(duration)
+		return err
 	}
+
+	w.metrics.bloomQueryLatency.WithLabelValues(w.id, "success").Observe(duration)
+	return nil
+}
+
+func toModelTime(t time.Time) model.Time {
+	return model.TimeFromUnixNano(t.UnixNano())
 }

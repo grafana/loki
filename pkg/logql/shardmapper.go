@@ -128,7 +128,7 @@ func (m ShardMapper) mapBinOpExpr(e *syntax.BinOpExpr, r *downstreamRecorder) (*
 	if err != nil {
 		return nil, 0, err
 	}
-	if isNoOp(e.SampleExpr, rhsMapped) && !isLiteralOrVector(rhsMapped) {
+	if isNoOp(e.RHS, rhsMapped) && !isLiteralOrVector(rhsMapped) {
 		// TODO: check if literal or vector
 		rhsMapped = DownstreamSampleExpr{
 			shard:      nil,

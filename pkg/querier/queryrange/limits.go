@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -102,10 +103,11 @@ type UserIDTransformer func(context.Context, string) string
 type cacheKeyLimits struct {
 	Limits
 	transformer UserIDTransformer
+	iqo         util.IngesterQueryOptions
 }
 
 func (l cacheKeyLimits) GenerateCacheKey(ctx context.Context, userID string, r resultscache.Request) string {
-	split := l.QuerySplitDuration(userID)
+	split := SplitIntervalForTimeRange(l.iqo, l.Limits, l.QuerySplitDuration, []string{userID}, time.Now().UTC(), r.GetEnd().UTC())
 
 	var currentInterval int64
 	if denominator := int64(split / time.Millisecond); denominator > 0 {
