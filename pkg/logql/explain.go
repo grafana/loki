@@ -67,6 +67,10 @@ func (e *firstOverTimeStepEvaluator) Explain(parent Node) {
 	parent.Child("MergeFirstOverTime")
 }
 
+func (e *lastOverTimeStepEvaluator) Explain(parent Node) {
+	parent.Child("MergeLastOverTime")
+}
+
 func (EmptyEvaluator) Explain(parent Node) {
 	parent.Child("Empty")
 }

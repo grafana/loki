@@ -1172,6 +1172,7 @@ const (
 	// that are not consumable by LogQL clients but are used for sharding.
 	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
 	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
+	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1277,7 +1278,7 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
 			OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst,
-			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp:
+			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1287,7 +1288,7 @@ func (e RangeAggregationExpr) validate() error {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
 			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch,
-			OpRangeTypeFirstWithTimestamp:
+			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -2142,6 +2143,7 @@ var shardableOps = map[string]bool{
 	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
 	OpRangeTypeFirst:     true,
+	OpRangeTypeLast:      true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,
 	OpRangeTypeBytesRate: true,

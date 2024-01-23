@@ -228,6 +228,34 @@ func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
+type MergeLastOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e MergeLastOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeLastOverTime<%s>", sb.String())
+}
+
+func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
 type Shards []astmapper.ShardAnnotation
 
 func (xs Shards) Encode() (encoded []string) {
@@ -458,7 +486,42 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 
 		return NewMergeFirstOverTimeStepEvaluator(params, xs), nil
+	case *MergeLastOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
 
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{*shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		results, err := ev.Downstream(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+
+		return NewMergeLastOverTimeStepEvaluator(params, xs), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
