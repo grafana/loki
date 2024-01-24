@@ -7,7 +7,6 @@ import (
 
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/encoding"
-	utilsMath "github.com/grafana/loki/pkg/util/math"
 )
 
 // Meta holds information about a chunk of data.
@@ -25,39 +24,6 @@ type ChunkMeta struct {
 func (c ChunkMeta) From() model.Time                 { return model.Time(c.MinTime) }
 func (c ChunkMeta) Through() model.Time              { return model.Time(c.MaxTime) }
 func (c ChunkMeta) Bounds() (model.Time, model.Time) { return c.From(), c.Through() }
-
-// Sub subtracts the other chunk from c if the overlap. If the other is completely
-func Sub(l, r *ChunkMeta) []*ChunkMeta {
-	if !overlap(l.MinTime, l.MaxTime, r.MinTime, r.MaxTime) {
-		return []*ChunkMeta{l}
-	}
-
-	totalTime := l.MaxTime - l.MinTime
-	leadingTime := utilsMath.Max64(0, r.MinTime-l.MinTime)
-	trailingTime := utilsMath.Max64(0, l.MaxTime-r.MaxTime)
-
-	res := make([]*ChunkMeta, 0)
-	if leadingTime > 0 {
-		factor := float64(leadingTime) / float64(totalTime)
-		res = append(res, &ChunkMeta{
-			MinTime: l.MinTime,
-			MaxTime: l.MinTime + leadingTime,
-			KB:      uint32(factor * float64(l.KB)),
-			Entries: uint32(factor * float64(l.Entries)),
-		})
-	}
-	if trailingTime > 0 {
-		factor := float64(trailingTime) / float64(totalTime)
-		res = append(res, &ChunkMeta{
-			MinTime: l.MaxTime - trailingTime,
-			MaxTime: l.MaxTime,
-			KB:      uint32(factor * float64(l.KB)),
-			Entries: uint32(factor * float64(l.Entries)),
-		})
-	}
-
-	return res
-}
 
 type ChunkMetas []ChunkMeta
 
@@ -150,22 +116,29 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
 			if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
+				// Average overlap
+				overlap := cur.MaxTime - cur.MinTime
+				lastLen := last.MaxTime - last.MinTime
+				c[n-1].KB = c[n-1].KB - uint32(float64(overlap)/float64(lastLen)*float64(cur.KB)/2) + cur.KB/2
 				continue
 			}
 			c[n] = cur
 
 			if cur.MinTime < last.MaxTime {
-				// next.KB / next.TotalLength * next.RemainingLength
-				// prev = 10KB, next = 20KB, overlap 30%
-				// (10KB + 20KB) * 50%
-				// 10KB + 15KB,
-				// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
-				// -> [last.MaxTime, cur.MaxTime) is the new interval
-				// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))
-				factor := float64(cur.MaxTime-last.MaxTime) / float64(cur.MaxTime-cur.MinTime)
+				// Subtract half the overlap for the last and current chunk
+				overlap := last.MaxTime - cur.MinTime
+
+				// Last
+				c[n-1].MinTime = last.MaxTime - overlap/2
+				factor := float64(c[n-1].MaxTime-c[n-1].MinTime) / float64(last.MaxTime-last.MinTime)
+				c[n-1].KB = uint32(factor * float64(c[n-1].KB))
+				c[n-1].Entries = uint32(factor * float64(c[n-1].Entries))
+
+				// Next
+				c[n].MinTime = cur.MinTime + overlap/2
+				factor = float64(c[n].MaxTime-c[n].MinTime) / float64(cur.MaxTime-cur.MinTime)
 				c[n].KB = uint32(factor * float64(c[n].KB))
 				c[n].Entries = uint32(factor * float64(c[n].Entries))
-				c[n].MinTime = last.MaxTime
 			}
 			last = c[n]
 			n++
