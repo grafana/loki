@@ -56,6 +56,10 @@ type OpenShiftFeatureGates struct {
 	ManagedAuthEnv bool
 }
 
+func (o OpenShiftFeatureGates) ManagedAuthEnabled() bool {
+	return o.Enabled && o.ManagedAuthEnv
+}
+
 // FeatureGates is the supported set of all operator feature gates.
 type FeatureGates struct {
 	// ServiceMonitors enables creating a Prometheus-Operator managed ServiceMonitor
