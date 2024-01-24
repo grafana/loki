@@ -132,7 +132,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
 
-		if opts.OpenShift.CloudCredentials.SecretName != "" {
+		if opts.OpenShift.ManagedAuthEnabled() {
 			volumes = append(volumes, managedAuthVolume(opts))
 			container.VolumeMounts = append(container.VolumeMounts, managedAuthVolumeMount(opts))
 		}
@@ -184,7 +184,7 @@ func staticAuthCredentials(opts Options) []corev1.EnvVar {
 func managedAuthCredentials(opts Options) []corev1.EnvVar {
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		if opts.OpenShift.CloudCredentials.SecretName != "" {
+		if opts.OpenShift.ManagedAuthEnabled() {
 			return []corev1.EnvVar{
 				envVarFromValue(EnvAWSCredentialsFile, path.Join(managedAuthSecretDirectory, KeyAWSCredentialsFilename)),
 				envVarFromValue(EnvAWSSdkLoadConfig, "true"),

@@ -403,6 +403,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 					Enabled: true,
 					CloudCredentials: CloudCredentials{
 						SecretName: "cloud-credentials",
+						SHA1:       "deadbeef",
 					},
 				},
 			},
@@ -972,6 +973,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 					Enabled: true,
 					CloudCredentials: CloudCredentials{
 						SecretName: "cloud-credentials",
+						SHA1:       "deadbeef",
 					},
 				},
 			},

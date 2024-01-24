@@ -80,8 +80,7 @@ func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managed
 		SharedStore: secretType,
 	}
 
-	isManagedAuth := fg.OpenShift.Enabled && fg.OpenShift.ManagedAuthEnv
-	if isManagedAuth {
+	if fg.OpenShift.ManagedAuthEnabled() {
 		var managedAuthHash string
 		managedAuthHash, err = hashSecretData(managedAuth)
 		if err != nil {
@@ -102,7 +101,7 @@ func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managed
 	case lokiv1.ObjectStorageSecretGCS:
 		storageOpts.GCS, err = extractGCSConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, err = extractS3ConfigSecret(objStore, isManagedAuth)
+		storageOpts.S3, err = extractS3ConfigSecret(objStore, fg)
 	case lokiv1.ObjectStorageSecretSwift:
 		storageOpts.Swift, err = extractSwiftConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
@@ -193,7 +192,7 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret, isManagedAuth bool) (*storage.S3StorageConfig, error) {
+func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
@@ -223,13 +222,21 @@ func extractS3ConfigSecret(s *corev1.Secret, isManagedAuth bool) (*storage.S3Sto
 		SSE:     sseCfg,
 	}
 
+	var (
+		isManagedAuthEnv = len(roleArn) != 0
+		isStaticAuthEnv  = !isManagedAuthEnv
+	)
+
 	switch {
-	case isManagedAuth:
+	case fg.OpenShift.ManagedAuthEnabled():
 		cfg.STS = true
 		cfg.Audience = storage.AWSOpenShiftAudience
 		// Do not allow users overriding the role arn provided on Loki Operator installation
 		if len(roleArn) != 0 {
 			return nil, kverrors.New("extra secret field set", "field", storage.KeyAWSRoleArn)
+		}
+		if len(audience) != 0 {
+			return nil, kverrors.New("extra secret field set", "field", storage.KeyAWSAudience)
 		}
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
@@ -237,7 +244,7 @@ func extractS3ConfigSecret(s *corev1.Secret, isManagedAuth bool) (*storage.S3Sto
 		}
 
 		return cfg, nil
-	case len(roleArn) == 0:
+	case isStaticAuthEnv:
 		cfg.Endpoint = string(endpoint)
 
 		if len(endpoint) == 0 {
@@ -251,7 +258,7 @@ func extractS3ConfigSecret(s *corev1.Secret, isManagedAuth bool) (*storage.S3Sto
 		}
 
 		return cfg, nil
-	case len(roleArn) != 0: // Extract STS from user provided values
+	case isManagedAuthEnv: // Extract STS from user provided values
 		cfg.STS = true
 		cfg.Audience = string(audience)
 

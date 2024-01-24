@@ -95,12 +95,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	var (
-		managedAuthEnv   = manifestsocp.DiscoverManagedAuthEnv()
-		isManagedAuthEnv = ctrlCfg.Gates.OpenShift.Enabled && managedAuthEnv != nil
-	)
-	if isManagedAuthEnv {
-		logger.Info("discovered OpenShift Cluster with a managed authentication environment")
+	if ctrlCfg.Gates.OpenShift.Enabled && manifestsocp.DiscoverManagedAuthEnv() != nil {
+		logger.Info("discovered OpenShift Cluster within a managed authentication environment")
 		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
 	}
 
@@ -133,7 +129,7 @@ func main() {
 		}
 	}
 
-	if isManagedAuthEnv {
+	if ctrlCfg.Gates.OpenShift.ManagedAuthEnabled() {
 		if err = (&lokictrl.CredentialsRequestsReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),

@@ -97,3 +97,7 @@ type CloudCredentials struct {
 	SecretName string
 	SHA1       string
 }
+
+func (o OpenShiftOptions) ManagedAuthEnabled() bool {
+	return o.CloudCredentials.SecretName != "" && o.CloudCredentials.SHA1 != ""
+}

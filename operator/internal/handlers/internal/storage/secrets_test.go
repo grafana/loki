@@ -375,7 +375,7 @@ func TestS3Extract(t *testing.T) {
 	}
 }
 
-func TestS3Extract_WithManagedAuth(t *testing.T) {
+func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 	fg := configv1.FeatureGates{
 		OpenShift: configv1.OpenShiftFeatureGates{
 			Enabled:        true,
