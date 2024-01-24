@@ -119,7 +119,7 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				// Average overlap
 				overlap := cur.MaxTime - cur.MinTime
 				lastLen := last.MaxTime - last.MinTime
-				c[n-1].KB = c[n-1].KB - uint32(float64(overlap)/float64(lastLen)*float64(cur.KB)/2) + cur.KB/2
+				c[n-1].KB = c[n-1].KB - uint32(float64(overlap)/float64(lastLen)*float64(last.KB)/2) + cur.KB/2
 				continue
 			}
 			c[n] = cur
