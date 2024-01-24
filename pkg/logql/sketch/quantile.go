@@ -3,8 +3,11 @@ package sketch
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/DataDog/sketches-go/ddsketch"
+	"github.com/DataDog/sketches-go/ddsketch/mapping"
+	"github.com/DataDog/sketches-go/ddsketch/store"
 	"github.com/influxdata/tdigest"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -16,6 +19,7 @@ type QuantileSketch interface {
 	Quantile(float64) (float64, error)
 	Merge(QuantileSketch) (QuantileSketch, error)
 	ToProto() *logproto.QuantileSketch
+	Release()
 }
 
 type QuantileSketchFactory func() QuantileSketch
@@ -38,8 +42,17 @@ type DDSketchQuantile struct {
 	*ddsketch.DDSketch
 }
 
+const relativeAccuracy = 0.01
+
+var ddsketchPool = sync.Pool{
+	New: func() any {
+		m, _ := mapping.NewCubicallyInterpolatedMapping(relativeAccuracy)
+		return ddsketch.NewDDSketchFromStoreProvider(m, store.DefaultProvider)
+	},
+}
+
 func NewDDSketch() *DDSketchQuantile {
-	s, _ := ddsketch.NewDefaultDDSketch(0.01)
+	s := ddsketchPool.Get().(*ddsketch.DDSketch)
 	return &DDSketchQuantile{s}
 }
 
@@ -66,6 +79,11 @@ func (d *DDSketchQuantile) ToProto() *logproto.QuantileSketch {
 	return &logproto.QuantileSketch{
 		Sketch: sketch,
 	}
+}
+
+func (d *DDSketchQuantile) Release() {
+	d.DDSketch.Clear()
+	ddsketchPool.Put(d.DDSketch)
 }
 
 func DDSketchQuantileFromProto(buf []byte) (*DDSketchQuantile, error) {
@@ -126,6 +144,8 @@ func (d *TDigestQuantile) ToProto() *logproto.QuantileSketch {
 		},
 	}
 }
+
+func (d *TDigestQuantile) Release() {}
 
 func TDigestQuantileFromProto(proto *logproto.TDigest) *TDigestQuantile {
 	q := &TDigestQuantile{tdigest.NewWithCompression(proto.Compression)}

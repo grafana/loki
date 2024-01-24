@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -332,12 +331,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
 	}
 
-	// If the querier module is not part of this process we need to check if multi-tenant queries are enabled.
-	// If the querier module is part of this process the querier module will configure everything.
-	if !t.Cfg.isModuleEnabled(Querier) && t.Cfg.Querier.MultiTenantQueriesEnabled {
-		tenant.WithDefaultResolver(tenant.NewMultiResolver())
-	}
-
 	httpPushHandlerMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
@@ -383,7 +376,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
 		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
-		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	} else {
 		t.Querier = q
 	}
@@ -808,12 +800,25 @@ func (disabledShuffleShardingLimits) MaxQueriersPerUser(_ string) uint { return 
 
 func (disabledShuffleShardingLimits) MaxQueryCapacity(_ string) float64 { return 0 }
 
+// ingesterQueryOptions exists simply to avoid dependency cycles when using querier.Config directly in queryrange.NewMiddleware
+type ingesterQueryOptions struct {
+	querier.Config
+}
+
+func (i ingesterQueryOptions) QueryStoreOnly() bool {
+	return i.Config.QueryStoreOnly
+}
+func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
+	return i.Config.QueryIngestersWithin
+}
+
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
+		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,

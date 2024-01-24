@@ -178,6 +178,12 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
+  - alertmanagers/api
+  verbs:
+  - create
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
   - prometheusrules
   - servicemonitors
   verbs:

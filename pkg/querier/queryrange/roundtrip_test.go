@@ -189,7 +189,7 @@ func TestMetricsTripperware(t *testing.T) {
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
 	noCacheTestCfg.CacheIndexStatsResults = false
-	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -240,7 +240,7 @@ func TestMetricsTripperware(t *testing.T) {
 	require.Error(t, err)
 
 	// Configure with cache
-	tpw, stopper, err = NewMiddleware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err = NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemasTSDB,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -278,7 +278,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	noCacheTestCfg := testConfig
 	noCacheTestCfg.CacheResults = false
 	noCacheTestCfg.CacheIndexStatsResults = false
-	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -347,7 +347,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 		queryTimeout:            1 * time.Minute,
 		maxSeries:               1,
 	}
-	tpw, stopper, err := NewMiddleware(testShardingConfigNoCache, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testShardingConfigNoCache, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemasTSDB}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -396,7 +396,14 @@ func TestInstantQueryTripperware(t *testing.T) {
 }
 
 func TestSeriesTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -427,7 +434,14 @@ func TestSeriesTripperware(t *testing.T) {
 }
 
 func TestLabelsTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	l := fakeLimits{
+		maxQueryLength:      48 * time.Hour,
+		maxQueryParallelism: 1,
+		metadataSplitDuration: map[string]time.Duration{
+			"1": 24 * time.Hour,
+		},
+	}
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -473,7 +487,7 @@ func TestLabelsTripperware(t *testing.T) {
 }
 
 func TestIndexStatsTripperware(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -523,7 +537,7 @@ func TestVolumeTripperware(t *testing.T) {
 			volumeEnabled:  true,
 			maxSeries:      42,
 		}
-		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 		if stopper != nil {
 			defer stopper.Stop()
 		}
@@ -579,7 +593,7 @@ func TestVolumeTripperware(t *testing.T) {
 	})
 
 	t.Run("range queries return a prometheus style metrics response, putting volumes in buckets based on the step", func(t *testing.T) {
-		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+		tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 		if stopper != nil {
 			defer stopper.Stop()
 		}
@@ -679,7 +693,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err:       "",
 		},
 		{
-			name: "results cache enabled, stats cache disabled",
+			name: "results cache enabled",
 			config: Config{
 				Config: base.Config{
 					CacheResults: true,
@@ -694,34 +708,32 @@ func TestNewTripperware_Caches(t *testing.T) {
 						},
 					},
 				},
-				CacheIndexStatsResults: false,
+			},
+			numCaches: 1,
+			err:       "",
+		},
+		{
+			name: "stats cache enabled",
+			config: Config{
+				CacheIndexStatsResults: true,
+				StatsCacheConfig: IndexStatsCacheConfig{
+					ResultsCacheConfig: base.ResultsCacheConfig{
+						Config: resultscache.Config{
+							CacheConfig: cache.Config{
+								EmbeddedCache: cache.EmbeddedCacheConfig{
+									Enabled:   true,
+									MaxSizeMB: 1000,
+								},
+							},
+						},
+					},
+				},
 			},
 			numCaches: 1,
 			err:       "",
 		},
 		{
 			name: "results cache enabled, stats cache enabled",
-			config: Config{
-				Config: base.Config{
-					CacheResults: true,
-					ResultsCacheConfig: base.ResultsCacheConfig{
-						Config: resultscache.Config{
-							CacheConfig: cache.Config{
-								EmbeddedCache: cache.EmbeddedCacheConfig{
-									MaxSizeMB: 1,
-									Enabled:   true,
-								},
-							},
-						},
-					},
-				},
-				CacheIndexStatsResults: true,
-			},
-			numCaches: 2,
-			err:       "",
-		},
-		{
-			name: "results cache enabled, stats cache enabled but different",
 			config: Config{
 				Config: base.Config{
 					CacheResults: true,
@@ -763,11 +775,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 			err: fmt.Sprintf("%s cache is not configured", stats.ResultCache),
 		},
 		{
-			name: "results cache disabled, stats cache enabled (no config provided)",
+			name: "stats cache enabled (no config provided)",
 			config: Config{
-				Config: base.Config{
-					CacheResults: false,
-				},
 				CacheIndexStatsResults: true,
 			},
 			numCaches: 0,
@@ -775,7 +784,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, stopper, err := NewMiddleware(tc.config, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+			_, stopper, err := NewMiddleware(tc.config, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -805,7 +814,7 @@ func TestNewTripperware_Caches(t *testing.T) {
 }
 
 func TestLogNoFilter(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -862,7 +871,7 @@ func TestPostQueries(t *testing.T) {
 }
 
 func TestTripperware_EntriesLimit(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -911,7 +920,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			limits := fakeLimits{maxEntriesLimitPerQuery: 5000, maxQueryParallelism: 1, requiredLabels: []string{"app"}}
-			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -1018,7 +1027,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				maxQueryParallelism:  1,
 				requiredNumberLabels: tc.requiredNumberLabels,
 			}
-			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
+			tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -1209,7 +1218,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tpw, stopper, err := NewMiddleware(statsTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: statsSchemas}, nil, false, nil, constants.Loki)
+			tpw, stopper, err := NewMiddleware(statsTestCfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{Configs: statsSchemas}, nil, false, nil, constants.Loki)
 			if stopper != nil {
 				defer stopper.Stop()
 			}
@@ -1228,28 +1237,45 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 }
 
 type fakeLimits struct {
-	maxQueryLength          time.Duration
-	maxQueryParallelism     int
-	tsdbMaxQueryParallelism int
-	maxQueryLookback        time.Duration
-	maxEntriesLimitPerQuery int
-	maxSeries               int
-	splits                  map[string]time.Duration
-	minShardingLookback     time.Duration
-	queryTimeout            time.Duration
-	requiredLabels          []string
-	requiredNumberLabels    int
-	maxQueryBytesRead       int
-	maxQuerierBytesRead     int
-	maxStatsCacheFreshness  time.Duration
-	volumeEnabled           bool
+	maxQueryLength            time.Duration
+	maxQueryParallelism       int
+	tsdbMaxQueryParallelism   int
+	maxQueryLookback          time.Duration
+	maxEntriesLimitPerQuery   int
+	maxSeries                 int
+	splitDuration             map[string]time.Duration
+	metadataSplitDuration     map[string]time.Duration
+	ingesterSplitDuration     map[string]time.Duration
+	minShardingLookback       time.Duration
+	queryTimeout              time.Duration
+	requiredLabels            []string
+	requiredNumberLabels      int
+	maxQueryBytesRead         int
+	maxQuerierBytesRead       int
+	maxStatsCacheFreshness    time.Duration
+	maxMetadataCacheFreshness time.Duration
+	volumeEnabled             bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
-	if f.splits == nil {
+	if f.splitDuration == nil {
 		return 0
 	}
-	return f.splits[key]
+	return f.splitDuration[key]
+}
+
+func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {
+	if f.metadataSplitDuration == nil {
+		return 0
+	}
+	return f.metadataSplitDuration[key]
+}
+
+func (f fakeLimits) IngesterQuerySplitDuration(key string) time.Duration {
+	if f.ingesterSplitDuration == nil {
+		return 0
+	}
+	return f.ingesterSplitDuration[key]
 }
 
 func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
@@ -1319,12 +1345,29 @@ func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Dur
 	return f.maxStatsCacheFreshness
 }
 
+func (f fakeLimits) MaxMetadataCacheFreshness(_ context.Context, _ string) time.Duration {
+	return f.maxMetadataCacheFreshness
+}
+
 func (f fakeLimits) VolumeEnabled(_ string) bool {
 	return f.volumeEnabled
 }
 
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
+}
+
+type ingesterQueryOpts struct {
+	queryStoreOnly       bool
+	queryIngestersWithin time.Duration
+}
+
+func (i ingesterQueryOpts) QueryStoreOnly() bool {
+	return i.queryStoreOnly
+}
+
+func (i ingesterQueryOpts) QueryIngestersWithin() time.Duration {
+	return i.queryIngestersWithin
 }
 
 func counter() (*int, base.Handler) {

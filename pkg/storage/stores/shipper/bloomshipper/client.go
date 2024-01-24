@@ -33,15 +33,15 @@ type Ref struct {
 	TenantID                       string
 	TableName                      string
 	MinFingerprint, MaxFingerprint uint64
-	StartTimestamp, EndTimestamp   int64
+	StartTimestamp, EndTimestamp   model.Time
 	Checksum                       uint32
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
-func (b Ref) Cmp(fp uint64) v1.BoundsCheck {
-	if fp < b.MinFingerprint {
+func (r Ref) Cmp(fp uint64) v1.BoundsCheck {
+	if fp < r.MinFingerprint {
 		return v1.Before
-	} else if fp > b.MaxFingerprint {
+	} else if fp > r.MaxFingerprint {
 		return v1.After
 	}
 	return v1.Overlap
@@ -67,11 +67,9 @@ type Meta struct {
 }
 
 type MetaSearchParams struct {
-	TenantID       string
-	MinFingerprint uint64
-	MaxFingerprint uint64
-	StartTimestamp int64
-	EndTimestamp   int64
+	TenantID                       string
+	MinFingerprint, MaxFingerprint model.Fingerprint
+	StartTimestamp, EndTimestamp   model.Time
 }
 
 type MetaClient interface {
@@ -128,26 +126,25 @@ type BloomClient struct {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
-	start := model.TimeFromUnix(params.StartTimestamp)
-	end := model.TimeFromUnix(params.EndTimestamp)
-	tablesByPeriod := tablesByPeriod(b.periodicConfigs, start, end)
+	tablesByPeriod := tablesByPeriod(b.periodicConfigs, params.StartTimestamp, params.EndTimestamp)
 
 	var metas []Meta
 	for periodFrom, tables := range tablesByPeriod {
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, delimiter)
+			list, _, err := periodClient.List(ctx, prefix, "")
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
 			for _, object := range list {
 				metaRef, err := createMetaRef(object.Key, params.TenantID, table)
+
 				if err != nil {
 					return nil, err
 				}
-				if metaRef.MaxFingerprint < params.MinFingerprint || params.MaxFingerprint < metaRef.MinFingerprint ||
-					metaRef.StartTimestamp < params.StartTimestamp || params.EndTimestamp < metaRef.EndTimestamp {
+				if metaRef.MaxFingerprint < uint64(params.MinFingerprint) || uint64(params.MaxFingerprint) < metaRef.MinFingerprint ||
+					metaRef.EndTimestamp.Before(params.StartTimestamp) || metaRef.StartTimestamp.After(params.EndTimestamp) {
 					continue
 				}
 				meta, err := b.downloadMeta(ctx, metaRef, periodClient)
@@ -176,24 +173,23 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 
 func createBlockObjectKey(meta Ref) string {
 	blockParentFolder := fmt.Sprintf("%x-%x", meta.MinFingerprint, meta.MaxFingerprint)
-	filename := fmt.Sprintf("%v-%v-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
+	filename := fmt.Sprintf("%d-%d-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
 	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, bloomsFolder, blockParentFolder, filename}, delimiter)
 }
 
 func createMetaObjectKey(meta Ref) string {
-	filename := fmt.Sprintf("%x-%x-%v-%v-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
+	filename := fmt.Sprintf("%x-%x-%d-%d-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
 	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, metasFolder, filename}, delimiter)
 }
 
-func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime, error) {
-	ts := model.TimeFromUnix(timestamp)
+func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
 	for i := len(configs) - 1; i >= 0; i-- {
 		periodConfig := configs[i]
 		if periodConfig.From.Before(ts) || periodConfig.From.Equal(ts) {
 			return periodConfig.From, nil
 		}
 	}
-	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", timestamp)
+	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
 }
 
 func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
@@ -237,6 +233,12 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
+
+		_, err = block.Data.Seek(0, 0)
+		if err != nil {
+			return fmt.Errorf("error uploading block file: %w", err)
+		}
+
 		err = objectClient.PutObject(ctx, key, block.Data)
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)
@@ -289,7 +291,6 @@ func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client 
 	return meta, nil
 }
 
-// todo cover with tests
 func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef, error) {
 	fileName := objectKey[strings.LastIndex(objectKey, delimiter)+1:]
 	parts := strings.Split(fileName, fileNamePartDelimiter)
@@ -323,8 +324,8 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 			TableName:      tableName,
 			MinFingerprint: minFingerprint,
 			MaxFingerprint: maxFingerprint,
-			StartTimestamp: startTimestamp,
-			EndTimestamp:   endTimestamp,
+			StartTimestamp: model.Time(startTimestamp),
+			EndTimestamp:   model.Time(endTimestamp),
 			Checksum:       uint32(checksum),
 		},
 		FilePath: objectKey,
@@ -354,9 +355,9 @@ func tablesByPeriod(periodicConfigs []config.PeriodConfig, start, end model.Time
 
 func tablesForRange(periodConfig config.PeriodConfig, from, to int64) []string {
 	interval := periodConfig.IndexTables.Period
-	intervalSeconds := interval.Seconds()
-	lower := from / int64(intervalSeconds)
-	upper := to / int64(intervalSeconds)
+	step := int64(interval.Seconds())
+	lower := from / step
+	upper := to / step
 	tables := make([]string, 0, 1+upper-lower)
 	prefix := periodConfig.IndexTables.Prefix
 	for i := lower; i <= upper; i++ {
