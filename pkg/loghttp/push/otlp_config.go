@@ -74,11 +74,10 @@ func (c *OTLPConfig) actionForAttribute(attribute string, cfgs []AttributesConfi
 	for i := 0; i < len(cfgs); i++ {
 		if cfgs[i].Regex.Regexp != nil && cfgs[i].Regex.MatchString(attribute) {
 			return cfgs[i].Action
-		} else {
-			for _, cfgAttr := range cfgs[i].Attributes {
-				if cfgAttr == attribute {
-					return cfgs[i].Action
-				}
+		}
+		for _, cfgAttr := range cfgs[i].Attributes {
+			if cfgAttr == attribute {
+				return cfgs[i].Action
 			}
 		}
 	}
