@@ -731,6 +731,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
 
+# Comma-separated list of request header names to include in query logs. Applies
+# to both query stats and slow queries logs.
+# CLI flag: -frontend.log-query-request-headers
+[log_query_request_headers: <string> | default = ""]
+
 # Max body size for downstream prometheus.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]
@@ -3135,6 +3140,17 @@ shard_streams:
 # Maximum number of structured metadata entries per log line.
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
+
+# OTLP log ingestion configurations
+otlp_config:
+  resource_attributes:
+    [ignore_defaults: <boolean>]
+
+    [attributes: <list of AttributesConfigs>]
+
+  [scope_attributes: <list of AttributesConfigs>]
+
+  [log_attributes: <list of AttributesConfigs>]
 ```
 
 ### frontend_worker

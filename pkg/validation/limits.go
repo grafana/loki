@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
@@ -199,6 +200,7 @@ type Limits struct {
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
+	OTLPConfig                        push.OTLPConfig  `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 }
 
 type StreamRetention struct {
@@ -341,7 +343,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
-
+	l.OTLPConfig = push.DefaultOTLPConfig
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -396,6 +398,10 @@ func (l *Limits) Validate() error {
 	if l.MaxQueryCapacity > 1 {
 		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 1 as it is configured to a value greater than 1")
 		l.MaxQueryCapacity = 1
+	}
+
+	if err := l.OTLPConfig.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -890,6 +896,10 @@ func (o *Overrides) MaxStructuredMetadataSize(userID string) int {
 
 func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 	return o.getOverridesForUser(userID).MaxStructuredMetadataEntriesCount
+}
+
+func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
+	return o.getOverridesForUser(userID).OTLPConfig
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
