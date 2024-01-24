@@ -75,6 +75,7 @@
 * [11121](https://github.com/grafana/loki/pull/11121) **periklis** Ensure all lifecycler cfgs ref a valid IPv6 addr and port combination
 * [10650](https://github.com/grafana/loki/pull/10650) **matthewpi** Ensure the frontend uses a valid IPv6 addr and port combination
 * [11665](https://github.com/grafana/loki/pull/11665) **salvacorts** Deprecate and flip `-legacy-read-mode` flag to `false` by default.
+* [11342](https://github.com/grafana/loki/pull/11342) **szuro** jsonnet: Introduce backend target for Simple Scalable deployment mode.
 
 #### Promtail
 
