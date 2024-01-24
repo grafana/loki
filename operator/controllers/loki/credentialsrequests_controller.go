@@ -24,7 +24,7 @@ type CredentialsRequestsReconciler struct {
 }
 
 // Reconcile creates a single CredentialsRequest per LokiStack for the OpenShift cloud-credentials-operator (CCO) to
-// provide cloud credentials Secret. On successful creation the LokiStack resource is annotated
+// provide a managed cloud credentials Secret. On successful creation, the LokiStack resource is annotated
 // with `loki.grafana.com/credentials-request-secret-ref` that refers to the secret provided by CCO. If the LokiStack
 // resource is not found its accompanying CredentialsRequest resource is deleted.
 func (r *CredentialsRequestsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
