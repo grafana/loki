@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,23 @@ func TestGetFromThrough(t *testing.T) {
 	require.Equal(t, model.Time(4), chunks[len(chunks)-1].From)
 }
 
+func TestTruncateDay(t *testing.T) {
+	expected := mktime("2024-01-24 00:00")
+
+	for _, inp := range []string{
+		"2024-01-24 00:00",
+		"2024-01-24 08:00",
+		"2024-01-24 16:00",
+		"2024-01-24 23:59",
+	} {
+		t.Run(inp, func(t *testing.T) {
+			ts := mktime(inp)
+			result := truncateDay(ts)
+			require.Equal(t, expected, result)
+		})
+	}
+}
+
 func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {
 	return bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
@@ -46,13 +64,15 @@ func TestPartitionFingerprintRange(t *testing.T) {
 	}
 
 	nTasks := 4
-	nSeries := 300
 	tasks := make([]Task, nTasks)
+	for i := 0; i < nTasks; i++ {
+		swb := seriesWithBounds{}
+		tasks[i], _ = NewTask("tenant", swb, nil)
+	}
+
+	nSeries := 300
 	for i := 0; i < nSeries; i++ {
-		if tasks[i%4].Request == nil {
-			tasks[i%4].Request = &logproto.FilterChunkRefRequest{}
-		}
-		tasks[i%4].Request.Refs = append(tasks[i%nTasks].Request.Refs, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
+		tasks[i%nTasks].series = append(tasks[i%nTasks].series, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
 	}
 
 	results := partitionFingerprintRange(tasks, bounds)
@@ -60,7 +80,7 @@ func TestPartitionFingerprintRange(t *testing.T) {
 	for _, res := range results {
 		// ensure we have the right number of tasks per bound
 		for i := 0; i < nTasks; i++ {
-			require.Equal(t, seriesPerBound/nTasks, len(res.tasks[i].Request.Refs))
+			require.Equal(t, seriesPerBound/nTasks, len(res.tasks[i].series))
 		}
 	}
 
@@ -68,7 +88,162 @@ func TestPartitionFingerprintRange(t *testing.T) {
 	for i := 0; i < nSeries; i++ {
 		require.Equal(t,
 			&logproto.GroupedChunkRefs{Fingerprint: uint64(i)},
-			results[i/seriesPerBound].tasks[i%nTasks].Request.Refs[i%seriesPerBound/nTasks],
+			results[i/seriesPerBound].tasks[i%nTasks].series[i%seriesPerBound/nTasks],
 		)
 	}
+}
+
+func TestPartitionRequest(t *testing.T) {
+	ts := mktime("2024-01-24 12:00")
+
+	testCases := map[string]struct {
+		inp *logproto.FilterChunkRefRequest
+		exp []seriesWithBounds
+	}{
+
+		"empty": {
+			inp: &logproto.FilterChunkRefRequest{
+				From:    ts.Add(-24 * time.Hour),
+				Through: ts,
+			},
+			exp: []seriesWithBounds{},
+		},
+
+		"all chunks within single day": {
+			inp: &logproto.FilterChunkRefRequest{
+				From:    ts.Add(-1 * time.Hour),
+				Through: ts,
+				Refs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: 0x00,
+						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-60 * time.Minute), Through: ts.Add(-50 * time.Minute)},
+						},
+					},
+					{
+						Fingerprint: 0x01,
+						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-55 * time.Minute), Through: ts.Add(-45 * time.Minute)},
+						},
+					},
+				},
+			},
+			exp: []seriesWithBounds{
+				{
+					bounds: model.Interval{Start: ts.Add(-60 * time.Minute), End: ts.Add(-45 * time.Minute)},
+					day:    mktime("2024-01-24 00:00"),
+					series: []*logproto.GroupedChunkRefs{
+						{
+							Fingerprint: 0x00,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-60 * time.Minute), Through: ts.Add(-50 * time.Minute)},
+							},
+						},
+						{
+							Fingerprint: 0x01,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-55 * time.Minute), Through: ts.Add(-45 * time.Minute)},
+							},
+						},
+					},
+				},
+			},
+		},
+
+		"chunks across multiple days - no overlap": {
+			inp: &logproto.FilterChunkRefRequest{
+				From:    ts.Add(-24 * time.Hour),
+				Through: ts,
+				Refs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: 0x00,
+						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-23 * time.Hour), Through: ts.Add(-22 * time.Hour)},
+						},
+					},
+					{
+						Fingerprint: 0x01,
+						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-2 * time.Hour), Through: ts.Add(-1 * time.Hour)},
+						},
+					},
+				},
+			},
+			exp: []seriesWithBounds{
+				{
+					bounds: model.Interval{Start: ts.Add(-23 * time.Hour), End: ts.Add(-22 * time.Hour)},
+					day:    mktime("2024-01-23 00:00"),
+					series: []*logproto.GroupedChunkRefs{
+						{
+							Fingerprint: 0x00,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-23 * time.Hour), Through: ts.Add(-22 * time.Hour)},
+							},
+						},
+					},
+				},
+				{
+					bounds: model.Interval{Start: ts.Add(-2 * time.Hour), End: ts.Add(-1 * time.Hour)},
+					day:    mktime("2024-01-24 00:00"),
+					series: []*logproto.GroupedChunkRefs{
+						{
+							Fingerprint: 0x01,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-2 * time.Hour), Through: ts.Add(-1 * time.Hour)},
+							},
+						},
+					},
+				},
+			},
+		},
+
+		"chunks across multiple days - overlap": {
+			inp: &logproto.FilterChunkRefRequest{
+				From:    ts.Add(-24 * time.Hour),
+				Through: ts,
+				Refs: []*logproto.GroupedChunkRefs{
+					{
+						Fingerprint: 0x00,
+						Refs: []*logproto.ShortRef{
+							{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+						},
+					},
+				},
+			},
+			exp: []seriesWithBounds{
+				{
+					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					day:    mktime("2024-01-23 00:00"),
+					series: []*logproto.GroupedChunkRefs{
+						{
+							Fingerprint: 0x00,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+							},
+						},
+					},
+				},
+				{
+					bounds: model.Interval{Start: ts.Add(-13 * time.Hour), End: ts.Add(-11 * time.Hour)},
+					day:    mktime("2024-01-24 00:00"),
+					series: []*logproto.GroupedChunkRefs{
+						{
+							Fingerprint: 0x00,
+							Refs: []*logproto.ShortRef{
+								{From: ts.Add(-13 * time.Hour), Through: ts.Add(-11 * time.Hour)},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			result := partitionRequest(tc.inp)
+			require.Equal(t, tc.exp, result)
+		})
+	}
+
 }
