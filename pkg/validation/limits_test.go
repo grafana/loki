@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/pkg/loghttp/push"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
@@ -173,6 +174,18 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 		defaultLimits = initialDefault
 	}()
 
+	defaultOTLPConfig := push.OTLPConfig{
+		ResourceAttributes: push.ResourceAttributesConfig{
+			IgnoreDefaults: true,
+			AttributesConfig: []push.AttributesConfig{
+				{
+					Action:     push.IndexLabel,
+					Attributes: []string{"pod"},
+				},
+			},
+		},
+	}
+
 	// Set new defaults with non-nil values for non-scalar types
 	newDefaults := Limits{
 		RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
@@ -182,6 +195,7 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 				Selector: `{a="b"}`,
 			},
 		},
+		OTLPConfig: defaultOTLPConfig,
 	}
 	SetDefaultLimitsForYAMLUnmarshalling(newDefaults)
 
@@ -206,6 +220,7 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
+				OTLPConfig: defaultOTLPConfig,
 			},
 		},
 		{
@@ -222,6 +237,7 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
+				OTLPConfig: defaultOTLPConfig,
 			},
 		},
 		{
@@ -241,6 +257,7 @@ retention_stream:
 
 				// Rest from new defaults
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				OTLPConfig:              defaultOTLPConfig,
 			},
 		},
 		{
@@ -259,6 +276,7 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
+				OTLPConfig: defaultOTLPConfig,
 			},
 		},
 		{
@@ -277,6 +295,7 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
+				OTLPConfig: defaultOTLPConfig,
 			},
 		},
 	} {
