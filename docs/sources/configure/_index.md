@@ -731,6 +731,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
 
+# Comma-separated list of request header names to include in query logs. Applies
+# to both query stats and slow queries logs.
+# CLI flag: -frontend.log-query-request-headers
+[log_query_request_headers: <string> | default = ""]
+
 # Max body size for downstream prometheus.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]

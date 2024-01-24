@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -153,8 +153,8 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: pointer.Int32(10),
-			Replicas:             pointer.Int32(opts.Stack.Template.IndexGateway.Replicas),
+			RevisionHistoryLimit: ptr.To(defaultRevHistoryLimit),
+			Replicas:             ptr.To(opts.Stack.Template.IndexGateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -182,7 +182,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.IndexGateway.PVCSize,
 							},
 						},
-						StorageClassName: pointer.String(opts.Stack.StorageClassName),
+						StorageClassName: ptr.To(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},

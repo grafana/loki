@@ -159,15 +159,9 @@ func (it *FilterIter[T]) Err() error {
 	return nil
 }
 
-// FilterRequest extends v1.Request with an error channel
-type FilterRequest struct {
-	v1.Request
-	Error chan<- error
-}
-
 // taskMergeIterator implements v1.Iterator
 type taskMergeIterator struct {
-	curr      FilterRequest
+	curr      v1.Request
 	heap      *v1.HeapIterator[v1.IndexedValue[*logproto.GroupedChunkRefs]]
 	tasks     []Task
 	day       time.Time
@@ -178,7 +172,7 @@ type taskMergeIterator struct {
 func newTaskMergeIterator(day time.Time, tokenizer *v1.NGramTokenizer, tasks ...Task) v1.PeekingIterator[v1.Request] {
 	it := &taskMergeIterator{
 		tasks:     tasks,
-		curr:      FilterRequest{},
+		curr:      v1.Request{},
 		day:       day,
 		tokenizer: tokenizer,
 	}
@@ -210,16 +204,17 @@ func (it *taskMergeIterator) Next() bool {
 	group := it.heap.At()
 	task := it.tasks[group.Index()]
 
-	it.curr.Fp = model.Fingerprint(group.Value().Fingerprint)
-	it.curr.Chks = convertToChunkRefs(group.Value().Refs)
-	it.curr.Searches = convertToSearches(task.Request.Filters, it.tokenizer)
-	it.curr.Response = task.ResCh
-	it.curr.Error = task.ErrCh
+	it.curr = v1.Request{
+		Fp:       model.Fingerprint(group.Value().Fingerprint),
+		Chks:     convertToChunkRefs(group.Value().Refs),
+		Searches: convertToSearches(task.Request.Filters, it.tokenizer),
+		Response: task.ResCh,
+	}
 	return true
 }
 
 func (it *taskMergeIterator) At() v1.Request {
-	return it.curr.Request
+	return it.curr
 }
 
 func (it *taskMergeIterator) Err() error {

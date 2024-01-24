@@ -1245,6 +1245,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.enableIPv6</td>
+			<td>bool</td>
+			<td>Enable listener for IPv6, disable on IPv4-only systems</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>

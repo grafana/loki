@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -158,7 +158,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32(opts.Stack.Template.QueryFrontend.Replicas),
+			Replicas: ptr.To(opts.Stack.Template.QueryFrontend.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},

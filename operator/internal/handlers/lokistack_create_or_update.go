@@ -208,9 +208,9 @@ func CreateOrUpdateLokiStack(
 		return kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
 	}
 
-	// 1x.extra-small is used only for development, so the metrics will not
+	// 1x.demo is used only for development, so the metrics will not
 	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall && opts.Stack.Size != lokiv1.SizeOneXDemo {
+	if opts.Stack.Size != lokiv1.SizeOneXDemo {
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 

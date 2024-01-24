@@ -308,3 +308,28 @@ The query queue is currently under high load.
 ### Steps
 
 - Increase the number of queriers
+
+## Lokistack Storage Schema Warning
+
+### Impact
+
+The LokiStack warns on a newer object storage schema being available for configuration.
+
+### Summary
+
+The schema configuration does not contain the most recent schema version and needs an update.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the namespace where the LokiStack is deployed:
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+
+### Steps
+
+- Add a new object storage schema V13 with a future EffectiveDate

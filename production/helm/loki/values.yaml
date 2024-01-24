@@ -1448,6 +1448,8 @@ gateway:
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
+    # -- Enable listener for IPv6, disable on IPv4-only systems
+    enableIPv6: true
     # -- NGINX log format
     logFormat: |-
       main '$remote_addr - $remote_user [$time_local]  $status '

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -3247,20 +3247,20 @@ overrides:
 						},
 						Notifier: &NotifierConfig{
 							TLS: TLSConfig{
-								ServerName:         pointer.String("custom-servername"),
-								CertPath:           pointer.String("custom/path"),
-								KeyPath:            pointer.String("custom/key"),
-								CAPath:             pointer.String("custom/CA"),
-								InsecureSkipVerify: pointer.Bool(false),
+								ServerName:         ptr.To("custom-servername"),
+								CertPath:           ptr.To("custom/path"),
+								KeyPath:            ptr.To("custom/key"),
+								CAPath:             ptr.To("custom/CA"),
+								InsecureSkipVerify: ptr.To(false),
 							},
 							BasicAuth: BasicAuth{
-								Username: pointer.String("user"),
-								Password: pointer.String("pass"),
+								Username: ptr.To("user"),
+								Password: ptr.To("pass"),
 							},
 							HeaderAuth: HeaderAuth{
-								CredentialsFile: pointer.String("cred/file"),
-								Type:            pointer.String("auth"),
-								Credentials:     pointer.String("creds"),
+								CredentialsFile: ptr.To("cred/file"),
+								Type:            ptr.To("auth"),
+								Credentials:     ptr.To("creds"),
 							},
 						},
 					},

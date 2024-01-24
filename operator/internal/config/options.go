@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/pprof"
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,23 +35,33 @@ func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectCon
 func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manager.Options {
 	o = setLeaderElectionConfig(o, cfg.ControllerManagerConfigurationSpec)
 
-	if o.MetricsBindAddress == "" && cfg.Metrics.BindAddress != "" {
-		o.MetricsBindAddress = cfg.Metrics.BindAddress
+	if o.Metrics.BindAddress == "" && cfg.Metrics.BindAddress != "" {
+		o.Metrics.BindAddress = cfg.Metrics.BindAddress
+
+		endpoints := map[string]http.HandlerFunc{
+			"/debug/pprof/":        pprof.Index,
+			"/debug/pprof/cmdline": pprof.Cmdline,
+			"/debug/pprof/profile": pprof.Profile,
+			"/debug/pprof/symbol":  pprof.Symbol,
+			"/debug/pprof/trace":   pprof.Trace,
+		}
+
+		if o.Metrics.ExtraHandlers == nil {
+			o.Metrics.ExtraHandlers = map[string]http.Handler{}
+		}
+
+		for path, handler := range endpoints {
+			o.Metrics.ExtraHandlers[path] = handler
+		}
 	}
 
 	if o.HealthProbeBindAddress == "" && cfg.Health.HealthProbeBindAddress != "" {
 		o.HealthProbeBindAddress = cfg.Health.HealthProbeBindAddress
 	}
 
-	//nolint:staticcheck
-	if o.Port == 0 && cfg.Webhook.Port != nil {
-		o.Port = *cfg.Webhook.Port
-	}
-
-	//nolint:staticcheck
-	if o.WebhookServer == nil {
+	if cfg.Webhook.Port != nil {
 		o.WebhookServer = webhook.NewServer(webhook.Options{
-			Port: o.Port,
+			Port: *cfg.Webhook.Port,
 		})
 	}
 

@@ -1073,6 +1073,7 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 		"-ingester.wal-enabled=false",
 		"-query-scheduler.use-scheduler-ring=false",
 		"-store.index-cache-read.embedded-cache.enabled=true",
+		"-querier.split-queries-by-interval=24h",
 	}
 
 	tenantID := randStringRunes()
@@ -1173,7 +1174,7 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	)
 	require.NoError(t, clu.Run())
 
-	now := time.Now()
+	now := time.Date(2024, time.January, 19, 12, 0, 0, 0, time.UTC)
 
 	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
 	cliDistributor.Now = now
@@ -1195,16 +1196,22 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 
 	lineTpl := `caller=loki_micro_services_test.go msg="push log line" id="%s"`
 	// ingest logs from 10 different pods
+	// from now-60m to now-55m
 	// each line contains a random, unique string
 	// that string is used to verify filtering using bloom gateway
-	uniqueStrings := make([]string, 600)
+	uniqueStrings := make([]string, 5*60)
 	for i := 0; i < len(uniqueStrings); i++ {
 		id := randStringRunes()
 		id = fmt.Sprintf("%s-%d", id, i)
 		uniqueStrings[i] = id
 		pod := fmt.Sprintf("pod-%d", i%10)
 		line := fmt.Sprintf(lineTpl, id)
-		err := cliDistributor.PushLogLine(line, now.Add(-1*time.Hour).Add(time.Duration(i-len(uniqueStrings))*time.Second), nil, map[string]string{"pod": pod})
+		err := cliDistributor.PushLogLine(
+			line,
+			now.Add(-1*time.Hour).Add(time.Duration(i)*time.Second),
+			nil,
+			map[string]string{"pod": pod},
+		)
 		require.NoError(t, err)
 	}
 
@@ -1225,8 +1232,8 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	// use bloom gateway to perform needle in the haystack queries
 	randIdx := rand.Intn(len(uniqueStrings))
 	q := fmt.Sprintf(`{job="varlog"} |= "%s"`, uniqueStrings[randIdx])
-	end := now.Add(-1 * time.Second)
-	start := end.Add(-24 * time.Hour)
+	start := now.Add(-90 * time.Minute)
+	end := now.Add(-30 * time.Minute)
 	resp, err := cliQueryFrontend.RunRangeQueryWithStartEnd(context.Background(), q, start, end)
 	require.NoError(t, err)
 
