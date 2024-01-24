@@ -141,11 +141,10 @@ func (c ChunkMetas) Finalize() ChunkMetas {
 
 // Stats returns the ChunkStats. It tries to accommodate for overlapping chunks.
 func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
-	sort.Sort(c)
-
 	res := ChunkStats{}
 
 	if len(c) > 1 && deduplicate {
+		sort.Sort(c)
 		last := c[0]
 		n := 1
 		for _, cur := range c[1:] {
