@@ -6,11 +6,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 // TODO(owen-d): add metrics
@@ -18,7 +19,7 @@ type Metrics struct {
 	bloomMetrics *v1.Metrics
 }
 
-func NewMetrics(reg prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
+func NewMetrics(_ prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 	return &Metrics{
 		bloomMetrics: bloomMetrics,
 	}

@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func blocksFromSchema(t *testing.T, n int, options v1.BlockOptions) (res []*v1.Block, data []v1.SeriesWithBloom) {
