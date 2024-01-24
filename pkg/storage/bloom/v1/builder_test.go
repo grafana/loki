@@ -242,6 +242,225 @@ func TestBlockReset(t *testing.T) {
 	require.Equal(t, rounds[0], rounds[1])
 }
 
+func TestBlockBuilderBlockOptionsChecksums(t *testing.T) {
+	defaultSchema := Schema{
+		version:     DefaultSchemaVersion,
+		encoding:    chunkenc.EncSnappy,
+		nGramLength: 4,
+		nGramSkip:   0,
+	}
+	defaultOptions := BlockOptions{
+		schema:         defaultSchema,
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10,
+		BlockSize:      0,
+	}
+
+	testCases := []struct {
+		name        string
+		blockOpts   BlockOptions
+		expectEqual bool
+	}{
+		{
+			name: "differentVersion",
+			blockOpts: BlockOptions{
+				schema: Schema{
+					version:     defaultSchema.version + 1,
+					encoding:    defaultSchema.encoding,
+					nGramLength: defaultSchema.nGramLength,
+					nGramSkip:   defaultSchema.nGramSkip,
+				},
+				SeriesPageSize: defaultOptions.SeriesPageSize,
+				BloomPageSize:  defaultOptions.BloomPageSize,
+				BlockSize:      defaultOptions.BlockSize,
+			},
+			expectEqual: false,
+		},
+		{
+			name: "differentEncoding",
+			blockOpts: BlockOptions{
+				schema: Schema{
+					version:     defaultSchema.version,
+					encoding:    chunkenc.EncGZIP,
+					nGramLength: defaultSchema.nGramLength,
+					nGramSkip:   defaultSchema.nGramSkip,
+				},
+				SeriesPageSize: defaultOptions.SeriesPageSize,
+				BloomPageSize:  defaultOptions.BloomPageSize,
+				BlockSize:      defaultOptions.BlockSize,
+			},
+			expectEqual: false,
+		},
+		{
+			name: "differentNGramLength",
+			blockOpts: BlockOptions{
+				schema: Schema{
+					version:     defaultSchema.version,
+					encoding:    defaultSchema.encoding,
+					nGramLength: defaultSchema.nGramLength + 1,
+					nGramSkip:   defaultSchema.nGramSkip,
+				},
+				SeriesPageSize: defaultOptions.SeriesPageSize,
+				BloomPageSize:  defaultOptions.BloomPageSize,
+				BlockSize:      defaultOptions.BlockSize,
+			},
+			expectEqual: false,
+		},
+		{
+			name: "differentNGramSkip",
+			blockOpts: BlockOptions{
+				schema: Schema{
+					version:     defaultSchema.version,
+					encoding:    defaultSchema.encoding,
+					nGramLength: defaultSchema.nGramLength,
+					nGramSkip:   defaultSchema.nGramSkip + 1,
+				},
+				SeriesPageSize: defaultOptions.SeriesPageSize,
+				BloomPageSize:  defaultOptions.BloomPageSize,
+				BlockSize:      defaultOptions.BlockSize,
+			},
+			expectEqual: false,
+		},
+		{
+			name: "differentSeriesPageSize",
+			blockOpts: BlockOptions{
+				schema: Schema{
+					version:     defaultSchema.version,
+					encoding:    defaultSchema.encoding,
+					nGramLength: defaultSchema.nGramLength,
+					nGramSkip:   defaultSchema.nGramSkip,
+				},
+				SeriesPageSize: defaultOptions.SeriesPageSize + 1,
+				BloomPageSize:  defaultOptions.BloomPageSize,
+				BlockSize:      defaultOptions.BlockSize,
+			},
+			expectEqual: false,
+		},
+		{
+			name: "differentBloomPageSize",
+			blockOpts: BlockOptions{
+				schema: Schema{
+					version:     defaultSchema.version,
+					encoding:    defaultSchema.encoding,
+					nGramLength: defaultSchema.nGramLength,
+					nGramSkip:   defaultSchema.nGramSkip,
+				},
+				SeriesPageSize: defaultOptions.SeriesPageSize,
+				BloomPageSize:  defaultOptions.BloomPageSize + 1,
+				BlockSize:      defaultOptions.BlockSize,
+			},
+			expectEqual: false,
+		},
+		{
+			name: "differentBlockSize",
+			blockOpts: BlockOptions{
+				schema: Schema{
+					version:     defaultSchema.version,
+					encoding:    defaultSchema.encoding,
+					nGramLength: defaultSchema.nGramLength,
+					nGramSkip:   defaultSchema.nGramSkip,
+				},
+				SeriesPageSize: defaultOptions.SeriesPageSize,
+				BloomPageSize:  defaultOptions.BloomPageSize,
+				BlockSize:      defaultOptions.BlockSize + 1,
+			},
+			expectEqual: false,
+		},
+	}
+
+	for _, tc := range testCases {
+
+		t.Run(tc.name, func(t *testing.T) {
+			defaultBlockBuilder := &BlockBuilder{
+				opts: defaultOptions,
+			}
+
+			testCaseBlockBuilder := &BlockBuilder{
+				opts: tc.blockOpts,
+			}
+
+			checksum1 := defaultBlockBuilder.calcuateBlockOptionsHash()
+			checksum2 := testCaseBlockBuilder.calcuateBlockOptionsHash()
+
+			if tc.expectEqual {
+				require.Equal(t, checksum1, checksum2, "checksums should be equal")
+			} else {
+				require.NotEqual(t, checksum1, checksum2, "checksums should not be equal")
+			}
+
+		})
+	}
+}
+
+func TestBlockChecksums(t *testing.T) {
+	testCases := []struct {
+		name         string
+		fingerprint1 model.Fingerprint
+		fingerprint2 model.Fingerprint
+		timestamp1   model.Time
+		timestamp2   model.Time
+		expectEqual  bool
+	}{
+		{"DifferentFPsSameTs", 0x0000, 0x1111, 0, 0, false},
+		{"SameFPsDifferentTs", 0xffff, 0xffff, 0, 123400, false},
+		{"DifferentFPsDifferentTs", 0x0000, 0x11aa, 0, 10000, false},
+		{"SameFPsSameTs", 0xffff, 0xffff, 0, 0, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			tmpDir2 := t.TempDir()
+			writer := NewDirectoryBlockWriter(tmpDir)
+			writer2 := NewDirectoryBlockWriter(tmpDir2)
+
+			schema := Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 10,
+				nGramSkip:   2,
+			}
+
+			builder, err := NewBlockBuilder(
+				BlockOptions{
+					schema:         schema,
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer,
+			)
+			require.Nil(t, err)
+
+			builder2, err := NewBlockBuilder(
+				BlockOptions{
+					schema:         schema,
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer2,
+			)
+			require.Nil(t, err)
+
+			data1, _ := mkBasicSeriesWithBlooms(4, 100, 0, tc.fingerprint1, tc.timestamp1, 10000)
+			data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, tc.fingerprint2, tc.timestamp2, 10000)
+
+			itr1 := NewSliceIter[SeriesWithBloom](data1)
+			checksum1, err := builder.BuildFrom(itr1)
+			require.NoError(t, err)
+
+			itr2 := NewSliceIter[SeriesWithBloom](data2)
+			checksum2, err := builder2.BuildFrom(itr2)
+			require.NoError(t, err)
+
+			if tc.expectEqual {
+				require.Equal(t, checksum1, checksum2, "checksums should be equal")
+			} else {
+				require.NotEqual(t, checksum1, checksum2, "checksums should not be equal")
+			}
+		})
+	}
+}
+
 // This test is a basic roundtrip test for the merge builder.
 // It creates one set of blocks with the same (duplicate) data, and another set of blocks with
 // disjoint data. It then merges the two sets of blocks and ensures that the merged blocks contain
@@ -345,7 +564,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	checksum, err := mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0x779633b5), checksum)
+	require.Equal(t, uint32(0x248b4c2d), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data
