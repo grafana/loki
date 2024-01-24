@@ -408,5 +408,5 @@ func (i *TSDBIndex) Volume(
 			}
 		}
 		return nil
-	})
+	}, matchers...)
 }
