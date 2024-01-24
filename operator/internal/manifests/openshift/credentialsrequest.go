@@ -49,7 +49,7 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 	}, nil
 }
 
-func encodeProviderSpec(stackKey string, env *ManagedAuthEnv) (*runtime.RawExtension, string, error) {
+func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExtension, string, error) {
 	var (
 		spec       runtime.Object
 		secretName string
@@ -72,7 +72,7 @@ func encodeProviderSpec(stackKey string, env *ManagedAuthEnv) (*runtime.RawExten
 			},
 			STSIAMRoleARN: env.AWS.RoleARN,
 		}
-		secretName = fmt.Sprintf("%s-aws-creds", stackKey)
+		secretName = fmt.Sprintf("%s-aws-creds", stackName)
 	}
 
 	encodedSpec, err := cloudcredentialv1.Codec.EncodeProviderSpec(spec.DeepCopyObject())
