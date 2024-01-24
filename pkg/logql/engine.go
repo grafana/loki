@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -82,7 +84,14 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	return syntax.ParseLogSelector(s.Selector, true)
+	if s.QueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
+	expr, ok := s.QueryRequest.Plan.AST.(syntax.LogSelectorExpr)
+	if !ok {
+		return nil, errors.New("only log selector is supported")
+	}
+	return expr, nil
 }
 
 type SelectSampleParams struct {
@@ -92,13 +101,20 @@ type SelectSampleParams struct {
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
-	return syntax.ParseSampleExpr(s.Selector)
+	if s.SampleQueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
+	expr, ok := s.SampleQueryRequest.Plan.AST.(syntax.SampleExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
+	}
+	return expr, nil
 }
 
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	expr, err := syntax.ParseSampleExpr(s.Selector)
+	expr, err := s.Expr()
 	if err != nil {
 		return nil, err
 	}
@@ -159,12 +175,9 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (ng *Engine) Query(params Params) Query {
 	return &query{
-		logger:    ng.logger,
-		params:    params,
-		evaluator: ng.evaluatorFactory,
-		parse: func(_ context.Context, query string) (syntax.Expr, error) {
-			return syntax.ParseExpr(query)
-		},
+		logger:       ng.logger,
+		params:       params,
+		evaluator:    ng.evaluatorFactory,
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,
@@ -180,7 +193,6 @@ type Query interface {
 type query struct {
 	logger       log.Logger
 	params       Params
-	parse        func(context.Context, string) (syntax.Expr, error)
 	limits       Limits
 	evaluator    EvaluatorFactory
 	record       bool
@@ -195,6 +207,8 @@ func (q *query) resultLength(res promql_parser.Value) int {
 		return r.TotalSamples()
 	case logqlmodel.Streams:
 		return int(r.Lines())
+	case ProbabilisticQuantileMatrix:
+		return len(r)
 	default:
 		// for `scalar` or `string` or any other return type, we just return `0` as result length.
 		return 0
@@ -210,7 +224,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	sp.LogKV(
 		"type", GetRangeType(q.params),
-		"query", q.params.Query(),
+		"query", q.params.QueryString(),
 		"start", q.params.Start(),
 		"end", q.params.End(),
 		"step", q.params.Step(),
@@ -218,11 +232,11 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	)
 
 	if q.logExecQuery {
-		queryHash := HashedQuery(q.params.Query())
+		queryHash := util.HashedQuery(q.params.QueryString())
 		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.QueryString(), "query_hash", queryHash)
 		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.QueryString(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
 		}
 	}
 
@@ -242,20 +256,10 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	statResult.Log(level.Debug(spLogger))
 
-	status := "200"
-	if err != nil {
-		status = "500"
-		if errors.Is(err, logqlmodel.ErrParse) ||
-			errors.Is(err, logqlmodel.ErrPipeline) ||
-			errors.Is(err, logqlmodel.ErrLimit) ||
-			errors.Is(err, logqlmodel.ErrBlocked) ||
-			errors.Is(err, context.Canceled) {
-			status = "400"
-		}
-	}
+	status, _ := server.ClientHTTPStatusAndError(err)
 
 	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
+		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
 	}
 
 	return logqlmodel.Result{
@@ -272,16 +276,11 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
-	expr, err := q.parse(ctx, q.params.Query())
-	if err != nil {
-		return nil, err
-	}
-
 	if q.checkBlocked(ctx, tenants) {
 		return nil, logqlmodel.ErrBlocked
 	}
 
-	switch e := expr.(type) {
+	switch e := q.params.GetExpression().(type) {
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -345,21 +344,37 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if err != nil {
 		return nil, err
 	}
+
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-
-	seriesIndex := map[uint64]*promql.Series{}
-
 	next, ts, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
+
+	if next && r != nil {
+		switch vec := r.(type) {
+		case SampleVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			return q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
+		case ProbabilisticQuantileVector:
+			return JoinQuantileSketchVector(next, vec, stepEvaluator, q.params)
+		default:
+			return nil, fmt.Errorf("unsupported result type: %T", r)
+		}
+	}
+	return nil, nil
+}
+
+func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+
+	seriesIndex := map[uint64]*promql.Series{}
+
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
@@ -373,7 +388,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if GetRangeType(q.params) == InstantType {
 		sortByValue, err := Sortable(q.params)
 		if err != nil {
-			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.Query(), err)
+			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
 		}
 		if !sortByValue {
 			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })

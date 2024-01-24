@@ -4,15 +4,15 @@ import (
 	"context"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/validation"
-
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/pointer"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/validation"
 )
 
 var rctt = []struct {
@@ -182,7 +182,7 @@ func TestRulerConfigValidationWebhook_ValidateCreate(t *testing.T) {
 			}
 
 			v := &validation.RulerConfigValidator{}
-			err := v.ValidateCreate(ctx, l)
+			_, err := v.ValidateCreate(ctx, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {
@@ -207,7 +207,7 @@ func TestRulerConfigValidationWebhook_ValidateUpdate(t *testing.T) {
 			}
 
 			v := &validation.RulerConfigValidator{}
-			err := v.ValidateUpdate(ctx, &lokiv1.RulerConfig{}, l)
+			_, err := v.ValidateUpdate(ctx, &lokiv1.RulerConfig{}, l)
 			if err != nil {
 				require.Equal(t, tc.err, err)
 			} else {

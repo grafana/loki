@@ -160,14 +160,14 @@ local promtail_win() = pipeline('promtail-windows') {
   steps: [
     {
       name: 'identify-runner',
-      image: 'golang:1.19-windowsservercore-1809',
+      image: 'golang:1.21.3-windowsservercore-1809',
       commands: [
         'Write-Output $env:DRONE_RUNNER_NAME',
       ],
     },
     {
       name: 'test',
-      image: 'golang:1.19-windowsservercore-1809',
+      image: 'golang:1.21.3-windowsservercore-1809',
       commands: [
         'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
       ],
@@ -496,7 +496,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
-local build_image_tag = '0.32.0';
+local build_image_tag = '0.33.0';
 [
   pipeline('loki-build-image-' + arch) {
     workspace: {
@@ -640,6 +640,7 @@ local build_image_tag = '0.32.0';
         'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
       ]) { depends_on: ['loki'], when: onPRs },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
+      make('validate-dev-cluster-config', container=false) { depends_on: ['validate-example-configs'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
         name: 'build-docs-website',

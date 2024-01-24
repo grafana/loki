@@ -2,13 +2,11 @@ package tsdb
 
 import (
 	"context"
-	"flag"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -22,18 +20,6 @@ type ChunkRef struct {
 	Fingerprint model.Fingerprint
 	Start, End  model.Time
 	Checksum    uint32
-}
-
-type IndexCfg struct {
-	indexshipper.Config `yaml:",inline"`
-
-	CachePostings bool `yaml:"enable_postings_cache" category:"experimental"`
-}
-
-func (cfg *IndexCfg) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.CachePostings, prefix+"enable-postings-cache", false, "Experimental. Whether TSDB should cache postings or not. The index-read-cache will be used as the backend.")
-
-	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // Compares by (Start, End)

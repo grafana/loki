@@ -30,10 +30,12 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockOptions() BlockOptions {
+func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
 	return BlockOptions{
 		schema: Schema{
-			version: byte(1),
+			version:     byte(1),
+			nGramLength: NGramLength,
+			nGramSkip:   NGramSkip,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10, // 0.01MB
@@ -62,25 +64,26 @@ type SeriesWithBloom struct {
 	Bloom  *Bloom
 }
 
-func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) error {
+func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
 	for itr.Next() {
 		if err := b.AddSeries(itr.At()); err != nil {
-			return err
+			return 0, err
 		}
 
 	}
 
 	if err := itr.Err(); err != nil {
-		return errors.Wrap(err, "iterating series with blooms")
+		return 0, errors.Wrap(err, "iterating series with blooms")
 	}
 
-	if err := b.blooms.Close(); err != nil {
-		return errors.Wrap(err, "closing bloom file")
+	checksum, err := b.blooms.Close()
+	if err != nil {
+		return 0, errors.Wrap(err, "closing bloom file")
 	}
 	if err := b.index.Close(); err != nil {
-		return errors.Wrap(err, "closing series file")
+		return 0, errors.Wrap(err, "closing series file")
 	}
-	return nil
+	return checksum, nil
 }
 
 func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
@@ -154,10 +157,10 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 	}, nil
 }
 
-func (b *BloomBlockBuilder) Close() error {
+func (b *BloomBlockBuilder) Close() (uint32, error) {
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
-			return errors.Wrap(err, "flushing final bloom page")
+			return 0, errors.Wrap(err, "flushing final bloom page")
 		}
 	}
 
@@ -177,9 +180,9 @@ func (b *BloomBlockBuilder) Close() error {
 	b.scratch.PutHash(crc32Hash)
 	_, err := b.writer.Write(b.scratch.Get())
 	if err != nil {
-		return errors.Wrap(err, "writing bloom page headers")
+		return 0, errors.Wrap(err, "writing bloom page headers")
 	}
-	return errors.Wrap(b.writer.Close(), "closing bloom writer")
+	return crc32Hash.Sum32(), errors.Wrap(b.writer.Close(), "closing bloom writer")
 }
 
 func (b *BloomBlockBuilder) flushPage() error {
@@ -494,7 +497,7 @@ func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[
 
 // NB: this will build one block. Ideally we would build multiple blocks once a target size threshold is met
 // but this gives us a good starting point.
-func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
+func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 	var (
 		nextInBlocks *SeriesWithBloom
 	)
@@ -543,6 +546,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 			cur = &SeriesWithBloom{
 				Series: nextInStore,
 				Bloom: &Bloom{
+					// TODO parameterise SBF options. fp_rate
 					ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 				},
 			}
@@ -559,20 +563,21 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) error {
 				},
 				cur.Bloom,
 			); err != nil {
-				return errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
+				return 0, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
 			}
 		}
 
 		if err := builder.AddSeries(*cur); err != nil {
-			return errors.Wrap(err, "adding series to block")
+			return 0, errors.Wrap(err, "adding series to block")
 		}
 	}
 
-	if err := builder.blooms.Close(); err != nil {
-		return errors.Wrap(err, "closing bloom file")
+	checksum, err := builder.blooms.Close()
+	if err != nil {
+		return 0, errors.Wrap(err, "closing bloom file")
 	}
 	if err := builder.index.Close(); err != nil {
-		return errors.Wrap(err, "closing series file")
+		return 0, errors.Wrap(err, "closing series file")
 	}
-	return nil
+	return checksum, nil
 }

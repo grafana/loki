@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -290,7 +289,7 @@ query_timeout: 5m
 	}
 }
 
-func TestLimitsValidation(t *testing.T) {
+func TestLimitsValidation_deletionMode(t *testing.T) {
 	for _, tc := range []struct {
 		mode     string
 		expected error
@@ -300,7 +299,9 @@ func TestLimitsValidation(t *testing.T) {
 		{mode: "filter-and-delete", expected: nil},
 		{mode: "something-else", expected: deletionmode.ErrUnknownMode},
 	} {
-		limits := Limits{DeletionMode: tc.mode}
-		require.True(t, errors.Is(limits.Validate(), tc.expected))
+		t.Run(tc.mode, func(t *testing.T) {
+			limits := Limits{DeletionMode: tc.mode}
+			require.ErrorIs(t, limits.Validate(), tc.expected)
+		})
 	}
 }

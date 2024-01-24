@@ -240,6 +240,9 @@ loki:
     distributor:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    tracing:
+      enabled: {{ .Values.loki.tracing.enabled }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -254,7 +257,6 @@ loki:
     grpc_listen_port: 9095
   # -- Limits config
   limits_config:
-    enforce_metric_name: false
     reject_old_samples: true
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
@@ -283,6 +285,8 @@ loki:
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
+      # -- Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config
+      backoff_config: {}
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
@@ -296,6 +300,26 @@ loki:
       userAssignedId: null
       requestTimeout: null
       endpointSuffix: null
+    swift:
+      auth_version: null
+      auth_url: null
+      internal: null
+      username: null
+      user_domain_name: null
+      user_domain_id: null
+      user_id: null
+      password: null
+      domain_id: null
+      domain_name: null
+      project_id: null
+      project_name: null
+      project_domain_id: null
+      project_domain_name: null
+      region_name: null
+      container_name: null
+      max_retries: null
+      connect_timeout: null
+      request_timeout: null
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
@@ -345,6 +369,9 @@ loki:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   # -- Optional distributor configuration
   distributor: {}
+  # -- Enable tracing
+  tracing:
+    enabled: false
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
@@ -556,6 +583,12 @@ monitoring:
     enabled: true
     # -- Include alerting rules
     alerting: true
+    # -- Specify which individual alerts should be disabled
+    # -- Instead of turning off each alert one by one, set the .monitoring.rules.alerting value to false instead.
+    # -- If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.
+    disabled: {}
+    #  LokiRequestErrors: true
+    #  LokiRequestPanics: true
     # -- Alternative namespace to create PrometheusRule resources in
     namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
@@ -775,6 +808,8 @@ write:
   # https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown
   # -- Init containers to add to the write pods
   initContainers: []
+  # -- Containers to add to the write pods
+  extraContainers: []
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
@@ -1438,6 +1473,9 @@ gateway:
 networkPolicy:
   # -- Specifies whether Network Policies should be created
   enabled: false
+  # -- Specifies whether the policies created will be standard Network Policies (flavor: kubernetes)
+  # or Cilium Network Policies (flavor: cilium)
+  flavor: kubernetes
   metrics:
     # -- Specifies the Pods which are allowed to access the metrics port.
     # As this is cross-namespace communication, you also need the namespaceSelector.
@@ -1475,8 +1513,6 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
-tracing:
-  jaegerAgentHost: ""
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------

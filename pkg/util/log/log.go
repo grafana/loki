@@ -31,8 +31,8 @@ var (
 )
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and returns that logger.
-func InitLogger(cfg *server.Config, reg prometheus.Registerer, buffered bool, sync bool) log.Logger {
-	logger := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, buffered, sync)
+func InitLogger(cfg *server.Config, reg prometheus.Registerer, sync bool) log.Logger {
+	logger := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, sync)
 	// when using util_log.Logger, skip 3 stack frames.
 	Logger = log.With(logger, "caller", log.Caller(3))
 
@@ -113,7 +113,7 @@ func LevelHandler(currentLogLevel *dslog.Level) http.HandlerFunc {
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
 // Prometheus counters for various log levels.
-func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer, buffered bool, sync bool) log.Logger {
+func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer, sync bool) log.Logger {
 	// buffered logger settings
 	var (
 		logEntries    uint32 = 256                    // buffer up to 256 log lines in memory before flushing to a write(2) syscall
@@ -138,22 +138,16 @@ func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer
 		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logEntries)))+1),
 	})
 
-	var writer io.Writer
-	if buffered {
-		// retain a reference to this logger because it doesn't conform to the standard Logger interface,
-		// and we can't unwrap it to get the underlying logger when we flush on shutdown
-		bufferedLogger = dslog.NewBufferedLogger(os.Stderr, logEntries,
-			dslog.WithFlushPeriod(flushTimeout),
-			dslog.WithPrellocatedBuffer(logBufferSize),
-			dslog.WithFlushCallback(func(entries uint32) {
-				logFlushes.Observe(float64(entries))
-			}),
-		)
-
-		writer = bufferedLogger
-	} else {
-		writer = os.Stderr
-	}
+	// retain a reference to this logger because it doesn't conform to the standard Logger interface,
+	// and we can't unwrap it to get the underlying logger when we flush on shutdown
+	bufferedLogger = dslog.NewBufferedLogger(os.Stderr, logEntries,
+		dslog.WithFlushPeriod(flushTimeout),
+		dslog.WithPrellocatedBuffer(logBufferSize),
+		dslog.WithFlushCallback(func(entries uint32) {
+			logFlushes.Observe(float64(entries))
+		}),
+	)
+	var writer io.Writer = bufferedLogger
 
 	if sync {
 		writer = log.NewSyncWriter(writer)

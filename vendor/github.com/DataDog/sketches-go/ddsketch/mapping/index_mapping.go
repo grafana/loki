@@ -39,6 +39,9 @@ func NewDefaultMapping(relativeAccuracy float64) (IndexMapping, error) {
 
 // FromProto returns an Index mapping from the protobuf definition of it
 func FromProto(m *sketchpb.IndexMapping) (IndexMapping, error) {
+	if m == nil {
+		return nil, errors.New("cannot create IndexMapping from nil protobuf index mapping")
+	}
 	switch m.Interpolation {
 	case sketchpb.IndexMapping_NONE:
 		return NewLogarithmicMappingWithGamma(m.Gamma, m.IndexOffset)

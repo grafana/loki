@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -54,6 +55,12 @@ func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
 	return &clone
 }
 
+// WithStartEndForCache implements resultscache.Request.
+func (q *PrometheusRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	clone := q.WithStartEnd(s, e).(resultscache.Request)
+	return clone
+}
+
 // WithQuery clones the current `PrometheusRequest` with a new query.
 func (q *PrometheusRequest) WithQuery(query string) Request {
 	clone := *q
@@ -86,6 +93,35 @@ func (resp *PrometheusResponse) minTime() int64 {
 		return -1
 	}
 	return result[0].Samples[0].TimestampMs
+}
+
+func convertPrometheusResponseHeadersToPointers(h []PrometheusResponseHeader) []*PrometheusResponseHeader {
+	if h == nil {
+		return nil
+	}
+
+	resp := make([]*PrometheusResponseHeader, len(h))
+	for i := range h {
+		resp[i] = &h[i]
+	}
+
+	return resp
+}
+
+func (resp *PrometheusResponse) WithHeaders(h []PrometheusResponseHeader) Response {
+	resp.Headers = convertPrometheusResponseHeadersToPointers(h)
+	return resp
+}
+
+func (resp *PrometheusResponse) SetHeader(name, value string) {
+	for i, h := range resp.Headers {
+		if h.Name == name {
+			resp.Headers[i].Values = []string{value}
+			return
+		}
+	}
+
+	resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: name, Values: []string{value}})
 }
 
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.

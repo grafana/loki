@@ -1,8 +1,10 @@
 package querier
 
 import (
-	"fmt"
+	"net"
+	"strconv"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -52,10 +54,11 @@ func (cfg WorkerServiceConfig) QuerierRunningStandalone() bool {
 //     HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
 //     as a http.Handler to the frontend worker.
 func InitWorkerService(
+	logger log.Logger,
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
 	handler queryrangebase.Handler,
-	codec querier_worker.GRPCCodec,
+	codec querier_worker.RequestCodec,
 ) (serve services.Service, err error) {
 
 	// If the querier is running standalone without the query-frontend or query-scheduler, we must register the internal
@@ -76,7 +79,7 @@ func InitWorkerService(
 			*(cfg.QuerierWorkerConfig),
 			cfg.SchedulerRing,
 			handler,
-			util_log.Logger,
+			logger,
 			reg,
 			codec,
 		)
@@ -89,7 +92,7 @@ func InitWorkerService(
 		if cfg.GrpcListenAddress != "" {
 			listenAddress = cfg.GrpcListenAddress
 		}
-		address := fmt.Sprintf("%s:%d", listenAddress, cfg.GrpcListenPort)
+		address := net.JoinHostPort(listenAddress, strconv.Itoa(cfg.GrpcListenPort))
 		level.Warn(util_log.Logger).Log(
 			"msg", "Worker address is empty, attempting automatic worker configuration. If queries are unresponsive consider configuring the worker explicitly.",
 			"address", address)
@@ -102,7 +105,7 @@ func InitWorkerService(
 		*(cfg.QuerierWorkerConfig),
 		cfg.SchedulerRing,
 		handler,
-		util_log.Logger,
+		logger,
 		reg,
 		codec,
 	)

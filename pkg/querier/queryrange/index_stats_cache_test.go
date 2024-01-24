@@ -15,14 +15,17 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestIndexStatsCache(t *testing.T) {
 	cfg := queryrangebase.ResultsCacheConfig{
-		CacheConfig: cache.Config{
-			Cache: cache.NewMockCache(),
+		Config: resultscache.Config{
+			CacheConfig: cache.Config{
+				Cache: cache.NewMockCache(),
+			},
 		},
 	}
 	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
@@ -32,6 +35,7 @@ func TestIndexStatsCache(t *testing.T) {
 		WithSplitByLimits(fakeLimits{}, 24*time.Hour),
 		DefaultCodec,
 		c,
+		nil,
 		nil,
 		nil,
 		func(_ context.Context, _ []string, _ queryrangebase.Request) int {
@@ -158,8 +162,10 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := queryrangebase.ResultsCacheConfig{
-				CacheConfig: cache.Config{
-					Cache: cache.NewMockCache(),
+				Config: resultscache.Config{
+					CacheConfig: cache.Config{
+						Cache: cache.NewMockCache(),
+					},
 				},
 			}
 			c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
@@ -173,6 +179,7 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 				WithSplitByLimits(lim, 24*time.Hour),
 				DefaultCodec,
 				c,
+				nil,
 				nil,
 				nil,
 				func(_ context.Context, _ []string, _ queryrangebase.Request) int {

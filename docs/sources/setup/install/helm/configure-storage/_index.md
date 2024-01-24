@@ -1,7 +1,7 @@
 ---
 title: Configure storage
 menuTitle: Configure storage 
-description: Configure Loki storage
+description: Configuring Loki storage with the Helm Chart.
 aliases:
   - ../../../installation/helm/configure-storage/
   - ../../../installation/helm/storage
@@ -46,7 +46,7 @@ This guide assumes Loki will be installed in one of the modes above and that a `
    ```
    serviceAccount:
      annotations:
-       "eks.amazonaws.com/role-arn": "arn:aws:iam::<account id>:role/<role name>:
+       "eks.amazonaws.com/role-arn": "arn:aws:iam::<account id>:role/<role name>"
    ```
 
 3. Configure the storage:

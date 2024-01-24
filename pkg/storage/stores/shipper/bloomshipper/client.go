@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/concurrency"
-
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/math"
@@ -33,8 +33,18 @@ type Ref struct {
 	TenantID                       string
 	TableName                      string
 	MinFingerprint, MaxFingerprint uint64
-	StartTimestamp, EndTimestamp   int64
+	StartTimestamp, EndTimestamp   model.Time
 	Checksum                       uint32
+}
+
+// Cmp returns the fingerprint's position relative to the bounds
+func (r Ref) Cmp(fp uint64) v1.BoundsCheck {
+	if fp < r.MinFingerprint {
+		return v1.Before
+	} else if fp > r.MaxFingerprint {
+		return v1.After
+	}
+	return v1.Overlap
 }
 
 type BlockRef struct {
@@ -57,11 +67,9 @@ type Meta struct {
 }
 
 type MetaSearchParams struct {
-	TenantID       string
-	MinFingerprint uint64
-	MaxFingerprint uint64
-	StartTimestamp int64
-	EndTimestamp   int64
+	TenantID                       string
+	MinFingerprint, MaxFingerprint model.Fingerprint
+	StartTimestamp, EndTimestamp   model.Time
 }
 
 type MetaClient interface {
@@ -72,14 +80,18 @@ type MetaClient interface {
 	DeleteMeta(ctx context.Context, meta Meta) error
 }
 
-type Block struct {
+type LazyBlock struct {
 	BlockRef
-
 	Data io.ReadCloser
 }
 
+type Block struct {
+	BlockRef
+	Data io.ReadSeekCloser
+}
+
 type BlockClient interface {
-	GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error)
+	GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error)
 	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
 }
@@ -114,26 +126,25 @@ type BloomClient struct {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
-	start := model.TimeFromUnix(params.StartTimestamp)
-	end := model.TimeFromUnix(params.EndTimestamp)
-	tablesByPeriod := tablesByPeriod(b.periodicConfigs, start, end)
+	tablesByPeriod := tablesByPeriod(b.periodicConfigs, params.StartTimestamp, params.EndTimestamp)
 
 	var metas []Meta
 	for periodFrom, tables := range tablesByPeriod {
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, delimiter)
+			list, _, err := periodClient.List(ctx, prefix, "")
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
 			for _, object := range list {
 				metaRef, err := createMetaRef(object.Key, params.TenantID, table)
+
 				if err != nil {
 					return nil, err
 				}
-				if metaRef.MaxFingerprint < params.MinFingerprint || params.MaxFingerprint < metaRef.MinFingerprint ||
-					metaRef.StartTimestamp < params.StartTimestamp || params.EndTimestamp < metaRef.EndTimestamp {
+				if metaRef.MaxFingerprint < uint64(params.MinFingerprint) || uint64(params.MaxFingerprint) < metaRef.MinFingerprint ||
+					metaRef.EndTimestamp.Before(params.StartTimestamp) || metaRef.StartTimestamp.After(params.EndTimestamp) {
 					continue
 				}
 				meta, err := b.downloadMeta(ctx, metaRef, periodClient)
@@ -162,67 +173,49 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 
 func createBlockObjectKey(meta Ref) string {
 	blockParentFolder := fmt.Sprintf("%x-%x", meta.MinFingerprint, meta.MaxFingerprint)
-	filename := fmt.Sprintf("%v-%v-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
+	filename := fmt.Sprintf("%d-%d-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
 	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, bloomsFolder, blockParentFolder, filename}, delimiter)
 }
 
 func createMetaObjectKey(meta Ref) string {
-	filename := fmt.Sprintf("%x-%x-%v-%v-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
+	filename := fmt.Sprintf("%x-%x-%d-%d-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
 	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, metasFolder, filename}, delimiter)
 }
 
-func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime, error) {
-	ts := model.TimeFromUnix(timestamp)
+func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
 	for i := len(configs) - 1; i >= 0; i-- {
 		periodConfig := configs[i]
 		if periodConfig.From.Before(ts) || periodConfig.From.Equal(ts) {
 			return periodConfig.From, nil
 		}
 	}
-	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", timestamp)
+	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", ts)
 }
+
 func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
 	if err != nil {
-		return fmt.Errorf("error updloading meta file: %w", err)
+		return err
 	}
 	key := createMetaObjectKey(meta.MetaRef.Ref)
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
 
-// GetBlocks downloads all the blocks from objectStorage in parallel and sends the downloaded blocks
-// via the channel Block that is closed only if all the blocks are downloaded without errors.
-// If an error happens, the error will be sent via error channel.
-func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error) {
-	blocksChannel := make(chan Block, len(references))
-	errChannel := make(chan error)
-	go func() {
-		//todo move concurrency to the config
-		err := concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
-			reference := references[idx]
-			period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
-			if err != nil {
-				return fmt.Errorf("error while period lookup: %w", err)
-			}
-			objectClient := b.periodicObjectClients[period]
-			readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
-			if err != nil {
-				return fmt.Errorf("error while fetching object from storage: %w", err)
-			}
-			blocksChannel <- Block{
-				BlockRef: reference,
-				Data:     readCloser,
-			}
-			return nil
-		})
-		if err != nil {
-			errChannel <- fmt.Errorf("error downloading block file: %w", err)
-			return
-		}
-		//close blocks channel only if there is no error
-		close(blocksChannel)
-	}()
-	return blocksChannel, errChannel
+// GetBlock downloads the blocks from objectStorage and returns the downloaded block
+func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error) {
+	period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
+	if err != nil {
+		return LazyBlock{}, fmt.Errorf("error while period lookup: %w", err)
+	}
+	objectClient := b.periodicObjectClients[period]
+	readCloser, _, err := objectClient.GetObject(ctx, createBlockObjectKey(reference.Ref))
+	if err != nil {
+		return LazyBlock{}, fmt.Errorf("error while fetching object from storage: %w", err)
+	}
+	return LazyBlock{
+		BlockRef: reference,
+		Data:     readCloser,
+	}, nil
 }
 
 func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
@@ -236,17 +229,19 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 
 		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
 		if err != nil {
-			return fmt.Errorf("error updloading block file: %w", err)
+			return fmt.Errorf("error uploading block file: %w", err)
 		}
 		key := createBlockObjectKey(block.Ref)
 		objectClient := b.periodicObjectClients[period]
-		data, err := io.ReadAll(block.Data)
+
+		_, err = block.Data.Seek(0, 0)
 		if err != nil {
-			return fmt.Errorf("error while reading object data: %w", err)
+			return fmt.Errorf("error uploading block file: %w", err)
 		}
-		err = objectClient.PutObject(ctx, key, bytes.NewReader(data))
+
+		err = objectClient.PutObject(ctx, key, block.Data)
 		if err != nil {
-			return fmt.Errorf("error updloading block file: %w", err)
+			return fmt.Errorf("error uploading block file: %w", err)
 		}
 		block.BlockPath = key
 		results[idx] = block
@@ -287,20 +282,15 @@ func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client 
 	if err != nil {
 		return Meta{}, fmt.Errorf("error downloading meta file %s : %w", metaRef.FilePath, err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer reader.Close()
 
-	buf, err := io.ReadAll(reader)
-	if err != nil {
-		return Meta{}, fmt.Errorf("error reading meta file %s: %w", metaRef.FilePath, err)
-	}
-	err = json.Unmarshal(buf, &meta)
+	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
 		return Meta{}, fmt.Errorf("error unmarshalling content of meta file %s: %w", metaRef.FilePath, err)
 	}
 	return meta, nil
 }
 
-// todo cover with tests
 func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef, error) {
 	fileName := objectKey[strings.LastIndex(objectKey, delimiter)+1:]
 	parts := strings.Split(fileName, fileNamePartDelimiter)
@@ -334,8 +324,8 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 			TableName:      tableName,
 			MinFingerprint: minFingerprint,
 			MaxFingerprint: maxFingerprint,
-			StartTimestamp: startTimestamp,
-			EndTimestamp:   endTimestamp,
+			StartTimestamp: model.Time(startTimestamp),
+			EndTimestamp:   model.Time(endTimestamp),
 			Checksum:       uint32(checksum),
 		},
 		FilePath: objectKey,
@@ -365,9 +355,9 @@ func tablesByPeriod(periodicConfigs []config.PeriodConfig, start, end model.Time
 
 func tablesForRange(periodConfig config.PeriodConfig, from, to int64) []string {
 	interval := periodConfig.IndexTables.Period
-	intervalSeconds := interval.Seconds()
-	lower := from / int64(intervalSeconds)
-	upper := to / int64(intervalSeconds)
+	step := int64(interval.Seconds())
+	lower := from / step
+	upper := to / step
 	tables := make([]string, 0, 1+upper-lower)
 	prefix := periodConfig.IndexTables.Prefix
 	for i := lower; i <= upper; i++ {

@@ -7,6 +7,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -32,6 +34,7 @@ type Merger interface {
 
 // Request represents a query range request that can be process by middlewares.
 type Request interface {
+	proto.Message
 	// GetStart returns the start timestamp of the request in milliseconds.
 	GetStart() time.Time
 	// GetEnd returns the end timestamp of the request in milliseconds.
@@ -46,14 +49,21 @@ type Request interface {
 	WithStartEnd(start time.Time, end time.Time) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
-	proto.Message
 	// LogToSpan writes information about this request to an OpenTracing span
 	LogToSpan(opentracing.Span)
 }
+
+type CachingOptions = resultscache.CachingOptions
 
 // Response represents a query range response.
 type Response interface {
 	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
 	GetHeaders() []*PrometheusResponseHeader
+
+	// WithHeaders return the response with all headers overridden.
+	WithHeaders([]PrometheusResponseHeader) Response
+
+	// SetHeader sets one header key-value pair. If the key already exists its value is overridden.
+	SetHeader(string, string)
 }

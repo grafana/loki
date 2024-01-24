@@ -177,7 +177,7 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	chunks, fetchers, err := t.Store.GetChunks(ctx, userID, from, through, matchers...)
+	chunks, fetchers, err := t.Store.GetChunks(ctx, userID, from, through, chunk.NewPredicate(matchers, nil))
 	require.NoError(t.t, err)
 	fetchedChunk := []chunk.Chunk{}
 	for _, f := range fetchers {
@@ -205,7 +205,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 	t.Helper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
-	util_log.InitLogger(servercfg, nil, true, false)
+	util_log.InitLogger(servercfg, nil, false)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")

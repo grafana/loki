@@ -37,10 +37,12 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.31.2
+BUILD_IMAGE_VERSION ?= 0.33.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
+
+BUILD_IMAGE_PREFIX ?= grafana
 
 IMAGE_TAG ?= $(shell ./tools/image-tag)
 
@@ -101,15 +103,15 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
-DOCKER_BUILDKIT=1
-BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+DOCKER_BUILDKIT ?= 1
+BUILD_IMAGE = BUILD_IMAGE=$(BUILD_IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
 PUSH_OCI=docker push
 TAG_OCI=docker tag
 ifeq ($(CI), true)
 	OCI_PLATFORMS=--platform=linux/amd64,linux/arm64
-	BUILD_OCI=docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 else
-	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg $(BUILD_IMAGE)
 endif
 
 binfmt:
@@ -425,7 +427,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -799,6 +801,9 @@ EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 validate-example-configs: loki
 	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
+validate-dev-cluster-config: loki
+	./cmd/loki/loki -config.file=./tools/dev/loki-boltdb-storage-s3/config/loki.yaml -verify-config
+
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
@@ -834,13 +839,16 @@ dev-k3d-down:
 
 # Trivy is used to scan images for vulnerabilities
 .PHONY: trivy
-trivy: loki-image
+trivy: loki-image build-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
+	trivy fs go.mod
 
 # Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
 .PHONY: snyk
-snyk: loki-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+snyk: loki-image build-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities

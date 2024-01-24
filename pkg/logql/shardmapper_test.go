@@ -51,7 +51,7 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 
 	for _, tc := range []struct {
 		in  syntax.SampleExpr
@@ -113,7 +113,7 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{ShardQuantileOverTime})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -418,7 +418,7 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	m := NewShardMapper(ConstantShards(2), nilShardMetrics)
+	m := NewShardMapper(ConstantShards(2), nilShardMetrics, []string{})
 
 	for _, tc := range []struct {
 		in   string
@@ -465,9 +465,11 @@ func TestMapping(t *testing.T) {
 						},
 						MultiStages: syntax.MultiStageExpr{
 							&syntax.LineFilterExpr{
-								Ty:    labels.MatchEqual,
-								Match: "error",
-								Op:    "",
+								LineFilter: syntax.LineFilter{
+									Ty:    labels.MatchEqual,
+									Match: "error",
+									Op:    "",
+								},
 							},
 						},
 					},
@@ -484,9 +486,11 @@ func TestMapping(t *testing.T) {
 							},
 							MultiStages: syntax.MultiStageExpr{
 								&syntax.LineFilterExpr{
-									Ty:    labels.MatchEqual,
-									Match: "error",
-									Op:    "",
+									LineFilter: syntax.LineFilter{
+										Ty:    labels.MatchEqual,
+										Match: "error",
+										Op:    "",
+									},
 								},
 							},
 						},
@@ -1336,12 +1340,186 @@ func TestMapping(t *testing.T) {
 				},
 			},
 		},
+		{
+			in: `quantile_over_time(0.8, {foo="bar"} | unwrap bytes [5m]) by (cluster)`,
+			expr: &syntax.RangeAggregationExpr{
+				Operation: syntax.OpRangeTypeQuantile,
+				Params:    float64p(0.8),
+				Left: &syntax.LogRange{
+					Left: &syntax.MatchersExpr{
+						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+					},
+					Unwrap: &syntax.UnwrapExpr{
+						Identifier: "bytes",
+					},
+					Interval: 5 * time.Minute,
+				},
+				Grouping: &syntax.Grouping{
+					Groups: []string{"cluster"},
+				},
+			},
+		},
+		{
+			in: `
+			  quantile_over_time(0.99, {a="foo"} | unwrap bytes [1s]) by (b)
+			and
+			  sum by (b) (rate({a="bar"}[1s]))
+			`,
+			expr: &syntax.BinOpExpr{
+				SampleExpr: DownstreamSampleExpr{
+					SampleExpr: &syntax.RangeAggregationExpr{
+						Operation: syntax.OpRangeTypeQuantile,
+						Params:    float64p(0.99),
+						Left: &syntax.LogRange{
+							Left: &syntax.MatchersExpr{
+								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
+							},
+							Unwrap: &syntax.UnwrapExpr{
+								Identifier: "bytes",
+							},
+							Interval: 1 * time.Second,
+						},
+						Grouping: &syntax.Grouping{
+							Groups: []string{"b"},
+						},
+					},
+				},
+				RHS: &syntax.VectorAggregationExpr{
+					Left: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 0,
+								Of:    2,
+							},
+							SampleExpr: &syntax.VectorAggregationExpr{
+								Left: &syntax.RangeAggregationExpr{
+									Left: &syntax.LogRange{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "bar")},
+										},
+										Interval: 1 * time.Second,
+									},
+									Operation: syntax.OpRangeTypeRate,
+								},
+								Grouping: &syntax.Grouping{
+									Groups: []string{"b"},
+								},
+								Params:    0,
+								Operation: syntax.OpTypeSum,
+							},
+						},
+						next: &ConcatSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
+								shard: &astmapper.ShardAnnotation{
+									Shard: 1,
+									Of:    2,
+								},
+								SampleExpr: &syntax.VectorAggregationExpr{
+									Left: &syntax.RangeAggregationExpr{
+										Left: &syntax.LogRange{
+											Left: &syntax.MatchersExpr{
+												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "bar")},
+											},
+											Interval: 1 * time.Second,
+										},
+										Operation: syntax.OpRangeTypeRate,
+									},
+									Grouping: &syntax.Grouping{
+										Groups: []string{"b"},
+									},
+									Params:    0,
+									Operation: syntax.OpTypeSum,
+								},
+							},
+							next: nil,
+						},
+					},
+					Grouping: &syntax.Grouping{
+						Groups: []string{"b"},
+					},
+					Operation: syntax.OpTypeSum,
+				},
+				Op: syntax.OpTypeAnd,
+				Opts: &syntax.BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: &syntax.VectorMatching{},
+				},
+			},
+		},
+		{
+			in: `quantile_over_time(0.99, {a="foo"} | unwrap bytes [1s]) by (a, b) > 1`,
+			expr: &syntax.BinOpExpr{
+				SampleExpr: DownstreamSampleExpr{
+					SampleExpr: &syntax.RangeAggregationExpr{
+						Operation: syntax.OpRangeTypeQuantile,
+						Params:    float64p(0.99),
+						Left: &syntax.LogRange{
+							Left: &syntax.MatchersExpr{
+								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
+							},
+							Unwrap: &syntax.UnwrapExpr{
+								Identifier: "bytes",
+							},
+							Interval: 1 * time.Second,
+						},
+						Grouping: &syntax.Grouping{
+							Groups: []string{"a", "b"},
+						},
+					},
+				},
+				RHS: &syntax.LiteralExpr{
+					Val: 1,
+				},
+				Op: syntax.OpTypeGT,
+				Opts: &syntax.BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: &syntax.VectorMatching{},
+				},
+			},
+		},
+		{
+			in: `1 < quantile_over_time(0.99, {a="foo"} | unwrap bytes [1s]) by (a, b)`,
+			expr: &syntax.BinOpExpr{
+				SampleExpr: &syntax.LiteralExpr{
+					Val: 1,
+				},
+				RHS: DownstreamSampleExpr{
+					SampleExpr: &syntax.RangeAggregationExpr{
+						Operation: syntax.OpRangeTypeQuantile,
+						Params:    float64p(0.99),
+						Left: &syntax.LogRange{
+							Left: &syntax.MatchersExpr{
+								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
+							},
+							Unwrap: &syntax.UnwrapExpr{
+								Identifier: "bytes",
+							},
+							Interval: 1 * time.Second,
+						},
+						Grouping: &syntax.Grouping{
+							Groups: []string{"a", "b"},
+						},
+					},
+				},
+				Op: syntax.OpTypeLT,
+				Opts: &syntax.BinOpOptions{
+					ReturnBool:     false,
+					VectorMatching: &syntax.VectorMatching{},
+				},
+			},
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
 			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			switch e := mapped.(type) {
+			case syntax.SampleExpr:
+				optimized, err := optimizeSampleExpr(e)
+				require.NoError(t, err)
+				require.Equal(t, mapped.String(), optimized.String())
+			}
 
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.expr.String(), mapped.String())
@@ -1361,14 +1539,14 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 
 func TestStringTrimming(t *testing.T) {
 	for _, tc := range []struct {
-		expr     string
+		expr     syntax.Expr
 		expected string
 		shards   int
 	}{
 		{
 			// sample expr in entirety for low shard count
 			shards: 2,
-			expr:   `count_over_time({app="foo"}[1m])`,
+			expr:   syntax.MustParseExpr(`count_over_time({app="foo"}[1m])`),
 			expected: `
 				downstream<count_over_time({app="foo"}[1m]),shard=0_of_2> ++
 				downstream<count_over_time({app="foo"}[1m]),shard=1_of_2>
@@ -1377,7 +1555,7 @@ func TestStringTrimming(t *testing.T) {
 		{
 			// sample expr doesnt display infinite shards
 			shards: 5,
-			expr:   `count_over_time({app="foo"}[1m])`,
+			expr:   syntax.MustParseExpr(`count_over_time({app="foo"}[1m])`),
 			expected: `
 				downstream<count_over_time({app="foo"}[1m]),shard=0_of_5> ++
 				downstream<count_over_time({app="foo"}[1m]),shard=1_of_5> ++
@@ -1389,7 +1567,7 @@ func TestStringTrimming(t *testing.T) {
 		{
 			// log selector expr in entirety for low shard count
 			shards: 2,
-			expr:   `{app="foo"}`,
+			expr:   syntax.MustParseExpr(`{app="foo"}`),
 			expected: `
 				downstream<{app="foo"},shard=0_of_2> ++
 				downstream<{app="foo"},shard=1_of_2>
@@ -1398,7 +1576,7 @@ func TestStringTrimming(t *testing.T) {
 		{
 			// log selector expr doesnt display infinite shards
 			shards: 5,
-			expr:   `{app="foo"}`,
+			expr:   syntax.MustParseExpr(`{app="foo"}`),
 			expected: `
 				downstream<{app="foo"},shard=0_of_5> ++
 				downstream<{app="foo"},shard=1_of_5> ++
@@ -1408,11 +1586,15 @@ func TestStringTrimming(t *testing.T) {
 			`,
 		},
 	} {
-		t.Run(tc.expr, func(t *testing.T) {
-			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics)
+		t.Run(tc.expr.String(), func(t *testing.T) {
+			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics, []string{ShardQuantileOverTime})
 			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})
 	}
+}
+
+func float64p(v float64) *float64 {
+	return &v
 }
