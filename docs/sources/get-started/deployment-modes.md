@@ -78,7 +78,7 @@ For release 2.9 the components are:
 TIP: You can see the complete list of targets for your version of Loki by running Loki with the flag `-list-targets`, for example:
 
 ```bash
-docker run docker.io/grafana/loki:2.9.2 -config.file=/etc/loki/local-config.yaml -list-targets
+docker run docker.io/grafana/loki:2.9.4 -config.file=/etc/loki/local-config.yaml -list-targets
 ```
 ![Microservices mode diagram](../microservices-mode.png "Microservices mode")
 
