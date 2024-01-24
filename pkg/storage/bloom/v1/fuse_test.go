@@ -20,7 +20,7 @@ func TestFusedQuerier(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -112,7 +112,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 10000
 	numKeysPerSeries := 100
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{

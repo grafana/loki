@@ -62,6 +62,11 @@ func (b *Block) LoadHeaders() error {
 
 }
 
+// convenience method
+func (b *Block) Querier() *BlockQuerier {
+	return NewBlockQuerier(b)
+}
+
 func (b *Block) Series() *LazySeriesIter {
 	return NewLazySeriesIter(b)
 }

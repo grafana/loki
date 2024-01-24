@@ -11,21 +11,10 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 )
 
-func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
-	for expected.Next() {
-		require.True(t, actual.Next())
-		a, b := expected.At(), actual.At()
-		test(a, b)
-	}
-	require.False(t, actual.Next())
-	require.Nil(t, expected.Err())
-	require.Nil(t, actual.Err())
-}
-
 func TestBlockBuilderRoundTrip(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, keys := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
@@ -115,7 +104,7 @@ func TestMergeBuilder(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 100
 	blocks := make([]PeekingIterator[*SeriesWithBloom], 0, nBlocks)
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  DefaultSchemaVersion,
@@ -198,7 +187,7 @@ func TestMergeBuilder(t *testing.T) {
 func TestBlockReset(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
 
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
@@ -250,7 +239,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 100
 	minTs, maxTs := model.Time(0), model.Time(10000)
-	xs, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, minTs, maxTs)
+	xs, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, minTs, maxTs)
 
 	var data [][]*SeriesWithBloom
 

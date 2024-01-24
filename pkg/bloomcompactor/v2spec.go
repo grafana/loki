@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -37,15 +38,13 @@ func (k Keyspace) Cmp(other Keyspace) v1.BoundsCheck {
 	return v1.Overlap
 }
 
-// placeholder
-type Block struct{}
-
 // Store is likely bound within. This allows specifying impls like ShardedStore<Store>
 // to only request the shard-range needed from the existing store.
 type BloomGenerator interface {
-	Generate(ctx context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[Block], err error)
+	Generate(ctx context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error)
 }
 
+// Simple implementation of a BloomGenerator.
 type SimpleBloomGenerator struct {
 	store v1.Iterator[*v1.Series]
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
@@ -59,13 +58,20 @@ type SimpleBloomGenerator struct {
 	logger  log.Logger
 
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
+
+	tokenizer *v1.BloomTokenizer
 }
 
+// SimpleBloomGenerator is a foundational implementation of BloomGenerator.
+// It mainly wires up a few different components to generate bloom filters for a set of blocks
+// and handles schema compatibility:
+// Blocks which are incompatible with the schema are skipped and will have their chunks reindexed
 func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	blocks []*v1.Block,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
+	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomGenerator {
 	return &SimpleBloomGenerator{
@@ -74,15 +80,26 @@ func NewSimpleBloomGenerator(
 		blocks:       blocks,
 		logger:       logger,
 		readWriterFn: readWriterFn,
+		metrics:      metrics,
+
+		tokenizer: v1.NewBloomTokenizer(opts.Schema.NGramLen(), opts.Schema.NGramSkip(), metrics.bloomMetrics),
 	}
 }
 
 func (s *SimpleBloomGenerator) populate(series *v1.Series, bloom *v1.Bloom) error {
 	// TODO(owen-d): impl after threading in store
-	return nil
+	var chunkItr v1.Iterator[[]chunk.Chunk] = v1.NewEmptyIter[[]chunk.Chunk](nil)
+
+	return s.tokenizer.PopulateSeriesWithBloom(
+		&v1.SeriesWithBloom{
+			Series: series,
+			Bloom:  bloom,
+		},
+		chunkItr,
+	)
 }
 
-func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error) {
+func (s *SimpleBloomGenerator) Generate(_ context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error) {
 
 	blocksMatchingSchema := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(s.blocks))
 	for _, block := range s.blocks {
