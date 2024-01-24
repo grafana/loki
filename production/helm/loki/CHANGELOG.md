@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Modified helm template to use parameters http_listen_port and grpc_listen_port instead of hardcoded values.
 
+## 5.41.8
+
+- [BUGFIX] Fix gateway: add possibility to disable listening on ipv6 to prevent crash on ipv4-only system.
+
 ## 5.41.7
 
 - [FEATURE] Add support to disable specific alert rules

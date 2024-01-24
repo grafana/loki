@@ -695,7 +695,9 @@ http {
 
   server {
     listen             8080;
+    {{- if .Values.gateway.nginxConfig.enableIPv6 }}
     listen             [::]:8080;
+    {{- end }}
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";
