@@ -79,18 +79,18 @@ type worker struct {
 	cfg     workerConfig
 	queue   *queue.RequestQueue
 	shipper bloomshipper.Interface
-	tasks   *pendingTasks
+	pending *pendingTasks
 	logger  log.Logger
 	metrics *workerMetrics
 }
 
-func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, shipper bloomshipper.Interface, tasks *pendingTasks, logger log.Logger, metrics *workerMetrics) *worker {
+func newWorker(id string, cfg workerConfig, queue *queue.RequestQueue, shipper bloomshipper.Interface, pending *pendingTasks, logger log.Logger, metrics *workerMetrics) *worker {
 	w := &worker{
 		id:      id,
 		cfg:     cfg,
 		queue:   queue,
 		shipper: shipper,
-		tasks:   tasks,
+		pending: pending,
 		logger:  log.With(logger, "worker", id),
 		metrics: metrics,
 	}
@@ -134,7 +134,7 @@ func (w *worker) running(ctx context.Context) error {
 			}
 			w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
 
-			tasksPerDay := make(map[time.Time][]Task)
+			tasksPerDay := make(map[model.Time][]Task)
 
 			for _, item := range items {
 				task, ok := item.(Task)
@@ -144,17 +144,9 @@ func (w *worker) running(ctx context.Context) error {
 					return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 				}
 				level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
-				w.tasks.Delete(task.ID)
+				w.pending.Delete(task.ID)
 
-				fromDay, throughDay := task.Bounds()
-
-				if fromDay.Equal(throughDay) {
-					tasksPerDay[fromDay] = append(tasksPerDay[fromDay], task)
-				} else {
-					for i := fromDay; i.Before(throughDay); i = i.Add(24 * time.Hour) {
-						tasksPerDay[i] = append(tasksPerDay[i], task)
-					}
-				}
+				tasksPerDay[task.day] = append(tasksPerDay[task.day], task)
 			}
 
 			for day, tasks := range tasksPerDay {
@@ -162,7 +154,7 @@ func (w *worker) running(ctx context.Context) error {
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
 				storeFetchStart := time.Now()
-				blockRefs, err := w.shipper.GetBlockRefs(taskCtx, tasks[0].Tenant, toModelTime(day), toModelTime(day.Add(Day).Add(-1*time.Nanosecond)))
+				blockRefs, err := w.shipper.GetBlockRefs(taskCtx, tasks[0].Tenant, day, day.Add(Day).Add(-1*time.Nanosecond))
 				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
 				if err != nil {
 					for _, t := range tasks {
@@ -177,7 +169,7 @@ func (w *worker) running(ctx context.Context) error {
 				if len(blockRefs) == 0 {
 					level.Warn(logger).Log("msg", "no blocks found")
 					for _, t := range tasks {
-						for _, ref := range t.Request.Refs {
+						for _, ref := range t.series {
 							t.ResCh <- v1.Output{
 								Fp:       model.Fingerprint(ref.Fingerprint),
 								Removals: nil,
@@ -188,13 +180,13 @@ func (w *worker) running(ctx context.Context) error {
 					continue
 				}
 
-				boundedRefs := partitionFingerprintRange(tasks, blockRefs)
+				tasksForBlocks := partitionFingerprintRange(tasks, blockRefs)
 				blockRefs = blockRefs[:0]
-				for _, b := range boundedRefs {
+				for _, b := range tasksForBlocks {
 					blockRefs = append(blockRefs, b.blockRef)
 				}
 
-				err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, boundedRefs)
+				err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, day, blockRefs, tasksForBlocks)
 				if err != nil {
 					for _, t := range tasks {
 						t.ErrCh <- err
@@ -217,7 +209,7 @@ func (w *worker) stopping(err error) error {
 	return nil
 }
 
-func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, day time.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
+func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, day model.Time, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
 	return w.shipper.Fetch(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
 		for _, b := range boundedRefs {
 			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
@@ -228,7 +220,7 @@ func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant strin
 	})
 }
 
-func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) error {
+func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, day model.Time, tasks []Task) error {
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		return err
