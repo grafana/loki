@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"golang.org/x/sync/errgroup"
 	"strconv"
 	"sync"
 	"testing"
@@ -331,6 +332,64 @@ func TestMaxQueueSize(t *testing.T) {
 		err = queue.Enqueue("tenant", []string{"user-c"}, 6, nil)
 		assert.Equal(t, err, ErrTooManyRequests)
 	})
+}
+
+func Test_Queue_DequeueMany(t *testing.T) {
+	maxSize := 100
+	queue := NewRequestQueue(maxSize, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wg, _ := errgroup.WithContext(ctx)
+
+	// 100 senders submits 100 tasks each.
+	for i := 0; i < 100; i++ {
+		tenant := fmt.Sprintf("tenant-%d", i)
+		wg.Go(func() error {
+			for j := 0; j < 100; j++ {
+				err := queue.Enqueue(tenant, []string{}, fmt.Sprintf("%s-task", tenant), nil)
+				if err != nil {
+					return fmt.Errorf("error while enqueueing task for the %s : %w", tenant, err)
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			return nil
+		})
+	}
+
+	// 10 workers receives 100 batches each. each batch is 10 tasks.
+	for i := 0; i < 10; i++ {
+		wg.Go(func() error {
+			worker := fmt.Sprintf("worker-%d", i)
+			queue.RegisterConsumerConnection(worker)
+			idx := StartIndexWithLocalQueue
+			for j := 0; j < 100; j++ {
+				ctx := context.Background()
+				tasks, newIdx, err := queue.DequeueMany(ctx, idx, worker, 10, 10*time.Second)
+				if err != nil {
+					return fmt.Errorf("error while dequeueing many task by %s: %w", worker, err)
+				}
+				if !isAllItemsSame(tasks) {
+					return fmt.Errorf("expected all items to be from the same tenant, but they were not: %v", tasks)
+				}
+				idx = newIdx
+			}
+			return nil
+		})
+	}
+
+	err := wg.Wait()
+	require.NoError(t, err)
+}
+
+func isAllItemsSame[T comparable](items []T) bool {
+	firstItem := items[0]
+	for i := 1; i < len(items); i++ {
+		if items[i] != firstItem {
+			return false
+		}
+	}
+	return true
 }
 
 func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, msg string) {
