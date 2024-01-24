@@ -155,6 +155,10 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 			c[n] = cur
 
 			if cur.MinTime < last.MaxTime {
+				// next.KB / next.TotalLength * next.RemainingLength
+				// prev = 10KB, next = 20KB, overlap 30%
+				// (10KB + 20KB) * 50%
+				// 10KB + 15KB,
 				// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
 				// -> [last.MaxTime, cur.MaxTime) is the new interval
 				// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))

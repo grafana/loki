@@ -24,9 +24,10 @@ import (
 func main() {
 
 	client := &client.DefaultClient{
-		Address:   os.Getenv("LOKI_ADDR"),
-		Username:  os.Getenv("LOKI_USERNAME"),
-		Password:  os.Getenv("LOKI_PASSWORD"),
+		Address: os.Getenv("LOKI_ADDR"),
+		//Username:  os.Getenv("LOKI_USERNAME"),
+		//Password:  os.Getenv("LOKI_PASSWORD"),
+		OrgID:     "29",
 		TLSConfig: config.TLSConfig{},
 	}
 
@@ -40,9 +41,12 @@ func main() {
 
 	// Starts rounded to the second
 	starts := []time.Time{
-		time.Unix(time.Now().Unix(), 0),
-		time.Unix(time.Now().Unix(), 0).Add(-3 * time.Hour),
-		time.Unix(time.Now().Unix(), 0).Add(-24 * time.Hour),
+		time.Unix(1693216800, 0),
+		/*
+			time.Unix(time.Now().Unix(), 0),
+			time.Unix(time.Now().Unix(), 0).Add(-3 * time.Hour),
+			time.Unix(time.Now().Unix(), 0).Add(-24 * time.Hour),
+		*/
 	}
 
 	acc := &accumulation{}
