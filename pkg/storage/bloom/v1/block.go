@@ -93,6 +93,7 @@ type BlockQuerier struct {
 
 func NewBlockQuerier(b *Block) *BlockQuerier {
 	return &BlockQuerier{
+		block:  b,
 		series: NewLazySeriesIter(b),
 		blooms: NewLazyBloomIter(b),
 	}
