@@ -121,20 +121,13 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 			c[n] = cur
 
 			if cur.MinTime < last.MaxTime {
-				// Subtract half the overlap for the last and current chunk
-				overlap := last.MaxTime - cur.MinTime
-
-				// Last
-				c[n-1].MinTime = last.MaxTime - overlap/2
-				factor := float64(c[n-1].MaxTime-c[n-1].MinTime) / float64(last.MaxTime-last.MinTime)
-				c[n-1].KB = uint32(factor * float64(c[n-1].KB))
-				c[n-1].Entries = uint32(factor * float64(c[n-1].Entries))
-
-				// Next
-				c[n].MinTime = cur.MinTime + overlap/2
-				factor = float64(c[n].MaxTime-c[n].MinTime) / float64(cur.MaxTime-cur.MinTime)
+				// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
+				// -> [last.MaxTime, cur.MaxTime) is the new interval
+				// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))
+				factor := float64(cur.MaxTime-last.MaxTime) / float64(cur.MaxTime-cur.MinTime)
 				c[n].KB = uint32(factor * float64(c[n].KB))
 				c[n].Entries = uint32(factor * float64(c[n].Entries))
+				c[n].MinTime = last.MaxTime
 			}
 			last = c[n]
 			n++
