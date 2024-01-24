@@ -482,9 +482,9 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
-			for k, v := range b.baseMap {
-				m[k] = v
-			}
+		}
+		for k, v := range b.baseMap {
+			m[k] = v
 		}
 		return
 	}

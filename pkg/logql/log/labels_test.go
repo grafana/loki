@@ -76,28 +76,54 @@ func TestLabelsBuilder_IntoMap(t *testing.T) {
 		"ToReplace", "text",
 	}
 	lbs := labels.FromStrings(strs...)
-	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 
-	m := map[string]string{}
-	b.IntoMap(m)
+	t.Run("it still copies the map after a Reset", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 
-	require.Equal(t, map[string]string{
-		"namespace": "loki",
-		"job":       "us-central1/loki",
-		"cluster":   "us-central1",
-		"ToReplace": "text",
-	}, m)
+		m := map[string]string{}
+		b.IntoMap(m)
 
-	b.Reset()
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
 
-	m2 := map[string]string{}
-	b.IntoMap(m2)
-	require.Equal(t, map[string]string{
-		"namespace": "loki",
-		"job":       "us-central1/loki",
-		"cluster":   "us-central1",
-		"ToReplace": "text",
-	}, m2)
+		b.Reset()
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
+
+	t.Run("it can copy the map several times", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+		m := map[string]string{}
+		b.IntoMap(m)
+
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
 }
 
 func TestLabelsBuilder_LabelsResult(t *testing.T) {
