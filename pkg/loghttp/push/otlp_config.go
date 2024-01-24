@@ -2,6 +2,7 @@ package push
 
 import (
 	"fmt"
+
 	"github.com/prometheus/prometheus/model/relabel"
 )
 
