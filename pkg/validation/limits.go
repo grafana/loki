@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
@@ -97,6 +98,7 @@ type Limits struct {
 	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
 	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxMetadataCacheFreshness  model.Duration   `yaml:"max_metadata_cache_freshness" json:"max_metadata_cache_freshness"`
 	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
 	MaxQueriersPerTenant       uint             `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	MaxQueryCapacity           float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
@@ -106,6 +108,7 @@ type Limits struct {
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration         model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
 	MetadataQuerySplitDuration model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	IngesterQuerySplitDuration model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
 	MinShardingLookback        model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 	MaxQueryBytesRead          flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 	MaxQuerierBytesRead        flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
@@ -187,6 +190,7 @@ type Limits struct {
 	BloomCompactorShardSize                  int           `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
 	BloomCompactorMaxTableAge                time.Duration `yaml:"bloom_compactor_max_table_age" json:"bloom_compactor_max_table_age"`
 	BloomCompactorEnabled                    bool          `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
+	BloomCompactorChunksBatchSize            int           `yaml:"bloom_compactor_chunks_batch_size" json:"bloom_compactor_chunks_batch_size"`
 	BloomNGramLength                         int           `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
 	BloomNGramSkip                           int           `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
 	BloomFalsePositiveRate                   float64       `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
@@ -196,6 +200,7 @@ type Limits struct {
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
+	OTLPConfig                        push.OTLPConfig  `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 }
 
 type StreamRetention struct {
@@ -275,6 +280,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxCacheFreshness.Set("10m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
+	_ = l.MaxMetadataCacheFreshness.Set("24h")
+	f.Var(&l.MaxMetadataCacheFreshness, "frontend.max-metadata-cache-freshness", "Do not cache metadata request if the end time is within the frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such limits. Defaults to 24h.")
+
 	_ = l.MaxStatsCacheFreshness.Set("10m")
 	f.Var(&l.MaxStatsCacheFreshness, "frontend.max-stats-cache-freshness", "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature (default).")
 
@@ -296,8 +304,15 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 
+	// with metadata caching, it is not possible to extract a subset of labels/series from a cached extent because unlike samples they are not associated with a timestamp.
+	// as a result, we could return inaccurate results. example: returning results from an entire 1h extent for a 5m query
+	// Setting max_metadata_cache_freshness to 24h should help us avoid caching recent data and preseve the correctness.
+	// For the portion of the request beyond the freshness window, granularity of the cached metadata results is determined by split_metadata_queries_by_interval.
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
+
+	_ = l.IngesterQuerySplitDuration.Set("0s")
+	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
 
@@ -312,6 +327,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BloomCompactorShardSize, "bloom-compactor.shard-size", 1, "The shard size defines how many bloom compactors should be used by a tenant when computing blooms. If it's set to 0, shuffle sharding is disabled.")
 	f.DurationVar(&l.BloomCompactorMaxTableAge, "bloom-compactor.max-table-age", 7*24*time.Hour, "The maximum age of a table before it is compacted. Do not compact tables older than the the configured time. Default to 7 days. 0s means no limit.")
 	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Whether to compact chunks into bloom filters.")
+	f.IntVar(&l.BloomCompactorChunksBatchSize, "bloom-compactor.chunks-batch-size", 100, "The batch size of the chunks the bloom-compactor downloads at once.")
 	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
 	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 0, "Skip factor for the n-grams created when computing blooms from log lines.")
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
@@ -327,7 +343,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
-
+	l.OTLPConfig = push.DefaultOTLPConfig
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -382,6 +398,10 @@ func (l *Limits) Validate() error {
 	if l.MaxQueryCapacity > 1 {
 		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 1 as it is configured to a value greater than 1")
 		l.MaxQueryCapacity = 1
+	}
+
+	if err := l.OTLPConfig.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -574,6 +594,12 @@ func (o *Overrides) MetadataQuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MetadataQuerySplitDuration)
 }
 
+// IngesterQuerySplitDuration returns the tenant specific splitby interval applied in the query frontend when querying
+// during the `query_ingesters_within` window.
+func (o *Overrides) IngesterQuerySplitDuration(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).IngesterQuerySplitDuration)
+}
+
 // MaxQueryBytesRead returns the maximum bytes a query can read.
 func (o *Overrides) MaxQueryBytesRead(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
@@ -610,6 +636,10 @@ func (o *Overrides) QueryTimeout(_ context.Context, userID string) time.Duration
 
 func (o *Overrides) MaxCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
+}
+
+func (o *Overrides) MaxMetadataCacheFreshness(_ context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxMetadataCacheFreshness)
 }
 
 func (o *Overrides) MaxStatsCacheFreshness(_ context.Context, userID string) time.Duration {
@@ -828,6 +858,10 @@ func (o *Overrides) BloomGatewayEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomGatewayEnabled
 }
 
+func (o *Overrides) BloomCompactorChunksBatchSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorChunksBatchSize
+}
+
 func (o *Overrides) BloomCompactorShardSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomCompactorShardSize
 }
@@ -862,6 +896,10 @@ func (o *Overrides) MaxStructuredMetadataSize(userID string) int {
 
 func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 	return o.getOverridesForUser(userID).MaxStructuredMetadataEntriesCount
+}
+
+func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
+	return o.getOverridesForUser(userID).OTLPConfig
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

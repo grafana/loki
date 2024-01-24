@@ -10,7 +10,9 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/spanprofiler"
 	"github.com/grafana/dskit/tracing"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
@@ -84,7 +86,9 @@ func main() {
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
-
+		if config.Tracing.ProfilingEnabled {
+			opentracing.SetGlobalTracer(spanprofiler.NewTracer(opentracing.GlobalTracer()))
+		}
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {

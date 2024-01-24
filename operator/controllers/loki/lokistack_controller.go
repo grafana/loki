@@ -94,12 +94,7 @@ var (
 	})
 	createUpdateOrDeletePred = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if e.ObjectOld.GetGeneration() == 0 && len(e.ObjectOld.GetAnnotations()) == 0 {
-				return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
-			}
-
-			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() ||
-				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
+			return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
 		},
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
@@ -123,6 +118,7 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;prometheusrules,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers,verbs=patch
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=alertmanagers/api,verbs=create
 // +kubebuilder:rbac:urls=/api/v2/alerts,verbs=create
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
@@ -206,7 +202,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
-		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
+		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
+		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -318,6 +315,38 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 
 				return requests
 			}
+		}
+
+		return requests
+	})
+}
+
+func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.Client.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
+			r.Log.Error(err, "Error listing LokiStack resources for storage CA update")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			if stack.Spec.Storage.TLS == nil {
+				continue
+			}
+
+			storageTLS := stack.Spec.Storage.TLS
+			if obj.GetName() != storageTLS.CA {
+				continue
+			}
+
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: stack.Namespace,
+					Name:      stack.Name,
+				},
+			})
+			r.Log.Info("Enqueued request for LokiStack because of Storage CA resource change", "LokiStack", stack.Name, "ConfigMap", obj.GetName())
 		}
 
 		return requests
