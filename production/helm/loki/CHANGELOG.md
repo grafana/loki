@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Bumped "grafana-agent-operator" depenency chart version to it's latest version
 
+## 5.41.8
+
+- [BUGFIX] Fix gateway: add possibility to disable listening on ipv6 to prevent crash on ipv4-only system.
+
 ## 5.41.7
 
 - [FEATURE] Add support to disable specific alert rules
