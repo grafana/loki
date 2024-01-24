@@ -49,10 +49,6 @@ func NewBloomTokenizer(nGramLen, nGramSkip int, metrics *Metrics) *BloomTokenize
 	}
 }
 
-func (bt *BloomTokenizer) SetLineTokenizer(t *NGramTokenizer) {
-	bt.lineTokenizer = t
-}
-
 func (bt *BloomTokenizer) GetNGramLength() uint64 {
 	return uint64(bt.lineTokenizer.N)
 }
