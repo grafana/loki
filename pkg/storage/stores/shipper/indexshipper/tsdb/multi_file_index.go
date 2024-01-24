@@ -6,12 +6,14 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type MultiIndex struct {
@@ -357,6 +359,7 @@ func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through mod
 }
 
 func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+	level.Error(util_log.Logger).Log("msg", "volume from multifile index", "userID", userID, "matchers", matchers)
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
 		return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 	})

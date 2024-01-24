@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"path/filepath"
@@ -55,8 +54,9 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 	}
 
 	builder := NewBuilder(desiredVer)
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) error {
 		builder.AddSeries(lbls.Copy(), fp, chks)
+		return nil
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
-func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta), matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) error, matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
 	var ls labels.Labels
@@ -185,7 +185,9 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 				continue
 			}
 
-			fn(ls, model.Fingerprint(hash), chks)
+			if err := fn(ls, model.Fingerprint(hash), chks); err != nil {
+				return err
+			}
 		}
 		return p.Err()
 	})
@@ -211,7 +213,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	}
 	res = res[:0]
 
-	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) error {
 		for _, chk := range chks {
 
 			res = append(res, ChunkRef{
@@ -222,6 +224,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 				Checksum:    chk.Checksum,
 			})
 		}
+		return nil
 	}, matchers...); err != nil {
 		return nil, err
 	}
@@ -235,14 +238,15 @@ func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Ti
 	}
 	res = res[:0]
 
-	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	if err := i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) error {
 		if len(chks) == 0 {
-			return
+			return nil
 		}
 		res = append(res, Series{
 			Labels:      ls.Copy(),
 			Fingerprint: fp,
 		})
+		return nil
 	}, matchers...); err != nil {
 		return nil, err
 	}
@@ -354,75 +358,55 @@ func (i *TSDBIndex) Volume(
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 
-	return i.forPostings(ctx, shard, matchers, func(p index.Postings) error {
-		var ls labels.Labels
-		var filterer chunk.Filterer
-		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
-		}
+	return i.ForSeries(ctx, shard, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) error {
+		stats := index.ChunkMetas(chks).Stats(int64(from), int64(through), true)
 
-		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
-			if err != nil {
-				return fmt.Errorf("series volume: %w", err)
-			}
+		if stats.Entries > 0 {
+			var labelVolumes map[string]uint64
 
-			// skip series that belong to different shards
-			if shard != nil && !shard.Match(model.Fingerprint(fp)) {
-				continue
-			}
-
-			if filterer != nil && filterer.ShouldFilter(ls) {
-				continue
-			}
-
-			if stats.Entries > 0 {
-				var labelVolumes map[string]uint64
-
-				if aggregateBySeries {
-					seriesLabels = seriesLabels[:0]
-					for _, l := range ls {
+			if aggregateBySeries {
+				seriesLabels = seriesLabels[:0]
+				for _, l := range ls {
+					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
+						seriesLabels = append(seriesLabels, l)
+					}
+				}
+			} else {
+				// when aggregating by labels, capture sizes for target labels if provided,
+				// otherwise for all intersecting labels
+				labelVolumes = make(map[string]uint64, len(ls))
+				for _, l := range ls {
+					if len(targetLabels) > 0 {
 						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-							seriesLabels = append(seriesLabels, l)
+							labelVolumes[l.Name] += stats.KB << 10
 						}
-					}
-				} else {
-					// when aggregating by labels, capture sizes for target labels if provided,
-					// otherwise for all intersecting labels
-					labelVolumes = make(map[string]uint64, len(ls))
-					for _, l := range ls {
-						if len(targetLabels) > 0 {
-							if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-								labelVolumes[l.Name] += stats.KB << 10
-							}
-						} else {
-							if l.Name != TenantLabel {
-								labelVolumes[l.Name] += stats.KB << 10
-							}
+					} else {
+						if l.Name != TenantLabel {
+							labelVolumes[l.Name] += stats.KB << 10
 						}
 					}
 				}
+			}
 
-				// If the labels are < 1k, this does not alloc
-				// https://github.com/prometheus/prometheus/pull/8025
-				hash := seriesLabels.Hash()
-				if _, ok := seriesNames[hash]; !ok {
-					seriesNames[hash] = seriesLabels.String()
+			// If the labels are < 1k, this does not alloc
+			// https://github.com/prometheus/prometheus/pull/8025
+			hash := seriesLabels.Hash()
+			if _, ok := seriesNames[hash]; !ok {
+				seriesNames[hash] = seriesLabels.String()
+			}
+
+			if aggregateBySeries {
+				if err := acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
+					return err
 				}
-
-				if aggregateBySeries {
-					if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
+			} else {
+				for label, volume := range labelVolumes {
+					if err := acc.AddVolume(label, volume); err != nil {
 						return err
 					}
-				} else {
-					for label, volume := range labelVolumes {
-						if err = acc.AddVolume(label, volume); err != nil {
-							return err
-						}
-					}
 				}
 			}
 		}
-		return p.Err()
+		return nil
 	})
 }

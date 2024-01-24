@@ -400,15 +400,16 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		err := tsdbIndex.ForSeries(
 			ctx, nil,
 			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
-			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
+			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) error {
 				if !tokenRanges.Contains(uint32(fingerprint)) {
-					return
+					return nil
 				}
 
 				temp := make([]tsdbindex.ChunkMeta, len(chksMetas))
 				_ = copy(temp, chksMetas)
 				//All seriesMetas given a table within fp of this compactor shard
 				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
+				return nil
 			},
 			labels.MustNewMatcher(labels.MatchEqual, "", ""),
 		)

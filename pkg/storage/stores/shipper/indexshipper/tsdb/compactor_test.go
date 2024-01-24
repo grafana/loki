@@ -609,8 +609,9 @@ func TestCompactor_Compact(t *testing.T) {
 						require.NoError(t, err)
 
 						actualChunks = map[string]index.ChunkMetas{}
-						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) error {
 							actualChunks[lbls.String()] = chks
+							return nil
 						}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 						require.NoError(t, err)
 
@@ -823,8 +824,9 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) error {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
+				return nil
 			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			require.NoError(t, err)
 

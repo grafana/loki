@@ -142,7 +142,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 				_ = casted.ForSeries(
 					context.Background(),
 					nil, model.Earliest, model.Latest,
-					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) error {
 						seriesString := ls.String()
 						seriesStringHash := FNV32a(seriesString)
 						pos, _ := strconv.Atoi(seriesStringHash)
@@ -161,7 +161,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 							metrics.readChunks.Add(float64(len(chks)))
 
 							if !sampler.Sample() {
-								return
+								return nil
 							}
 
 							transformed := make([]chunk.Chunk, 0, len(chks))
@@ -272,6 +272,8 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 								)
 							*/
 						} // For every series
+
+						return nil
 					},
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)
