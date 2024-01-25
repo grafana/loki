@@ -8,9 +8,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local http_routes = 'loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values',
     local grpc_routes = '/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs',
 
+    local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
+      nullPointMode: 'null as zero',
+      targets: [
+        {
+          expr: 'histogram_quantile(0.99, sum(rate(%s_bucket%s[$__rate_interval])) by (le,%s)) * %s' % [metricName, selector, extra_grouping, multiplier],
+          format: 'time_series',
+          intervalFactor: 2,
+          refId: 'A',
+          step: 10,
+          interval: '1m',
+        },
+      ],
+      yaxes: $.yaxes('ms'),
+    },
+
     local p99LatencyByPod(metric, selectorStr) =
       $.panel('Per Pod Latency (p99)') +
-      $.latencyPanel(metric, selectorStr),
+      latencyPanelWithExtraGrouping(metric, selectorStr, "pod"),
 
     'loki-reads.json': {
                          local cfg = self,
