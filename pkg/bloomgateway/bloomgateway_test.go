@@ -340,6 +340,64 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	})
 }
 
+func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
+	t.Run("removing chunks partially", func(t *testing.T) {
+		req := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+					{Checksum: 0x1},
+					{Checksum: 0x2},
+					{Checksum: 0x3},
+					{Checksum: 0x4},
+					{Checksum: 0x5},
+				}},
+			},
+		}
+		res := v1.Output{
+			Fp: 0x00, Removals: v1.ChunkRefs{
+				{Checksum: 0x2},
+				{Checksum: 0x4},
+			},
+		}
+		expected := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+					{Checksum: 0x1},
+					{Checksum: 0x3},
+					{Checksum: 0x5},
+				}},
+			},
+		}
+		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		require.Equal(t, expected, req)
+	})
+
+	t.Run("removing all chunks removed fingerprint ref", func(t *testing.T) {
+		req := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+					{Checksum: 0x1},
+					{Checksum: 0x2},
+					{Checksum: 0x3},
+				}},
+			},
+		}
+		res := v1.Output{
+			Fp: 0x00, Removals: v1.ChunkRefs{
+				{Checksum: 0x1},
+				{Checksum: 0x2},
+				{Checksum: 0x2},
+			},
+		}
+		expected := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{},
+		}
+		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		require.Equal(t, expected, req)
+	})
+
+}
+
 func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockQuerierWithFingerprintRange, [][]v1.SeriesWithBloom) {
 	t.Helper()
 	step := (maxFp - minFp) / model.Fingerprint(numBlocks)
