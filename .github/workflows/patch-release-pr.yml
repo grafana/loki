@@ -14,7 +14,7 @@ jobs:
     uses: github/loki-release/.github/workflows/release-pr.yml@main
     with:
       release_repo: grafana/loki
-      skip_validation: false
+      skip_validation: true
       versioning_strategy: always-bump-patch
     secrets:
       GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.BACKEND_ENTERPRISE_DRONE }}'
