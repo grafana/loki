@@ -11,7 +11,7 @@ permissions:
   pull-requests: write
 jobs:
   release:
-    uses: github/loki-release/.github/workflows/release.yml@main
+    uses: grafana/loki-release/.github/workflows/release.yml@main
     with:
       release_repo: grafana/loki
     secrets:
