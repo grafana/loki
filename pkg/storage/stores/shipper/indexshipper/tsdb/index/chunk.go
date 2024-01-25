@@ -1,12 +1,15 @@
 package index
 
 import (
+	"math"
 	"sort"
 
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/encoding"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // Meta holds information about a chunk of data.
@@ -116,21 +119,27 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
 			if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
+
 				// Adjust with arithmetic mean
 				overlap := cur.MaxTime - cur.MinTime
 				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 
 				/*
-				adjustSize := (float64(cur.KB) + lastOverlapSize) / 2
+					adjustSize := (float64(cur.KB) + lastOverlapSize) / 2
 				*/
 
 				// Adjust with harmonic mean of rates
-				rateLast := float64(last.KB)/float64(last.MaxTime-last.MinTime)
-				rateCur := float64(cur.KB)/float64(cur.MaxTime-cur.MinTime)
+				/*
+					rateLast := float64(last.KB) / float64(last.MaxTime-last.MinTime)
+					rateCur := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
+					H := 2.0 / (1.0/rateLast + 1.0/rateCur)
+					adjustSize := H * float64(overlap)
+				*/
 
-				// Harmonic mean
-				H := 2.0/(1.0/rateLast+1.0/rateCur)
-				adjustSize := H * float64(overlap)
+				// Adjust with max of overlap
+				adjustSize := math.Max(lastOverlapSize, float64(cur.KB))
+
+				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
 
 				c[n-1].KB = uint32(float64(c[n-1].KB) - lastOverlapSize + adjustSize)
 				continue
@@ -138,6 +147,8 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 			c[n] = cur
 
 			if cur.MinTime < last.MaxTime {
+				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks")
+
 				// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
 				// -> [last.MaxTime, cur.MaxTime) is the new interval
 				// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))

@@ -30,9 +30,9 @@ func main() {
 	}
 
 	intervals := []model.Duration{
-	//	model.Duration(1 * time.Hour),
+		//	model.Duration(1 * time.Hour),
 		model.Duration(12 * time.Hour),
-//		model.Duration(24 * time.Hour),
+		//		model.Duration(24 * time.Hour),
 	}
 
 	// Starts rounded to the second
