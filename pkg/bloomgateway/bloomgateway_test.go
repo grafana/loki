@@ -276,7 +276,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		// replace store implementation and re-initialize workers and sub-services
-		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
+		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0x0000, 0x1000)
 		gw.bloomShipper = newMockBloomStore(bqs)
 		err = gw.initServices()
 		require.NoError(t, err)
@@ -405,11 +405,18 @@ func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, 
 	series := make([][]v1.SeriesWithBloom, 0, numBlocks)
 	for i := 0; i < numBlocks; i++ {
 		fromFp := minFp + (step * model.Fingerprint(i))
+		// // testing how gaps in fingerprint ranges influence querying
+		// fromFp += step / 4
+
 		throughFp := fromFp + step - 1
 		// last block needs to include maxFp
 		if i == numBlocks-1 {
 			throughFp = maxFp
+		} else {
+			// test how overlapping fingerprint ranges influences querying
+			throughFp += model.Fingerprint(float64(step) * 0.8)
 		}
+		t.Log("make block querier", i+1, "of", numBlocks, "fromFp", fromFp, "throughFp", throughFp, "from", from.Time(), "through", through.Time())
 		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
 		bq := bloomshipper.BlockQuerierWithFingerprintRange{
 			BlockQuerier: blockQuerier,
