@@ -46,8 +46,8 @@ create_secret_args=( \
   --from-literal=bucketnames="$(echo -n "${bucket_name}")" \
 )
 
-if [[ "$sts" = "true" ]]; then
-    if [[ -n "$role_arn" ]]; then
+if [[ "${sts}" = "true" ]]; then
+    if [[ -n "${role_arn}" ]]; then
         create_secret_args+=(--from-literal=role_arn="$(echo -n "${role_arn}")")
     fi
 else
