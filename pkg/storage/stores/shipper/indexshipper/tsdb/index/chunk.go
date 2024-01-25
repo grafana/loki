@@ -116,11 +116,23 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
 			if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
+				// Adjust with arithmetic mean
 				overlap := cur.MaxTime - cur.MinTime
 				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 
-				averageSize := (float64(cur.KB) + lastOverlapSize) / 2
-				c[n-1].KB = uint32(float64(c[n-1].KB) + lastOverlapSize + averageSize)
+				/*
+				adjustSize := (float64(cur.KB) + lastOverlapSize) / 2
+				*/
+
+				// Adjust with harmonic mean of rates
+				rateLast := float64(last.KB)/float64(last.MaxTime-last.MinTime)
+				rateCur := float64(cur.KB)/float64(cur.MaxTime-cur.MinTime)
+
+				// Harmonic mean
+				H := 2.0/(1.0/rateLast+1.0/rateCur)
+				adjustSize := H * float64(overlap)
+
+				c[n-1].KB = uint32(float64(c[n-1].KB) - lastOverlapSize + adjustSize)
 				continue
 			}
 			c[n] = cur
