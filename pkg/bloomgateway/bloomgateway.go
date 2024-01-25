@@ -299,6 +299,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
+	logger := log.With(g.logger, "tenant", tenantID)
+
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
 		return &logproto.FilterChunkRefResponse{
@@ -327,7 +329,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	var expectedResponses int
+	var numSeries int
 	seriesWithBloomsPerDay := partitionRequest(req)
 
 	// no tasks --> empty response
@@ -339,67 +341,45 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	tasks := make([]Task, 0, len(seriesWithBloomsPerDay))
 	for _, seriesWithBounds := range seriesWithBloomsPerDay {
-		task, err := NewTask(tenantID, seriesWithBounds, req.Filters)
+		task, err := NewTask(ctx, tenantID, seriesWithBounds, req.Filters)
 		if err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, task)
-		expectedResponses += len(seriesWithBounds.series)
+		numSeries += len(seriesWithBounds.series)
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 
-	errCh := make(chan error, 1)
-	resCh := make(chan v1.Output, 1)
+	tasksCh := make(chan Task)
 
 	for _, task := range tasks {
-		level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
+		task := task
+		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
 		g.queue.Enqueue(tenantID, []string{}, task, func() {
 			// When enqueuing, we also add the task to the pending tasks
 			g.pendingTasks.Add(task.ID, task)
 		})
-
-		// Forward responses or error to the main channels
-		// TODO(chaudum): Refactor to make tasks cancelable
-		go func(t Task) {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case err := <-t.ErrCh:
-					if ctx.Err() != nil {
-						level.Warn(g.logger).Log("msg", "received err from channel, but context is already done", "err", ctx.Err())
-						return
-					}
-					errCh <- err
-				case res := <-t.ResCh:
-					level.Debug(g.logger).Log("msg", "got partial result", "task", t.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
-					if ctx.Err() != nil {
-						level.Warn(g.logger).Log("msg", "received res from channel, but context is already done", "err", ctx.Err())
-						return
-					}
-					resCh <- res
-				}
-			}
-		}(task)
+		go consumeTask(ctx, task, tasksCh, logger)
 	}
 
-	responses := responsesPool.Get(expectedResponses)
+	responses := responsesPool.Get(numSeries)
 	defer responsesPool.Put(responses)
+	remaining := len(tasks)
 
 outer:
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, errors.Wrap(ctx.Err(), "waiting for results")
-		case err := <-errCh:
-			return nil, errors.Wrap(err, "waiting for results")
-		case res := <-resCh:
-			responses = append(responses, res)
-			// log line is helpful for debugging tests
-			level.Debug(g.logger).Log("msg", "got partial result", "progress", fmt.Sprintf("%d/%d", len(responses), expectedResponses))
-			// wait for all parts of the full response
-			if len(responses) == expectedResponses {
+		case task := <-tasksCh:
+			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
+			if task.Err() != nil {
+				return nil, errors.Wrap(err, "waiting fo result")
+			}
+			responses = append(responses, task.responses...)
+			remaining--
+			if remaining == 0 {
 				break outer
 			}
 		}
@@ -415,8 +395,38 @@ outer:
 	g.metrics.addUnfilteredCount(numChunksUnfiltered)
 	g.metrics.addFilteredCount(len(req.Refs))
 
-	level.Debug(g.logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
+	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+}
+
+// consumeTask receives from the task's error and result channel and forwards
+// the items to the respective supplied channels.
+// In case the context of the task is done, it consumes the remaining items
+// until the task is closed, however it does not forward them any mode.
+func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log.Logger) {
+	logger = log.With(logger, "task", task.ID)
+	task.responses = responsesPool.Get(len(task.series))
+	defer responsesPool.Put(task.responses)
+
+	for res := range task.resCh {
+		select {
+		case <-ctx.Done():
+			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+		default:
+			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			task.responses = append(task.responses, res)
+		}
+	}
+
+	select {
+	case <-ctx.Done():
+		// do nothing
+	case <-task.Done():
+		// notify request handler about finished task
+		tasksCh <- task
+	}
+
+	level.Debug(logger).Log("msg", "exit")
 }
 
 func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output, logger log.Logger) {

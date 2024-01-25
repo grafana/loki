@@ -236,9 +236,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		now := mktime("2024-01-25 10:00")
 
-		bqs, data := createBlockQueriers(t, 10, now.Add(-24*time.Hour), now, 0, 1024)
+		bqs, data := createBlockQueriers(t, 50, now.Add(-24*time.Hour), now, 0, 1024)
 		mockStore := newMockBloomStore(bqs)
-		mockStore.delay = 100 * time.Millisecond // delay for each block
+		mockStore.delay = 50 * time.Millisecond // delay for each block - 50x50=2500ms
 		gw.bloomShipper = mockStore
 
 		err = gw.initServices()
@@ -265,7 +265,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				},
 			}
 
-			ctx, cancelFn := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			ctx, cancelFn := context.WithTimeout(context.Background(), 500*time.Millisecond)
 			ctx = user.InjectOrgID(ctx, tenantID)
 			t.Cleanup(cancelFn)
 

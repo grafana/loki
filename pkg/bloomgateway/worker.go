@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -156,7 +157,7 @@ func (w *worker) running(ctx context.Context) error {
 					End:   day.Add(Day), // non-inclusive
 				}
 
-				logger := log.With(w.logger, "day", day)
+				logger := log.With(w.logger, "day", day.Time(), "tenant", tasks[0].Tenant)
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
 				storeFetchStart := time.Now()
@@ -164,7 +165,7 @@ func (w *worker) running(ctx context.Context) error {
 				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
 				if err != nil {
 					for _, t := range tasks {
-						t.ErrCh <- err
+						t.CloseWithError(err)
 					}
 					// continue with tasks of next day
 					continue
@@ -175,14 +176,23 @@ func (w *worker) running(ctx context.Context) error {
 				if len(blockRefs) == 0 {
 					level.Warn(logger).Log("msg", "no blocks found")
 					for _, t := range tasks {
-						for _, ref := range t.series {
-							t.ResCh <- v1.Output{
-								Fp:       model.Fingerprint(ref.Fingerprint),
-								Removals: nil,
-							}
-						}
+						t.Close()
 					}
 					// continue with tasks of next day
+					continue
+				}
+
+				// Remove tasks that are already cancelled
+				tasks = slices.DeleteFunc(tasks, func(t Task) bool {
+					if res := t.ctx.Err(); res != nil {
+						t.CloseWithError(res)
+						return true
+					}
+					return false
+				})
+				// no tasks to process
+				// continue with tasks of next day
+				if len(tasks) == 0 {
 					continue
 				}
 
@@ -195,16 +205,21 @@ func (w *worker) running(ctx context.Context) error {
 				err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, blockRefs, tasksForBlocks)
 				if err != nil {
 					for _, t := range tasks {
-						t.ErrCh <- err
+						t.CloseWithError(err)
 					}
 					// continue with tasks of next day
 					continue
+				}
+
+				// all tasks for this day are done.
+				// close them to notify the request handler
+				for _, task := range tasks {
+					task.Close()
 				}
 			}
 
 			// return dequeued items back to the pool
 			w.queue.ReleaseRequests(items)
-
 		}
 	}
 }
