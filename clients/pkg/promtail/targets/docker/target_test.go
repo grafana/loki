@@ -65,7 +65,7 @@ func Test_DockerTarget(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	tgt, err := NewTarget(
+	target, err := NewTarget(
 		NewMetrics(prometheus.NewRegistry()),
 		logger,
 		entryHandler,
@@ -76,7 +76,6 @@ func Test_DockerTarget(t *testing.T) {
 		client,
 	)
 	require.NoError(t, err)
-	tgt.startIfNotRunning()
 
 	expectedLines := []string{
 		"5.3.69.55 - - [09/Dec/2021:09:15:02 +0000] \"HEAD /brand/users/clicks-and-mortar/front-end HTTP/2.0\" 503 27087",
@@ -90,10 +89,10 @@ func Test_DockerTarget(t *testing.T) {
 		assertExpectedLog(c, entryHandler, expectedLines)
 	}, 5*time.Second, 100*time.Millisecond, "Expected log lines were not found within the time limit.")
 
-	tgt.Stop()
+	target.Stop()
 	entryHandler.Clear()
 	// restart target to simulate container restart
-	tgt.startIfNotRunning()
+	target.startIfNotRunning()
 	expectedLinesAfterRestart := []string{
 		"243.115.12.215 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /morph/exploit/granular HTTP/1.0\" 500 26468",
 		"221.41.123.237 - - [09/Dec/2023:09:16:57 +0000] \"DELETE /user-centric/whiteboard HTTP/2.0\" 205 22487",
