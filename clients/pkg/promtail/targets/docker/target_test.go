@@ -111,7 +111,7 @@ func assertExpectedLog(c *assert.CollectT, entryHandler *fake.Client, expectedLi
 	testLogLines := make(map[string]int)
 	for _, l := range logLines {
 		if containsString(expectedLines, l.Line) {
-			testLogLines[l.Line] += 1
+			testLogLines[l.Line]++
 		}
 	}
 	// assert that all log lines were received
