@@ -238,6 +238,7 @@
                         "format": "time_series",
                         "interval": "1m",
                         "intervalFactor": 2,
+                        "legendFormat": "__auto",
                         "refId": "A",
                         "step": 10
                      }
@@ -502,6 +503,7 @@
                         "format": "time_series",
                         "interval": "1m",
                         "intervalFactor": 2,
+                        "legendFormat": "__auto",
                         "refId": "A",
                         "step": 10
                      }
