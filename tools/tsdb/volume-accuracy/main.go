@@ -48,8 +48,9 @@ func main() {
 	acc := &accumulation{}
 
 	series := []string{
-		`{namespace="machine-learning-cd", cluster="dev-us-central-0", job="integrations/kubernetes/eventhandler"}`,
-		`{job="default/systemd-journal", nodename="gke-dev-us-central-0-hg-n2s8-4-4dcec77a-gdld", priority="notice",syslog_identifier="kernel",cluster="dev-us-central-0"}`,
+		`{cluster="dev-us-central-0"}`,
+		//`{namespace="machine-learning-cd", cluster="dev-us-central-0", job="integrations/kubernetes/eventhandler"}`,
+		//`{job="default/systemd-journal", nodename="gke-dev-us-central-0-hg-n2s8-4-4dcec77a-gdld", priority="notice",syslog_identifier="kernel",cluster="dev-us-central-0"}`,
 	}
 
 	for _, now := range starts {
@@ -67,8 +68,8 @@ func main() {
 }
 
 func getStreamVolume(client client.Client, acc *accumulation, now time.Time, interval model.Duration, matchers string) error {
-	//instantQueryString := fmt.Sprintf(`sum by (cluster) (bytes_over_time(%s[%s]))`, matchers, interval)
-	instantQueryString := fmt.Sprintf(`(bytes_over_time(%s[%s]))`, matchers, interval)
+	instantQueryString := fmt.Sprintf(`sum by (cluster) (bytes_over_time(%s[%s]))`, matchers, interval)
+	//instantQueryString := fmt.Sprintf(`(bytes_over_time(%s[%s]))`, matchers, interval)
 	instantQuery := newQuery(instantQueryString, now)
 
 	resp, err := client.Query(instantQuery.QueryString, instantQuery.Limit, instantQuery.Start, logproto.BACKWARD, false)
