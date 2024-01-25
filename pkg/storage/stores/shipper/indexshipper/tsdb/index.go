@@ -6,7 +6,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -21,16 +20,6 @@ type ChunkRef struct {
 	Fingerprint model.Fingerprint
 	Start, End  model.Time
 	Checksum    uint32
-}
-
-func (r ChunkRef) LogProto() logproto.ChunkRef {
-	return logproto.ChunkRef{
-		UserID:      r.User,
-		Fingerprint: uint64(r.Fingerprint),
-		From:        r.Start,
-		Through:     r.End,
-		Checksum:    r.Checksum,
-	}
 }
 
 // Compares by (Start, End)

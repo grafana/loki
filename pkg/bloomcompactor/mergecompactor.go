@@ -2,7 +2,6 @@ package bloomcompactor
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/grafana/dskit/concurrency"
 
@@ -96,11 +95,13 @@ func createPopulateFunc(ctx context.Context, job Job, storeClient storeClient, b
 			}
 		}
 
-		batchesIterator, err := newChunkBatchesIterator(ctx, storeClient.chunk, chunkRefs, limits.BloomCompactorChunksBatchSize(job.tenantID))
-		if err != nil {
-			return fmt.Errorf("error creating chunks batches iterator: %w", err)
-		}
-		err = bt.PopulateSeriesWithBloom(&bloomForChks, batchesIterator)
+		// batchesIterator, err := newChunkBatchesIterator(ctx, storeClient.chunk, chunkRefs, limits.BloomCompactorChunksBatchSize(job.tenantID))
+		// if err != nil {
+		// 	return fmt.Errorf("error creating chunks batches iterator: %w", err)
+		// }
+		// NB(owen-d): this panics/etc, but the code is being refactored and will be removed.
+		// I've replaced `batchesIterator` with `nil` to pass compiler checks while keeping this code around as reference
+		err := bt.Populate(&bloomForChks, nil)
 		if err != nil {
 			return err
 		}
