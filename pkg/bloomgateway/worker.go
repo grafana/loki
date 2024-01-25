@@ -150,11 +150,17 @@ func (w *worker) running(ctx context.Context) error {
 			}
 
 			for day, tasks := range tasksPerDay {
+				// interval is [Start, End)
+				interval := bloomshipper.Interval{
+					Start: day,          // inclusive
+					End:   day.Add(Day), // non-inclusive
+				}
+
 				logger := log.With(w.logger, "day", day)
 				level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
 				storeFetchStart := time.Now()
-				blockRefs, err := w.shipper.GetBlockRefs(taskCtx, tasks[0].Tenant, day, day.Add(Day).Add(-1*time.Nanosecond))
+				blockRefs, err := w.shipper.GetBlockRefs(taskCtx, tasks[0].Tenant, interval)
 				w.metrics.storeAccessLatency.WithLabelValues(w.id, "GetBlockRefs").Observe(time.Since(storeFetchStart).Seconds())
 				if err != nil {
 					for _, t := range tasks {

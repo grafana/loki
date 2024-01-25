@@ -433,7 +433,7 @@ type mockBloomStore struct {
 var _ bloomshipper.Interface = &mockBloomStore{}
 
 // GetBlockRefs implements bloomshipper.Interface
-func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _, _ model.Time) ([]bloomshipper.BlockRef, error) {
+func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _ bloomshipper.Interval) ([]bloomshipper.BlockRef, error) {
 	blocks := make([]bloomshipper.BlockRef, 0, len(s.bqs))
 	for i := range s.bqs {
 		blocks = append(blocks, bloomshipper.BlockRef{
