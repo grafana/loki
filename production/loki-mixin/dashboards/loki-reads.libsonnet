@@ -25,7 +25,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
     local p99LatencyByPod(metric, selectorStr) =
       $.panel('Per Pod Latency (p99)') +
-      latencyPanelWithExtraGrouping(metric, selectorStr, "pod"),
+      latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', "pod"),
 
     'loki-reads.json': {
                          local cfg = self,

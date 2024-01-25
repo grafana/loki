@@ -234,7 +234,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{cluster=~\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values\"}[$__rate_interval])) by (le,)) * pod",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{cluster=~\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"loki_api_v1_series|api_prom_series|api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_labels|loki_api_v1_label_name_values\"}[$__rate_interval])) by (le,pod)) * 1e3",
                         "format": "time_series",
                         "interval": "1m",
                         "intervalFactor": 2,
@@ -498,7 +498,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\", operation=\"Shipper.Query\"}[$__rate_interval])) by (le,)) * pod",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{cluster=~\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-read\", operation=\"Shipper.Query\"}[$__rate_interval])) by (le,pod)) * 1e3",
                         "format": "time_series",
                         "interval": "1m",
                         "intervalFactor": 2,
