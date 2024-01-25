@@ -1,0 +1,21 @@
+---
+name: 'create release PR for minor releases'
+on:
+  push:
+    branches:
+      - 'k[0-9]*'
+  workflow_dispatch: {}
+permissions:
+  contents: 'write'
+  issues: 'write'
+  pull-requests: 'write'
+jobs:
+  create-release-pr:
+    uses: github/loki-release/.github/workflows/release-pr.yml@main
+    with:
+      release_repo: grafana/loki
+      skip_validation: false
+      versioning_strategy: always-bump-minor
+    secrets:
+      GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.BACKEND_ENTERPRISE_DRONE }}'
+      GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
