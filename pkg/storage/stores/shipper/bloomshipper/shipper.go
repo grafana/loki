@@ -43,6 +43,15 @@ func (r fpRange) maxFp() uint64 {
 	return r[1]
 }
 
+func (r fpRange) Cmp(other uint64) v1.BoundsCheck {
+	if other < r[0] {
+		return v1.Before
+	} else if other > r[1] {
+		return v1.After
+	}
+	return v1.Overlap
+}
+
 type BlockQuerierWithFingerprintRange struct {
 	*v1.BlockQuerier
 	MinFp, MaxFp model.Fingerprint
@@ -191,7 +200,7 @@ func (s *Shipper) findBlocks(metas []Meta, interval Interval, keyspaces []fpRang
 				// skip tombstoned blocks
 				continue
 			}
-			if isOutsideRange(&block, interval, keyspaces) {
+			if isOutsideRange(block, interval, keyspaces) {
 				// skip block that are outside of interval or keyspaces
 				continue
 			}
@@ -208,26 +217,21 @@ func (s *Shipper) findBlocks(metas []Meta, interval Interval, keyspaces []fpRang
 // isOutsideRange tests if a given BlockRef b is outside of search boundaries
 // defined by min/max timestamp and min/max fingerprint.
 // Fingerprint ranges must be sorted in ascending order.
-func isOutsideRange(b *BlockRef, interval Interval, keyspaces []fpRange) bool {
+func isOutsideRange(b BlockRef, interval Interval, keyspaces []fpRange) bool {
 	// check time interval
 	if interval.Cmp(b.EndTimestamp) == v1.Before || interval.Cmp(b.StartTimestamp) == v1.After {
 		return true
 	}
 
-	// Then, check if outside of min/max of fingerprint slice
-	minFpRange, maxFpRange := getFirstLast(keyspaces)
-	if b.MaxFingerprint < minFpRange.minFp() || b.MinFingerprint > maxFpRange.maxFp() {
-		return true
-	}
-
-	prev := fpRange{0, 0}
-	for i := 0; i < len(keyspaces); i++ {
-		fpr := keyspaces[i]
-		if b.MinFingerprint > prev.maxFp() && b.MaxFingerprint < fpr.minFp() {
-			return true
+	// check fingerprint ranges
+	for _, keyspace := range keyspaces {
+		if keyspace.Cmp(b.MinFingerprint) == v1.Before && keyspace.Cmp(b.MaxFingerprint) == v1.After {
+			return false
 		}
-		prev = fpr
+		if keyspace.Cmp(b.MinFingerprint) == v1.Overlap || keyspace.Cmp(b.MaxFingerprint) == v1.Overlap {
+			return false
+		}
 	}
 
-	return false
+	return true
 }

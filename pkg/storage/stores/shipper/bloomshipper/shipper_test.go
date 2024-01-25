@@ -37,8 +37,6 @@ func Test_Shipper_findBlocks(t *testing.T) {
 					createMatchingBlockRef("block3"),
 				},
 				Blocks: []BlockRef{
-					createMatchingBlockRef("block2"),
-					createMatchingBlockRef("block4"),
 					createMatchingBlockRef("block5"),
 				},
 			},
@@ -122,67 +120,73 @@ func TestIsOutsideRange(t *testing.T) {
 
 	t.Run("is outside if startTs > through", func(t *testing.T) {
 		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(0, 900), []fpRange{})
+		isOutside := isOutsideRange(b, interval(0, 900), []fpRange{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if startTs == through ", func(t *testing.T) {
 		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(900, 1000), []fpRange{})
+		isOutside := isOutsideRange(b, interval(900, 1000), []fpRange{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if endTs < from", func(t *testing.T) {
 		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(2100, 3000), []fpRange{})
+		isOutside := isOutsideRange(b, interval(2100, 3000), []fpRange{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if endFp < first fingerprint", func(t *testing.T) {
 		b := createBlockRef("block", 0, 90, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(startTs, endTs), []fpRange{{100, 199}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []fpRange{{100, 199}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if startFp > last fingerprint", func(t *testing.T) {
 		b := createBlockRef("block", 200, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(startTs, endTs), []fpRange{{0, 49}, {100, 149}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []fpRange{{0, 49}, {100, 149}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if within gaps in fingerprints", func(t *testing.T) {
 		b := createBlockRef("block", 100, 199, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is not outside if within fingerprints 1", func(t *testing.T) {
 		b := createBlockRef("block", 10, 90, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if within fingerprints 2", func(t *testing.T) {
 		b := createBlockRef("block", 210, 290, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if spans across multiple fingerprint ranges", func(t *testing.T) {
 		b := createBlockRef("block", 50, 250, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []fpRange{{0, 99}, {200, 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if fingerprint range and time range are larger than block", func(t *testing.T) {
 		b := createBlockRef("block", math.MaxUint64/3, math.MaxUint64/3*2, startTs, endTs)
-		isOutside := isOutsideRange(&b, interval(0, 3000), []fpRange{{0, math.MaxUint64}})
+		isOutside := isOutsideRange(b, interval(0, 3000), []fpRange{{0, math.MaxUint64}})
+		require.False(t, isOutside)
+	})
+
+	t.Run("is not outside if block fingerprint range is bigger that search keyspace", func(t *testing.T) {
+		b := createBlockRef("block", 0x0000, 0xffff, model.Earliest, model.Latest)
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []fpRange{{0x0100, 0xff00}})
 		require.False(t, isOutside)
 	})
 }
 
 func createMatchingBlockRef(blockPath string) BlockRef {
-	return createBlockRef(blockPath, 0, math.MaxUint64, model.Time(0), model.Now())
+	return createBlockRef(blockPath, 0, math.MaxUint64, model.Time(0), model.Time(math.MaxInt64))
 }
 
 func createBlockRef(
