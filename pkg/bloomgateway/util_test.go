@@ -70,11 +70,6 @@ func TestPartitionFingerprintRange(t *testing.T) {
 		startFp := 150
 
 		tasks := make([]Task, nTasks)
-		for i := 0; i < nTasks; i++ {
-			swb := seriesWithBounds{}
-			tasks[i], _ = NewTask("tenant", swb, nil)
-		}
-
 		for i := startFp; i < startFp+nSeries; i++ {
 			tasks[i%nTasks].series = append(tasks[i%nTasks].series, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
 		}
