@@ -147,15 +147,26 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 			c[n] = cur
 
 			if cur.MinTime < last.MaxTime {
-				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks")
+				overlap := last.MaxTime - cur.MinTime
+				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
+				curOverlapSize := float64(overlap) / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
 
-				// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
-				// -> [last.MaxTime, cur.MaxTime) is the new interval
-				// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))
-				factor := float64(cur.MaxTime-last.MaxTime) / float64(cur.MaxTime-cur.MinTime)
-				c[n].KB = uint32(factor * float64(c[n].KB))
-				c[n].Entries = uint32(factor * float64(c[n].Entries))
-				c[n].MinTime = last.MaxTime
+				adjustSize := math.Max(lastOverlapSize, curOverlapSize)
+
+				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
+
+				c[n-1].KB = uint32(float64(c[n-1].KB) - lastOverlapSize + adjustSize)
+				c[n].KB = uint32(float64(c[n].KB) - curOverlapSize)
+
+				/*
+					// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
+					// -> [last.MaxTime, cur.MaxTime) is the new interval
+					// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))
+					factor := float64(cur.MaxTime-last.MaxTime) / float64(cur.MaxTime-cur.MinTime)
+					c[n].KB = uint32(factor * float64(c[n].KB))
+					c[n].Entries = uint32(factor * float64(c[n].Entries))
+					c[n].MinTime = last.MaxTime
+				*/
 			}
 			last = c[n]
 			n++
