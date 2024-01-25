@@ -18,7 +18,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           refId: 'A',
           step: 10,
           interval: '1m',
-          legendFormat: "__auto",
+          legendFormat: '__auto',
         },
       ],
       yaxes: $.yaxes('ms'),
