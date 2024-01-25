@@ -3,7 +3,6 @@ name: 'create release PR for patch releases'
 on:
   push:
     branches:
-      - 'release-[0-9].[0-9].x'
       - 'test-release'
   workflow_dispatch: {}
 permissions:

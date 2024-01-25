@@ -3,8 +3,7 @@ name: 'create release'
 on:
   push:
     branches:
-      - 'release-[0-9].[0-9].x'
-      - 'k[0-9]*'
+      - 'test-release'
   workflow_dispatch: {}
 permissions:
   contents: write
