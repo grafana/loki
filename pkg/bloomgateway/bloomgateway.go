@@ -299,14 +299,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
-	// start time == end time => empty response
+	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
 	}
 
-	// start time > end time => error response
+	// start time > end time --> error response
 	if req.Through.Before(req.From) {
 		return nil, errors.New("from time must not be after through time")
 	}
@@ -328,22 +328,23 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	var expectedResponses int
-	swbPerDay := partitionRequest(req)
+	seriesWithBloomsPerDay := partitionRequest(req)
 
-	tasks := make([]Task, 0, len(swbPerDay))
-	for _, seriesWithBounds := range swbPerDay {
+	// no tasks --> empty response
+	if len(seriesWithBloomsPerDay) == 0 {
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: []*logproto.GroupedChunkRefs{},
+		}, nil
+	}
+
+	tasks := make([]Task, 0, len(seriesWithBloomsPerDay))
+	for _, seriesWithBounds := range seriesWithBloomsPerDay {
 		task, err := NewTask(tenantID, seriesWithBounds, req.Filters)
 		if err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, task)
 		expectedResponses += len(seriesWithBounds.series)
-	}
-
-	if len(tasks) == 0 {
-		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: []*logproto.GroupedChunkRefs{},
-		}, nil
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
