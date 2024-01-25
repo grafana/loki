@@ -10,11 +10,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	logql_log "github.com/grafana/loki/pkg/logql/log"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -22,14 +21,27 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
-// TODO(owen-d): add metrics
+/*
+This file maintains a number of things supporting bloom generation. Most notably, the `BloomGenerator` interface/implementation which builds bloom filters.
+
+- `BloomGenerator`: Builds blooms. Most other things in this file are supporting this in various ways.
+- `SimpleBloomGenerator`: A foundational implementation of `BloomGenerator` which wires up a few different components to generate bloom filters for a set of blocks and handles schema compatibility:
+- `chunkLoader`: Loads chunks w/ a specific fingerprint from the store, returns an iterator of chunk iterators. We return iterators rather than chunk implementations mainly for ease of testing. In practice, this will just be an iterator over `MemChunk`s.
+*/
+
 type Metrics struct {
 	bloomMetrics *v1.Metrics
+	chunkSize    prometheus.Histogram // uncompressed size of all chunks summed per series
 }
 
-func NewMetrics(_ prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
+func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 	return &Metrics{
 		bloomMetrics: bloomMetrics,
+		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "bloom_chunk_series_size",
+			Help:    "Uncompressed size of chunks in a series",
+			Buckets: prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
+		}),
 	}
 }
 
@@ -55,7 +67,8 @@ type BloomGenerator interface {
 
 // Simple implementation of a BloomGenerator.
 type SimpleBloomGenerator struct {
-	store v1.Iterator[*v1.Series]
+	store       v1.Iterator[*v1.Series]
+	chunkLoader chunkLoader
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
 	// as an iterator of iterators, where each iterator is a batch of overlapping blocks.
 	blocks []*v1.Block
@@ -78,14 +91,17 @@ type SimpleBloomGenerator struct {
 func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
+	chunkLoader chunkLoader,
 	blocks []*v1.Block,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomGenerator {
 	return &SimpleBloomGenerator{
-		opts:         opts,
+		opts: opts,
+		// TODO(owen-d): implement Iterator[Series] against TSDB files to hook in here.
 		store:        store,
+		chunkLoader:  chunkLoader,
 		blocks:       blocks,
 		logger:       logger,
 		readWriterFn: readWriterFn,
@@ -95,20 +111,25 @@ func NewSimpleBloomGenerator(
 	}
 }
 
-func (s *SimpleBloomGenerator) populate(series *v1.Series, bloom *v1.Bloom) error {
-	// TODO(owen-d): impl after threading in store
-	var chunkItr v1.Iterator[[]chunk.Chunk] = v1.NewEmptyIter[[]chunk.Chunk](nil)
+func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) error {
+	return func(series *v1.Series, bloom *v1.Bloom) error {
+		chunkItersWithFP, err := s.chunkLoader.Load(ctx, series)
+		if err != nil {
+			return errors.Wrapf(err, "failed to load chunks for series: %#v", series)
+		}
 
-	return s.tokenizer.PopulateSeriesWithBloom(
-		&v1.SeriesWithBloom{
-			Series: series,
-			Bloom:  bloom,
-		},
-		chunkItr,
-	)
+		return s.tokenizer.Populate(
+			&v1.SeriesWithBloom{
+				Series: series,
+				Bloom:  bloom,
+			},
+			chunkItersWithFP.itr,
+		)
+	}
+
 }
 
-func (s *SimpleBloomGenerator) Generate(_ context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error) {
+func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error) {
 
 	blocksMatchingSchema := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(s.blocks))
 	for _, block := range s.blocks {
@@ -134,7 +155,7 @@ func (s *SimpleBloomGenerator) Generate(_ context.Context) (skippedBlocks []*v1.
 
 	// TODO(owen-d): implement bounded block sizes
 
-	mergeBuilder := v1.NewMergeBuilder(blocksMatchingSchema, s.store, s.populate)
+	mergeBuilder := v1.NewMergeBuilder(blocksMatchingSchema, s.store, s.populator(ctx))
 	writer, reader := s.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(v1.NewBlockOptionsFromSchema(s.opts.Schema), writer)
 	if err != nil {
@@ -155,136 +176,15 @@ type indexLoader interface {
 	Index() (tsdb.Index, error)
 }
 
-// chunkData models a single chunk
-type chunkData struct {
-	ref v1.ChunkRef
-	itr iter.EntryIterator
-}
-
 // chunkItersByFingerprint models the chunks belonging to a fingerprint
 type chunkItersByFingerprint struct {
 	fp  model.Fingerprint
-	itr v1.Iterator[chunkData]
+	itr v1.Iterator[v1.ChunkRefWithIter]
 }
 
 // chunkLoader loads chunks from a store
 type chunkLoader interface {
-	Load(context.Context, *ChunkRefsByFingerprint) (*chunkItersByFingerprint, error)
-}
-
-type IndexManager struct {
-	userID      string
-	indexLoader indexLoader
-	chunkLoader chunkLoader
-}
-
-func NewIndexManager(userID string, indexLoader indexLoader, chunkLoader chunkLoader) *IndexManager {
-	return &IndexManager{
-		userID:      userID,
-		indexLoader: indexLoader,
-		chunkLoader: chunkLoader,
-	}
-}
-
-// ChunkRefsByFingerprint is a single series in the index
-type ChunkRefsByFingerprint struct {
-	fp     model.Fingerprint
-	Chunks []logproto.ChunkRef
-}
-
-func (i *IndexManager) Iter(ctx context.Context) (*ChunkLoaderIter, error) {
-	idx, err := i.indexLoader.Index()
-	if err != nil {
-		return nil, err
-	}
-
-	everything := labels.MustNewMatcher(labels.MatchEqual, "", "")
-	refs, err := idx.GetChunkRefs(ctx, i.userID, 0, math.MaxInt64, nil, nil, everything)
-	if err != nil {
-		return nil, err
-	}
-
-	chkRefItr := newChunksByFpIterator(refs)
-	return NewChunkLoaderIter(ctx, i.chunkLoader, chkRefItr), nil
-}
-
-// ChunksByFpIter consolidates a ChunkRef iterator into an ChunksByFp iterator
-// by grouping chunks by fingerprint. This can group multiple series with the same fp together,
-// but this is accepted (correctness will not be affected).
-func newChunksByFpIterator(chks []tsdb.ChunkRef) *v1.DedupeIter[tsdb.ChunkRef, *ChunkRefsByFingerprint] {
-	itr := v1.NewPeekingIter[tsdb.ChunkRef](v1.NewSliceIter[tsdb.ChunkRef](chks))
-
-	eq := func(a tsdb.ChunkRef, b *ChunkRefsByFingerprint) bool {
-		return a.Fingerprint == b.fp
-	}
-
-	from := func(a tsdb.ChunkRef) *ChunkRefsByFingerprint {
-		return &ChunkRefsByFingerprint{
-			fp: a.Fingerprint,
-			// TODO(owen-d): pool?
-			Chunks: []logproto.ChunkRef{a.LogProto()},
-		}
-	}
-
-	merge := func(a tsdb.ChunkRef, b *ChunkRefsByFingerprint) *ChunkRefsByFingerprint {
-		b.Chunks = append(b.Chunks, a.LogProto())
-		return b
-	}
-
-	return v1.NewDedupingIter[tsdb.ChunkRef, *ChunkRefsByFingerprint](
-		eq,
-		from,
-		merge,
-		itr,
-	)
-}
-
-// ChunkLoaderIter implements v1.PeekingIterator[chunkItersByFingerprint]
-// via a chunkLoader
-type ChunkLoaderIter struct {
-	ctx    context.Context
-	loader chunkLoader
-	src    v1.Iterator[*ChunkRefsByFingerprint]
-
-	cur *chunkItersByFingerprint
-	err error
-}
-
-func NewChunkLoaderIter(ctx context.Context, loader chunkLoader, src v1.Iterator[*ChunkRefsByFingerprint]) *ChunkLoaderIter {
-	return &ChunkLoaderIter{
-		ctx:    ctx,
-		loader: loader,
-		src:    src,
-	}
-}
-
-func (c *ChunkLoaderIter) Next() bool {
-	if err := c.ctx.Err(); err != nil {
-		c.err = err
-		return false
-	}
-
-	if !c.src.Next() {
-		return false
-	}
-
-	chunkRefs := c.src.At()
-	chunkIters, err := c.loader.Load(context.Background(), chunkRefs)
-	if err != nil {
-		c.err = err
-		return false
-	}
-
-	c.cur = chunkIters
-	return true
-}
-
-func (c *ChunkLoaderIter) At() *chunkItersByFingerprint {
-	return c.cur
-}
-
-func (c *ChunkLoaderIter) Err() error {
-	return c.err
+	Load(context.Context, *v1.Series) (*chunkItersByFingerprint, error)
 }
 
 // interface modeled from `pkg/storage/stores/composite_store.ChunkFetcherProvider`
@@ -299,18 +199,34 @@ type chunkFetcher interface {
 
 // StoreChunkLoader loads chunks from a store
 type StoreChunkLoader struct {
+	userID          string
 	fetcherProvider fetcherProvider
+	metrics         *Metrics
 }
 
-func (s *StoreChunkLoader) Load(ctx context.Context, grp *ChunkRefsByFingerprint) (*chunkItersByFingerprint, error) {
+func NewStoreChunkLoader(userID string, fetcherProvider fetcherProvider, metrics *Metrics) *StoreChunkLoader {
+	return &StoreChunkLoader{
+		userID:          userID,
+		fetcherProvider: fetcherProvider,
+		metrics:         metrics,
+	}
+}
+
+func (s *StoreChunkLoader) Load(ctx context.Context, series *v1.Series) (*chunkItersByFingerprint, error) {
 	// TODO(owen-d): This is probalby unnecessary as we should only have one fetcher
 	// because we'll only be working on a single index period at a time, but this should protect
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
 	chksByFetcher := make(map[chunkFetcher][]chunk.Chunk)
-	for _, chk := range grp.Chunks {
-		fetcher := s.fetcherProvider.GetChunkFetcher(chk.From)
+	for _, chk := range series.Chunks {
+		fetcher := s.fetcherProvider.GetChunkFetcher(chk.Start)
 		chksByFetcher[fetcher] = append(chksByFetcher[fetcher], chunk.Chunk{
-			ChunkRef: chk,
+			ChunkRef: logproto.ChunkRef{
+				Fingerprint: uint64(series.Fingerprint),
+				UserID:      s.userID,
+				From:        chk.Start,
+				Through:     chk.End,
+				Checksum:    chk.Checksum,
+			},
 		})
 	}
 
@@ -323,8 +239,8 @@ func (s *StoreChunkLoader) Load(ctx context.Context, grp *ChunkRefsByFingerprint
 	}
 
 	return &chunkItersByFingerprint{
-		fp:  grp.fp,
-		itr: newBatchedLoader(ctx, work, batchedLoaderDefaultBatchSize),
+		fp:  series.Fingerprint,
+		itr: newBatchedLoader(ctx, work, batchedLoaderDefaultBatchSize, s.metrics),
 	}, nil
 }
 
@@ -333,23 +249,25 @@ type chunkWork struct {
 	chks    []chunk.Chunk
 }
 
-// batchedLoader implements `v1.Iterator[chunkData]` in batches
+// batchedLoader implements `v1.Iterator[v1.ChunkRefWithIter]` in batches
 // to ensure memory is bounded while loading chunks
 // TODO(owen-d): testware
 type batchedLoader struct {
+	metrics   *Metrics
 	batchSize int
 	ctx       context.Context
 	work      []chunkWork
 
-	cur   chunkData
+	cur   v1.ChunkRefWithIter
 	batch []chunk.Chunk
 	err   error
 }
 
 const batchedLoaderDefaultBatchSize = 50
 
-func newBatchedLoader(ctx context.Context, work []chunkWork, batchSize int) *batchedLoader {
+func newBatchedLoader(ctx context.Context, work []chunkWork, batchSize int, metrics *Metrics) *batchedLoader {
 	return &batchedLoader{
+		metrics:   metrics,
 		batchSize: batchSize,
 		ctx:       ctx,
 		work:      work,
@@ -388,8 +306,9 @@ func (b *batchedLoader) Next() bool {
 	return true
 }
 
-func (b *batchedLoader) format(c chunk.Chunk) (chunkData, error) {
+func (b *batchedLoader) format(c chunk.Chunk) (v1.ChunkRefWithIter, error) {
 	chk := c.Data.(*chunkenc.Facade).LokiChunk()
+	b.metrics.chunkSize.Observe(float64(chk.UncompressedSize()))
 	itr, err := chk.Iterator(
 		b.ctx,
 		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
@@ -399,20 +318,20 @@ func (b *batchedLoader) format(c chunk.Chunk) (chunkData, error) {
 	)
 
 	if err != nil {
-		return chunkData{}, err
+		return v1.ChunkRefWithIter{}, err
 	}
 
-	return chunkData{
-		ref: v1.ChunkRef{
+	return v1.ChunkRefWithIter{
+		Ref: v1.ChunkRef{
 			Start:    c.From,
 			End:      c.Through,
 			Checksum: c.Checksum,
 		},
-		itr: itr,
+		Itr: itr,
 	}, nil
 }
 
-func (b *batchedLoader) At() chunkData {
+func (b *batchedLoader) At() v1.ChunkRefWithIter {
 	return b.cur
 }
 
