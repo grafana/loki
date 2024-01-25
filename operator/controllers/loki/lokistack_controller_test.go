@@ -8,9 +8,6 @@ import (
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/require"
@@ -23,6 +20,10 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 var (
@@ -202,8 +203,8 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 	table := []test{
 		{
 			src:               &openshiftconfigv1.APIServer{},
-			index:             2,
-			watchesCallsCount: 3,
+			index:             3,
+			watchesCallsCount: 4,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					ClusterTLSPolicy: true,
@@ -213,8 +214,8 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		},
 		{
 			src:               &openshiftconfigv1.Proxy{},
-			index:             2,
-			watchesCallsCount: 3,
+			index:             3,
+			watchesCallsCount: 4,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					ClusterProxy: true,
@@ -225,14 +226,21 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		{
 			src:               &corev1.Service{},
 			index:             0,
-			watchesCallsCount: 2,
+			watchesCallsCount: 3,
 			featureGates:      configv1.FeatureGates{},
 			pred:              createUpdateOrDeletePred,
 		},
 		{
 			src:               &corev1.Secret{},
 			index:             1,
-			watchesCallsCount: 2,
+			watchesCallsCount: 3,
+			featureGates:      configv1.FeatureGates{},
+			pred:              createUpdateOrDeletePred,
+		},
+		{
+			src:               &corev1.ConfigMap{},
+			index:             2,
+			watchesCallsCount: 3,
 			featureGates:      configv1.FeatureGates{},
 			pred:              createUpdateOrDeletePred,
 		},

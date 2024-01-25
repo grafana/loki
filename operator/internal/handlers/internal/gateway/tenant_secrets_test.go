@@ -6,16 +6,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests"
-
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestGetTenantSecrets(t *testing.T) {
@@ -94,13 +92,6 @@ func TestGetTenantSecrets(t *testing.T) {
 		} {
 			t.Run(strings.Join([]string{string(mode), tc.name}, "_"), func(t *testing.T) {
 				k := &k8sfakes.FakeClient{}
-				r := ctrl.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      "my-stack",
-						Namespace: "some-ns",
-					},
-				}
-
 				s := &lokiv1.LokiStack{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "mystack",
@@ -120,7 +111,7 @@ func TestGetTenantSecrets(t *testing.T) {
 					}
 					return nil
 				}
-				ts, err := GetTenantSecrets(context.TODO(), k, r, s)
+				ts, err := getTenantSecrets(context.TODO(), k, s)
 				require.NoError(t, err)
 				require.ElementsMatch(t, ts, tc.expected)
 			})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -17,9 +18,12 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/querier/plan"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/math"
@@ -27,7 +31,7 @@ import (
 
 func TestLimits(t *testing.T) {
 	l := fakeLimits{
-		splits: map[string]time.Duration{"a": time.Minute},
+		splitDuration: map[string]time.Duration{"a": time.Minute},
 	}
 
 	wrapped := WithSplitByLimits(l, time.Hour)
@@ -46,8 +50,97 @@ func TestLimits(t *testing.T) {
 	require.Equal(
 		t,
 		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart().UnixMilli()/int64(time.Hour/time.Millisecond), int64(time.Hour)),
-		cacheKeyLimits{wrapped, nil}.GenerateCacheKey(context.Background(), "a", r),
+		cacheKeyLimits{wrapped, nil, nil}.GenerateCacheKey(context.Background(), "a", r),
 	)
+}
+
+func TestMetricQueryCacheKey(t *testing.T) {
+	const (
+		defaultTenant       = "a"
+		alternateTenant     = "b"
+		query               = `sum(rate({foo="bar"}[1]))`
+		defaultSplit        = time.Hour
+		ingesterSplit       = 90 * time.Minute
+		ingesterQueryWindow = defaultSplit * 3
+	)
+
+	var (
+		step = (15 * time.Second).Milliseconds()
+	)
+
+	l := fakeLimits{
+		splitDuration:         map[string]time.Duration{defaultTenant: defaultSplit, alternateTenant: defaultSplit},
+		ingesterSplitDuration: map[string]time.Duration{defaultTenant: ingesterSplit},
+	}
+
+	cases := []struct {
+		name, tenantID string
+		start, end     time.Time
+		expectedSplit  time.Duration
+		iqo            util.IngesterQueryOptions
+	}{
+		{
+			name:          "outside ingester query window",
+			tenantID:      defaultTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-5 * time.Hour),
+			expectedSplit: defaultSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       false,
+			},
+		},
+		{
+			name:          "within ingester query window",
+			tenantID:      defaultTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			expectedSplit: ingesterSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       false,
+			},
+		},
+		{
+			name:          "within ingester query window, but query store only",
+			tenantID:      defaultTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			expectedSplit: defaultSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       true,
+			},
+		},
+		{
+			name:          "within ingester query window, but no ingester split duration configured",
+			tenantID:      alternateTenant,
+			start:         time.Now().Add(-6 * time.Hour),
+			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			expectedSplit: defaultSplit,
+			iqo: ingesterQueryOpts{
+				queryIngestersWithin: ingesterQueryWindow,
+				queryStoreOnly:       false,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			keyGen := cacheKeyLimits{l, nil, tc.iqo}
+
+			r := &LokiRequest{
+				Query:   query,
+				StartTs: tc.start,
+				EndTs:   tc.end,
+				Step:    step,
+			}
+
+			// we use regex here because cache key always refers to the current time to get the ingester query window,
+			// and therefore we can't know the current interval apriori without duplicating the logic
+			pattern := regexp.MustCompile(fmt.Sprintf(`%s:%s:%d:(\d+):%d`, tc.tenantID, regexp.QuoteMeta(query), step, tc.expectedSplit))
+			require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tc.tenantID, r))
+		})
+	}
 }
 
 func Test_seriesLimiter(t *testing.T) {
@@ -56,7 +149,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -72,6 +165,9 @@ func Test_seriesLimiter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -223,7 +319,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -241,6 +337,9 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
+		},
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
@@ -300,7 +399,7 @@ func Test_MaxQueryLookBack_Types(t *testing.T) {
 }
 
 func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
-	l := cacheKeyLimits{WithSplitByLimits(nil, 0), nil}
+	l := cacheKeyLimits{WithSplitByLimits(nil, 0), nil, nil}
 	start := time.Now()
 	r := &LokiRequest{
 		Query:   "qry",
@@ -589,6 +688,9 @@ func Test_MaxQuerySize(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.FORWARD,
 				Path:      "/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.query),
+				},
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "foo")

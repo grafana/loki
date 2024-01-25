@@ -172,6 +172,7 @@ func Test_astMapper(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		[]string{},
 	)
 
 	req := defaultReq()
@@ -316,6 +317,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 					maxQuerierBytesRead:     tc.maxQuerierBytesSize,
 				},
 				0,
+				[]string{},
 			)
 
 			req := defaultReq()
@@ -354,6 +356,7 @@ func Test_ShardingByPass(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 		0,
+		[]string{},
 	)
 
 	req := defaultReq()
@@ -434,7 +437,9 @@ func Test_InstantSharding(t *testing.T) {
 			queryTimeout:        time.Second,
 		},
 		0,
-		nil)
+		nil,
+		[]string{},
+	)
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
@@ -508,13 +513,13 @@ func Test_SeriesShardingHandler(t *testing.T) {
 			Version: 1,
 			Data: []logproto.SeriesIdentifier{
 				{
-					Labels: map[string]string{
-						"foo": "bar",
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "foo", Value: "bar"},
 					},
 				},
 				{
-					Labels: map[string]string{
-						"shard": req.Shards[0],
+					Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "shard", Value: req.Shards[0]},
 					},
 				},
 			},
@@ -532,36 +537,31 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Version:    1,
 		Data: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{
-					"foo": "bar",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "foo", Value: "bar"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "0_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "0_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "1_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "1_of_3"},
 				},
 			},
 			{
-				Labels: map[string]string{
-					"shard": "2_of_3",
+				Labels: []logproto.SeriesIdentifier_LabelsEntry{
+					{Key: "shard", Value: "2_of_3"},
 				},
 			},
 		},
 	}
-	sort.Slice(expected.Data, func(i, j int) bool {
-		return expected.Data[i].Labels["shard"] > expected.Data[j].Labels["shard"]
-	})
 	actual := response.(*LokiSeriesResponse)
-	sort.Slice(actual.Data, func(i, j int) bool {
-		return actual.Data[i].Labels["shard"] > actual.Data[j].Labels["shard"]
-	})
 	require.NoError(t, err)
-	require.Equal(t, expected, actual)
+	require.Equal(t, expected.Status, actual.Status)
+	require.ElementsMatch(t, expected.Data, actual.Data)
 }
 
 func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
@@ -722,6 +722,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 				0,
+				[]string{},
 			)
 
 			// currently all the tests call `defaultReq()` which creates an instance of the type LokiRequest
@@ -856,6 +857,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		[]string{},
 	)
 
 	q := `{cluster="dev-us-central-0"}`

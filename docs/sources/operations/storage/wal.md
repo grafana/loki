@@ -1,7 +1,7 @@
 ---
 title: Write Ahead Log
 menuTitle:  
-description: Describes the Loki Write Ahead Log (WAL).
+description: Describes how Loki maintains data during a process crash using a Write Ahead Log (WAL).
 weight:  500
 ---
 
@@ -21,13 +21,13 @@ The Write Ahead Log in Loki takes a few particular tradeoffs compared to other W
 
 In the event the WAL is corrupted/partially deleted, Loki will not be able to recover all of its data. In this case, Loki will attempt to recover any data it can, but will not prevent Loki from starting.
 
-Note: the Prometheus metric `loki_ingester_wal_corruptions_total` can be used to track and alert when this happens.
+You can use the Prometheus metric `loki_ingester_wal_corruptions_total` to track and alert when this happens.
 
 1) No space left on disk
 
 In the event the underlying WAL disk is full, Loki will not fail incoming writes, but neither will it log them to the WAL. In this case, the persistence guarantees across process restarts will not hold.
 
-Note: the Prometheus metric `loki_ingester_wal_disk_full_failures_total` can be used to track and alert when this happens.
+You can use the Prometheus metric `loki_ingester_wal_disk_full_failures_total` to track and alert when this happens.
 
 
 ### Backpressure

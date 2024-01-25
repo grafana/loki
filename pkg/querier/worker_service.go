@@ -1,7 +1,8 @@
 package querier
 
 import (
-	"fmt"
+	"net"
+	"strconv"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -91,7 +92,7 @@ func InitWorkerService(
 		if cfg.GrpcListenAddress != "" {
 			listenAddress = cfg.GrpcListenAddress
 		}
-		address := fmt.Sprintf("%s:%d", listenAddress, cfg.GrpcListenPort)
+		address := net.JoinHostPort(listenAddress, strconv.Itoa(cfg.GrpcListenPort))
 		level.Warn(util_log.Logger).Log(
 			"msg", "Worker address is empty, attempting automatic worker configuration. If queries are unresponsive consider configuring the worker explicitly.",
 			"address", address)

@@ -26,7 +26,8 @@ const (
 )
 
 var (
-	four = NewNGramTokenizer(4, 0)
+	four    = NewNGramTokenizer(4, 0)
+	metrics = NewMetrics(prometheus.DefaultRegisterer)
 )
 
 func TestPrefixedKeyCreation(t *testing.T) {
@@ -73,21 +74,21 @@ func TestPrefixedKeyCreation(t *testing.T) {
 }
 
 func TestSetLineTokenizer(t *testing.T) {
-	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	// Validate defaults
 	require.Equal(t, bt.lineTokenizer.N, DefaultNGramLength)
 	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
-	bt.SetLineTokenizer(NewNGramTokenizer(6, 7))
+	bt.lineTokenizer = NewNGramTokenizer(6, 7)
 	require.Equal(t, bt.lineTokenizer.N, 6)
 	require.Equal(t, bt.lineTokenizer.Skip, 7)
 }
 
 func TestPopulateSeriesWithBloom(t *testing.T) {
 	var testLine = "this is a log line"
-	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 	var lbsList []labels.Labels
@@ -122,7 +123,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 		Series: &series,
 	}
 
-	err := bt.PopulateSeriesWithBloom(&swb, chunks)
+	err := bt.PopulateSeriesWithBloom(&swb, NewSliceIter([][]chunk.Chunk{chunks}))
 	require.NoError(t, err)
 	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
 	itr := tokenizer.Tokens(testLine)
@@ -135,7 +136,7 @@ func TestPopulateSeriesWithBloom(t *testing.T) {
 func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var testLine = lorem + lorem + lorem
-		bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
+		bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 		var lbsList []labels.Labels
@@ -170,13 +171,13 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			Series: &series,
 		}
 
-		err := bt.PopulateSeriesWithBloom(&swb, chunks)
+		err := bt.PopulateSeriesWithBloom(&swb, NewSliceIter([][]chunk.Chunk{chunks}))
 		require.NoError(b, err)
 	}
 }
 
 func BenchmarkMapClear(b *testing.B) {
-	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
@@ -187,7 +188,7 @@ func BenchmarkMapClear(b *testing.B) {
 }
 
 func BenchmarkNewMap(b *testing.B) {
-	bt, _ := NewBloomTokenizer(prometheus.NewRegistry(), DefaultNGramLength, DefaultNGramSkip)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k

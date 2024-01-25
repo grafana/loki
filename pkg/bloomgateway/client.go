@@ -23,8 +23,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -136,7 +138,7 @@ func (i *ClientConfig) Validate() error {
 }
 
 type Client interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...*logproto.LineFilterExpression) ([]*logproto.GroupedChunkRefs, error)
+	FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error)
 }
 
 type GatewayClient struct {
@@ -147,8 +149,9 @@ type GatewayClient struct {
 	ring   ring.ReadRing
 }
 
-func NewGatewayClient(
+func NewClient(
 	cfg ClientConfig,
+	readRing ring.ReadRing,
 	limits Limits,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -205,6 +208,7 @@ func NewGatewayClient(
 		logger: logger,
 		limits: limits,
 		pool:   clientpool.NewPool("bloom-gateway", cfg.PoolConfig, cfg.Ring, ringclient.PoolAddrFunc(poolFactory), logger, metricsNamespace),
+		ring:   readRing,
 	}, nil
 }
 
@@ -216,7 +220,7 @@ func shuffleAddrs(addrs []string) []string {
 }
 
 // FilterChunkRefs implements Client
-func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...*logproto.LineFilterExpression) ([]*logproto.GroupedChunkRefs, error) {
+func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, groups []*logproto.GroupedChunkRefs, filters ...syntax.LineFilter) ([]*logproto.GroupedChunkRefs, error) {
 	if !c.limits.BloomGatewayEnabled(tenant) {
 		return groups, nil
 	}
@@ -283,39 +287,44 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 }
 
 func (c *GatewayClient) groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, subRing ring.ReadRing, instances []ring.InstanceDesc) ([]instanceWithFingerprints, error) {
+	servers, err := serverAddressesWithTokenRanges(subRing, instances)
+	if err != nil {
+		return nil, err
+	}
+	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
+	return groupByInstance(boundedFingerprints), nil
+}
+
+func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithTokenRange, error) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
 	servers := make([]addrsWithTokenRange, 0, len(instances))
-	prev := -1
-	it := newInstanceSortMergeIterator(instances)
+	it := bloomutils.NewInstanceSortMergeIterator(instances)
 	for it.Next() {
 		// We can use on of the tokens from the token range
 		// to obtain all addresses for that token.
-		rs, err := subRing.Get(it.At().token, BlocksRead, bufDescs, bufHosts, bufZones)
+		rs, err := subRing.Get(it.At().MaxToken, BlocksRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
 		servers = append(servers, addrsWithTokenRange{
-			minToken: uint32(prev + 1),
-			maxToken: it.At().token,
-			id:       it.At().instance.Id,
+			id:       it.At().Instance.Id,
 			addrs:    rs.GetAddresses(),
+			minToken: it.At().MinToken,
+			maxToken: it.At().MaxToken,
 		})
-		prev = int(it.At().token)
 	}
 
-	if len(servers) > 0 {
+	if len(servers) > 0 && servers[len(servers)-1].maxToken < math.MaxUint32 {
 		// append the instance for the token range between the greates token and MaxUint32
 		servers = append(servers, addrsWithTokenRange{
-			minToken: uint32(prev),
-			maxToken: math.MaxUint32,
-			addrs:    servers[0].addrs,
 			id:       servers[0].id,
+			addrs:    servers[0].addrs,
+			minToken: servers[len(servers)-1].maxToken + 1,
+			maxToken: math.MaxUint32,
 		})
 	}
-
-	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
-	return groupByInstance(boundedFingerprints), nil
+	return servers, nil
 }
 
 type instanceWithToken struct {
@@ -400,62 +409,4 @@ func groupByInstance(boundedFingerprints []instanceWithFingerprints) []instanceW
 	}
 
 	return result
-}
-
-// newInstanceSortMergeIterator creates an iterator that yields instanceWithToken elements
-// where the token of the elements are sorted in ascending order.
-func newInstanceSortMergeIterator(instances []ring.InstanceDesc) v1.Iterator[instanceWithToken] {
-	it := &sortMergeIterator[ring.InstanceDesc, uint32, instanceWithToken]{
-		items: instances,
-		transform: func(item ring.InstanceDesc, val uint32) instanceWithToken {
-			return instanceWithToken{instance: item, token: val}
-		},
-	}
-	sequences := make([]v1.PeekingIterator[IndexedValue[uint32]], 0, len(instances))
-	for i := range instances {
-		sort.Slice(instances[i].Tokens, func(a, b int) bool {
-			return instances[i].Tokens[a] < instances[i].Tokens[b]
-		})
-		iter := NewIterWithIndex[uint32](v1.NewSliceIter(instances[i].Tokens), i)
-		sequences = append(sequences, v1.NewPeekingIter[IndexedValue[uint32]](iter))
-	}
-	it.heap = v1.NewHeapIterator(
-		func(i, j IndexedValue[uint32]) bool {
-			return i.val < j.val
-		},
-		sequences...,
-	)
-	it.err = nil
-
-	return it
-}
-
-// sortMergeIterator implements v1.Iterator
-type sortMergeIterator[T any, C comparable, R any] struct {
-	curr      R
-	heap      *v1.HeapIterator[IndexedValue[C]]
-	items     []T
-	transform func(T, C) R
-	err       error
-}
-
-func (it *sortMergeIterator[T, C, R]) Next() bool {
-	ok := it.heap.Next()
-	if !ok {
-		it.err = io.EOF
-		return false
-	}
-
-	group := it.heap.At()
-	it.curr = it.transform(it.items[group.idx], group.val)
-
-	return true
-}
-
-func (it *sortMergeIterator[T, C, R]) At() R {
-	return it.curr
-}
-
-func (it *sortMergeIterator[T, C, R]) Err() error {
-	return it.err
 }

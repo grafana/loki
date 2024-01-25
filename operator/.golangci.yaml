@@ -1,9 +1,4 @@
 ---
-run:
-  tests: false
-  skip-files:
-    - "example_.+_test.go$"
-
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
 linters-settings:

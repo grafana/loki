@@ -35,6 +35,15 @@ type IndexIter interface {
 type IndexSlice []Index
 
 func (xs IndexSlice) For(ctx context.Context, maxConcurrent int, fn func(context.Context, Index) error) error {
+	if len(xs) == 0 {
+		return nil
+	}
+
+	// shortcut; if there's only one slice, there's no need for bounded concurrency
+	if len(xs) == 1 {
+		return fn(ctx, xs[0])
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	if maxConcurrent == 0 {
 		panic("maxConcurrent cannot be 0, IndexIter is being called with a maxConcurrent of 0")

@@ -175,6 +175,9 @@ func TestIndexGatewayRingMode_when_TargetIsLegacyReadOrBackend(t *testing.T) {
 		{
 			name:   "leagcy read",
 			target: Read,
+			transformer: func(cfg *Config) {
+				cfg.LegacyReadTarget = true
+			},
 		},
 		{
 			name:   "backend",
