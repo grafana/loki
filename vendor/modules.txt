@@ -419,7 +419,7 @@ github.com/dimchansky/utfbom
 ## explicit
 github.com/docker/distribution/digestset
 github.com/docker/distribution/reference
-# github.com/docker/docker v20.10.23+incompatible => github.com/docker/docker v24.0.7+incompatible
+# github.com/docker/docker v20.10.27+incompatible => github.com/docker/docker v24.0.7+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
