@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"fmt"
+	"hash"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -65,6 +66,12 @@ type SingleTenantTSDBIdentifier struct {
 	TS            time.Time
 	From, Through model.Time
 	Checksum      uint32
+}
+
+// implement Hash
+func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (n int, err error) {
+	_, err = h.Write([]byte(i.str()))
+	return h.Size(), err
 }
 
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>

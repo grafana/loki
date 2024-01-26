@@ -6,41 +6,20 @@ import (
 	"path"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/pkg/errors"
 )
-
-// Job is a declarative description of a compaction job.
-// Namely it contains:
-//   - the source TSDBs (the source of truth) from which to enumerate series+chunks
-//     and ensure they are in the resulting block(s)
-//   - The source blocks which may already contain relevant series+chunks so we don't have to
-//     re-index them
-//   - The fingerprint ownership range to limit by
-type Job2 struct {
-	UserID string
-	Period int
-
-	// The fingerprint range of the block. This is the range _owned_ by the meta and
-	// is greater than or equal to the range of the actual data in the underlying blocks.
-	OwnershipRange v1.FingerprintBounds
-
-	SourceTSDBs []TSDBRef
-
-	SourceBlocks []BlockRef
-}
-
-type TSDBRef struct{}
-
-func (r TSDBRef) Hash(h hash.Hash32) (n int, err error) {
-	// TODO(owen-d): implement
-	return h.Write(nil)
-}
 
 type BlockRef struct{}
 
 func (r BlockRef) Hash(h hash.Hash32) (n int, err error) {
 	// TODO(owen-d): implement
 	return h.Write(nil)
+}
+
+type MetaRef struct {
+	UserID string
+	Period int
 }
 
 type Meta struct {
@@ -55,14 +34,14 @@ type Meta struct {
 	Tombstones []BlockRef
 
 	// The specific TSDB files used to generate the block.
-	Sources []TSDBRef
+	Sources []tsdb.SingleTenantTSDBIdentifier
 
 	// A list of blocks that were generated
 	Blocks []BlockRef
 }
 
+// `bloom/<period>/<tenant>/metas/<start_fp>-<end_fp>-<start_ts>-<end_ts>-<checksum>`
 func (m Meta) Address() (string, error) {
-	// `bloom/<period>/<tenant>/metas/<start_fp>-<end_fp>-<start_ts>-<end_ts>-<checksum>`
 	checksum, err := m.Checksum()
 	if err != nil {
 		return "", errors.Wrap(err, "getting checksum")
@@ -82,6 +61,7 @@ func (m Meta) Address() (string, error) {
 
 func (m Meta) Checksum() (uint32, error) {
 	h := v1.Crc32HashPool.Get()
+	defer v1.Crc32HashPool.Put(h)
 
 	_, err := h.Write([]byte(m.UserID))
 	if err != nil {
@@ -121,4 +101,20 @@ func (m Meta) Checksum() (uint32, error) {
 
 	return h.Sum32(), nil
 
+}
+
+type TSDBStore interface {
+	ResolveTSDBs() ([]*tsdb.TSDBFile, error)
+}
+
+type MetaStore interface {
+	GetMetas([]MetaRef) ([]Meta, error)
+	PutMeta(Meta) error
+	ResolveMetas(bounds v1.FingerprintBounds) ([]MetaRef, error)
+}
+
+type BlockStore interface {
+	// TODO(owen-d): flesh out
+	GetBlocks([]BlockRef) ([]interface{}, error)
+	PutBlock(interface{}) error
 }

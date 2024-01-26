@@ -48,6 +48,11 @@ func (b FingerprintBounds) Clip(target FingerprintBounds) *FingerprintBounds {
 	}
 }
 
+// Slice returns a new fingerprint bounds clipped to the target bounds or nil if there is no overlap
+func (b FingerprintBounds) Slice(min, max model.Fingerprint) *FingerprintBounds {
+	return b.Clip(FingerprintBounds{Min: min, Max: max})
+}
+
 // Returns whether the fingerprint is fully within the target bounds
 func (b FingerprintBounds) Within(target FingerprintBounds) bool {
 	return b.Min >= target.Min && b.Max <= target.Max
