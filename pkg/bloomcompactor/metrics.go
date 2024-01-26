@@ -8,6 +8,9 @@ import (
 const (
 	metricsNamespace = "loki"
 	metricsSubsystem = "bloomcompactor"
+
+	statusSuccess = "success"
+	statusFailure = "failure"
 )
 
 type metrics struct {

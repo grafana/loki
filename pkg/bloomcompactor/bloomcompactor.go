@@ -210,17 +210,16 @@ func (c *Compactor) running(ctx context.Context) error {
 
 	for {
 		select {
-		case <-ticker.C:
-			start := time.Now()
+		case start := <-ticker.C:
 			c.metrics.compactionRunsStarted.Inc()
 			if err := c.runCompaction(ctx); err != nil {
-				c.metrics.compactionRunsCompleted.WithLabelValues("fail").Inc()
-				c.metrics.compactionRunTime.WithLabelValues("fail").Observe(time.Since(start).Seconds())
+				c.metrics.compactionRunsCompleted.WithLabelValues(statusFailure).Inc()
+				c.metrics.compactionRunTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 				level.Error(c.logger).Log("msg", "failed to run compaction", "err", err)
 				continue
 			}
-			c.metrics.compactionRunsCompleted.WithLabelValues("success").Inc()
-			c.metrics.compactionRunTime.WithLabelValues("success").Observe(time.Since(start).Seconds())
+			c.metrics.compactionRunsCompleted.WithLabelValues(statusSuccess).Inc()
+			c.metrics.compactionRunTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 		case <-ctx.Done():
 			return nil
 		}
@@ -341,16 +340,16 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 				level.Info(tenantLogger).Log("msg", "compaction for tenant was interrupted by a shutdown")
 				return nil
 			default:
-				c.metrics.compactionRunTenantsCompleted.WithLabelValues("fail").Inc()
-				c.metrics.compactionRunTenantsTime.WithLabelValues("fail").Observe(time.Since(start).Seconds())
+				c.metrics.compactionRunTenantsCompleted.WithLabelValues(statusFailure).Inc()
+				c.metrics.compactionRunTenantsTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 				level.Error(tenantLogger).Log("msg", "failed to compact tenant", "err", err)
 				errs.Add(err)
 			}
 			continue
 		}
 
-		c.metrics.compactionRunTenantsCompleted.WithLabelValues("success").Inc()
-		c.metrics.compactionRunTenantsTime.WithLabelValues("success").Observe(time.Since(start).Seconds())
+		c.metrics.compactionRunTenantsCompleted.WithLabelValues(statusSuccess).Inc()
+		c.metrics.compactionRunTenantsTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 		level.Info(tenantLogger).Log("msg", "successfully compacted tenant")
 	}
 
@@ -439,14 +438,14 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		start := time.Now()
 		err = c.runCompact(ctx, jobLogger, job, bt, sc)
 		if err != nil {
-			c.metrics.compactionRunJobCompleted.WithLabelValues("fail").Inc()
-			c.metrics.compactionRunJobTime.WithLabelValues("fail").Observe(time.Since(start).Seconds())
+			c.metrics.compactionRunJobCompleted.WithLabelValues(statusFailure).Inc()
+			c.metrics.compactionRunJobTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 			errs.Add(errors.Wrap(err, fmt.Sprintf("runBloomCompact failed for job %s", job.String())))
 			return nil
 		}
 
-		c.metrics.compactionRunJobCompleted.WithLabelValues("success").Inc()
-		c.metrics.compactionRunJobTime.WithLabelValues("success").Observe(time.Since(start).Seconds())
+		c.metrics.compactionRunJobCompleted.WithLabelValues(statusSuccess).Inc()
+		c.metrics.compactionRunJobTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 		level.Debug(logger).Log("msg", "compaction of job succeeded", "job", job.String(), "duration", time.Since(start))
 
 		return nil
