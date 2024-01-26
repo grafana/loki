@@ -112,11 +112,11 @@ const (
 	KeySwiftRegion = "region"
 	// KeySwiftUserDomainID is the secret data key for the OpenStack Swift user domain id.
 	KeySwiftUserDomainID = "user_domain_id"
-	// KeySwiftUserDomainID is the secret data key for the OpenStack Swift user domain name.
+	// KeySwiftUserDomainName is the secret data key for the OpenStack Swift user domain name.
 	KeySwiftUserDomainName = "user_domain_name"
 	// KeySwiftUserID is the secret data key for the OpenStack Swift user id.
 	KeySwiftUserID = "user_id"
-	// KeySwiftPassword is the secret data key for the OpenStack Swift password.
+	// KeySwiftUsername is the secret data key for the OpenStack Swift password.
 	KeySwiftUsername = "username"
 
 	saTokenVolumeK8sDirectory       = "/var/run/secrets/kubernetes.io/serviceaccount"
