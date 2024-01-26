@@ -286,7 +286,3 @@ func (w *worker) processBlock(blockQuerier *v1.BlockQuerier, tasks []Task) error
 	w.metrics.bloomQueryLatency.WithLabelValues(w.id, "success").Observe(duration)
 	return nil
 }
-
-func toModelTime(t time.Time) model.Time {
-	return model.TimeFromUnixNano(t.UnixNano())
-}

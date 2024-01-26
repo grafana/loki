@@ -351,8 +351,11 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 
-	tasksCh := make(chan Task)
-
+	// Ideally we could use an unbuffered channel here, but since we return the
+	// request on the first error, there can be cases where the request context
+	// is not done yet and the consumeTask() function wants to send to the
+	// tasksCh, but nobody reads from it any more.
+	tasksCh := make(chan Task, len(tasks))
 	for _, task := range tasks {
 		task := task
 		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
