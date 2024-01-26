@@ -115,7 +115,8 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 	if len(c) > 1 && deduplicate {
 		sort.Sort(c)
 		last := c[0]
-		n := 1
+		totalKB := float64(last.KB)
+		totalEntries := float64(last.Entries)
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
 			if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
@@ -141,22 +142,18 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
 
-				c[n-1].KB = uint32(float64(c[n-1].KB) - lastOverlapSize + adjustSize)
+				totalKB = totalKB - lastOverlapSize + adjustSize
 				continue
-			}
-			c[n] = cur
-
-			if cur.MinTime < last.MaxTime {
-				overlap := last.MaxTime - cur.MinTime
-				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
-				curOverlapSize := float64(overlap) / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
+			} else if cur.MinTime < last.MaxTime {
+				overlap := float64(last.MaxTime - cur.MinTime)
+				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
+				curOverlapSize := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
 
 				adjustSize := math.Max(lastOverlapSize, curOverlapSize)
 
 				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
 
-				c[n-1].KB = uint32(float64(c[n-1].KB) - lastOverlapSize + adjustSize)
-				c[n].KB = uint32(float64(c[n].KB) - curOverlapSize)
+				totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
 
 				/*
 					// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
@@ -167,11 +164,13 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 					c[n].Entries = uint32(factor * float64(c[n].Entries))
 					c[n].MinTime = last.MaxTime
 				*/
+			} else {
+				totalKB = totalKB + float64(cur.KB)
 			}
-			last = c[n]
-			n++
+			last = cur
 		}
-		c = c[:n]
+		res.addRaw(len(c), uint32(totalKB), uint32(totalEntries))
+		return res
 	}
 
 	for _, chk := range c {

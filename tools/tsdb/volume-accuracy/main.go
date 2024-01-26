@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 // go build ./tools/tsdb/volume-accuracy && LOKI_ADDR="https://..." LOKI_USERNAME="***" LOKI_PASSWORD="***" ./tools/tsdb/volume-accuracy/volume-accuracy
@@ -31,26 +33,29 @@ func main() {
 
 	intervals := []model.Duration{
 		//	model.Duration(1 * time.Hour),
+		model.Duration(6 * time.Hour),
 		model.Duration(12 * time.Hour),
-		//		model.Duration(24 * time.Hour),
+		model.Duration(4 * 24 * time.Hour),
 	}
 
 	// Starts rounded to the second
 	starts := []time.Time{
 		time.Unix(1693216800, 0),
-		/*
-			time.Unix(time.Now().Unix(), 0),
-			time.Unix(time.Now().Unix(), 0).Add(-3 * time.Hour),
-			time.Unix(time.Now().Unix(), 0).Add(-24 * time.Hour),
-		*/
+		time.Unix(1693386000, 0),
 	}
 
 	acc := &accumulation{}
 
 	series := []string{
-		`{cluster="dev-us-central-0"}`,
-		//`{namespace="machine-learning-cd", cluster="dev-us-central-0", job="integrations/kubernetes/eventhandler"}`,
-		//`{job="default/systemd-journal", nodename="gke-dev-us-central-0-hg-n2s8-4-4dcec77a-gdld", priority="notice",syslog_identifier="kernel",cluster="dev-us-central-0"}`,
+		//`{cluster="dev-us-central-0"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="infra-monitoring/eventrouter"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="cortex-dev-01/store-gateway-zone-a"}`,
+		`{cluster="dev-us-central-0", namespace="startup"}`,
+		`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
+		`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
+		`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
+		`{job="default/systemd-journal", nodename="gke-dev-us-central-0-hg-n2s8-4-4dcec77a-gdld", priority="notice",syslog_identifier="kernel",cluster="dev-us-central-0"}`,
 	}
 
 	for _, now := range starts {
@@ -67,9 +72,17 @@ func main() {
 	acc.Write(os.Stdout)
 }
 
-func getStreamVolume(client client.Client, acc *accumulation, now time.Time, interval model.Duration, matchers string) error {
-	instantQueryString := fmt.Sprintf(`sum by (cluster) (bytes_over_time(%s[%s]))`, matchers, interval)
-	//instantQueryString := fmt.Sprintf(`(bytes_over_time(%s[%s]))`, matchers, interval)
+func getStreamVolume(client client.Client, acc *accumulation, now time.Time, interval model.Duration, matcherString string) error {
+	matchers, err := syntax.ParseMatchers(matcherString, true)
+	if err != nil {
+		return fmt.Errorf("could not parse matchers: %w", err)
+	}
+	labels := make([]string, 0)
+	for _, m := range matchers {
+		labels = append(labels, m.Name)
+	}
+
+	instantQueryString := fmt.Sprintf(`sum by (%s) (bytes_over_time(%s[%s]))`, strings.Join(labels, ","), matcherString, interval)
 	instantQuery := newQuery(instantQueryString, now)
 
 	resp, err := client.Query(instantQuery.QueryString, instantQuery.Limit, instantQuery.Start, logproto.BACKWARD, false)
@@ -78,7 +91,7 @@ func getStreamVolume(client client.Client, acc *accumulation, now time.Time, int
 	}
 	byteOverTimeResult := resp.Data.Result.(loghttp.Vector)
 
-	volumeQueryString := matchers
+	volumeQueryString := matcherString
 	volumeQuery := newVolumeQuery(volumeQueryString, now, time.Duration(interval))
 	vr, err := client.GetVolume(volumeQuery)
 	if err != nil {
