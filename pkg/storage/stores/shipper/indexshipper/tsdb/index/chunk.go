@@ -135,7 +135,7 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				lastKB = lastKB - lastOverlapSize + adjustSize
 			} else if cur.MinTime < last.MaxTime {
 				overlap := float64(last.MaxTime - cur.MinTime)
-				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
+				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * lastKB
 				curOverlapSize := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
 
 				adjustSize := math.Max(lastOverlapSize, curOverlapSize)
@@ -144,8 +144,10 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
 
+				//oldMax := last.MaxTime
 				last = cur
-				lastKB = float64(last.KB)
+				//last.MinTime = oldMax
+				lastKB = float64(cur.KB) - curOverlapSize
 			} else {
 				totalKB = totalKB + float64(cur.KB)
 				last = cur
