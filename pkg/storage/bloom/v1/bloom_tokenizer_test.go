@@ -81,7 +81,7 @@ func TestSetLineTokenizer(t *testing.T) {
 	require.Equal(t, bt.lineTokenizer.Skip, DefaultNGramSkip)
 
 	// Set new tokenizer, and validate against that
-	bt.SetLineTokenizer(NewNGramTokenizer(6, 7))
+	bt.lineTokenizer = NewNGramTokenizer(6, 7)
 	require.Equal(t, bt.lineTokenizer.N, 6)
 	require.Equal(t, bt.lineTokenizer.Skip, 7)
 }
