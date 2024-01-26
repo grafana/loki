@@ -298,6 +298,18 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
+	// start time == end time --> empty response
+	if req.From.Equal(req.Through) {
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: []*logproto.GroupedChunkRefs{},
+		}, nil
+	}
+
+	// start time > end time --> error response
+	if req.Through.Before(req.From) {
+		return nil, errors.New("from time must not be after through time")
+	}
+
 	numChunksUnfiltered := len(req.Refs)
 
 	// Shortcut if request does not contain filters
@@ -314,21 +326,64 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	task, resCh, errCh, err := NewTask(tenantID, req)
+	var expectedResponses int
+	seriesWithBloomsPerDay := partitionRequest(req)
 
-	if err != nil {
-		return nil, err
+	// no tasks --> empty response
+	if len(seriesWithBloomsPerDay) == 0 {
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: []*logproto.GroupedChunkRefs{},
+		}, nil
+	}
+
+	tasks := make([]Task, 0, len(seriesWithBloomsPerDay))
+	for _, seriesWithBounds := range seriesWithBloomsPerDay {
+		task, err := NewTask(tenantID, seriesWithBounds, req.Filters)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+		expectedResponses += len(seriesWithBounds.series)
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
-	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID)
-	g.queue.Enqueue(tenantID, []string{}, task, func() {
-		// When enqueuing, we also add the task to the pending tasks
-		g.pendingTasks.Add(task.ID, task)
-	})
 
-	requestCount := len(req.Refs)
-	responses := responsesPool.Get(requestCount)
+	errCh := make(chan error, 1)
+	resCh := make(chan v1.Output, 1)
+
+	for _, task := range tasks {
+		level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
+		g.queue.Enqueue(tenantID, []string{}, task, func() {
+			// When enqueuing, we also add the task to the pending tasks
+			g.pendingTasks.Add(task.ID, task)
+		})
+
+		// Forward responses or error to the main channels
+		// TODO(chaudum): Refactor to make tasks cancelable
+		go func(t Task) {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case err := <-t.ErrCh:
+					if ctx.Err() != nil {
+						level.Warn(g.logger).Log("msg", "received err from channel, but context is already done", "err", ctx.Err())
+						return
+					}
+					errCh <- err
+				case res := <-t.ResCh:
+					level.Debug(g.logger).Log("msg", "got partial result", "task", t.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+					if ctx.Err() != nil {
+						level.Warn(g.logger).Log("msg", "received res from channel, but context is already done", "err", ctx.Err())
+						return
+					}
+					resCh <- res
+				}
+			}
+		}(task)
+	}
+
+	responses := responsesPool.Get(expectedResponses)
 	defer responsesPool.Put(responses)
 
 outer:
@@ -341,9 +396,9 @@ outer:
 		case res := <-resCh:
 			responses = append(responses, res)
 			// log line is helpful for debugging tests
-			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
+			level.Debug(g.logger).Log("msg", "got partial result", "progress", fmt.Sprintf("%d/%d", len(responses), expectedResponses))
 			// wait for all parts of the full response
-			if len(responses) == requestCount {
+			if len(responses) == expectedResponses {
 				break outer
 			}
 		}
@@ -353,8 +408,7 @@ outer:
 		if o.Removals.Len() == 0 {
 			continue
 		}
-		// we must not remove items from req.Refs as long as the worker may iterater over them
-		g.removeNotMatchingChunks(req, o)
+		removeNotMatchingChunks(req, o, g.logger)
 	}
 
 	g.metrics.addUnfilteredCount(numChunksUnfiltered)
@@ -364,7 +418,7 @@ outer:
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
-func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) {
+func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output, logger log.Logger) {
 	// binary search index of fingerprint
 	idx := sort.Search(len(req.Refs), func(i int) bool {
 		return req.Refs[i].Fingerprint >= uint64(res.Fp)
@@ -372,7 +426,7 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	// fingerprint not found
 	if idx >= len(req.Refs) {
-		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
+		level.Error(logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
 		return
 	}
 
@@ -386,10 +440,11 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	for i := range res.Removals {
 		toRemove := res.Removals[i]
-		for j := range req.Refs[idx].Refs {
+		for j := 0; j < len(req.Refs[idx].Refs); j++ {
 			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
 				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
 				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
+				j-- // since we removed the current item at index, we have to redo the same index
 			}
 		}
 	}
