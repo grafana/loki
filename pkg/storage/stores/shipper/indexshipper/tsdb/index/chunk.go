@@ -115,8 +115,7 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 	if len(c) > 1 && deduplicate {
 		sort.Sort(c)
 		last := c[0]
-		lastKB := float64(last.KB)
-		totalKB := lastKB
+		totalKB := float64(last.KB)
 		totalEntries := float64(last.Entries)
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
@@ -124,7 +123,7 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				// Adjust with arithmetic mean
 				overlap := cur.MaxTime - cur.MinTime
-				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * lastKB
+				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 
 				// Adjust with max of overlap
 				adjustSize := math.Max(lastOverlapSize, float64(cur.KB))
@@ -132,10 +131,9 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
 
 				totalKB = totalKB - lastOverlapSize + adjustSize
-				lastKB = lastKB - lastOverlapSize + adjustSize
 			} else if cur.MinTime < last.MaxTime {
 				overlap := float64(last.MaxTime - cur.MinTime)
-				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * lastKB
+				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 				curOverlapSize := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
 
 				adjustSize := math.Max(lastOverlapSize, curOverlapSize)
@@ -144,14 +142,11 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
 
-				//oldMax := last.MaxTime
 				last = cur
-				//last.MinTime = oldMax
-				lastKB = float64(cur.KB) - curOverlapSize
+				last.KB = uint32(float64(cur.KB) - curOverlapSize)
 			} else {
 				totalKB = totalKB + float64(cur.KB)
 				last = cur
-				lastKB = float64(last.KB)
 			}
 		}
 		level.Info(util_log.Logger).Log("msg", "final chunks stats", "KB", totalKB, "chunks", len(c))
