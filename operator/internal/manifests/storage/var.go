@@ -25,8 +25,6 @@ const (
 	EnvAzureTenantID = "AZURE_TENANT_ID"
 	// EnvAzureSubscriptionID is the environment variable used to pass the Managed Identity subscription-ID to the container.
 	EnvAzureSubscriptionID = "AZURE_SUBSCRIPTION_ID"
-	// EnvAzureRegion is the environment variable used to pass the Azure region to the container.
-	EnvAzureRegion = "AZURE_REGION"
 	// EnvAzureFederatedTokenFile is the environment variable used to store the path to the Managed Identity token.
 	EnvAzureFederatedTokenFile = "AZURE_FEDERATED_TOKEN_FILE"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
@@ -80,8 +78,6 @@ const (
 	KeyAzureStorageContainerName = "container"
 	// KeyAzureStorageEndpointSuffix is the secret data key for the Azure storage endpoint URL suffix.
 	KeyAzureStorageEndpointSuffix = "endpoint_suffix"
-	// KeyAzureStorageRegion contains the region the storage container is situated in.
-	KeyAzureStorageRegion = "region"
 	// KeyAzureEnvironmentName is the secret data key for the Azure cloud environment name.
 	KeyAzureEnvironmentName = "environment"
 

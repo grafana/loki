@@ -146,21 +146,6 @@ func TestAzureExtract(t *testing.T) {
 			wantErr: "missing secret field: subscription_id",
 		},
 		{
-			name: "missing region",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
-				Data: map[string][]byte{
-					"environment":     []byte("here"),
-					"container":       []byte("this,that"),
-					"account_name":    []byte("test-account-name"),
-					"client_id":       []byte("test-client-id"),
-					"tenant_id":       []byte("test-tenant-id"),
-					"subscription_id": []byte("test-subscription"),
-				},
-			},
-			wantErr: "missing secret field: region",
-		},
-		{
 			name: "mandatory for normal authentication set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},

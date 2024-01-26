@@ -138,7 +138,6 @@ func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err erro
 	clientID := s.Data[storage.KeyAzureStorageClientID]
 	tenantID := s.Data[storage.KeyAzureStorageTenantID]
 	subscriptionID := s.Data[storage.KeyAzureStorageSubscriptionID]
-	region := s.Data[storage.KeyAzureStorageRegion]
 
 	if len(accountName) == 0 {
 		return false, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageAccountName)
@@ -164,10 +163,6 @@ func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err erro
 
 	if len(subscriptionID) == 0 {
 		return false, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageSubscriptionID)
-	}
-
-	if len(region) == 0 {
-		return false, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageRegion)
 	}
 
 	return true, nil

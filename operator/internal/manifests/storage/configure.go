@@ -187,7 +187,6 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 			envVarFromSecret(EnvAzureClientID, opts.SecretName, KeyAzureStorageClientID),
 			envVarFromSecret(EnvAzureTenantID, opts.SecretName, KeyAzureStorageTenantID),
 			envVarFromSecret(EnvAzureSubscriptionID, opts.SecretName, KeyAzureStorageSubscriptionID),
-			envVarFromSecret(EnvAzureRegion, opts.SecretName, KeyAzureStorageRegion),
 			envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
 		}
 	default:

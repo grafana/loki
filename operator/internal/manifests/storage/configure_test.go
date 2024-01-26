@@ -255,17 +255,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											},
 										},
 										{
-											Name: EnvAzureRegion,
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: "test",
-													},
-													Key: KeyAzureStorageRegion,
-												},
-											},
-										},
-										{
 											Name:  EnvAzureFederatedTokenFile,
 											Value: "/var/run/secrets/azure/serviceaccount/token",
 										},
