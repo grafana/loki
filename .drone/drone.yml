@@ -213,16 +213,6 @@ steps:
   image: grafana/loki-build-image:0.33.0
   name: test
 - commands:
-  - cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test
-  depends_on:
-  - clone-target-branch
-  environment: {}
-  image: grafana/loki-build-image:0.33.0
-  name: test-target-branch
-  when:
-    event:
-    - pull_request
-- commands:
   - make BUILD_IN_CONTAINER=false compare-coverage old=../loki-target-branch/test_results.txt
     new=test_results.txt packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki
     > diff.txt
@@ -2111,8 +2101,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
----
-kind: signature
-hmac: 457592d17208477ceb480f81dbdb88f7b95a5ad015c88d9d6fed06c2422a52f9
-
-...
