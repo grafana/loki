@@ -202,50 +202,46 @@ FindQueue:
 		return nil, last, wantedQueueName, false, err
 	}
 
-	for {
-		queue, tenant, idx := q.queues.getNextQueueForConsumer(last, consumerID)
-		last = idx
-		if queue == nil {
-			// it can be a case the consumer has other tenants queues available for him,
-			// it allows the consumer to pass the wait block,
-			// but the queue with index `last+1` has been already removed,
-			// for example if another consumer has read the last request from that queue,
-			// and as long as this consumer wants to read from specific tenant queue,
-			// it's necessary to return `ErrQueueWasRemoved` error.
-			if wantedQueueName != anyQueueName {
-				return nil, last, wantedQueueName, false, ErrQueueWasRemoved
-			}
-			// otherwise, if wantedQueueName is empty, then this consumer will go to the wait block again
-			// and as long as `last` index is updated, next time the consumer will request the queue
-			// with the new index that was returned from `getNextQueueForConsumer`.
-			break
+	queue, tenant, idx := q.queues.getNextQueueForConsumer(last, consumerID)
+	last = idx
+	if queue == nil {
+		// it can be a case the consumer has other tenants queues available for him,
+		// it allows the consumer to pass the wait block,
+		// but the queue with index `last+1` has been already removed,
+		// for example if another consumer has read the last request from that queue,
+		// and as long as this consumer wants to read from specific tenant queue,
+		// it's necessary to return `ErrQueueWasRemoved` error.
+		if wantedQueueName != anyQueueName {
+			return nil, last, wantedQueueName, false, ErrQueueWasRemoved
 		}
-
-		if wantedQueueName != anyQueueName && wantedQueueName != queue.Name() {
-			// it means that the consumer received another tenants queue because it was already removed
-			// or another queue is already at this index
-			return nil, last, queue.Name(), false, ErrQueueWasRemoved
-		}
-		// Pick next request from the queue.
-		request := queue.Dequeue()
-		tenantQueueEmpty := queue.Len() == 0
-		if tenantQueueEmpty {
-			q.queues.deleteQueue(tenant)
-		}
-
-		q.queues.perUserQueueLen.Dec(tenant)
-		q.metrics.queueLength.WithLabelValues(tenant).Dec()
-
-		// Tell close() we've processed a request.
-		q.cond.Broadcast()
-
-		return request, last, queue.Name(), tenantQueueEmpty, nil
+		// otherwise, if wantedQueueName is empty, then this consumer will go to the wait block again
+		// and as long as `last` index is updated, next time the consumer will request the queue
+		// with the new index that was returned from `getNextQueueForConsumer`.
+		// There are no unexpired requests, so we can get back
+		// and wait for more requests.
+		querierWait = true
+		goto FindQueue
 	}
 
-	// There are no unexpired requests, so we can get back
-	// and wait for more requests.
-	querierWait = true
-	goto FindQueue
+	if wantedQueueName != anyQueueName && wantedQueueName != queue.Name() {
+		// it means that the consumer received another tenants queue because it was already removed
+		// or another queue is already at this index
+		return nil, last, queue.Name(), false, ErrQueueWasRemoved
+	}
+	// Pick next request from the queue.
+	request := queue.Dequeue()
+	tenantQueueEmpty := queue.Len() == 0
+	if tenantQueueEmpty {
+		q.queues.deleteQueue(tenant)
+	}
+
+	q.queues.perUserQueueLen.Dec(tenant)
+	q.metrics.queueLength.WithLabelValues(tenant).Dec()
+
+	// Tell close() we've processed a request.
+	q.cond.Broadcast()
+
+	return request, last, queue.Name(), tenantQueueEmpty, nil
 }
 
 func (q *RequestQueue) forgetDisconnectedConsumers(_ context.Context) error {
