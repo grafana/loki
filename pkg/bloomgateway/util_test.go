@@ -1,6 +1,9 @@
 package bloomgateway
 
 import (
+	"context"
+	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -8,8 +11,28 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
+
+func parseDayTime(s string) config.DayTime {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		panic(err)
+	}
+	return config.DayTime{
+		Time: model.TimeFromUnix(t.Unix()),
+	}
+}
+
+func mktime(s string) model.Time {
+	ts, err := time.Parse("2006-01-02 15:04", s)
+	if err != nil {
+		panic(err)
+	}
+	return model.TimeFromUnix(ts.Unix())
+}
 
 func TestGetFromThrough(t *testing.T) {
 	chunks := []*logproto.ShortRef{
@@ -272,4 +295,179 @@ func TestPartitionRequest(t *testing.T) {
 		})
 	}
 
+}
+
+func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockQuerierWithFingerprintRange, [][]v1.SeriesWithBloom) {
+	t.Helper()
+	step := (maxFp - minFp) / model.Fingerprint(numBlocks)
+	bqs := make([]bloomshipper.BlockQuerierWithFingerprintRange, 0, numBlocks)
+	series := make([][]v1.SeriesWithBloom, 0, numBlocks)
+	for i := 0; i < numBlocks; i++ {
+		fromFp := minFp + (step * model.Fingerprint(i))
+		throughFp := fromFp + step - 1
+		// last block needs to include maxFp
+		if i == numBlocks-1 {
+			throughFp = maxFp
+		}
+		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
+		bq := bloomshipper.BlockQuerierWithFingerprintRange{
+			BlockQuerier: blockQuerier,
+			MinFp:        fromFp,
+			MaxFp:        throughFp,
+		}
+		bqs = append(bqs, bq)
+		series = append(series, data)
+	}
+	return bqs, series
+}
+
+func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []bloomshipper.BlockQuerierWithFingerprintRange, [][]v1.SeriesWithBloom) {
+	t.Helper()
+
+	blocks := make([]bloomshipper.BlockRef, 0, n)
+	metas := make([]bloomshipper.Meta, 0, n)
+	queriers := make([]bloomshipper.BlockQuerierWithFingerprintRange, 0, n)
+	series := make([][]v1.SeriesWithBloom, 0, n)
+
+	step := (maxFp - minFp) / model.Fingerprint(n)
+	for i := 0; i < n; i++ {
+		fromFp := minFp + (step * model.Fingerprint(i))
+		throughFp := fromFp + step - 1
+		// last block needs to include maxFp
+		if i == n-1 {
+			throughFp = maxFp
+		}
+		ref := bloomshipper.Ref{
+			TenantID:       tenant,
+			TableName:      "table_0",
+			MinFingerprint: uint64(fromFp),
+			MaxFingerprint: uint64(throughFp),
+			StartTimestamp: from,
+			EndTimestamp:   through,
+		}
+		block := bloomshipper.BlockRef{
+			Ref:       ref,
+			IndexPath: "index.tsdb.gz",
+			BlockPath: fmt.Sprintf("block-%d", i),
+		}
+		meta := bloomshipper.Meta{
+			MetaRef: bloomshipper.MetaRef{
+				Ref: ref,
+			},
+			Tombstones: []bloomshipper.BlockRef{},
+			Blocks:     []bloomshipper.BlockRef{block},
+		}
+		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
+		querier := bloomshipper.BlockQuerierWithFingerprintRange{
+			BlockQuerier: blockQuerier,
+			MinFp:        fromFp,
+			MaxFp:        throughFp,
+		}
+		queriers = append(queriers, querier)
+		metas = append(metas, meta)
+		blocks = append(blocks, block)
+		series = append(series, data)
+	}
+	return blocks, metas, queriers, series
+}
+
+func newMockBloomStore(bqs []bloomshipper.BlockQuerierWithFingerprintRange) *mockBloomStore {
+	return &mockBloomStore{bqs: bqs}
+}
+
+type mockBloomStore struct {
+	bqs []bloomshipper.BlockQuerierWithFingerprintRange
+	// mock how long it takes to serve block queriers
+	delay time.Duration
+	// mock response error when serving block queriers in ForEach
+	err error
+}
+
+var _ bloomshipper.Interface = &mockBloomStore{}
+
+// GetBlockRefs implements bloomshipper.Interface
+func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _ bloomshipper.Interval) ([]bloomshipper.BlockRef, error) {
+	time.Sleep(s.delay)
+	blocks := make([]bloomshipper.BlockRef, 0, len(s.bqs))
+	for i := range s.bqs {
+		blocks = append(blocks, bloomshipper.BlockRef{
+			Ref: bloomshipper.Ref{
+				MinFingerprint: uint64(s.bqs[i].MinFp),
+				MaxFingerprint: uint64(s.bqs[i].MaxFp),
+				TenantID:       tenant,
+			},
+		})
+	}
+	return blocks, nil
+}
+
+// Stop implements bloomshipper.Interface
+func (s *mockBloomStore) Stop() {}
+
+// Fetch implements bloomshipper.Interface
+func (s *mockBloomStore) Fetch(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
+	if s.err != nil {
+		time.Sleep(s.delay)
+		return s.err
+	}
+
+	shuffled := make([]bloomshipper.BlockQuerierWithFingerprintRange, len(s.bqs))
+	_ = copy(shuffled, s.bqs)
+
+	rand.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+
+	for _, bq := range shuffled {
+		// ignore errors in the mock
+		time.Sleep(s.delay)
+		err := callback(bq.BlockQuerier, uint64(bq.MinFp), uint64(bq.MaxFp))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.SeriesWithBloom, nthSeries int) []*logproto.ChunkRef {
+	t.Helper()
+	n := 0
+	res := make([]*logproto.ChunkRef, 0)
+	for i := range data {
+		for j := range data[i] {
+			if n%nthSeries == 0 {
+				chk := data[i][j].Series.Chunks[0]
+				res = append(res, &logproto.ChunkRef{
+					Fingerprint: uint64(data[i][j].Series.Fingerprint),
+					UserID:      tenant,
+					From:        chk.Start,
+					Through:     chk.End,
+					Checksum:    chk.Checksum,
+				})
+			}
+			n++
+		}
+	}
+	return res
+}
+
+func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipper.BlockQuerierWithFingerprintRange) []bloomshipper.BlockRef {
+	t.Helper()
+	res := make([]bloomshipper.BlockRef, 0)
+	for i := range data {
+		res = append(res, bloomshipper.BlockRef{
+			Ref: bloomshipper.Ref{
+				TenantID:       tenant,
+				TableName:      "",
+				MinFingerprint: uint64(data[i].MinFp),
+				MaxFingerprint: uint64(data[i].MaxFp),
+				StartTimestamp: 0,
+				EndTimestamp:   0,
+				Checksum:       0,
+			},
+			IndexPath: fmt.Sprintf("index-%d", i),
+			BlockPath: fmt.Sprintf("block-%d", i),
+		})
+	}
+	return res
 }
