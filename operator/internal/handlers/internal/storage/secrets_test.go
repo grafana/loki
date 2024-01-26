@@ -71,7 +71,7 @@ func TestAzureExtract(t *testing.T) {
 		{
 			name:    "missing environment",
 			secret:  &corev1.Secret{},
-			wantErr: "missing secret field",
+			wantErr: "missing secret field: environment",
 		},
 		{
 			name: "missing container",
@@ -80,7 +80,7 @@ func TestAzureExtract(t *testing.T) {
 					"environment": []byte("here"),
 				},
 			},
-			wantErr: "missing secret field",
+			wantErr: "missing secret field: container",
 		},
 		{
 			name: "missing account_name",
@@ -90,7 +90,7 @@ func TestAzureExtract(t *testing.T) {
 					"container":   []byte("this,that"),
 				},
 			},
-			wantErr: "missing secret field",
+			wantErr: "missing secret field: account_name",
 		},
 		{
 			name: "no account_key or client_id",
@@ -129,20 +129,21 @@ func TestAzureExtract(t *testing.T) {
 					"client_id":    []byte("test-client-id"),
 				},
 			},
-			wantErr: "missing secret field",
+			wantErr: "missing secret field: tenant_id",
 		},
 		{
 			name: "missing subscription_id",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"environment": []byte("here"),
-					"container":   []byte("this,that"),
-					"client_id":   []byte("test-client-id"),
-					"tenant_id":   []byte("test-tenant-id"),
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"client_id":    []byte("test-client-id"),
+					"tenant_id":    []byte("test-tenant-id"),
 				},
 			},
-			wantErr: "missing secret field",
+			wantErr: "missing secret field: subscription_id",
 		},
 		{
 			name: "missing region",
@@ -151,12 +152,13 @@ func TestAzureExtract(t *testing.T) {
 				Data: map[string][]byte{
 					"environment":     []byte("here"),
 					"container":       []byte("this,that"),
+					"account_name":    []byte("test-account-name"),
 					"client_id":       []byte("test-client-id"),
 					"tenant_id":       []byte("test-tenant-id"),
 					"subscription_id": []byte("test-subscription"),
 				},
 			},
-			wantErr: "missing secret field",
+			wantErr: "missing secret field: region",
 		},
 		{
 			name: "mandatory for normal authentication set",

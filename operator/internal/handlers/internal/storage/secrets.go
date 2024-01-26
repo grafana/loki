@@ -19,6 +19,7 @@ import (
 )
 
 var (
+	errMissingSecretField    = errors.New("missing secret field")
 	errAzureNoCredentials    = errors.New("azure storage secret does contain neither account_key or client_id")
 	errAzureMixedCredentials = errors.New("azure storage secret can not contain both account_key and client_id")
 
@@ -109,11 +110,11 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 	// Extract and validate mandatory fields
 	env := s.Data[storage.KeyAzureEnvironmentName]
 	if len(env) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureEnvironmentName)
+		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureEnvironmentName)
 	}
 	container := s.Data[storage.KeyAzureStorageContainerName]
 	if len(container) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageContainerName)
+		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageContainerName)
 	}
 	workloadIdentity, err := validateAzureCredentials(s)
 	if err != nil {
@@ -140,7 +141,7 @@ func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err erro
 	region := s.Data[storage.KeyAzureStorageRegion]
 
 	if len(accountName) == 0 {
-		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountName)
+		return false, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageAccountName)
 	}
 
 	if len(accountKey) == 0 && len(clientID) == 0 {
@@ -158,15 +159,15 @@ func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err erro
 
 	// assume workload-identity from here on
 	if len(tenantID) == 0 {
-		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageTenantID)
+		return false, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageTenantID)
 	}
 
 	if len(subscriptionID) == 0 {
-		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageSubscriptionID)
+		return false, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageSubscriptionID)
 	}
 
 	if len(region) == 0 {
-		return false, kverrors.New("missing secret field", "field", storage.KeyAzureStorageRegion)
+		return false, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageRegion)
 	}
 
 	return true, nil
