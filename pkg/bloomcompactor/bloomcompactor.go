@@ -376,6 +376,8 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		level.Debug(logger).Log("msg", "got token range for instance", "id", tr.Instance.Id, "min", tr.MinToken, "max", tr.MaxToken)
 	}
 
+	// TODO(owen-d): can be optimized to only query for series within the fp range of the compactor shard(s) rather than scanning all series
+	// and filtering out the ones that don't belong to the compactor shard(s).
 	_ = sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 		if isMultiTenantIndex {
 			// Skip multi-tenant indexes
@@ -406,9 +408,10 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 				}
 
 				temp := make([]tsdbindex.ChunkMeta, len(chksMetas))
+				ls := labels.Copy()
 				_ = copy(temp, chksMetas)
 				//All seriesMetas given a table within fp of this compactor shard
-				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
+				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: ls, chunkRefs: temp})
 			},
 			labels.MustNewMatcher(labels.MatchEqual, "", ""),
 		)
