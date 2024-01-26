@@ -549,7 +549,9 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		resultingBlock, err = compactNewChunks(ctx, logger, job, bt, storeClient.chunk, builder, c.limits)
+		// NB(owen-d): this panics/etc, but the code is being refactored and will be removed. I've replaced `bt` with `nil`
+		// to pass compiler checks while keeping this code around as reference
+		resultingBlock, err = compactNewChunks(ctx, logger, job, nil, storeClient.chunk, builder, c.limits)
 		if err != nil {
 			return level.Error(logger).Log("msg", "failed compacting new chunks", "err", err)
 		}

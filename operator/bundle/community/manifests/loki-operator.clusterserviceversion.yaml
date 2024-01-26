@@ -1444,6 +1444,16 @@ spec:
           - update
           - watch
         - apiGroups:
+          - cloudcredential.openshift.io
+          resources:
+          - credentialsrequests
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - watch
+        - apiGroups:
           - config.openshift.io
           resources:
           - apiservers
