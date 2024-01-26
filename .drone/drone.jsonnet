@@ -616,7 +616,7 @@ local build_image_tag = '0.33.0';
         'new=test_results.txt',
         'packages=ingester,distributor,querier,querier/queryrange,iter,storage,chunkenc,logql,loki',
         '> diff.txt',
-      ]) { depends_on: ['test', 'test-target-branch'], when: onPRs },
+      ]) { depends_on: ['test', /*'test-target-branch'*/], when: onPRs },
       run('report-coverage', commands=[
         "total_diff=$(sed 's/%//' diff.txt | awk '{sum+=$3;}END{print sum;}')",
         'if [ $total_diff = 0 ]; then exit 0; fi',

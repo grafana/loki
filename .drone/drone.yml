@@ -218,7 +218,6 @@ steps:
     > diff.txt
   depends_on:
   - test
-  - test-target-branch
   environment: {}
   image: grafana/loki-build-image:0.33.0
   name: compare-coverage
