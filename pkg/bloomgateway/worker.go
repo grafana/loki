@@ -105,7 +105,7 @@ func (w *worker) starting(_ context.Context) error {
 	return nil
 }
 
-func (w *worker) running(ctx context.Context) error {
+func (w *worker) running(_ context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
 	for st := w.State(); st == services.Running || st == services.Stopping; {
