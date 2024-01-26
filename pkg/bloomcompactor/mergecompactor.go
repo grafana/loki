@@ -74,7 +74,7 @@ func makeBlockIterFromBlocks(ctx context.Context, logger log.Logger,
 	return blockIters, blockPaths, nil
 }
 
-func createPopulateFunc(ctx context.Context, job Job, storeClient storeClient, bt *v1.BloomTokenizer, limits Limits) func(series *v1.Series, bloom *v1.Bloom) error {
+func createPopulateFunc(_ context.Context, job Job, _ storeClient, bt *v1.BloomTokenizer, _ Limits) func(series *v1.Series, bloom *v1.Bloom) error {
 	return func(series *v1.Series, bloom *v1.Bloom) error {
 		bloomForChks := v1.SeriesWithBloom{
 			Series: series,
@@ -100,8 +100,8 @@ func createPopulateFunc(ctx context.Context, job Job, storeClient storeClient, b
 		// 	return fmt.Errorf("error creating chunks batches iterator: %w", err)
 		// }
 		// NB(owen-d): this panics/etc, but the code is being refactored and will be removed.
-		// I've replaced `batchesIterator` with `nil` to pass compiler checks while keeping this code around as reference
-		err := bt.Populate(&bloomForChks, nil)
+		// I've replaced `batchesIterator` with `emptyIter` to pass compiler checks while keeping this code around as reference
+		err := bt.Populate(&bloomForChks, v1.NewEmptyIter[v1.ChunkRefWithIter]())
 		if err != nil {
 			return err
 		}

@@ -68,7 +68,7 @@ type BloomGenerator interface {
 // Simple implementation of a BloomGenerator.
 type SimpleBloomGenerator struct {
 	store       v1.Iterator[*v1.Series]
-	chunkLoader chunkLoader
+	chunkLoader ChunkLoader
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
 	// as an iterator of iterators, where each iterator is a batch of overlapping blocks.
 	blocks []*v1.Block
@@ -91,7 +91,7 @@ type SimpleBloomGenerator struct {
 func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
-	chunkLoader chunkLoader,
+	chunkLoader ChunkLoader,
 	blocks []*v1.Block,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
@@ -176,15 +176,15 @@ type indexLoader interface {
 	Index() (tsdb.Index, error)
 }
 
-// chunkItersByFingerprint models the chunks belonging to a fingerprint
-type chunkItersByFingerprint struct {
+// ChunkItersByFingerprint models the chunks belonging to a fingerprint
+type ChunkItersByFingerprint struct {
 	fp  model.Fingerprint
 	itr v1.Iterator[v1.ChunkRefWithIter]
 }
 
-// chunkLoader loads chunks from a store
-type chunkLoader interface {
-	Load(context.Context, *v1.Series) (*chunkItersByFingerprint, error)
+// ChunkLoader loads chunks from a store
+type ChunkLoader interface {
+	Load(context.Context, *v1.Series) (*ChunkItersByFingerprint, error)
 }
 
 // interface modeled from `pkg/storage/stores/composite_store.ChunkFetcherProvider`
@@ -212,7 +212,7 @@ func NewStoreChunkLoader(userID string, fetcherProvider fetcherProvider, metrics
 	}
 }
 
-func (s *StoreChunkLoader) Load(ctx context.Context, series *v1.Series) (*chunkItersByFingerprint, error) {
+func (s *StoreChunkLoader) Load(ctx context.Context, series *v1.Series) (*ChunkItersByFingerprint, error) {
 	// TODO(owen-d): This is probalby unnecessary as we should only have one fetcher
 	// because we'll only be working on a single index period at a time, but this should protect
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
@@ -238,7 +238,7 @@ func (s *StoreChunkLoader) Load(ctx context.Context, series *v1.Series) (*chunkI
 		})
 	}
 
-	return &chunkItersByFingerprint{
+	return &ChunkItersByFingerprint{
 		fp:  series.Fingerprint,
 		itr: newBatchedLoader(ctx, work, batchedLoaderDefaultBatchSize, s.metrics),
 	}, nil
@@ -278,10 +278,7 @@ func (b *batchedLoader) Next() bool {
 	if len(b.batch) > 0 {
 		b.cur, b.err = b.format(b.batch[0])
 		b.batch = b.batch[1:]
-		if b.err != nil {
-			return false
-		}
-		return true
+		return b.err == nil
 	}
 
 	if len(b.work) == 0 {
@@ -299,11 +296,7 @@ func (b *batchedLoader) Next() bool {
 	}
 
 	b.batch, b.err = next.fetcher.FetchChunks(b.ctx, toFetch)
-	if b.err != nil {
-		return false
-	}
-
-	return true
+	return b.err == nil
 }
 
 func (b *batchedLoader) format(c chunk.Chunk) (v1.ChunkRefWithIter, error) {

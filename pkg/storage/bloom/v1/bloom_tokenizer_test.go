@@ -96,11 +96,6 @@ func TestTokenizerPopulate(t *testing.T) {
 	var lbsList []labels.Labels
 	lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
 
-	var fpList []model.Fingerprint
-	for i := range lbsList {
-		fpList = append(fpList, model.Fingerprint(lbsList[i].Hash()))
-	}
-
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
@@ -144,11 +139,6 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 		var lbsList []labels.Labels
 		lbsList = append(lbsList, labels.FromStrings("foo", "bar"))
-
-		var fpList []model.Fingerprint
-		for i := range lbsList {
-			fpList = append(fpList, model.Fingerprint(lbsList[i].Hash()))
-		}
 
 		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 		_ = memChunk.Append(&push.Entry{
