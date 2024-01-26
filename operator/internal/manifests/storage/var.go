@@ -131,7 +131,6 @@ const (
 	awsDefaultAudience   = "sts.amazonaws.com"
 	awsOpenShiftAudience = "openshift"
 
-	azureDefaultAudience          = "api://AzureADTokenExchange"
-	azurePodLabelWorkloadIdentity = "azure.workload.identity/use"
-	azureTokenVolumeDirectory     = "/var/run/secrets/azure/serviceaccount"
+	azureDefaultAudience      = "api://AzureADTokenExchange"
+	azureTokenVolumeDirectory = "/var/run/secrets/azure/serviceaccount"
 )

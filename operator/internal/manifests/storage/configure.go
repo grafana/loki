@@ -60,7 +60,6 @@ func configureDeployment(d *appsv1.Deployment, opts Options) error {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
 
-	ensurePodLabels(&d.Spec.Template, opts)
 	return nil
 }
 
@@ -87,7 +86,6 @@ func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
 
-	ensurePodLabels(&s.Spec.Template, opts)
 	return nil
 }
 
@@ -194,19 +192,6 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 		}
 	default:
 		return []corev1.EnvVar{}
-	}
-}
-
-func ensurePodLabels(templateSpec *corev1.PodTemplateSpec, opts Options) {
-	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretAzure:
-		if managedAuthEnabled(opts) {
-			if templateSpec.Labels == nil {
-				templateSpec.Labels = map[string]string{}
-			}
-
-			templateSpec.Labels[azurePodLabelWorkloadIdentity] = "true"
-		}
 	}
 }
 

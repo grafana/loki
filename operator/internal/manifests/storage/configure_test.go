@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -194,11 +193,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			want: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{
-								azurePodLabelWorkloadIdentity: "true",
-							},
-						},
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
 								{
