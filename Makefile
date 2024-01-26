@@ -281,7 +281,16 @@ cmd/migrate/migrate:
 #############
 GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+
+SKIP_ARM ?= false
 dist: clean
+ifeq ($(SKIP_ARM),true)
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
@@ -289,6 +298,7 @@ dist: clean
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -307,7 +317,7 @@ publish: packages
 lint: ## run linters
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v
+	GO111MODULE=on golangci-lint run -v --timeout 15m
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
@@ -786,30 +796,37 @@ check-doc: doc
 ###################
 # Example Configs #
 ###################
+EXAMPLES_DOC_PATH := $(DOC_SOURCES_PATH)/configure/examples
+EXAMPLES_DOC_OUTPUT_PATH := $(EXAMPLES_DOC_PATH)/configuration-examples.md
+EXAMPLES_YAML_PATH := $(EXAMPLES_DOC_PATH)/yaml
+EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 
 # Validate the example configurations that we provide in ./docs/sources/configure/examples
+# We run the validation only for complete examples, not snippets.
+# Complete examples should contain "Example" in their file name.
 validate-example-configs: loki
-	for f in ./docs/sources/configure/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; sleep 1; done
+	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+
+validate-dev-cluster-config: loki
+	./cmd/loki/loki -config.file=./tools/dev/loki-boltdb-storage-s3/config/loki.yaml -verify-config
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configure)
-	$(eval CONFIG_EXAMPLES_PATH=$(CONFIG_DOC_PATH)/examples)
-	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
+	echo "Removing existing doc at $(EXAMPLES_DOC_OUTPUT_PATH) and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > $(CONFIG_DOC_PATH)/examples.md
+	echo -e "---\ntitle: Configuration\ndescription: Loki Configuration Examples and Snippets\nweight:  100\n---\n# Configuration" > $(EXAMPLES_DOC_OUTPUT_PATH)
 	# Append each configuration and its file name to examples.md
-	for f in $$(find $(CONFIG_EXAMPLES_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
-		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(CONFIG_DOC_PATH)/examples.md; \
-		cat $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
-		echo -e "\n\`\`\`\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+	for f in $$(find $(EXAMPLES_YAML_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
+		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		grep -v $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/$$f >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		echo -e "\n\`\`\`\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
 	done
 
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if ! (git diff --exit-code ./docs/sources/configure/examples.md); then \
+	@if ! (git diff --exit-code $(EXAMPLES_DOC_OUTPUT_PATH)); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
