@@ -131,6 +131,8 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
 
 				totalKB = totalKB - lastOverlapSize + adjustSize
+				last.KB = uint32(adjustSize)
+				last.MinTime = cur.MinTime
 			} else if cur.MinTime < last.MaxTime {
 				overlap := float64(last.MaxTime - cur.MinTime)
 				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
@@ -142,7 +144,9 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
 
+				oldMax := last.MaxTime
 				last = cur
+				last.MinTime = oldMax
 				last.KB = uint32(float64(cur.KB) - curOverlapSize)
 			} else {
 				totalKB = totalKB + float64(cur.KB)
