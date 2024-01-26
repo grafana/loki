@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 // BuildDistributor returns a list of k8s objects for Loki Distributor
@@ -52,6 +52,10 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelDistributorComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		deployment,
 		NewDistributorGRPCService(opts),
@@ -63,10 +67,10 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 // NewDistributorDeployment creates a deployment object for a distributor
 func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelDistributorComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	a := commonAnnotations(opts.ConfigSHA1, opts.ObjectStorage.SecretSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity:                  configureAffinity(LabelDistributorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Distributor),
-		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelDistributorComponent, opts.Name),
+		ServiceAccountName: opts.Name,
+		Affinity:           configureAffinity(LabelDistributorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Distributor),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -132,10 +136,6 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.Distributor.NodeSelector
 	}
 
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelDistributorComponent, opts.Name)...)
-	}
-
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
@@ -146,7 +146,7 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32(opts.Stack.Template.Distributor.Replicas),
+			Replicas: ptr.To(opts.Stack.Template.Distributor.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},

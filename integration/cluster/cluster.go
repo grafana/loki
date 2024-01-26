@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/integration/util"
 
 	"github.com/grafana/loki/pkg/loki"
+	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -41,7 +42,6 @@ server:
   grpc_listen_port: 0
   grpc_server_max_recv_msg_size: 110485813
   grpc_server_max_send_msg_size: 110485813
-
 
 common:
   path_prefix: {{.dataPath}}
@@ -61,6 +61,7 @@ limits_config:
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 50
   reject_old_samples: false
+  allow_structured_metadata: true
 
 storage_config:
   named_stores:
@@ -68,15 +69,27 @@ storage_config:
       store-1:
         directory: {{.sharedDataPath}}/fs-store-1
   boltdb_shipper:
-    active_index_directory: {{.dataPath}}/index
+    active_index_directory: {{.dataPath}}/boltdb-index
     cache_location: {{.dataPath}}/boltdb-cache
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
+  bloom_shipper:
+    working_directory: {{.dataPath}}/bloom-shipper
+    blocks_downloading_queue:
+      workers_count: 1
+
+bloom_gateway:
+  enabled: false
+
+bloom_compactor:
+  enabled: false
+  working_directory: {{.dataPath}}/bloom-compactor
 
 compactor:
-  working_directory: {{.dataPath}}/retention
+  working_directory: {{.dataPath}}/compactor
   retention_enabled: true
+  delete_request_store: store-1
 
 analytics:
   reporting_enabled: false
@@ -142,6 +155,7 @@ type Cluster struct {
 	initedAt      model.Time
 	periodCfgs    []string
 	overridesFile string
+	schemaVer     string
 }
 
 func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
@@ -150,14 +164,14 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	resetMetricRegistry()
-	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
+	sharedPath, err := os.MkdirTemp("", "loki-shared-data-")
 	if err != nil {
 		panic(err.Error())
 	}
 
 	overridesFile := filepath.Join(sharedPath, "loki-overrides.yaml")
 
-	err = os.WriteFile(filepath.Join(sharedPath, "loki-overrides.yaml"), []byte(`overrides:`), 0777)
+	err = os.WriteFile(overridesFile, []byte(`overrides:`), 0777)
 	if err != nil {
 		panic(fmt.Errorf("error creating overrides file: %w", err))
 	}
@@ -166,6 +180,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 		sharedPath:    sharedPath,
 		initedAt:      model.Now(),
 		overridesFile: overridesFile,
+		schemaVer:     "v11",
 	}
 
 	for _, opt := range opts {
@@ -173,6 +188,11 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	return cluster
+}
+
+// SetSchemaVer sets a schema version for all the schemas
+func (c *Cluster) SetSchemaVer(schemaVer string) {
+	c.schemaVer = schemaVer
 }
 
 func (c *Cluster) Run() error {
@@ -188,6 +208,10 @@ func (c *Cluster) Run() error {
 	return nil
 }
 
+func (c *Cluster) ResetSchemaConfig() {
+	c.periodCfgs = nil
+}
+
 func (c *Cluster) Restart() error {
 	if err := c.stop(false); err != nil {
 		return err
@@ -197,6 +221,8 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
+	// cleanup singleton boltdb shipper client instances
+	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 
@@ -302,12 +328,12 @@ func port(addr string) string {
 func (c *Component) writeConfig() error {
 	var err error
 
-	configFile, err := os.CreateTemp("", "loki-config")
+	configFile, err := os.CreateTemp("", fmt.Sprintf("loki-%s-config-*.yaml", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating config file: %w", err)
 	}
 
-	c.dataPath, err = os.MkdirTemp("", "loki-data")
+	c.dataPath, err = os.MkdirTemp("", fmt.Sprintf("loki-%s-data-", c.name))
 	if err != nil {
 		return fmt.Errorf("error creating data path: %w", err)
 	}
@@ -356,6 +382,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 			Execute(&buf, map[string]interface{}{
 				"curPeriodStart":        periodStart.String(),
 				"additionalPeriodStart": additionalPeriodStart.String(),
+				"schemaVer":             c.cluster.schemaVer,
 			}); err != nil {
 			return nil, errors.New("error building schema_config")
 		}
@@ -391,6 +418,8 @@ func (c *Component) run() error {
 		c.configFile,
 		"-limits.per-user-override-config",
 		c.overridesFile,
+		"-limits.per-user-override-period",
+		"1s",
 	), flagset); err != nil {
 		return err
 	}

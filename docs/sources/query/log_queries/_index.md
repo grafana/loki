@@ -3,8 +3,7 @@ title: Log queries
 menuTItle:  
 description: Overview of how log queries are constructed and parsed.
 aliases: 
-- /docs/loki/latest/logql/log_queries/
-- /docs/loki/latest/query/log_queries/
+- ../logql/log_queries/
 weight: 10 
 ---
 
@@ -273,22 +272,6 @@ To evaluate the logical `and` first, use parenthesis, as in this example:
 
 Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
 
-### Distinct filter expression
-
-Distinct filter expression allows filtering log lines using their original and extracted labels to filter out duplicate label values. The first line occurrence of a distinct value is returned, and the others are dropped.
-
-For example, for the following log lines:
-```log
-{"event": "access", "id": "1", "time": "2023-02-28 15:12:11"}
-{"event": "access", "id": "1", "time": "2023-02-28 15:13:11"}
-{"event": "access", "id": "2", "time": "2023-02-28 15:14:11"}
-{"event": "access", "id": "2", "time": "2023-02-28 15:15:11"}
-```
-The expression `{app="order"} | json | distinct id` will return the distinct occurrences of `id`:
-```log
-{"event": "access", "id": "1", "time": "2023-02-28 15:13:11"}
-{"event": "access", "id": "2", "time": "2023-02-28 15:15:11"}
-```
 ### Parser expression
 
 Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{< relref "../metric_queries" >}}).
@@ -456,12 +439,41 @@ The **logfmt** parser can operate in two modes:
     ```logfmt
     at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
     ```
-    
+
     And rename `fwd` to `fwd_ip`:
     ```kv
     "host" => "grafana.net"
     "fwd_ip" => "124.133.124.161"
     ```
+
+The logfmt parser also supports the following flags:
+- `--strict` to enable strict parsing
+
+    With strict parsing enabled, the logfmt parser immediately stops scanning the log line and returns early with an error when it encounters any poorly formatted key/value pair.
+    ```
+    // accepted key/value pairs
+    key=value key="value in double quotes"
+
+    // invalid key/value pairs
+    =value // no key
+    foo=bar=buzz
+    fo"o=bar
+    ```
+
+    Without the `--strict` flag the parser skips invalid key/value pairs and continues parsing the rest of the log line.
+    Non-strict mode offers the flexibility to parse semi-structed log lines, though note that this is only best-effort.
+
+- `--keep-empty` to retain standalone keys with empty value
+
+    With `--keep-empty` flag set, the logfmt parser retains standalone keys(keys without a value) as labels with value set to empty string.
+    If the standalone key is explicitly requested using label extraction parameters, there is no need to add this flag.
+
+Note: flags if any should appear right after logfmt and before label extraction parameters
+```
+| logfmt --strict
+| logfmt --strict host, fwd_ip="fwd"
+| logfmt --keep-empty --strict host
+```
 
 #### Pattern
 
@@ -540,7 +552,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../../clients/promtail/stages/pack.md" >}}).
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from Promtail's [`pack` stage]({{< relref "../../send-data/promtail/stages/pack.md" >}}).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:

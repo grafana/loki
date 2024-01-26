@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package indexgatewaypb;
 
-import "gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";
@@ -25,5 +24,5 @@ service IndexGateway {
 
   // Note: this MUST be the same as the variant defined in
   // logproto.proto on the Querier service.
-  rpc GetSeriesVolume(logproto.VolumeRequest) returns (logproto.VolumeResponse) {}
+  rpc GetVolume(logproto.VolumeRequest) returns (logproto.VolumeResponse) {}
 }

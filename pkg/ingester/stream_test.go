@@ -9,15 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -52,7 +53,11 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := defaultConfig()
 			cfg.MaxReturnedErrors = tc.limit
+
+			chunkfmt, headfmt := defaultChunkFormat(t)
 			s := newStream(
+				chunkfmt,
+				headfmt,
 				cfg,
 				limiter,
 				"fake",
@@ -63,6 +68,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
+				nil,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
@@ -99,7 +105,11 @@ func TestPushDeduplication(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
 	s := newStream(
+		chunkfmt,
+		headfmt,
 		defaultConfig(),
 		limiter,
 		"fake",
@@ -110,6 +120,7 @@ func TestPushDeduplication(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
@@ -129,7 +140,11 @@ func TestPushRejectOldCounter(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
 	s := newStream(
+		chunkfmt,
+		headfmt,
 		defaultConfig(),
 		limiter,
 		"fake",
@@ -140,6 +155,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	// counter should be 2 now since the first line will be deduped
@@ -176,7 +192,9 @@ func TestStreamIterator(t *testing.T) {
 		new  func() *chunkenc.MemChunk
 	}{
 		{"gzipChunk", func() *chunkenc.MemChunk {
-			return chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+			chunkfmt, headfmt := defaultChunkFormat(t)
+
+			return chunkenc.NewMemChunk(chunkfmt, chunkenc.EncGZIP, headfmt, 256*1024, 0)
 		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
@@ -228,7 +246,11 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
 	s := newStream(
+		chunkfmt,
+		headfmt,
 		&cfg,
 		limiter,
 		"fake",
@@ -239,6 +261,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 	s.highestTs = time.Now()
 
@@ -258,7 +281,11 @@ func TestUnorderedPush(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
 	s := newStream(
+		chunkfmt,
+		headfmt,
 		&cfg,
 		limiter,
 		"fake",
@@ -269,6 +296,7 @@ func TestUnorderedPush(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	for _, x := range []struct {
@@ -355,7 +383,11 @@ func TestPushRateLimit(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
 	s := newStream(
+		chunkfmt,
+		headfmt,
 		defaultConfig(),
 		limiter,
 		"fake",
@@ -366,6 +398,7 @@ func TestPushRateLimit(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -388,8 +421,11 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	cfg := defaultConfig()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
+		chunkfmt,
+		headfmt,
 		cfg,
 		limiter,
 		"fake",
@@ -400,6 +436,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -421,8 +458,11 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = time.Minute
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
+		chunkfmt,
+		headfmt,
 		cfg,
 		limiter,
 		"fake",
@@ -433,6 +473,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	base := time.Now()
@@ -481,9 +522,12 @@ func Benchmark_PushStream(b *testing.B) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	chunkfmt, headfmt := defaultChunkFormat(b)
 
-	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics)
-	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
+	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
+	require.NoError(b, err)
+	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 
 	go t.loop()
@@ -501,4 +545,16 @@ func Benchmark_PushStream(b *testing.B) {
 		require.NoError(b, err)
 		recordPool.PutRecord(rec)
 	}
+}
+
+func defaultChunkFormat(t testing.TB) (byte, chunkenc.HeadBlockFmt) {
+	t.Helper()
+
+	cfg := defaultPeriodConfigs[0]
+
+	chunkfmt, headfmt, err := cfg.ChunkFormat()
+
+	require.NoError(t, err)
+
+	return chunkfmt, headfmt
 }

@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -14,8 +11,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildIndexGateway returns a list of k8s objects for Loki IndexGateway
@@ -58,6 +58,10 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
@@ -69,9 +73,10 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 // NewIndexGatewayStatefulSet creates a statefulset object for an index-gateway
 func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+	a := commonAnnotations(opts.ConfigSHA1, opts.ObjectStorage.SecretSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: configureAffinity(LabelIndexGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.IndexGateway),
+		ServiceAccountName: opts.Name,
+		Affinity:           configureAffinity(LabelIndexGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.IndexGateway),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -137,10 +142,6 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
 	}
 
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
-	}
-
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",
@@ -152,8 +153,8 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: pointer.Int32(10),
-			Replicas:             pointer.Int32(opts.Stack.Template.IndexGateway.Replicas),
+			RevisionHistoryLimit: ptr.To(defaultRevHistoryLimit),
+			Replicas:             ptr.To(opts.Stack.Template.IndexGateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -181,7 +182,7 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.IndexGateway.PVCSize,
 							},
 						},
-						StorageClassName: pointer.String(opts.Stack.StorageClassName),
+						StorageClassName: ptr.To(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},

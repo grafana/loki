@@ -44,22 +44,22 @@ func IExportShallow(fset *token.FileSet, pkg *types.Package) ([]byte, error) {
 	return out.Bytes(), err
 }
 
-// IImportShallow decodes "shallow" types.Package data encoded by IExportShallow
-// in the same executable. This function cannot import data from
+// IImportShallow decodes "shallow" types.Package data encoded by
+// IExportShallow in the same executable. This function cannot import data from
 // cmd/compile or gcexportdata.Write.
-func IImportShallow(fset *token.FileSet, imports map[string]*types.Package, data []byte, path string, insert InsertType) (*types.Package, error) {
+//
+// The importer calls getPackages to obtain package symbols for all
+// packages mentioned in the export data, including the one being
+// decoded.
+func IImportShallow(fset *token.FileSet, getPackages GetPackagesFunc, data []byte, path string) (*types.Package, error) {
 	const bundle = false
-	pkgs, err := iimportCommon(fset, imports, data, bundle, path, insert)
+	const shallow = true
+	pkgs, err := iimportCommon(fset, getPackages, data, bundle, path, shallow)
 	if err != nil {
 		return nil, err
 	}
 	return pkgs[0], nil
 }
-
-// InsertType is the type of a function that creates a types.TypeName
-// object for a named type and inserts it into the scope of the
-// specified Package.
-type InsertType = func(pkg *types.Package, name string)
 
 // Current bundled export format version. Increase with each format change.
 // 0: initial implementation
@@ -673,6 +673,9 @@ func (w *exportWriter) qualifiedType(obj *types.TypeName) {
 	w.pkg(obj.Pkg())
 }
 
+// TODO(rfindley): what does 'pkg' even mean here? It would be better to pass
+// it in explicitly into signatures and structs that may use it for
+// constructing fields.
 func (w *exportWriter) typ(t types.Type, pkg *types.Package) {
 	w.data.uint64(w.p.typOff(t, pkg))
 }
@@ -773,7 +776,21 @@ func (w *exportWriter) doTyp(t types.Type, pkg *types.Package) {
 		if n > 0 {
 			w.setPkg(t.Field(0).Pkg(), true) // qualifying package for field objects
 		} else {
-			w.setPkg(pkg, true)
+			// TODO(rfindley): improve this very hacky logic.
+			//
+			// The importer expects a package to be set for all struct types, even
+			// those with no fields. A better encoding might be to set NumFields
+			// before pkg. setPkg panics with a nil package, which may be possible
+			// to reach with invalid packages (and perhaps valid packages, too?), so
+			// (arbitrarily) set the localpkg if available.
+			switch {
+			case pkg != nil:
+				w.setPkg(pkg, true)
+			case w.p.shallow:
+				w.setPkg(w.p.localpkg, true)
+			default:
+				panic(internalErrorf("no package to set for empty struct"))
+			}
 		}
 		w.uint64(uint64(n))
 		for i := 0; i < n; i++ {
@@ -913,6 +930,17 @@ func (w *exportWriter) value(typ types.Type, v constant.Value) {
 		w.int64(int64(v.Kind()))
 	}
 
+	if v.Kind() == constant.Unknown {
+		// golang/go#60605: treat unknown constant values as if they have invalid type
+		//
+		// This loses some fidelity over the package type-checked from source, but that
+		// is acceptable.
+		//
+		// TODO(rfindley): we should switch on the recorded constant kind rather
+		// than the constant type
+		return
+	}
+
 	switch b := typ.Underlying().(*types.Basic); b.Info() & types.IsConstType {
 	case types.IsBoolean:
 		w.bool(constant.BoolVal(v))
@@ -967,6 +995,16 @@ func constantToFloat(x constant.Value) *big.Float {
 		assert(ok)
 	}
 	return &f
+}
+
+func valueToRat(x constant.Value) *big.Rat {
+	// Convert little-endian to big-endian.
+	// I can't believe this is necessary.
+	bytes := constant.Bytes(x)
+	for i := 0; i < len(bytes)/2; i++ {
+		bytes[i], bytes[len(bytes)-1-i] = bytes[len(bytes)-1-i], bytes[i]
+	}
+	return new(big.Rat).SetInt(new(big.Int).SetBytes(bytes))
 }
 
 // mpint exports a multi-precision integer.
@@ -1177,4 +1215,20 @@ func (q *objQueue) popHead() types.Object {
 	obj := q.ring[q.head%len(q.ring)]
 	q.head++
 	return obj
+}
+
+// internalError represents an error generated inside this package.
+type internalError string
+
+func (e internalError) Error() string { return "gcimporter: " + string(e) }
+
+// TODO(adonovan): make this call panic, so that it's symmetric with errorf.
+// Otherwise it's easy to forget to do anything with the error.
+//
+// TODO(adonovan): also, consider switching the names "errorf" and
+// "internalErrorf" as the former is used for bugs, whose cause is
+// internal inconsistency, whereas the latter is used for ordinary
+// situations like bad input, whose cause is external.
+func internalErrorf(format string, args ...interface{}) error {
+	return internalError(fmt.Sprintf(format, args...))
 }

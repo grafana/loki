@@ -2,12 +2,14 @@ package querier
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -52,6 +54,14 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	}
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
 	params.Selector = replaceMatchers(selector, filteredMatchers).String()
+
+	parsed, err := syntax.ParseLogSelector(params.Selector, true)
+	if err != nil {
+		return nil, fmt.Errorf("log selector is invalid after matcher update: %w", err)
+	}
+	params.Plan = &plan.QueryPlan{
+		AST: parsed,
+	}
 
 	iters := make([]iter.EntryIterator, len(matchedTenants))
 	i := 0
@@ -150,9 +160,10 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 			return nil, err
 		}
 
-		for _, s := range resp.GetSeries() {
-			if _, ok := s.Labels[defaultTenantLabel]; !ok {
-				s.Labels[defaultTenantLabel] = id
+		for i := range resp.GetSeries() {
+			s := &resp.Series[i]
+			if s.Get(defaultTenantLabel) == "" {
+				s.Labels = append(s.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: defaultTenantLabel, Value: id})
 			}
 		}
 
@@ -188,7 +199,7 @@ func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQ
 	return &merged, nil
 }
 
-func (q *MultiTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -197,7 +208,7 @@ func (q *MultiTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vol
 	responses := make([]*logproto.VolumeResponse, len(tenantIDs))
 	for i, id := range tenantIDs {
 		singleContext := user.InjectOrgID(ctx, id)
-		resp, err := q.Querier.SeriesVolume(singleContext, req)
+		resp, err := q.Querier.Volume(singleContext, req)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +238,7 @@ func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (
 // replaceMatchers traverses the passed expression and replaces all matchers.
 func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) syntax.Expr {
 	expr, _ = syntax.Clone(expr)
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.MatchersExpr:
 			concrete.Mts = matchers

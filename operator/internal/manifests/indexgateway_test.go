@@ -4,11 +4,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestNewIndexGatewayStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -26,10 +28,31 @@ func TestNewIndexGatewayStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T
 		},
 	})
 
-	expected := "loki.grafana.com/config-hash"
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationLokiConfigHash)
+	require.Equal(t, annotations[AnnotationLokiConfigHash], "deadbeef")
+}
+
+func TestNewIndexGatewayStatefulSet_HasTemplateObjectStoreHashAnnotation(t *testing.T) {
+	ss := NewIndexGatewayStatefulSet(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		ObjectStorage: storage.Options{
+			SecretSHA1: "deadbeef",
+		},
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, AnnotationLokiObjectStoreHash)
+	require.Equal(t, annotations[AnnotationLokiObjectStoreHash], "deadbeef")
 }
 
 func TestNewIndexGatewayStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
@@ -46,10 +69,10 @@ func TestNewIndexGatewayStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(
 			},
 		},
 	})
-	expected := "loki.grafana.com/certRotationRequiredAt"
+
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
+	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
 }
 
 func TestNewIndexGatewayStatefulSet_SelectorMatchesLabels(t *testing.T) {
@@ -107,7 +130,7 @@ func TestBuildIndexGateway_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
-	depl := NewIndexGatewayStatefulSet(Options{
+	obj, _ := BuildIndexGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -132,6 +155,7 @@ func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		},
 	})
 
+	ss := obj[0].(*appsv1.StatefulSet)
 	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           3,
@@ -155,5 +179,5 @@ func TestNewIndexGatewayStatefulSet_TopologySpreadConstraints(t *testing.T) {
 				},
 			},
 		},
-	}, depl.Spec.Template.Spec.TopologySpreadConstraints)
+	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }

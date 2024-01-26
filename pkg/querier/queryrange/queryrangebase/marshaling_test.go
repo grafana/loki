@@ -51,7 +51,7 @@ func BenchmarkPrometheusCodec_EncodeResponse(b *testing.B) {
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-		_, err := PrometheusCodec.EncodeResponse(context.Background(), res)
+		_, err := PrometheusCodec.EncodeResponse(context.Background(), nil, res)
 		require.NoError(b, err)
 	}
 }

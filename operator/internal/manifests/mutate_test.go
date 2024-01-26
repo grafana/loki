@@ -13,7 +13,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
@@ -28,8 +28,8 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         "loki.grafana.com/v1",
-					BlockOwnerDeletion: pointer.Bool(true),
-					Controller:         pointer.Bool(true),
+					BlockOwnerDeletion: ptr.To(true),
+					Controller:         ptr.To(true),
 					Kind:               "LokiStack",
 					Name:               "lokistack-testing",
 					UID:                "6128aa83-de7f-47c0-abf2-4a380713b599",
@@ -488,7 +488,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 	require.Exactly(t, got.Subjects, want.Subjects)
 }
 
-func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
+func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.Deployment
@@ -504,7 +504,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -525,7 +525,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -552,7 +552,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -574,7 +574,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -587,6 +587,39 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 					},
 					Strategy: appsv1.DeploymentStrategy{
 						Type: appsv1.RollingUpdateDeploymentStrategyType,
+					},
+				},
+			},
+		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
+							},
+						},
 					},
 				},
 			},
@@ -615,7 +648,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 	}
 }
 
-func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
+func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.StatefulSet
@@ -632,7 +665,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -660,7 +693,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -695,7 +728,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -724,7 +757,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -742,6 +775,39 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 									corev1.ReadWriteOnce,
 									corev1.ReadWriteMany,
 								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
 							},
 						},
 					},
@@ -1042,7 +1108,7 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 			To: routev1.RouteTargetReference{
 				Kind:   "Service",
 				Name:   "a-service",
-				Weight: pointer.Int32(100),
+				Weight: ptr.To[int32](100),
 			},
 			TLS: &routev1.TLSConfig{
 				Termination:                   routev1.TLSTerminationReencrypt,

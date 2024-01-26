@@ -35,7 +35,7 @@ func sum256(data []byte) []byte {
 }
 
 // sumHMAC calculate hmac between two input byte array.
-func sumHMAC(key []byte, data []byte) []byte {
+func sumHMAC(key, data []byte) []byte {
 	hash := hmac.New(sha256.New, key)
 	hash.Write(data)
 	return hash.Sum(nil)

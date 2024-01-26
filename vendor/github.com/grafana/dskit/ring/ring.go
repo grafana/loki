@@ -37,7 +37,6 @@ const (
 
 // ReadRing represents the read interface to the ring.
 type ReadRing interface {
-
 	// Get returns n (or more) instances which form the replicas for the given key.
 	// bufDescs, bufHosts and bufZones are slices to be overwritten for the return value
 	// to avoid memory allocation; can be nil, or created with ring.MakeBuffersForGet().
@@ -76,6 +75,9 @@ type ReadRing interface {
 
 	// CleanupShuffleShardCache should delete cached shuffle-shard subrings for given identifier.
 	CleanupShuffleShardCache(identifier string)
+
+	// GetTokenRangesForInstance returns the token ranges owned by an instance in the ring
+	GetTokenRangesForInstance(instanceID string) (TokenRanges, error)
 }
 
 var (
@@ -152,7 +154,7 @@ type instanceInfo struct {
 	Zone       string
 }
 
-// Ring holds the information about the members of the consistent hash ring.
+// Ring is a Service that maintains an in-memory copy of a ring and watches for changes.
 type Ring struct {
 	services.Service
 
@@ -171,7 +173,7 @@ type Ring struct {
 	oldestRegisteredTimestamp int64
 
 	// Maps a token with the information of the instance holding it. This map is immutable and
-	// cannot be chanced in place because it's shared "as is" between subrings (the only way to
+	// cannot be changed in place because it's shared "as is" between subrings (the only way to
 	// change it is to create a new one and replace it).
 	ringInstanceByToken map[uint32]instanceInfo
 
@@ -239,16 +241,19 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		numMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_members",
 			Help:        "Number of members in the ring",
-			ConstLabels: map[string]string{"name": name}},
+			ConstLabels: map[string]string{"name": name},
+		},
 			[]string{"state"}),
 		totalTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
-			ConstLabels: map[string]string{"name": name}}),
+			ConstLabels: map[string]string{"name": name},
+		}),
 		oldestTimestampGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_oldest_member_timestamp",
 			Help:        "Timestamp of the oldest member in the ring.",
-			ConstLabels: map[string]string{"name": name}},
+			ConstLabels: map[string]string{"name": name},
+		},
 			[]string{"state"}),
 		logger: logger,
 	}
@@ -305,6 +310,11 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 		}
 	}
 
+	// Ensure the ID of each InstanceDesc is set based on the map of instances. This
+	// handles the case where some components are running older lifecyclers which do
+	// not set the instance ID when registering in the ring.
+	ringDesc.setInstanceIDs()
+
 	rc := prevRing.RingCompare(ringDesc)
 	if rc == Equal || rc == EqualButStatesAndTimestamps {
 		// No need to update tokens or zones. Only states and timestamps
@@ -353,6 +363,26 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
+	instances, err := r.findInstancesForKey(key, op, bufDescs, bufHosts, bufZones, nil)
+	if err != nil {
+		return ReplicationSet{}, err
+	}
+
+	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled)
+	if err != nil {
+		return ReplicationSet{}, err
+	}
+
+	return ReplicationSet{
+		Instances: healthyInstances,
+		MaxErrors: maxFailure,
+	}, nil
+}
+
+// Returns instances for given key and operation. Instances are not filtered through ReplicationStrategy.
+// InstanceFilter can ignore uninteresting instances that would otherwise be part of the output, and can also stop search early.
+// This function needs to be called with read lock on the ring.
+func (r *Ring) findInstancesForKey(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones []string, instanceFilter func(instanceID string) (include, keepGoing bool)) ([]InstanceDesc, error) {
 	var (
 		n            = r.cfg.ReplicationFactor
 		instances    = bufDescs[:0]
@@ -375,7 +405,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		info, ok := r.ringInstanceByToken[token]
 		if !ok {
 			// This should never happen unless a bug in the ring code.
-			return ReplicationSet{}, ErrInconsistentTokensInfo
+			return nil, ErrInconsistentTokensInfo
 		}
 
 		// We want n *distinct* instances && distinct zones.
@@ -403,18 +433,18 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 			distinctZones = append(distinctZones, info.Zone)
 		}
 
-		instances = append(instances, instance)
+		include, keepGoing := true, true
+		if instanceFilter != nil {
+			include, keepGoing = instanceFilter(info.InstanceID)
+		}
+		if include {
+			instances = append(instances, instance)
+		}
+		if !keepGoing {
+			break
+		}
 	}
-
-	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled)
-	if err != nil {
-		return ReplicationSet{}, err
-	}
-
-	return ReplicationSet{
-		Instances: healthyInstances,
-		MaxErrors: maxFailure,
-	}, nil
+	return instances, nil
 }
 
 // GetAllHealthy implements ReadRing.
@@ -516,33 +546,39 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 
 	return ReplicationSet{
-		Instances:           healthyInstances,
-		MaxErrors:           maxErrors,
-		MaxUnavailableZones: maxUnavailableZones,
+		Instances:            healthyInstances,
+		MaxErrors:            maxErrors,
+		MaxUnavailableZones:  maxUnavailableZones,
+		ZoneAwarenessEnabled: r.cfg.ZoneAwarenessEnabled,
 	}, nil
 }
 
 // CountTokens returns the number tokens within the range for each instance.
-func (r *Desc) CountTokens() map[string]uint32 {
+// In case of zone-awareness, this method takes into account only tokens of
+// the same zone. More precisely, for each instance only the distance between
+// its tokens and tokens of the instances from the same zone will be considered.
+func (r *Desc) CountTokens() map[string]int64 {
 	var (
-		owned               = make(map[string]uint32, len(r.Ingesters))
-		ringTokens          = r.GetTokens()
+		owned               = make(map[string]int64, len(r.Ingesters))
+		ringTokensByZone    = r.getTokensByZone()
 		ringInstanceByToken = r.getTokensInfo()
 	)
 
-	for i, token := range ringTokens {
-		var diff uint32
+	for _, ringTokens := range ringTokensByZone {
+		for i, token := range ringTokens {
+			var prevToken uint32
 
-		// Compute how many tokens are within the range.
-		if i == 0 {
-			lastToken := ringTokens[len(ringTokens)-1]
-			diff = token + (math.MaxUint32 - lastToken)
-		} else {
-			diff = token - ringTokens[i-1]
+			// Compute how many tokens are within the range.
+			if i == 0 {
+				prevToken = ringTokens[len(ringTokens)-1]
+			} else {
+				prevToken = ringTokens[i-1]
+			}
+
+			diff := tokenDistance(prevToken, token)
+			info := ringInstanceByToken[token]
+			owned[info.InstanceID] = owned[info.InstanceID] + diff
 		}
-
-		info := ringInstanceByToken[token]
-		owned[info.InstanceID] = owned[info.InstanceID] + diff
 	}
 
 	// Set to 0 the number of owned tokens by instances which don't have tokens yet.
@@ -727,7 +763,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 					panic(ErrInconsistentTokensInfo)
 				}
 
-				// Ensure we select an unique instance.
+				// Ensure we select a unique instance.
 				if _, ok := shard[info.InstanceID]; ok {
 					continue
 				}
@@ -1014,7 +1050,7 @@ func (r *Ring) casRing(ctx context.Context, f func(in interface{}) (out interfac
 	return r.KVClient.CAS(ctx, r.key, f)
 }
 
-func (r *Ring) getRing(ctx context.Context) (*Desc, error) {
+func (r *Ring) getRing(_ context.Context) (*Desc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -1065,3 +1101,36 @@ func (op Operation) ShouldExtendReplicaSetOnState(s InstanceState) bool {
 
 // All states are healthy, no states extend replica set.
 var allStatesRingOperation = Operation(0x0000ffff)
+
+// numberOfKeysOwnedByInstance returns how many of the supplied keys are owned by given instance.
+func (r *Ring) numberOfKeysOwnedByInstance(keys []uint32, op Operation, instanceID string, bufDescs []InstanceDesc, bufHosts []string, bufZones []string) (int, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
+		return 0, ErrEmptyRing
+	}
+
+	// Instance is not in this ring, it can't own any key.
+	if _, ok := r.ringDesc.Ingesters[instanceID]; !ok {
+		return 0, nil
+	}
+
+	owned := 0
+	for _, tok := range keys {
+		i, err := r.findInstancesForKey(tok, op, bufDescs, bufHosts, bufZones, func(foundInstanceID string) (include, keepGoing bool) {
+			if foundInstanceID == instanceID {
+				// If we've found our instance, we can stop.
+				return true, false
+			}
+			return false, true
+		})
+		if err != nil {
+			return 0, err
+		}
+		if len(i) > 0 {
+			owned++
+		}
+	}
+	return owned, nil
+}

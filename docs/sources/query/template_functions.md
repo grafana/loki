@@ -1,10 +1,9 @@
 ---
 title: Template functions
 menuTItle:  
-description: Describes functions that are supported by the text template.
+description: Describes functions that are supported by the Go text template.
 aliases: 
-- /docs/loki/latest/logql
-- /docs/loki/latest/query
+- ../logql/template_functions/
 weight: 30
 ---
 
@@ -471,7 +470,7 @@ Signature: `min(a interface{}, i ...interface{}) int64`
 Example:
 
 ```template
-{{ max 1 2 3 }} //output 1
+{{ min 1 2 3 }} //output 1
 ```
 
 ## maxf
@@ -711,7 +710,7 @@ Examples:
 
 ```template
 {{ default "-" "" }} // output: -
-{{ default "" "foo" }} // output: foo
+{{ default "-" "foo" }} // output: foo
 ```
 
 Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:

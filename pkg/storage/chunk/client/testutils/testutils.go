@@ -2,15 +2,19 @@ package testutils
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strconv"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -49,7 +53,7 @@ func Setup(fixture Fixture, tableName string) (index.Client, chunkclient.Client,
 		return nil, nil, nil, err
 	}
 
-	tableManager, err := index.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil)
+	tableManager, err := index.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil, log.NewNopLogger())
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -82,10 +86,10 @@ func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from mode
 }
 
 func DummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
-	cs := chunk.New()
+	cs := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncGZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 
 	for ts := from; ts <= through; ts = ts.Add(15 * time.Second) {
-		_, err := cs.Add(model.SamplePair{Timestamp: ts, Value: 0})
+		err := cs.Append(&logproto.Entry{Timestamp: ts.Time(), Line: fmt.Sprintf("line ts=%d", ts)})
 		if err != nil {
 			panic(err)
 		}
@@ -95,7 +99,7 @@ func DummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 		userID,
 		client.Fingerprint(metric),
 		metric,
-		cs,
+		chunkenc.NewFacade(cs, 0, 0),
 		from,
 		through,
 	)
@@ -117,10 +121,11 @@ func SchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
 				Prefix: "cortex",
 				Period: 7 * 24 * time.Hour,
 			},
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: "cortex_chunks",
-				Period: 7 * 24 * time.Hour,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: "cortex_chunks",
+					Period: 7 * 24 * time.Hour,
+				}},
 		}},
 	}
 	if err := s.Validate(); err != nil {

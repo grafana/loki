@@ -9,18 +9,19 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -35,19 +36,22 @@ type DownstreamHandler struct {
 	next   queryrangebase.Handler
 }
 
-func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
+func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 	if logql.GetRangeType(params) == logql.InstantType {
 		return &LokiInstantRequest{
-			Query:     params.Query(),
+			Query:     params.QueryString(),
 			Limit:     params.Limit(),
 			TimeTs:    params.Start(),
 			Direction: params.Direction(),
 			Path:      "/loki/api/v1/query", // TODO(owen-d): make this derivable
-			Shards:    shards.Encode(),
+			Shards:    params.Shards(),
+			Plan: &plan.QueryPlan{
+				AST: params.GetExpression(),
+			},
 		}
 	}
 	return &LokiRequest{
-		Query:     params.Query(),
+		Query:     params.QueryString(),
 		Limit:     params.Limit(),
 		Step:      params.Step().Milliseconds(),
 		Interval:  params.Interval().Milliseconds(),
@@ -55,7 +59,10 @@ func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebas
 		EndTs:     params.End(),
 		Direction: params.Direction(),
 		Path:      "/loki/api/v1/query_range", // TODO(owen-d): make this derivable
-		Shards:    shards.Encode(),
+		Shards:    params.Shards(),
+		Plan: &plan.QueryPlan{
+			AST: params.GetExpression(),
+		},
 	}
 }
 
@@ -98,12 +105,12 @@ type instance struct {
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
-		req := ParamsToLokiRequest(qry.Params, qry.Shards).WithQuery(qry.Expr.String())
+		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
 		logger := spanlogger.FromContext(ctx)
 		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
+		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
@@ -119,58 +126,46 @@ func (in instance) For(
 	queries []logql.DownstreamQuery,
 	fn func(logql.DownstreamQuery) (logqlmodel.Result, error),
 ) ([]logqlmodel.Result, error) {
-	type resp struct {
-		i   int
-		res logqlmodel.Result
-		err error
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	ch := make(chan resp)
 
-	// Make one goroutine to dispatch the other goroutines, bounded by instance parallelism
+	ch := make(chan logql.Resp)
+
+	// ForEachJob blocks until all are done. However, we want to process the
+	// results as they come in. That's why we start everything in another
+	// gorouting.
 	go func() {
-		for i := 0; i < len(queries); i++ {
+		err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
+			res, err := fn(queries[i])
+			response := logql.Resp{
+				I:   i,
+				Res: res,
+				Err: err,
+			}
+
+			// Feed the result into the channel unless the work has completed.
 			select {
 			case <-ctx.Done():
-				break
-			case <-in.locks:
-				go func(i int) {
-					// release lock back into pool
-					defer func() {
-						in.locks <- struct{}{}
-					}()
-
-					res, err := fn(queries[i])
-					response := resp{
-						i:   i,
-						res: res,
-						err: err,
-					}
-
-					// Feed the result into the channel unless the work has completed.
-					select {
-					case <-ctx.Done():
-					case ch <- response:
-					}
-				}(i)
+			case ch <- response:
+			}
+			return err
+		})
+		if err != nil {
+			ch <- logql.Resp{
+				I:   -1,
+				Err: err,
 			}
 		}
+		close(ch)
 	}()
 
 	acc := newDownstreamAccumulator(queries[0].Params, len(queries))
-	for i := 0; i < len(queries); i++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case resp := <-ch:
-			if resp.err != nil {
-				return nil, resp.err
-			}
-			if err := acc.Accumulate(ctx, resp.i, resp.res); err != nil {
-				return nil, err
-			}
+	for resp := range ch {
+		if resp.Err != nil {
+			return nil, resp.Err
+		}
+		if err := acc.Accumulate(ctx, resp.I, resp.Res); err != nil {
+			return nil, err
 		}
 	}
 	return acc.Result(), nil
@@ -216,49 +211,8 @@ func sampleStreamToVector(streams []queryrangebase.SampleStream) parser.Value {
 	return xs
 }
 
-func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
-	switch r := resp.(type) {
-	case *LokiResponse:
-		if r.Error != "" {
-			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.ErrorType, r.Error)
-		}
-
-		streams := make(logqlmodel.Streams, 0, len(r.Data.Result))
-
-		for _, stream := range r.Data.Result {
-			streams = append(streams, stream)
-		}
-
-		return logqlmodel.Result{
-			Statistics: r.Statistics,
-			Data:       streams,
-			Headers:    resp.GetHeaders(),
-		}, nil
-
-	case *LokiPromResponse:
-		if r.Response.Error != "" {
-			return logqlmodel.Result{}, fmt.Errorf("%s: %s", r.Response.ErrorType, r.Response.Error)
-		}
-		if r.Response.Data.ResultType == loghttp.ResultTypeVector {
-			return logqlmodel.Result{
-				Statistics: r.Statistics,
-				Data:       sampleStreamToVector(r.Response.Data.Result),
-				Headers:    resp.GetHeaders(),
-			}, nil
-		}
-		return logqlmodel.Result{
-			Statistics: r.Statistics,
-			Data:       sampleStreamToMatrix(r.Response.Data.Result),
-			Headers:    resp.GetHeaders(),
-		}, nil
-
-	default:
-		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
-	}
-}
-
-// downstreamAccumulator is one of two variants:
-// a logsAccumulator or a bufferedAccumulator.
+// downstreamAccumulator is one of three variants:
+// a logsAccumulator, a bufferedAccumulator, or a quantileSketchAccumulator.
 // Which variant is detected on the first call to Accumulate.
 // Metric queries, which are generally small payloads, are buffered
 // since the memory overhead is negligible.
@@ -267,6 +221,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 // accumulate the results into a logsAccumulator, discarding values
 // over the limit to keep memory pressure down while other subqueries
 // are executing.
+// Sharded probabilistic quantile query results are merged as they come in.
 type downstreamAccumulator struct {
 	acc    resultAccumulator
 	params logql.Params
@@ -283,7 +238,8 @@ func newDownstreamAccumulator(params logql.Params, nQueries int) *downstreamAccu
 }
 
 func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
-	if acc.Data.Type() == logqlmodel.ValueTypeStreams {
+	switch acc.Data.Type() {
+	case logqlmodel.ValueTypeStreams:
 
 		// the stream accumulator stores a heap with reversed order
 		// from the results we expect, so we need to reverse the direction
@@ -293,8 +249,9 @@ func (a *downstreamAccumulator) build(acc logqlmodel.Result) {
 		}
 
 		a.acc = newStreamAccumulator(direction, int(a.params.Limit()))
-
-	} else {
+	case logql.QuantileSketchMatrixType:
+		a.acc = newQuantileSketchAccumulator()
+	default:
 		a.acc = &bufferedAccumulator{
 			results: make([]logqlmodel.Result, a.n),
 		}
@@ -330,6 +287,36 @@ func (a *bufferedAccumulator) Accumulate(acc logqlmodel.Result, i int) error {
 
 func (a *bufferedAccumulator) Result() []logqlmodel.Result {
 	return a.results
+}
+
+type quantileSketchAccumulator struct {
+	matrix logql.ProbabilisticQuantileMatrix
+}
+
+func newQuantileSketchAccumulator() *quantileSketchAccumulator {
+	return &quantileSketchAccumulator{}
+}
+
+func (a *quantileSketchAccumulator) Accumulate(res logqlmodel.Result, _ int) error {
+	if res.Data.Type() != logql.QuantileSketchMatrixType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), logql.QuantileSketchMatrixType)
+	}
+	data, ok := res.Data.(logql.ProbabilisticQuantileMatrix)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
+	}
+	if a.matrix == nil {
+		a.matrix = data
+		return nil
+	}
+
+	var err error
+	a.matrix, err = a.matrix.Merge(data)
+	return err
+}
+
+func (a *quantileSketchAccumulator) Result() []logqlmodel.Result {
+	return []logqlmodel.Result{{Data: a.matrix}}
 }
 
 // heap impl for keeping only the top n results across m streams

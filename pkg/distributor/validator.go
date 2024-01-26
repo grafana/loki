@@ -2,12 +2,11 @@ package distributor
 
 import (
 	"errors"
-	"net/http"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
@@ -42,6 +41,10 @@ type validationContext struct {
 
 	incrementDuplicateTimestamps bool
 
+	allowStructuredMetadata    bool
+	maxStructuredMetadataSize  int
+	maxStructuredMetadataCount int
+
 	userID string
 }
 
@@ -57,6 +60,9 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		maxLabelNameLength:           v.MaxLabelNameLength(userID),
 		maxLabelValueLength:          v.MaxLabelValueLength(userID),
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
+		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
+		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
+		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
 	}
 }
 
@@ -71,14 +77,14 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
+		return fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
 	if ts > ctx.creationGracePeriod {
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
+		return fmt.Errorf(validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
 	}
 
 	if maxSize := ctx.maxLineSize; maxSize != 0 && len(entry.Line) > maxSize {
@@ -88,7 +94,33 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		// for parity.
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
+		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
+	}
+
+	if len(entry.StructuredMetadata) > 0 {
+		if !ctx.allowStructuredMetadata {
+			validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Add(float64(len(entry.Line)))
+			return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
+		}
+
+		var structuredMetadataSizeBytes, structuredMetadataCount int
+		for _, metadata := range entry.StructuredMetadata {
+			structuredMetadataSizeBytes += len(metadata.Name) + len(metadata.Value)
+			structuredMetadataCount++
+		}
+
+		if maxSize := ctx.maxStructuredMetadataSize; maxSize != 0 && structuredMetadataSizeBytes > maxSize {
+			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Add(float64(len(entry.Line)))
+			return fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, labels, structuredMetadataSizeBytes, ctx.maxStructuredMetadataSize)
+		}
+
+		if maxCount := ctx.maxStructuredMetadataCount; maxCount != 0 && structuredMetadataCount > maxCount {
+			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Add(float64(len(entry.Line)))
+			return fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, labels, structuredMetadataCount, ctx.maxStructuredMetadataCount)
+		}
 	}
 
 	return nil
@@ -98,25 +130,25 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, stream logproto.Stream) error {
 	if len(ls) == 0 {
 		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.MissingLabelsErrorMsg)
+		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 	numLabelNames := len(ls)
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
 		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream)
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)
+		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)
 	}
 
 	lastLabelName := ""
 	for _, l := range ls {
 		if len(l.Name) > ctx.maxLabelNameLength {
 			updateMetrics(validation.LabelNameTooLong, ctx.userID, stream)
-			return httpgrpc.Errorf(http.StatusBadRequest, validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
+			return fmt.Errorf(validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
 		} else if len(l.Value) > ctx.maxLabelValueLength {
 			updateMetrics(validation.LabelValueTooLong, ctx.userID, stream)
-			return httpgrpc.Errorf(http.StatusBadRequest, validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
+			return fmt.Errorf(validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
 			updateMetrics(validation.DuplicateLabelNames, ctx.userID, stream)
-			return httpgrpc.Errorf(http.StatusBadRequest, validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
+			return fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
 		}
 		lastLabelName = l.Name
 	}

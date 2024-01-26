@@ -95,9 +95,13 @@ func (m *Result) GetCaches() Caches {
 }
 
 type Caches struct {
-	Chunk  Cache `protobuf:"bytes,1,opt,name=chunk,proto3" json:"chunk"`
-	Index  Cache `protobuf:"bytes,2,opt,name=index,proto3" json:"index"`
-	Result Cache `protobuf:"bytes,3,opt,name=result,proto3" json:"result"`
+	Chunk        Cache `protobuf:"bytes,1,opt,name=chunk,proto3" json:"chunk"`
+	Index        Cache `protobuf:"bytes,2,opt,name=index,proto3" json:"index"`
+	Result       Cache `protobuf:"bytes,3,opt,name=result,proto3" json:"result"`
+	StatsResult  Cache `protobuf:"bytes,4,opt,name=statsResult,proto3" json:"statsResult"`
+	VolumeResult Cache `protobuf:"bytes,5,opt,name=volumeResult,proto3" json:"volumeResult"`
+	SeriesResult Cache `protobuf:"bytes,6,opt,name=seriesResult,proto3" json:"seriesResult"`
+	LabelResult  Cache `protobuf:"bytes,7,opt,name=labelResult,proto3" json:"labelResult"`
 }
 
 func (m *Caches) Reset()      { *m = Caches{} }
@@ -153,13 +157,41 @@ func (m *Caches) GetResult() Cache {
 	return Cache{}
 }
 
+func (m *Caches) GetStatsResult() Cache {
+	if m != nil {
+		return m.StatsResult
+	}
+	return Cache{}
+}
+
+func (m *Caches) GetVolumeResult() Cache {
+	if m != nil {
+		return m.VolumeResult
+	}
+	return Cache{}
+}
+
+func (m *Caches) GetSeriesResult() Cache {
+	if m != nil {
+		return m.SeriesResult
+	}
+	return Cache{}
+}
+
+func (m *Caches) GetLabelResult() Cache {
+	if m != nil {
+		return m.LabelResult
+	}
+	return Cache{}
+}
+
 // Summary is the summary of a query statistics.
 type Summary struct {
 	// Total bytes processed per second.
 	BytesProcessedPerSecond int64 `protobuf:"varint,1,opt,name=bytesProcessedPerSecond,proto3" json:"bytesProcessedPerSecond"`
 	// Total lines processed per second.
 	LinesProcessedPerSecond int64 `protobuf:"varint,2,opt,name=linesProcessedPerSecond,proto3" json:"linesProcessedPerSecond"`
-	// Total bytes processed.
+	// Total bytes processed. Includes structured metadata bytes.
 	TotalBytesProcessed int64 `protobuf:"varint,3,opt,name=totalBytesProcessed,proto3" json:"totalBytesProcessed"`
 	// Total lines processed.
 	TotalLinesProcessed int64 `protobuf:"varint,4,opt,name=totalLinesProcessed,proto3" json:"totalLinesProcessed"`
@@ -176,8 +208,14 @@ type Summary struct {
 	Subqueries int64 `protobuf:"varint,7,opt,name=subqueries,proto3" json:"subqueries"`
 	// Total number of result entries returned
 	TotalEntriesReturned int64 `protobuf:"varint,8,opt,name=totalEntriesReturned,proto3" json:"totalEntriesReturned"`
-	Splits               int64 `protobuf:"varint,9,opt,name=splits,proto3" json:"splits"`
-	Shards               int64 `protobuf:"varint,10,opt,name=shards,proto3" json:"shards"`
+	// Total number of splits by time
+	Splits int64 `protobuf:"varint,9,opt,name=splits,proto3" json:"splits"`
+	// Total number of shards
+	Shards int64 `protobuf:"varint,10,opt,name=shards,proto3" json:"shards"`
+	// Total lines post query filtering
+	TotalPostFilterLines int64 `protobuf:"varint,11,opt,name=totalPostFilterLines,proto3" json:"totalPostFilterLines"`
+	// Total bytes processed of metadata.
+	TotalStructuredMetadataBytesProcessed int64 `protobuf:"varint,12,opt,name=totalStructuredMetadataBytesProcessed,proto3" json:"totalStructuredMetadataBytesProcessed"`
 }
 
 func (m *Summary) Reset()      { *m = Summary{} }
@@ -278,6 +316,20 @@ func (m *Summary) GetSplits() int64 {
 func (m *Summary) GetShards() int64 {
 	if m != nil {
 		return m.Shards
+	}
+	return 0
+}
+
+func (m *Summary) GetTotalPostFilterLines() int64 {
+	if m != nil {
+		return m.TotalPostFilterLines
+	}
+	return 0
+}
+
+func (m *Summary) GetTotalStructuredMetadataBytesProcessed() int64 {
+	if m != nil {
+		return m.TotalStructuredMetadataBytesProcessed
 	}
 	return 0
 }
@@ -411,7 +463,11 @@ type Store struct {
 	TotalChunksDownloaded int64 `protobuf:"varint,2,opt,name=totalChunksDownloaded,proto3" json:"totalChunksDownloaded"`
 	// Time spent fetching chunks in nanoseconds.
 	ChunksDownloadTime int64 `protobuf:"varint,3,opt,name=chunksDownloadTime,proto3" json:"chunksDownloadTime"`
-	Chunk              Chunk `protobuf:"bytes,4,opt,name=chunk,proto3" json:"chunk"`
+	// Whether the query referenced structured metadata
+	QueryReferencedStructured bool  `protobuf:"varint,13,opt,name=queryReferencedStructured,proto3" json:"queryReferencedStructuredMetadata"`
+	Chunk                     Chunk `protobuf:"bytes,4,opt,name=chunk,proto3" json:"chunk"`
+	// Time spent fetching chunk refs from index.
+	ChunkRefsFetchTime int64 `protobuf:"varint,5,opt,name=chunkRefsFetchTime,proto3" json:"chunkRefsFetchTime"`
 }
 
 func (m *Store) Reset()      { *m = Store{} }
@@ -467,6 +523,13 @@ func (m *Store) GetChunksDownloadTime() int64 {
 	return 0
 }
 
+func (m *Store) GetQueryReferencedStructured() bool {
+	if m != nil {
+		return m.QueryReferencedStructured
+	}
+	return false
+}
+
 func (m *Store) GetChunk() Chunk {
 	if m != nil {
 		return m.Chunk
@@ -474,12 +537,19 @@ func (m *Store) GetChunk() Chunk {
 	return Chunk{}
 }
 
+func (m *Store) GetChunkRefsFetchTime() int64 {
+	if m != nil {
+		return m.ChunkRefsFetchTime
+	}
+	return 0
+}
+
 type Chunk struct {
-	// Total bytes processed but was already in memory. (found in the headchunk)
+	// Total bytes processed but was already in memory (found in the headchunk). Includes structured metadata bytes.
 	HeadChunkBytes int64 `protobuf:"varint,4,opt,name=headChunkBytes,proto3" json:"headChunkBytes"`
 	// Total lines processed but was already in memory. (found in the headchunk)
 	HeadChunkLines int64 `protobuf:"varint,5,opt,name=headChunkLines,proto3" json:"headChunkLines"`
-	// Total bytes decompressed and processed from chunks.
+	// Total bytes decompressed and processed from chunks. Includes structured metadata bytes.
 	DecompressedBytes int64 `protobuf:"varint,6,opt,name=decompressedBytes,proto3" json:"decompressedBytes"`
 	// Total lines decompressed and processed from chunks.
 	DecompressedLines int64 `protobuf:"varint,7,opt,name=decompressedLines,proto3" json:"decompressedLines"`
@@ -487,6 +557,12 @@ type Chunk struct {
 	CompressedBytes int64 `protobuf:"varint,8,opt,name=compressedBytes,proto3" json:"compressedBytes"`
 	// Total duplicates found while processing.
 	TotalDuplicates int64 `protobuf:"varint,9,opt,name=totalDuplicates,proto3" json:"totalDuplicates"`
+	// Total lines post filtering
+	PostFilterLines int64 `protobuf:"varint,10,opt,name=postFilterLines,proto3" json:"postFilterLines"`
+	// Total bytes processed for metadata but was already in memory. (found in the headchunk)
+	HeadChunkStructuredMetadataBytes int64 `protobuf:"varint,11,opt,name=headChunkStructuredMetadataBytes,proto3" json:"headChunkStructuredMetadataBytes"`
+	// Total bytes of entries metadata decompressed and processed from chunks.
+	DecompressedStructuredMetadataBytes int64 `protobuf:"varint,12,opt,name=decompressedStructuredMetadataBytes,proto3" json:"decompressedStructuredMetadataBytes"`
 }
 
 func (m *Chunk) Reset()      { *m = Chunk{} }
@@ -563,14 +639,36 @@ func (m *Chunk) GetTotalDuplicates() int64 {
 	return 0
 }
 
+func (m *Chunk) GetPostFilterLines() int64 {
+	if m != nil {
+		return m.PostFilterLines
+	}
+	return 0
+}
+
+func (m *Chunk) GetHeadChunkStructuredMetadataBytes() int64 {
+	if m != nil {
+		return m.HeadChunkStructuredMetadataBytes
+	}
+	return 0
+}
+
+func (m *Chunk) GetDecompressedStructuredMetadataBytes() int64 {
+	if m != nil {
+		return m.DecompressedStructuredMetadataBytes
+	}
+	return 0
+}
+
 type Cache struct {
-	EntriesFound     int32 `protobuf:"varint,1,opt,name=entriesFound,proto3" json:"entriesFound"`
-	EntriesRequested int32 `protobuf:"varint,2,opt,name=entriesRequested,proto3" json:"entriesRequested"`
-	EntriesStored    int32 `protobuf:"varint,3,opt,name=entriesStored,proto3" json:"entriesStored"`
-	BytesReceived    int64 `protobuf:"varint,4,opt,name=bytesReceived,proto3" json:"bytesReceived"`
-	BytesSent        int64 `protobuf:"varint,5,opt,name=bytesSent,proto3" json:"bytesSent"`
-	Requests         int32 `protobuf:"varint,6,opt,name=requests,proto3" json:"requests"`
-	DownloadTime     int64 `protobuf:"varint,7,opt,name=downloadTime,proto3" json:"downloadTime"`
+	EntriesFound      int32 `protobuf:"varint,1,opt,name=entriesFound,proto3" json:"entriesFound"`
+	EntriesRequested  int32 `protobuf:"varint,2,opt,name=entriesRequested,proto3" json:"entriesRequested"`
+	EntriesStored     int32 `protobuf:"varint,3,opt,name=entriesStored,proto3" json:"entriesStored"`
+	BytesReceived     int64 `protobuf:"varint,4,opt,name=bytesReceived,proto3" json:"bytesReceived"`
+	BytesSent         int64 `protobuf:"varint,5,opt,name=bytesSent,proto3" json:"bytesSent"`
+	Requests          int32 `protobuf:"varint,6,opt,name=requests,proto3" json:"requests"`
+	DownloadTime      int64 `protobuf:"varint,7,opt,name=downloadTime,proto3" json:"downloadTime"`
+	QueryLengthServed int64 `protobuf:"varint,8,opt,name=queryLengthServed,proto3" json:"queryLengthServed"`
 }
 
 func (m *Cache) Reset()      { *m = Cache{} }
@@ -654,6 +752,13 @@ func (m *Cache) GetDownloadTime() int64 {
 	return 0
 }
 
+func (m *Cache) GetQueryLengthServed() int64 {
+	if m != nil {
+		return m.QueryLengthServed
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*Result)(nil), "stats.Result")
 	proto.RegisterType((*Caches)(nil), "stats.Caches")
@@ -668,68 +773,83 @@ func init() {
 func init() { proto.RegisterFile("pkg/logqlmodel/stats/stats.proto", fileDescriptor_6cdfe5d2aea33ebb) }
 
 var fileDescriptor_6cdfe5d2aea33ebb = []byte{
-	// 967 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x56, 0xcf, 0x6f, 0xe3, 0x44,
-	0x14, 0x8e, 0x9b, 0x3a, 0x69, 0x87, 0xfe, 0xda, 0xd9, 0x2e, 0x6b, 0x40, 0xb2, 0xab, 0x9c, 0x2a,
-	0x81, 0x1a, 0xf1, 0x43, 0x42, 0x20, 0x56, 0x42, 0xee, 0xb2, 0x52, 0xa5, 0x45, 0x2c, 0xaf, 0x70,
-	0xe1, 0xe6, 0xd8, 0xb3, 0x89, 0x55, 0xc7, 0x4e, 0x3d, 0x36, 0xec, 0xde, 0xb8, 0x71, 0x84, 0x3f,
-	0x82, 0x03, 0x17, 0xfe, 0x8f, 0x3d, 0xf6, 0xb8, 0x27, 0x8b, 0xa6, 0x17, 0xe4, 0xd3, 0x4a, 0xdc,
-	0x11, 0x9a, 0x37, 0x13, 0xdb, 0xe3, 0x38, 0x12, 0x97, 0xcc, 0xbc, 0xef, 0x7b, 0xdf, 0xcc, 0xf3,
-	0xcc, 0x7b, 0x6f, 0x42, 0x4e, 0x16, 0x57, 0xd3, 0x71, 0x94, 0x4c, 0xaf, 0xa3, 0x79, 0x12, 0xb0,
-	0x68, 0xcc, 0x33, 0x2f, 0xe3, 0xf2, 0xf7, 0x6c, 0x91, 0x26, 0x59, 0x42, 0x4d, 0x34, 0xde, 0x3d,
-	0x9e, 0x26, 0xd3, 0x04, 0x91, 0xb1, 0x98, 0x49, 0x72, 0xf4, 0x8f, 0x41, 0x06, 0xc0, 0x78, 0x1e,
-	0x65, 0xf4, 0x33, 0x32, 0xe4, 0xf9, 0x7c, 0xee, 0xa5, 0x2f, 0x2d, 0xe3, 0xc4, 0x38, 0x7d, 0xeb,
-	0xa3, 0x83, 0x33, 0xb9, 0xcc, 0xa5, 0x44, 0xdd, 0xc3, 0x57, 0x85, 0xd3, 0x2b, 0x0b, 0x67, 0xe5,
-	0x06, 0xab, 0x89, 0x90, 0x5e, 0xe7, 0x2c, 0x0d, 0x59, 0x6a, 0x6d, 0x69, 0xd2, 0x6f, 0x25, 0x5a,
-	0x4b, 0x95, 0x1b, 0xac, 0x26, 0xf4, 0x11, 0xd9, 0x09, 0xe3, 0x29, 0xe3, 0x19, 0x4b, 0xad, 0x3e,
-	0x6a, 0x0f, 0x95, 0xf6, 0x42, 0xc1, 0xee, 0x91, 0x12, 0x57, 0x8e, 0x50, 0xcd, 0xe8, 0x27, 0x64,
-	0xe0, 0x7b, 0xfe, 0x8c, 0x71, 0x6b, 0x1b, 0xc5, 0xfb, 0x4a, 0x7c, 0x8e, 0xa0, 0xbb, 0xaf, 0xa4,
-	0x26, 0x3a, 0x81, 0xf2, 0x1d, 0xfd, 0x6e, 0x90, 0x81, 0xf4, 0xa0, 0x1f, 0x12, 0xd3, 0x9f, 0xe5,
-	0xf1, 0x95, 0xfa, 0xe6, 0xbd, 0xa6, 0xbe, 0x21, 0x17, 0x2e, 0x20, 0x07, 0x21, 0x09, 0xe3, 0x80,
-	0xbd, 0x50, 0xdf, 0xba, 0x41, 0x82, 0x2e, 0x20, 0x07, 0x11, 0x66, 0x8a, 0xa7, 0xac, 0xbe, 0x51,
-	0xd7, 0x1c, 0x28, 0x8d, 0xf2, 0x01, 0x35, 0x8e, 0xca, 0x6d, 0x32, 0x54, 0x87, 0x4f, 0xbf, 0x27,
-	0x0f, 0x27, 0x2f, 0x33, 0xc6, 0x9f, 0xa5, 0x89, 0xcf, 0x38, 0x67, 0xc1, 0x33, 0x96, 0x5e, 0x32,
-	0x3f, 0x89, 0x03, 0x8c, 0xbc, 0xef, 0xbe, 0x57, 0x16, 0xce, 0x26, 0x17, 0xd8, 0x44, 0x88, 0x65,
-	0xa3, 0x30, 0xee, 0x5c, 0x76, 0xab, 0x5e, 0x76, 0x83, 0x0b, 0x6c, 0x22, 0xe8, 0x05, 0xb9, 0x9f,
-	0x25, 0x99, 0x17, 0xb9, 0xda, 0xb6, 0xf8, 0xf1, 0x7d, 0xf7, 0x61, 0x59, 0x38, 0x5d, 0x34, 0x74,
-	0x81, 0xd5, 0x52, 0x4f, 0xb5, 0xad, 0xf0, 0xba, 0x9b, 0x4b, 0xe9, 0x34, 0x74, 0x81, 0xf4, 0x94,
-	0xec, 0xb0, 0x17, 0xcc, 0xff, 0x2e, 0x9c, 0x33, 0xcb, 0x3c, 0x31, 0x4e, 0x0d, 0x77, 0x4f, 0xa4,
-	0xd5, 0x0a, 0x83, 0x6a, 0x46, 0xdf, 0x27, 0xbb, 0xd7, 0x39, 0xcb, 0x19, 0xba, 0x0e, 0xd0, 0x75,
-	0xbf, 0x2c, 0x9c, 0x1a, 0x84, 0x7a, 0x4a, 0xcf, 0x08, 0xe1, 0xf9, 0x44, 0x26, 0x34, 0xb7, 0x86,
-	0x18, 0xd8, 0x41, 0x59, 0x38, 0x0d, 0x14, 0x1a, 0x73, 0xfa, 0x94, 0x1c, 0x63, 0x74, 0x5f, 0xc5,
-	0x19, 0x72, 0x2c, 0xcb, 0xd3, 0x98, 0x05, 0xd6, 0x0e, 0x2a, 0xad, 0xb2, 0x70, 0x3a, 0x79, 0xe8,
-	0x44, 0xe9, 0x88, 0x0c, 0xf8, 0x22, 0x0a, 0x33, 0x6e, 0xed, 0xa2, 0x9e, 0x88, 0x44, 0x92, 0x08,
-	0xa8, 0x11, 0x7d, 0x66, 0x5e, 0x1a, 0x70, 0x8b, 0x34, 0x7c, 0x10, 0x01, 0x35, 0x8e, 0xbe, 0x20,
-	0x43, 0x55, 0xad, 0x22, 0xc1, 0x79, 0x96, 0xa4, 0xac, 0x55, 0x13, 0x97, 0x02, 0xab, 0x13, 0x1c,
-	0x5d, 0x40, 0x0e, 0xa3, 0x3f, 0xb7, 0xc8, 0xce, 0x45, 0x5d, 0x94, 0x7b, 0x18, 0x2a, 0x30, 0x91,
-	0xde, 0x32, 0x41, 0x4d, 0xf7, 0xa8, 0x2c, 0x1c, 0x0d, 0x07, 0xcd, 0xa2, 0x4f, 0x08, 0x45, 0xfb,
-	0x5c, 0x14, 0x19, 0xff, 0xda, 0xcb, 0x50, 0x2b, 0xb3, 0xf0, 0xed, 0xb2, 0x70, 0x3a, 0x58, 0xe8,
-	0xc0, 0xaa, 0xdd, 0x5d, 0xb4, 0xb9, 0x4a, 0xba, 0x7a, 0x77, 0x85, 0x83, 0x66, 0xd1, 0xcf, 0xc9,
-	0x41, 0x9d, 0x32, 0x97, 0x2c, 0xce, 0x54, 0x86, 0xd1, 0xb2, 0x70, 0x5a, 0x0c, 0xb4, 0xec, 0xfa,
-	0xbc, 0xcc, 0xff, 0x7d, 0x5e, 0xbf, 0x6e, 0x11, 0x13, 0xf9, 0x6a, 0x63, 0xf9, 0x11, 0xc0, 0x9e,
-	0xab, 0x7a, 0xae, 0x37, 0xae, 0x18, 0x68, 0xd9, 0xf4, 0x1b, 0xf2, 0xa0, 0x81, 0x3c, 0x4e, 0x7e,
-	0x8a, 0xa3, 0xc4, 0x0b, 0xaa, 0x53, 0x7b, 0xa7, 0x2c, 0x9c, 0x6e, 0x07, 0xe8, 0x86, 0xc5, 0x1d,
-	0xf8, 0x1a, 0x86, 0x05, 0xd0, 0xaf, 0xef, 0x60, 0x9d, 0x85, 0x0e, 0xac, 0xee, 0xaa, 0xdb, 0x7a,
-	0xbb, 0x13, 0x58, 0x77, 0x57, 0x1d, 0xfd, 0xd2, 0x27, 0x26, 0xf2, 0xe2, 0x44, 0x66, 0xcc, 0x0b,
-	0xa4, 0xb3, 0x68, 0x06, 0xcd, 0xab, 0xd0, 0x19, 0x68, 0xd9, 0x9a, 0x16, 0x2f, 0x08, 0xef, 0xa4,
-	0xad, 0x45, 0x06, 0x5a, 0x36, 0x3d, 0x27, 0xf7, 0x02, 0xe6, 0x27, 0xf3, 0x45, 0x8a, 0xed, 0x42,
-	0x6e, 0x3d, 0x40, 0xf9, 0x83, 0xb2, 0x70, 0xd6, 0x49, 0x58, 0x87, 0xda, 0x8b, 0xc8, 0x18, 0x86,
-	0xdd, 0x8b, 0xc8, 0x30, 0xd6, 0x21, 0xfa, 0x88, 0x1c, 0xb6, 0xe3, 0x90, 0xcd, 0xe1, 0x7e, 0x59,
-	0x38, 0x6d, 0x0a, 0xda, 0x80, 0x90, 0xe3, 0xf5, 0x3e, 0xce, 0x17, 0x51, 0xe8, 0x7b, 0x42, 0xbe,
-	0x5b, 0xcb, 0x5b, 0x14, 0xb4, 0x81, 0xd1, 0xbf, 0x5b, 0xc4, 0xc4, 0x87, 0x49, 0x94, 0x12, 0x93,
-	0xed, 0xe6, 0x49, 0x92, 0xc7, 0x5a, 0x21, 0x37, 0x71, 0xd0, 0x2c, 0xfa, 0x25, 0x39, 0x62, 0xab,
-	0x26, 0x75, 0x9d, 0x8b, 0x96, 0x20, 0x13, 0xd2, 0x74, 0x8f, 0xcb, 0xc2, 0x59, 0xe3, 0x60, 0x0d,
-	0xa1, 0x9f, 0x92, 0x7d, 0x85, 0x61, 0x8d, 0xc8, 0x87, 0xc3, 0x74, 0xef, 0x95, 0x85, 0xa3, 0x13,
-	0xa0, 0x9b, 0x42, 0x88, 0x2f, 0x1d, 0x30, 0x9f, 0x85, 0x3f, 0x56, 0xcf, 0x04, 0x0a, 0x35, 0x02,
-	0x74, 0x53, 0x34, 0x7c, 0x04, 0xb0, 0xf2, 0x65, 0xca, 0x60, 0xc3, 0xaf, 0x40, 0xa8, 0xa7, 0xe2,
-	0x1d, 0x49, 0x65, 0xac, 0x32, 0x3f, 0x4c, 0xf9, 0x8e, 0xac, 0x30, 0xa8, 0x66, 0xe2, 0x00, 0x83,
-	0x66, 0x25, 0x0d, 0xeb, 0x5e, 0xd4, 0xc4, 0x41, 0xb3, 0xdc, 0xc9, 0xcd, 0xad, 0xdd, 0x7b, 0x7d,
-	0x6b, 0xf7, 0xde, 0xdc, 0xda, 0xc6, 0xcf, 0x4b, 0xdb, 0xf8, 0x63, 0x69, 0x1b, 0xaf, 0x96, 0xb6,
-	0x71, 0xb3, 0xb4, 0x8d, 0xbf, 0x96, 0xb6, 0xf1, 0xf7, 0xd2, 0xee, 0xbd, 0x59, 0xda, 0xc6, 0x6f,
-	0x77, 0x76, 0xef, 0xe6, 0xce, 0xee, 0xbd, 0xbe, 0xb3, 0x7b, 0x3f, 0x7c, 0x30, 0x0d, 0xb3, 0x59,
-	0x3e, 0x39, 0xf3, 0x93, 0xf9, 0x78, 0x9a, 0x7a, 0xcf, 0xbd, 0xd8, 0x1b, 0x47, 0xc9, 0x55, 0x38,
-	0xee, 0xfa, 0x87, 0x38, 0x19, 0xe0, 0xff, 0xbf, 0x8f, 0xff, 0x0b, 0x00, 0x00, 0xff, 0xff, 0x8a,
-	0x9c, 0x39, 0x00, 0x40, 0x0a, 0x00, 0x00,
+	// 1215 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x57, 0x4d, 0x6f, 0xe3, 0x54,
+	0x17, 0x8e, 0x27, 0xaf, 0x93, 0xce, 0xed, 0xe7, 0xdc, 0x76, 0xde, 0xc9, 0x80, 0x64, 0x97, 0xc0,
+	0x88, 0x22, 0x50, 0x23, 0x3e, 0x24, 0x04, 0x62, 0x24, 0xe4, 0x0e, 0x95, 0x2a, 0x75, 0x44, 0x39,
+	0x81, 0x0d, 0x3b, 0xc7, 0xbe, 0x4d, 0xa2, 0x3a, 0x76, 0x6a, 0x5f, 0x97, 0xe9, 0x0a, 0x7e, 0x02,
+	0x3f, 0x83, 0x0d, 0x2b, 0x56, 0x48, 0x88, 0x0d, 0x9b, 0x59, 0x76, 0x39, 0x2b, 0x8b, 0xa6, 0x1b,
+	0xe4, 0xd5, 0x48, 0xfc, 0x01, 0x74, 0xcf, 0xbd, 0xf1, 0x57, 0x9c, 0x99, 0x6e, 0xe2, 0x7b, 0x9e,
+	0xf3, 0x3c, 0xe7, 0x7e, 0x9e, 0x73, 0x6f, 0xc8, 0xee, 0xf4, 0x6c, 0xd8, 0xf3, 0x82, 0xe1, 0xb9,
+	0x37, 0x09, 0x5c, 0xe6, 0xf5, 0x22, 0x6e, 0xf3, 0x48, 0xfe, 0xee, 0x4f, 0xc3, 0x80, 0x07, 0x54,
+	0x47, 0xe3, 0x8d, 0x9d, 0x61, 0x30, 0x0c, 0x10, 0xe9, 0x89, 0x96, 0x74, 0x76, 0xff, 0xd5, 0x48,
+	0x0b, 0x58, 0x14, 0x7b, 0x9c, 0x7e, 0x46, 0xda, 0x51, 0x3c, 0x99, 0xd8, 0xe1, 0x65, 0x47, 0xdb,
+	0xd5, 0xf6, 0x56, 0x3f, 0xda, 0xd8, 0x97, 0x61, 0xfa, 0x12, 0xb5, 0x36, 0x9f, 0x27, 0x66, 0x23,
+	0x4d, 0xcc, 0x39, 0x0d, 0xe6, 0x0d, 0x21, 0x3d, 0x8f, 0x59, 0x38, 0x66, 0x61, 0xe7, 0x4e, 0x49,
+	0xfa, 0x8d, 0x44, 0x73, 0xa9, 0xa2, 0xc1, 0xbc, 0x41, 0x1f, 0x93, 0x95, 0xb1, 0x3f, 0x64, 0x11,
+	0x67, 0x61, 0xa7, 0x89, 0xda, 0x4d, 0xa5, 0x3d, 0x52, 0xb0, 0xb5, 0xa5, 0xc4, 0x19, 0x11, 0xb2,
+	0x16, 0xfd, 0x84, 0xb4, 0x1c, 0xdb, 0x19, 0xb1, 0xa8, 0xf3, 0x3f, 0x14, 0xaf, 0x2b, 0xf1, 0x01,
+	0x82, 0xd6, 0xba, 0x92, 0xea, 0x48, 0x02, 0xc5, 0xed, 0xfe, 0xd9, 0x24, 0x2d, 0xc9, 0xa0, 0x1f,
+	0x12, 0xdd, 0x19, 0xc5, 0xfe, 0x99, 0x9a, 0xf3, 0x5a, 0x51, 0x5f, 0x90, 0x0b, 0x0a, 0xc8, 0x8f,
+	0x90, 0x8c, 0x7d, 0x97, 0x3d, 0x53, 0x73, 0x5d, 0x22, 0x41, 0x0a, 0xc8, 0x8f, 0x18, 0x66, 0x88,
+	0xab, 0xac, 0xe6, 0x58, 0xd6, 0x6c, 0x28, 0x8d, 0xe2, 0x80, 0xfa, 0xd2, 0x03, 0xb2, 0x8a, 0x34,
+	0xb9, 0x41, 0x6a, 0x86, 0x65, 0xe9, 0xb6, 0x92, 0x16, 0x89, 0x50, 0x34, 0xe8, 0x21, 0x59, 0xbb,
+	0x08, 0xbc, 0x78, 0xc2, 0x54, 0x14, 0xbd, 0x26, 0xca, 0x8e, 0x8a, 0x52, 0x62, 0x42, 0xc9, 0x12,
+	0x71, 0x22, 0xb1, 0x65, 0xf3, 0xd1, 0xb4, 0x5e, 0x15, 0xa7, 0xc8, 0x84, 0x92, 0x25, 0x26, 0xe5,
+	0xd9, 0x03, 0xe6, 0xa9, 0x30, 0xed, 0x57, 0x4d, 0xaa, 0x40, 0x84, 0xa2, 0xd1, 0xfd, 0xbd, 0x45,
+	0xda, 0xea, 0x58, 0xd2, 0xef, 0xc8, 0x83, 0xc1, 0x25, 0x67, 0xd1, 0x49, 0x18, 0x38, 0x2c, 0x8a,
+	0x98, 0x7b, 0xc2, 0xc2, 0x3e, 0x73, 0x02, 0xdf, 0xc5, 0x3d, 0x6d, 0x5a, 0x6f, 0xa6, 0x89, 0xb9,
+	0x8c, 0x02, 0xcb, 0x1c, 0x22, 0xac, 0x37, 0xf6, 0x6b, 0xc3, 0xde, 0xc9, 0xc3, 0x2e, 0xa1, 0xc0,
+	0x32, 0x07, 0x3d, 0x22, 0xdb, 0x3c, 0xe0, 0xb6, 0x67, 0x95, 0xba, 0xc5, 0x63, 0xd1, 0xb4, 0x1e,
+	0xa4, 0x89, 0x59, 0xe7, 0x86, 0x3a, 0x30, 0x0b, 0x75, 0x5c, 0xea, 0x0a, 0x8f, 0x49, 0x31, 0x54,
+	0xd9, 0x0d, 0x75, 0x20, 0xdd, 0x23, 0x2b, 0xec, 0x19, 0x73, 0xbe, 0x1d, 0x4f, 0x18, 0x1e, 0x10,
+	0xcd, 0x5a, 0x13, 0x09, 0x37, 0xc7, 0x20, 0x6b, 0xd1, 0xf7, 0xc9, 0xdd, 0xf3, 0x98, 0xc5, 0x0c,
+	0xa9, 0x2d, 0xa4, 0xae, 0xa7, 0x89, 0x99, 0x83, 0x90, 0x37, 0xe9, 0x3e, 0x21, 0x51, 0x3c, 0x90,
+	0xa9, 0x1e, 0xe1, 0x56, 0x37, 0xad, 0x8d, 0x34, 0x31, 0x0b, 0x28, 0x14, 0xda, 0xf4, 0x98, 0xec,
+	0xe0, 0xe8, 0xbe, 0xf2, 0xb9, 0x3c, 0x31, 0x3c, 0x0e, 0x7d, 0xe6, 0x76, 0x56, 0x50, 0xd9, 0x49,
+	0x13, 0xb3, 0xd6, 0x0f, 0xb5, 0x28, 0xed, 0x92, 0x56, 0x34, 0xf5, 0xc6, 0x3c, 0xea, 0xdc, 0x45,
+	0x3d, 0x11, 0x29, 0x26, 0x11, 0x50, 0x5f, 0xe4, 0x8c, 0xec, 0xd0, 0x8d, 0x3a, 0xa4, 0xc0, 0x41,
+	0x04, 0xd4, 0x37, 0x1b, 0xd5, 0x49, 0x10, 0xf1, 0xc3, 0xb1, 0xc7, 0x59, 0x88, 0xab, 0xd7, 0x59,
+	0xad, 0x8c, 0xaa, 0xe2, 0x87, 0x5a, 0x94, 0xfe, 0x48, 0x1e, 0x21, 0xde, 0xe7, 0x61, 0xec, 0xf0,
+	0x38, 0x64, 0xee, 0x53, 0xc6, 0x6d, 0xd7, 0xe6, 0x76, 0xe5, 0x48, 0xac, 0x61, 0xf8, 0xf7, 0xd2,
+	0xc4, 0xbc, 0x9d, 0x00, 0x6e, 0x47, 0xeb, 0x7e, 0x41, 0xda, 0xaa, 0x2c, 0x8b, 0x4a, 0x16, 0xf1,
+	0x20, 0x64, 0x95, 0xe2, 0xd7, 0x17, 0x58, 0x5e, 0xc9, 0x90, 0x02, 0xf2, 0xd3, 0xfd, 0xf5, 0x0e,
+	0x59, 0x39, 0xca, 0xab, 0xef, 0x1a, 0xf6, 0x09, 0x4c, 0xe4, 0xad, 0xcc, 0x37, 0xdd, 0xda, 0x12,
+	0x15, 0xa0, 0x88, 0x43, 0xc9, 0xa2, 0x87, 0x84, 0xa2, 0x7d, 0x20, 0xaa, 0x69, 0xf4, 0xd4, 0xe6,
+	0xa8, 0x95, 0x49, 0xf5, 0xff, 0x34, 0x31, 0x6b, 0xbc, 0x50, 0x83, 0x65, 0xbd, 0x5b, 0x68, 0x47,
+	0x2a, 0x87, 0xf2, 0xde, 0x15, 0x0e, 0x25, 0x8b, 0x7e, 0x4e, 0x36, 0xf2, 0x0c, 0xe8, 0x33, 0x9f,
+	0xab, 0x84, 0xa1, 0x69, 0x62, 0x56, 0x3c, 0x50, 0xb1, 0xf3, 0xf5, 0xd2, 0x6f, 0xbd, 0x5e, 0x7f,
+	0x34, 0x89, 0x8e, 0xfe, 0xac, 0x63, 0x39, 0x09, 0x60, 0xa7, 0xaa, 0x3c, 0xe5, 0x1d, 0x67, 0x1e,
+	0xa8, 0xd8, 0xf4, 0x6b, 0x72, 0xbf, 0x80, 0x3c, 0x09, 0x7e, 0xf0, 0xbd, 0xc0, 0x76, 0xb3, 0x55,
+	0x7b, 0x98, 0x26, 0x66, 0x3d, 0x01, 0xea, 0x61, 0xb1, 0x07, 0x4e, 0x09, 0xc3, 0x7c, 0x6e, 0xe6,
+	0x7b, 0xb0, 0xe8, 0x85, 0x1a, 0x8c, 0x3a, 0xe4, 0xa1, 0x48, 0xde, 0x4b, 0x60, 0xa7, 0x2c, 0x64,
+	0xbe, 0xc3, 0xdc, 0xfc, 0xfc, 0x75, 0xd6, 0x77, 0xb5, 0xbd, 0x15, 0xeb, 0x51, 0x9a, 0x98, 0x6f,
+	0x2d, 0x25, 0xcd, 0x0f, 0x29, 0x2c, 0x8f, 0x93, 0xdf, 0xd1, 0x95, 0x1b, 0x50, 0x60, 0x4b, 0xee,
+	0xe8, 0xf9, 0xfc, 0x80, 0x9d, 0x46, 0x87, 0x8c, 0x3b, 0xa3, 0xac, 0xb4, 0x15, 0xe7, 0x57, 0xf2,
+	0x42, 0x0d, 0xd6, 0xfd, 0x4d, 0x27, 0x3a, 0xf6, 0x23, 0xb6, 0x6f, 0xc4, 0x6c, 0x57, 0x76, 0x2a,
+	0x32, 0xaa, 0x78, 0x6e, 0xca, 0x1e, 0xa8, 0xd8, 0x25, 0xad, 0xac, 0x1d, 0x7a, 0x8d, 0x56, 0x56,
+	0x8d, 0x8a, 0x4d, 0x0f, 0xc8, 0x3d, 0x97, 0x39, 0xc1, 0x64, 0x1a, 0x62, 0xfa, 0xca, 0xae, 0x5b,
+	0x28, 0xbf, 0x9f, 0x26, 0xe6, 0xa2, 0x13, 0x16, 0xa1, 0x6a, 0x10, 0x39, 0x86, 0x76, 0x7d, 0x10,
+	0x39, 0x8c, 0x45, 0x88, 0x3e, 0x26, 0x9b, 0xd5, 0x71, 0xc8, 0xc2, 0xbc, 0x9d, 0x26, 0x66, 0xd5,
+	0x05, 0x55, 0x40, 0xc8, 0xf1, 0x2c, 0x3e, 0x89, 0xa7, 0xde, 0xd8, 0xb1, 0x85, 0xfc, 0x6e, 0x2e,
+	0xaf, 0xb8, 0xa0, 0x0a, 0x08, 0xf9, 0xb4, 0x52, 0x80, 0x49, 0x2e, 0xaf, 0xb8, 0xa0, 0x0a, 0xd0,
+	0x29, 0xd9, 0xcd, 0x16, 0x76, 0x49, 0x89, 0x54, 0x05, 0xfd, 0x9d, 0x34, 0x31, 0x5f, 0xcb, 0x85,
+	0xd7, 0x32, 0xe8, 0x25, 0x79, 0xbb, 0xb8, 0x86, 0xcb, 0x3a, 0x95, 0x65, 0xfe, 0xdd, 0x34, 0x31,
+	0x6f, 0x43, 0x87, 0xdb, 0x90, 0xba, 0x7f, 0x35, 0x89, 0x8e, 0x4f, 0x29, 0x51, 0x23, 0x99, 0xbc,
+	0x16, 0x0f, 0x83, 0xd8, 0x2f, 0x55, 0xe8, 0x22, 0x0e, 0x25, 0x8b, 0x7e, 0x49, 0xb6, 0xd8, 0xfc,
+	0x32, 0x3d, 0x8f, 0x45, 0xad, 0x97, 0x95, 0x46, 0xb7, 0x76, 0xd2, 0xc4, 0x5c, 0xf0, 0xc1, 0x02,
+	0x42, 0x3f, 0x25, 0xeb, 0x0a, 0xc3, 0xe2, 0x27, 0x1f, 0x38, 0xba, 0x75, 0x2f, 0x4d, 0xcc, 0xb2,
+	0x03, 0xca, 0xa6, 0x10, 0xe2, 0x8b, 0x0c, 0x98, 0xc3, 0xc6, 0x17, 0xd9, 0x73, 0x06, 0x85, 0x25,
+	0x07, 0x94, 0x4d, 0xf1, 0x30, 0x41, 0x00, 0x4b, 0xba, 0x4c, 0x2f, 0x7c, 0x98, 0x64, 0x20, 0xe4,
+	0x4d, 0xf1, 0xde, 0x09, 0xe5, 0x58, 0x65, 0x2e, 0xe9, 0xf2, 0xbd, 0x33, 0xc7, 0x20, 0x6b, 0x89,
+	0x05, 0x74, 0x8b, 0x25, 0xb2, 0x9d, 0x5f, 0x32, 0x45, 0x1c, 0x4a, 0x96, 0xc8, 0x37, 0x2c, 0x67,
+	0xc7, 0xcc, 0x1f, 0xf2, 0x51, 0x9f, 0x85, 0x17, 0xd9, 0x2b, 0x06, 0xf3, 0x6d, 0xc1, 0x09, 0x8b,
+	0x90, 0x35, 0xb8, 0xba, 0x36, 0x1a, 0x2f, 0xae, 0x8d, 0xc6, 0xcb, 0x6b, 0x43, 0xfb, 0x69, 0x66,
+	0x68, 0xbf, 0xcc, 0x0c, 0xed, 0xf9, 0xcc, 0xd0, 0xae, 0x66, 0x86, 0xf6, 0xf7, 0xcc, 0xd0, 0xfe,
+	0x99, 0x19, 0x8d, 0x97, 0x33, 0x43, 0xfb, 0xf9, 0xc6, 0x68, 0x5c, 0xdd, 0x18, 0x8d, 0x17, 0x37,
+	0x46, 0xe3, 0xfb, 0x0f, 0x86, 0x63, 0x3e, 0x8a, 0x07, 0xfb, 0x4e, 0x30, 0xe9, 0x0d, 0x43, 0xfb,
+	0xd4, 0xf6, 0xed, 0x9e, 0x17, 0x9c, 0x8d, 0x7b, 0x75, 0x7f, 0x14, 0x07, 0x2d, 0xfc, 0x1b, 0xf8,
+	0xf1, 0x7f, 0x01, 0x00, 0x00, 0xff, 0xff, 0xa8, 0xe8, 0xef, 0xe7, 0x47, 0x0e, 0x00, 0x00,
 }
 
 func (this *Result) Equal(that interface{}) bool {
@@ -793,6 +913,18 @@ func (this *Caches) Equal(that interface{}) bool {
 	if !this.Result.Equal(&that1.Result) {
 		return false
 	}
+	if !this.StatsResult.Equal(&that1.StatsResult) {
+		return false
+	}
+	if !this.VolumeResult.Equal(&that1.VolumeResult) {
+		return false
+	}
+	if !this.SeriesResult.Equal(&that1.SeriesResult) {
+		return false
+	}
+	if !this.LabelResult.Equal(&that1.LabelResult) {
+		return false
+	}
 	return true
 }
 func (this *Summary) Equal(that interface{}) bool {
@@ -842,6 +974,12 @@ func (this *Summary) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Shards != that1.Shards {
+		return false
+	}
+	if this.TotalPostFilterLines != that1.TotalPostFilterLines {
+		return false
+	}
+	if this.TotalStructuredMetadataBytesProcessed != that1.TotalStructuredMetadataBytesProcessed {
 		return false
 	}
 	return true
@@ -934,7 +1072,13 @@ func (this *Store) Equal(that interface{}) bool {
 	if this.ChunksDownloadTime != that1.ChunksDownloadTime {
 		return false
 	}
+	if this.QueryReferencedStructured != that1.QueryReferencedStructured {
+		return false
+	}
 	if !this.Chunk.Equal(&that1.Chunk) {
+		return false
+	}
+	if this.ChunkRefsFetchTime != that1.ChunkRefsFetchTime {
 		return false
 	}
 	return true
@@ -974,6 +1118,15 @@ func (this *Chunk) Equal(that interface{}) bool {
 		return false
 	}
 	if this.TotalDuplicates != that1.TotalDuplicates {
+		return false
+	}
+	if this.PostFilterLines != that1.PostFilterLines {
+		return false
+	}
+	if this.HeadChunkStructuredMetadataBytes != that1.HeadChunkStructuredMetadataBytes {
+		return false
+	}
+	if this.DecompressedStructuredMetadataBytes != that1.DecompressedStructuredMetadataBytes {
 		return false
 	}
 	return true
@@ -1018,6 +1171,9 @@ func (this *Cache) Equal(that interface{}) bool {
 	if this.DownloadTime != that1.DownloadTime {
 		return false
 	}
+	if this.QueryLengthServed != that1.QueryLengthServed {
+		return false
+	}
 	return true
 }
 func (this *Result) GoString() string {
@@ -1037,11 +1193,15 @@ func (this *Caches) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 11)
 	s = append(s, "&stats.Caches{")
 	s = append(s, "Chunk: "+strings.Replace(this.Chunk.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "Index: "+strings.Replace(this.Index.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "Result: "+strings.Replace(this.Result.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "StatsResult: "+strings.Replace(this.StatsResult.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "VolumeResult: "+strings.Replace(this.VolumeResult.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "SeriesResult: "+strings.Replace(this.SeriesResult.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "LabelResult: "+strings.Replace(this.LabelResult.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1049,7 +1209,7 @@ func (this *Summary) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 14)
+	s := make([]string, 0, 16)
 	s = append(s, "&stats.Summary{")
 	s = append(s, "BytesProcessedPerSecond: "+fmt.Sprintf("%#v", this.BytesProcessedPerSecond)+",\n")
 	s = append(s, "LinesProcessedPerSecond: "+fmt.Sprintf("%#v", this.LinesProcessedPerSecond)+",\n")
@@ -1061,6 +1221,8 @@ func (this *Summary) GoString() string {
 	s = append(s, "TotalEntriesReturned: "+fmt.Sprintf("%#v", this.TotalEntriesReturned)+",\n")
 	s = append(s, "Splits: "+fmt.Sprintf("%#v", this.Splits)+",\n")
 	s = append(s, "Shards: "+fmt.Sprintf("%#v", this.Shards)+",\n")
+	s = append(s, "TotalPostFilterLines: "+fmt.Sprintf("%#v", this.TotalPostFilterLines)+",\n")
+	s = append(s, "TotalStructuredMetadataBytesProcessed: "+fmt.Sprintf("%#v", this.TotalStructuredMetadataBytesProcessed)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1092,12 +1254,14 @@ func (this *Store) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 8)
+	s := make([]string, 0, 10)
 	s = append(s, "&stats.Store{")
 	s = append(s, "TotalChunksRef: "+fmt.Sprintf("%#v", this.TotalChunksRef)+",\n")
 	s = append(s, "TotalChunksDownloaded: "+fmt.Sprintf("%#v", this.TotalChunksDownloaded)+",\n")
 	s = append(s, "ChunksDownloadTime: "+fmt.Sprintf("%#v", this.ChunksDownloadTime)+",\n")
+	s = append(s, "QueryReferencedStructured: "+fmt.Sprintf("%#v", this.QueryReferencedStructured)+",\n")
 	s = append(s, "Chunk: "+strings.Replace(this.Chunk.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "ChunkRefsFetchTime: "+fmt.Sprintf("%#v", this.ChunkRefsFetchTime)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1105,7 +1269,7 @@ func (this *Chunk) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 10)
+	s := make([]string, 0, 13)
 	s = append(s, "&stats.Chunk{")
 	s = append(s, "HeadChunkBytes: "+fmt.Sprintf("%#v", this.HeadChunkBytes)+",\n")
 	s = append(s, "HeadChunkLines: "+fmt.Sprintf("%#v", this.HeadChunkLines)+",\n")
@@ -1113,6 +1277,9 @@ func (this *Chunk) GoString() string {
 	s = append(s, "DecompressedLines: "+fmt.Sprintf("%#v", this.DecompressedLines)+",\n")
 	s = append(s, "CompressedBytes: "+fmt.Sprintf("%#v", this.CompressedBytes)+",\n")
 	s = append(s, "TotalDuplicates: "+fmt.Sprintf("%#v", this.TotalDuplicates)+",\n")
+	s = append(s, "PostFilterLines: "+fmt.Sprintf("%#v", this.PostFilterLines)+",\n")
+	s = append(s, "HeadChunkStructuredMetadataBytes: "+fmt.Sprintf("%#v", this.HeadChunkStructuredMetadataBytes)+",\n")
+	s = append(s, "DecompressedStructuredMetadataBytes: "+fmt.Sprintf("%#v", this.DecompressedStructuredMetadataBytes)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1120,7 +1287,7 @@ func (this *Cache) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 11)
+	s := make([]string, 0, 12)
 	s = append(s, "&stats.Cache{")
 	s = append(s, "EntriesFound: "+fmt.Sprintf("%#v", this.EntriesFound)+",\n")
 	s = append(s, "EntriesRequested: "+fmt.Sprintf("%#v", this.EntriesRequested)+",\n")
@@ -1129,6 +1296,7 @@ func (this *Cache) GoString() string {
 	s = append(s, "BytesSent: "+fmt.Sprintf("%#v", this.BytesSent)+",\n")
 	s = append(s, "Requests: "+fmt.Sprintf("%#v", this.Requests)+",\n")
 	s = append(s, "DownloadTime: "+fmt.Sprintf("%#v", this.DownloadTime)+",\n")
+	s = append(s, "QueryLengthServed: "+fmt.Sprintf("%#v", this.QueryLengthServed)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1224,6 +1392,46 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	{
+		size, err := m.LabelResult.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintStats(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x3a
+	{
+		size, err := m.SeriesResult.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintStats(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x32
+	{
+		size, err := m.VolumeResult.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintStats(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x2a
+	{
+		size, err := m.StatsResult.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintStats(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
+	{
 		size, err := m.Result.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
@@ -1276,6 +1484,16 @@ func (m *Summary) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.TotalStructuredMetadataBytesProcessed != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalStructuredMetadataBytesProcessed))
+		i--
+		dAtA[i] = 0x60
+	}
+	if m.TotalPostFilterLines != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.TotalPostFilterLines))
+		i--
+		dAtA[i] = 0x58
+	}
 	if m.Shards != 0 {
 		i = encodeVarintStats(dAtA, i, uint64(m.Shards))
 		i--
@@ -1437,6 +1655,21 @@ func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.QueryReferencedStructured {
+		i--
+		if m.QueryReferencedStructured {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.ChunkRefsFetchTime != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.ChunkRefsFetchTime))
+		i--
+		dAtA[i] = 0x28
+	}
 	{
 		size, err := m.Chunk.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -1485,6 +1718,21 @@ func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.DecompressedStructuredMetadataBytes != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.DecompressedStructuredMetadataBytes))
+		i--
+		dAtA[i] = 0x60
+	}
+	if m.HeadChunkStructuredMetadataBytes != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.HeadChunkStructuredMetadataBytes))
+		i--
+		dAtA[i] = 0x58
+	}
+	if m.PostFilterLines != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.PostFilterLines))
+		i--
+		dAtA[i] = 0x50
+	}
 	if m.TotalDuplicates != 0 {
 		i = encodeVarintStats(dAtA, i, uint64(m.TotalDuplicates))
 		i--
@@ -1538,6 +1786,11 @@ func (m *Cache) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.QueryLengthServed != 0 {
+		i = encodeVarintStats(dAtA, i, uint64(m.QueryLengthServed))
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.DownloadTime != 0 {
 		i = encodeVarintStats(dAtA, i, uint64(m.DownloadTime))
 		i--
@@ -1616,6 +1869,14 @@ func (m *Caches) Size() (n int) {
 	n += 1 + l + sovStats(uint64(l))
 	l = m.Result.Size()
 	n += 1 + l + sovStats(uint64(l))
+	l = m.StatsResult.Size()
+	n += 1 + l + sovStats(uint64(l))
+	l = m.VolumeResult.Size()
+	n += 1 + l + sovStats(uint64(l))
+	l = m.SeriesResult.Size()
+	n += 1 + l + sovStats(uint64(l))
+	l = m.LabelResult.Size()
+	n += 1 + l + sovStats(uint64(l))
 	return n
 }
 
@@ -1654,6 +1915,12 @@ func (m *Summary) Size() (n int) {
 	}
 	if m.Shards != 0 {
 		n += 1 + sovStats(uint64(m.Shards))
+	}
+	if m.TotalPostFilterLines != 0 {
+		n += 1 + sovStats(uint64(m.TotalPostFilterLines))
+	}
+	if m.TotalStructuredMetadataBytesProcessed != 0 {
+		n += 1 + sovStats(uint64(m.TotalStructuredMetadataBytesProcessed))
 	}
 	return n
 }
@@ -1709,6 +1976,12 @@ func (m *Store) Size() (n int) {
 	}
 	l = m.Chunk.Size()
 	n += 1 + l + sovStats(uint64(l))
+	if m.ChunkRefsFetchTime != 0 {
+		n += 1 + sovStats(uint64(m.ChunkRefsFetchTime))
+	}
+	if m.QueryReferencedStructured {
+		n += 2
+	}
 	return n
 }
 
@@ -1735,6 +2008,15 @@ func (m *Chunk) Size() (n int) {
 	}
 	if m.TotalDuplicates != 0 {
 		n += 1 + sovStats(uint64(m.TotalDuplicates))
+	}
+	if m.PostFilterLines != 0 {
+		n += 1 + sovStats(uint64(m.PostFilterLines))
+	}
+	if m.HeadChunkStructuredMetadataBytes != 0 {
+		n += 1 + sovStats(uint64(m.HeadChunkStructuredMetadataBytes))
+	}
+	if m.DecompressedStructuredMetadataBytes != 0 {
+		n += 1 + sovStats(uint64(m.DecompressedStructuredMetadataBytes))
 	}
 	return n
 }
@@ -1766,6 +2048,9 @@ func (m *Cache) Size() (n int) {
 	if m.DownloadTime != 0 {
 		n += 1 + sovStats(uint64(m.DownloadTime))
 	}
+	if m.QueryLengthServed != 0 {
+		n += 1 + sovStats(uint64(m.QueryLengthServed))
+	}
 	return n
 }
 
@@ -1796,6 +2081,10 @@ func (this *Caches) String() string {
 		`Chunk:` + strings.Replace(strings.Replace(this.Chunk.String(), "Cache", "Cache", 1), `&`, ``, 1) + `,`,
 		`Index:` + strings.Replace(strings.Replace(this.Index.String(), "Cache", "Cache", 1), `&`, ``, 1) + `,`,
 		`Result:` + strings.Replace(strings.Replace(this.Result.String(), "Cache", "Cache", 1), `&`, ``, 1) + `,`,
+		`StatsResult:` + strings.Replace(strings.Replace(this.StatsResult.String(), "Cache", "Cache", 1), `&`, ``, 1) + `,`,
+		`VolumeResult:` + strings.Replace(strings.Replace(this.VolumeResult.String(), "Cache", "Cache", 1), `&`, ``, 1) + `,`,
+		`SeriesResult:` + strings.Replace(strings.Replace(this.SeriesResult.String(), "Cache", "Cache", 1), `&`, ``, 1) + `,`,
+		`LabelResult:` + strings.Replace(strings.Replace(this.LabelResult.String(), "Cache", "Cache", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1815,6 +2104,8 @@ func (this *Summary) String() string {
 		`TotalEntriesReturned:` + fmt.Sprintf("%v", this.TotalEntriesReturned) + `,`,
 		`Splits:` + fmt.Sprintf("%v", this.Splits) + `,`,
 		`Shards:` + fmt.Sprintf("%v", this.Shards) + `,`,
+		`TotalPostFilterLines:` + fmt.Sprintf("%v", this.TotalPostFilterLines) + `,`,
+		`TotalStructuredMetadataBytesProcessed:` + fmt.Sprintf("%v", this.TotalStructuredMetadataBytesProcessed) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1852,6 +2143,8 @@ func (this *Store) String() string {
 		`TotalChunksDownloaded:` + fmt.Sprintf("%v", this.TotalChunksDownloaded) + `,`,
 		`ChunksDownloadTime:` + fmt.Sprintf("%v", this.ChunksDownloadTime) + `,`,
 		`Chunk:` + strings.Replace(strings.Replace(this.Chunk.String(), "Chunk", "Chunk", 1), `&`, ``, 1) + `,`,
+		`ChunkRefsFetchTime:` + fmt.Sprintf("%v", this.ChunkRefsFetchTime) + `,`,
+		`QueryReferencedStructured:` + fmt.Sprintf("%v", this.QueryReferencedStructured) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1867,6 +2160,9 @@ func (this *Chunk) String() string {
 		`DecompressedLines:` + fmt.Sprintf("%v", this.DecompressedLines) + `,`,
 		`CompressedBytes:` + fmt.Sprintf("%v", this.CompressedBytes) + `,`,
 		`TotalDuplicates:` + fmt.Sprintf("%v", this.TotalDuplicates) + `,`,
+		`PostFilterLines:` + fmt.Sprintf("%v", this.PostFilterLines) + `,`,
+		`HeadChunkStructuredMetadataBytes:` + fmt.Sprintf("%v", this.HeadChunkStructuredMetadataBytes) + `,`,
+		`DecompressedStructuredMetadataBytes:` + fmt.Sprintf("%v", this.DecompressedStructuredMetadataBytes) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1883,6 +2179,7 @@ func (this *Cache) String() string {
 		`BytesSent:` + fmt.Sprintf("%v", this.BytesSent) + `,`,
 		`Requests:` + fmt.Sprintf("%v", this.Requests) + `,`,
 		`DownloadTime:` + fmt.Sprintf("%v", this.DownloadTime) + `,`,
+		`QueryLengthServed:` + fmt.Sprintf("%v", this.QueryLengthServed) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2208,6 +2505,138 @@ func (m *Caches) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StatsResult", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStats
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStats
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.StatsResult.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field VolumeResult", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStats
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStats
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.VolumeResult.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SeriesResult", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStats
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStats
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.SeriesResult.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LabelResult", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthStats
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthStats
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.LabelResult.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipStats(dAtA[iNdEx:])
@@ -2431,6 +2860,44 @@ func (m *Summary) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Shards |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalPostFilterLines", wireType)
+			}
+			m.TotalPostFilterLines = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalPostFilterLines |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalStructuredMetadataBytesProcessed", wireType)
+			}
+			m.TotalStructuredMetadataBytesProcessed = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalStructuredMetadataBytesProcessed |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -2826,6 +3293,45 @@ func (m *Store) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunkRefsFetchTime", wireType)
+			}
+			m.ChunkRefsFetchTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ChunkRefsFetchTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field QueryReferencedStructured", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.QueryReferencedStructured = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipStats(dAtA[iNdEx:])
@@ -2989,6 +3495,63 @@ func (m *Chunk) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.TotalDuplicates |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PostFilterLines", wireType)
+			}
+			m.PostFilterLines = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PostFilterLines |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HeadChunkStructuredMetadataBytes", wireType)
+			}
+			m.HeadChunkStructuredMetadataBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.HeadChunkStructuredMetadataBytes |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DecompressedStructuredMetadataBytes", wireType)
+			}
+			m.DecompressedStructuredMetadataBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DecompressedStructuredMetadataBytes |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3175,6 +3738,25 @@ func (m *Cache) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.DownloadTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field QueryLengthServed", wireType)
+			}
+			m.QueryLengthServed = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowStats
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.QueryLengthServed |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

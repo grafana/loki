@@ -2,8 +2,9 @@ package rules
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"gopkg.in/yaml.v2"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 const tenantLabel = "tenantId"
@@ -46,6 +47,16 @@ func MarshalRecordingRule(a lokiv1.RecordingRule) (string, error) {
 	aa := a.DeepCopy()
 	ar := recordingRuleSpec{
 		Groups: aa.Spec.Groups,
+	}
+
+	for _, group := range ar.Groups {
+		for _, rule := range group.Rules {
+			if rule.Labels == nil {
+				rule.Labels = map[string]string{}
+			}
+
+			rule.Labels[tenantLabel] = aa.Spec.TenantID
+		}
 	}
 
 	content, err := yaml.Marshal(ar)

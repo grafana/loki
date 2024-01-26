@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,14 +10,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -28,16 +29,21 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/plan"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util/constants"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -50,7 +56,7 @@ func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -73,7 +79,7 @@ func TestPrepareShutdown(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -134,7 +140,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -166,7 +172,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(b, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -190,7 +196,7 @@ func TestIngester(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -229,7 +235,8 @@ func TestIngester(t *testing.T) {
 		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 2)
 
 	result = mockQuerierServer{
@@ -242,7 +249,8 @@ func TestIngester(t *testing.T) {
 		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 1)
 	require.Equal(t, `{bar="baz1", foo="bar"}`, result.resps[0].Streams[0].Labels)
 
@@ -256,7 +264,8 @@ func TestIngester(t *testing.T) {
 		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 1)
 	require.Equal(t, `{bar="baz2", foo="bar"}`, result.resps[0].Streams[0].Labels)
 
@@ -270,16 +279,16 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz1",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz1",
+				"foo", "bar",
+			),
 		},
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 
@@ -308,16 +317,16 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz1",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz1",
+				"foo", "bar",
+			),
 		},
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 
@@ -330,10 +339,10 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 
@@ -346,16 +355,16 @@ func TestIngester(t *testing.T) {
 	require.Nil(t, err)
 	require.ElementsMatch(t, []logproto.SeriesIdentifier{
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz1",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz1",
+				"foo", "bar",
+			),
 		},
 		{
-			Labels: map[string]string{
-				"foo": "bar",
-				"bar": "baz2",
-			},
+			Labels: logproto.MustNewSeriesEntries(
+				"bar", "baz2",
+				"foo", "bar",
+			),
 		},
 	}, resp.GetSeries())
 }
@@ -372,7 +381,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -455,7 +464,7 @@ func (s *mockStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 	return nil
 }
 
-func (s *mockStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -480,10 +489,10 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	}, nil
 }
 
-func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: `{foo="bar"}`, Value: "", Volume: 38},
+			{Name: `{foo="bar"}`, Volume: 38},
 		},
 		Limit: limit,
 	}, nil
@@ -730,7 +739,7 @@ func Test_InMemoryLabels(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -816,6 +825,9 @@ func Test_DedupeIngester(t *testing.T) {
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
 				Direction: logproto.BACKWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} | label_format bar=""`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
@@ -874,6 +886,9 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m])) by (bar)`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m])) by (bar)`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -909,6 +924,9 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m]))`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -969,6 +987,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.BACKWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
@@ -996,6 +1017,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
 				Direction: logproto.FORWARD,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
@@ -1020,6 +1044,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `rate({foo="bar"} | json [1m])`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`rate({foo="bar"} | json [1m])`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -1045,6 +1072,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
+				},
 			})
 			require.NoError(t, err)
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
@@ -1070,7 +1100,7 @@ func TestStats(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1092,12 +1122,12 @@ func TestStats(t *testing.T) {
 	}, resp)
 }
 
-func TestSeriesVolume(t *testing.T) {
+func TestVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1105,22 +1135,23 @@ func TestSeriesVolume(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	t.Run("matching a single label", func(t *testing.T) {
-		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
-			From:     0,
-			Through:  10000,
-			Matchers: `{log_stream=~"dispatcher|worker"}`,
-			Limit:    2,
+		volumes, err := i.GetVolume(ctx, &logproto.VolumeRequest{
+			From:        0,
+			Through:     10000,
+			Matchers:    `{log_stream=~"dispatcher|worker"}`,
+			AggregateBy: seriesvolume.Series,
+			Limit:       2,
 		})
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{log_stream="dispatcher"}`, Value: "", Volume: 90},
-			{Name: `{log_stream="worker"}`, Value: "", Volume: 70},
+			{Name: `{log_stream="dispatcher"}`, Volume: 90},
+			{Name: `{log_stream="worker"}`, Volume: 70},
 		}, volumes.Volumes)
 	})
 
 	t.Run("matching multiple labels, exact", func(t *testing.T) {
-		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+		volumes, err := i.GetVolume(ctx, &logproto.VolumeRequest{
 			From:     0,
 			Through:  10000,
 			Matchers: `{log_stream=~"dispatcher|worker", host="agent"}`,
@@ -1129,13 +1160,13 @@ func TestSeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", log_stream="dispatcher"}`, Value: "", Volume: 90},
-			{Name: `{host="agent", log_stream="worker"}`, Value: "", Volume: 70},
+			{Name: `{host="agent", log_stream="dispatcher"}`, Volume: 90},
+			{Name: `{host="agent", log_stream="worker"}`, Volume: 70},
 		}, volumes.Volumes)
 	})
 
 	t.Run("matching multiple labels, regex", func(t *testing.T) {
-		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+		volumes, err := i.GetVolume(ctx, &logproto.VolumeRequest{
 			From:     0,
 			Through:  10000,
 			Matchers: `{log_stream=~"dispatcher|worker", host=~".+"}`,
@@ -1144,8 +1175,8 @@ func TestSeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", log_stream="dispatcher"}`, Value: "", Volume: 90},
-			{Name: `{host="agent", log_stream="worker"}`, Value: "", Volume: 70},
+			{Name: `{host="agent", log_stream="dispatcher"}`, Volume: 90},
+			{Name: `{host="agent", log_stream="worker"}`, Volume: 70},
 		}, volumes.Volumes)
 	})
 }
@@ -1318,7 +1349,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -1333,7 +1364,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	logproto.RegisterQuerierServer(server, ing)
 	go func() {
 		if err := server.Serve(listener); err != nil {
-			log.Fatal(err)
+			level.Error(ing.logger).Log(err)
 		}
 	}()
 	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {

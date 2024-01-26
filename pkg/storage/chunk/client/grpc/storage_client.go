@@ -79,6 +79,10 @@ func (s *StorageClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
+func (s *StorageClient) IsRetryableErr(_ error) bool {
+	return false
+}
+
 func (s *StorageClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
 	req := &GetChunksRequest{}
 	req.Chunks = []*Chunk{}

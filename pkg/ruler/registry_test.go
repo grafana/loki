@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/sigv4"
@@ -16,7 +18,6 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ruler/storage/instance"
 	"github.com/grafana/loki/pkg/ruler/util"
@@ -374,6 +375,32 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 	}
 
 	assert.ElementsMatch(t, actual, expected, "QueueConfig capacity do not match")
+}
+
+func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
+	require.NotPanics(t, func() {
+		reg := setupRegistry(t, cfg, newFakeLimits())
+		var wg sync.WaitGroup
+		for i := 0; i < 1000; i++ {
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_, err := reg.getTenantConfig(enabledRWTenant)
+				require.NoError(t, err)
+			}(reg)
+
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_, err := reg.getTenantConfig(additionalHeadersRWTenant)
+				require.NoError(t, err)
+			}(reg)
+		}
+
+		wg.Wait()
+	})
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {

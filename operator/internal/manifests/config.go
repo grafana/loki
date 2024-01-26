@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
@@ -47,9 +47,9 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 			Name:   lokiConfigMapName(opt.Name),
 			Labels: commonLabels(opt.Name),
 		},
-		BinaryData: map[string][]byte{
-			config.LokiConfigFileName:        c,
-			config.LokiRuntimeConfigFileName: rc,
+		Data: map[string]string{
+			config.LokiConfigFileName:        string(c),
+			config.LokiRuntimeConfigFileName: string(rc),
 		},
 	}, sha1C, nil
 }
@@ -117,6 +117,21 @@ func ConfigOptions(opt Options) config.Options {
 		opt.Stack.Replication.Factor = opt.Stack.ReplicationFactor
 	}
 
+	// Build a slice of with the shippers that are being used in the config
+	// booleans used to prevent duplicates
+	shippers := []string{}
+	boltdb := false
+	tsdb := false
+	for _, schema := range opt.Stack.Storage.Schemas {
+		if !boltdb && (schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12) {
+			shippers = append(shippers, "boltdb")
+			boltdb = true
+		} else if !tsdb {
+			shippers = append(shippers, "tsdb")
+			tsdb = true
+		}
+	}
+
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
@@ -157,7 +172,7 @@ func ConfigOptions(opt Options) config.Options {
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing),
+		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing, opt.Stack.Replication),
 		Querier: config.Address{
 			Protocol: protocol,
 			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
@@ -175,6 +190,7 @@ func ConfigOptions(opt Options) config.Options {
 			Directory:             walDirectory,
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
+		Shippers:              shippers,
 		ObjectStorage:         opt.ObjectStorage,
 		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
@@ -258,24 +274,37 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 	return conf
 }
 
-func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
-	var instanceAddr string
+func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, replication *lokiv1.ReplicationSpec) config.GossipRing {
+	var (
+		instanceAddr string
+		enableIPv6   bool
+	)
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
-			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+			instanceAddr = gossipInstanceAddrEnvVarTemplate
 		case lokiv1.InstanceAddrDefault:
 			// Do nothing use loki defaults
 		default:
 			// Do nothing use loki defaults
 		}
+
+		// Always default to use the pod IP address when IPv6 enabled to ensure:
+		// - On Single Stack IPv6: Skip interface checking
+		// - On Dual Stack IPv4/6: Eliminate duplicate memberlist node registration
+		if spec.MemberList.EnableIPv6 {
+			enableIPv6 = true
+			instanceAddr = gossipInstanceAddrEnvVarTemplate
+		}
 	}
 
 	return config.GossipRing{
-		InstanceAddr:         instanceAddr,
-		InstancePort:         grpcPort,
-		BindPort:             gossipPort,
-		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+		EnableIPv6:                     enableIPv6,
+		InstanceAddr:                   instanceAddr,
+		InstancePort:                   grpcPort,
+		BindPort:                       gossipPort,
+		MembersDiscoveryAddr:           fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+		EnableInstanceAvailabilityZone: replication != nil && len(replication.Zones) > 0,
 	}
 }
 

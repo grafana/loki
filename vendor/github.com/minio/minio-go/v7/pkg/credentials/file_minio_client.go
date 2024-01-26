@@ -49,7 +49,7 @@ type FileMinioClient struct {
 
 // NewFileMinioClient returns a pointer to a new Credentials object
 // wrapping the Alias file provider.
-func NewFileMinioClient(filename string, alias string) *Credentials {
+func NewFileMinioClient(filename, alias string) *Credentials {
 	return New(&FileMinioClient{
 		Filename: filename,
 		Alias:    alias,

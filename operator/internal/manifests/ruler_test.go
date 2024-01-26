@@ -5,11 +5,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestNewRulerStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -27,10 +30,31 @@ func TestNewRulerStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 		},
 	})
 
-	expected := "loki.grafana.com/config-hash"
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationLokiConfigHash)
+	require.Equal(t, annotations[AnnotationLokiConfigHash], "deadbeef")
+}
+
+func TestNewRulerStatefulSet_HasTemplateObjectStoreHashAnnotation(t *testing.T) {
+	ss := NewRulerStatefulSet(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		ObjectStorage: storage.Options{
+			SecretSHA1: "deadbeef",
+		},
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, AnnotationLokiObjectStoreHash)
+	require.Equal(t, annotations[AnnotationLokiObjectStoreHash], "deadbeef")
 }
 
 func TestNewRulerStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
@@ -47,10 +71,10 @@ func TestNewRulerStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *test
 			},
 		},
 	})
-	expected := "loki.grafana.com/certRotationRequiredAt"
+
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
+	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
 }
 
 func TestBuildRuler_HasExtraObjectsForTenantMode(t *testing.T) {
@@ -196,4 +220,57 @@ func TestBuildRuler_PodDisruptionBudget(t *testing.T) {
 	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
 	require.EqualValues(t, ComponentLabels(LabelRulerComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
+}
+
+func TestNewRulerStatefulSet_TopologySpreadConstraints(t *testing.T) {
+	obj, _ := BuildRuler(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "zone",
+						MaxSkew:     2,
+					},
+					{
+						TopologyKey: "region",
+						MaxSkew:     1,
+					},
+				},
+				Factor: 1,
+			},
+		},
+	})
+
+	ss := obj[0].(*appsv1.StatefulSet)
+	require.Equal(t, []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           2,
+			TopologyKey:       "zone",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "ruler",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+		{
+			MaxSkew:           1,
+			TopologyKey:       "region",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "ruler",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }

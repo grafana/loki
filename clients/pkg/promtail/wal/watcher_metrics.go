@@ -1,6 +1,10 @@
 package wal
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"errors"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type WatcherMetrics struct {
 	recordsRead               *prometheus.CounterVec
@@ -69,13 +73,45 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 		),
 	}
 
+	// Collectors will be re-registered to registry if it's got reloaded
+	// Reuse the old collectors instead of panicking out.
 	if reg != nil {
-		reg.MustRegister(m.recordsRead)
-		reg.MustRegister(m.recordDecodeFails)
-		reg.MustRegister(m.droppedWriteNotifications)
-		reg.MustRegister(m.segmentRead)
-		reg.MustRegister(m.currentSegment)
-		reg.MustRegister(m.watchersRunning)
+		if err := reg.Register(m.recordsRead); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.recordsRead = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.recordDecodeFails); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.recordDecodeFails = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.droppedWriteNotifications); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.droppedWriteNotifications = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.segmentRead); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.segmentRead = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.currentSegment); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.currentSegment = are.ExistingCollector.(*prometheus.GaugeVec)
+			}
+		}
+		if err := reg.Register(m.watchersRunning); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.watchersRunning = are.ExistingCollector.(*prometheus.GaugeVec)
+			}
+		}
 	}
 
 	return m

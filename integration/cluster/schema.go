@@ -7,7 +7,7 @@ schema_config:
     - from: {{.curPeriodStart}}
       store: boltdb-shipper
       object_store: filesystem
-      schema: v11
+      schema: {{.schemaVer}}
       index:
         prefix: index_
         period: 24h
@@ -18,7 +18,7 @@ schema_config:
     - from: {{.additionalPeriodStart}}
       store: boltdb-shipper
       object_store: store-1
-      schema: v11
+      schema: {{.schemaVer}}
       index:
         prefix: index_
         period: 24h
@@ -30,7 +30,7 @@ schema_config:
     - from: {{.curPeriodStart}}
       store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: {{.schemaVer}}
       index:
         prefix: index_
         period: 24h
@@ -41,21 +41,25 @@ schema_config:
     - from: {{.additionalPeriodStart}}
       store: tsdb
       object_store: store-1
-      schema: v11
+      schema: {{.schemaVer}}
       index:
-        prefix: index_
+        prefix: index_tsdb_
         period: 24h
 `
 )
 
-func WithAdditionalBoltDBPeriod(c *Cluster) {
+func SchemaWithTSDB(c *Cluster) {
+	c.periodCfgs = append(c.periodCfgs, additionalTSDBShipperSchemaConfigTemplate)
+}
+
+func SchemaWithBoltDBAndBoltDB(c *Cluster) {
 	c.periodCfgs = append(c.periodCfgs, additionalBoltDBShipperSchemaConfigTemplate, boltDBShipperSchemaConfigTemplate)
 }
 
-func WithAdditionalTSDBPeriod(c *Cluster) {
+func SchemaWithTSDBAndTSDB(c *Cluster) {
 	c.periodCfgs = append(c.periodCfgs, additionalTSDBShipperSchemaConfigTemplate, tsdbShipperSchemaConfigTemplate)
 }
 
-func WithBoltDBAndTSDBPeriods(c *Cluster) {
+func SchemaWithBoltDBAndTSDB(c *Cluster) {
 	c.periodCfgs = append(c.periodCfgs, additionalBoltDBShipperSchemaConfigTemplate, tsdbShipperSchemaConfigTemplate)
 }

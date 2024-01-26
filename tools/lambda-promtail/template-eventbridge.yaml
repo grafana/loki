@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  lambda-promtail:
+
+  propagate Cloudwatch Logs to Loki/Promtail via Loki Write API.
+
+Parameters:
+  WriteAddress:
+    Description: "Address to write to in the form of: http<s>://<location><:port>/loki/api/v1/push"
+    Type: String
+    Default: "http://localhost:8080/loki/api/v1/push"
+  ReservedConcurrency:
+    Description: The maximum of concurrent executions you want to reserve for the function.
+    Type: Number
+    Default: 2
+  Username:
+    Description: The basic auth username, necessary if writing directly to Grafana Cloud Loki.
+    Type: String
+    Default: ""
+  Password:
+    Description: The basic auth password, necessary if writing directly to Grafana Cloud Loki.
+    Type: String
+    Default: ""
+    NoEcho: true
+  BearerToken:
+    Description: The bearer token, necessary if target endpoint requires it.
+    Type: String
+    Default: ""
+    NoEcho: true
+  LambdaPromtailImage:
+    Description: The ECR image URI to pull and use for lambda-promtail.
+    Type: String
+    Default: ""
+  KeepStream:
+    Description: Determines whether to keep the CloudWatch Log Stream value as a Loki label when writing logs from lambda-promtail.
+    Type: String
+    Default: "false"
+  ExtraLabels:
+    Description: Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail.
+    Type: String
+    Default: ""
+  OmitExtraLabelsPrefix:
+    Description: Whether or not to omit the prefix `__extra_` from extra labels defined in `ExtraLabels`.
+    Type: String
+    Default: "false"
+  TenantID:
+    Description: Tenant ID to be added when writing logs from lambda-promtail.
+    Type: String
+    Default: ""
+  SkipTlsVerify:
+    Description: Determines whether to verify the TLS certificate
+    Type: String
+    Default: "false"
+  EventSourceS3Bucket:
+    Description: The S3 bucket to listen event notifications from.
+    Type: String
+    Default: ""
+
+Resources:
+  LambdaPromtailRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Description: "Lambda Promtail Role"
+      Policies:
+        - PolicyName: logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: s3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: arn:aws:s3:::thepalbi-lambda-lb-access-logs/*
+      RoleName: iam_for_lambda
+  LambdaPromtailFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ImageUri: !Ref LambdaPromtailImage
+      MemorySize: 128
+      PackageType: Image
+      Timeout: 60
+      Role: !GetAtt LambdaPromtailRole.Arn
+      ReservedConcurrentExecutions: !Ref ReservedConcurrency
+      # # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-lambda-function-vpcconfig.html
+      # VpcConfig:
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          WRITE_ADDRESS: !Ref WriteAddress
+          USERNAME: !Ref Username
+          PASSWORD: !Ref Password
+          BEARER_TOKEN: !Ref BearerToken
+          KEEP_STREAM: !Ref KeepStream
+          EXTRA_LABELS: !Ref ExtraLabels
+          OMIT_EXTRA_LABELS_PREFIX: !Ref OmitExtraLabelsPrefix
+          TENANT_ID: !Ref TenantID
+          SKIP_TLS_VERIFY: !Ref SkipTlsVerify
+
+  LambdaPromtailVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref LambdaPromtailFunction
+
+  LambdaPromtailEventInvokeConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref LambdaPromtailFunction
+      MaximumRetryAttempts: 2
+      Qualifier: !GetAtt LambdaPromtailVersion.Version
+
+  # EventBridge rule to route s3 object created events to lambda promtail
+  EventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: EventRule
+      State: ENABLED
+      EventPattern: # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html#eb-filtering-data-
+        source:
+          - aws.s3
+        detail-type:
+          - "Object Created"
+        detail:
+          bucket:
+            name:
+              - !Ref EventSourceS3Bucket
+      Targets:
+        - Arn: !GetAtt LambdaPromtailFunction.Arn
+          Id: LambdaPromtailTarget
+
+  # Permission that allows EventBridge rule to trigger lambda promtail
+  EventRuleLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaPromtailFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventRule.Arn
+
+Outputs:
+  LambdaPromtailFunction:
+    Description: "Lambda Promtail Function ARN"
+    Value: !GetAtt LambdaPromtailFunction.Arn

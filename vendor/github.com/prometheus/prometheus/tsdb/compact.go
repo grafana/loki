@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -28,6 +27,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -44,7 +44,7 @@ func ExponentialBlockRanges(minSize int64, steps, stepSize int) []int64 {
 	curRange := minSize
 	for i := 0; i < steps; i++ {
 		ranges = append(ranges, curRange)
-		curRange = curRange * int64(stepSize)
+		curRange *= int64(stepSize)
 	}
 
 	return ranges
@@ -200,8 +200,8 @@ func (c *LeveledCompactor) Plan(dir string) ([]string, error) {
 }
 
 func (c *LeveledCompactor) plan(dms []dirMeta) ([]string, error) {
-	sort.Slice(dms, func(i, j int) bool {
-		return dms[i].meta.MinTime < dms[j].meta.MinTime
+	slices.SortFunc(dms, func(a, b dirMeta) int {
+		return int(a.meta.MinTime - b.meta.MinTime)
 	})
 
 	res := c.selectOverlappingDirs(dms)
@@ -380,8 +380,8 @@ func CompactBlockMetas(uid ulid.ULID, blocks ...*BlockMeta) *BlockMeta {
 	for s := range sources {
 		res.Compaction.Sources = append(res.Compaction.Sources, s)
 	}
-	sort.Slice(res.Compaction.Sources, func(i, j int) bool {
-		return res.Compaction.Sources[i].Compare(res.Compaction.Sources[j]) < 0
+	slices.SortFunc(res.Compaction.Sources, func(a, b ulid.ULID) int {
+		return a.Compare(b)
 	})
 
 	res.MinTime = mint
@@ -731,7 +731,7 @@ func (c DefaultBlockPopulator) PopulateBlock(ctx context.Context, metrics *Compa
 		closers = append(closers, tombsr)
 
 		k, v := index.AllPostingsKey()
-		all, err := indexr.Postings(k, v)
+		all, err := indexr.Postings(ctx, k, v)
 		if err != nil {
 			return err
 		}

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
 
 	utilsMath "github.com/grafana/loki/pkg/util/math"
 )
@@ -87,11 +87,18 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 	return func() { tick.Stop() }, tick.C
 }
 
+const SplitGap = time.Millisecond
+
 // ForInterval splits the given start and end time into given interval.
 // The start and end time in splits would be aligned to the interval
 // except for the start time of first split and end time of last split which would be kept same as original start/end
 // When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
 func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
+	if interval <= 0 {
+		callback(start, end)
+		return
+	}
+
 	ogStart := start
 	startNs := start.UnixNano()
 	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
@@ -102,7 +109,7 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		if !newEnd.Before(end) {
 			newEnd = end
 		} else if endTimeInclusive {
-			newEnd = newEnd.Add(-time.Millisecond)
+			newEnd = newEnd.Add(-SplitGap)
 		}
 		if firstInterval {
 			callback(ogStart, newEnd)

@@ -1,4 +1,4 @@
-local apps = ['loki', 'loki-canary', 'logcli'];
+local apps = ['loki', 'loki-canary', 'loki-canary-boringcrypto', 'logcli'];
 local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
@@ -160,14 +160,14 @@ local promtail_win() = pipeline('promtail-windows') {
   steps: [
     {
       name: 'identify-runner',
-      image: 'golang:1.19-windowsservercore-1809',
+      image: 'golang:1.21.3-windowsservercore-1809',
       commands: [
         'Write-Output $env:DRONE_RUNNER_NAME',
       ],
     },
     {
       name: 'test',
-      image: 'golang:1.19-windowsservercore-1809',
+      image: 'golang:1.21.3-windowsservercore-1809',
       commands: [
         'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
       ],
@@ -199,10 +199,10 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   depends_on: ['check'],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
+local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onPRs,
       settings+: {
@@ -212,7 +212,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     },
   ] + [
     // publish for tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onTagOrMain,
       settings+: {
@@ -330,7 +330,9 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
     // publish for tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
-      when: onTagOrMain,
+      when: onTagOrMain {
+        ref: ['refs/heads/main', 'refs/tags/operator/v*'],
+      },
       settings+: {},
     },
   ],
@@ -360,7 +362,6 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   ],
   depends_on: ['check'],
 };
-
 
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
@@ -415,8 +416,33 @@ local manifest(apps) = pipeline('manifest') {
   ] + [
     'promtail-%s' % arch
     for arch in archs
+  ] + [
+    'fluent-bit-%s' % arch
+    for arch in archs
   ],
 };
+
+local manifest_operator(app) = pipeline('manifest-operator') {
+  steps: [{
+    name: 'manifest-' + app,
+    image: 'plugins/manifest:1.4.0',
+    settings: {
+      // the target parameter is abused for the app's name,
+      // as it is unused in spec mode. See docker-manifest-operator.tmpl
+      target: app,
+      spec: '.drone/docker-manifest-operator.tmpl',
+      ignore_missing: false,
+      username: { from_secret: docker_username_secret.name },
+      password: { from_secret: docker_password_secret.name },
+    },
+    depends_on: ['clone'],
+  }],
+  depends_on: [
+    'lokioperator-%s' % arch
+    for arch in archs
+  ],
+};
+
 
 local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   steps: std.foldl(
@@ -470,40 +496,73 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
+local build_image_tag = '0.33.0';
 [
-  pipeline('loki-build-image') {
-    local build_image_tag = '0.28.3',
+  pipeline('loki-build-image-' + arch) {
     workspace: {
       base: '/src',
       path: 'loki',
     },
+    platform: {
+      os: 'linux',
+      arch: arch,
+    },
     steps: [
       {
-        name: 'test-image',
+        name: 'test',
         image: 'plugins/docker',
         when: onPRs + onPath('loki-build-image/**'),
+        environment: {
+          DOCKER_BUILDKIT: 1,
+        },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
-          tags: [build_image_tag],
+          tags: [build_image_tag + '-' + arch],
           dry_run: true,
         },
       },
       {
-        name: 'push-image',
+        name: 'push',
         image: 'plugins/docker',
         when: onTagOrMain + onPath('loki-build-image/**'),
+        environment: {
+          DOCKER_BUILDKIT: 1,
+        },
         settings: {
           repo: 'grafana/loki-build-image',
           context: 'loki-build-image',
           dockerfile: 'loki-build-image/Dockerfile',
           username: { from_secret: docker_username_secret.name },
           password: { from_secret: docker_password_secret.name },
-          tags: [build_image_tag],
+          tags: [build_image_tag + '-' + arch],
           dry_run: false,
         },
       },
+    ],
+  }
+  for arch in ['amd64', 'arm64']
+] + [
+  pipeline('loki-build-image-publish') {
+    steps: [
+      {
+        name: 'manifest',
+        image: 'plugins/manifest:1.4.0',
+        when: onTagOrMain + onPath('loki-build-image/**'),
+        settings: {
+          // the target parameter is abused for the app's name, as it is unused in spec mode.
+          target: 'loki-build-image:' + build_image_tag,
+          spec: '.drone/docker-manifest-build-image.tmpl',
+          ignore_missing: false,
+          username: { from_secret: docker_username_secret.name },
+          password: { from_secret: docker_password_secret.name },
+        },
+      },
+    ],
+    depends_on: [
+      'loki-build-image-%s' % arch
+      for arch in ['amd64', 'arm64']
     ],
   },
   pipeline('helm-test-image') {
@@ -551,7 +610,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         'cd -',
       ]) { depends_on: ['clone'], when: onPRs },
       make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
-      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
+      run('test-target-branch', commands=['cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
         'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',
@@ -581,10 +640,11 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
       ]) { depends_on: ['loki'], when: onPRs },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
+      make('validate-dev-cluster-config', container=false) { depends_on: ['validate-example-configs'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
         name: 'build-docs-website',
-        image: 'grafana/docs-base:latest',
+        image: 'grafana/docs-base:e6ef023f8b8',
         commands: [
           'mkdir -p /hugo/content/docs/loki/latest',
           'cp -r docs/sources/* /hugo/content/docs/loki/latest/',
@@ -651,15 +711,33 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   )
   for arch in archs
 ] + [
-  lokioperator(arch)
+  lokioperator(arch) {
+    trigger+: {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+        'refs/pull/*/head',
+      ],
+    },
+  }
   for arch in archs
 ] + [
-  fluentbit(),
+  fluentbit(arch)
+  for arch in archs
+] + [
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'loki-canary-boringcrypto', 'fluent-bit-plugin-loki']) {
     trigger+: onTagOrMain,
+  },
+  manifest_operator('loki-operator') {
+    trigger+: onTagOrMain {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+      ],
+    },
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',
@@ -872,6 +950,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
         },
         commands: [
+          'git fetch origin --tags',
           'make docker-driver-push',
         ],
         volumes: [

@@ -4,12 +4,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
@@ -27,10 +29,31 @@ func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 		},
 	})
 
-	expected := "loki.grafana.com/config-hash"
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationLokiConfigHash)
+	require.Equal(t, annotations[AnnotationLokiConfigHash], "deadbeef")
+}
+
+func TestNewQuerierDeployment_HasTemplateObjectStoreHashAnnotation(t *testing.T) {
+	ss := NewQuerierDeployment(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		ObjectStorage: storage.Options{
+			SecretSHA1: "deadbeef",
+		},
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, AnnotationLokiObjectStoreHash)
+	require.Equal(t, annotations[AnnotationLokiObjectStoreHash], "deadbeef")
 }
 
 func TestNewQuerierDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
@@ -47,10 +70,9 @@ func TestNewQuerierDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *tes
 		},
 	})
 
-	expected := "loki.grafana.com/certRotationRequiredAt"
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
+	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
 }
 
 func TestNewQuerierDeployment_SelectorMatchesLabels(t *testing.T) {
@@ -186,94 +208,53 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestNewQuerierDeployment_TopologySpreadConstraints(t *testing.T) {
-	for _, tc := range []struct {
-		Name                            string
-		Replication                     *lokiv1.ReplicationSpec
-		ExpectedTopologySpreadContraint []corev1.TopologySpreadConstraint
-	}{
-		{
-			Name: "default",
-			ExpectedTopologySpreadContraint: []corev1.TopologySpreadConstraint{
-				{
-					MaxSkew:     1,
-					TopologyKey: "kubernetes.io/hostname",
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": "querier",
-							"app.kubernetes.io/instance":  "abcd",
-						},
-					},
-					WhenUnsatisfiable: corev1.ScheduleAnyway,
+	obj, _ := BuildQuerier(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
 				},
 			},
-		},
-		{
-			Name: "replication_defined",
 			Replication: &lokiv1.ReplicationSpec{
 				Zones: []lokiv1.ZoneSpec{
 					{
 						TopologyKey: "zone",
-						MaxSkew:     3,
+						MaxSkew:     2,
 					},
 					{
 						TopologyKey: "region",
-						MaxSkew:     2,
+						MaxSkew:     1,
 					},
 				},
 				Factor: 1,
 			},
-			ExpectedTopologySpreadContraint: []corev1.TopologySpreadConstraint{
-				{
-					MaxSkew:     1,
-					TopologyKey: "kubernetes.io/hostname",
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": "querier",
-							"app.kubernetes.io/instance":  "abcd",
-						},
-					},
-					WhenUnsatisfiable: corev1.ScheduleAnyway,
-				},
-				{
-					MaxSkew:           3,
-					TopologyKey:       "zone",
-					WhenUnsatisfiable: "DoNotSchedule",
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": "querier",
-							"app.kubernetes.io/instance":  "abcd",
-						},
-					},
-				},
-				{
-					MaxSkew:           2,
-					TopologyKey:       "region",
-					WhenUnsatisfiable: "DoNotSchedule",
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/component": "querier",
-							"app.kubernetes.io/instance":  "abcd",
-						},
-					},
+		},
+	})
+	d := obj[0].(*appsv1.Deployment)
+	require.Equal(t, []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           2,
+			TopologyKey:       "zone",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "querier",
+					"app.kubernetes.io/instance":  "abcd",
 				},
 			},
 		},
-	} {
-		t.Run(tc.Name, func(t *testing.T) {
-			depl := NewQuerierDeployment(Options{
-				Name:      "abcd",
-				Namespace: "efgh",
-				Stack: lokiv1.LokiStackSpec{
-					Template: &lokiv1.LokiTemplateSpec{
-						Querier: &lokiv1.LokiComponentSpec{
-							Replicas: 1,
-						},
-					},
-					Replication: tc.Replication,
+		{
+			MaxSkew:           1,
+			TopologyKey:       "region",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "querier",
+					"app.kubernetes.io/instance":  "abcd",
 				},
-			})
-
-			require.Equal(t, tc.ExpectedTopologySpreadContraint, depl.Spec.Template.Spec.TopologySpreadConstraints)
-		})
-	}
+			},
+		},
+	}, d.Spec.Template.Spec.TopologySpreadConstraints)
 }

@@ -22,7 +22,8 @@ const (
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
 
-	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarName     = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarTemplate = "${" + gossipInstanceAddrEnvVarName + "}"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
@@ -58,7 +59,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.8.2"
+	DefaultContainerImage = "docker.io/grafana/loki:2.9.3"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -75,6 +76,8 @@ const (
 	AnnotationCertRotationRequiredAt string = "loki.grafana.com/certRotationRequiredAt"
 	// AnnotationLokiConfigHash stores the last SHA1 hash of the loki configuration
 	AnnotationLokiConfigHash string = "loki.grafana.com/config-hash"
+	// AnnotationLokiObjectStoreHash stores the last SHA1 hash of the loki object storage credetials.
+	AnnotationLokiObjectStoreHash string = "loki.grafana.com/object-store-hash"
 
 	// LabelCompactorComponent is the label value for the compactor component
 	LabelCompactorComponent string = "compactor"
@@ -97,6 +100,8 @@ const (
 	httpTLSDir = "/var/run/tls/http"
 	// grpcTLSDir is the path that is mounted from the secret for TLS
 	grpcTLSDir = "/var/run/tls/grpc"
+	// tenantCAsDir is the path that is mounted from the configmaps for mTLS
+	tenantCAsDir = "/var/run/tenants-ca"
 	// LokiStackCABundleDir is the path that is mounted from the configmap for TLS
 	caBundleDir = "/var/run/ca"
 	// caFile is the file name of the certificate authority file
@@ -123,20 +128,23 @@ const (
 var (
 	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
 
-	defaultConfigMapMode      = int32(420)
-	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
-	podAntiAffinityComponents = map[string]struct{}{
-		LabelIngesterComponent:      {},
-		LabelRulerComponent:         {},
-		LabelQueryFrontendComponent: {},
-	}
+	defaultRevHistoryLimit int32 = 10
+	defaultConfigMapMode   int32 = 420
+	volumeFileSystemMode         = corev1.PersistentVolumeFilesystem
 )
 
-func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
-	return map[string]string{
-		AnnotationLokiConfigHash:         configHash,
+func commonAnnotations(configHash, objStoreHash, rotationRequiredAt string) map[string]string {
+	a := map[string]string{
+		AnnotationLokiConfigHash: configHash,
+
 		AnnotationCertRotationRequiredAt: rotationRequiredAt,
 	}
+
+	if objStoreHash != "" {
+		a[AnnotationLokiObjectStoreHash] = objStoreHash
+	}
+
+	return a
 }
 
 func commonLabels(stackName string) map[string]string {
@@ -148,24 +156,11 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
-func componentInstaceLabels(component string, stackName string) map[string]string {
+func componentInstanceLabels(component string, stackName string) map[string]string {
 	return map[string]string{
 		kubernetesInstanceLabel:  stackName,
 		kubernetesComponentLabel: component,
 	}
-}
-
-// defaultTopologySpreadConstraints returns a topology spread contraint that will
-// instruct the scheduler to try and schedule pods from the same component in different nodes
-func defaultTopologySpreadConstraints(component string, stackName string) []corev1.TopologySpreadConstraint {
-	return []corev1.TopologySpreadConstraint{{
-		MaxSkew:     1,
-		TopologyKey: kubernetesNodeHostnameLabel,
-		LabelSelector: &metav1.LabelSelector{
-			MatchLabels: componentInstaceLabels(component, stackName),
-		},
-		WhenUnsatisfiable: corev1.ScheduleAnyway,
-	}}
 }
 
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
@@ -174,28 +169,6 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 		annotations[openshift.ServingCertKey] = serviceName
 	}
 	return annotations
-}
-
-func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
-	var tsc []corev1.TopologySpreadConstraint
-	if len(spec.Zones) > 0 {
-		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
-		for i, z := range spec.Zones {
-			tsc[i] = corev1.TopologySpreadConstraint{
-				MaxSkew:           int32(z.MaxSkew),
-				TopologyKey:       z.TopologyKey,
-				WhenUnsatisfiable: corev1.DoNotSchedule,
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						kubernetesComponentLabel: component,
-						kubernetesInstanceLabel:  stackName,
-					},
-				},
-			}
-		}
-	}
-
-	return tsc
 }
 
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
@@ -317,6 +290,18 @@ func gatewayUpstreamHTTPTLSCert() string {
 
 func gatewayUpstreamHTTPTLSKey() string {
 	return path.Join(gatewayUpstreamHTTPTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func tenantCAVolumeName(tenantName string) string {
+	return fmt.Sprintf("%s-ca-bundle", tenantName)
+}
+
+func tenantCADir(tennantName string) string {
+	return path.Join(tenantCAsDir, tennantName)
+}
+
+func TenantCAPath(tennantName, key string) string {
+	return path.Join(tenantCAsDir, tennantName, key)
 }
 
 func gatewayClientSecretName(stackName string) string {
@@ -532,10 +517,6 @@ func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool
 	if cSpec.PodAntiAffinity != nil {
 		affinity.PodAntiAffinity = cSpec.PodAntiAffinity
 	}
-
-	if affinity.NodeAffinity == nil && affinity.PodAntiAffinity == nil {
-		return nil
-	}
 	return affinity
 }
 
@@ -567,18 +548,13 @@ func defaultNodeAffinity(enableNodeAffinity bool) *corev1.NodeAffinity {
 // defaultPodAntiAffinity for components in podAntiAffinityComponents will
 // configure pods, of a LokiStack, to preferably not run on the same node
 func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAffinity {
-	_, enablePodAntiAffinity := podAntiAffinityComponents[componentLabel]
-	if !enablePodAntiAffinity {
-		return nil
-	}
-
 	return &corev1.PodAntiAffinity{
 		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
 			{
 				Weight: 100,
 				PodAffinityTerm: corev1.PodAffinityTerm{
 					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: componentInstaceLabels(componentLabel, stackName),
+						MatchLabels: componentInstanceLabels(componentLabel, stackName),
 					},
 					TopologyKey: kubernetesNodeHostnameLabel,
 				},

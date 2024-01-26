@@ -7,11 +7,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -84,7 +83,7 @@ func randomConfigOptions() Options {
 						MaxQuerySeries:          rand.Int31(),
 					},
 				},
-				Tenants: map[string]lokiv1.LimitsTemplateSpec{
+				Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 					uuid.New().String(): {
 						IngestionLimits: &lokiv1.IngestionLimitSpec{
 							IngestionRate:             rand.Int31(),
@@ -97,10 +96,12 @@ func randomConfigOptions() Options {
 							PerStreamRateLimit:        rand.Int31(),
 							PerStreamRateLimitBurst:   rand.Int31(),
 						},
-						QueryLimits: &lokiv1.QueryLimitSpec{
-							MaxEntriesLimitPerQuery: rand.Int31(),
-							MaxChunksPerQuery:       rand.Int31(),
-							MaxQuerySeries:          rand.Int31(),
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								MaxEntriesLimitPerQuery: rand.Int31(),
+								MaxChunksPerQuery:       rand.Int31(),
+								MaxQuerySeries:          rand.Int31(),
+							},
 						},
 					},
 				},
@@ -117,7 +118,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: pointer.Int64Ptr(rand.Int63()),
+							TolerationSeconds: ptr.To[int64](rand.Int63()),
 						},
 					},
 				},
@@ -132,7 +133,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: pointer.Int64Ptr(rand.Int63()),
+							TolerationSeconds: ptr.To[int64](rand.Int63()),
 						},
 					},
 				},
@@ -147,7 +148,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: pointer.Int64Ptr(rand.Int63()),
+							TolerationSeconds: ptr.To[int64](rand.Int63()),
 						},
 					},
 				},
@@ -162,7 +163,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: pointer.Int64Ptr(rand.Int63()),
+							TolerationSeconds: ptr.To[int64](rand.Int63()),
 						},
 					},
 				},
@@ -177,7 +178,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: pointer.Int64Ptr(rand.Int63()),
+							TolerationSeconds: ptr.To[int64](rand.Int63()),
 						},
 					},
 				},
@@ -192,7 +193,7 @@ func randomConfigOptions() Options {
 							Operator:          corev1.TolerationOpEqual,
 							Value:             uuid.New().String(),
 							Effect:            corev1.TaintEffectNoExecute,
-							TolerationSeconds: pointer.Int64Ptr(rand.Int63()),
+							TolerationSeconds: ptr.To[int64](rand.Int63()),
 						},
 					},
 				},
@@ -262,6 +263,61 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
+		{
+			desc: "user selected Topology zone",
+			spec: lokiv1.LokiStackSpec{
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							TopologyKey: "testzone",
+						},
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableInstanceAvailabilityZone: true,
+				InstancePort:                   9095,
+				BindPort:                       7946,
+				MembersDiscoveryAddr:           "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "IPv6 enabled with default instance address type",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6: true,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableIPv6:           true,
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "IPv6 enabled with podIP instance address type",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6:       true,
+						InstanceAddrType: lokiv1.InstanceAddrPodIP,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableIPv6:           true,
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
 	}
 	for _, tc := range tt {
 		tc := tc
@@ -320,7 +376,7 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 							Days: 14,
 						},
 					},
-					Tenants: map[string]lokiv1.LimitsTemplateSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"development": {
 							Retention: &lokiv1.RetentionLimitSpec{
 								Days: 3,
@@ -339,7 +395,7 @@ func TestConfigOptions_RetentionConfig(t *testing.T) {
 			spec: lokiv1.LokiStackSpec{
 				Size: lokiv1.SizeOneXExtraSmall,
 				Limits: &lokiv1.LimitsSpec{
-					Tenants: map[string]lokiv1.LimitsTemplateSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"development": {
 							Retention: &lokiv1.RetentionLimitSpec{
 								Days: 3,
@@ -667,12 +723,12 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 							RefreshInterval: "1m",
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
-									CAPath:     pointer.String("/var/run/ca/alertmanager/service-ca.crt"),
+									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
 								},
 								HeaderAuth: config.HeaderAuth{
-									Type:            pointer.String("Bearer"),
-									CredentialsFile: pointer.String("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+									Type:            ptr.To("Bearer"),
+									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
 								},
 							},
 						},
@@ -792,14 +848,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 									},
 									Client: &lokiv1.AlertManagerClientConfig{
 										TLS: &lokiv1.AlertManagerClientTLSConfig{
-											ServerName: pointer.String("application.svc"),
-											CAPath:     pointer.String("/tenant/application/alertmanager/ca.crt"),
-											CertPath:   pointer.String("/tenant/application/alertmanager/cert.crt"),
-											KeyPath:    pointer.String("/tenant/application/alertmanager/cert.key"),
+											ServerName: ptr.To("application.svc"),
+											CAPath:     ptr.To("/tenant/application/alertmanager/ca.crt"),
+											CertPath:   ptr.To("/tenant/application/alertmanager/cert.crt"),
+											KeyPath:    ptr.To("/tenant/application/alertmanager/cert.key"),
 										},
 										HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
-											Type:        pointer.String("Bearer"),
-											Credentials: pointer.String("letmeinplz"),
+											Type:        ptr.To("Bearer"),
+											Credentials: ptr.To("letmeinplz"),
 										},
 									},
 								},
@@ -816,14 +872,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 									},
 									Client: &lokiv1.AlertManagerClientConfig{
 										TLS: &lokiv1.AlertManagerClientTLSConfig{
-											ServerName: pointer.String("other.svc"),
-											CAPath:     pointer.String("/tenant/other/alertmanager/ca.crt"),
-											CertPath:   pointer.String("/tenant/other/alertmanager/cert.crt"),
-											KeyPath:    pointer.String("/tenant/other/alertmanager/cert.key"),
+											ServerName: ptr.To("other.svc"),
+											CAPath:     ptr.To("/tenant/other/alertmanager/ca.crt"),
+											CertPath:   ptr.To("/tenant/other/alertmanager/cert.crt"),
+											KeyPath:    ptr.To("/tenant/other/alertmanager/cert.key"),
 										},
 										BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
-											Username: pointer.String("user"),
-											Password: pointer.String("pass"),
+											Username: ptr.To("user"),
+											Password: ptr.To("pass"),
 										},
 									},
 								},
@@ -850,14 +906,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 							ExternalLabels:  map[string]string{"external": "label"},
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: pointer.String("application.svc"),
-									CAPath:     pointer.String("/tenant/application/alertmanager/ca.crt"),
-									CertPath:   pointer.String("/tenant/application/alertmanager/cert.crt"),
-									KeyPath:    pointer.String("/tenant/application/alertmanager/cert.key"),
+									ServerName: ptr.To("application.svc"),
+									CAPath:     ptr.To("/tenant/application/alertmanager/ca.crt"),
+									CertPath:   ptr.To("/tenant/application/alertmanager/cert.crt"),
+									KeyPath:    ptr.To("/tenant/application/alertmanager/cert.key"),
 								},
 								HeaderAuth: config.HeaderAuth{
-									Type:        pointer.String("Bearer"),
-									Credentials: pointer.String("letmeinplz"),
+									Type:        ptr.To("Bearer"),
+									Credentials: ptr.To("letmeinplz"),
 								},
 							},
 						},
@@ -874,14 +930,14 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 							ExternalLabels:  map[string]string{"external1": "label1"},
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: pointer.String("other.svc"),
-									CAPath:     pointer.String("/tenant/other/alertmanager/ca.crt"),
-									CertPath:   pointer.String("/tenant/other/alertmanager/cert.crt"),
-									KeyPath:    pointer.String("/tenant/other/alertmanager/cert.key"),
+									ServerName: ptr.To("other.svc"),
+									CAPath:     ptr.To("/tenant/other/alertmanager/ca.crt"),
+									CertPath:   ptr.To("/tenant/other/alertmanager/cert.crt"),
+									KeyPath:    ptr.To("/tenant/other/alertmanager/cert.key"),
 								},
 								BasicAuth: config.BasicAuth{
-									Username: pointer.String("user"),
-									Password: pointer.String("pass"),
+									Username: ptr.To("user"),
+									Password: ptr.To("pass"),
 								},
 							},
 						},
@@ -1016,12 +1072,90 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 							RefreshInterval: "1m",
 							Notifier: &config.NotifierConfig{
 								TLS: config.TLSConfig{
-									ServerName: pointer.String("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
-									CAPath:     pointer.String("/var/run/ca/alertmanager/service-ca.crt"),
+									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
 								},
 								HeaderAuth: config.HeaderAuth{
-									Type:            pointer.String("Bearer"),
-									CredentialsFile: pointer.String("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+									Type:            ptr.To("Bearer"),
+									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging mode with application override",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+					Limits: &lokiv1.LimitsSpec{
+						Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+							"application": {
+								QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+									QueryLimitSpec: lokiv1.QueryLimitSpec{
+										QueryTimeout: "5m",
+									},
+								},
+							},
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled:             false,
+						UserWorkloadAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        false,
+				EnableDiscovery: false,
+				RefreshInterval: "2m",
+				Hosts:           "http://my-alertmanager",
+			},
+			wantOverridesOptions: map[string]config.LokiOverrides{
+				"application": {
+					Limits: lokiv1.PerTenantLimitsTemplateSpec{
+						QueryLimits: &lokiv1.PerTenantQueryLimitSpec{
+							QueryLimitSpec: lokiv1.QueryLimitSpec{
+								QueryTimeout: "5m",
+							},
+						},
+					},
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",
+							EnableV2:        true,
+							EnableDiscovery: true,
+							RefreshInterval: "1m",
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
+								},
+								HeaderAuth: config.HeaderAuth{
+									Type:            ptr.To("Bearer"),
+									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
 								},
 							},
 						},
@@ -1193,4 +1327,90 @@ func TestConfigOptions_ServerOptions(t *testing.T) {
 	}
 
 	require.Equal(t, want, got.HTTPTimeouts)
+}
+
+func TestConfigOptions_Shipper(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		inOpt       Options
+		wantShipper []string
+	}{
+		{
+			name: "default_config_v11_schema",
+			inOpt: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: []lokiv1.ObjectStorageSchema{
+							{
+								Version:       lokiv1.ObjectStorageSchemaV11,
+								EffectiveDate: "2020-10-01",
+							},
+						},
+					},
+				},
+			},
+			wantShipper: []string{"boltdb"},
+		},
+		{
+			name: "v12_schema",
+			inOpt: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: []lokiv1.ObjectStorageSchema{
+							{
+								Version:       lokiv1.ObjectStorageSchemaV12,
+								EffectiveDate: "2020-02-05",
+							},
+						},
+					},
+				},
+			},
+			wantShipper: []string{"boltdb"},
+		},
+		{
+			name: "v13_schema",
+			inOpt: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: []lokiv1.ObjectStorageSchema{
+							{
+								Version:       lokiv1.ObjectStorageSchemaV13,
+								EffectiveDate: "2024-01-01",
+							},
+						},
+					},
+				},
+			},
+			wantShipper: []string{"tsdb"},
+		},
+		{
+			name: "multiple_schema",
+			inOpt: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: []lokiv1.ObjectStorageSchema{
+							{
+								Version:       lokiv1.ObjectStorageSchemaV11,
+								EffectiveDate: "2020-01-01",
+							},
+							{
+								Version:       lokiv1.ObjectStorageSchemaV12,
+								EffectiveDate: "2021-01-01",
+							},
+							{
+								Version:       lokiv1.ObjectStorageSchemaV13,
+								EffectiveDate: "2024-01-01",
+							},
+						},
+					},
+				},
+			},
+			wantShipper: []string{"boltdb", "tsdb"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ConfigOptions(tc.inOpt)
+			require.Equal(t, tc.wantShipper, got.Shippers)
+		})
+	}
 }

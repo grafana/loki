@@ -245,7 +245,20 @@ s3:
     ca_file: {{ . }}
     {{- end}}
   {{- end }}
+  {{- with .backoff_config}}
+  backoff_config:
+    {{- with .min_period }}
+    min_period: {{ . }}
+    {{- end}}
+    {{- with .max_period }}
+    max_period: {{ . }}
+    {{- end}}
+    {{- with .max_retries }}
+    max_retries: {{ . }}
+    {{- end}}
+  {{- end }}
 {{- end -}}
+
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
 gcs:
@@ -261,6 +274,9 @@ azure:
   {{- with .accountKey }}
   account_key: {{ . }}
   {{- end }}
+  {{- with .connectionString }}
+  connection_string: {{ . }}
+  {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
   use_federated_token: {{ .useFederatedToken }}
@@ -270,6 +286,42 @@ azure:
   {{- with .requestTimeout }}
   request_timeout: {{ . }}
   {{- end }}
+  {{- with .endpointSuffix }}
+  endpoint_suffix: {{ . }}
+  {{- end }}
+{{- end -}}
+{{- else if eq .Values.loki.storage.type "swift" -}}
+{{- with .Values.loki.storage.swift }}
+swift:
+  {{- with .auth_version }}
+  auth_version: {{ . }}
+  {{- end }}
+  auth_url: {{ .auth_url }}
+  {{- with .internal }}
+  internal: {{ . }}
+  {{- end }}
+  username: {{ .username }}
+  user_domain_name: {{ .user_domain_name }}
+  {{- with .user_domain_id }}
+  user_domain_id: {{ . }}
+  {{- end }}
+  {{- with .user_id }}
+  user_id: {{ . }}
+  {{- end }}
+  password: {{ .password }}
+  {{- with .domain_id }}
+  domain_id: {{ . }}
+  {{- end }}
+  domain_name: {{ .domain_name }}
+  project_id: {{ .project_id }}
+  project_name: {{ .project_name }}
+  project_domain_id: {{ .project_domain_id }}
+  project_domain_name: {{ .project_domain_name }}
+  region_name: {{ .region_name }}
+  container_name: {{ .container_name }}
+  max_retries: {{ .max_retries | default 3 }}
+  connect_timeout: {{ .connect_timeout | default "10s" }}
+  request_timeout: {{ .request_timeout | default "5s" }}
 {{- end -}}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
@@ -328,6 +380,9 @@ azure:
   {{- with .accountKey }}
   account_key: {{ . }}
   {{- end }}
+  {{- with .connectionString }}
+  connection_string: {{ . }}
+  {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
   use_federated_token: {{ .useFederatedToken }}
@@ -337,6 +392,42 @@ azure:
   {{- with .requestTimeout }}
   request_timeout: {{ . }}
   {{- end }}
+  {{- with .endpointSuffix }}
+  endpoint_suffix: {{ . }}
+  {{- end }}
+{{- end -}}
+{{- else if eq .Values.loki.storage.type "swift" -}}
+{{- with .Values.loki.storage.swift }}
+swift:
+  {{- with .auth_version }}
+  auth_version: {{ . }}
+  {{- end }}
+  auth_url: {{ .auth_url }}
+  {{- with .internal }}
+  internal: {{ . }}
+  {{- end }}
+  username: {{ .username }}
+  user_domain_name: {{ .user_domain_name }}
+  {{- with .user_domain_id }}
+  user_domain_id: {{ . }}
+  {{- end }}
+  {{- with .user_id }}
+  user_id: {{ . }}
+  {{- end }}
+  password: {{ .password }}
+  {{- with .domain_id }}
+  domain_id: {{ . }}
+  {{- end }}
+  domain_name: {{ .domain_name }}
+  project_id: {{ .project_id }}
+  project_name: {{ .project_name }}
+  project_domain_id: {{ .project_domain_id }}
+  project_domain_name: {{ .project_domain_name }}
+  region_name: {{ .region_name }}
+  container_name: {{ .container_name }}
+  max_retries: {{ .max_retries | default 3 }}
+  connect_timeout: {{ .connect_timeout | default "10s" }}
+  request_timeout: {{ .request_timeout | default "5s" }}
 {{- end -}}
 {{- else }}
 type: "local"
@@ -489,9 +580,9 @@ Params:
 */}}
 {{- define "loki.ingress.serviceName" -}}
 {{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.fullname" .ctx) }}
+{{- printf "%s" (include "loki.singleBinaryFullname" .ctx) }}
 {{- else }}
-{{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
+{{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
 {{- end -}}
 {{- end -}}
 
@@ -506,7 +597,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "swift") -}}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
@@ -517,7 +608,7 @@ Create the service endpoint including port for MinIO.
 {{/* Determine the public host for the Loki cluster */}}
 {{- define "loki.host" -}}
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
-{{- $url := printf "%s.%s.svc.%s." (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain }}
+{{- $url := printf "%s.%s.svc.%s.:%s" (include "loki.gatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.gateway.service.port | toString)  }}
 {{- if and $isSingleBinary (not .Values.gateway.enabled)  }}
   {{- $url = printf "%s.%s.svc.%s.:3100" (include "loki.singleBinaryFullname" .) .Release.Namespace .Values.global.clusterDomain }}
 {{- end }}
@@ -592,7 +683,11 @@ http {
 
   sendfile     on;
   tcp_nopush   on;
+  {{- if .Values.gateway.nginxConfig.resolver }}
+  resolver {{ .Values.gateway.nginxConfig.resolver }};
+  {{- else }}
   resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;
+  {{- end }}
 
   {{- with .Values.gateway.nginxConfig.httpSnippet }}
   {{- tpl . $ | nindent 2 }}
@@ -600,7 +695,9 @@ http {
 
   server {
     listen             8080;
+    {{- if .Values.gateway.nginxConfig.enableIPv6 }}
     listen             [::]:8080;
+    {{- end }}
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";
@@ -715,6 +812,11 @@ http {
 
     # QueryScheduler
     location = /scheduler/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    # Config
+    location = /config {
       proxy_pass       {{ $backendUrl }}$request_uri;
     }
 

@@ -1,11 +1,11 @@
 ---
 title: Loki reference topics
 menuTitle: Reference
-description:  Reference topics for Loki.
-weight: 1100
+description:  Overview page for Loki reference topics.
+weight: 1000
 ---
 
-# Loki reference topics 
+# Loki reference topics
 
 This section provides reference material for Loki.
 

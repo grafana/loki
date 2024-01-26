@@ -3,8 +3,8 @@ package index
 import (
 	"time"
 
+	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/mtime"
 )
 
 type schemaCaching struct {

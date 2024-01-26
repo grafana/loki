@@ -79,8 +79,11 @@ func (t *Tree[E, S]) Next() bool {
 	if t.nodes[t.nodes[0].index].index == -1 { // already exhausted
 		return false
 	}
-	t.moveNext(t.nodes[0].index)
-	t.replayGames(t.nodes[0].index)
+	if t.moveNext(t.nodes[0].index) {
+		t.replayGames(t.nodes[0].index)
+	} else {
+		t.sequenceEnded(t.nodes[0].index)
+	}
 	return t.nodes[t.nodes[0].index].index != -1
 }
 
@@ -102,11 +105,12 @@ func (t *Tree[E, S]) initialize() {
 	t.nodes[0].value = t.nodes[winners[1]].value
 }
 
-// Starting at pos, re-consider all values up to the root.
+// Starting at pos, which is a winner, re-consider all values up to the root.
 func (t *Tree[E, S]) replayGames(pos int) {
-	// At the start, pos is a leaf node, and is the winner at that level.
 	n := parent(pos)
 	for n != 0 {
+		// If n.value < pos.value then pos loses.
+		// If they are equal, pos wins because n could be a sequence that ended, with value maxval.
 		if t.less(t.nodes[n].value, t.nodes[pos].value) {
 			loser := pos
 			// Record pos as the loser here, and the old loser is the new winner.
@@ -119,6 +123,27 @@ func (t *Tree[E, S]) replayGames(pos int) {
 	// pos is now the winner; store it in node 0.
 	t.nodes[0].index = pos
 	t.nodes[0].value = t.nodes[pos].value
+}
+
+func (t *Tree[E, S]) sequenceEnded(pos int) {
+	// Find the first active sequence which used to lose to it.
+	n := parent(pos)
+	for n != 0 && t.nodes[t.nodes[n].index].index == -1 {
+		n = parent(n)
+	}
+	if n == 0 {
+		// There are no active sequences left
+		t.nodes[0].index = pos
+		t.nodes[0].value = t.maxVal
+		return
+	}
+
+	// Record pos as the loser here, and the old loser is the new winner.
+	loser := pos
+	winner := t.nodes[n].index
+	t.nodes[n].index = loser
+	t.nodes[n].value = t.nodes[loser].value
+	t.replayGames(winner)
 }
 
 func (t *Tree[E, S]) playGame(a, b int) (loser, winner int) {

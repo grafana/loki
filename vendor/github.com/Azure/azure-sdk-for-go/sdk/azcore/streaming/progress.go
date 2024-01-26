@@ -20,6 +20,9 @@ type progress struct {
 }
 
 // NopCloser returns a ReadSeekCloser with a no-op close method wrapping the provided io.ReadSeeker.
+// In addition to adding a Close method to an io.ReadSeeker, this can also be used to wrap an
+// io.ReadSeekCloser with a no-op Close method to allow explicit control of when the io.ReedSeekCloser
+// has its underlying stream closed.
 func NopCloser(rs io.ReadSeeker) io.ReadSeekCloser {
 	return exported.NopCloser(rs)
 }

@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
@@ -104,6 +105,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					newReadRingMock(ringIngesters, 1),
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
+					constants.Loki,
 				)
 				require.NoError(t, err)
 
@@ -203,6 +205,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 					newReadRingMock(ringIngesters, 1),
 					mockQuerierConfig().ExtraQueryDelay,
 					newIngesterClientMockFactory(ingesterClient),
+					constants.Loki,
 				)
 				require.NoError(t, err)
 
@@ -300,6 +303,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 				newReadRingMock(testData.ringIngesters, 0),
 				mockQuerierConfig().ExtraQueryDelay,
 				newIngesterClientMockFactory(ingesterClient),
+				constants.Loki,
 			)
 			require.NoError(t, err)
 
@@ -345,47 +349,49 @@ func TestConvertMatchersToString(t *testing.T) {
 	}
 }
 
-func TestIngesterQuerier_SeriesVolume(t *testing.T) {
+func TestIngesterQuerier_Volume(t *testing.T) {
 	t.Run("it gets label volumes from all the ingesters", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{foo="bar"}`, Value: "", Volume: 38},
+				{Name: `{foo="bar"}`, Volume: 38},
 			},
 			Limit: 10,
 		}
 
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		ingesterQuerier, err := newIngesterQuerier(
 			mockIngesterClientConfig(),
 			newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0),
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
+			constants.Loki,
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10)
+		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{foo="bar"}`, Value: "", Volume: 76},
+			{Name: `{foo="bar"}`, Volume: 76},
 		}, volumes.Volumes)
 	})
 
 	t.Run("it returns an empty result when an unimplemented error happens", func(t *testing.T) {
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(nil, status.Error(codes.Unimplemented, "something bad"))
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(nil, status.Error(codes.Unimplemented, "something bad"))
 
 		ingesterQuerier, err := newIngesterQuerier(
 			mockIngesterClientConfig(),
 			newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0),
 			mockQuerierConfig().ExtraQueryDelay,
 			newIngesterClientMockFactory(ingesterClient),
+			constants.Loki,
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10)
+		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume(nil), volumes.Volumes)
