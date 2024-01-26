@@ -255,6 +255,10 @@ type FingerprintBounds struct {
 	Min, Max model.Fingerprint
 }
 
+func (b FingerprintBounds) String() string {
+	return b.Min.String() + "-" + b.Max.String()
+}
+
 // Cmp returns the fingerprint's position relative to the bounds
 func (b FingerprintBounds) Cmp(fp model.Fingerprint) BoundsCheck {
 	if fp < b.Min {
