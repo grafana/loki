@@ -399,10 +399,12 @@ outer:
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
-// consumeTask receives from the task's error and result channel and forwards
-// the items to the respective supplied channels.
-// In case the context of the task is done, it consumes the remaining items
-// until the task is closed, however it does not forward them any mode.
+// consumeTask receives v1.Output yielded from the block querier on the task's
+// result channel and stores them on the task.
+// In case the context task is done, it drains the remaining items until the
+// task is closed by the worker.
+// Once the tasks is closed, it will send the task with the results from the
+// block querier to the supplied task channel.
 func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log.Logger) {
 	logger = log.With(logger, "task", task.ID)
 
@@ -418,7 +420,6 @@ func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log
 			task.responses = append(task.responses, res)
 		}
 	}
-	level.Debug(logger).Log("task error", task.Err())
 
 	select {
 	case <-ctx.Done():
@@ -427,8 +428,6 @@ func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log
 		// notify request handler about finished task
 		tasksCh <- task
 	}
-
-	level.Debug(logger).Log("msg", "exit")
 }
 
 func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output, logger log.Logger) {
