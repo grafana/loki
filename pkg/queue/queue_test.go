@@ -2,8 +2,8 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"strconv"
 	"sync"
 	"testing"
@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/util/constants"
 )
@@ -334,52 +336,196 @@ func TestMaxQueueSize(t *testing.T) {
 	})
 }
 
+type mockLimits struct {
+	maxConsumer int
+}
+
+func (l *mockLimits) MaxConsumers(_ string, _ int) int {
+	return l.maxConsumer
+}
+
 func Test_Queue_DequeueMany(t *testing.T) {
-	maxSize := 100
-	queue := NewRequestQueue(maxSize, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	wg, _ := errgroup.WithContext(ctx)
-
-	// 100 senders submits 100 tasks each.
-	for i := 0; i < 100; i++ {
-		tenant := fmt.Sprintf("tenant-%d", i)
-		wg.Go(func() error {
-			for j := 0; j < 100; j++ {
-				err := queue.Enqueue(tenant, []string{}, fmt.Sprintf("%s-task", tenant), nil)
-				if err != nil {
-					return fmt.Errorf("error while enqueueing task for the %s : %w", tenant, err)
-				}
-				time.Sleep(10 * time.Millisecond)
+	tenantsQueueMaxSize := 100
+	tests := map[string]struct {
+		tenantsCount          int
+		tasksPerTenant        int
+		consumersCount        int
+		dequeueBatchSize      int
+		maxConsumersPerTenant int
+		consumerDelay         time.Duration
+		senderDelay           time.Duration
+	}{
+		"tenants-1_tasks-10_consumers-3_batch-2": {
+			tenantsCount:     1,
+			tasksPerTenant:   10,
+			consumersCount:   3,
+			dequeueBatchSize: 2,
+		},
+		"tenants-10_tasks-10_consumers-2_batch-10": {
+			tenantsCount:     10,
+			tasksPerTenant:   10,
+			consumersCount:   2,
+			dequeueBatchSize: 10,
+		},
+		"tenants-100_tasks-100_consumers-10_batch-10": {
+			tenantsCount:     100,
+			tasksPerTenant:   100,
+			consumersCount:   10,
+			dequeueBatchSize: 10,
+		},
+		"tenants-100_tasks-100_consumers-10_batch-10_consumerDelay-10": {
+			tenantsCount:     100,
+			tasksPerTenant:   100,
+			consumersCount:   10,
+			dequeueBatchSize: 10,
+			consumerDelay:    10 * time.Millisecond,
+		},
+		"tenants-100_tasks-100_consumers-10_batch-10_consumerDelay-10_senderDelay-10": {
+			tenantsCount:     100,
+			tasksPerTenant:   100,
+			consumersCount:   10,
+			dequeueBatchSize: 10,
+			consumerDelay:    10 * time.Millisecond,
+			senderDelay:      10 * time.Millisecond,
+		},
+		"tenants-10_tasks-50_consumers-10_batch-3": {
+			tenantsCount:     10,
+			tasksPerTenant:   50,
+			consumersCount:   10,
+			dequeueBatchSize: 3,
+		},
+		"tenants-10_tasks-50_consumers-1_batch-5": {
+			tenantsCount:     10,
+			tasksPerTenant:   50,
+			consumersCount:   1,
+			dequeueBatchSize: 5,
+		},
+		"tenants-5_tasks-10_consumers-1_batch-2": {
+			tenantsCount:     5,
+			tasksPerTenant:   10,
+			consumersCount:   1,
+			dequeueBatchSize: 2,
+		},
+		"tenants-1_tasks-10_consumers-1_batch-2": {
+			tenantsCount:     1,
+			tasksPerTenant:   10,
+			consumersCount:   1,
+			dequeueBatchSize: 2,
+		},
+		"tenants-1_tasks-10_consumers-10_batch-2": {
+			tenantsCount:     1,
+			tasksPerTenant:   10,
+			consumersCount:   10,
+			dequeueBatchSize: 2,
+		},
+		"tenants-100_tasks-10_consumers-10_batch-6_maxConsumersPerTenant-6": {
+			tenantsCount:          100,
+			tasksPerTenant:        10,
+			consumersCount:        10,
+			dequeueBatchSize:      6,
+			maxConsumersPerTenant: 4,
+		},
+		"tenants-200_tasks-10_consumers-100_batch-999999_maxConsumersPerTenant-4": {
+			tenantsCount:          200,
+			tasksPerTenant:        10,
+			consumersCount:        100,
+			dequeueBatchSize:      999_999,
+			maxConsumersPerTenant: 4,
+		},
+		"tenants-10_tasks-100_consumers-20_batch-5_maxConsumersPerTenant-16": {
+			tenantsCount:          10,
+			tasksPerTenant:        100,
+			consumersCount:        20,
+			dequeueBatchSize:      5,
+			maxConsumersPerTenant: 16,
+		},
+		"tenants-1_tasks-100_consumers-16_batch-5_maxConsumersPerTenant-2": {
+			tenantsCount:          1,
+			tasksPerTenant:        100,
+			consumersCount:        16,
+			dequeueBatchSize:      5,
+			maxConsumersPerTenant: 2,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			totalTasksCount := tt.tenantsCount * tt.tasksPerTenant
+			limits := &mockLimits{maxConsumer: tt.maxConsumersPerTenant}
+			require.LessOrEqual(t, tt.tasksPerTenant, tenantsQueueMaxSize, "test must be able to enqueue all the tasks without error")
+			queue := NewRequestQueue(tenantsQueueMaxSize, 0, limits, NewMetrics(nil, constants.Loki, "query_scheduler"))
+			for i := 0; i < tt.consumersCount; i++ {
+				queue.RegisterConsumerConnection(createConsumerName(i))
 			}
-			return nil
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			wg, _ := errgroup.WithContext(ctx)
+
+			mtx := &sync.Mutex{}
+			receivedTasksPerTenant := make(map[string]int, tt.tenantsCount)
+			receivedTasksCount := atomic.NewInt32(0)
+			for i := 0; i < tt.consumersCount; i++ {
+				consumer := createConsumerName(i)
+				wg.Go(func() error {
+					idx := StartIndexWithLocalQueue
+					for {
+						tasks, newIdx, err := queue.DequeueMany(ctx, idx, consumer, tt.dequeueBatchSize)
+						receivedTasksCount.Add(int32(len(tasks)))
+
+						if err != nil && !errors.Is(err, context.Canceled) {
+							return fmt.Errorf("error while dequeueing many task by %s: %w", consumer, err)
+						}
+						if err == nil && len(tasks) == 0 {
+							return fmt.Errorf("%s must receive at least one item if there is no error, but got 0", consumer)
+						}
+						if len(tasks) > 1 && !isAllItemsSame(tasks) {
+							return fmt.Errorf("expected all items to be from the same tenant, but they were not: %v", tasks)
+						}
+						time.Sleep(tt.consumerDelay)
+						mtx.Lock()
+						if err == nil {
+							//tenant name is sent as task
+							tenant := tasks[0]
+							receivedTasksPerTenant[fmt.Sprintf("%v", tenant)] += len(tasks)
+						}
+						// put the slice back to the pool
+						queue.ReleaseRequests(tasks)
+						if receivedTasksCount.Load() == int32(totalTasksCount) {
+							//cancel the context to release the rest of the consumers once we received all the tasks from all the queues
+							cancel()
+							mtx.Unlock()
+							return nil
+						}
+						mtx.Unlock()
+						idx = newIdx
+					}
+				})
+			}
+
+			for i := 0; i < tt.tenantsCount; i++ {
+				tenant := fmt.Sprintf("tenant-%d", i)
+				wg.Go(func() error {
+					for j := 0; j < tt.tasksPerTenant; j++ {
+						err := queue.Enqueue(tenant, []string{}, tenant, nil)
+						if err != nil {
+							return fmt.Errorf("error while enqueueing task for the %s : %w", tenant, err)
+						}
+						time.Sleep(tt.senderDelay)
+					}
+					return nil
+				})
+			}
+
+			require.NoError(t, wg.Wait())
+			for tenant, actualTasksCount := range receivedTasksPerTenant {
+				require.Equalf(t, tt.tasksPerTenant, actualTasksCount, "%s received less tasks than expected", tenant)
+			}
 		})
 	}
+}
 
-	// 10 workers receives 100 batches each. each batch is 10 tasks.
-	for i := 0; i < 10; i++ {
-		wg.Go(func() error {
-			worker := fmt.Sprintf("worker-%d", i)
-			queue.RegisterConsumerConnection(worker)
-			idx := StartIndexWithLocalQueue
-			for j := 0; j < 100; j++ {
-				ctx := context.Background()
-				tasks, newIdx, err := queue.DequeueMany(ctx, idx, worker, 10, 10*time.Second)
-				if err != nil {
-					return fmt.Errorf("error while dequeueing many task by %s: %w", worker, err)
-				}
-				if !isAllItemsSame(tasks) {
-					return fmt.Errorf("expected all items to be from the same tenant, but they were not: %v", tasks)
-				}
-				idx = newIdx
-			}
-			return nil
-		})
-	}
-
-	err := wg.Wait()
-	require.NoError(t, err)
+func createConsumerName(i int) string {
+	return fmt.Sprintf("consumer-%d", i)
 }
 
 func isAllItemsSame[T comparable](items []T) bool {
