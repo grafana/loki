@@ -371,11 +371,11 @@ outer:
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, errors.Wrap(ctx.Err(), "waiting for results")
+			return nil, errors.Wrap(ctx.Err(), "request failed")
 		case task := <-tasksCh:
 			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
 			if task.Err() != nil {
-				return nil, errors.Wrap(err, "waiting fo result")
+				return nil, errors.Wrap(task.Err(), "request failed")
 			}
 			responses = append(responses, task.responses...)
 			remaining--
@@ -405,6 +405,7 @@ outer:
 // until the task is closed, however it does not forward them any mode.
 func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log.Logger) {
 	logger = log.With(logger, "task", task.ID)
+
 	task.responses = responsesPool.Get(len(task.series))
 	defer responsesPool.Put(task.responses)
 
@@ -417,6 +418,7 @@ func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log
 			task.responses = append(task.responses, res)
 		}
 	}
+	level.Debug(logger).Log("task error", task.Err())
 
 	select {
 	case <-ctx.Done():
