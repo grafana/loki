@@ -115,7 +115,8 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 	if len(c) > 1 && deduplicate {
 		sort.Sort(c)
 		last := c[0]
-		totalKB := float64(last.KB)
+		lastKB := float64(last.KB)
+		totalKB := lastKB
 		totalEntries := float64(last.Entries)
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
@@ -123,19 +124,7 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				// Adjust with arithmetic mean
 				overlap := cur.MaxTime - cur.MinTime
-				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
-
-				/*
-					adjustSize := (float64(cur.KB) + lastOverlapSize) / 2
-				*/
-
-				// Adjust with harmonic mean of rates
-				/*
-					rateLast := float64(last.KB) / float64(last.MaxTime-last.MinTime)
-					rateCur := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
-					H := 2.0 / (1.0/rateLast + 1.0/rateCur)
-					adjustSize := H * float64(overlap)
-				*/
+				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * lastKB
 
 				// Adjust with max of overlap
 				adjustSize := math.Max(lastOverlapSize, float64(cur.KB))
@@ -143,7 +132,7 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
 
 				totalKB = totalKB - lastOverlapSize + adjustSize
-				continue
+				lastKB = lastKB - lastOverlapSize + adjustSize
 			} else if cur.MinTime < last.MaxTime {
 				overlap := float64(last.MaxTime - cur.MinTime)
 				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
@@ -151,26 +140,24 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				adjustSize := math.Max(lastOverlapSize, curOverlapSize)
 
-				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
+				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur overlap", curOverlapSize, "adjust", adjustSize, "new cur", (float64(cur.KB) - curOverlapSize))
 
 				totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
 
-				/*
-					// Cut off [cur.MinTime, last.MaxTime] from [cur.MinTime, cur.MaxTime)
-					// -> [last.MaxTime, cur.MaxTime) is the new interval
-					// -> factor = len([last.MaxTime, cur.MaxTime)) / len([cur.MinTime, cur.MaxTime))
-					factor := float64(cur.MaxTime-last.MaxTime) / float64(cur.MaxTime-cur.MinTime)
-					c[n].KB = uint32(factor * float64(c[n].KB))
-					c[n].Entries = uint32(factor * float64(c[n].Entries))
-					c[n].MinTime = last.MaxTime
-				*/
+				last = cur
+				lastKB = float64(last.KB)
 			} else {
 				totalKB = totalKB + float64(cur.KB)
+				last = cur
+				lastKB = float64(last.KB)
 			}
-			last = cur
 		}
-		res.addRaw(len(c), uint32(totalKB), uint32(totalEntries))
-		return res
+		level.Info(util_log.Logger).Log("msg", "final chunks stats", "KB", totalKB, "chunks", len(c))
+		return ChunkStats{
+			Chunks:  uint64(len(c)),
+			KB:      uint64(totalKB),
+			Entries: uint64(totalEntries),
+		}
 	}
 
 	for _, chk := range c {

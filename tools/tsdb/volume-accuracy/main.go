@@ -32,30 +32,29 @@ func main() {
 	}
 
 	intervals := []model.Duration{
-		//	model.Duration(1 * time.Hour),
-		model.Duration(6 * time.Hour),
+		//model.Duration(6 * time.Hour),
 		model.Duration(12 * time.Hour),
-		model.Duration(4 * 24 * time.Hour),
+		//model.Duration(4 * 24 * time.Hour),
 	}
 
 	// Starts rounded to the second
 	starts := []time.Time{
 		time.Unix(1693216800, 0),
-		time.Unix(1693386000, 0),
+		//time.Unix(1693386000, 0),
 	}
 
 	acc := &accumulation{}
 
 	series := []string{
 		//`{cluster="dev-us-central-0"}`,
-		`{cluster="dev-us-central-0", namespace="cortex-dev-01"}`,
+		//`{cluster="dev-us-central-0", namespace="cortex-dev-01"}`,
 		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="infra-monitoring/eventrouter"}`,
-		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="cortex-dev-01/store-gateway-zone-a"}`,
-		`{cluster="dev-us-central-0", namespace="startup"}`,
-		`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
-		`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
-		`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
-		`{job="default/systemd-journal", nodename="gke-dev-us-central-0-hg-n2s8-4-4dcec77a-gdld", priority="notice",syslog_identifier="kernel",cluster="dev-us-central-0"}`,
+		//`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="cortex-dev-01/store-gateway-zone-a"}`,
+		//`{cluster="dev-us-central-0", namespace="startup"}`,
+		//`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
+		//`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
+		//`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
+		//`{job="default/systemd-journal", nodename="gke-dev-us-central-0-hg-n2s8-4-4dcec77a-gdld", priority="notice",syslog_identifier="kernel",cluster="dev-us-central-0"}`,
 	}
 
 	for _, now := range starts {
