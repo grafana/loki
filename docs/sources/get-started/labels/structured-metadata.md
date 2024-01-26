@@ -1,12 +1,12 @@
 ---
 menuTitle: Structured metadata
 title: What is structured metadata
-description: Attaching metadata to logs.
+description: Describes how to enable structure metadata for logs and how to query using structured metadata to filter log lines.
 ---
 # What is structured metadata
 
 {{% admonition type="warning" %}}
-Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki. This feature is not yet available for Cloud Logs users.
+Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki.
 {{% /admonition %}}
 
 {{% admonition type="warning" %}}
@@ -15,7 +15,7 @@ Structured metadata was added to chunk format V4 which is used if the schema ver
 
 One of the powerful features of Loki is parsing logs at query time to extract metadata and build labels out of it.
 However, the parsing of logs at query time comes with a cost which can be significantly high for, as an example,
-large json blobs or a poorly written query using complex regex patterns.
+large JSON blobs or a poorly written query using complex regex patterns.
 
 In addition, the data extracted from logs at query time is usually high cardinality, which can’t be stored
 in the index as it would increase the cardinality too much, and therefore reduce the performance of the index.
@@ -32,6 +32,8 @@ For more information on how to push logs to Loki via the HTTP endpoint, refer to
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach structured metadata to your log lines.
 See the [Promtail: Structured metadata stage]({{< relref "../../send-data/promtail/stages/structured_metadata" >}}) for more information.
 
+With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash]({{< relref "../../send-data/logstash/_index.md" >}}).
+
 ## Querying structured metadata
 
 Structured metadata is extracted automatically for each returned log line and added to the labels returned for the query.
@@ -40,7 +42,7 @@ You can use labels of structured metadata to filter log line using a [label filt
 For example, if you have a label `trace_id` attached to some of your log lines as structured metadata, you can filter log lines using:
 
 ```logql
-{job="example"} | trace_id="0242ac120002"`
+{job="example"} | trace_id="0242ac120002"
 ```
 
 Of course, you can filter by multiple labels of structured metadata at the same time:
@@ -49,7 +51,7 @@ Of course, you can filter by multiple labels of structured metadata at the same 
 {job="example"} | trace_id="0242ac120002" | user_id="superUser123"
 ```
 
-Note that since structured metadata is extracted automatically to the results labels, some metric queries might return 
+Note that since structured metadata is extracted automatically to the results labels, some metric queries might return
 an error like `maximum of series (50000) reached for a single query`. You can use the [Keep]({{< relref "../../query/log_queries#keep-labels-expression" >}}) and [Drop]({{< relref "../../query/log_queries#drop-labels-expression" >}}) stages to filter out labels that you don't need.
 For example:
 

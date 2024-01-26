@@ -37,12 +37,14 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.30.1
+BUILD_IMAGE_VERSION ?= 0.33.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-IMAGE_TAG := $(shell ./tools/image-tag)
+BUILD_IMAGE_PREFIX ?= grafana
+
+IMAGE_TAG ?= $(shell ./tools/image-tag)
 
 # Version info for binaries
 GIT_REVISION := $(shell git rev-parse --short HEAD)
@@ -101,17 +103,15 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
-DOCKER_BUILDKIT=1
-OCI_PLATFORMS=--platform=linux/amd64 --platform=linux/arm64 --platform=linux/arm/7
-BUILD_IMAGE = BUILD_IMAGE=$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+DOCKER_BUILDKIT ?= 1
+BUILD_IMAGE = BUILD_IMAGE=$(BUILD_IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
+PUSH_OCI=docker push
+TAG_OCI=docker tag
 ifeq ($(CI), true)
-	BUILD_OCI=img build --no-console $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=img push
-	TAG_OCI=img tag
+	OCI_PLATFORMS=--platform=linux/amd64,linux/arm64
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
 else
-	BUILD_OCI=docker build --build-arg $(BUILD_IMAGE)
-	PUSH_OCI=docker push
-	TAG_OCI=docker tag
+	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg $(BUILD_IMAGE)
 endif
 
 binfmt:
@@ -281,7 +281,16 @@ cmd/migrate/migrate:
 #############
 GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
+
+SKIP_ARM ?= false
 dist: clean
+ifeq ($(SKIP_ARM),true)
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
@@ -289,6 +298,7 @@ dist: clean
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -307,7 +317,7 @@ publish: packages
 lint: ## run linters
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v
+	GO111MODULE=on golangci-lint run -v --timeout 15m
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 
 ########
@@ -427,7 +437,7 @@ PLUGIN_ARCH ?=
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -565,7 +575,6 @@ promtail-image: ## build the promtail docker image
 promtail-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
-promtail-debug-image: OCI_PLATFORMS=
 promtail-debug-image: ## build the promtail debug docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
 
@@ -578,7 +587,6 @@ loki-image: ## build the loki docker image
 loki-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
-loki-debug-image: OCI_PLATFORMS=
 loki-debug-image: ## build the debug loki docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
@@ -620,17 +628,23 @@ logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 
 
-# build-image (only amd64)
-build-image: OCI_PLATFORMS=
-build-image: ## build the docker build image
+# build-image
+ensure-buildx-builder:
+ifeq ($(CI),true)
+	./tools/ensure-buildx-builder.sh
+else
+	@echo "skipping buildx setup"
+endif
+
+build-image: ensure-buildx-builder
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(call push,loki-build-image,$(BUILD_IMAGE_VERSION))
-	$(call push,loki-build-image,latest)
+	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
+	$(SUDO) $(BUILD_OCI) -o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 
 # loki-operator
 loki-operator-image:
@@ -786,33 +800,37 @@ check-doc: doc
 ###################
 # Example Configs #
 ###################
-CONFIG_DOC_PATH := $(DOC_SOURCES_PATH)/configure
-CONFIG_EXAMPLES_PATH := $(CONFIG_DOC_PATH)/examples
-CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
+EXAMPLES_DOC_PATH := $(DOC_SOURCES_PATH)/configure/examples
+EXAMPLES_DOC_OUTPUT_PATH := $(EXAMPLES_DOC_PATH)/configuration-examples.md
+EXAMPLES_YAML_PATH := $(EXAMPLES_DOC_PATH)/yaml
+EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 
 # Validate the example configurations that we provide in ./docs/sources/configure/examples
 # We run the validation only for complete examples, not snippets.
 # Complete examples should contain "Example" in their file name.
 validate-example-configs: loki
-	for f in $$(grep -rL $(CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG) $(CONFIG_EXAMPLES_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+	for f in $$(grep -rL $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+
+validate-dev-cluster-config: loki
+	./cmd/loki/loki -config.file=./tools/dev/loki-boltdb-storage-s3/config/loki.yaml -verify-config
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
+	echo "Removing existing doc at $(EXAMPLES_DOC_OUTPUT_PATH) and re-generating. . ."
 	# Title and Heading
-	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > $(CONFIG_DOC_PATH)/examples.md
+	echo -e "---\ntitle: Configuration\ndescription: Loki Configuration Examples and Snippets\nweight:  100\n---\n# Configuration" > $(EXAMPLES_DOC_OUTPUT_PATH)
 	# Append each configuration and its file name to examples.md
-	for f in $$(find $(CONFIG_EXAMPLES_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
-		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(CONFIG_DOC_PATH)/examples.md; \
-		grep -v $(CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG) $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
-		echo -e "\n\`\`\`\n" >> $(CONFIG_DOC_PATH)/examples.md; \
+	for f in $$(find $(EXAMPLES_YAML_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
+		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		grep -v $(EXAMPLES_SKIP_VALIDATION_FLAG) $(EXAMPLES_YAML_PATH)/$$f >> $(EXAMPLES_DOC_OUTPUT_PATH); \
+		echo -e "\n\`\`\`\n" >> $(EXAMPLES_DOC_OUTPUT_PATH); \
 	done
 
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if ! (git diff --exit-code ./docs/sources/configure/examples.md); then \
+	@if ! (git diff --exit-code $(EXAMPLES_DOC_OUTPUT_PATH)); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
@@ -830,5 +848,18 @@ dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
 
 # Trivy is used to scan images for vulnerabilities
-trivy: loki-image
+.PHONY: trivy
+trivy: loki-image build-image
 	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
+	trivy fs go.mod
+
+# Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
+.PHONY: snyk
+snyk: loki-image build-image
+	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
+	snyk code test
+
+.PHONY: scan-vulnerabilities
+scan-vulnerabilities: trivy snyk

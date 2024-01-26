@@ -137,14 +137,15 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 func getDropLabels() ([]model.LabelName, error) {
 	var result []model.LabelName
 
-	dropLabelsRaw = os.Getenv("DROP_LABELS")
-	dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
-	for _, dropLabelRaw := range dropLabelsRawSplit {
-		dropLabel := model.LabelName(dropLabelRaw)
-		if !dropLabel.IsValid() {
-			return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
+	if dropLabelsRaw = os.Getenv("DROP_LABELS"); dropLabelsRaw != "" {
+		dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
+		for _, dropLabelRaw := range dropLabelsRawSplit {
+			dropLabel := model.LabelName(dropLabelRaw)
+			if !dropLabel.IsValid() {
+				return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
+			}
+			result = append(result, dropLabel)
 		}
-		result = append(result, dropLabel)
 	}
 
 	return result, nil

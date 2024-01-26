@@ -29,6 +29,7 @@ type Options struct {
 	MaxConcurrent         MaxConcurrent
 	WriteAheadLog         WriteAheadLog
 	EnableRemoteReporting bool
+	Shippers              []string
 
 	ObjectStorage storage.Options
 
@@ -40,7 +41,7 @@ type Options struct {
 }
 
 type LokiOverrides struct {
-	Limits lokiv1.LimitsTemplateSpec
+	Limits lokiv1.PerTenantLimitsTemplateSpec
 	Ruler  RulerOverrides
 }
 

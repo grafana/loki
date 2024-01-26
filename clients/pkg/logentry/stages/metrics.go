@@ -179,6 +179,7 @@ func (m *metricStage) Name() string {
 }
 
 // recordCounter will update a counter metric
+// nolint:goconst
 func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {
 	// If value matching is defined, make sure value matches.
 	if counter.Cfg.Value != nil {

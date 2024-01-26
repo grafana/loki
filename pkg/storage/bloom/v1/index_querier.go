@@ -1,16 +1,11 @@
 package v1
 
 import (
-	"context"
 	"sort"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
 )
-
-type IndexQuerier interface {
-	Series(context.Context) Iterator[*SeriesWithOffset]
-}
 
 type SeriesIterator interface {
 	Iterator[*SeriesWithOffset]
@@ -47,6 +42,9 @@ func (it *LazySeriesIter) ensureInit() {
 // Seek returns an iterator over the pages where the first fingerprint is >= fp
 func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 	it.ensureInit()
+	if it.err != nil {
+		return it.err
+	}
 
 	// first potentially relevant page
 	desiredPage := sort.Search(len(it.b.index.pageHeaders), func(i int) bool {
@@ -54,10 +52,8 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 		return header.ThroughFp >= fp
 	})
 
-	page := it.b.index.pageHeaders[desiredPage]
-
 	switch {
-	case desiredPage == len(it.b.index.pageHeaders), page.FromFp > fp:
+	case desiredPage == len(it.b.index.pageHeaders):
 		// no overlap exists, either because no page was found with a throughFP >= fp
 		// or because the first page that was found has a fromFP > fp,
 		// meaning successive pages would also have a fromFP > fp
@@ -70,6 +66,7 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 		// on the right page, no action needed
 	default:
 		// need to load a new page
+		page := it.b.index.pageHeaders[desiredPage]
 		r, err := it.b.reader.Index()
 		if err != nil {
 			return errors.Wrap(err, "getting index reader")

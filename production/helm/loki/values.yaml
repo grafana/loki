@@ -235,6 +235,14 @@ loki:
     frontend_worker:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
+    {{- with .Values.loki.distributor }}
+    distributor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    tracing:
+      enabled: {{ .Values.loki.tracing.enabled }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -249,7 +257,6 @@ loki:
     grpc_listen_port: 9095
   # -- Limits config
   limits_config:
-    enforce_metric_name: false
     reject_old_samples: true
     reject_old_samples_max_age: 168h
     max_cache_freshness_per_query: 10m
@@ -278,6 +285,8 @@ loki:
       s3ForcePathStyle: false
       insecure: false
       http_config: {}
+      # -- Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config
+      backoff_config: {}
     gcs:
       chunkBufferSize: 0
       requestTimeout: "0s"
@@ -291,6 +300,26 @@ loki:
       userAssignedId: null
       requestTimeout: null
       endpointSuffix: null
+    swift:
+      auth_version: null
+      auth_url: null
+      internal: null
+      username: null
+      user_domain_name: null
+      user_domain_id: null
+      user_id: null
+      password: null
+      domain_id: null
+      domain_name: null
+      project_id: null
+      project_name: null
+      project_domain_id: null
+      project_domain_name: null
+      region_name: null
+      container_name: null
+      max_retries: null
+      connect_timeout: null
+      request_timeout: null
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
@@ -338,11 +367,16 @@ loki:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   frontend_worker:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
+  # -- Optional distributor configuration
+  distributor: {}
+  # -- Enable tracing
+  tracing:
+    enabled: false
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default verion of GEL to deploy
-  version: v1.8.3
+  version: v1.8.4
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -549,6 +583,12 @@ monitoring:
     enabled: true
     # -- Include alerting rules
     alerting: true
+    # -- Specify which individual alerts should be disabled
+    # -- Instead of turning off each alert one by one, set the .monitoring.rules.alerting value to false instead.
+    # -- If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.
+    disabled: {}
+    #  LokiRequestErrors: true
+    #  LokiRequestPanics: true
     # -- Alternative namespace to create PrometheusRule resources in
     namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
@@ -768,6 +808,8 @@ write:
   # https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown
   # -- Init containers to add to the write pods
   initContainers: []
+  # -- Containers to add to the write pods
+  extraContainers: []
   # -- Volume mounts to add to the write pods
   extraVolumeMounts: []
   # -- Volumes to add to the write pods
@@ -793,6 +835,8 @@ write:
   dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for write pods
+  topologySpreadConstraints: []
   # -- Tolerations for write pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -969,6 +1013,8 @@ read:
   dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for read pods
+  topologySpreadConstraints: []
   # -- Tolerations for read pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1070,6 +1116,8 @@ backend:
   dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for backend pods
+  topologySpreadConstraints: []
   # -- Tolerations for backend pods
   tolerations: []
   # -- The default is to deploy all pods in parallel.
@@ -1311,6 +1359,8 @@ gateway:
     allowPrivilegeEscalation: false
   # -- Resource requests and limits for the gateway
   resources: {}
+  # -- Containers to add to the gateway pods
+  extraContainers: []
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string
@@ -1326,6 +1376,8 @@ gateway:
   dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway pods
   tolerations: []
   # Gateway service configuration
@@ -1380,8 +1432,10 @@ gateway:
     # high CPU load.
     htpasswd: >-
       {{ if .Values.loki.tenants }}
+
         {{- range $t := .Values.loki.tenants }}
       {{ htpasswd (required "All tenants must have a 'name' set" $t.name) (required "All tenants must have a 'password' set" $t.password) }}
+
         {{- end }}
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
@@ -1394,6 +1448,8 @@ gateway:
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
+    # -- Enable listener for IPv6, disable on IPv4-only systems
+    enableIPv6: true
     # -- NGINX log format
     logFormat: |-
       main '$remote_addr - $remote_user [$time_local]  $status '
@@ -1410,6 +1466,8 @@ gateway:
     customWriteUrl: null
     # -- Override Backend URL
     customBackendUrl: null
+    # -- Allows overriding the DNS resolver address nginx will use.
+    resolver: ""
     # -- Config file contents for Nginx. Passed through the `tpl` function to allow templating
     # @default -- See values.yaml
     file: |
@@ -1417,6 +1475,9 @@ gateway:
 networkPolicy:
   # -- Specifies whether Network Policies should be created
   enabled: false
+  # -- Specifies whether the policies created will be standard Network Policies (flavor: kubernetes)
+  # or Cilium Network Policies (flavor: cilium)
+  flavor: kubernetes
   metrics:
     # -- Specifies the Pods which are allowed to access the metrics port.
     # As this is cross-namespace communication, you also need the namespaceSelector.
@@ -1454,8 +1515,6 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
-tracing:
-  jaegerAgentHost: ""
 # -------------------------------------
 # Configuration for `minio` child chart
 # -------------------------------------

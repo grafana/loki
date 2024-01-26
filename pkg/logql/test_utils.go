@@ -218,22 +218,22 @@ func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return 
 func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
-		params := NewLiteralParams(
-			query.Expr.String(),
-			query.Params.Start(),
-			query.Params.End(),
-			query.Params.Step(),
-			query.Params.Interval(),
-			query.Params.Direction(),
-			query.Params.Limit(),
-			query.Shards.Encode(),
-		)
-		res, err := m.Query(params).Exec(ctx)
+		res, err := m.Query(query.Params).Exec(ctx)
 		if err != nil {
 			return nil, err
 		}
 
 		results = append(results, res)
+	}
+
+	if matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix); ok {
+		if len(results) == 1 {
+			return results, nil
+		}
+		for _, m := range results[1:] {
+			matrix, _ = matrix.Merge(m.Data.(ProbabilisticQuantileMatrix))
+		}
+		return []logqlmodel.Result{{Data: matrix}}, nil
 	}
 	return results, nil
 }

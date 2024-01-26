@@ -16,11 +16,12 @@ func TestArchive(t *testing.T) {
 	dir2 := t.TempDir()
 
 	numSeries := 100
-	data := mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
+	numKeysPerSeries := 10000
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
@@ -32,7 +33,8 @@ func TestArchive(t *testing.T) {
 
 	require.Nil(t, err)
 	itr := NewSliceIter[SeriesWithBloom](data)
-	require.Nil(t, builder.BuildFrom(itr))
+	_, err = builder.BuildFrom(itr)
+	require.Nil(t, err)
 
 	reader := NewDirectoryBlockReader(dir1)
 

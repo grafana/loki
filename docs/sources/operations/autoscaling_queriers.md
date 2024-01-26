@@ -1,7 +1,7 @@
 ---
 title: Autoscaling Loki queriers
 menuTitle: Autoscaling queriers
-description: Kubernetes deployments of a microservices mode Loki cluster can use KEDA to autoscale the quantity of queriers.
+description: Describes how to use KEDA to autoscale the quantity of queriers for a microsevices mode Kubernetes deployment.
 weight: 
 ---
 
@@ -27,14 +27,14 @@ Because queriers pull queries from the query-scheduler queue and process them on
 - The scheduler queue size.
 - The queries running in the queriers.
 
-The query-scheduler exposes the `cortex_query_scheduler_inflight_requests` metric.
+The query-scheduler exposes the `loki_query_scheduler_inflight_requests` metric.
 It tracks the sum of queued queries plus the number of queries currently running in the querier workers.
 The following query is useful to scale queriers based on the inflight requests.
 
 ```promql
 sum(
   max_over_time(
-    cortex_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="<Q>"}[<R>]
+    loki_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="<Q>"}[<R>]
   )
 )
 ```
@@ -66,7 +66,7 @@ So if we use 6 workers per querier, we will use the following query:
 ```promql
 clamp_min(ceil(
     avg(
-        avg_over_time(cortex_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.75"}[7d])
+        avg_over_time(loki_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.75"}[7d])
     ) / scalar(floor(vector(6 * 0.75)))
 ), 1)
 ```
@@ -79,7 +79,7 @@ The resulting query becomes:
 ```promql
 ceil(
     max(
-        max_over_time(cortex_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.5"}[7d])
+        max_over_time(loki_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.5"}[7d])
     ) / 6
 )
 ```
@@ -111,7 +111,7 @@ spec:
   triggers:
   - metadata:
       metricName: querier_autoscaling_metric
-      query: sum(max_over_time(cortex_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.75"}[2m]))
+      query: sum(max_over_time(loki_query_scheduler_inflight_requests{namespace="loki-cluster", quantile="0.75"}[2m]))
       serverAddress: http://prometheus.default:9090/prometheus
       threshold: "4"
     type: prometheus

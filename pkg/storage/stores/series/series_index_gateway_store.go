@@ -28,11 +28,12 @@ func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.L
 	}
 }
 
-func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	response, err := c.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{
 		From:     from,
 		Through:  through,
-		Matchers: (&syntax.MatchersExpr{Mts: allMatchers}).String(),
+		Matchers: (&syntax.MatchersExpr{Mts: predicate.Matchers}).String(),
+		Filters:  predicate.Filters,
 	})
 	if err != nil {
 		return nil, err

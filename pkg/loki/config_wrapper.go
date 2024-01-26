@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 
 	"github.com/grafana/loki/pkg/ruler/rulestore/local"
 	loki_net "github.com/grafana/loki/pkg/util/net"
@@ -113,11 +113,11 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		}
 
 		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterBoltdbShipperDefaults(r)
 		}
 
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterTSDBShipperDefaults(r, &defaults, r.SchemaConfig.Configs[i])
+			betterTSDBShipperDefaults(r)
 		}
 
 		applyEmbeddedCacheConfig(r)
@@ -211,7 +211,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 		// neither common ring nor memberlist set, use ingester ring configuration for all rings
 		// that have not been configured. Don't merge any ingester ring configurations for rings
 		// that deviate from the default in any way.
-		ingesterRingCfg := util.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
+		ingesterRingCfg := lokiring.CortexLifecyclerConfigToRingConfig(r.Ingester.LifecyclerConfig)
 		applyConfigToRings(r, defaults, ingesterRingCfg, false)
 	}
 }
@@ -223,7 +223,7 @@ func applyDynamicRingConfigs(r, defaults *ConfigWrapper) {
 // ring defined. When `mergeWithExisting` is false, we will not apply any of the ring config to a ring that has
 // any deviations from defaults. When mergeWithExisting is true, the ring config is overlaid on top of any specified
 // derivations, with the derivations taking precedence.
-func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWithExisting bool) {
+func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, mergeWithExisting bool) {
 	// Ingester - mergeWithExisting is false when applying the ingester config, and we only want to
 	// change ingester ring values when applying the common config, so there's no need for the DeepEqual
 	// check here.
@@ -302,6 +302,32 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
+
+	// BloomCompactor
+	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
+		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
+		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
+		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
+		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
+		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.BloomCompactor.Ring.KVStore = rc.KVStore
+	}
+
+	// BloomGateway
+	if mergeWithExisting || reflect.DeepEqual(r.BloomGateway.Ring, defaults.BloomGateway.Ring) {
+		r.BloomGateway.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.BloomGateway.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.BloomGateway.Ring.InstancePort = rc.InstancePort
+		r.BloomGateway.Ring.InstanceAddr = rc.InstanceAddr
+		r.BloomGateway.Ring.InstanceID = rc.InstanceID
+		r.BloomGateway.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.BloomGateway.Ring.InstanceZone = rc.InstanceZone
+		r.BloomGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.BloomGateway.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -326,11 +352,26 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.QueryScheduler.SchedulerRing.TokensFilePath = f
 
+	// Index Gateway
 	f, err = tokensFile(cfg, "indexgateway.tokens")
 	if err != nil {
 		return err
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
+
+	// Bloom-Compactor
+	f, err = tokensFile(cfg, "bloom-compactor.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.BloomCompactor.Ring.TokensFilePath = f
+
+	// Bloom-Gateway
+	f, err = tokensFile(cfg, "bloomgateway.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.BloomGateway.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -412,6 +453,14 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
+		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.BloomGateway.Ring.InstanceInterfaceNames, defaults.BloomGateway.Ring.InstanceInterfaceNames) {
+		cfg.BloomGateway.Ring.InstanceInterfaceNames = append(cfg.BloomGateway.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -425,6 +474,8 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
+	r.BloomGateway.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -524,11 +575,7 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
+func betterBoltdbShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -542,11 +589,7 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 	}
 }
 
-func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
-		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
-	}
-
+func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
 
@@ -576,14 +619,32 @@ func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 
 	indexStatsCacheConfig := r.QueryRange.StatsCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
+		prefix := indexStatsCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.StatsCacheConfig.CacheConfig.Prefix = prefix
 	}
 
 	volumeCacheConfig := r.QueryRange.VolumeCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(volumeCacheConfig) {
+		prefix := volumeCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.VolumeCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	seriesCacheConfig := r.QueryRange.SeriesCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(seriesCacheConfig) {
+		prefix := seriesCacheConfig.Prefix
+		r.QueryRange.SeriesCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.SeriesCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	labelsCacheConfig := r.QueryRange.LabelsCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(labelsCacheConfig) {
+		prefix := labelsCacheConfig.Prefix
+		r.QueryRange.LabelsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.LabelsCacheConfig.CacheConfig.Prefix = prefix
 	}
 }
 

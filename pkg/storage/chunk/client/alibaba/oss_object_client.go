@@ -13,12 +13,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 const NoSuchKeyErr = "NoSuchKey"
 
 var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "loki",
+	Namespace: constants.Loki,
 	Name:      "oss_request_duration_seconds",
 	Help:      "Time spent doing OSS requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.005, 4, 7),

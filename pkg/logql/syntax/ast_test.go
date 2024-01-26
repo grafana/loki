@@ -177,10 +177,10 @@ func Test_SampleExpr_String(t *testing.T) {
 		)
 		`,
 		`(((
-			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) 
-				or on ()  
-				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60)) 
-				or on ()  
+			sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-1min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60)
+				or on ()
+				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60))
+				or on ()
 				((sum by(typename,pool,commandname,colo) (sum_over_time({_namespace_="appspace", _schema_="appspace-1h", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) / 60))`,
 		`{app="foo"} | logfmt code="response.code", IPAddress="host"`,
 	} {
@@ -384,6 +384,13 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
 		},
 		{
+			`{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo buzz", true}, {"bar fizz", true}, {"foo", false}, {"bar", false}, {"none", false}},
+		},
+		{
 			`{app="foo"} != "foo" or "bar"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -403,6 +410,20 @@ func Test_FilterMatcher(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", false}, {"127.0.0.2", false}, {"127.0.0.1", true}},
+		},
+		{
+			`{app="foo"} != ip("127.0.0.1") or "foo"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
 		},
 	} {
 		tt := tt
@@ -436,8 +457,8 @@ func TestOrLineFilterTypes(t *testing.T) {
 		{labels.MatchNotRegexp},
 	} {
 		t.Run("right inherits left's type", func(t *testing.T) {
-			left := &LineFilterExpr{Ty: tt.ty, Match: "something"}
-			right := &LineFilterExpr{Ty: labels.MatchEqual, Match: "something"}
+			left := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
+			right := &LineFilterExpr{LineFilter: LineFilter{Ty: labels.MatchEqual, Match: "something"}}
 
 			_ = newOrLineFilter(left, right)
 			require.Equal(t, tt.ty, right.Ty)
@@ -473,6 +494,50 @@ func TestStringer(t *testing.T) {
 		{
 			in:  `0 > count_over_time({foo="bar"}[1m])`,
 			out: `(0 > count_over_time({foo="bar"}[1m]))`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar"`,
+			out: `{app="foo"} |= "foo" or "bar"`,
+		},
+		{
+			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
+			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+			out: `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+		},
+		{
+			out: `{app="foo"} |= "foo" or "bar" |~ "buzz|fizz"`,
+			in:  `{app="foo"} |= "foo" or "bar" |~ "buzz|fizz"`,
+		},
+		{
+			in:  `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |= ip("127.0.0.1") or "foo"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+			out: `{app="foo"} |= "foo" or ip("127.0.0.1")`,
+		},
+		{
+			in:  `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} |~ ip("127.0.0.1") or "foo"`,
+		},
+		{ // !(A || B) == !A && !B
+			in:  `{app="foo"} != "foo" or "bar"`,
+			out: `{app="foo"} != "foo" != "bar"`,
+		},
+		{
+			in:  `{app="foo"} !~ "foo" or "bar"`,
+			out: `{app="foo"} !~ "foo" !~ "bar"`,
+		},
+		{
+			in:  `{app="foo"} != ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} != ip("127.0.0.1") != "foo"`,
+		},
+		{
+			in:  `{app="foo"} !~ ip("127.0.0.1") or "foo"`,
+			out: `{app="foo"} !~ ip("127.0.0.1") !~ "foo"`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -670,6 +735,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 		OpTypeGT,
 		&promql.Sample{F: 2},
 		&promql.Sample{F: 0},
+		false,
 		true,
 		true,
 	)

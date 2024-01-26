@@ -12,14 +12,27 @@ import (
 )
 
 type Schema struct {
-	version  byte
-	encoding chunkenc.Encoding
+	version                byte
+	encoding               chunkenc.Encoding
+	nGramLength, nGramSkip uint64
+}
+
+func (s Schema) Compatible(other Schema) bool {
+	return s == other
+}
+
+func (s Schema) NGramLen() int {
+	return int(s.nGramLength)
+}
+
+func (s Schema) NGramSkip() int {
+	return int(s.nGramSkip)
 }
 
 // byte length
 func (s Schema) Len() int {
-	// magic number + version + encoding
-	return 4 + 1 + 1
+	// magic number + version + encoding + ngram length + ngram skip
+	return 4 + 1 + 1 + 8 + 8
 }
 
 func (s *Schema) DecompressorPool() chunkenc.ReaderPool {
@@ -35,6 +48,9 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(s.version)
 	enc.PutByte(byte(s.encoding))
+	enc.PutBE64(s.nGramLength)
+	enc.PutBE64(s.nGramSkip)
+
 }
 
 func (s *Schema) DecodeFrom(r io.ReadSeeker) error {
@@ -63,6 +79,9 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	if _, err := chunkenc.ParseEncoding(s.encoding.String()); err != nil {
 		return errors.Wrap(err, "parsing encoding")
 	}
+
+	s.nGramLength = dec.Be64()
+	s.nGramSkip = dec.Be64()
 
 	return dec.Err()
 }
@@ -198,6 +217,10 @@ type SeriesHeader struct {
 	FromTs, ThroughTs model.Time
 }
 
+func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
+	return h.ThroughFp >= other.FromFp && h.FromFp <= other.ThroughFp
+}
+
 // build one aggregated header for the entire block
 func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 	if len(xs) == 0 {
@@ -282,8 +305,9 @@ func (d *SeriesPageDecoder) Next() bool {
 }
 
 func (d *SeriesPageDecoder) Seek(fp model.Fingerprint) {
-	if fp > d.header.ThroughFp || fp < d.header.FromFp {
-		// shortcut: we know the fingerprint is not in this page
+	if fp > d.header.ThroughFp {
+		// shortcut: we know the fingerprint is too large so nothing in this page
+		// will match the seek call, which returns the first found fingerprint >= fp.
 		// so masquerade the index as if we've already iterated through
 		d.i = d.header.NumSeries
 	}
@@ -333,7 +357,7 @@ func (d *SeriesPageDecoder) Err() error {
 
 type Series struct {
 	Fingerprint model.Fingerprint
-	Chunks      []ChunkRef
+	Chunks      ChunkRefs
 }
 
 type SeriesWithOffset struct {
@@ -387,6 +411,18 @@ type ChunkRef struct {
 	Checksum   uint32
 }
 
+func (r *ChunkRef) Less(other ChunkRef) bool {
+	if r.Start != other.Start {
+		return r.Start < other.Start
+	}
+
+	if r.End != other.End {
+		return r.End < other.End
+	}
+
+	return r.Checksum < other.Checksum
+}
+
 func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
 	// delta encode start time
 	enc.PutVarint64(int64(r.Start - previousEnd))
@@ -416,4 +452,59 @@ func (o *BloomOffset) Decode(dec *encoding.Decbuf, previousOffset BloomOffset) e
 	o.Page = previousOffset.Page + dec.Uvarint()
 	o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
 	return dec.Err()
+}
+
+type ChunkRefs []ChunkRef
+
+func (refs ChunkRefs) Len() int {
+	return len(refs)
+}
+
+func (refs ChunkRefs) Less(i, j int) bool {
+	return refs[i].Less(refs[j])
+}
+
+func (refs ChunkRefs) Swap(i, j int) {
+	refs[i], refs[j] = refs[j], refs[i]
+}
+
+// Unless returns the chunk refs in this set that are not in the other set.
+// Both must be sorted.
+func (refs ChunkRefs) Unless(others []ChunkRef) ChunkRefs {
+	res, _ := refs.Compare(others, false)
+	return res
+}
+
+// Compare returns two sets of chunk refs, both must be sorted:
+// 1) the chunk refs which are in the original set but not in the other set
+// 2) the chunk refs which are in both sets
+// the `populateInclusive` argument allows avoiding populating the inclusive set
+// if it is not needed
+// TODO(owen-d): can be improved to use binary search when one list
+// is signficantly larger than the other
+func (refs ChunkRefs) Compare(others ChunkRefs, populateInclusive bool) (exclusive ChunkRefs, inclusive ChunkRefs) {
+	var i, j int
+	for i < len(refs) && j < len(others) {
+		switch {
+
+		case refs[i] == others[j]:
+			if populateInclusive {
+				inclusive = append(inclusive, refs[i])
+			}
+			i++
+			j++
+		case refs[i].Less(others[j]):
+			exclusive = append(exclusive, refs[i])
+			i++
+		default:
+			j++
+		}
+	}
+
+	// append any remaining refs
+	if i < len(refs) {
+		exclusive = append(exclusive, refs[i:]...)
+	}
+
+	return
 }

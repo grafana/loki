@@ -43,7 +43,9 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/constants"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiring "github.com/grafana/loki/pkg/util/ring"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -90,12 +92,14 @@ type Distributor struct {
 	services.Service
 
 	cfg              Config
+	logger           log.Logger
 	clientCfg        client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
 	ingestersRing    ring.ReadRing
 	validator        *Validator
 	pool             *ring_client.Pool
+	tee              Tee
 
 	rateStore    RateStore
 	shardTracker *ShardTracker
@@ -132,6 +136,9 @@ func New(
 	ingestersRing ring.ReadRing,
 	overrides Limits,
 	registerer prometheus.Registerer,
+	metricsNamespace string,
+	tee Tee,
+	logger log.Logger,
 ) (*Distributor, error) {
 	factory := cfg.factory
 	if factory == nil {
@@ -166,43 +173,45 @@ func New(
 
 	d := &Distributor{
 		cfg:                   cfg,
+		logger:                logger,
 		clientCfg:             clientCfg,
 		tenantConfigs:         configs,
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		pool:                  clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, logger, metricsNamespace),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
+		tee:                   tee,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
 			Help:      "The total number of batch appends sent to ingesters.",
 		}, []string{"ingester"}),
 		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "distributor_ingester_append_timeouts_total",
 			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
 		}, []string{"ingester"}),
 		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "distributor_replication_factor",
 			Help:      "The configured replication factor.",
 		}),
 		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
-		writeFailuresManager: writefailures.NewManager(util_log.Logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
 
-		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer)
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, logger, registerer, metricsNamespace)
 		if err != nil {
 			return nil, err
 		}
@@ -225,10 +234,12 @@ func New(
 		d.cfg.RateStore,
 		ingestersRing,
 		clientpool.NewPool(
+			"rate-store",
 			clientCfg.PoolConfig,
 			ingestersRing,
 			ring_client.PoolAddrFunc(internalFactory),
-			util_log.Logger,
+			logger,
+			metricsNamespace,
 		),
 		overrides,
 		registerer,
@@ -264,9 +275,14 @@ func (d *Distributor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
+type KeyedStream struct {
+	HashKey uint32
+	Stream  logproto.Stream
+}
+
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
-	stream      logproto.Stream
+	KeyedStream
 	minSuccess  int
 	maxFailures int
 	succeeded   atomic.Int32
@@ -297,8 +313,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
-	streams := make([]streamTracker, 0, len(req.Streams))
-	keys := make([]uint32, 0, len(req.Streams))
+	streams := make([]KeyedStream, 0, len(req.Streams))
 	validatedLineSize := 0
 	validatedLineCount := 0
 
@@ -371,12 +386,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 			if shardStreamsCfg.Enabled {
-				derivedKeys, derivedStreams := d.shardStream(stream, pushSize, tenantID)
-				keys = append(keys, derivedKeys...)
-				streams = append(streams, derivedStreams...)
+				streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
 			} else {
-				keys = append(keys, util.TokenFor(tenantID, stream.Labels))
-				streams = append(streams, streamTracker{stream: stream})
+				streams = append(streams, KeyedStream{
+					HashKey: lokiring.TokenFor(tenantID, stream.Labels),
+					Stream:  stream,
+				})
 			}
 		}
 	}()
@@ -402,9 +417,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
 
+	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
+	// function calls that cannot be inlined.
+	if d.tee != nil {
+		d.tee.Duplicate(tenantID, streams)
+	}
+
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
+	streamTrackers := make([]streamTracker, len(streams))
 	streamsByIngester := map[string][]*streamTracker{}
 	ingesterDescs := map[string]ring.InstanceDesc{}
 
@@ -417,16 +439,19 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}()
 		}
 
-		for i, key := range keys {
-			replicationSet, err := d.ingestersRing.Get(key, ring.WriteNoExtend, descs[:0], nil, nil)
+		for i, stream := range streams {
+			replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 			if err != nil {
 				return err
 			}
 
-			streams[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
-			streams[i].maxFailures = replicationSet.MaxErrors
+			streamTrackers[i] = streamTracker{
+				KeyedStream: stream,
+				minSuccess:  len(replicationSet.Instances) - replicationSet.MaxErrors,
+				maxFailures: replicationSet.MaxErrors,
+			}
 			for _, ingester := range replicationSet.Instances {
-				streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streams[i])
+				streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streamTrackers[i])
 				ingesterDescs[ingester.Addr] = ingester
 			}
 		}
@@ -467,13 +492,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) ([]uint32, []streamTracker) {
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) []KeyedStream {
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
-	logger := log.With(util_log.WithUserID(tenantID, util_log.Logger), "stream", stream.Labels)
+	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []uint32{util.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
+		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), Stream: stream}}
 	}
 
 	d.streamShardCount.Inc()
@@ -484,31 +509,30 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream) ([]uint32, []streamTracker) {
-	derivedKeys, derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream) []KeyedStream {
+	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
 
 	for i := 0; i < len(stream.Entries); i++ {
 		streamIndex := i % len(derivedStreams)
-		entries := append(derivedStreams[streamIndex].stream.Entries, stream.Entries[i])
-		derivedStreams[streamIndex].stream.Entries = entries
+		entries := append(derivedStreams[streamIndex].Stream.Entries, stream.Entries[i])
+		derivedStreams[streamIndex].Stream.Entries = entries
 	}
 
-	return derivedKeys, derivedStreams
+	return derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) ([]uint32, []streamTracker) {
+func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) []KeyedStream {
 	var (
-		streamLabels   = labelTemplate(stream.Labels)
+		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
-		derivedKeys    = make([]uint32, 0, totalShards)
-		derivedStreams = make([]streamTracker, 0, totalShards)
+		derivedStreams = make([]KeyedStream, 0, totalShards)
 
 		streamCount = streamCount(totalShards, stream)
 	)
 
 	if totalShards <= 0 {
-		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
-		return derivedKeys, derivedStreams
+		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
+		return derivedStreams
 	}
 
 	entriesPerShard := int(math.Ceil(float64(len(stream.Entries)) / float64(totalShards)))
@@ -517,16 +541,18 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		shardNum := (startShard + i) % totalShards
 		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 
-		derivedKeys = append(derivedKeys, util.TokenFor(tenantID, shard.Labels))
-		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
+		derivedStreams = append(derivedStreams, KeyedStream{
+			HashKey: lokiring.TokenFor(tenantID, shard.Labels),
+			Stream:  shard,
+		})
 
 		if shardStreamsCfg.LoggingEnabled {
-			level.Info(util_log.Logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
+			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
 		}
 	}
 	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+streamCount)
 
-	return derivedKeys, derivedStreams
+	return derivedStreams
 }
 
 func streamCount(totalShards int, stream logproto.Stream) int {
@@ -538,10 +564,10 @@ func streamCount(totalShards int, stream logproto.Stream) int {
 
 // labelTemplate returns a label set that includes the dummy label to be replaced
 // To avoid allocations, this slice is reused when we know the stream value
-func labelTemplate(lbls string) labels.Labels {
+func labelTemplate(lbls string, logger log.Logger) labels.Labels {
 	baseLbls, err := syntax.ParseLabels(lbls)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
+		level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
 		return nil
 	}
 
@@ -641,7 +667,7 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 		Streams: make([]logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
-		req.Streams[i] = s.stream
+		req.Streams[i] = s.Stream
 	}
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
@@ -729,7 +755,7 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 }
 
 // newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates
-func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer) (*ring.Ring, *ring.BasicLifecycler, error) {
+func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer, metricsNamespace string) (*ring.Ring, *ring.BasicLifecycler, error) {
 	kvStore, err := kv.NewClient(cfg.KVStore, ring.GetCodec(), kv.RegistererWithKVName(reg, "distributor-lifecycler"), logger)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' KV store")
@@ -746,12 +772,12 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
 	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.HeartbeatTimeout, delegate, logger)
 
-	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg))
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' lifecycler")
 	}
 
-	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg))
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to initialize distributors' ring client")
 	}

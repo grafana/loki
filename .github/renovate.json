@@ -11,6 +11,14 @@
         "matchBaseBranches": ["release-2.9.x","release-2.8.x"],
         "packagePatterns": ["*"],
         "enabled": false
+      },
+      {
+        "matchFileNames": [ "operator/go.mod" ],
+        "matchPackageNames": [
+          "github.com/grafana/loki",
+          "github.com/grafana/loki/operator/apis/loki"
+        ],
+        "enabled": false
       }
     ],
     "vulnerabilityAlerts": {
@@ -21,5 +29,6 @@
     "osvVulnerabilityAlerts": true,
     "prConcurrentLimit": 10,
     "rebaseWhen": "conflicted",
-    "branchPrefix": "deps-update/"
+    "branchPrefix": "deps-update/",
+    "postUpdateOptions": ["gomodTidy"]
   }

@@ -1,7 +1,7 @@
 ---
 title: Install the monolithic Helm chart
 menuTitle: Install monolithic Loki
-description: Install Loki in monolithic, single binary mode.
+description: Installing Loki in monolithic, single binary mode using the Helm chart.
 aliases:
  - ../../../installation/helm/monolithic
  - ../../../installation/helm/install-monolithic/
@@ -55,6 +55,10 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
         commonConfig:
           replication_factor: 3
         storage:
+          bucketNames:
+            chunks: loki-chunks
+            ruler: loki-ruler
+            admin: loki-admin
           type: 's3'
           bucketNames:
             chunks: loki-chunks

@@ -4,32 +4,37 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/grafana/dskit/services"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	bt "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
 	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/go-kit/log/level"
-	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+
 	//indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
 	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	//"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -38,13 +43,16 @@ import (
 
 var queryExperiments = []QueryExperiment{
 	//NewQueryExperiment("three_char_word", "tra"),
-	//NewQueryExperiment("four_char_word", "trac"),
+	NewQueryExperiment("four_char_word", "trac"),
 	NewQueryExperiment("five_char_word", "trace"),
+	//NewQueryExperiment("level", "level"),
+	//NewQueryExperiment("level=", "level="),
+
 	NewQueryExperiment("six_char_word", "traceI"),
 	NewQueryExperiment("seven_char_word", "traceID"),
 	NewQueryExperiment("uuid", "2b1a5e46-36a2-4694-a4b1-f34cc7bdfc45"),
 	NewQueryExperiment("longer_string_that_exists", "synthetic-monitoring-agent"),
-	NewQueryExperiment("longer_string_that_doesnt_exist", "abcdefghjiklmnopqrstuvwxyzzy1234567890"),
+	//NewQueryExperiment("longer_string_that_doesnt_exist", "abcdefghjiklmnopqrstuvwxyzzy1234567890"),
 }
 
 func executeRead() {
@@ -55,30 +63,32 @@ func executeRead() {
 
 	flag.Parse()
 
-	objectClient, err := storage.NewObjectClient(conf.StorageConfig.TSDBShipperConfig.SharedStoreType, conf.StorageConfig, clientMetrics)
+	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
+	helpers.ExitErr("find period config for bucket", err)
+
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
 	chunkClient := client.NewClient(objectClient, nil, conf.SchemaConfig)
 
-	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
-
 	openFn := func(p string) (shipperindex.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
+		return tsdb.OpenShippableTSDB(p)
 	}
 
 	indexShipper, err := indexshipper.NewIndexShipper(
-		conf.StorageConfig.TSDBShipperConfig.Config,
+		periodCfg.IndexTables.PathPrefix,
+		conf.StorageConfig.TSDBShipperConfig,
 		objectClient,
 		overrides,
 		nil,
 		openFn,
-		tableRanges[len(tableRanges)-1],
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,
 	)
 	helpers.ExitErr("creating index shipper", err)
 
-	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
+	tenants, err := helpers.ResolveTenants(objectClient, periodCfg.IndexTables.PathPrefix, tableName)
 	level.Info(util_log.Logger).Log("tenants", strings.Join(tenants, ","), "table", tableName)
 	helpers.ExitErr("resolving tenants", err)
 
@@ -109,13 +119,14 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	}
 	level.Info(util_log.Logger).Log("msg", "starting analyze()", "tester", testerNumber, "total", numTesters)
 
-	//var n int // count iterated series
-	//reportEvery := 10 // report every n chunks
-	//pool := newPool(runtime.NumCPU())
-	//pool := newPool(16)
-	//searchString := os.Getenv("SEARCH_STRING")
-	//147854,148226,145541,145603,147159,147836,145551,145599,147393,147841,145265,145620,146181,147225,147167,146131,146189,146739,147510,145572,146710,148031,29,146205,147175,146984,147345
-	//mytenants := []string{"29"}
+	// var n int // count iterated series
+	// reportEvery := 10 // report every n chunks
+	// pool := newPool(runtime.NumCPU())
+	// pool := newPool(16)
+	// searchString := os.Getenv("SEARCH_STRING")
+	// 147854,148226,145541,145603,147159,147836,145551,145599,147393,147841,145265,145620,146181,147225,147167,146131,146189,146739,147510,145572,146710,148031,29,146205,147175,146984,147345
+	// mytenants := []string{"29"}
+	bloomTokenizer, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := shipper.ForEach(
@@ -137,12 +148,6 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 						pos, _ := strconv.Atoi(seriesStringHash)
 
 						workernumber := AssignToWorker(pos, numTesters)
-
-						//fmt.Println("num workers", numTesters)
-						//fmt.Println("seriesSTring", seriesString)
-						//fmt.Println("seriesSTringHasj", seriesStringHash)
-						//fmt.Println("pos", pos)
-						fmt.Println("workernumber", workernumber)
 
 						if (workernumber == testerNumber) && (len(chks) < 10000) { // For every series
 							/*
@@ -195,39 +200,15 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 											tenant,
 											ls.String(),
 											objectClient)
+										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
-												if len(queryExperiment.searchString) >= experiment.tokenizer.getMin() {
+												if len(queryExperiment.searchString) >= experiment.tokenizer.N+experiment.tokenizer.Skip {
 
 													foundInChunk := false
 													foundInSbf := false
 
-													chunkTokenizer := ChunkIDTokenizerHalfInit(experiment.tokenizer)
-
-													chunkTokenizer.reinit(got[gotIdx].ChunkRef)
-													var tokenizer Tokenizer = chunkTokenizer
-													if !experiment.encodeChunkID {
-														tokenizer = experiment.tokenizer
-													}
-
-													for i := 0; i <= tokenizer.getSkip(); i++ {
-														numMatches := 0
-														if (len(queryExperiment.searchString) - i) >= tokenizer.getMin() {
-															tokens := tokenizer.Tokens(queryExperiment.searchString[i:])
-
-															for _, token := range tokens {
-																if sbf.Test(token.Key) {
-																	numMatches++
-																}
-															}
-															if numMatches > 0 {
-																if numMatches == len(tokens) {
-																	foundInSbf = true
-																	metrics.sbfMatchesPerSeries.WithLabelValues(experiment.name, queryExperiment.name).Inc()
-																}
-															}
-														}
-													}
+													foundInSbf = searchSbf(sbf, *experiment.tokenizer, queryExperiment.searchString)
 
 													lc := got[gotIdx].Data.(*chunkenc.Facade).LokiChunk()
 
@@ -242,26 +223,21 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 													for itr.Next() && itr.Error() == nil {
 														if strings.Contains(itr.Entry().Line, queryExperiment.searchString) {
-															//fmt.Println("Line match: ", itr.Entry().Line)
 															foundInChunk = true
 														}
 													}
 
 													if foundInChunk {
 														if foundInSbf {
-															//fmt.Println("true positive", experiment.name, queryExperiment.name, gotIdx)
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TruePositive).Inc()
 														} else {
-															level.Info(util_log.Logger).Log("**** false negative", experiment.name, queryExperiment.name, ls.String(), gotIdx, testerNumber)
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalseNegative).Inc()
 														}
 													} else {
 														if foundInSbf {
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, FalsePositive).Inc()
-															//fmt.Println("false positive", experiment.name, queryExperiment.name, gotIdx, ls.String())
 														} else {
 															metrics.sbfLookups.WithLabelValues(experiment.name, queryExperiment.name, TrueNegative).Inc()
-															//fmt.Println("true negative", experiment.name, queryExperiment.name, gotIdx)
 														}
 													}
 
@@ -269,11 +245,6 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 
 													helpers.ExitErr("iterating chunks ", itr.Error())
 												}
-												/*else // if search string is long enough
-												{
-													//	fmt.Println("Skipping", queryExperiment.name, "because it's too short", experiment.name)
-												}*/
-
 											} // for each search string
 										} // for every chunk
 
@@ -314,18 +285,38 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	}
 
 	level.Info(util_log.Logger).Log("msg", "waiting for workers to finish")
-	//pool.drain() // wait for workers to finishh
+	//pool.drain() // wait for workers to finish
 	level.Info(util_log.Logger).Log("msg", "waiting for final scrape")
-	time.Sleep(30 * time.Second)         // allow final scrape
+	//time.Sleep(30 * time.Second)         // allow final scrape
 	time.Sleep(time.Duration(1<<63 - 1)) // wait forever
 	return nil
 }
 
-func readSBFFromObjectStorage(location, prefix, period, tenant, series string, objectClient client.ObjectClient) *boom.ScalableBloomFilter {
+func readSBFFromObjectStorage(location, prefix, period, tenant, series string, objectClient client.ObjectClient) *filter.ScalableBloomFilter {
 	objectStoragePath := fmt.Sprintf("%s/%s/%s/%s", location, prefix, period, tenant)
 
 	sbf := experiments[0].bloom()
 	closer, _, _ := objectClient.GetObject(context.Background(), fmt.Sprintf("%s/%s", objectStoragePath, FNV32a(series)))
 	_, _ = sbf.ReadFrom(closer)
 	return sbf
+}
+
+func searchSbf(sbf *filter.ScalableBloomFilter, tokenizer bt.NGramTokenizer, searchString string) bool {
+	itr := tokenizer.Tokens(searchString)
+	numMatches := 0
+	numTokens := 0
+	for itr.Next() {
+		token := itr.At()
+		numTokens++
+		if sbf.Test(token) {
+			numMatches++
+		}
+	}
+	if numMatches > 0 {
+		if numMatches == numTokens {
+			return true
+		}
+	}
+
+	return false
 }

@@ -42,7 +42,7 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -64,7 +64,7 @@ func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through
 		return nil, nil, nil
 	}
 
-	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, allMatchers...)
+	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
 
 	chunks := make([]chunk.Chunk, len(refs))
 	for i, ref := range refs {

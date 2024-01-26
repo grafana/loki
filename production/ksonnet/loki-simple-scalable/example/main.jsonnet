@@ -8,7 +8,7 @@ local k = import 'ksonnet-util/kausal.libsonnet',
 
 loki {
   _images+:: {
-    loki: 'grafana/loki:2.9.1',
+    loki: 'grafana/loki:2.9.2',
   },
 
   _config+:: {
@@ -38,7 +38,6 @@ loki {
         },
       },
       limits_config: {
-        enforce_metric_name: false,
         reject_old_samples_max_age: '168h',  //1 week
         max_global_streams_per_user: 60000,
         ingestion_rate_mb: 75,

@@ -15,7 +15,7 @@ Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
-Configuration examples can be found in the [Configuration Examples]({{< relref "./examples" >}}) document.
+Configuration examples can be found in the [Configuration Examples]({{< relref "./examples/configuration-examples" >}}) document.
 
 ## Printing Loki config at runtime
 
@@ -161,6 +161,15 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # object store.
 [index_gateway: <index_gateway>]
 
+# The bloom_compactor block configures the Loki bloom compactor server,
+# responsible for compacting stream indexes into bloom filters and merging them
+# as bloom blocks
+[bloom_compactor: <bloom_compactor>]
+
+# The bloom_gateway block configures the Loki bloom gateway server, responsible
+# for serving queries for filtering chunks based on filter expressions.
+[bloom_gateway: <bloom_gateway>]
+
 # The storage_config block configures one of many possible stores for both the
 # index and chunks. Which configuration to be picked should be defined in
 # schema_config block.
@@ -174,8 +183,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [schema_config: <schema_config>]
 
 # The compactor block configures the compactor component, which compacts index
-# shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated,
-# please use `-compactor.` instead.
+# shards for performance.
 [compactor: <compactor>]
 
 # The limits_config block configures global and per-tenant limits in Loki.
@@ -215,6 +223,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # will report 503 Service Unavailable status via /ready endpoint.
 # CLI flag: -shutdown-delay
 [shutdown_delay: <duration> | default = 0s]
+
+# Namespace of the metrics that in previous releases had cortex as namespace.
+# This setting is deprecated and will be removed in the next minor release.
+# CLI flag: -metrics-namespace
+[metrics_namespace: <string> | default = "loki"]
 ```
 
 ### server
@@ -322,13 +335,23 @@ grpc_tls_config:
 # CLI flag: -server.register-instrumentation
 [register_instrumentation: <boolean> | default = true]
 
+# If set to true, gRPC statuses will be reported in instrumentation labels with
+# their string representations. Otherwise, they will be reported as "error".
+# CLI flag: -server.report-grpc-codes-in-instrumentation-label-enabled
+[report_grpc_codes_in_instrumentation_label_enabled: <boolean> | default = false]
+
 # Timeout for graceful shutdowns
 # CLI flag: -server.graceful-shutdown-timeout
 [graceful_shutdown_timeout: <duration> | default = 30s]
 
-# Read timeout for HTTP server
+# Read timeout for entire HTTP request, including headers and body.
 # CLI flag: -server.http-read-timeout
 [http_server_read_timeout: <duration> | default = 30s]
+
+# Read timeout for HTTP request headers. If set to 0, value of
+# -server.http-read-timeout is used.
+# CLI flag: -server.http-read-header-timeout
+[http_server_read_header_timeout: <duration> | default = 0s]
 
 # Write timeout for HTTP server
 # CLI flag: -server.http-write-timeout
@@ -337,6 +360,11 @@ grpc_tls_config:
 # Idle timeout for HTTP server
 # CLI flag: -server.http-idle-timeout
 [http_server_idle_timeout: <duration> | default = 2m]
+
+# Log closed connections that did not receive any response, most likely because
+# client didn't send any request within timeout.
+# CLI flag: -server.http-log-closed-connections-without-response-enabled
+[http_log_closed_connections_without_response_enabled: <boolean> | default = false]
 
 # Limit on the size of a gRPC message this server can receive (bytes).
 # CLI flag: -server.grpc-max-recv-msg-size-bytes
@@ -387,6 +415,11 @@ grpc_tls_config:
 # streams, server will send GOAWAY and close the connection.
 # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
 [grpc_server_ping_without_stream_allowed: <boolean> | default = true]
+
+# If non-zero, configures the amount of GRPC server workers used to serve the
+# requests.
+# CLI flag: -server.grpc.num-workers
+[grpc_server_num_workers: <int> | default = 0]
 
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
@@ -698,6 +731,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
 
+# Comma-separated list of request header names to include in query logs. Applies
+# to both query stats and slow queries logs.
+# CLI flag: -frontend.log-query-request-headers
+[log_query_request_headers: <string> | default = ""]
+
 # Max body size for downstream prometheus.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]
@@ -755,6 +793,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Defines the encoding for requests to and responses from the scheduler and
+# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# CLI flag: -frontend.encoding
+[encoding: <string> | default = "json"]
+
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = true]
@@ -804,10 +847,10 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
-# The downstream querier is required to answer in the accepted format. Can be
-# 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
-# CLI flag: -frontend.required-query-response-format
-[required_query_response_format: <string> | default = "json"]
+# A comma-separated list of LogQL vector and range aggregations that should be
+# sharded
+# CLI flag: -querier.shard-aggregations
+[shard_aggregations: <string> | default = ""]
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
@@ -841,6 +884,40 @@ volume_results_cache:
   # Use compression in cache. The default is an empty value '', which disables
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.volume-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache series query results.
+# CLI flag: -querier.cache-series-results
+[cache_series_results: <boolean> | default = false]
+
+# If series_results_cache is not configured and cache_series_results is true,
+# the config for the results cache is used.
+series_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.series-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.series-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache label query results.
+# CLI flag: -querier.cache-label-results
+[cache_label_results: <boolean> | default = false]
+
+# If label_results_cache is not configured and cache_label_results is true, the
+# config for the results cache is used.
+label_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.label-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.label-results-cache.compression
   [compression: <string> | default = ""]
 ```
 
@@ -1687,6 +1764,148 @@ ring:
   [replication_factor: <int> | default = 3]
 ```
 
+### bloom_gateway
+
+The `bloom_gateway` block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.
+
+```yaml
+# Defines the ring to be used by the bloom gateway servers and clients. In case
+# this isn't configured, this block supports inheriting configuration from the
+# common ring section.
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -bloom-gateway.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -bloom-gateway.ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
+    # The CLI flags prefix for this block configuration is: bloom-gateway.ring
+    [consul: <consul>]
+
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
+    # The CLI flags prefix for this block configuration is: bloom-gateway.ring
+    [etcd: <etcd>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -bloom-gateway.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -bloom-gateway.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -bloom-gateway.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -bloom-gateway.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -bloom-gateway.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which compactors are considered unhealthy within
+  # the ring. 0 = never (timeout disabled).
+  # CLI flag: -bloom-gateway.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -bloom-gateway.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # True to enable zone-awareness and replicate blocks across different
+  # availability zones.
+  # CLI flag: -bloom-gateway.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # Instance ID to register in the ring.
+  # CLI flag: -bloom-gateway.ring.instance-id
+  [instance_id: <string> | default = "<hostname>"]
+
+  # Name of network interface to read address from.
+  # CLI flag: -bloom-gateway.ring.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Port to advertise in the ring (defaults to server.grpc-listen-port).
+  # CLI flag: -bloom-gateway.ring.instance-port
+  [instance_port: <int> | default = 0]
+
+  # IP address to advertise in the ring.
+  # CLI flag: -bloom-gateway.ring.instance-addr
+  [instance_addr: <string> | default = ""]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -bloom-gateway.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -bloom-gateway.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
+  # Factor for data replication.
+  # CLI flag: -bloom-gateway.replication-factor
+  [replication_factor: <int> | default = 3]
+
+# Flag to enable or disable the bloom gateway component globally.
+# CLI flag: -bloom-gateway.enabled
+[enabled: <boolean> | default = false]
+
+client:
+  # Configures the behavior of the connection pool.
+  pool_config:
+    [client_cleanup_period: <duration>]
+
+    [health_check_ingesters: <boolean>]
+
+    [remote_timeout: <duration>]
+
+  # The grpc_client block configures the gRPC client used to communicate between
+  # two Loki components.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_client_config: <grpc_client>]
+
+  # Flag to control whether requests sent to the gateway should be logged or
+  # not.
+  # CLI flag: -bloom-gateway-client.log-gateway-requests
+  [log_gateway_requests: <boolean> | default = false]
+
+  results_cache:
+    # The cache block configures the cache backend.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-gateway-client.cache
+    [cache: <cache_config>]
+
+    # Use compression in cache. The default is an empty value '', which disables
+    # compression. Supported values are: 'snappy' and ''.
+    # CLI flag: -bloom-gateway-client.cache.compression
+    [compression: <string> | default = ""]
+
+  # Flag to control whether to cache bloom gateway client requests/responses.
+  # CLI flag: -bloom-gateway-client.cache_results
+  [cache_results: <boolean> | default = false]
+
+# Number of workers to use for filtering chunks concurrently.
+# CLI flag: -bloom-gateway.worker-concurrency
+[worker_concurrency: <int> | default = 4]
+
+# Maximum number of outstanding tasks per tenant.
+# CLI flag: -bloom-gateway.max-outstanding-per-tenant
+[max_outstanding_per_tenant: <int> | default = 1024]
+```
+
 ### storage_config
 
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
@@ -1963,6 +2182,11 @@ congestion_control:
     # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
+# Experimental. Sets a constant prefix for all keys inserted into object
+# storage. Example: loki/
+# CLI flag: -store.object-prefix
+[object_prefix: <string> | default = ""]
+
 # The cache block configures the cache backend.
 # The CLI flags prefix for this block configuration is: store.index-cache-read
 [index_queries_cache_config: <cache_config>]
@@ -1988,17 +2212,6 @@ boltdb_shipper:
   # uploaded by shipper to configured storage
   # CLI flag: -boltdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
-
-  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
-  # filesystem
-  # CLI flag: -boltdb.shipper.shared-store
-  [shared_store: <string> | default = ""]
-
-  # Prefix to add to Object Keys in Shared store. Path separator(if any) should
-  # always be a '/'. Prefix should never start with a separator but should
-  # always end with it
-  # CLI flag: -boltdb.shipper.shared-store.key-prefix
-  [shared_store_key_prefix: <string> | default = "index/"]
 
   # Cache location for restoring index files from storage for queries
   # CLI flag: -boltdb.shipper.cache-location
@@ -2055,17 +2268,6 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
-  # filesystem
-  # CLI flag: -tsdb.shipper.shared-store
-  [shared_store: <string> | default = ""]
-
-  # Prefix to add to Object Keys in Shared store. Path separator(if any) should
-  # always be a '/'. Prefix should never start with a separator but should
-  # always end with it
-  # CLI flag: -tsdb.shipper.shared-store.key-prefix
-  [shared_store_key_prefix: <string> | default = "index/"]
-
   # Cache location for restoring index files from storage for queries
   # CLI flag: -tsdb.shipper.cache-location
   [cache_location: <string> | default = ""]
@@ -2108,16 +2310,44 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-  # Experimental. Whether TSDB should cache postings or not. The
-  # index-read-cache will be used as the backend.
-  # CLI flag: -tsdb.enable-postings-cache
-  [enable_postings_cache: <boolean> | default = false]
-
 # Configures Bloom Shipper.
 bloom_shipper:
   # Working directory to store downloaded Bloom Blocks.
   # CLI flag: -bloom.shipper.working-directory
   [working_directory: <string> | default = "bloom-shipper"]
+
+  blocks_downloading_queue:
+    # The count of parallel workers that download Bloom Blocks.
+    # CLI flag: -bloom.shipper.blocks-downloading-queue.workers-count
+    [workers_count: <int> | default = 100]
+
+    # Maximum number of task in queue per tenant per bloom-gateway. Enqueuing
+    # the tasks above this limit will fail an error.
+    # CLI flag: -bloom.shipper.blocks-downloading-queue.max_tasks_enqueued_per_tenant
+    [max_tasks_enqueued_per_tenant: <int> | default = 10000]
+
+  blocks_cache:
+    # Whether embedded cache is enabled.
+    # CLI flag: -blocks-cache.enabled
+    [enabled: <boolean> | default = false]
+
+    # Maximum memory size of the cache in MB.
+    # CLI flag: -blocks-cache.max-size-mb
+    [max_size_mb: <int> | default = 100]
+
+    # Maximum number of entries in the cache.
+    # CLI flag: -blocks-cache.max-size-items
+    [max_size_items: <int> | default = 0]
+
+    # The time to live for items in the cache before they get purged.
+    # CLI flag: -blocks-cache.ttl
+    [ttl: <duration> | default = 0s]
+
+    # During this period the process waits until the directory becomes not used
+    # and only after this it will be deleted. If the timeout is reached, the
+    # directory is force deleted.
+    # CLI flag: -blocks-cache.remove-directory-graceful-period
+    [remove_directory_graceful_period: <duration> | default = 5m]
 ```
 
 ### chunk_store_config
@@ -2139,10 +2369,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration> | default = 0s]
-
-# This flag is deprecated. Use -querier.max-query-lookback instead.
-# CLI flag: -store.max-look-back-period
-[max_look_back_period: <duration> | default = 0s]
 ```
 
 ### schema_config
@@ -2155,25 +2381,12 @@ Configures the chunk index schema and where it is stored.
 
 ### compactor
 
-The `compactor` block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.
+The `compactor` block configures the compactor component, which compacts index shards for performance.
 
 ```yaml
 # Directory where files can be downloaded for compaction.
 # CLI flag: -compactor.working-directory
 [working_directory: <string> | default = ""]
-
-# The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
-# to operate on all the object stores that contain either boltdb-shipper or tsdb
-# index.
-# CLI flag: -compactor.shared-store
-[shared_store: <string> | default = ""]
-
-# Prefix to add to object keys in shared store. Path separator(if any) should
-# always be a '/'. Prefix should never start with a separator but should always
-# end with it.
-# CLI flag: -compactor.shared-store.key-prefix
-[shared_store_key_prefix: <string> | default = "index/"]
 
 # Interval at which to re-run the compaction operation.
 # CLI flag: -compactor.compaction-interval
@@ -2202,9 +2415,13 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. Defaults to -compactor.shared-store.
+# Store used for managing delete requests.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
+
+# Path prefix for storing delete requests.
+# CLI flag: -compactor.delete-request-store.key-prefix
+[delete_request_store_key_prefix: <string> | default = "index/"]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -compactor.delete-batch-size
@@ -2329,9 +2546,127 @@ compactor_ring:
 # -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
+```
 
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[deletion_mode: <string> | default = ""]
+### bloom_compactor
+
+The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks
+
+```yaml
+# Defines the ring to be used by the bloom-compactor servers. In case this isn't
+# configured, this block supports inheriting configuration from the common ring
+# section.
+ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -bloom-compactor.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -bloom-compactor.ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
+    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
+    [consul: <consul>]
+
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
+    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
+    [etcd: <etcd>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -bloom-compactor.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -bloom-compactor.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -bloom-compactor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -bloom-compactor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -bloom-compactor.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which compactors are considered unhealthy within
+  # the ring. 0 = never (timeout disabled).
+  # CLI flag: -bloom-compactor.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # File path where tokens are stored. If empty, tokens are not stored at
+  # shutdown and restored at startup.
+  # CLI flag: -bloom-compactor.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
+  # True to enable zone-awareness and replicate blocks across different
+  # availability zones.
+  # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
+  # Instance ID to register in the ring.
+  # CLI flag: -bloom-compactor.ring.instance-id
+  [instance_id: <string> | default = "<hostname>"]
+
+  # Name of network interface to read address from.
+  # CLI flag: -bloom-compactor.ring.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Port to advertise in the ring (defaults to server.grpc-listen-port).
+  # CLI flag: -bloom-compactor.ring.instance-port
+  [instance_port: <int> | default = 0]
+
+  # IP address to advertise in the ring.
+  # CLI flag: -bloom-compactor.ring.instance-addr
+  [instance_addr: <string> | default = ""]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -bloom-compactor.ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
+# Flag to enable or disable the usage of the bloom-compactor component.
+# CLI flag: -bloom-compactor.enabled
+[enabled: <boolean> | default = false]
+
+# Directory where files can be downloaded for compaction.
+# CLI flag: -bloom-compactor.working-directory
+[working_directory: <string> | default = ""]
+
+# Interval at which to re-run the compaction operation.
+# CLI flag: -bloom-compactor.compaction-interval
+[compaction_interval: <duration> | default = 10m]
+
+# Minimum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-min-backoff
+[compaction_retries_min_backoff: <duration> | default = 10s]
+
+# Maximum backoff time between retries.
+# CLI flag: -bloom-compactor.compaction-retries-max-backoff
+[compaction_retries_max_backoff: <duration> | default = 1m]
+
+# Number of retries to perform when compaction fails.
+# CLI flag: -bloom-compactor.compaction-retries
+[compaction_retries: <int> | default = 3]
+
+# Maximum number of tables to compact in parallel. While increasing this value,
+# please make sure compactor has enough disk space allocated to be able to store
+# and compact as many tables.
+# CLI flag: -bloom-compactor.max-compaction-parallelism
+[max_compaction_parallelism: <int> | default = 1]
 ```
 
 ### limits_config
@@ -2389,10 +2724,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # won't accept sample from before this time.
 # CLI flag: -validation.create-grace-period
 [creation_grace_period: <duration> | default = 10m]
-
-# Enforce every sample has a metric name.
-# CLI flag: -validation.enforce-metric-name
-[enforce_metric_name: <boolean> | default = true]
 
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
@@ -2504,6 +2835,12 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 10m]
 
+# Do not cache metadata request if the end time is within the
+# frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such
+# limits. Defaults to 24h.
+# CLI flag: -frontend.max-metadata-cache-freshness
+[max_metadata_cache_freshness: <duration> | default = 1d]
+
 # Do not cache requests with an end time that falls within Now minus this
 # duration. 0 disables this feature (default).
 # CLI flag: -frontend.max-stats-cache-freshness
@@ -2518,6 +2855,22 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
+
+# How much of the available query capacity ("querier" components in distributed
+# mode, "read" components in SSD mode) can be used by a single tenant. Allowed
+# values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant
+# to use half of the available queriers for processing the query workload. If
+# set to 0, query capacity is determined by frontend.max-queriers-per-tenant.
+# When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are
+# configured, smaller value of the resulting querier replica count is
+# considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas *
+# frontend.max-query-capacity)). *All* queriers will handle requests for the
+# tenant if neither limits are applied. This option only works with queriers
+# connecting to the query-frontend / query-scheduler, not when using downstream
+# URL. Use this feature in a multi-tenant setup where you need to limit query
+# capacity for certain tenants.
+# CLI flag: -frontend.max-query-capacity
+[max_query_capacity: <float> | default = 0]
 
 # Number of days of index to be kept always downloaded for queries. Applies only
 # to per user index in boltdb-shipper index store. 0 to disable.
@@ -2535,6 +2888,18 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # caching is enabled.
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 1h]
+
+# Split metadata queries by a time interval and execute in parallel. The value 0
+# disables splitting metadata queries by time. This also determines how cache
+# keys are chosen when label/series result caching is enabled.
+# CLI flag: -querier.split-metadata-queries-by-interval
+[split_metadata_queries_by_interval: <duration> | default = 1d]
+
+# Interval to use for time-based splitting when a request is within the
+# `query_ingesters_within` window; defaults to `split-queries-by-interval` by
+# setting to 0.
+# CLI flag: -querier.split-ingester-queries-by-interval
+[split_ingester_queries_by_interval: <duration> | default = 0s]
 
 # Limit queries that can be sharded. Queries within the time range of now and
 # now minus this sharding lookback are not sharded. The default value of 0s
@@ -2559,11 +2924,6 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # The maximum number of aggregated series in a log-volume response
 # CLI flag: -limits.volume-max-series
 [volume_max_series: <int> | default = 1000]
-
-# Deprecated. Duration to delay the evaluation of rules to ensure the underlying
-# metrics have been pushed to Cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[ruler_evaluation_delay_duration: <duration> | default = 0s]
 
 # Maximum number of rules per rule group per-tenant. 0 to disable.
 # CLI flag: -ruler.max-rules-per-rule-group
@@ -2722,6 +3082,53 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# The shard size defines how many bloom gateways should be used by a tenant for
+# querying.
+# CLI flag: -bloom-gateway.shard-size
+[bloom_gateway_shard_size: <int> | default = 1]
+
+# Whether to use the bloom gateway component in the read path to filter chunks.
+# CLI flag: -bloom-gateway.enable-filtering
+[bloom_gateway_enable_filtering: <boolean> | default = false]
+
+# The shard size defines how many bloom compactors should be used by a tenant
+# when computing blooms. If it's set to 0, shuffle sharding is disabled.
+# CLI flag: -bloom-compactor.shard-size
+[bloom_compactor_shard_size: <int> | default = 1]
+
+# The maximum age of a table before it is compacted. Do not compact tables older
+# than the the configured time. Default to 7 days. 0s means no limit.
+# CLI flag: -bloom-compactor.max-table-age
+[bloom_compactor_max_table_age: <duration> | default = 168h]
+
+# Whether to compact chunks into bloom filters.
+# CLI flag: -bloom-compactor.enable-compaction
+[bloom_compactor_enable_compaction: <boolean> | default = false]
+
+# The batch size of the chunks the bloom-compactor downloads at once.
+# CLI flag: -bloom-compactor.chunks-batch-size
+[bloom_compactor_chunks_batch_size: <int> | default = 100]
+
+# Length of the n-grams created when computing blooms from log lines.
+# CLI flag: -bloom-compactor.ngram-length
+[bloom_ngram_length: <int> | default = 4]
+
+# Skip factor for the n-grams created when computing blooms from log lines.
+# CLI flag: -bloom-compactor.ngram-skip
+[bloom_ngram_skip: <int> | default = 0]
+
+# Scalable Bloom Filter desired false-positive rate.
+# CLI flag: -bloom-compactor.false-positive-rate
+[bloom_false_positive_rate: <float> | default = 0.01]
+
+# Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.
+# CLI flag: -bloom-gateway.blocks-downloading-parallelism
+[bloom_gateway_blocks_downloading_parallelism: <int> | default = 50]
+
+# Interval for computing the cache key in the Bloom Gateway.
+# CLI flag: -bloom-gateway.cache-key-interval
+[bloom_gateway_cache_key_interval: <duration> | default = 15m]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
@@ -2733,6 +3140,17 @@ shard_streams:
 # Maximum number of structured metadata entries per log line.
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
+
+# OTLP log ingestion configurations
+otlp_config:
+  resource_attributes:
+    [ignore_defaults: <boolean>]
+
+    [attributes: <list of AttributesConfigs>]
+
+  [scope_attributes: <list of AttributesConfigs>]
+
+  [log_attributes: <list of AttributesConfigs>]
 ```
 
 ### frontend_worker
@@ -3345,7 +3763,7 @@ ring:
   # CLI flag: -common.storage.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-[instance_interface_names: <list of strings>]
+[instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
 [instance_addr: <string> | default = ""]
 
@@ -3362,6 +3780,8 @@ ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-compactor.ring`
+- `bloom-gateway.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
@@ -3406,6 +3826,8 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-compactor.ring`
+- `bloom-gateway.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
@@ -3707,6 +4129,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 The `grpc_client` block configures the gRPC client used to communicate between two Loki components. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
@@ -3922,8 +4345,11 @@ The TLS configuration.
 
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
+- `bloom-gateway-client.cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.label-results-cache`
+- `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
@@ -4126,6 +4552,10 @@ The `period_config` block configures what index schemas should be used for from 
 
 # Configures how the index is updated and stored.
 index:
+  # Path prefix for index tables. Prefix always needs to end with a path
+  # delimiter '/', except when the prefix is empty.
+  [path_prefix: <string> | default = "index/"]
+
   # Table prefix for all period tables.
   [prefix: <string> | default = ""]
 
@@ -4190,7 +4620,7 @@ dynamodb:
 
     # query to fetch ingester queue length
     # CLI flag: -metrics.queue-length-query
-    [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
+    [queue_length_query: <string> | default = "sum(avg_over_time(loki_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m])) or sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
 
     # query to fetch throttle rates per table
     # CLI flag: -metrics.write-throttle-query

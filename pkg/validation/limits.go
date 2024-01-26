@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
@@ -72,7 +73,6 @@ type Limits struct {
 	RejectOldSamples            bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
 	RejectOldSamplesMaxAge      model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
 	CreationGracePeriod         model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
-	EnforceMetricName           bool             `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
@@ -98,23 +98,24 @@ type Limits struct {
 	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
 	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
 	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxMetadataCacheFreshness  model.Duration   `yaml:"max_metadata_cache_freshness" json:"max_metadata_cache_freshness"`
 	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
-	MaxQueriersPerTenant       int              `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueriersPerTenant       uint             `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueryCapacity           float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
 	QueryReadyIndexNumDays     int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
 	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	VolumeEnabled       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	QuerySplitDuration         model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	IngesterQuerySplitDuration model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
+	MinShardingLookback        model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead          flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead        flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled              bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries            int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
-
-	// TODO(chaudum): Remove deprecated setting in next major version
-	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
@@ -183,9 +184,23 @@ type Limits struct {
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 
+	BloomGatewayShardSize int  `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size"`
+	BloomGatewayEnabled   bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering"`
+
+	BloomCompactorShardSize                  int           `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
+	BloomCompactorMaxTableAge                time.Duration `yaml:"bloom_compactor_max_table_age" json:"bloom_compactor_max_table_age"`
+	BloomCompactorEnabled                    bool          `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
+	BloomCompactorChunksBatchSize            int           `yaml:"bloom_compactor_chunks_batch_size" json:"bloom_compactor_chunks_batch_size"`
+	BloomNGramLength                         int           `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
+	BloomNGramSkip                           int           `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
+	BloomFalsePositiveRate                   float64       `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
+	BloomGatewayBlocksDownloadingParallelism int           `yaml:"bloom_gateway_blocks_downloading_parallelism" json:"bloom_gateway_blocks_downloading_parallelism"`
+	BloomGatewayCacheKeyInterval             time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval"`
+
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
+	OTLPConfig                        push.OTLPConfig  `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 }
 
 type StreamRetention struct {
@@ -221,7 +236,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
 	_ = l.CreationGracePeriod.Set("10m")
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
-	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Maximum number of log entries that will be returned for a query.")
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
@@ -266,14 +280,15 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxCacheFreshness.Set("10m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 
+	_ = l.MaxMetadataCacheFreshness.Set("24h")
+	f.Var(&l.MaxMetadataCacheFreshness, "frontend.max-metadata-cache-freshness", "Do not cache metadata request if the end time is within the frontend.max-metadata-cache-freshness window. Set this to 0 to apply no such limits. Defaults to 24h.")
+
 	_ = l.MaxStatsCacheFreshness.Set("10m")
 	f.Var(&l.MaxStatsCacheFreshness, "frontend.max-stats-cache-freshness", "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature (default).")
 
-	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.UintVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.Float64Var(&l.MaxQueryCapacity, "frontend.max-query-capacity", 0, "How much of the available query capacity (\"querier\" components in distributed mode, \"read\" components in SSD mode) can be used by a single tenant. Allowed values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant to use half of the available queriers for processing the query workload. If set to 0, query capacity is determined by frontend.max-queriers-per-tenant. When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are configured, smaller value of the resulting querier replica count is considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas * frontend.max-query-capacity)). *All* queriers will handle requests for the tenant if neither limits are applied. This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL. Use this feature in a multi-tenant setup where you need to limit query capacity for certain tenants.")
 	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
-
-	_ = l.RulerEvaluationDelay.Set("0s")
-	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated. Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
@@ -289,12 +304,35 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 
+	// with metadata caching, it is not possible to extract a subset of labels/series from a cached extent because unlike samples they are not associated with a timestamp.
+	// as a result, we could return inaccurate results. example: returning results from an entire 1h extent for a 5m query
+	// Setting max_metadata_cache_freshness to 24h should help us avoid caching recent data and preseve the correctness.
+	// For the portion of the request beyond the freshness window, granularity of the cached metadata results is determined by split_metadata_queries_by_interval.
+	_ = l.MetadataQuerySplitDuration.Set("24h")
+	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
+
+	_ = l.IngesterQuerySplitDuration.Set("0s")
+	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
+
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
 
 	// Deprecated
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
+
+	f.IntVar(&l.BloomGatewayShardSize, "bloom-gateway.shard-size", 1, "The shard size defines how many bloom gateways should be used by a tenant for querying.")
+	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Whether to use the bloom gateway component in the read path to filter chunks.")
+
+	f.IntVar(&l.BloomCompactorShardSize, "bloom-compactor.shard-size", 1, "The shard size defines how many bloom compactors should be used by a tenant when computing blooms. If it's set to 0, shuffle sharding is disabled.")
+	f.DurationVar(&l.BloomCompactorMaxTableAge, "bloom-compactor.max-table-age", 7*24*time.Hour, "The maximum age of a table before it is compacted. Do not compact tables older than the the configured time. Default to 7 days. 0s means no limit.")
+	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Whether to compact chunks into bloom filters.")
+	f.IntVar(&l.BloomCompactorChunksBatchSize, "bloom-compactor.chunks-batch-size", 100, "The batch size of the chunks the bloom-compactor downloads at once.")
+	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Length of the n-grams created when computing blooms from log lines.")
+	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 0, "Skip factor for the n-grams created when computing blooms from log lines.")
+	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
+	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
+	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
@@ -305,7 +343,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
-
+	l.OTLPConfig = push.DefaultOTLPConfig
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -350,6 +388,20 @@ func (l *Limits) Validate() error {
 
 	if l.CompactorDeletionEnabled {
 		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
+	}
+
+	if l.MaxQueryCapacity < 0 {
+		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 0 as it is configured to a value less than 0")
+		l.MaxQueryCapacity = 0
+	}
+
+	if l.MaxQueryCapacity > 1 {
+		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 1 as it is configured to a value greater than 1")
+		l.MaxQueryCapacity = 1
+	}
+
+	if err := l.OTLPConfig.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -486,8 +538,13 @@ func (o *Overrides) MaxQueryRange(_ context.Context, userID string) time.Duratio
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
-func (o *Overrides) MaxQueriersPerUser(userID string) int {
+func (o *Overrides) MaxQueriersPerUser(userID string) uint {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+}
+
+// MaxQueryCapacity returns how much of the available query capacity can be used by this user..
+func (o *Overrides) MaxQueryCapacity(userID string) float64 {
+	return o.getOverridesForUser(userID).MaxQueryCapacity
 }
 
 // QueryReadyIndexNumDays returns the number of days for which we have to be query ready for a user.
@@ -512,11 +569,6 @@ func (o *Overrides) MaxQueryParallelism(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryParallelism
 }
 
-// EnforceMetricName whether to enforce the presence of a metric name.
-func (o *Overrides) EnforceMetricName(userID string) bool {
-	return o.getOverridesForUser(userID).EnforceMetricName
-}
-
 // CardinalityLimit whether to enforce the presence of a metric name.
 func (o *Overrides) CardinalityLimit(userID string) int {
 	return o.getOverridesForUser(userID).CardinalityLimit
@@ -535,6 +587,17 @@ func (o *Overrides) MinShardingLookback(userID string) time.Duration {
 // QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
+}
+
+// MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.
+func (o *Overrides) MetadataQuerySplitDuration(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MetadataQuerySplitDuration)
+}
+
+// IngesterQuerySplitDuration returns the tenant specific splitby interval applied in the query frontend when querying
+// during the `query_ingesters_within` window.
+func (o *Overrides) IngesterQuerySplitDuration(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).IngesterQuerySplitDuration)
 }
 
 // MaxQueryBytesRead returns the maximum bytes a query can read.
@@ -575,6 +638,10 @@ func (o *Overrides) MaxCacheFreshness(_ context.Context, userID string) time.Dur
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
 }
 
+func (o *Overrides) MaxMetadataCacheFreshness(_ context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxMetadataCacheFreshness)
+}
+
 func (o *Overrides) MaxStatsCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxStatsCacheFreshness)
 }
@@ -582,12 +649,6 @@ func (o *Overrides) MaxStatsCacheFreshness(_ context.Context, userID string) tim
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
-}
-
-// Deprecated, can be removed in next major version
-// EvaluationDelay returns the rules evaluation delay for a given user.
-func (o *Overrides) EvaluationDelay(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).RulerEvaluationDelay)
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
@@ -781,6 +842,50 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
+func (o *Overrides) BloomGatewayShardSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomGatewayShardSize
+}
+
+func (o *Overrides) BloomGatewayBlocksDownloadingParallelism(userID string) int {
+	return o.getOverridesForUser(userID).BloomGatewayBlocksDownloadingParallelism
+}
+
+func (o *Overrides) BloomGatewayCacheKeyInterval(userID string) time.Duration {
+	return o.getOverridesForUser(userID).BloomGatewayCacheKeyInterval
+}
+
+func (o *Overrides) BloomGatewayEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).BloomGatewayEnabled
+}
+
+func (o *Overrides) BloomCompactorChunksBatchSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorChunksBatchSize
+}
+
+func (o *Overrides) BloomCompactorShardSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorShardSize
+}
+
+func (o *Overrides) BloomCompactorMaxTableAge(userID string) time.Duration {
+	return o.getOverridesForUser(userID).BloomCompactorMaxTableAge
+}
+
+func (o *Overrides) BloomCompactorEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).BloomCompactorEnabled
+}
+
+func (o *Overrides) BloomNGramLength(userID string) int {
+	return o.getOverridesForUser(userID).BloomNGramLength
+}
+
+func (o *Overrides) BloomNGramSkip(userID string) int {
+	return o.getOverridesForUser(userID).BloomNGramSkip
+}
+
+func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {
+	return o.getOverridesForUser(userID).BloomFalsePositiveRate
+}
+
 func (o *Overrides) AllowStructuredMetadata(userID string) bool {
 	return o.getOverridesForUser(userID).AllowStructuredMetadata
 }
@@ -791,6 +896,10 @@ func (o *Overrides) MaxStructuredMetadataSize(userID string) int {
 
 func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 	return o.getOverridesForUser(userID).MaxStructuredMetadataEntriesCount
+}
+
+func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
+	return o.getOverridesForUser(userID).OTLPConfig
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

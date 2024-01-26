@@ -1,0 +1,139 @@
+auth_enabled: false
+legacy-read-mode: true
+
+server:
+  http_listen_port: 3100
+
+common:
+  path_prefix: /tmp/loki
+  storage:
+    filesystem:
+      chunks_directory: /tmp/loki/chunks
+      rules_directory: /tmp/loki/rules
+    s3: &s3_cfg
+      s3: "bucket.123abc.net"
+      sse_encryption: true # DELETED
+
+ingester:
+  chunk_target_size: 1000
+  max_chunk_age: 1h30m
+  max_transfer_retries: 7 # DELETED
+
+querier:
+  query_ingesters_within: 1h
+  engine:
+    timeout: 1m # DELETED
+    max_look_back_period: 1m
+
+query_range:
+  align_queries_with_step: true
+  split_queries_by_interval: 15m # DELETED
+  forward_headers_list: ["foo", "bar"] # DELETED
+
+frontend_worker:
+  frontend_address: "123abc.net"
+  parallelism: 1 # DELETED
+  match_max_concurrent: false # DELETED
+
+index_gateway:
+  ring:
+    replication_factor: 2 # DEPRECATED
+    instance_interface_names: ["eth0", "eth1"]
+
+compactor:
+  working_directory: /tmp/loki/boltdb-shipper-active
+  shared_store: gcs # DELETED
+  shared_store_key_prefix: /index # DELETED
+  deletion_mode: "delete" # DELETED
+
+chunk_store_config:
+  cache_lookups_older_than: 1h
+  write_dedupe_cache_config: # DEPRECATED
+    default_validity: 30m
+  max_look_back_period: 1m # DELETED
+
+ruler:
+  flush_period: 1s
+  storage:
+    s3: *s3_cfg
+  remote_write:
+    enabled: true
+    client: # DEPRECATED
+      url: "http://localhost:3100/api/prom/push"
+
+storage_config:
+  bigtable: # DEPRECATED
+    project: "my-project"
+  cassandra: # DEPRECATED
+    addresses: 'a.b.c.d:9042'
+  boltdb: # DEPRECATED
+    directory: /tmp/loki/boltdb
+  grpc_store: # DEPRECATED
+    server_address: "grpc.123abc.net"
+  boltdb_shipper:
+    shared_store: gcs # DELETED
+    shared_store_key_prefix: /index # DELETED
+    active_index_directory: /tmp/loki/boltdb-shipper-active
+    use_boltdb_shipper_as_backup: true # DELETED
+  tsdb_shipper:
+    shared_store: gcs # DELETED
+    shared_store_key_prefix: /index # DELETED
+  aws:
+    s3: "bucket.123abc.net"
+    sse_encryption: true # DELETED
+    dynamodb: # DEPRECATED
+      dynamodb_url: "dynamodb.123abc.net"
+  s3: *s3_cfg
+
+schema_config:
+  configs:
+    - from: 2020-10-10
+      store: tsdb
+      object_store: aws
+    - from: 2020-10-11
+      store: aws # DEPRECATED
+      object_store: aws-dynamo # DEPRECATED
+    - from: 2020-10-12
+      store: aws-dynamo # DEPRECATED
+      object_store: aws-dynamo # DEPRECATED
+    - from: 2020-10-13
+      store: gcp # DEPRECATED
+      object_store: gcp # DEPRECATED
+    - from: 2020-10-14
+      store: gcp-columnkey # DEPRECATED
+      object_store: gcp-columnkey # DEPRECATED
+    - from: 2020-10-15
+      store: bigtable # DEPRECATED
+      object_store: bigtable # DEPRECATED
+    - from: 2020-10-16
+      store: bigtable-hashed # DEPRECATED
+      object_store: bigtable-hashed # DEPRECATED
+    - from: 2020-10-17
+      store: cassandra # DEPRECATED
+      object_store: cassandra # DEPRECATED
+    - from: 2020-10-18
+      store: grpc # DEPRECATED
+      object_store: grpc # DEPRECATED
+
+limits_config:
+  ingestion_rate_mb: 100
+  unordered_writes: true # DEPRECATED
+  enforce_metric_name: true # DELETED
+  ruler_evaluation_delay_duration: 1m # DELETED
+  ruler_remote_write_url: "push.123abc.net" # DEPRECATED
+  ruler_remote_write_timeout: 1m # DEPRECATED
+  ruler_remote_write_headers: ["foo", "bar"] # DEPRECATED
+  ruler_remote_write_relabel_configs: "foo" # DEPRECATED
+  ruler_remote_write_queue_capacity: 10 # DEPRECATED
+  ruler_remote_write_queue_min_shards: 10 # DEPRECATED
+  ruler_remote_write_queue_max_shards: 100 # DEPRECATED
+  ruler_remote_write_queue_max_samples_per_send: 50 # DEPRECATED
+  ruler_remote_write_queue_batch_send_deadline: 10m # DEPRECATED
+  ruler_remote_write_queue_min_backoff: 1m # DEPRECATED
+  ruler_remote_write_queue_max_backoff: 5m # DEPRECATED
+  ruler_remote_write_queue_retry_on_ratelimit: true # DEPRECATED
+  ruler_remote_write_sigv4_config: # DEPRECATED
+    region: "wherever"
+  per_tenant_override_config: ./overrides.yaml # DEPRECATED
+  per_tenant_override_period: 5s # DEPRECATED
+  allow_deletes: true # DEPRECATED

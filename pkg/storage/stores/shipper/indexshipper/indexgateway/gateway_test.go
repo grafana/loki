@@ -143,7 +143,8 @@ func TestGateway_QueryIndex(t *testing.T) {
 				Start: 0,
 				End:   math.MaxInt64,
 				PeriodConfig: &config.PeriodConfig{
-					IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+					IndexTables: config.IndexPeriodicTableConfig{
+						PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 				},
 			},
 		}}
@@ -203,7 +204,8 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			Start: 0,
 			End:   4,
 			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 			},
 		},
 	}, {
@@ -212,7 +214,8 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			Start: 5,
 			End:   10,
 			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 			},
 		},
 	}, {
@@ -221,11 +224,12 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			Start: 15,
 			End:   math.MaxInt64,
 			PeriodConfig: &config.PeriodConfig{
-				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Prefix: tableNamePrefix}},
 			},
 		},
 	}}
-	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, nil, indexClients)
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, nil, indexClients, nil)
 	require.NoError(t, err)
 
 	expectedQueries = append(expectedQueries,
@@ -250,7 +254,7 @@ func TestVolume(t *testing.T) {
 		{Name: "bar", Volume: 38},
 	}}, nil)
 
-	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil)
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil, nil)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")

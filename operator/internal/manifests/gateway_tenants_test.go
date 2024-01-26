@@ -7,15 +7,14 @@ import (
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
-
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 func defaultGatewayDeployment() *appsv1.Deployment {
@@ -1396,12 +1395,11 @@ func TestConfigureServiceForMode(t *testing.T) {
 
 func TestConfigureServiceMonitorForMode(t *testing.T) {
 	type tt struct {
-		desc         string
-		opts         Options
-		mode         lokiv1.ModeType
-		featureGates configv1.FeatureGates
-		sm           *monitoringv1.ServiceMonitor
-		want         *monitoringv1.ServiceMonitor
+		desc string
+		opts Options
+		mode lokiv1.ModeType
+		sm   *monitoringv1.ServiceMonitor
+		want *monitoringv1.ServiceMonitor
 	}
 
 	tc := []tt{
