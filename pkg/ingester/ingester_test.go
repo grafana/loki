@@ -44,6 +44,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -437,17 +438,13 @@ func (s *mockStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams)
 	return nil, nil
 }
 
-func (s *mockStore) Series(_ context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *mockStore) SelectSeries(_ context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	// NOTE: If the time range includes one hour before the current time, the return value is returned.
 	thresTime := time.Now().Add(-1 * time.Hour)
 	if !thresTime.Before(req.Start) && !thresTime.After(req.End) {
 		return []logproto.SeriesIdentifier{
-			{
-				Labels: map[string]string{
-					"foo": "bar",
-					"bar": "baz2",
-				},
-			}}, nil
+			{Labels: mustParseLabels(`{foo="bar"}, {bar="baz2"}`)},
+		}, nil
 	}
 	return nil, nil
 }
@@ -1189,8 +1186,7 @@ func Test_Series(t *testing.T) {
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
-
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -1228,19 +1224,10 @@ func Test_Series(t *testing.T) {
 
 		require.NoError(t, err)
 		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{
-				Labels: map[string]string{
-					"foo": "bar",
-					"bar": "baz1",
-				},
-			},
-			{
-				Labels: map[string]string{
-					"foo": "bar",
-					"bar": "baz2",
-				},
-			},
+			{Labels: mustParseLabels(`{foo="foo", bar="baz1"}`)},
+			{Labels: mustParseLabels(`{foo="bar", bar="baz2"}`)},
 		}, res.Series)
+
 	})
 
 	t.Run("in-memory and storage (If data exists in storage)", func(t *testing.T) {
@@ -1271,18 +1258,8 @@ func Test_Series(t *testing.T) {
 
 		require.NoError(t, err)
 		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{
-				Labels: map[string]string{
-					"foo": "bar",
-					"bar": "baz1",
-				},
-			},
-			{
-				Labels: map[string]string{
-					"foo": "bar",
-					"bar": "baz2",
-				},
-			},
+			{Labels: mustParseLabels(`{foo="foo", bar="bar"}`)},
+			{Labels: mustParseLabels(`{foo="bar", bar="baz2"}`)},
 		}, res.Series)
 	})
 
@@ -1314,12 +1291,7 @@ func Test_Series(t *testing.T) {
 
 		require.NoError(t, err)
 		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{
-				Labels: map[string]string{
-					"foo": "bar",
-					"bar": "baz1",
-				},
-			},
+			{Labels: mustParseLabels(`{foo="bar", bar="baz1"}`)},
 		}, res.Series)
 	})
 }
@@ -1427,4 +1399,17 @@ func jsonLine(ts int64, i int) string {
 		return fmt.Sprintf(`{"a":"b", "c":"d", "e":"f", "g":"h", "ts":"%d"}`, ts)
 	}
 	return fmt.Sprintf(`{"e":"f", "h":"i", "j":"k", "g":"h", "ts":"%d"}`, ts)
+}
+
+func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
+	l, err := marshal.NewLabelSet(s)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse %s", s))
+	}
+
+	result := make([]logproto.SeriesIdentifier_LabelsEntry, 0, len(l))
+	for k, v := range l {
+		result = append(result, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
+	}
+	return result
 }

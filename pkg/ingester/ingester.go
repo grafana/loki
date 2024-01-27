@@ -1169,6 +1169,7 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		var storeSeries []logproto.SeriesIdentifier
+		var parsed syntax.Expr
 
 		groups := []string{""}
 		if len(req.Groups) != 0 {
@@ -1176,7 +1177,13 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		}
 
 		for _, group := range groups {
-			storeSeries, err = i.store.Series(ctx, logql.SelectLogParams{
+			if group != "" {
+				parsed, err = syntax.ParseExpr(group)
+				if err != nil {
+					return nil, err
+				}
+			}
+			storeSeries, err = i.store.SelectSeries(ctx, logql.SelectLogParams{
 				QueryRequest: &logproto.QueryRequest{
 					Selector:  group,
 					Limit:     1,
@@ -1184,6 +1191,9 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 					End:       end,
 					Direction: logproto.FORWARD,
 					Shards:    req.Shards,
+					Plan: &plan.QueryPlan{
+						AST: parsed,
+					},
 				},
 			})
 			if err != nil {
