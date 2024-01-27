@@ -3,9 +3,10 @@ package v1
 import (
 	"hash"
 
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type BoundsCheck uint8

@@ -5,10 +5,11 @@ import (
 	"hash"
 	"path"
 
+	"github.com/pkg/errors"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/encoding"
-	"github.com/pkg/errors"
 )
 
 // TODO(owen-d): Probably want to integrate against the block shipper

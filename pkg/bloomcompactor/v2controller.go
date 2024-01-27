@@ -6,9 +6,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/pkg/errors"
 )
 
 type SimpleBloomController struct {
@@ -37,7 +38,7 @@ func NewSimpleBloomController(
 	}
 }
 
-func (s *SimpleBloomController) do(ctx context.Context) error {
+func (s *SimpleBloomController) do(_ context.Context) error {
 	// 1. Resolve TSDBs
 	tsdbs, err := s.tsdbStore.ResolveTSDBs()
 	if err != nil {

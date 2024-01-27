@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
 func Test_findGaps(t *testing.T) {
