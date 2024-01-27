@@ -84,20 +84,20 @@ func Test_FingerprintBounds_Xor(t *testing.T) {
 	target := NewBounds(10, 20)
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 1, Max: 9},
-	}, NewBounds(1, 9).Xor(target))
+	}, NewBounds(1, 9).Unless(target))
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 21, Max: 30},
-	}, NewBounds(21, 30).Xor(target))
-	assert.Nil(t, NewBounds(10, 20).Xor(target))
+	}, NewBounds(21, 30).Unless(target))
+	assert.Nil(t, NewBounds(10, 20).Unless(target))
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 5, Max: 9},
-	}, NewBounds(5, 15).Xor(target))
+	}, NewBounds(5, 15).Unless(target))
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 21, Max: 25},
-	}, NewBounds(15, 25).Xor(target))
+	}, NewBounds(15, 25).Unless(target))
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 5, Max: 9},
 		{Min: 21, Max: 25},
-	}, NewBounds(5, 25).Xor(target))
-	assert.Nil(t, NewBounds(14, 15).Xor(target))
+	}, NewBounds(5, 25).Unless(target))
+	assert.Nil(t, NewBounds(14, 15).Unless(target))
 }

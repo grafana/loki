@@ -102,8 +102,8 @@ func (b FingerprintBounds) Union(target FingerprintBounds) (res []FingerprintBou
 	}
 }
 
-// Xor returns the the subspace of the bounds which does not intersect with the target bounds
-func (b FingerprintBounds) Xor(target FingerprintBounds) (res []FingerprintBounds) {
+// Unless returns the the subspace of itself which does not intersect with the target bounds
+func (b FingerprintBounds) Unless(target FingerprintBounds) (res []FingerprintBounds) {
 	if !b.Overlaps(target) {
 		return []FingerprintBounds{b}
 	}

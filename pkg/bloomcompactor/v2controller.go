@@ -186,7 +186,7 @@ func findGaps(ownershipRange v1.FingerprintBounds, metas []v1.FingerprintBounds)
 		// since we've already ensured that the meta is within the ownership range,
 		// we know the xor will be of length zero (when the meta is equal to the ownership range)
 		// or 1 (when the meta is a subset of the ownership range)
-		xors := searchRange.Xor(*clippedMeta)
+		xors := searchRange.Unless(*clippedMeta)
 		if len(xors) == 0 {
 			// meta is equal to the ownership range. This means the meta
 			// covers this entire section of the ownership range.
