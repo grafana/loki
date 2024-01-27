@@ -8,7 +8,7 @@ import (
 
 func Test_FingerprintBounds_String(t *testing.T) {
 	bounds := NewBounds(1, 2)
-	assert.Equal(t, "1-2", bounds.String())
+	assert.Equal(t, "0000000000000001-0000000000000002", bounds.String())
 }
 
 func Test_FingerprintBounds_Cmp(t *testing.T) {
