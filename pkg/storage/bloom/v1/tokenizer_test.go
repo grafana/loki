@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 const BigFile = "../../../logql/sketch/testdata/war_peace.txt"
@@ -173,7 +171,7 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						buf, prefixLn := prefixedToken(v2Three.N, logproto.ChunkRef{})
+						buf, prefixLn := prefixedToken(v2Three.N, ChunkRef{})
 						return func() {
 							itr := NewPrefixedTokenIter(buf, prefixLn, v2Three.Tokens(lorem))
 							for itr.Next() {
@@ -190,7 +188,7 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						buf, prefixLn := prefixedToken(v2Three.N, logproto.ChunkRef{})
+						buf, prefixLn := prefixedToken(v2Three.N, ChunkRef{})
 						return func() {
 							itr := NewPrefixedTokenIter(buf, prefixLn, v2ThreeSkip1.Tokens(lorem))
 							for itr.Next() {

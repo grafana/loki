@@ -114,7 +114,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := commonAnnotations(sha1C, "", opts.CertRotationRequiredAt)
+	a := gatewayAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: GatewayName(opts.Name),
 		Affinity:           configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
