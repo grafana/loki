@@ -443,7 +443,7 @@ func (s *mockStore) SelectSeries(_ context.Context, req logql.SelectLogParams) (
 	thresTime := time.Now().Add(-1 * time.Hour)
 	if !thresTime.Before(req.Start) && !thresTime.After(req.End) {
 		return []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{foo="bar"}, {bar="baz2"}`)},
+			{Labels: mustParseLabels(`{foo="bar",bar="baz2"}`)},
 		}, nil
 	}
 	return nil, nil
@@ -1224,7 +1224,7 @@ func Test_Series(t *testing.T) {
 
 		require.NoError(t, err)
 		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{foo="foo", bar="baz1"}`)},
+			{Labels: mustParseLabels(`{foo="bar", bar="baz1"}`)},
 			{Labels: mustParseLabels(`{foo="bar", bar="baz2"}`)},
 		}, res.Series)
 
@@ -1258,7 +1258,7 @@ func Test_Series(t *testing.T) {
 
 		require.NoError(t, err)
 		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{foo="foo", bar="bar"}`)},
+			{Labels: mustParseLabels(`{foo="bar", bar="baz1"}`)},
 			{Labels: mustParseLabels(`{foo="bar", bar="baz2"}`)},
 		}, res.Series)
 	})
