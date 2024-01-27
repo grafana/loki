@@ -7,8 +7,8 @@ import (
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 )
 
 // TODO(owen-d): Probably want to integrate against the block shipper
@@ -17,18 +17,38 @@ import (
 // in the case we want to do migrations. It's easier to load a block-ref or similar
 // within the context of a specific tenant+period+index path and not couple them.
 type BlockRef struct {
-	Min, Max model.Fingerprint
-	Checksum uint32
+	OwnershipRange v1.FingerprintBounds
+	Checksum       uint32
 }
 
-func (r BlockRef) Hash(h hash.Hash32) (n int, err error) {
-	// TODO(owen-d): implement
-	return h.Write(nil)
+func (r BlockRef) Hash(h hash.Hash32) error {
+	if err := r.OwnershipRange.Hash(h); err != nil {
+		return err
+	}
+
+	var enc encoding.Encbuf
+	enc.PutBE32(r.Checksum)
+	_, err := h.Write(enc.Get())
+	return errors.Wrap(err, "writing BlockRef")
 }
 
 type MetaRef struct {
 	OwnershipRange v1.FingerprintBounds
 	Checksum       uint32
+}
+
+// `bloom/<period>/<tenant>/metas/<start_fp>-<end_fp>-<start_ts>-<end_ts>-<checksum>`
+func (m MetaRef) Address(userID string, period int) (string, error) {
+	joined := path.Join(
+		"bloom",
+		fmt.Sprintf("%v", period),
+		userID,
+		"metas",
+		m.OwnershipRange.String(),
+		fmt.Sprintf("%v", m.Checksum),
+	)
+
+	return fmt.Sprintf("%s.json", joined), nil
 }
 
 type Meta struct {
@@ -47,23 +67,16 @@ type Meta struct {
 	Blocks []BlockRef
 }
 
-// `bloom/<period>/<tenant>/metas/<start_fp>-<end_fp>-<start_ts>-<end_ts>-<checksum>`
-func (m Meta) Address(userID string, period int) (string, error) {
+// Generate MetaRef from Meta
+func (m Meta) Ref() (MetaRef, error) {
 	checksum, err := m.Checksum()
 	if err != nil {
-		return "", errors.Wrap(err, "getting checksum")
+		return MetaRef{}, errors.Wrap(err, "getting checksum")
 	}
-
-	joined := path.Join(
-		"bloom",
-		fmt.Sprintf("%v", period),
-		userID,
-		"metas",
-		m.OwnershipRange.String(),
-		fmt.Sprintf("%v", checksum),
-	)
-
-	return fmt.Sprintf("%s.json", joined), nil
+	return MetaRef{
+		OwnershipRange: m.OwnershipRange,
+		Checksum:       checksum,
+	}, nil
 }
 
 func (m Meta) Checksum() (uint32, error) {
@@ -76,21 +89,21 @@ func (m Meta) Checksum() (uint32, error) {
 	}
 
 	for _, tombstone := range m.Tombstones {
-		_, err = tombstone.Hash(h)
+		err = tombstone.Hash(h)
 		if err != nil {
 			return 0, errors.Wrap(err, "writing Tombstones")
 		}
 	}
 
 	for _, source := range m.Sources {
-		_, err = source.Hash(h)
+		err = source.Hash(h)
 		if err != nil {
 			return 0, errors.Wrap(err, "writing Sources")
 		}
 	}
 
 	for _, block := range m.Blocks {
-		_, err = block.Hash(h)
+		err = block.Hash(h)
 		if err != nil {
 			return 0, errors.Wrap(err, "writing Blocks")
 		}
@@ -111,7 +124,7 @@ type MetaStore interface {
 }
 
 type BlockStore interface {
-	// TODO(owen-d): flesh out
+	// TODO(owen-d): flesh out|integrate against bloomshipper.Client
 	GetBlocks([]BlockRef) ([]interface{}, error)
 	PutBlock(interface{}) error
 }

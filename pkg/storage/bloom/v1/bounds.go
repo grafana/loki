@@ -1,6 +1,12 @@
 package v1
 
-import "github.com/prometheus/common/model"
+import (
+	"hash"
+
+	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
+)
 
 type BoundsCheck uint8
 
@@ -16,6 +22,14 @@ type FingerprintBounds struct {
 
 func NewBounds(min, max model.Fingerprint) FingerprintBounds {
 	return FingerprintBounds{Min: min, Max: max}
+}
+
+func (b FingerprintBounds) Hash(h hash.Hash32) error {
+	var enc encoding.Encbuf
+	enc.PutBE64(uint64(b.Min))
+	enc.PutBE64(uint64(b.Max))
+	_, err := h.Write(enc.Get())
+	return errors.Wrap(err, "writing OwnershipRange")
 }
 
 func (b FingerprintBounds) String() string {
