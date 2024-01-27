@@ -8,19 +8,22 @@ import (
 const (
 	metricsNamespace = "loki"
 	metricsSubsystem = "bloomcompactor"
+
+	statusSuccess = "success"
+	statusFailure = "failure"
 )
 
 type metrics struct {
 	compactionRunsStarted          prometheus.Counter
-	compactionRunsCompleted        prometheus.Counter
-	compactionRunsFailed           prometheus.Counter
+	compactionRunsCompleted        *prometheus.CounterVec
+	compactionRunTime              *prometheus.HistogramVec
 	compactionRunDiscoveredTenants prometheus.Counter
 	compactionRunSkippedTenants    prometheus.Counter
-	compactionRunSucceededTenants  prometheus.Counter
-	compactionRunFailedTenants     prometheus.Counter
+	compactionRunTenantsCompleted  *prometheus.CounterVec
+	compactionRunTenantsTime       *prometheus.HistogramVec
 	compactionRunJobStarted        prometheus.Counter
-	compactionRunJobSuceeded       prometheus.Counter
-	compactionRunJobFailed         prometheus.Counter
+	compactionRunJobCompleted      *prometheus.CounterVec
+	compactionRunJobTime           *prometheus.HistogramVec
 	compactionRunInterval          prometheus.Gauge
 	compactorRunning               prometheus.Gauge
 }
@@ -33,18 +36,19 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "runs_started_total",
 			Help:      "Total number of compactions started",
 		}),
-		compactionRunsCompleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunsCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "runs_completed_total",
 			Help:      "Total number of compactions completed successfully",
-		}),
-		compactionRunsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"status"}),
+		compactionRunTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "runs_failed_total",
-			Help:      "Total number of compaction runs failed",
-		}),
+			Name:      "runs_time_seconds",
+			Help:      "Time spent during a compaction cycle.",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"status"}),
 		compactionRunDiscoveredTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
@@ -57,36 +61,38 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "tenants_skipped",
 			Help:      "Number of tenants skipped during the current compaction run",
 		}),
-		compactionRunSucceededTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunTenantsCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_succeeded",
+			Name:      "tenants_completed",
 			Help:      "Number of tenants successfully processed during the current compaction run",
-		}),
-		compactionRunFailedTenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"status"}),
+		compactionRunTenantsTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tenants_failed",
-			Help:      "Number of tenants failed processing during the current compaction run",
-		}),
+			Name:      "tenants_time_seconds",
+			Help:      "Time spent processing tenants.",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"status"}),
 		compactionRunJobStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "job_started",
 			Help:      "Number of jobs started processing during the current compaction run",
 		}),
-		compactionRunJobSuceeded: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		compactionRunJobCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "job_succeeded",
+			Name:      "job_completed",
 			Help:      "Number of jobs successfully processed during the current compaction run",
-		}),
-		compactionRunJobFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"status"}),
+		compactionRunJobTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "job_failed",
-			Help:      "Number of jobs failed processing during the current compaction run",
-		}),
+			Name:      "job_time_seconds",
+			Help:      "Time spent processing jobs.",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"status"}),
 		compactionRunInterval: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,

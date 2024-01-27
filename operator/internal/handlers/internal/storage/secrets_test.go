@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
@@ -135,7 +136,7 @@ func TestAzureExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretAzure)
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretAzure, tst.secret, nil, configv1.FeatureGates{})
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -186,7 +187,7 @@ func TestGCSExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretGCS)
+			_, err := extractSecrets(lokiv1.ObjectStorageSecretGCS, tst.secret, nil, configv1.FeatureGates{})
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}
@@ -360,12 +361,86 @@ func TestS3Extract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretS3)
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretS3, tst.secret, nil, configv1.FeatureGates{})
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
+			}
+			if tst.wantErr {
+				require.NotNil(t, err)
+			}
+		})
+	}
+}
+
+func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
+	fg := configv1.FeatureGates{
+		OpenShift: configv1.OpenShiftFeatureGates{
+			Enabled:        true,
+			ManagedAuthEnv: true,
+		},
+	}
+	type test struct {
+		name              string
+		secret            *corev1.Secret
+		managedAuthSecret *corev1.Secret
+		wantErr           bool
+	}
+	table := []test{
+		{
+			name:              "missing role-arn",
+			secret:            &corev1.Secret{},
+			managedAuthSecret: &corev1.Secret{},
+			wantErr:           true,
+		},
+		{
+			name:              "missing region",
+			secret:            &corev1.Secret{},
+			managedAuthSecret: &corev1.Secret{},
+			wantErr:           true,
+		},
+		{
+			name: "override role arn not allowed",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"role_arn": []byte("role-arn"),
+				},
+			},
+			managedAuthSecret: &corev1.Secret{},
+			wantErr:           true,
+		},
+		{
+			name: "STS all set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"region":      []byte("a-region"),
+				},
+			},
+			managedAuthSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "managed-auth"},
+			},
+		},
+	}
+	for _, tst := range table {
+		tst := tst
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretS3, tst.secret, tst.managedAuthSecret, fg)
+			if !tst.wantErr {
+				require.NoError(t, err)
+				require.NotEmpty(t, opts.SecretName)
+				require.NotEmpty(t, opts.SecretSHA1)
+				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
+				require.True(t, opts.S3.STS)
+				require.Equal(t, opts.S3.Audience, "openshift")
+				require.Equal(t, opts.OpenShift.CloudCredentials.SecretName, tst.managedAuthSecret.Name)
+				require.NotEmpty(t, opts.OpenShift.CloudCredentials.SHA1)
 			}
 			if tst.wantErr {
 				require.NotNil(t, err)
@@ -509,7 +584,7 @@ func TestSwiftExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretSwift)
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretSwift, tst.secret, nil, configv1.FeatureGates{})
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -583,7 +658,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := extractSecret(tst.secret, lokiv1.ObjectStorageSecretAlibabaCloud)
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretAlibabaCloud, tst.secret, nil, configv1.FeatureGates{})
 			if !tst.wantErr {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
