@@ -78,6 +78,15 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 
 	// TODO(owen-d): finish
 	panic("not implemented")
+
+	// Now that we have the gaps, we will generate a bloom block for each gap.
+	// We can accelerate this by using existing blocks which may already contain
+	// needed chunks in their blooms, for instance after a new TSDB version is generated
+	// but contains many of the same chunk references from the previous version.
+	// To do this, we'll need to take the metas we've already resolved and find blocks
+	// overlapping the ownership ranges we've identified as needing updates.
+	// With these in hand, we can download the old blocks and use them to
+	// accelerate bloom generation for the new blocks.
 }
 
 type tsdbGaps struct {

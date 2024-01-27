@@ -8,9 +8,18 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 )
 
-type BlockRef struct{}
+// TODO(owen-d): Probably want to integrate against the block shipper
+// instead of defining here, but only (min,max,fp) should be required for
+// the ref. Things like index-paths, etc are not needed and possibly harmful
+// in the case we want to do migrations. It's easier to load a block-ref or similar
+// within the context of a specific tenant+period+index path and not couple them.
+type BlockRef struct {
+	Min, Max model.Fingerprint
+	Checksum uint32
+}
 
 func (r BlockRef) Hash(h hash.Hash32) (n int, err error) {
 	// TODO(owen-d): implement
@@ -18,13 +27,11 @@ func (r BlockRef) Hash(h hash.Hash32) (n int, err error) {
 }
 
 type MetaRef struct {
-	UserID string
-	Period int
+	OwnershipRange v1.FingerprintBounds
+	Checksum       uint32
 }
 
 type Meta struct {
-	UserID string
-	Period int
 
 	// The fingerprint range of the block. This is the range _owned_ by the meta and
 	// is greater than or equal to the range of the actual data in the underlying blocks.
@@ -41,7 +48,7 @@ type Meta struct {
 }
 
 // `bloom/<period>/<tenant>/metas/<start_fp>-<end_fp>-<start_ts>-<end_ts>-<checksum>`
-func (m Meta) Address() (string, error) {
+func (m Meta) Address(userID string, period int) (string, error) {
 	checksum, err := m.Checksum()
 	if err != nil {
 		return "", errors.Wrap(err, "getting checksum")
@@ -49,8 +56,8 @@ func (m Meta) Address() (string, error) {
 
 	joined := path.Join(
 		"bloom",
-		fmt.Sprintf("%v", m.Period),
-		m.UserID,
+		fmt.Sprintf("%v", period),
+		userID,
 		"metas",
 		m.OwnershipRange.String(),
 		fmt.Sprintf("%v", checksum),
@@ -63,17 +70,7 @@ func (m Meta) Checksum() (uint32, error) {
 	h := v1.Crc32HashPool.Get()
 	defer v1.Crc32HashPool.Put(h)
 
-	_, err := h.Write([]byte(m.UserID))
-	if err != nil {
-		return 0, errors.Wrap(err, "writing UserID")
-	}
-
-	_, err = h.Write([]byte(fmt.Sprintf("%v", m.Period)))
-	if err != nil {
-		return 0, errors.Wrap(err, "writing Period")
-	}
-
-	_, err = h.Write([]byte(m.OwnershipRange.String()))
+	_, err := h.Write([]byte(m.OwnershipRange.String()))
 	if err != nil {
 		return 0, errors.Wrap(err, "writing OwnershipRange")
 	}
