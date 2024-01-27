@@ -331,10 +331,3 @@ func (b *batchedLoader) At() v1.ChunkRefWithIter {
 func (b *batchedLoader) Err() error {
 	return b.err
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
