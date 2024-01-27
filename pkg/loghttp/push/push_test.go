@@ -200,7 +200,7 @@ func TestParseRequest(t *testing.T) {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
 			}
 
-			data, err := ParseRequest(util_log.Logger, "fake", request, nil, ParseLokiRequest)
+			data, err := ParseRequest(util_log.Logger, "fake", request, nil, nil, ParseLokiRequest)
 
 			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
 			previousStructuredMetadataBytesReceived += structuredMetadataBytesReceived

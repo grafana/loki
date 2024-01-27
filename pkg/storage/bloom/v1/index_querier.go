@@ -52,8 +52,6 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 		return header.ThroughFp >= fp
 	})
 
-	page := it.b.index.pageHeaders[desiredPage]
-
 	switch {
 	case desiredPage == len(it.b.index.pageHeaders):
 		// no overlap exists, either because no page was found with a throughFP >= fp
@@ -68,6 +66,7 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 		// on the right page, no action needed
 	default:
 		// need to load a new page
+		page := it.b.index.pageHeaders[desiredPage]
 		r, err := it.b.reader.Index()
 		if err != nil {
 			return errors.Wrap(err, "getting index reader")

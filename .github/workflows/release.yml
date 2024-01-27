@@ -1,0 +1,19 @@
+---
+name: 'create release'
+on:
+  push:
+    branches:
+      - 'release-[0-9].[0-9].x'
+      - 'k[0-9]*'
+  workflow_dispatch: {}
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  release:
+    uses: github/loki-release/.github/workflows/release.yml@main
+    with:
+      release_repo: grafana/loki
+    secrets:
+      GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.BACKEND_ENTERPRISE_DRONE }}'
+      GH_TOKEN: '${{ secrets.GH_TOKEN }}'

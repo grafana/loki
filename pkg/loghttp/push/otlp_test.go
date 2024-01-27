@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -23,6 +24,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		generateLogs        func() plog.Logs
 		expectedPushRequest logproto.PushRequest
 		expectedStats       Stats
+		otlpConfig          OTLPConfig
 	}{
 		{
 			name: "no logs",
@@ -31,6 +33,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedPushRequest: logproto.PushRequest{},
 			expectedStats:       *newPushStats(),
+			otlpConfig:          DefaultOTLPConfig,
 		},
 		{
 			name: "resource with no logs",
@@ -41,9 +44,11 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedPushRequest: logproto.PushRequest{},
 			expectedStats:       *newPushStats(),
+			otlpConfig:          DefaultOTLPConfig,
 		},
 		{
-			name: "resource with a log entry",
+			name:       "resource with a log entry",
+			otlpConfig: DefaultOTLPConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "service-1")
@@ -78,7 +83,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 		},
 		{
-			name: "resource attributes and scope attributes stored as structured metadata",
+			name:       "resource attributes and scope attributes stored as structured metadata",
+			otlpConfig: DefaultOTLPConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -152,7 +158,8 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 		},
 		{
-			name: "attributes with nested data",
+			name:       "attributes with nested data",
+			otlpConfig: DefaultOTLPConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -234,10 +241,153 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				mostRecentEntryTimestamp: now,
 			},
 		},
+		{
+			name: "custom otlp config",
+			otlpConfig: OTLPConfig{
+				ResourceAttributes: ResourceAttributesConfig{
+					AttributesConfig: []AttributesConfig{
+						{
+							Action:     IndexLabel,
+							Attributes: []string{"pod.name"},
+						}, {
+							Action: IndexLabel,
+							Regex:  relabel.MustNewRegexp("service.*"),
+						},
+						{
+							Action: Drop,
+							Regex:  relabel.MustNewRegexp("drop.*"),
+						},
+						{
+							Action:     StructuredMetadata,
+							Attributes: []string{"resource.nested"},
+						},
+					},
+				},
+				ScopeAttributes: []AttributesConfig{
+					{
+						Action:     Drop,
+						Attributes: []string{"drop.function"},
+					},
+				},
+				LogAttributes: []AttributesConfig{
+					{
+						Action: StructuredMetadata,
+						Regex:  relabel.MustNewRegexp(".*_id"),
+					},
+					{
+						Action: Drop,
+						Regex:  relabel.MustNewRegexp(".*"),
+					},
+				},
+			},
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				ld.ResourceLogs().AppendEmpty()
+				ld.ResourceLogs().At(0).Resource().Attributes().PutStr("service.name", "service-1")
+				ld.ResourceLogs().At(0).Resource().Attributes().PutStr("pod.name", "service-1-abc")
+				ld.ResourceLogs().At(0).Resource().Attributes().PutStr("pod.ip", "10.200.200.200")
+				ld.ResourceLogs().At(0).Resource().Attributes().PutStr("drop.service.addr", "192.168.0.1")
+				ld.ResourceLogs().At(0).Resource().Attributes().PutStr("drop.service.version", "v1")
+				ld.ResourceLogs().At(0).Resource().Attributes().PutEmptyMap("resource.nested").PutStr("foo", "bar")
+				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty()
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().SetName("fizz")
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().Attributes().PutStr("drop.function", "login")
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().Attributes().PutEmptyMap("scope.nested").PutStr("foo", "bar")
+				for i := 0; i < 2; i++ {
+					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().AppendEmpty()
+					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).Body().SetStr(fmt.Sprintf("test body - %d", i))
+					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).Attributes().PutStr("user_id", "u1")
+					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).Attributes().PutStr("order_id", "o1")
+					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).Attributes().PutEmptyMap("drop.log.nested").PutStr("foo", fmt.Sprintf("bar - %d", i))
+				}
+				return ld
+			},
+			expectedPushRequest: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{pod_name="service-1-abc", service_name="service-1"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp: now,
+								Line:      "test body - 0",
+								StructuredMetadata: push.LabelsAdapter{
+									{
+										Name:  "user_id",
+										Value: "u1",
+									},
+									{
+										Name:  "order_id",
+										Value: "o1",
+									},
+									{
+										Name:  "pod_ip",
+										Value: "10.200.200.200",
+									},
+									{
+										Name:  "resource_nested_foo",
+										Value: "bar",
+									},
+									{
+										Name:  "scope_nested_foo",
+										Value: "bar",
+									},
+									{
+										Name:  "scope_name",
+										Value: "fizz",
+									},
+								},
+							},
+							{
+								Timestamp: now,
+								Line:      "test body - 1",
+								StructuredMetadata: push.LabelsAdapter{
+									{
+										Name:  "user_id",
+										Value: "u1",
+									},
+									{
+										Name:  "order_id",
+										Value: "o1",
+									},
+									{
+										Name:  "pod_ip",
+										Value: "10.200.200.200",
+									},
+									{
+										Name:  "resource_nested_foo",
+										Value: "bar",
+									},
+									{
+										Name:  "scope_nested_foo",
+										Value: "bar",
+									},
+									{
+										Name:  "scope_name",
+										Value: "fizz",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedStats: Stats{
+				numLines: 2,
+				logLinesBytes: map[time.Duration]int64{
+					time.Hour: 26,
+				},
+				structuredMetadataBytes: map[time.Duration]int64{
+					time.Hour: 113,
+				},
+				streamLabelsSize:         42,
+				mostRecentEntryTimestamp: now,
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stats := newPushStats()
-			pushReq := otlpToLokiPushRequest(tc.generateLogs(), "foo", fakeRetention{}, stats)
+			pushReq := otlpToLokiPushRequest(tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, stats)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 		})
@@ -324,7 +474,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord()))
+			require.Equal(t, tc.expectedResp, otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig))
 		})
 	}
 
