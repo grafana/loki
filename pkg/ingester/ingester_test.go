@@ -443,7 +443,7 @@ func (s *mockStore) SelectSeries(_ context.Context, req logql.SelectLogParams) (
 	thresTime := time.Now().Add(-1 * time.Hour)
 	if !thresTime.Before(req.Start) && !thresTime.After(req.End) {
 		return []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{foo="bar",bar="baz2"}`)},
+			{Labels: mustParseLabels(`{a="11",c="33"}`)},
 		}, nil
 	}
 	return nil, nil
@@ -1196,10 +1196,10 @@ func Test_Series(t *testing.T) {
 		req := logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
-					Labels: `{foo="bar",bar="baz1"}`,
+					Labels: `{a="11",b="22"}`,
 				},
 				{
-					Labels: `{foo="bar",bar="baz2"}`,
+					Labels: `{a="11",c="33"}`,
 				},
 			},
 		}
@@ -1219,15 +1219,19 @@ func Test_Series(t *testing.T) {
 		res, err := i.Series(ctx, &logproto.SeriesRequest{
 			Start:  time.Unix(0, 0),
 			End:    time.Unix(1, 0),
-			Groups: []string{`{foo="bar"}`},
+			Groups: []string{`{a="11"}`},
 		})
 
-		require.NoError(t, err)
-		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{foo="bar", bar="baz1"}`)},
-			{Labels: mustParseLabels(`{foo="bar", bar="baz2"}`)},
-		}, res.Series)
+		expectedSeries := []logproto.SeriesIdentifier{
+			{Labels: mustParseLabels(`{a="11", b="22"}`)},
+			{Labels: mustParseLabels(`{a="11", c="33"}`)},
+		}
+		// ignore order
+		sortLabels(res.Series)
+		sortLabels(expectedSeries)
 
+		require.NoError(t, err)
+		require.ElementsMatch(t, expectedSeries, res.Series)
 	})
 
 	t.Run("in-memory and storage (If data exists in storage)", func(t *testing.T) {
@@ -1235,7 +1239,7 @@ func Test_Series(t *testing.T) {
 		req := logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
-					Labels: `{foo="bar",bar="baz1"}`,
+					Labels: `{a="11",b="22"}`,
 				},
 			},
 		}
@@ -1253,14 +1257,19 @@ func Test_Series(t *testing.T) {
 		res, err := i.Series(ctx, &logproto.SeriesRequest{
 			Start:  time.Now().Add(-20 * time.Hour),
 			End:    time.Now(),
-			Groups: []string{`{foo="bar"}`},
+			Groups: []string{`{a="11"}`},
 		})
 
+		expectedSeries := []logproto.SeriesIdentifier{
+			{Labels: mustParseLabels(`{a="11", b="22"}`)},
+			{Labels: mustParseLabels(`{a="11", c="33"}`)},
+		}
+		// ignore order
+		sortLabels(res.Series)
+		sortLabels(expectedSeries)
+
 		require.NoError(t, err)
-		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{foo="bar", bar="baz1"}`)},
-			{Labels: mustParseLabels(`{foo="bar", bar="baz2"}`)},
-		}, res.Series)
+		require.ElementsMatch(t, expectedSeries, res.Series)
 	})
 
 	t.Run("in-memory and storage (If no data exists in storage)", func(t *testing.T) {
@@ -1268,7 +1277,7 @@ func Test_Series(t *testing.T) {
 		req := logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
-					Labels: `{foo="bar",bar="baz1"}`,
+					Labels: `{a="11",b="22"}`,
 				},
 			},
 		}
@@ -1286,13 +1295,18 @@ func Test_Series(t *testing.T) {
 		res, err := i.Series(ctx, &logproto.SeriesRequest{
 			Start:  time.Now().Add(-30 * time.Minute),
 			End:    time.Now(),
-			Groups: []string{`{foo="bar"}`},
+			Groups: []string{`{a="11"}`},
 		})
 
+		expectedSeries := []logproto.SeriesIdentifier{
+			{Labels: mustParseLabels(`{a="11", b="22"}`)},
+		}
+		// ignore order
+		sortLabels(res.Series)
+		sortLabels(expectedSeries)
+
 		require.NoError(t, err)
-		require.ElementsMatch(t, []logproto.SeriesIdentifier{
-			{Labels: mustParseLabels(`{foo="bar", bar="baz1"}`)},
-		}, res.Series)
+		require.ElementsMatch(t, expectedSeries, res.Series)
 	})
 }
 
@@ -1412,4 +1426,12 @@ func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
 		result = append(result, logproto.SeriesIdentifier_LabelsEntry{Key: k, Value: v})
 	}
 	return result
+}
+
+func sortLabels(series []logproto.SeriesIdentifier) {
+	for i := range series {
+		sort.SliceStable(series[i].Labels, func(j, k int) bool {
+			return series[i].Labels[j].Key < series[i].Labels[k].Key
+		})
+	}
 }
