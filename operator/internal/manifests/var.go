@@ -78,6 +78,8 @@ const (
 	AnnotationLokiConfigHash string = "loki.grafana.com/config-hash"
 	// AnnotationLokiObjectStoreHash stores the last SHA1 hash of the loki object storage credetials.
 	AnnotationLokiObjectStoreHash string = "loki.grafana.com/object-store-hash"
+	// AnnotationLokiManagedAuthHash stores the last SHA1 hash of the loki managed auth credentials.
+	AnnotationLokiManagedAuthHash string = "loki.grafana.com/managed-auth-hash"
 
 	// LabelCompactorComponent is the label value for the compactor component
 	LabelCompactorComponent string = "compactor"
@@ -133,18 +135,28 @@ var (
 	volumeFileSystemMode         = corev1.PersistentVolumeFilesystem
 )
 
-func commonAnnotations(configHash, objStoreHash, rotationRequiredAt string) map[string]string {
+func commonAnnotations(opts Options) map[string]string {
 	a := map[string]string{
-		AnnotationLokiConfigHash: configHash,
-
-		AnnotationCertRotationRequiredAt: rotationRequiredAt,
+		AnnotationLokiConfigHash:         opts.ConfigSHA1,
+		AnnotationCertRotationRequiredAt: opts.CertRotationRequiredAt,
 	}
 
-	if objStoreHash != "" {
-		a[AnnotationLokiObjectStoreHash] = objStoreHash
+	if opts.ObjectStorage.SecretSHA1 != "" {
+		a[AnnotationLokiObjectStoreHash] = opts.ObjectStorage.SecretSHA1
+	}
+
+	if opts.ObjectStorage.OpenShift.CloudCredentials.SHA1 != "" {
+		a[AnnotationLokiManagedAuthHash] = opts.ObjectStorage.OpenShift.CloudCredentials.SHA1
 	}
 
 	return a
+}
+
+func gatewayAnnotations(configSHA1, certRotationRequiredAt string) map[string]string {
+	return map[string]string{
+		AnnotationLokiConfigHash:         configSHA1,
+		AnnotationCertRotationRequiredAt: certRotationRequiredAt,
+	}
 }
 
 func commonLabels(stackName string) map[string]string {
