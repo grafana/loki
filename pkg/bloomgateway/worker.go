@@ -145,6 +145,21 @@ func (w *worker) running(_ context.Context) error {
 		}
 
 		for day, tasks := range tasksPerDay {
+
+			// Remove tasks that are already cancelled
+			tasks = slices.DeleteFunc(tasks, func(t Task) bool {
+				if res := t.ctx.Err(); res != nil {
+					t.CloseWithError(res)
+					return true
+				}
+				return false
+			})
+			// no tasks to process
+			// continue with tasks of next day
+			if len(tasks) == 0 {
+				continue
+			}
+
 			// interval is [Start, End)
 			interval := bloomshipper.Interval{
 				Start: day,          // inclusive
