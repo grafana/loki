@@ -51,6 +51,13 @@ type OpenShiftFeatureGates struct {
 
 	// Dashboards enables the loki-mixin dashboards into the OpenShift Console
 	Dashboards bool `json:"dashboards,omitempty"`
+
+	// ManagedAuthEnv enabled when the operator installation is on OpenShift STS clusters.
+	ManagedAuthEnv bool
+}
+
+func (o OpenShiftFeatureGates) ManagedAuthEnabled() bool {
+	return o.Enabled && o.ManagedAuthEnv
 }
 
 // FeatureGates is the supported set of all operator feature gates.

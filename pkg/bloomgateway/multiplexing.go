@@ -84,64 +84,47 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	}
 }
 
-// taskMergeIterator implements v1.Iterator
-type taskMergeIterator struct {
-	curr      v1.Request
-	heap      *v1.HeapIterator[v1.IndexedValue[*logproto.GroupedChunkRefs]]
-	tasks     []Task
-	day       model.Time
-	tokenizer *v1.NGramTokenizer
-	err       error
+func (t Task) RequestIter(tokenizer *v1.NGramTokenizer) v1.Iterator[v1.Request] {
+	return &requestIterator{
+		series:   v1.NewSliceIter(t.series),
+		searches: convertToSearches(t.filters, tokenizer),
+		channel:  t.ResCh,
+		curr:     v1.Request{},
+	}
 }
 
-func newTaskMergeIterator(day model.Time, tokenizer *v1.NGramTokenizer, tasks ...Task) v1.PeekingIterator[v1.Request] {
-	it := &taskMergeIterator{
-		tasks:     tasks,
-		curr:      v1.Request{},
-		day:       day,
-		tokenizer: tokenizer,
-	}
-	it.init()
-	return v1.NewPeekingIter[v1.Request](it)
+var _ v1.Iterator[v1.Request] = &requestIterator{}
+
+type requestIterator struct {
+	series   v1.Iterator[*logproto.GroupedChunkRefs]
+	searches [][]byte
+	channel  chan<- v1.Output
+	curr     v1.Request
 }
 
-func (it *taskMergeIterator) init() {
-	sequences := make([]v1.PeekingIterator[v1.IndexedValue[*logproto.GroupedChunkRefs]], 0, len(it.tasks))
-	for i := range it.tasks {
-		iter := v1.NewSliceIterWithIndex(it.tasks[i].series, i)
-		sequences = append(sequences, iter)
-	}
-	it.heap = v1.NewHeapIterator(
-		func(i, j v1.IndexedValue[*logproto.GroupedChunkRefs]) bool {
-			return i.Value().Fingerprint < j.Value().Fingerprint
-		},
-		sequences...,
-	)
-	it.err = nil
-}
+// At implements v1.Iterator.
+func (it *requestIterator) At() v1.Request {
 
-func (it *taskMergeIterator) Next() bool {
-	ok := it.heap.Next()
-	if !ok {
-		return false
-	}
-
-	group := it.heap.At()
-	task := it.tasks[group.Index()]
-
-	it.curr = v1.Request{
-		Fp:       model.Fingerprint(group.Value().Fingerprint),
-		Chks:     convertToChunkRefs(group.Value().Refs),
-		Searches: convertToSearches(task.filters, it.tokenizer),
-		Response: task.ResCh,
-	}
-	return true
-}
-
-func (it *taskMergeIterator) At() v1.Request {
 	return it.curr
 }
 
-func (it *taskMergeIterator) Err() error {
-	return it.err
+// Err implements v1.Iterator.
+func (it *requestIterator) Err() error {
+	return nil
+}
+
+// Next implements v1.Iterator.
+func (it *requestIterator) Next() bool {
+	ok := it.series.Next()
+	if !ok {
+		return false
+	}
+	group := it.series.At()
+	it.curr = v1.Request{
+		Fp:       model.Fingerprint(group.Fingerprint),
+		Chks:     convertToChunkRefs(group.Refs),
+		Searches: it.searches,
+		Response: it.channel,
+	}
+	return true
 }
