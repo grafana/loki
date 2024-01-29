@@ -1237,24 +1237,25 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 }
 
 type fakeLimits struct {
-	maxQueryLength            time.Duration
-	maxQueryParallelism       int
-	tsdbMaxQueryParallelism   int
-	maxQueryLookback          time.Duration
-	maxEntriesLimitPerQuery   int
-	maxSeries                 int
-	splitDuration             map[string]time.Duration
-	metadataSplitDuration     map[string]time.Duration
-	ingesterSplitDuration     map[string]time.Duration
-	minShardingLookback       time.Duration
-	queryTimeout              time.Duration
-	requiredLabels            []string
-	requiredNumberLabels      int
-	maxQueryBytesRead         int
-	maxQuerierBytesRead       int
-	maxStatsCacheFreshness    time.Duration
-	maxMetadataCacheFreshness time.Duration
-	volumeEnabled             bool
+	maxQueryLength             time.Duration
+	maxQueryParallelism        int
+	tsdbMaxQueryParallelism    int
+	maxQueryLookback           time.Duration
+	maxEntriesLimitPerQuery    int
+	maxSeries                  int
+	splitDuration              map[string]time.Duration
+	metadataSplitDuration      map[string]time.Duration
+	instantMetricSplitDuration map[string]time.Duration
+	ingesterSplitDuration      map[string]time.Duration
+	minShardingLookback        time.Duration
+	queryTimeout               time.Duration
+	requiredLabels             []string
+	requiredNumberLabels       int
+	maxQueryBytesRead          int
+	maxQuerierBytesRead        int
+	maxStatsCacheFreshness     time.Duration
+	maxMetadataCacheFreshness  time.Duration
+	volumeEnabled              bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1262,6 +1263,13 @@ func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
 		return 0
 	}
 	return f.splitDuration[key]
+}
+
+func (f fakeLimits) InstantMetricQuerySplitDuration(key string) time.Duration {
+	if f.instantMetricSplitDuration == nil {
+		return 0
+	}
+	return f.instantMetricSplitDuration[key]
 }
 
 func (f fakeLimits) MetadataQuerySplitDuration(key string) time.Duration {

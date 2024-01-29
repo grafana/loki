@@ -106,14 +106,15 @@ type Limits struct {
 	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration         model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MetadataQuerySplitDuration model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
-	IngesterQuerySplitDuration model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
-	MinShardingLookback        model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead          flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead        flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	VolumeEnabled              bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries            int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	QuerySplitDuration              model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration      model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	InstantMetricQuerySplitDuration model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
+	IngesterQuerySplitDuration      model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
+	MinShardingLookback             model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead               flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead             flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled                   bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries                 int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
@@ -303,6 +304,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.QuerySplitDuration.Set("1h")
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
+	_ = l.InstantMetricQuerySplitDuration.Set("5m")
+	f.Var(&l.InstantMetricQuerySplitDuration, "querier.split-instant-metric-queries-by-interval", "Split instant metric queries by a time interval and execute in parallel. The value 0 disables splitting instant metric queries by time. This also determines how cache keys are chosen when instant metric query result caching is enabled.")
 
 	// with metadata caching, it is not possible to extract a subset of labels/series from a cached extent because unlike samples they are not associated with a timestamp.
 	// as a result, we could return inaccurate results. example: returning results from an entire 1h extent for a 5m query
@@ -587,6 +590,11 @@ func (o *Overrides) MinShardingLookback(userID string) time.Duration {
 // QuerySplitDuration returns the tenant specific splitby interval applied in the query frontend.
 func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
+}
+
+// InstantMetricQuerySplitDuration returns the tenant specific instant metric queries splitby interval applied in the query frontend.
+func (o *Overrides) InstantMetricQuerySplitDuration(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).InstantMetricQuerySplitDuration)
 }
 
 // MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.

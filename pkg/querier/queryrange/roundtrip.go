@@ -166,6 +166,10 @@ func NewMiddleware(
 		}
 	}
 
+	if cfg.CacheInstantMetricResults {
+		instantMetricCache, err = newResultsCacheFromConfig(cfg.InstantMetricCacheConfig.ResultsCacheConfig, registerer, log, stats.InstantMetricResultsCache)
+	}
+
 	if cfg.CacheSeriesResults {
 		seriesCache, err = newResultsCacheFromConfig(cfg.SeriesCacheConfig.ResultsCacheConfig, registerer, log, stats.SeriesResultCache)
 		if err != nil {
@@ -216,7 +220,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, codec, instantMetricCache, cacheGenNumLoader, retentionEnabled, indexStatsTripperware, metricsNamespace)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, codec, iqo, instantMetricCache, cacheGenNumLoader, retentionEnabled, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -775,6 +779,7 @@ func NewInstantMetricTripperware(
 	schema config.SchemaConfig,
 	metrics *Metrics,
 	merger base.Merger,
+	iqo util.IngesterQueryOptions,
 	c cache.Cache,
 	cacheGenNumLoader base.CacheGenNumberLoader,
 	retentionEnabled bool,
@@ -792,6 +797,7 @@ func NewInstantMetricTripperware(
 			merger,
 			c,
 			cacheGenNumLoader,
+			iqo,
 			func(_ context.Context, r base.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
