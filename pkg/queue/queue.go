@@ -14,6 +14,7 @@ import (
 const (
 	// How frequently to check for disconnected queriers that should be forgotten.
 	forgetCheckPeriod = 5 * time.Second
+	anyQueue          = ""
 )
 
 var (
@@ -142,9 +143,9 @@ func (q *RequestQueue) ReleaseRequests(items []Request) {
 // pool by calling ReleaseRequests(items).
 func (q *RequestQueue) DequeueMany(ctx context.Context, idx QueueIndex, consumerID string, maxItems int) ([]Request, QueueIndex, error) {
 	items := q.pool.Get(maxItems)
-	lastQueueName := anyQueueName
+	lastQueueName := anyQueue
 	for {
-		item, newIdx, newQueueName, tenantQueueEmpty, err := q.dequeue(ctx, idx, lastQueueName, consumerID)
+		item, newIdx, newQueueName, isTenantQueueEmpty, err := q.dequeue(ctx, idx, lastQueueName, consumerID)
 		if err != nil {
 			// the consumer must receive the items if tenants queue is removed,
 			// even if it has collected less than `maxItems` requests.
@@ -156,13 +157,11 @@ func (q *RequestQueue) DequeueMany(ctx context.Context, idx QueueIndex, consumer
 		lastQueueName = newQueueName
 		items = append(items, item)
 		idx = newIdx.ReuseLastIndex()
-		if len(items) == maxItems || tenantQueueEmpty {
+		if len(items) == maxItems || isTenantQueueEmpty {
 			return items, newIdx, nil
 		}
 	}
 }
-
-const anyQueueName = ""
 
 // Dequeue find next tenant queue and takes the next request off of it. Will block if there are no requests.
 // By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
@@ -170,7 +169,7 @@ const anyQueueName = ""
 // any guaranties that the previously used queue is still at this position because another consumer could already read
 // the last request and the queue could be removed and another queue is already placed at this position.
 func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, consumerID string) (Request, QueueIndex, error) {
-	dequeue, queueIndex, _, _, err := q.dequeue(ctx, last, anyQueueName, consumerID)
+	dequeue, queueIndex, _, _, err := q.dequeue(ctx, last, anyQueue, consumerID)
 	return dequeue, queueIndex, err
 }
 
@@ -183,14 +182,14 @@ func (q *RequestQueue) dequeue(ctx context.Context, last QueueIndex, wantedQueue
 FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
 	// However, if `wantedQueueName` is not empty, the caller must not be blocked because it wants to read exactly from that queue, not others.
-	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped && wantedQueueName == anyQueueName {
+	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped && wantedQueueName == anyQueue {
 		querierWait = false
 		q.cond.Wait(ctx)
 	}
 
 	// If the current consumer wants to read from specific queue, but he does not have any queues available for him,
 	// return an error to notify that queue has been already removed.
-	if q.queues.hasNoTenantQueues() && wantedQueueName != anyQueueName {
+	if q.queues.hasNoTenantQueues() && wantedQueueName != anyQueue {
 		return nil, last, wantedQueueName, false, ErrQueueWasRemoved
 	}
 
@@ -211,7 +210,7 @@ FindQueue:
 		// for example if another consumer has read the last request from that queue,
 		// and as long as this consumer wants to read from specific tenant queue,
 		// it's necessary to return `ErrQueueWasRemoved` error.
-		if wantedQueueName != anyQueueName {
+		if wantedQueueName != anyQueue {
 			return nil, last, wantedQueueName, false, ErrQueueWasRemoved
 		}
 		// otherwise, if wantedQueueName is empty, then this consumer will go to the wait block again
@@ -223,15 +222,15 @@ FindQueue:
 		goto FindQueue
 	}
 
-	if wantedQueueName != anyQueueName && wantedQueueName != queue.Name() {
+	if wantedQueueName != anyQueue && wantedQueueName != queue.Name() {
 		// it means that the consumer received another tenants queue because it was already removed
 		// or another queue is already at this index
 		return nil, last, queue.Name(), false, ErrQueueWasRemoved
 	}
 	// Pick next request from the queue.
 	request := queue.Dequeue()
-	tenantQueueEmpty := queue.Len() == 0
-	if tenantQueueEmpty {
+	isTenantQueueEmpty := queue.Len() == 0
+	if isTenantQueueEmpty {
 		q.queues.deleteQueue(tenant)
 	}
 
@@ -241,7 +240,7 @@ FindQueue:
 	// Tell close() we've processed a request.
 	q.cond.Broadcast()
 
-	return request, last, queue.Name(), tenantQueueEmpty, nil
+	return request, last, queue.Name(), isTenantQueueEmpty, nil
 }
 
 func (q *RequestQueue) forgetDisconnectedConsumers(_ context.Context) error {

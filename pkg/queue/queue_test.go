@@ -470,7 +470,6 @@ func Test_Queue_DequeueMany(t *testing.T) {
 					idx := StartIndexWithLocalQueue
 					for {
 						tasks, newIdx, err := queue.DequeueMany(ctx, idx, consumer, tt.dequeueBatchSize)
-						receivedTasksCount.Add(int32(len(tasks)))
 
 						if err != nil && !errors.Is(err, context.Canceled) {
 							return fmt.Errorf("error while dequeueing many task by %s: %w", consumer, err)
@@ -481,47 +480,58 @@ func Test_Queue_DequeueMany(t *testing.T) {
 						if len(tasks) > 1 && !isAllItemsSame(tasks) {
 							return fmt.Errorf("expected all items to be from the same tenant, but they were not: %v", tasks)
 						}
+
 						time.Sleep(tt.consumerDelay)
-						mtx.Lock()
-						if err == nil {
-							//tenant name is sent as task
-							tenant := tasks[0]
-							receivedTasksPerTenant[fmt.Sprintf("%v", tenant)] += len(tasks)
-						}
+						collectTasks(mtx, err, tasks, receivedTasksPerTenant)
+						receivedTasksTotal := receivedTasksCount.Add(int32(len(tasks)))
 						// put the slice back to the pool
 						queue.ReleaseRequests(tasks)
-						if receivedTasksCount.Load() == int32(totalTasksCount) {
+						if receivedTasksTotal == int32(totalTasksCount) {
 							//cancel the context to release the rest of the consumers once we received all the tasks from all the queues
 							cancel()
-							mtx.Unlock()
 							return nil
 						}
-						mtx.Unlock()
 						idx = newIdx
 					}
 				})
 			}
 
-			for i := 0; i < tt.tenantsCount; i++ {
-				tenant := fmt.Sprintf("tenant-%d", i)
-				wg.Go(func() error {
-					for j := 0; j < tt.tasksPerTenant; j++ {
-						err := queue.Enqueue(tenant, []string{}, tenant, nil)
-						if err != nil {
-							return fmt.Errorf("error while enqueueing task for the %s : %w", tenant, err)
-						}
-						time.Sleep(tt.senderDelay)
-					}
-					return nil
-				})
-			}
+			enqueueTasksAsync(tt.tenantsCount, tt.tasksPerTenant, tt.senderDelay, wg, queue)
 
 			require.NoError(t, wg.Wait())
+			require.Len(t, receivedTasksPerTenant, tt.tenantsCount)
 			for tenant, actualTasksCount := range receivedTasksPerTenant {
 				require.Equalf(t, tt.tasksPerTenant, actualTasksCount, "%s received less tasks than expected", tenant)
 			}
 		})
 	}
+}
+
+func enqueueTasksAsync(tenantsCount int, tasksPerTenant int, senderDelay time.Duration, wg *errgroup.Group, queue *RequestQueue) {
+	for i := 0; i < tenantsCount; i++ {
+		tenant := fmt.Sprintf("tenant-%d", i)
+		wg.Go(func() error {
+			for j := 0; j < tasksPerTenant; j++ {
+				err := queue.Enqueue(tenant, []string{}, tenant, nil)
+				if err != nil {
+					return fmt.Errorf("error while enqueueing task for the %s : %w", tenant, err)
+				}
+				time.Sleep(senderDelay)
+			}
+			return nil
+		})
+	}
+}
+
+func collectTasks(mtx *sync.Mutex, err error, tasks []Request, receivedTasksPerTenant map[string]int) {
+	if err != nil {
+		return
+	}
+	mtx.Lock()
+	defer mtx.Unlock()
+	//tenant name is sent as task
+	tenant := tasks[0]
+	receivedTasksPerTenant[fmt.Sprintf("%v", tenant)] += len(tasks)
 }
 
 func createConsumerName(i int) string {
