@@ -411,9 +411,6 @@ outer:
 func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log.Logger) {
 	logger = log.With(logger, "task", task.ID)
 
-	task.responses = responsesPool.Get(len(task.series))
-	defer responsesPool.Put(task.responses)
-
 	for res := range task.resCh {
 		select {
 		case <-ctx.Done():
