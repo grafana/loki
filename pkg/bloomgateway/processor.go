@@ -6,9 +6,10 @@ import (
 	"sort"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/prometheus/common/model"
 )
 
 type tasksForBlock struct {

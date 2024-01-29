@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/pkg/logql/syntax"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 var _ store = &dummyStore{}
