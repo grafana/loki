@@ -145,6 +145,10 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				totalKB = totalKB + curRemainingSize
 
+				// Harmonic mean of rates for overlap
+				h := 2.0 / (1.0/curRate + 1.0/lastRate)
+				totalKB = totalKB + overlap*(h-lastRate)
+
 				oldMax := last.MaxTime
 				last = cur
 				last.MinTime = oldMax

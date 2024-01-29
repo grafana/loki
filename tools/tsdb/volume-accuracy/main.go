@@ -53,7 +53,7 @@ func main() {
 		`{cluster="dev-us-central-0", namespace="startup"}`,
 		`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
 		`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
-		`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
+		//`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
 		`{cluster="dev-us-east-0"}`,
 		`{cluster="dev-eu-west-2"}`,
 	}
