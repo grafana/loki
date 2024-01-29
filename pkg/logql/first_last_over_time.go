@@ -36,6 +36,8 @@ type firstWithTimestampBatchRangeVectorIterator struct {
 	at []promql.Sample
 }
 
+// At aggregates the underlying window by picking the first sample with its
+// timestamp.
 func (r *firstWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
@@ -54,14 +56,8 @@ func (r *firstWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 	return ts, SampleVector(r.at)
 }
 
-// The inner batchRangeVectorIterator has preloaded valid samples into each
-// series (see the window filed and load). They're in increasing timestamp
-// order (see next, moves the current timestamp forward by step). So this
-// means that for each downstreamed shard of a first_over_time, selecting the
-// first sample here in each iterator is getting us the earliest timestamped
-// value. Later on when we merge we select the earliest from all the shards.
-//
-// For last_over_time we would do the opposite and select the last element.
+// agg returns the first sample with its timestamp. The input is assumed to be
+// in order.
 func (r *firstWithTimestampBatchRangeVectorIterator) agg(samples []promql.FPoint) promql.FPoint {
 	if len(samples) == 0 {
 		return promql.FPoint{F: math.NaN(), T: 0}
@@ -95,6 +91,8 @@ type lastWithTimestampBatchRangeVectorIterator struct {
 	at []promql.Sample
 }
 
+// At aggregates the underlying window by picking the last sample with its
+// timestamp.
 func (r *lastWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
@@ -113,6 +111,8 @@ func (r *lastWithTimestampBatchRangeVectorIterator) At() (int64, StepResult) {
 	return ts, SampleVector(r.at)
 }
 
+// agg returns the last sample with its timestamp. The input is assumed to be
+// in order.
 func (r *lastWithTimestampBatchRangeVectorIterator) agg(samples []promql.FPoint) promql.FPoint {
 	if len(samples) == 0 {
 		return promql.FPoint{F: math.NaN(), T: 0}
@@ -127,6 +127,7 @@ type mergeOverTimeStepEvaluator struct {
 	merge          func(promql.Vector, int, int, promql.Series) promql.Vector
 }
 
+// Next returns the first or last element within one step of each matrix.
 func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 
 	var (
@@ -215,6 +216,7 @@ func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEv
 	}
 }
 
+// mergeFirstOverTime selects the first sample by timestamp of each series.
 func mergeFirstOverTime(vec promql.Vector, pos int, nSeries int, series promql.Series) promql.Vector {
 	if len(vec) < nSeries {
 		return append(vec, promql.Sample{
@@ -251,6 +253,7 @@ func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEva
 	}
 }
 
+// mergeLastOverTime selects the last sample by timestamp of each series.
 func mergeLastOverTime(vec promql.Vector, pos int, nSeries int, series promql.Series) promql.Vector {
 	if len(vec) < nSeries {
 		return append(vec, promql.Sample{
