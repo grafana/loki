@@ -419,7 +419,6 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 				seriesIndex[hash] = series
 			}
 			series.Floats = append(series.Floats, promql.FPoint{
-				//T: ts,
 				T: p.T,
 				F: p.F,
 			})
