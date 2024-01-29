@@ -156,10 +156,6 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if len(req.URL.Query()) > 0 {
-		fmt.Println("do nothing")
-	}
-
 	var rulesReq = RulesRequest{
 		Filter:    AnyRule,
 		RuleName:  req.URL.Query()["rule_name"],

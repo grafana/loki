@@ -19,7 +19,7 @@ service Ruler {
 }
 
 message RulesRequest {
-  enum RuleType{
+  enum RuleType {
     AnyRule = 0;
     AlertingRule = 1;
     RecordingRule = 2;

@@ -806,7 +806,7 @@ func (r *Ruler) GetRules(ctx context.Context, req *RulesRequest) ([]*GroupStateD
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx, userID, req)
 	}
 
 	return r.getLocalRules(userID, req)
@@ -963,7 +963,7 @@ func (r *Ruler) getLocalRules(userID string, req *RulesRequest) ([]*GroupStateDe
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesReq *RulesRequest) ([]*GroupStateDesc, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -996,7 +996,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
+		newGrps, err := rulerClient.Rules(ctx, rulesReq)
 		if err != nil || newGrps == nil {
 			return fmt.Errorf("unable to retrieve rules from ruler %s: %w", addr, err)
 		}
