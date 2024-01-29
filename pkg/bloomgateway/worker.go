@@ -179,6 +179,10 @@ func (w *worker) running(_ context.Context) error {
 				// continue with tasks of next day
 				continue
 			}
+			if len(tasks) == 0 {
+				continue
+			}
+
 			// No blocks found.
 			// Since there are no blocks for the given tasks, we need to return the
 			// unfiltered list of chunk refs.
@@ -188,31 +192,7 @@ func (w *worker) running(_ context.Context) error {
 					t.Close()
 				}
 				// continue with tasks of next day
-
-				if len(tasks) == 0 {
-					continue
-				}
-
-				tasksForBlocks := partitionFingerprintRange(tasks, blockRefs)
-				blockRefs = blockRefs[:0]
-				for _, b := range tasksForBlocks {
-					blockRefs = append(blockRefs, b.blockRef)
-				}
-
-				err = w.processBlocksWithCallback(taskCtx, tasks[0].Tenant, blockRefs, tasksForBlocks)
-				if err != nil {
-					for _, t := range tasks {
-						t.CloseWithError(err)
-					}
-					// continue with tasks of next day
-					continue
-				}
-
-				// all tasks for this day are done.
-				// close them to notify the request handler
-				for _, task := range tasks {
-					task.Close()
-				}
+				continue
 			}
 
 			// Remove tasks that are already cancelled
