@@ -1,7 +1,7 @@
 package index
 
 import (
-	"math"
+	//"math"
 	"sort"
 
 	"github.com/go-kit/log/level"
