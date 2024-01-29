@@ -1,6 +1,7 @@
 package index
 
 import (
+	"math"
 	"sort"
 
 	"github.com/go-kit/log/level"
@@ -130,8 +131,13 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				// totalKB = totalKB + float64(cur.KB)/2.0
 
 				// Harmonic mean of rates
-				h := 2.0 / (1.0/curRate + 1.0/lastRate)
-				totalKB = totalKB + overlap*(h-lastRate)
+				// Underestimates
+				//h := 2.0 / (1.0/curRate + 1.0/lastRate)
+				//totalKB = totalKB + overlap*(h-lastRate)
+
+				// Max of rates
+				m := math.Max(curRate, lastRate)
+				totalKB = totalKB + overlap*(m-lastRate)
 
 				continue
 			} else if cur.MinTime < last.MaxTime {
@@ -146,8 +152,11 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				totalKB = totalKB + curRemainingSize
 
 				// Harmonic mean of rates for overlap
-				h := 2.0 / (1.0/curRate + 1.0/lastRate)
-				totalKB = totalKB + overlap*(h-lastRate)
+				//h := 2.0 / (1.0/curRate + 1.0/lastRate)
+				//totalKB = totalKB + overlap*(h-lastRate)
+
+				m := math.Max(curRate, lastRate)
+				totalKB = totalKB + overlap*(m-lastRate)
 
 				oldMax := last.MaxTime
 				last = cur
