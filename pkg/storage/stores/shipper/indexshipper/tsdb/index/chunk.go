@@ -122,6 +122,10 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				curRate := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
 				lastRate := float64(last.KB) / float64(last.MaxTime-last.MinTime)
 				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "cur rate", curRate, "last rate", lastRate)
+
+				// Arithmetic mean
+				totalKB = totalKB + float64(cur.KB)/2.0
+
 				continue
 			} else if cur.MinTime < last.MaxTime {
 				curRate := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
