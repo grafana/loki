@@ -384,6 +384,13 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
 		},
 		{
+			`{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo buzz", true}, {"bar fizz", true}, {"foo", false}, {"bar", false}, {"none", false}},
+		},
+		{
 			`{app="foo"} != "foo" or "bar"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -495,6 +502,14 @@ func TestStringer(t *testing.T) {
 		{
 			in:  `{app="foo"} |~ "foo" or "bar" or "baz"`,
 			out: `{app="foo"} |~ "foo" or "bar" or "baz"`,
+		},
+		{
+			in:  `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+			out: `{app="foo"} |= "foo" or "bar" |= "buzz" or "fizz"`,
+		},
+		{
+			out: `{app="foo"} |= "foo" or "bar" |~ "buzz|fizz"`,
+			in:  `{app="foo"} |= "foo" or "bar" |~ "buzz|fizz"`,
 		},
 		{
 			in:  `{app="foo"} |= ip("127.0.0.1") or "foo"`,

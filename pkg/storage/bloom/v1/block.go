@@ -62,6 +62,11 @@ func (b *Block) LoadHeaders() error {
 
 }
 
+// convenience method
+func (b *Block) Querier() *BlockQuerier {
+	return NewBlockQuerier(b)
+}
+
 func (b *Block) Series() *LazySeriesIter {
 	return NewLazySeriesIter(b)
 }
@@ -70,31 +75,32 @@ func (b *Block) Blooms() *LazyBloomIter {
 	return NewLazyBloomIter(b)
 }
 
-type LazySchema func() (Schema, error)
+func (b *Block) Schema() (Schema, error) {
+	if err := b.LoadHeaders(); err != nil {
+		return Schema{}, err
+	}
+	return b.index.schema, nil
+}
 
 type BlockQuerier struct {
 	series *LazySeriesIter
 	blooms *LazyBloomIter
-	schema LazySchema
+
+	block *Block // ref to underlying block
 
 	cur *SeriesWithBloom
 }
 
 func NewBlockQuerier(b *Block) *BlockQuerier {
 	return &BlockQuerier{
+		block:  b,
 		series: NewLazySeriesIter(b),
 		blooms: NewLazyBloomIter(b),
-		schema: func() (Schema, error) {
-			if err := b.LoadHeaders(); err != nil {
-				return Schema{}, err
-			}
-			return b.index.schema, nil
-		},
 	}
 }
 
 func (bq *BlockQuerier) Schema() (Schema, error) {
-	return bq.schema()
+	return bq.block.Schema()
 }
 
 func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {

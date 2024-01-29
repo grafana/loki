@@ -10,7 +10,7 @@ func TestMergeDedupeIter(t *testing.T) {
 	var (
 		numSeries        = 100
 		numKeysPerSeries = 10000
-		data, _          = mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+		data, _          = MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 		dataPtr          = PointerSlice(data)
 		queriers         = make([]PeekingIterator[*SeriesWithBloom], 4)
 	)
