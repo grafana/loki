@@ -82,16 +82,17 @@ func NewTask(ctx context.Context, tenantID string, refs seriesWithBounds, filter
 	}
 
 	task := Task{
-		ID:      key,
-		Tenant:  tenantID,
-		err:     new(wrappedError),
-		resCh:   make(chan v1.Output),
-		filters: filters,
-		series:  refs.series,
-		bounds:  refs.bounds,
-		day:     refs.day,
-		ctx:     ctx,
-		done:    make(chan struct{}),
+		ID:        key,
+		Tenant:    tenantID,
+		err:       new(wrappedError),
+		resCh:     make(chan v1.Output),
+		filters:   filters,
+		series:    refs.series,
+		bounds:    refs.bounds,
+		day:       refs.day,
+		ctx:       ctx,
+		done:      make(chan struct{}),
+		responses: make([]v1.Output, 0, len(refs.series)),
 	}
 	return task, nil
 }
@@ -122,15 +123,16 @@ func (t Task) CloseWithError(err error) {
 func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	// do not copy ID to distinguish it as copied task
 	return Task{
-		Tenant:  t.Tenant,
-		err:     t.err,
-		resCh:   t.resCh,
-		filters: t.filters,
-		series:  series,
-		bounds:  t.bounds,
-		day:     t.day,
-		ctx:     t.ctx,
-		done:    make(chan struct{}),
+		Tenant:    t.Tenant,
+		err:       t.err,
+		resCh:     t.resCh,
+		filters:   t.filters,
+		series:    series,
+		bounds:    t.bounds,
+		day:       t.day,
+		ctx:       t.ctx,
+		done:      make(chan struct{}),
+		responses: make([]v1.Output, 0, len(series)),
 	}
 }
 
