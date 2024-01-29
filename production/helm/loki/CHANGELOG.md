@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.42.0
 
+- [CHANGE] Changed versions of Loki v2.9.4 and GEL v1.8.6
 - [ENHANCEMENT] Bumped "grafana-agent-operator" depenency chart version to it's latest version
 
 ## 5.41.8
