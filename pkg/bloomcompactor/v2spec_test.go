@@ -52,10 +52,21 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 	return res, data
 }
 
+// doesn't actually load any chunks
+type dummyChunkLoader struct{}
+
+func (dummyChunkLoader) Load(_ context.Context, series *v1.Series) (*ChunkItersByFingerprint, error) {
+	return &ChunkItersByFingerprint{
+		fp:  series.Fingerprint,
+		itr: v1.NewEmptyIter[v1.ChunkRefWithIter](),
+	}, nil
+}
+
 func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks []*v1.Block) *SimpleBloomGenerator {
 	return NewSimpleBloomGenerator(
 		opts,
 		store,
+		dummyChunkLoader{},
 		blocks,
 		func() (v1.BlockWriter, v1.BlockReader) {
 			indexBuf := bytes.NewBuffer(nil)
