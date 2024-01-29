@@ -66,7 +66,8 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 func (f *FSObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
-	_, err := os.Lstat(objectKey)
+	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
+	_, err := os.Lstat(fullPath)
 	if err != nil {
 		return false, err
 	}

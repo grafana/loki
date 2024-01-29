@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/grafana/loki/pkg/logql/log"
@@ -452,6 +453,11 @@ func (r *readRingMock) CleanupShuffleShardCache(_ string) {}
 
 func (r *readRingMock) GetInstanceState(_ string) (ring.InstanceState, error) {
 	return 0, nil
+}
+
+func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
+	tr := ring.TokenRanges{0, math.MaxUint32}
+	return tr, nil
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {

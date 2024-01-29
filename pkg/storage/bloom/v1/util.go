@@ -201,8 +201,8 @@ func (it *EmptyIter[T]) At() T {
 // noop
 func (it *EmptyIter[T]) Reset() {}
 
-func NewEmptyIter[T any](zero T) *EmptyIter[T] {
-	return &EmptyIter[T]{zero: zero}
+func NewEmptyIter[T any]() *EmptyIter[T] {
+	return &EmptyIter[T]{}
 }
 
 type CancellableIter[T any] struct {

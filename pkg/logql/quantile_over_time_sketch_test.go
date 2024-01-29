@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -187,4 +188,39 @@ func (ev *sliceStepEvaluator) Next() (ok bool, ts int64, r StepResult) {
 	ev.cur++
 	ok = ev.cur < len(ev.slice)
 	return
+}
+
+func BenchmarkQuantileBatchRangeVectorIteratorAt(b *testing.B) {
+	for _, tc := range []struct {
+		numberSamples int64
+	}{
+		{numberSamples: 1},
+		{numberSamples: 1_000},
+		{numberSamples: 100_000},
+	} {
+		b.Run(fmt.Sprintf("%d-samples", tc.numberSamples), func(b *testing.B) {
+			r := rand.New(rand.NewSource(42))
+
+			key := "group"
+			// similar to Benchmark_RangeVectorIterator
+			it := &quantileSketchBatchRangeVectorIterator{
+				batchRangeVectorIterator: &batchRangeVectorIterator{
+					window: map[string]*promql.Series{
+						key: {Floats: make([]promql.FPoint, tc.numberSamples)},
+					},
+				},
+			}
+			for i := int64(0); i < tc.numberSamples; i++ {
+				it.window[key].Floats[i] = promql.FPoint{T: i, F: r.Float64()}
+			}
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for n := 0; n < b.N; n++ {
+				_, r := it.At()
+				r.QuantileSketchVec().Release()
+			}
+		})
+	}
 }

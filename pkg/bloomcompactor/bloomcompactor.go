@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"time"
 
@@ -50,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
@@ -165,10 +167,18 @@ func New(
 			return nil, errors.Wrap(err, "create index shipper")
 		}
 
+		// The ObjectClient does not expose the key encoder it uses,
+		// so check the concrete type and set the FSEncoder if needed.
+		var keyEncoder chunk_client.KeyEncoder
+		switch objectClient.(type) {
+		case *local.FSObjectClient:
+			keyEncoder = chunk_client.FSEncoder
+		}
+
 		c.storeClients[periodicConfig.From] = storeClient{
 			object:       objectClient,
 			index:        index_storage.NewIndexStorageClient(objectClient, periodicConfig.IndexTables.PathPrefix),
-			chunk:        chunk_client.NewClient(objectClient, nil, schemaConfig),
+			chunk:        chunk_client.NewClient(objectClient, keyEncoder, schemaConfig),
 			indexShipper: indexShipper,
 		}
 	}
@@ -200,14 +210,16 @@ func (c *Compactor) running(ctx context.Context) error {
 
 	for {
 		select {
-		case <-ticker.C:
+		case start := <-ticker.C:
 			c.metrics.compactionRunsStarted.Inc()
 			if err := c.runCompaction(ctx); err != nil {
-				c.metrics.compactionRunsFailed.Inc()
+				c.metrics.compactionRunsCompleted.WithLabelValues(statusFailure).Inc()
+				c.metrics.compactionRunTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 				level.Error(c.logger).Log("msg", "failed to run compaction", "err", err)
 				continue
 			}
-			c.metrics.compactionRunsCompleted.Inc()
+			c.metrics.compactionRunsCompleted.WithLabelValues(statusSuccess).Inc()
+			c.metrics.compactionRunTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 		case <-ctx.Done():
 			return nil
 		}
@@ -246,13 +258,11 @@ func (c *Compactor) runCompaction(ctx context.Context) error {
 	_ = concurrency.ForEachJob(ctx, len(tables), parallelism, func(ctx context.Context, i int) error {
 		tableName := tables[i]
 		logger := log.With(c.logger, "table", tableName)
-		level.Info(logger).Log("msg", "compacting table")
 		err := c.compactTable(ctx, logger, tableName, tablesIntervals[tableName])
 		if err != nil {
 			errs.Add(err)
 			return nil
 		}
-		level.Info(logger).Log("msg", "finished compacting table")
 		return nil
 	})
 
@@ -276,7 +286,7 @@ func (c *Compactor) compactTable(ctx context.Context, logger log.Logger, tableNa
 		return fmt.Errorf("index store client not found for period starting at %s", schemaCfg.From.String())
 	}
 
-	_, tenants, err := sc.index.ListFiles(ctx, tableName, false)
+	_, tenants, err := sc.index.ListFiles(ctx, tableName, true)
 	if err != nil {
 		return fmt.Errorf("failed to list files for table %s: %w", tableName, err)
 	}
@@ -305,14 +315,9 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 			continue
 		}
 
-		// Skip this table if it is too new/old for the tenant limits.
+		// Skip this table if it is too old for the tenant limits.
 		now := model.Now()
-		tableMinAge := c.limits.BloomCompactorMinTableAge(tenant)
 		tableMaxAge := c.limits.BloomCompactorMaxTableAge(tenant)
-		if tableMinAge > 0 && tableInterval.End.After(now.Add(-tableMinAge)) {
-			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too new ", "table-min-age", tableMinAge, "table-end", tableInterval.End, "now", now)
-			continue
-		}
 		if tableMaxAge > 0 && tableInterval.Start.Before(now.Add(-tableMaxAge)) {
 			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too old", "table-max-age", tableMaxAge, "table-start", tableInterval.Start, "now", now)
 			continue
@@ -327,6 +332,7 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 
 		ownedTenants[tenant] = struct{}{}
 
+		start := time.Now()
 		if err := c.compactTenantWithRetries(ctx, tenantLogger, sc, tableName, tenant); err != nil {
 			switch {
 			case errors.Is(err, context.Canceled):
@@ -334,14 +340,16 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 				level.Info(tenantLogger).Log("msg", "compaction for tenant was interrupted by a shutdown")
 				return nil
 			default:
-				c.metrics.compactionRunFailedTenants.Inc()
+				c.metrics.compactionRunTenantsCompleted.WithLabelValues(statusFailure).Inc()
+				c.metrics.compactionRunTenantsTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
 				level.Error(tenantLogger).Log("msg", "failed to compact tenant", "err", err)
 				errs.Add(err)
 			}
 			continue
 		}
 
-		c.metrics.compactionRunSucceededTenants.Inc()
+		c.metrics.compactionRunTenantsCompleted.WithLabelValues(statusSuccess).Inc()
+		c.metrics.compactionRunTenantsTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
 		level.Info(tenantLogger).Log("msg", "successfully compacted tenant")
 	}
 
@@ -359,9 +367,9 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 	}
 
 	// Tokenizer is not thread-safe so we need one per goroutine.
-	NGramLength := c.limits.BloomNGramLength(tenant)
-	NGramSkip := c.limits.BloomNGramSkip(tenant)
-	bt := v1.NewBloomTokenizer(NGramLength, NGramSkip, c.btMetrics)
+	nGramLen := c.limits.BloomNGramLength(tenant)
+	nGramSkip := c.limits.BloomNGramSkip(tenant)
+	bt := v1.NewBloomTokenizer(nGramLen, nGramSkip, c.btMetrics)
 
 	errs := multierror.New()
 	rs, err := c.sharding.GetTenantSubRing(tenant).GetAllHealthy(RingOp)
@@ -369,10 +377,16 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 		return err
 	}
 	tokenRanges := bloomutils.GetInstanceWithTokenRange(c.cfg.Ring.InstanceID, rs.Instances)
+	for _, tr := range tokenRanges {
+		level.Debug(logger).Log("msg", "got token range for instance", "id", tr.Instance.Id, "min", tr.MinToken, "max", tr.MaxToken)
+	}
 
+	// TODO(owen-d): can be optimized to only query for series within the fp range of the compactor shard(s) rather than scanning all series
+	// and filtering out the ones that don't belong to the compactor shard(s).
 	_ = sc.indexShipper.ForEach(ctx, tableName, tenant, func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 		if isMultiTenantIndex {
 			// Skip multi-tenant indexes
+			level.Debug(logger).Log("msg", "skipping multi-tenant index", "table", tableName, "index", idx.Name())
 			return nil
 		}
 
@@ -399,10 +413,12 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 				}
 
 				temp := make([]tsdbindex.ChunkMeta, len(chksMetas))
+				ls := labels.Copy()
 				_ = copy(temp, chksMetas)
 				//All seriesMetas given a table within fp of this compactor shard
-				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: labels, chunkRefs: temp})
+				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: ls, chunkRefs: temp})
 			},
+			labels.MustNewMatcher(labels.MatchEqual, "", ""),
 		)
 
 		if err != nil {
@@ -410,17 +426,28 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 			return nil
 		}
 
+		if len(seriesMetas) == 0 {
+			level.Debug(logger).Log("msg", "skipping index because it does not have any matching series", "table", tableName, "index", idx.Name())
+			return nil
+		}
+
 		job := NewJob(tenant, tableName, idx.Path(), seriesMetas)
 		jobLogger := log.With(logger, "job", job.String())
 		c.metrics.compactionRunJobStarted.Inc()
 
+		start := time.Now()
 		err = c.runCompact(ctx, jobLogger, job, bt, sc)
 		if err != nil {
-			c.metrics.compactionRunJobFailed.Inc()
-			errs.Add(errors.Wrap(err, "runBloomCompact failed"))
-		} else {
-			c.metrics.compactionRunJobSuceeded.Inc()
+			c.metrics.compactionRunJobCompleted.WithLabelValues(statusFailure).Inc()
+			c.metrics.compactionRunJobTime.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
+			errs.Add(errors.Wrap(err, fmt.Sprintf("runBloomCompact failed for job %s", job.String())))
+			return nil
 		}
+
+		c.metrics.compactionRunJobCompleted.WithLabelValues(statusSuccess).Inc()
+		c.metrics.compactionRunJobTime.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
+		level.Debug(logger).Log("msg", "compaction of job succeeded", "job", job.String(), "duration", time.Since(start))
+
 		return nil
 	})
 
@@ -472,10 +499,10 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID:       job.tenantID,
-		MinFingerprint: uint64(job.minFp),
-		MaxFingerprint: uint64(job.maxFp),
-		StartTimestamp: int64(job.from),
-		EndTimestamp:   int64(job.through),
+		MinFingerprint: job.minFp,
+		MaxFingerprint: job.maxFp,
+		StartTimestamp: job.from,
+		EndTimestamp:   job.through,
 	}
 	var metas []bloomshipper.Meta
 	//TODO  Configure pool for these to avoid allocations
@@ -507,12 +534,14 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 	}()
 
+	level.Info(logger).Log("msg", "started compacting table", "table", job.tableName, "tenant", job.tenantID)
 	if len(blocksMatchingJob) == 0 && len(metasMatchingJob) > 0 {
 		// There is no change to any blocks, no compaction needed
 		level.Info(logger).Log("msg", "No changes to tsdb, no compaction needed")
 		return nil
 	} else if len(metasMatchingJob) == 0 {
 		// No matching existing blocks for this job, compact all series from scratch
+		level.Info(logger).Log("msg", "No matching existing blocks for this job, compact all series from scratch")
 
 		builder, err := NewPersistentBlockBuilder(localDst, blockOptions)
 		if err != nil {
@@ -520,16 +549,18 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			return err
 		}
 
-		fpRate := c.limits.BloomFalsePositiveRate(job.tenantID)
-		resultingBlock, err = compactNewChunks(ctx, logger, job, fpRate, bt, storeClient.chunk, builder)
+		// NB(owen-d): this panics/etc, but the code is being refactored and will be removed. I've replaced `bt` with `nil`
+		// to pass compiler checks while keeping this code around as reference
+		resultingBlock, err = compactNewChunks(ctx, logger, job, nil, storeClient.chunk, builder, c.limits)
 		if err != nil {
 			return level.Error(logger).Log("msg", "failed compacting new chunks", "err", err)
 		}
 
 	} else if len(blocksMatchingJob) > 0 {
 		// When already compacted metas exists, we need to merge all blocks with amending blooms with new series
+		level.Info(logger).Log("msg", "already compacted metas exists, use mergeBlockBuilder")
 
-		var populate = createPopulateFunc(ctx, logger, job, storeClient, bt)
+		var populate = createPopulateFunc(ctx, job, storeClient, bt, c.limits)
 
 		seriesIter := makeSeriesIterFromSeriesMeta(job)
 
@@ -543,6 +574,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}()
 
 		if err != nil {
+			level.Error(logger).Log("err", err)
 			return err
 		}
 
@@ -557,6 +589,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 			level.Error(logger).Log("msg", "failed merging existing blocks with new chunks", "err", err)
 			return err
 		}
+
 	}
 
 	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
@@ -566,6 +599,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
 		return err
 	}
+
 	defer func() {
 		err = os.Remove(archivePath)
 		if err != nil {
@@ -589,13 +623,26 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	// TODO delete old metas in later compactions
 	// After all is done, create one meta file and upload to storage
 	meta := bloomshipper.Meta{
+		MetaRef: bloomshipper.MetaRef{
+			Ref: bloomshipper.Ref{
+				TenantID:       job.tenantID,
+				TableName:      job.tableName,
+				MinFingerprint: uint64(job.minFp),
+				MaxFingerprint: uint64(job.maxFp),
+				StartTimestamp: job.from,
+				EndTimestamp:   job.through,
+				Checksum:       rand.Uint32(), // Discuss if checksum is needed for Metas, why should we read all data again.
+			},
+		},
 		Tombstones: blocksMatchingJob,
 		Blocks:     activeBloomBlocksRefs,
 	}
+
 	err = c.bloomShipperClient.PutMeta(ctx, meta)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)
 		return err
 	}
+	level.Info(logger).Log("msg", "finished compacting table", "table", job.tableName, "tenant", job.tenantID)
 	return nil
 }

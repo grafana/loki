@@ -619,14 +619,32 @@ func applyEmbeddedCacheConfig(r *ConfigWrapper) {
 
 	indexStatsCacheConfig := r.QueryRange.StatsCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
+		prefix := indexStatsCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.StatsCacheConfig.CacheConfig.Prefix = prefix
 	}
 
 	volumeCacheConfig := r.QueryRange.VolumeCacheConfig.CacheConfig
 	if !cache.IsCacheConfigured(volumeCacheConfig) {
+		prefix := volumeCacheConfig.Prefix
 		// We use the same config as the query range results cache.
 		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.VolumeCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	seriesCacheConfig := r.QueryRange.SeriesCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(seriesCacheConfig) {
+		prefix := seriesCacheConfig.Prefix
+		r.QueryRange.SeriesCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.SeriesCacheConfig.CacheConfig.Prefix = prefix
+	}
+
+	labelsCacheConfig := r.QueryRange.LabelsCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(labelsCacheConfig) {
+		prefix := labelsCacheConfig.Prefix
+		r.QueryRange.LabelsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+		r.QueryRange.LabelsCacheConfig.CacheConfig.Prefix = prefix
 	}
 
 	instantMetricCacheConfig := r.QueryRange.InstantMetricCacheConfig.CacheConfig

@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"math"
 	"time"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 

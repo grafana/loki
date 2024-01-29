@@ -74,7 +74,7 @@ func makeBlockIterFromBlocks(ctx context.Context, logger log.Logger,
 	return blockIters, blockPaths, nil
 }
 
-func createPopulateFunc(ctx context.Context, logger log.Logger, job Job, storeClient storeClient, bt *v1.BloomTokenizer) func(series *v1.Series, bloom *v1.Bloom) error {
+func createPopulateFunc(_ context.Context, job Job, _ storeClient, bt *v1.BloomTokenizer, _ Limits) func(series *v1.Series, bloom *v1.Bloom) error {
 	return func(series *v1.Series, bloom *v1.Bloom) error {
 		bloomForChks := v1.SeriesWithBloom{
 			Series: series,
@@ -95,12 +95,13 @@ func createPopulateFunc(ctx context.Context, logger log.Logger, job Job, storeCl
 			}
 		}
 
-		chks, err := storeClient.chunk.GetChunks(ctx, chunkRefs)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed downloading chunks", "err", err)
-			return err
-		}
-		err = bt.PopulateSeriesWithBloom(&bloomForChks, chks)
+		// batchesIterator, err := newChunkBatchesIterator(ctx, storeClient.chunk, chunkRefs, limits.BloomCompactorChunksBatchSize(job.tenantID))
+		// if err != nil {
+		// 	return fmt.Errorf("error creating chunks batches iterator: %w", err)
+		// }
+		// NB(owen-d): this panics/etc, but the code is being refactored and will be removed.
+		// I've replaced `batchesIterator` with `emptyIter` to pass compiler checks while keeping this code around as reference
+		err := bt.Populate(&bloomForChks, v1.NewEmptyIter[v1.ChunkRefWithIter]())
 		if err != nil {
 			return err
 		}
@@ -137,8 +138,8 @@ func mergeCompactChunks(logger log.Logger,
 				TableName:      job.tableName,
 				MinFingerprint: uint64(job.minFp),
 				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: int64(job.from),
-				EndTimestamp:   int64(job.through),
+				StartTimestamp: job.from,
+				EndTimestamp:   job.through,
 				Checksum:       checksum,
 			},
 			IndexPath: job.indexPath,

@@ -62,6 +62,8 @@ const (
 	VolumeResultCache                   = "volume-result"
 	InstantMetricResultsCache           = "instant-metric-result"
 	WriteDedupeCache                    = "write-dedupe"
+	SeriesResultCache                   = "series-result"
+	LabelResultCache                    = "label-result"
 	BloomFilterCache                    = "bloom-filter"
 	BloomBlocksCache                    = "bloom-blocks"
 )
@@ -101,6 +103,8 @@ func (c *Context) Caches() Caches {
 		Result:       c.caches.Result,
 		StatsResult:  c.caches.StatsResult,
 		VolumeResult: c.caches.VolumeResult,
+		SeriesResult: c.caches.SeriesResult,
+		LabelResult:  c.caches.LabelResult,
 	}
 }
 
@@ -216,6 +220,8 @@ func (c *Caches) Merge(m Caches) {
 	c.Result.Merge(m.Result)
 	c.StatsResult.Merge(m.StatsResult)
 	c.VolumeResult.Merge(m.VolumeResult)
+	c.SeriesResult.Merge(m.SeriesResult)
+	c.LabelResult.Merge(m.LabelResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -226,10 +232,15 @@ func (c *Cache) Merge(m Cache) {
 	c.BytesSent += m.BytesSent
 	c.BytesReceived += m.BytesReceived
 	c.DownloadTime += m.DownloadTime
+	c.QueryLengthServed += m.QueryLengthServed
 }
 
 func (c *Cache) CacheDownloadTime() time.Duration {
 	return time.Duration(c.DownloadTime)
+}
+
+func (c *Cache) CacheQueryLengthServed() time.Duration {
+	return time.Duration(c.QueryLengthServed)
 }
 
 func (r *Result) MergeSplit(m Result) {
@@ -424,6 +435,16 @@ func (c *Context) AddCacheRequest(t CacheType, i int) {
 	atomic.AddInt32(&stats.Requests, int32(i))
 }
 
+// AddCacheQueryLengthServed measures the length of the query served from cache
+func (c *Context) AddCacheQueryLengthServed(t CacheType, i time.Duration) {
+	stats := c.getCacheStatsByType(t)
+	if stats == nil {
+		return
+	}
+
+	atomic.AddInt64(&stats.QueryLengthServed, int64(i))
+}
+
 func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
@@ -445,6 +466,10 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.StatsResult
 	case VolumeResultCache:
 		stats = &c.caches.VolumeResult
+	case SeriesResultCache:
+		stats = &c.caches.SeriesResult
+	case LabelResultCache:
+		stats = &c.caches.LabelResult
 	default:
 		return nil
 	}
@@ -527,6 +552,18 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.VolumeResult.EntriesStored", c.VolumeResult.EntriesStored,
 		"Cache.VolumeResult.BytesSent", humanize.Bytes(uint64(c.VolumeResult.BytesSent)),
 		"Cache.VolumeResult.BytesReceived", humanize.Bytes(uint64(c.VolumeResult.BytesReceived)),
+		"Cache.SeriesResult.Requests", c.SeriesResult.Requests,
+		"Cache.SeriesResult.EntriesRequested", c.SeriesResult.EntriesRequested,
+		"Cache.SeriesResult.EntriesFound", c.SeriesResult.EntriesFound,
+		"Cache.SeriesResult.EntriesStored", c.SeriesResult.EntriesStored,
+		"Cache.SeriesResult.BytesSent", humanize.Bytes(uint64(c.SeriesResult.BytesSent)),
+		"Cache.SeriesResult.BytesReceived", humanize.Bytes(uint64(c.SeriesResult.BytesReceived)),
+		"Cache.LabelResult.Requests", c.LabelResult.Requests,
+		"Cache.LabelResult.EntriesRequested", c.LabelResult.EntriesRequested,
+		"Cache.LabelResult.EntriesFound", c.LabelResult.EntriesFound,
+		"Cache.LabelResult.EntriesStored", c.LabelResult.EntriesStored,
+		"Cache.LabelResult.BytesSent", humanize.Bytes(uint64(c.LabelResult.BytesSent)),
+		"Cache.LabelResult.BytesReceived", humanize.Bytes(uint64(c.LabelResult.BytesReceived)),
 		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
