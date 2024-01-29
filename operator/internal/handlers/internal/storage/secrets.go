@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -19,47 +20,92 @@ import (
 
 var hashSeparator = []byte(",")
 
-func getSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*corev1.Secret, error) {
-	var storageSecret corev1.Secret
+func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
+	var (
+		storageSecret     corev1.Secret
+		managedAuthSecret corev1.Secret
+	)
+
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &storageSecret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, &status.DegradedError{
+			return nil, nil, &status.DegradedError{
 				Message: "Missing object storage secret",
 				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
 				Requeue: false,
 			}
 		}
-		return nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
+		return nil, nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
 	}
 
-	return &storageSecret, nil
+	if fg.OpenShift.ManagedAuthEnv {
+		secretName, ok := stack.Annotations[storage.AnnotationCredentialsRequestsSecretRef]
+		if !ok {
+			return nil, nil, &status.DegradedError{
+				Message: "Missing OpenShift cloud credentials request",
+				Reason:  lokiv1.ReasonMissingCredentialsRequest,
+				Requeue: true,
+			}
+		}
+
+		managedAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
+		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, nil, &status.DegradedError{
+					Message: "Missing OpenShift cloud credentials secret",
+					Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+					Requeue: true,
+				}
+			}
+			return nil, nil, kverrors.Wrap(err, "failed to lookup OpenShift CCO managed authentication credentials secret", "name", stack)
+		}
+
+		return &storageSecret, &managedAuthSecret, nil
+	}
+
+	return &storageSecret, nil, nil
 }
 
-// extractSecret reads a k8s secret into a manifest object storage struct if valid.
-func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (storage.Options, error) {
-	hash, err := hashSecretData(s)
+// extractSecrets reads the k8s obj storage secret into a manifest object storage struct if valid.
+// The managed auth is also read into the manifest object under the right circumstances.
+func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managedAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
+	hash, err := hashSecretData(objStore)
 	if err != nil {
 		return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
 	}
 
 	storageOpts := storage.Options{
-		SecretName:  s.Name,
+		SecretName:  objStore.Name,
 		SecretSHA1:  hash,
 		SharedStore: secretType,
 	}
 
+	if fg.OpenShift.ManagedAuthEnabled() {
+		var managedAuthHash string
+		managedAuthHash, err = hashSecretData(managedAuth)
+		if err != nil {
+			return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", client.ObjectKeyFromObject(managedAuth))
+		}
+
+		storageOpts.OpenShift = storage.OpenShiftOptions{
+			CloudCredentials: storage.CloudCredentials{
+				SecretName: managedAuth.Name,
+				SHA1:       managedAuthHash,
+			},
+		}
+	}
+
 	switch secretType {
 	case lokiv1.ObjectStorageSecretAzure:
-		storageOpts.Azure, err = extractAzureConfigSecret(s)
+		storageOpts.Azure, err = extractAzureConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretGCS:
-		storageOpts.GCS, err = extractGCSConfigSecret(s)
+		storageOpts.GCS, err = extractGCSConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, err = extractS3ConfigSecret(s)
+		storageOpts.S3, err = extractS3ConfigSecret(objStore, fg)
 	case lokiv1.ObjectStorageSecretSwift:
-		storageOpts.Swift, err = extractSwiftConfigSecret(s)
+		storageOpts.Swift, err = extractSwiftConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
-		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
+		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(objStore)
 	default:
 		return storage.Options{}, kverrors.New("unknown secret type", "type", secretType)
 	}
@@ -146,7 +192,7 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
+func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
@@ -176,8 +222,29 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 		SSE:     sseCfg,
 	}
 
+	var (
+		isManagedAuthEnv = len(roleArn) != 0
+		isStaticAuthEnv  = !isManagedAuthEnv
+	)
+
 	switch {
-	case len(roleArn) == 0:
+	case fg.OpenShift.ManagedAuthEnabled():
+		cfg.STS = true
+		cfg.Audience = storage.AWSOpenShiftAudience
+		// Do not allow users overriding the role arn provided on Loki Operator installation
+		if len(roleArn) != 0 {
+			return nil, kverrors.New("extra secret field set", "field", storage.KeyAWSRoleArn)
+		}
+		if len(audience) != 0 {
+			return nil, kverrors.New("extra secret field set", "field", storage.KeyAWSAudience)
+		}
+		// In the STS case region is not an optional field
+		if len(region) == 0 {
+			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSRegion)
+		}
+
+		return cfg, nil
+	case isStaticAuthEnv:
 		cfg.Endpoint = string(endpoint)
 
 		if len(endpoint) == 0 {
@@ -191,8 +258,7 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 		}
 
 		return cfg, nil
-	// TODO(JoaoBraveCoding) For CCO integration here we will first check if we get a secret, OS use-case
-	case len(roleArn) != 0: // Extract STS from user provided values
+	case isManagedAuthEnv: // Extract STS from user provided values
 		cfg.STS = true
 		cfg.Audience = string(audience)
 
