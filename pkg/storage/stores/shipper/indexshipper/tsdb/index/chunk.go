@@ -119,33 +119,19 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
 			if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
-				/*
-
-					// Adjust with arithmetic mean
-					overlap := cur.MaxTime - cur.MinTime
-					lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
-
-					// Adjust with max of overlap
-					adjustSize := math.Max(lastOverlapSize, float64(cur.KB))
-
-					level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
-
-					totalKB = totalKB - lastOverlapSize + adjustSize
-					last.KB = uint32(adjustSize)
-					last.MinTime = cur.MinTime
-				*/
+				curRate := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
+				lastRate := float64(last.KB) / float64(last.MaxTime-last.MinTime)
+				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "cur rate", curRate, "last rate", lastRate)
 				continue
 			} else if cur.MinTime < last.MaxTime {
+				curRate := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
+				lastRate := float64(last.KB) / float64(last.MaxTime-last.MinTime)
+				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "cur rate", curRate, "last rate", lastRate)
+
 				overlap := float64(last.MaxTime - cur.MinTime)
-				//lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 				curOverlapSize := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
 				curRemainingSize := float64(cur.KB) - curOverlapSize
 
-				//adjustSize := math.Max(lastOverlapSize, curOverlapSize)
-
-				//level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur overlap", curOverlapSize, "adjust", adjustSize, "new cur", (float64(cur.KB) - curOverlapSize))
-
-				//totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
 				totalKB = totalKB + curRemainingSize
 
 				oldMax := last.MaxTime
