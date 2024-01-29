@@ -46,15 +46,14 @@ func main() {
 	acc := &accumulation{}
 
 	series := []string{
-		//`{cluster="dev-us-central-0"}`,
-		//`{cluster="dev-us-central-0", namespace="cortex-dev-01"}`,
+		`{cluster="dev-us-central-0"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01"}`,
 		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="infra-monitoring/eventrouter"}`,
-		//`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="cortex-dev-01/store-gateway-zone-a"}`,
-		//`{cluster="dev-us-central-0", namespace="startup"}`,
-		//`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
-		//`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
-		//`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
-		//`{job="default/systemd-journal", nodename="gke-dev-us-central-0-hg-n2s8-4-4dcec77a-gdld", priority="notice",syslog_identifier="kernel",cluster="dev-us-central-0"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="cortex-dev-01/store-gateway-zone-a"}`,
+		`{cluster="dev-us-central-0", namespace="startup"}`,
+		`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
+		`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
+		`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
 	}
 
 	for _, now := range starts {

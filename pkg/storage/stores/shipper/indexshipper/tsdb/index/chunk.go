@@ -1,7 +1,6 @@
 package index
 
 import (
-	"math"
 	"sort"
 
 	"github.com/go-kit/log/level"
@@ -120,29 +119,32 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 		for _, cur := range c[1:] {
 			// Skip chunk if it's a subset of the last one
 			if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
+				/*
 
-				// Adjust with arithmetic mean
-				overlap := cur.MaxTime - cur.MinTime
-				lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
+					// Adjust with arithmetic mean
+					overlap := cur.MaxTime - cur.MinTime
+					lastOverlapSize := float64(overlap) / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 
-				// Adjust with max of overlap
-				adjustSize := math.Max(lastOverlapSize, float64(cur.KB))
+					// Adjust with max of overlap
+					adjustSize := math.Max(lastOverlapSize, float64(cur.KB))
 
-				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
+					level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "last overlap", lastOverlapSize, "cur", cur.KB, "adjust", adjustSize)
 
-				totalKB = totalKB - lastOverlapSize + adjustSize
-				last.KB = uint32(adjustSize)
-				last.MinTime = cur.MinTime
+					totalKB = totalKB - lastOverlapSize + adjustSize
+					last.KB = uint32(adjustSize)
+					last.MinTime = cur.MinTime
+				*/
+				continue
 			} else if cur.MinTime < last.MaxTime {
 				overlap := float64(last.MaxTime - cur.MinTime)
-				lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
+				//lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 				curOverlapSize := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
 
-				adjustSize := math.Max(lastOverlapSize, curOverlapSize)
+				//adjustSize := math.Max(lastOverlapSize, curOverlapSize)
 
-				level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur overlap", curOverlapSize, "adjust", adjustSize, "new cur", (float64(cur.KB) - curOverlapSize))
+				//level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur overlap", curOverlapSize, "adjust", adjustSize, "new cur", (float64(cur.KB) - curOverlapSize))
 
-				totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
+				//totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
 
 				oldMax := last.MaxTime
 				last = cur
