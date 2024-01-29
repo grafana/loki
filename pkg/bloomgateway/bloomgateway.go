@@ -330,17 +330,17 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	var numSeries int
-	seriesWithBloomsPerDay := partitionRequest(req)
+	seriesByDay := partitionRequest(req)
 
 	// no tasks --> empty response
-	if len(seriesWithBloomsPerDay) == 0 {
+	if len(seriesByDay) == 0 {
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
 	}
 
-	tasks := make([]Task, 0, len(seriesWithBloomsPerDay))
-	for _, seriesWithBounds := range seriesWithBloomsPerDay {
+	tasks := make([]Task, 0, len(seriesByDay))
+	for _, seriesWithBounds := range seriesByDay {
 		task, err := NewTask(ctx, tenantID, seriesWithBounds, req.Filters)
 		if err != nil {
 			return nil, err
