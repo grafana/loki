@@ -404,29 +404,29 @@ func TestGetRules(t *testing.T) {
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler2": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second, Limit: 10},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Rules: []*rulespb.RuleDesc{{Record: "COUNT_FOO", Expr: `count_over_time({foo="bar"}[5m])`}}, Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 	}
@@ -519,7 +519,7 @@ func TestGetRules(t *testing.T) {
 			for u := range allRulesByUser {
 				ctx := user.InjectOrgID(context.Background(), u)
 				forEachRuler(func(_ string, r *Ruler) {
-					rules, err := r.GetRules(ctx)
+					rules, err := r.GetRules(ctx, &RulesRequest{Filter: AnyRule})
 					require.NoError(t, err)
 					require.Equal(t, len(allRulesByUser[u]), len(rules))
 					if tc.sharding {
