@@ -124,20 +124,15 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				lastRate := float64(last.KB) / float64(last.MaxTime-last.MinTime)
 				level.Info(util_log.Logger).Log("msg", "completely overlapping chunks", "cur rate", curRate, "last rate", lastRate)
 
-				overlap := float64(cur.MaxTime - cur.MinTime)
+				//overlap := float64(cur.MaxTime - cur.MinTime)
 
-				// Arithmetic mean this is bad for when we
-				// overestimate
-				// totalKB = totalKB + float64(cur.KB)/2.0
-
-				// Harmonic mean of rates
-				// Underestimates
+				// Harmonic mean of rates: underestimates
 				//h := 2.0 / (1.0/curRate + 1.0/lastRate)
 				//totalKB = totalKB + overlap*(h-lastRate)
 
-				// Max of rates
-				m := math.Max(curRate, lastRate)
-				totalKB = totalKB + overlap*(m-lastRate)
+				// Max of rates: overestimates
+				//m := math.Max(curRate, lastRate)
+				//totalKB = totalKB + overlap*(m-lastRate)
 
 				continue
 			} else if cur.MinTime < last.MaxTime {
@@ -151,12 +146,13 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 
 				totalKB = totalKB + curRemainingSize
 
-				// Harmonic mean of rates for overlap
+				// Harmonic mean of rates for overlap: underestimates
 				//h := 2.0 / (1.0/curRate + 1.0/lastRate)
 				//totalKB = totalKB + overlap*(h-lastRate)
 
-				m := math.Max(curRate, lastRate)
-				totalKB = totalKB + overlap*(m-lastRate)
+				// Max of rates: overestimates
+				//m := math.Max(curRate, lastRate)
+				//totalKB = totalKB + overlap*(m-lastRate)
 
 				oldMax := last.MaxTime
 				last = cur
