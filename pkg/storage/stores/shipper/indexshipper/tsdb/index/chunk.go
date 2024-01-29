@@ -139,17 +139,19 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 				overlap := float64(last.MaxTime - cur.MinTime)
 				//lastOverlapSize := overlap / float64(last.MaxTime-last.MinTime) * float64(last.KB)
 				curOverlapSize := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
+				curRemainingSize := float64(cur.KB) - curOverlapSize
 
 				//adjustSize := math.Max(lastOverlapSize, curOverlapSize)
 
 				//level.Info(util_log.Logger).Log("msg", "partially overlapping chunks", "last overlap", lastOverlapSize, "cur overlap", curOverlapSize, "adjust", adjustSize, "new cur", (float64(cur.KB) - curOverlapSize))
 
 				//totalKB = totalKB - lastOverlapSize + adjustSize + (float64(cur.KB) - curOverlapSize)
+				totalKB = totalKB + curRemainingSize
 
 				oldMax := last.MaxTime
 				last = cur
 				last.MinTime = oldMax
-				last.KB = uint32(float64(cur.KB) - curOverlapSize)
+				last.KB = uint32(curRemainingSize)
 			} else {
 				totalKB = totalKB + float64(cur.KB)
 				last = cur
