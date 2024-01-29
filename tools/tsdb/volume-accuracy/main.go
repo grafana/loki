@@ -47,15 +47,15 @@ func main() {
 
 	series := []string{
 		//`{cluster="dev-us-central-0"}`,
-		//`{cluster="dev-us-central-0", namespace="cortex-dev-01"}`,
-		//	`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="infra-monitoring/eventrouter"}`,
-		//	`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="cortex-dev-01/store-gateway-zone-a"}`,
-		//	`{cluster="dev-us-central-0", namespace="startup"}`,
-		//	`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
-		//	`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
-		//	`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="infra-monitoring/eventrouter"}`,
+		`{cluster="dev-us-central-0", namespace="cortex-dev-01", job="cortex-dev-01/store-gateway-zone-a"}`,
+		`{cluster="dev-us-central-0", namespace="startup"}`,
+		`{cluster="dev-us-central-0", namespace="startup", stream="stderr"}`,
+		`{cluster="dev-us-central-0", namespace="startup", stream="stdout"}`,
+		`{cluster="dev-us-central-0", namespace="machine-learning-cd", job="integrations/kubernetes/eventhandler"}`,
 		`{cluster="dev-us-east-0"}`,
-		//	`{cluster="dev-eu-west-2"}`,
+		`{cluster="dev-eu-west-2"}`,
 	}
 
 	for _, now := range starts {
