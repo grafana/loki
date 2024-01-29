@@ -216,7 +216,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, metricsNamespace)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, metrics, codec, instantMetricCache, cacheGenNumLoader, retentionEnabled, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -786,7 +786,7 @@ func NewInstantMetricTripperware(
 	var cacheMiddleware base.Middleware
 	if cfg.CacheInstantMetricResults {
 		var err error
-		cacheMiddleware, err = NewIndexStatsCacheMiddleware(
+		cacheMiddleware, err = NewInstantMetricCacheMiddleware(
 			log,
 			limits,
 			merger,
