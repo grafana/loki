@@ -35,10 +35,20 @@ var (
 )
 
 // Build builds a loki stack configuration files
-func Build(opts Options) ([]byte, []byte, error) {
+func Build(lokiCustomConfigYAMLTmplStr []byte, opts Options) ([]byte, []byte, error) {
+	var configYAMLTmpl *template.Template
+	if len(lokiCustomConfigYAMLTmplStr) > 0 {
+		tmpl, err := template.New("loki-config.yaml").Parse(string(lokiCustomConfigYAMLTmplStr))
+		if err != nil {
+			return nil, nil, kverrors.Wrap(err, "failed to create loki configuration YAML template")
+		}
+		configYAMLTmpl = tmpl
+	} else {
+		configYAMLTmpl = lokiConfigYAMLTmpl
+	}
 	// Build loki config yaml
 	w := bytes.NewBuffer(nil)
-	err := lokiConfigYAMLTmpl.Execute(w, opts)
+	err := configYAMLTmpl.Execute(w, opts)
 	if err != nil {
 		return nil, nil, kverrors.Wrap(err, "failed to create loki configuration")
 	}

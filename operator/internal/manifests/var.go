@@ -57,6 +57,9 @@ const (
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
+	// EnvRelatedLokiConfig is the environment variable to override the default configuration of Loki.
+	// The value should be provided in Base64 format.
+	EnvRelatedLokiConfig = "RELATED_CONFIG_LOKI"
 
 	// DefaultContainerImage declares the default fallback for loki image.
 	DefaultContainerImage = "docker.io/grafana/loki:2.9.4"

@@ -59,6 +59,8 @@ func CreateOrUpdateLokiStack(
 		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
 
+	cfgBase64 := os.Getenv(manifests.EnvRelatedLokiConfig)
+
 	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
 		return err
@@ -110,6 +112,7 @@ func CreateOrUpdateLokiStack(
 		Timeouts:               timeoutConfig,
 		Tenants:                tenants,
 		OpenShiftOptions:       ocpOptions,
+		ConfigLokiBase64:       cfgBase64,
 	}
 
 	ll.Info("begin building manifests")

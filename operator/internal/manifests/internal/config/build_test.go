@@ -264,7 +264,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -596,7 +596,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -675,7 +675,7 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 		},
 		Shippers: []string{"boltdb"},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.Error(t, err)
 	require.Empty(t, cfg)
 	require.Empty(t, rCfg)
@@ -1033,7 +1033,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -1392,7 +1392,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -1781,7 +1781,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -2119,7 +2119,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -2538,7 +2538,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -2884,7 +2884,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -3380,7 +3380,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -3640,7 +3640,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -3902,7 +3902,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -4162,7 +4162,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -4464,7 +4464,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -4763,7 +4763,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -5016,7 +5016,7 @@ overrides:
 			WriteTimeout: 10 * time.Minute,
 		},
 	}
-	cfg, rCfg, err := Build(opts)
+	cfg, rCfg, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 	require.YAMLEq(t, expRCfg, string(rCfg))
@@ -5412,7 +5412,7 @@ analytics:
 			opts.ObjectStorage.Schemas = tc.schemaConfig
 			opts.Shippers = tc.shippers
 
-			cfg, _, err := Build(opts)
+			cfg, _, err := Build([]byte{}, opts)
 			require.NoError(t, err)
 			require.YAMLEq(t, expCfg, string(cfg))
 		})
@@ -5598,7 +5598,7 @@ analytics:
 	opts := defaultOptions()
 	opts.ObjectStorage = objStorageConfig
 
-	cfg, _, err := Build(opts)
+	cfg, _, err := Build([]byte{}, opts)
 	require.NoError(t, err)
 	require.YAMLEq(t, expCfg, string(cfg))
 }

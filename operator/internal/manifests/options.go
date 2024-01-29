@@ -20,6 +20,7 @@ type Options struct {
 	Image                  string
 	GatewayImage           string
 	GatewayBaseDomain      string
+	ConfigLokiBase64       string
 	ConfigSHA1             string
 	CertRotationRequiredAt string
 

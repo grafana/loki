@@ -2,9 +2,11 @@ package manifests
 
 import (
 	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -22,7 +24,12 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 		}
 	}
 
-	c, rc, err := config.Build(cfg)
+	lokiConfig, err := base64.StdEncoding.DecodeString(opt.ConfigLokiBase64)
+	if err != nil {
+		return nil, "", kverrors.Wrap(err, "failed to decode configuration from base64")
+	}
+
+	c, rc, err := config.Build(lokiConfig, cfg)
 	if err != nil {
 		return nil, "", err
 	}
