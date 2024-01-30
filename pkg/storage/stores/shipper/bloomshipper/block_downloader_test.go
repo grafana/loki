@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -71,6 +72,45 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 	require.Equal(t, 0, int(downloader.queue.GetConnectedConsumersMetric()))
 }
 
+func Test_blockDownloader_cacheRefilledAfterRestart(t *testing.T) {
+	blocksCount := 5
+	tests := map[string]struct {
+		refillingEnabled               bool
+		expectedCallsCountAfterRestart int32
+	}{
+		"refilling enabled": {
+			refillingEnabled:               true,
+			expectedCallsCountAfterRestart: 0,
+		},
+		"refilling disabled": {
+			refillingEnabled:               false,
+			expectedCallsCountAfterRestart: int32(blocksCount),
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			overrides, err := validation.NewOverrides(validation.Limits{BloomGatewayBlocksDownloadingParallelism: 20}, nil)
+			require.NoError(t, err)
+			workingDirectory := t.TempDir()
+
+			blockReferences, blockClient := createFakeBlocks(t, blocksCount)
+			workersCount := 10
+
+			downloader, err := prepareDownloader(workingDirectory, workersCount, true, blockClient, overrides, tt.refillingEnabled)
+			require.NoError(t, err)
+			downloadBlocksAndAssert(t, downloader, blockReferences, blockClient, int32(blocksCount))
+			downloader.stop()
+			blockClient.getBlockCalls.Store(0)
+
+			restartedDownloader, err := prepareDownloader(workingDirectory, workersCount, true, blockClient, overrides, tt.refillingEnabled)
+			require.NoError(t, err)
+
+			downloadBlocksAndAssert(t, restartedDownloader, blockReferences, blockClient, tt.expectedCallsCountAfterRestart)
+			restartedDownloader.stop()
+		})
+	}
+}
+
 func Test_blockDownloader_downloadBlock(t *testing.T) {
 	tests := map[string]struct {
 		cacheEnabled                bool
@@ -93,66 +133,64 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 
 			blockReferences, blockClient := createFakeBlocks(t, 20)
 			workersCount := 10
-			downloader, err := newBlockDownloader(config.Config{
-				WorkingDirectory: workingDirectory,
-				BlocksDownloadingQueue: config.DownloadingQueueConfig{
-					WorkersCount:              workersCount,
-					MaxTasksEnqueuedPerTenant: 20,
-				},
-				BlocksCache: config.BlocksCacheConfig{
-					EmbeddedCacheConfig: cache.EmbeddedCacheConfig{
-						Enabled:      testData.cacheEnabled,
-						MaxSizeItems: 20,
-					},
-					RemoveDirectoryGracefulPeriod: 1 * time.Second,
-				},
-			}, blockClient, overrides, log.NewNopLogger(), prometheus.NewRegistry())
-			t.Cleanup(downloader.stop)
+			downloader, err := prepareDownloader(workingDirectory, workersCount, testData.cacheEnabled, blockClient, overrides, true)
 			require.NoError(t, err)
+			t.Cleanup(downloader.stop)
 
-			blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
-			downloadedBlocks := make(map[string]any, len(blockReferences))
-			done := make(chan bool)
-			go func() {
-				for i := 0; i < 20; i++ {
-					block := <-blocksCh
-					downloadedBlocks[block.BlockPath] = nil
-				}
-				done <- true
-			}()
+			downloadBlocksAndAssert(t, downloader, blockReferences, blockClient, 20)
 
-			select {
-			case <-time.After(2 * time.Second):
-				t.Fatalf("test must complete before the timeout")
-			case err := <-errorsCh:
-				require.NoError(t, err)
-			case <-done:
-			}
-			require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
-			require.Equal(t, int32(20), blockClient.getBlockCalls.Load())
+			downloadBlocksAndAssert(t, downloader, blockReferences, blockClient, testData.expectedTotalGetBlocksCalls)
 
-			blocksCh, errorsCh = downloader.downloadBlocks(context.Background(), "fake", blockReferences)
-			downloadedBlocks = make(map[string]any, len(blockReferences))
-			done = make(chan bool)
-			go func() {
-				for i := 0; i < 20; i++ {
-					block := <-blocksCh
-					downloadedBlocks[block.BlockPath] = nil
-				}
-				done <- true
-			}()
-
-			select {
-			case <-time.After(2 * time.Second):
-				t.Fatalf("test must complete before the timeout")
-			case err := <-errorsCh:
-				require.NoError(t, err)
-			case <-done:
-			}
-			require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
-			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls.Load())
 		})
 	}
+}
+
+func downloadBlocksAndAssert(t *testing.T, downloader *blockDownloader, blockReferences []BlockRef, blockClient *mockBlockClient, expectedCallsCount int32) {
+	blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
+	downloadedBlocks := make(map[string]any, len(blockReferences))
+	done := make(chan bool)
+	go func() {
+		for i := 0; i < len(blockReferences); i++ {
+			block := <-blocksCh
+			downloadedBlocks[block.BlockPath] = nil
+		}
+		done <- true
+	}()
+
+	select {
+	case <-time.After(2 * time.Second):
+		t.Fatalf("test must complete before the timeout")
+	case err := <-errorsCh:
+		require.NoError(t, err)
+	case <-done:
+	}
+	require.Len(t, downloadedBlocks, len(blockReferences), "all blocks must be downloaded")
+	require.Equal(t, expectedCallsCount, blockClient.getBlockCalls.Load())
+}
+
+func prepareDownloader(
+	workingDirectory string,
+	workersCount int,
+	cacheEnabled bool,
+	blockClient *mockBlockClient,
+	overrides *validation.Overrides,
+	refillCacheFromDisk bool) (*blockDownloader, error) {
+	return newBlockDownloader(config.Config{
+		WorkingDirectory: workingDirectory,
+		BlocksDownloadingQueue: config.DownloadingQueueConfig{
+			WorkersCount:              workersCount,
+			MaxTasksEnqueuedPerTenant: 20,
+		},
+		BlocksCache: config.BlocksCacheConfig{
+			EmbeddedCacheConfig: cache.EmbeddedCacheConfig{
+				Enabled:      cacheEnabled,
+				MaxSizeItems: 20,
+			},
+			RemoveDirectoryGracefulPeriod: 1 * time.Second,
+			RefillCacheFromDisk:           refillCacheFromDisk,
+		},
+	}, blockClient, overrides, log.NewNopLogger(), prometheus.NewRegistry())
+
 }
 
 func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
@@ -321,8 +359,17 @@ func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 		//ensure file can be opened
 		require.NoError(t, err)
 		blockRef := BlockRef{
-			BlockPath: fmt.Sprintf("block-path-%d", i),
+			Ref: Ref{
+				TenantID:       "tenantA",
+				TableName:      "index_19730",
+				MinFingerprint: uint64(i),
+				MaxFingerprint: uint64(i*100 + 1),
+				StartTimestamp: model.Time(i),
+				EndTimestamp:   model.Time(i + 100),
+				Checksum:       uint32(i*10_000 + 1),
+			},
 		}
+		blockRef.BlockPath = createBlockObjectKey(blockRef.Ref)
 		mockData[blockRef.BlockPath] = func() LazyBlock {
 			file, _ := os.OpenFile(archivePath, os.O_RDONLY, 0700)
 			return LazyBlock{

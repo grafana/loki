@@ -2348,6 +2348,11 @@ bloom_shipper:
     # directory is force deleted.
     # CLI flag: -blocks-cache.remove-directory-graceful-period
     [remove_directory_graceful_period: <duration> | default = 5m]
+
+    # If enabled, all the blocks existing in the working directory will be put
+    # back into the cache during start-up.
+    # CLI flag: -blocks-cache.refill-cache-from-disk
+    [refill_cache_from_disk: <boolean> | default = true]
 ```
 
 ### chunk_store_config

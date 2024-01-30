@@ -171,10 +171,10 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	return b.periodicObjectClients[periodFrom].PutObject(ctx, key, bytes.NewReader(data))
 }
 
-func createBlockObjectKey(meta Ref) string {
-	blockParentFolder := fmt.Sprintf("%x-%x", meta.MinFingerprint, meta.MaxFingerprint)
-	filename := fmt.Sprintf("%d-%d-%x", meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
-	return strings.Join([]string{rootFolder, meta.TableName, meta.TenantID, bloomsFolder, blockParentFolder, filename}, delimiter)
+func createBlockObjectKey(block Ref) string {
+	blockParentFolder := fmt.Sprintf("%x-%x", block.MinFingerprint, block.MaxFingerprint)
+	filename := fmt.Sprintf("%d-%d-%x", block.StartTimestamp, block.EndTimestamp, block.Checksum)
+	return strings.Join([]string{rootFolder, block.TableName, block.TenantID, bloomsFolder, blockParentFolder, filename}, delimiter)
 }
 
 func createMetaObjectKey(meta Ref) string {

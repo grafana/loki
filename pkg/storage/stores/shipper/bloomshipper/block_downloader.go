@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,9 +58,10 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 	//add cleanup service
 	downloadingQueue := queue.NewRequestQueue(config.BlocksDownloadingQueue.MaxTasksEnqueuedPerTenant, time.Minute, &queueLimits{limits: limits}, queueMetrics)
 	activeUsersService := util.NewActiveUsersCleanupWithDefaultValues(queueMetrics.Cleanup)
+	strategy := createDownloadingStrategy(config, blockClient, reg, logger)
 
 	ctx := context.Background()
-	manager, err := services.NewManager(downloadingQueue, activeUsersService)
+	manager, err := services.NewManager(downloadingQueue, activeUsersService, strategy)
 	if err != nil {
 		return nil, fmt.Errorf("error creating service manager: %w", err)
 	}
@@ -67,7 +70,6 @@ func newBlockDownloader(config config.Config, blockClient BlockClient, limits Li
 		return nil, fmt.Errorf("error starting service manager: %w", err)
 	}
 
-	strategy := createDownloadingStrategy(config, blockClient, reg, logger)
 	b := &blockDownloader{
 		ctx:                ctx,
 		logger:             logger,
@@ -146,32 +148,74 @@ func (d *blockDownloader) serveDownloadingTasks(workerID string) {
 
 func createDownloadingStrategy(cfg config.Config, blockClient BlockClient, reg prometheus.Registerer, logger log.Logger) downloadingStrategy {
 	if cfg.BlocksCache.EmbeddedCacheConfig.Enabled {
-		blocksCache := NewBlocksCache(cfg, reg, logger)
-		return &cacheDownloadingStrategy{
-			config:           cfg,
-			workingDirectory: cfg.WorkingDirectory,
-			blockClient:      blockClient,
-			blocksCache:      blocksCache,
-			keyMutex:         keymutex.NewHashed(cfg.BlocksDownloadingQueue.WorkersCount),
-		}
+		return newCacheDownloadingStrategy(cfg, blockClient, reg, logger)
 	}
 	return &storageDownloadingStrategy{
 		workingDirectory: cfg.WorkingDirectory,
 		blockClient:      blockClient,
+		// noop Service implementation
+		Service: services.NewIdleService(nil, nil),
 	}
 }
 
 type downloadingStrategy interface {
+	services.Service
 	downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error)
 	close()
 }
 
 type cacheDownloadingStrategy struct {
+	services.Service
 	config           config.Config
 	workingDirectory string
 	blockClient      BlockClient
 	blocksCache      *cache.EmbeddedCache[string, *cachedBlock]
 	keyMutex         keymutex.KeyMutex
+	logger           log.Logger
+}
+
+func newCacheDownloadingStrategy(cfg config.Config, blockClient BlockClient, reg prometheus.Registerer, logger log.Logger) *cacheDownloadingStrategy {
+	strategy := &cacheDownloadingStrategy{
+		config:           cfg,
+		workingDirectory: cfg.WorkingDirectory,
+		blockClient:      blockClient,
+		blocksCache:      NewBlocksCache(cfg, reg, logger),
+		keyMutex:         keymutex.NewHashed(cfg.BlocksDownloadingQueue.WorkersCount),
+		logger:           logger,
+	}
+	strategy.Service = services.NewIdleService(strategy.refillCacheFromDisk, nil)
+	return strategy
+}
+
+// refillCacheFromDisk walks `workingDirectory` and puts all the folders with extracted bloom blocks to the cache.
+func (s *cacheDownloadingStrategy) refillCacheFromDisk(ctx context.Context) error {
+	if !s.config.BlocksCache.RefillCacheFromDisk {
+		level.Warn(s.logger).Log("msg", "bloom blocks cache refilling is disabled, consider enabling this option to avoid disk overfilling.")
+		return nil
+	}
+	err := filepath.Walk(s.workingDirectory, func(path string, info fs.FileInfo, err error) error {
+		//find `bloom` file
+		if err != nil || info.IsDir() || !strings.HasSuffix(path, v1.BloomFileName) {
+			return err
+		}
+		relativePath, err := filepath.Rel(s.workingDirectory, path)
+		if err != nil {
+			return err
+		}
+		parts := strings.Split(relativePath, delimiter)
+		//blockPath contains 6 parts + 1 part is a timestamp + 1 part is a filename
+		blockPathPartsCount := 6
+		if len(parts) != blockPathPartsCount+2 {
+			return fmt.Errorf("expected bloom file `%s` to have exact 8 parts but it has %d parts", relativePath, len(parts))
+		}
+		blockPath := strings.Join(parts[:blockPathPartsCount], delimiter)
+		_, err = s.storeBlockToCache(ctx, s.logger, filepath.Dir(path), blockPath)
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("error refilling bloom blocks cache from disk: %w", err)
+	}
+	return nil
 }
 
 func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
@@ -192,8 +236,7 @@ func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, log
 	if err != nil {
 		return blockWithQuerier{}, err
 	}
-	blockFromCache = newCachedBlock(directory, s.config.BlocksCache.RemoveDirectoryGracefulPeriod, logger)
-	err = s.blocksCache.Store(task.ctx, []string{task.block.BlockPath}, []*cachedBlock{blockFromCache})
+	blockFromCache, err = s.storeBlockToCache(task.ctx, logger, directory, task.block.BlockPath)
 	if err != nil {
 		level.Error(logger).Log("msg", "error storing the block in the cache", "block", blockPath, "err", err)
 		return blockWithQuerier{}, fmt.Errorf("error storing the block %s in the cache : %w", blockPath, err)
@@ -204,11 +247,18 @@ func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, log
 	}, nil
 }
 
+func (s *cacheDownloadingStrategy) storeBlockToCache(ctx context.Context, logger log.Logger, directory string, blockPath string) (*cachedBlock, error) {
+	blockFromCache := newCachedBlock(directory, s.config.BlocksCache.RemoveDirectoryGracefulPeriod, logger)
+	err := s.blocksCache.Store(ctx, []string{blockPath}, []*cachedBlock{blockFromCache})
+	return blockFromCache, err
+}
+
 func (s *cacheDownloadingStrategy) close() {
 	s.blocksCache.Stop()
 }
 
 type storageDownloadingStrategy struct {
+	services.Service
 	workingDirectory string
 	blockClient      BlockClient
 }

@@ -77,5 +77,6 @@ func extractArchive(archivePath string, workingDirectoryPath string) error {
 	if err != nil {
 		return fmt.Errorf("error opening archive file %s: %w", archivePath, err)
 	}
+	defer file.Close()
 	return v1.UnTarGz(workingDirectoryPath, file)
 }

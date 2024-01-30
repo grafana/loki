@@ -19,12 +19,14 @@ type Config struct {
 type BlocksCacheConfig struct {
 	EmbeddedCacheConfig           cache.EmbeddedCacheConfig `yaml:",inline"`
 	RemoveDirectoryGracefulPeriod time.Duration             `yaml:"remove_directory_graceful_period"`
+	RefillCacheFromDisk           bool                      `yaml:"refill_cache_from_disk"`
 }
 
 func (c *BlocksCacheConfig) RegisterFlagsWithPrefixAndDefaults(prefix string, f *flag.FlagSet) {
 	c.EmbeddedCacheConfig.RegisterFlagsWithPrefixAndDefaults(prefix, "", f, 0)
 	f.DurationVar(&c.RemoveDirectoryGracefulPeriod, prefix+"remove-directory-graceful-period", 5*time.Minute,
 		"During this period the process waits until the directory becomes not used and only after this it will be deleted. If the timeout is reached, the directory is force deleted.")
+	f.BoolVar(&c.RefillCacheFromDisk, prefix+"refill-cache-from-disk", true, "If enabled, all the blocks existing in the working directory will be put back into the cache during start-up.")
 }
 
 type DownloadingQueueConfig struct {
