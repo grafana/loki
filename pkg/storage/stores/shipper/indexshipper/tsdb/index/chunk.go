@@ -129,10 +129,6 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 	totalKB := float64(last.KB)
 	totalEntries := float64(last.Entries)
 	for _, cur := range c[1:] {
-		maxTime := last.MaxTime
-		if through < last.MaxTime {
-			maxTime = through
-		}
 
 		if !deduplicate {
 			totalKB += float64(cur.KB)
@@ -141,7 +137,7 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 		}
 
 		// Skip chunk if it's a subset of the last one
-		if cur.MinTime < maxTime && cur.MaxTime <= maxTime {
+		if cur.MinTime < last.MaxTime && cur.MaxTime <= last.MaxTime {
 			//curRate := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
 			//lastRate := float64(last.KB) / float64(last.MaxTime-last.MinTime)
 
@@ -156,11 +152,11 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 			//totalKB = totalKB + overlap*(m-lastRate)
 
 			continue
-		} else if cur.MinTime < maxTime {
+		} else if cur.MinTime < last.MaxTime {
 			//curRate := float64(cur.KB) / float64(cur.MaxTime-cur.MinTime)
 			//lastRate := float64(last.KB) / float64(last.MaxTime-last.MinTime)
 
-			overlap := float64(maxTime - cur.MinTime)
+			overlap := float64(last.MaxTime - cur.MinTime)
 			curOverlapSize := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.KB)
 			curOverlapEntries := overlap / float64(cur.MaxTime-cur.MinTime) * float64(cur.Entries)
 
@@ -178,8 +174,9 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 			//m := math.Max(curRate, lastRate)
 			//totalKB = totalKB + overlap*(m-lastRate)
 
+			oldMaxTime := last.MaxTime
 			last = cur
-			last.MinTime = maxTime
+			last.MinTime = oldMaxTime
 			last.KB = uint32(curRemainingSize)
 		} else {
 			totalKB = totalKB + float64(cur.KB)
