@@ -24,9 +24,16 @@ type dummyStore struct {
 	querieres []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
-func (s *dummyStore) LoadMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
+func (s *dummyStore) SearchMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
 	//TODO(chaudum) Filter metas based on search params
 	return s.metas, nil
+}
+
+func (s *dummyStore) Fetcher(_ model.Time) *bloomshipper.Fetcher {
+	return nil
+}
+
+func (s *dummyStore) Stop() {
 }
 
 func (s *dummyStore) LoadBlocks(_ context.Context, refs []bloomshipper.BlockRef) (v1.Iterator[bloomshipper.BlockQuerierWithFingerprintRange], error) {

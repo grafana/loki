@@ -17,17 +17,13 @@ type tasksForBlock struct {
 	tasks    []Task
 }
 
-type metaLoader interface {
-	LoadMetas(context.Context, bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error)
-}
-
 type blockLoader interface {
 	LoadBlocks(context.Context, []bloomshipper.BlockRef) (v1.Iterator[bloomshipper.BlockQuerierWithFingerprintRange], error)
 }
 
 type store interface {
 	blockLoader
-	metaLoader
+	bloomshipper.Store
 }
 
 type processor struct {
@@ -63,7 +59,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, interval bl
 		Interval: interval,
 		Keyspace: bloomshipper.Keyspace{Min: minFpRange.Min, Max: maxFpRange.Max},
 	}
-	metas, err := p.store.LoadMetas(ctx, metaSearch)
+	metas, err := p.store.SearchMetas(ctx, metaSearch)
 	if err != nil {
 		return err
 	}
