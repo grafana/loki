@@ -79,7 +79,9 @@ func (f *Fetcher) processCacheResponse(ctx context.Context, refs []MetaRef, keys
 	var lastErr error
 	for i, ref := range refs {
 		if raw, ok := found[externalMetaKey(ref)]; ok {
-			meta := Meta{}
+			meta := Meta{
+				MetaRef: ref,
+			}
 			lastErr = json.Unmarshal(raw, &meta)
 			metas = append(metas, meta)
 		} else {

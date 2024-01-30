@@ -9,7 +9,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
@@ -18,7 +17,6 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/math"
 )
 
 const (
