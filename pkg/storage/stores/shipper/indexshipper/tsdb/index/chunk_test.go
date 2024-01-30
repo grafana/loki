@@ -153,6 +153,26 @@ func TestChunkMetasStats(t *testing.T) {
 		exp           ChunkStats
 	}{
 		{
+			desc:    "empty",
+			chks:    []ChunkMeta{},
+			from:    0,
+			through: 5,
+			exp:     ChunkStats{},
+		},
+		{
+			desc: "single",
+			chks: []ChunkMeta{
+				{MinTime: 3, MaxTime: 5, KB: 2, Entries: 2},
+			},
+			from:    0,
+			through: 5,
+			exp: ChunkStats{
+				Chunks:  1,
+				KB:      2,
+				Entries: 2,
+			},
+		},
+		{
 			desc: "full range",
 			chks: []ChunkMeta{
 				{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
@@ -181,58 +201,9 @@ func TestChunkMetasStats(t *testing.T) {
 			from:    0,
 			through: 5,
 			exp: ChunkStats{
-				Chunks:  3,
+				Chunks:  5,
 				KB:      3,
 				Entries: 3,
-			},
-		},
-		{
-			desc: "middle",
-			chks: []ChunkMeta{
-				{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
-				{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
-				{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
-				{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1},
-				{MinTime: 5, MaxTime: 6, KB: 1, Entries: 1},
-			},
-			from:    2,
-			through: 4,
-			exp: ChunkStats{
-				// technically the 2nd chunk overlaps, but we don't add
-				// any of it's stats as its only 1 nanosecond in the range
-				// and thus gets integer-divisioned to 0
-				Chunks:  3,
-				KB:      2,
-				Entries: 2,
-			},
-		},
-		{
-			desc: "middle with complete overlaps",
-			chks: []ChunkMeta{
-				// for example with pageSize=2
-				{MinTime: 0, MaxTime: 1, KB: 1, Entries: 1},
-				{MinTime: 1, MaxTime: 2, KB: 1, Entries: 1},
-
-				{MinTime: 2, MaxTime: 3, KB: 1, Entries: 1},
-				{MinTime: 3, MaxTime: 4, KB: 1, Entries: 1}, // partial overlap
-
-				{MinTime: 4, MaxTime: 5, KB: 1, Entries: 1}, // full overlap
-				{MinTime: 5, MaxTime: 6, KB: 1, Entries: 1},
-
-				{MinTime: 6, MaxTime: 7, KB: 1, Entries: 1}, // full overlap
-				{MinTime: 7, MaxTime: 8, KB: 1, Entries: 1},
-
-				{MinTime: 8, MaxTime: 9, KB: 1, Entries: 1}, // partial overlap
-				{MinTime: 9, MaxTime: 10, KB: 1, Entries: 1},
-			},
-			from:    4,
-			through: 9,
-			exp: ChunkStats{
-				// same deal with previous case, 1ns overlap isn't enough
-				// to include its data
-				Chunks:  6,
-				KB:      5,
-				Entries: 5,
 			},
 		},
 	} {

@@ -179,7 +179,8 @@ func (c ChunkMetas) Stats(from, through int64, deduplicate bool) ChunkStats {
 			last.MinTime = oldMaxTime
 			last.KB = uint32(curRemainingSize)
 		} else {
-			totalKB = totalKB + float64(cur.KB)
+			totalKB += float64(cur.KB)
+			totalEntries += float64(cur.Entries)
 			last = cur
 		}
 	}
