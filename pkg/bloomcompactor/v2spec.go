@@ -115,7 +115,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 	return func(series *v1.Series, bloom *v1.Bloom) error {
 		chunkItersWithFP, err := s.chunkLoader.Load(ctx, series)
 		if err != nil {
-			return errors.Wrapf(err, "failed to load chunks for series: %#v", series)
+			return errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
 
 		return s.tokenizer.Populate(
@@ -134,7 +134,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v
 	blocksMatchingSchema := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(s.blocks))
 	for _, block := range s.blocks {
 		// TODO(owen-d): implement block naming so we can log the affected block in all these calls
-		logger := log.With(s.logger, "block", fmt.Sprintf("%#v", block))
+		logger := log.With(s.logger, "block", fmt.Sprintf("%+v", block))
 		schema, err := block.Schema()
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to get schema for block", "err", err)
@@ -142,7 +142,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v
 		}
 
 		if !s.opts.Schema.Compatible(schema) {
-			level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%#v", s.opts.Schema), "block_schema", fmt.Sprintf("%#v", schema))
+			level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%+v", s.opts.Schema), "block_schema", fmt.Sprintf("%+v", schema))
 			skippedBlocks = append(skippedBlocks, block)
 		}
 
@@ -151,7 +151,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v
 		blocksMatchingSchema = append(blocksMatchingSchema, itr)
 	}
 
-	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%#v", s.opts.Schema))
+	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
 	// TODO(owen-d): implement bounded block sizes
 

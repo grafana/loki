@@ -172,7 +172,7 @@ func findGaps(ownershipRange v1.FingerprintBounds, metas []v1.FingerprintBounds)
 	leftBound := ownershipRange.Min
 	for _, meta := range nonOverlapping {
 
-		clippedMeta := meta.Clip(ownershipRange)
+		clippedMeta := meta.Intersection(ownershipRange)
 		// should never happen as long as we are only combining metas
 		// that intersect with the ownership range
 		if clippedMeta == nil {

@@ -30,16 +30,6 @@ func Test_FingerprintBounds_Overlap(t *testing.T) {
 	assert.False(t, bounds.Overlaps(FingerprintBounds{Min: 21, Max: 30}))
 }
 
-func Test_FingerprintBounds_Clip(t *testing.T) {
-	target := NewBounds(10, 20)
-	assert.Nil(t, NewBounds(1, 9).Clip(target))
-	assert.Nil(t, NewBounds(21, 30).Clip(target))
-	assert.Equal(t, &FingerprintBounds{Min: 10, Max: 20}, NewBounds(10, 20).Clip(target))
-	assert.Equal(t, &FingerprintBounds{Min: 10, Max: 15}, NewBounds(5, 15).Clip(target))
-	assert.Equal(t, &FingerprintBounds{Min: 15, Max: 20}, NewBounds(15, 25).Clip(target))
-	assert.Equal(t, &FingerprintBounds{Min: 10, Max: 20}, NewBounds(5, 25).Clip(target))
-}
-
 func Test_FingerprintBounds_Within(t *testing.T) {
 	target := NewBounds(10, 20)
 	assert.False(t, NewBounds(1, 9).Within(target))

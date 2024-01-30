@@ -51,21 +51,9 @@ func (b FingerprintBounds) Overlaps(target FingerprintBounds) bool {
 	return b.Cmp(target.Min) != After && b.Cmp(target.Max) != Before
 }
 
-// Clip returns a new fingerprint bounds clipped to the target bounds or nil if there is no overlap
-func (b FingerprintBounds) Clip(target FingerprintBounds) *FingerprintBounds {
-	if !b.Overlaps(target) {
-		return nil
-	}
-
-	return &FingerprintBounds{
-		Min: max(b.Min, target.Min),
-		Max: min(b.Max, target.Max),
-	}
-}
-
 // Slice returns a new fingerprint bounds clipped to the target bounds or nil if there is no overlap
 func (b FingerprintBounds) Slice(min, max model.Fingerprint) *FingerprintBounds {
-	return b.Clip(FingerprintBounds{Min: min, Max: max})
+	return b.Intersection(FingerprintBounds{Min: min, Max: max})
 }
 
 // Returns whether the fingerprint is fully within the target bounds
@@ -102,7 +90,7 @@ func (b FingerprintBounds) Union(target FingerprintBounds) (res []FingerprintBou
 	}
 }
 
-// Unless returns the the subspace of itself which does not intersect with the target bounds
+// Unless returns the subspace of itself which does not intersect with the target bounds
 func (b FingerprintBounds) Unless(target FingerprintBounds) (res []FingerprintBounds) {
 	if !b.Overlaps(target) {
 		return []FingerprintBounds{b}
