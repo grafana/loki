@@ -19,8 +19,7 @@ import (
 )
 
 type workerConfig struct {
-	maxWaitTime time.Duration
-	maxItems    int
+	maxItems int
 }
 
 type workerMetrics struct {
@@ -111,7 +110,7 @@ func (w *worker) running(_ context.Context) error {
 	for st := w.State(); st == services.Running || st == services.Stopping; {
 		taskCtx := context.Background()
 		dequeueStart := time.Now()
-		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems, w.cfg.maxWaitTime)
+		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems)
 		w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
 		if err != nil {
 			// We only return an error if the queue is stopped and dequeuing did not yield any items
