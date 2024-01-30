@@ -5,14 +5,16 @@ import (
 	"hash"
 	"path"
 
+	"github.com/pkg/errors"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/encoding"
-	"github.com/pkg/errors"
 )
 
 const (
 	BloomPrefix = "bloom"
+	MetasPrefix = "metas"
 )
 
 // TODO(owen-d): Probably want to integrate against the block shipper
@@ -41,15 +43,14 @@ type MetaRef struct {
 	Checksum       uint32
 }
 
-// `bloom/<period>/<tenant>/metas/<start_fp>-<end_fp>-<start_ts>-<end_ts>-<checksum>.json`
+// `bloom/<period>/<tenant>/metas/<start_fp>-<end_fp>-<checksum>.json`
 func (m MetaRef) Address(tenant string, period int) (string, error) {
 	joined := path.Join(
 		BloomPrefix,
 		fmt.Sprintf("%v", period),
 		tenant,
-		"metas",
-		m.OwnershipRange.String(),
-		fmt.Sprintf("%v", m.Checksum),
+		MetasPrefix,
+		fmt.Sprintf("%v-%v", m.OwnershipRange, m.Checksum),
 	)
 
 	return fmt.Sprintf("%s.json", joined), nil

@@ -53,6 +53,7 @@ func (s *SimpleBloomController) do(_ context.Context) error {
 		return errors.Wrap(err, "failed to resolve metas")
 	}
 
+	// 3. Fetch metas
 	metas, err := s.metaStore.GetMetas(metaRefs)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to get metas", "err", err)
@@ -64,7 +65,7 @@ func (s *SimpleBloomController) do(_ context.Context) error {
 		ids = append(ids, idx.Identifier)
 	}
 
-	// Determine which TSDBs have gaps in the ownership range and need to
+	// 4. Determine which TSDBs have gaps in the ownership range and need to
 	// be processed.
 	work, err := gapsBetweenTSDBsAndMetas(s.ownershipRange, ids, metas)
 	if err != nil {
