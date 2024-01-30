@@ -119,7 +119,8 @@ func (m Meta) Checksum() (uint32, error) {
 }
 
 type TSDBStore interface {
-	ResolveTSDBs() ([]*tsdb.TSDBFile, error)
+	ResolveTSDBs() ([]*tsdb.SingleTenantTSDBIdentifier, error)
+	LoadTSDB(id tsdb.Identifier, bounds v1.FingerprintBounds) (v1.CloseableIterator[*v1.Series], error)
 }
 
 type MetaStore interface {
