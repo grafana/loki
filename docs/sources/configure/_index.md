@@ -4818,7 +4818,8 @@ place in the `limits_config` section:
 configure a runtime configuration file:
 
     ```
-    runtime_config: overrides.yaml
+    runtime_config:
+      file: overrides.yaml
     ```
 
     In the `overrides.yaml` file, add `unordered_writes` for each tenant
