@@ -67,9 +67,9 @@ type Meta struct {
 }
 
 type MetaSearchParams struct {
-	TenantID                       string
-	MinFingerprint, MaxFingerprint model.Fingerprint
-	StartTimestamp, EndTimestamp   model.Time
+	TenantID string
+	Interval Interval
+	Keyspace Keyspace
 }
 
 type MetaClient interface {
@@ -126,7 +126,7 @@ type BloomClient struct {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
-	tablesByPeriod := tablesByPeriod(b.periodicConfigs, params.StartTimestamp, params.EndTimestamp)
+	tablesByPeriod := tablesByPeriod(b.periodicConfigs, params.Interval.Start, params.Interval.End)
 
 	var metas []Meta
 	for periodFrom, tables := range tablesByPeriod {
@@ -143,8 +143,8 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 				if err != nil {
 					return nil, err
 				}
-				if metaRef.MaxFingerprint < uint64(params.MinFingerprint) || uint64(params.MaxFingerprint) < metaRef.MinFingerprint ||
-					metaRef.EndTimestamp.Before(params.StartTimestamp) || metaRef.StartTimestamp.After(params.EndTimestamp) {
+				if metaRef.MaxFingerprint < uint64(params.Keyspace.Min) || uint64(params.Keyspace.Max) < metaRef.MinFingerprint ||
+					metaRef.EndTimestamp.Before(params.Interval.Start) || metaRef.StartTimestamp.After(params.Interval.End) {
 					continue
 				}
 				meta, err := b.downloadMeta(ctx, metaRef, periodClient)
