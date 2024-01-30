@@ -16,8 +16,7 @@ import (
 )
 
 type Interval struct {
-	Start model.Time
-	End   model.Time
+	Start, End model.Time
 }
 
 func (i Interval) String() string {
@@ -33,20 +32,14 @@ func (i Interval) Cmp(other model.Time) v1.BoundsCheck {
 	return v1.Overlap
 }
 
-type fpRange [2]uint64
-
-func (r fpRange) minFp() uint64 {
-	return r[0]
+type Keyspace struct {
+	Min, Max model.Fingerprint
 }
 
-func (r fpRange) maxFp() uint64 {
-	return r[1]
-}
-
-func (r fpRange) Cmp(other uint64) v1.BoundsCheck {
-	if other < r[0] {
+func (r Keyspace) Cmp(other model.Fingerprint) v1.BoundsCheck {
+	if other < r.Min {
 		return v1.Before
-	} else if other > r[1] {
+	} else if other > r.Max {
 		return v1.After
 	}
 	return v1.Overlap
@@ -94,7 +87,7 @@ func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, interval In
 	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "[", interval.Start, "", interval.End)
 
 	// TODO(chaudum): The bloom gateway should not fetch blocks for the complete key space
-	keyspaces := []fpRange{{0, math.MaxUint64}}
+	keyspaces := []Keyspace{{0, math.MaxUint64}}
 	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, interval, keyspaces)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching active block references : %w", err)
@@ -159,34 +152,22 @@ func getFirstLast[T any](s []T) (T, T) {
 	return s[0], s[len(s)-1]
 }
 
-func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, interval Interval, keyspaces []fpRange) ([]BlockRef, error) {
+func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, interval Interval, keyspaces []Keyspace) ([]BlockRef, error) {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
 	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
-		TenantID:       tenantID,
-		MinFingerprint: model.Fingerprint(minFpRange.minFp()),
-		MaxFingerprint: model.Fingerprint(maxFpRange.maxFp()),
-		StartTimestamp: interval.Start,
-		EndTimestamp:   interval.End,
+		TenantID: tenantID,
+		Keyspace: Keyspace{Min: minFpRange.Min, Max: maxFpRange.Max},
+		Interval: interval,
 	})
 	if err != nil {
 		return []BlockRef{}, fmt.Errorf("error fetching meta.json files: %w", err)
 	}
 	level.Debug(s.logger).Log("msg", "dowloaded metas", "count", len(metas))
-	activeBlocks := s.findBlocks(metas, interval, keyspaces)
-	slices.SortStableFunc(activeBlocks, func(a, b BlockRef) int {
-		if a.MinFingerprint < b.MinFingerprint {
-			return -1
-		}
-		if a.MinFingerprint > b.MinFingerprint {
-			return 1
-		}
 
-		return 0
-	})
-	return activeBlocks, nil
+	return BlocksForMetas(metas, interval, keyspaces), nil
 }
 
-func (s *Shipper) findBlocks(metas []Meta, interval Interval, keyspaces []fpRange) []BlockRef {
+func BlocksForMetas(metas []Meta, interval Interval, keyspaces []Keyspace) []BlockRef {
 	tombstones := make(map[string]interface{})
 	for _, meta := range metas {
 		for _, tombstone := range meta.Tombstones {
@@ -211,13 +192,25 @@ func (s *Shipper) findBlocks(metas []Meta, interval Interval, keyspaces []fpRang
 	for _, ref := range blocksSet {
 		blockRefs = append(blockRefs, ref)
 	}
+
+	slices.SortStableFunc(blockRefs, func(a, b BlockRef) int {
+		if a.MinFingerprint < b.MinFingerprint {
+			return -1
+		}
+		if a.MinFingerprint > b.MinFingerprint {
+			return 1
+		}
+
+		return 0
+	})
+
 	return blockRefs
 }
 
 // isOutsideRange tests if a given BlockRef b is outside of search boundaries
 // defined by min/max timestamp and min/max fingerprint.
 // Fingerprint ranges must be sorted in ascending order.
-func isOutsideRange(b BlockRef, interval Interval, keyspaces []fpRange) bool {
+func isOutsideRange(b BlockRef, interval Interval, keyspaces []Keyspace) bool {
 	// check time interval
 	if interval.Cmp(b.EndTimestamp) == v1.Before || interval.Cmp(b.StartTimestamp) == v1.After {
 		return true
@@ -225,10 +218,10 @@ func isOutsideRange(b BlockRef, interval Interval, keyspaces []fpRange) bool {
 
 	// check fingerprint ranges
 	for _, keyspace := range keyspaces {
-		if keyspace.Cmp(b.MinFingerprint) == v1.Before && keyspace.Cmp(b.MaxFingerprint) == v1.After {
+		if keyspace.Cmp(model.Fingerprint(b.MinFingerprint)) == v1.Before && keyspace.Cmp(model.Fingerprint(b.MaxFingerprint)) == v1.After {
 			return false
 		}
-		if keyspace.Cmp(b.MinFingerprint) == v1.Overlap || keyspace.Cmp(b.MaxFingerprint) == v1.Overlap {
+		if keyspace.Cmp(model.Fingerprint(b.MinFingerprint)) == v1.Overlap || keyspace.Cmp(model.Fingerprint(b.MaxFingerprint)) == v1.Overlap {
 			return false
 		}
 	}
