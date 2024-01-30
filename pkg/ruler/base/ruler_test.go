@@ -401,7 +401,7 @@ func TestGetRules(t *testing.T) {
 		shuffleShardSize int
 	}
 
-	expectedRules := expectedRulesMap{
+	allRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
 				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`)}, Interval: 10 * time.Second, Limit: 10},
@@ -495,7 +495,7 @@ func TestGetRules(t *testing.T) {
 
 	for name, tc := range testCases {
 		for _, ruleType := range []RulesRequest_RuleType{AnyRule, AlertingRule, RecordingRule} {
-			t.Run(name+ruleType.String(), func(t *testing.T) {
+			t.Run(name+" "+ruleType.String(), func(t *testing.T) {
 				kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 				t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
 				allRulesByUser := map[string]rulespb.RuleGroupList{}
@@ -530,7 +530,7 @@ func TestGetRules(t *testing.T) {
 					return r
 				}
 
-				for rID, r := range expectedRules {
+				for rID, r := range allRules {
 					createRuler(rID)
 					for user, rules := range r {
 						allRulesByUser[user] = append(allRulesByUser[user], rules...)
@@ -546,7 +546,7 @@ func TestGetRules(t *testing.T) {
 				case RecordingRule:
 					filteredRules = expectedRecordingRules
 				default:
-					filteredRules = expectedRules
+					filteredRules = allRules
 				}
 
 				for _, r := range filteredRules {
