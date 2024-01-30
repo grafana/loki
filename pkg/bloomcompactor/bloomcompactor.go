@@ -27,6 +27,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -50,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	chunk_client "github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -71,7 +73,7 @@ type Compactor struct {
 	limits    Limits
 
 	// temporary workaround until store has implemented read/write shipper interface
-	bloomShipperClient bloomshipper.Client
+	bloomShipperClient bloomshipper.StoreAndClient
 
 	// Client used to run operations on the bucket storing bloom blocks.
 	storeClients map[config.DayTime]storeClient
@@ -109,8 +111,10 @@ func New(
 		reg:       r,
 	}
 
-	// Configure BloomClient for meta.json management
-	bloomClient, err := bloomshipper.NewBloomClient(schemaConfig.Configs, storageCfg, clientMetrics)
+	// TODO(chaudum): Plug in cache
+	var metasCache cache.Cache
+	var blocksCache *cache.EmbeddedCache[string, io.ReadCloser]
+	bloomClient, err := bloomshipper.NewBloomStore(schemaConfig.Configs, storageCfg, clientMetrics, metasCache, blocksCache, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +510,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	//TODO  Configure pool for these to avoid allocations
 	var activeBloomBlocksRefs []bloomshipper.BlockRef
 
-	metas, err := c.bloomShipperClient.GetMetas(ctx, metaSearchParams)
+	metas, err := c.bloomShipperClient.SearchMetas(ctx, metaSearchParams)
 	if err != nil {
 		return err
 	}
