@@ -62,6 +62,13 @@ func TestHashSecretData(t *testing.T) {
 	}
 }
 
+func TestUnknownType(t *testing.T) {
+	wantError := "unknown secret type: test-unknown-type"
+
+	_, err := extractSecrets("test-unknown-type", &corev1.Secret{}, nil, configv1.FeatureGates{})
+	require.EqualError(t, err, wantError)
+}
+
 func TestAzureExtract(t *testing.T) {
 	type test struct {
 		name      string
@@ -72,7 +79,7 @@ func TestAzureExtract(t *testing.T) {
 		{
 			name:      "missing environment",
 			secret:    &corev1.Secret{},
-			wantError: "missing secret field",
+			wantError: "missing secret field: environment",
 		},
 		{
 			name: "missing container",
@@ -81,7 +88,7 @@ func TestAzureExtract(t *testing.T) {
 					"environment": []byte("here"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: container",
 		},
 		{
 			name: "missing account_name",
@@ -91,7 +98,7 @@ func TestAzureExtract(t *testing.T) {
 					"container":   []byte("this,that"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: account_name",
 		},
 		{
 			name: "missing account_key",
@@ -103,7 +110,7 @@ func TestAzureExtract(t *testing.T) {
 					"account_name": []byte("id"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: account_key",
 		},
 		{
 			name: "all mandatory set",
@@ -159,7 +166,7 @@ func TestGCSExtract(t *testing.T) {
 		{
 			name:      "missing bucketname",
 			secret:    &corev1.Secret{},
-			wantError: "missing secret field",
+			wantError: "missing secret field: bucketname",
 		},
 		{
 			name: "missing key.json",
@@ -168,7 +175,7 @@ func TestGCSExtract(t *testing.T) {
 					"bucketname": []byte("here"),
 				},
 			},
-			wantError: "missing google authentication credentials",
+			wantError: "missing secret field: key.json",
 		},
 		{
 			name: "all set",
@@ -204,18 +211,18 @@ func TestS3Extract(t *testing.T) {
 	}
 	table := []test{
 		{
-			name:      "missing endpoint",
+			name:      "missing bucketnames",
 			secret:    &corev1.Secret{},
-			wantError: "missing secret field",
+			wantError: "missing secret field: bucketnames",
 		},
 		{
-			name: "missing bucketnames",
+			name: "missing endpoint",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"endpoint": []byte("here"),
+					"bucketnames": []byte("this,that"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: endpoint",
 		},
 		{
 			name: "missing access_key_id",
@@ -225,7 +232,7 @@ func TestS3Extract(t *testing.T) {
 					"bucketnames": []byte("this,that"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: access_key_id",
 		},
 		{
 			name: "missing access_key_secret",
@@ -236,7 +243,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_id": []byte("id"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: access_key_secret",
 		},
 		{
 			name: "unsupported SSE type",
@@ -249,7 +256,7 @@ func TestS3Extract(t *testing.T) {
 					"sse_type":          []byte("unsupported"),
 				},
 			},
-			wantError: "unsupported secret field value (Supported: SSE-KMS, SSE-S3)",
+			wantError: "unsupported SSE type (supported: SSE-KMS, SSE-S3): unsupported",
 		},
 		{
 			name: "missing SSE-KMS kms_key_id",
@@ -263,7 +270,7 @@ func TestS3Extract(t *testing.T) {
 					"sse_kms_encryption_context": []byte("kms-encryption-ctx"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: sse_kms_key_id",
 		},
 		{
 			name: "all set with SSE-KMS",
@@ -328,7 +335,7 @@ func TestS3Extract(t *testing.T) {
 					"role_arn":    []byte("role"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: region",
 		},
 		{
 			name: "STS with region",
@@ -387,27 +394,44 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 	}
 	table := []test{
 		{
-			name:              "missing role-arn",
+			name:              "missing bucketnames",
 			secret:            &corev1.Secret{},
 			managedAuthSecret: &corev1.Secret{},
-			wantError:         "missing secret field",
+			wantError:         "missing secret field: bucketnames",
 		},
 		{
-			name:              "missing region",
-			secret:            &corev1.Secret{},
-			managedAuthSecret: &corev1.Secret{},
-			wantError:         "missing secret field",
-		},
-		{
-			name: "override role arn not allowed",
+			name: "missing region",
 			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"role_arn": []byte("role-arn"),
+					"bucketnames": []byte("this,that"),
 				},
 			},
 			managedAuthSecret: &corev1.Secret{},
-			wantError:         "missing secret field",
+			wantError:         "missing secret field: region",
+		},
+		{
+			name: "override role_arn not allowed",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role-arn"),
+				},
+			},
+			managedAuthSecret: &corev1.Secret{},
+			wantError:         "secret field not allowed: role_arn",
+		},
+		{
+			name: "override audience not allowed",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"audience":    []byte("test-audience"),
+				},
+			},
+			managedAuthSecret: &corev1.Secret{},
+			wantError:         "secret field not allowed: audience",
 		},
 		{
 			name: "STS all set",
@@ -455,7 +479,7 @@ func TestSwiftExtract(t *testing.T) {
 		{
 			name:      "missing auth_url",
 			secret:    &corev1.Secret{},
-			wantError: "missing secret field",
+			wantError: "missing secret field: auth_url",
 		},
 		{
 			name: "missing username",
@@ -464,7 +488,7 @@ func TestSwiftExtract(t *testing.T) {
 					"auth_url": []byte("here"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: username",
 		},
 		{
 			name: "missing user_domain_name",
@@ -474,7 +498,7 @@ func TestSwiftExtract(t *testing.T) {
 					"username": []byte("this,that"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: user_domain_name",
 		},
 		{
 			name: "missing user_domain_id",
@@ -485,7 +509,7 @@ func TestSwiftExtract(t *testing.T) {
 					"user_domain_name": []byte("id"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: user_domain_id",
 		},
 		{
 			name: "missing user_id",
@@ -497,7 +521,7 @@ func TestSwiftExtract(t *testing.T) {
 					"user_domain_id":   []byte("secret"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: user_id",
 		},
 		{
 			name: "missing password",
@@ -510,7 +534,7 @@ func TestSwiftExtract(t *testing.T) {
 					"user_id":          []byte("there"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: password",
 		},
 		{
 			name: "missing domain_id",
@@ -524,7 +548,7 @@ func TestSwiftExtract(t *testing.T) {
 					"password":         []byte("cred"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: domain_id",
 		},
 		{
 			name: "missing domain_name",
@@ -539,7 +563,7 @@ func TestSwiftExtract(t *testing.T) {
 					"domain_id":        []byte("text"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: domain_name",
 		},
 		{
 			name: "missing container_name",
@@ -555,7 +579,7 @@ func TestSwiftExtract(t *testing.T) {
 					"domain_name":      []byte("where"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: container_name",
 		},
 		{
 			name: "all set",
@@ -603,16 +627,16 @@ func TestAlibabaCloudExtract(t *testing.T) {
 		{
 			name:      "missing endpoint",
 			secret:    &corev1.Secret{},
-			wantError: "missing secret field",
+			wantError: "missing secret field: endpoint",
 		},
 		{
-			name: "missing bucketnames",
+			name: "missing bucket",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint": []byte("here"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: bucket",
 		},
 		{
 			name: "missing access_key_id",
@@ -622,10 +646,10 @@ func TestAlibabaCloudExtract(t *testing.T) {
 					"bucket":   []byte("this,that"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: access_key_id",
 		},
 		{
-			name: "missing access_key_secret",
+			name: "missing secret_access_key",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint":      []byte("here"),
@@ -633,7 +657,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 					"access_key_id": []byte("id"),
 				},
 			},
-			wantError: "missing secret field",
+			wantError: "missing secret field: secret_access_key",
 		},
 		{
 			name: "all set",
