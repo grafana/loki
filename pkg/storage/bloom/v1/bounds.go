@@ -37,6 +37,13 @@ func (b FingerprintBounds) String() string {
 	return b.Min.String() + "-" + b.Max.String()
 }
 
+func (b FingerprintBounds) Less(other FingerprintBounds) bool {
+	if b.Min != other.Min {
+		return b.Min < other.Min
+	}
+	return b.Max <= other.Max
+}
+
 // Cmp returns the fingerprint's position relative to the bounds
 func (b FingerprintBounds) Cmp(fp model.Fingerprint) BoundsCheck {
 	if fp < b.Min {

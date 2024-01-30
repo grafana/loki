@@ -3,6 +3,7 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -220,6 +221,31 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) []blockPlan {
 					planGap.blocks = append(planGap.blocks, block)
 				}
 			}
+
+			// ensure we sort blocks so deduping iterator works as expected
+			sort.Slice(planGap.blocks, func(i, j int) bool {
+				return planGap.blocks[i].OwnershipRange.Less(planGap.blocks[j].OwnershipRange)
+			})
+
+			peekingBlocks := v1.NewPeekingIter[BlockRef](
+				v1.NewSliceIter[BlockRef](
+					planGap.blocks,
+				),
+			)
+			// dedupe blocks which could be in multiple metas
+			itr := v1.NewDedupingIter[BlockRef, BlockRef](
+				func(a, b BlockRef) bool {
+					return a == b
+				},
+				v1.Id[BlockRef],
+				func(a, _ BlockRef) BlockRef {
+					return a
+				},
+				peekingBlocks,
+			)
+
+			deduped := v1.Collect[BlockRef](itr)
+			planGap.blocks = deduped
 
 			plan.gaps = append(plan.gaps, planGap)
 		}

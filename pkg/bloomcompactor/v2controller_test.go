@@ -366,6 +366,36 @@ func Test_blockPlansForGaps(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc:           "dedupes block refs",
+			ownershipRange: v1.NewBounds(0, 10),
+			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			metas: []Meta{
+				genMeta(9, 20, []int{1}, []BlockRef{
+					genBlockRef(1, 4),
+					genBlockRef(9, 20),
+				}), // blocks for first diff tsdb
+				genMeta(5, 20, []int{2}, []BlockRef{
+					genBlockRef(5, 10),
+					genBlockRef(9, 20), // same block references in prior meta (will be deduped)
+				}), // block for second diff tsdb
+			},
+			exp: []blockPlan{
+				{
+					tsdb: tsdbId(0),
+					gaps: []gapWithBlocks{
+						{
+							bounds: v1.NewBounds(0, 10),
+							blocks: []BlockRef{
+								genBlockRef(1, 4),
+								genBlockRef(5, 10),
+								genBlockRef(9, 20),
+							},
+						},
+					},
+				},
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			// we reuse the gapsBetweenTSDBsAndMetas function to generate the gaps as this function is tested
