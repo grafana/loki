@@ -94,7 +94,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					Name:      "group1",
 					Namespace: "namespace1",
 					User:      userID,
-					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_FOO", `count_over_time({foo="bar"}[5m])`), createAlertingRule("UP_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
 					Interval:  interval,
 				},
 			},
@@ -105,13 +105,13 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					File: "namespace1",
 					Rules: []rule{
 						&recordingRule{
-							Name:   "COUNT_FOO",
+							Name:   "COUNT_RULE",
 							Query:  `count_over_time({foo="bar"}[5m])`,
 							Health: "unknown",
 							Type:   "recording",
 						},
 						&alertingRule{
-							Name:   "UP_ALERT",
+							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
 							State:  "inactive",
 							Health: "unknown",
@@ -129,7 +129,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					Name:      ")(_+?/|group1+/?",
 					Namespace: ")(_+?/|namespace1+/?",
 					User:      userID,
-					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_FOO", `count_over_time({foo="bar"}[5m])`), createAlertingRule("UP_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
 					Interval:  interval,
 				},
 			},
@@ -140,13 +140,13 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					File: ")(_+?/|namespace1+/?",
 					Rules: []rule{
 						&recordingRule{
-							Name:   "COUNT_FOO",
+							Name:   "COUNT_RULE",
 							Query:  `count_over_time({foo="bar"}[5m])`,
 							Health: "unknown",
 							Type:   "recording",
 						},
 						&alertingRule{
-							Name:   "UP_ALERT",
+							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
 							State:  "inactive",
 							Health: "unknown",
@@ -164,7 +164,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					Name:      "group1",
 					Namespace: "namespace1",
 					User:      userID,
-					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_FOO", `count_over_time({foo="bar"}[5m])`), createAlertingRule("UP_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
 					Interval:  interval,
 				},
 			},
@@ -176,7 +176,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					File: "namespace1",
 					Rules: []rule{
 						&alertingRule{
-							Name:   "UP_ALERT",
+							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
 							State:  "inactive",
 							Health: "unknown",
@@ -194,7 +194,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					Name:      "group1",
 					Namespace: "namespace1",
 					User:      userID,
-					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_FOO", `count_over_time({foo="bar"}[5m])`), createAlertingRule("UP_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
 					Interval:  interval,
 				},
 			},
@@ -206,7 +206,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 					File: "namespace1",
 					Rules: []rule{
 						&recordingRule{
-							Name:   "COUNT_FOO",
+							Name:   "COUNT_RULE",
 							Query:  `count_over_time({foo="bar"}[5m])`,
 							Health: "unknown",
 							Type:   "recording",
