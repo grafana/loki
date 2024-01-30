@@ -17,6 +17,18 @@ type Schema struct {
 	nGramLength, nGramSkip uint64
 }
 
+func (s Schema) Compatible(other Schema) bool {
+	return s == other
+}
+
+func (s Schema) NGramLen() int {
+	return int(s.nGramLength)
+}
+
+func (s Schema) NGramSkip() int {
+	return int(s.nGramSkip)
+}
+
 // byte length
 func (s Schema) Len() int {
 	// magic number + version + encoding + ngram length + ngram skip
@@ -72,10 +84,6 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	s.nGramSkip = dec.Be64()
 
 	return dec.Err()
-}
-
-func (s Schema) NGramLen() int {
-	return int(s.nGramLength)
 }
 
 // Block index is a set of series pages along with

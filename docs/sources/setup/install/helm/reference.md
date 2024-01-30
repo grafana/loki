@@ -856,7 +856,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.8.4"
+"v1.8.6"
 </pre>
 </td>
 		</tr>
@@ -1241,6 +1241,15 @@ null
 			<td>Override Write URL</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.enableIPv6</td>
+			<td>bool</td>
+			<td>Enable listener for IPv6, disable on IPv4-only systems</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
