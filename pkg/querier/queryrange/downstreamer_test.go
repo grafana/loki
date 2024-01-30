@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -390,6 +391,67 @@ func TestInstanceDownstream(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, 1, len(results))
 	require.Equal(t, expected.Data, results[0].Data)
+
+	t.Run("Downstream with offset removed", func(t *testing.T) {
+		params, err := logql.NewLiteralParams(
+			`sum(rate({foo="bar"}[2h] offset 1h))`,
+			time.Now().UTC(),
+			time.Now().UTC(),
+			0,
+			0,
+			logproto.BACKWARD,
+			1000,
+			nil,
+		)
+		require.NoError(t, err)
+
+		expectedResp := func() *LokiResponse {
+			return &LokiResponse{
+				Data: LokiData{
+					Result: []logproto.Stream{{
+						Labels: `{foo="bar"}`,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, 0), Line: "foo"},
+						},
+					}},
+				},
+				Statistics: stats.Result{
+					Summary: stats.Summary{QueueTime: 1, ExecTime: 2},
+				},
+			}
+		}
+
+		queries := []logql.DownstreamQuery{
+			{
+				Params: params,
+			},
+		}
+
+		var got queryrangebase.Request
+		var want queryrangebase.Request
+		handler := queryrangebase.HandlerFunc(
+			func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				// for some reason these seemingly can't be checked in their own goroutines,
+				// so we assign them to scoped variables for later comparison.
+				got = req
+				want = ParamsToLokiRequest(params).WithQuery(`sum(rate({foo="bar"}[2h]))`) // without offset
+
+				return expectedResp(), nil
+			},
+		)
+
+		results, err := DownstreamHandler{
+			limits: fakeLimits{},
+			next:   handler,
+		}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
+
+		assert.Equal(t, want, got)
+
+		require.Nil(t, err)
+		require.Equal(t, 1, len(results))
+		require.Equal(t, expected.Data, results[0].Data)
+
+	})
 }
 
 func TestCancelWhileWaitingResponse(t *testing.T) {
