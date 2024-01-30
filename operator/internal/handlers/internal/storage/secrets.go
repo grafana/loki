@@ -22,7 +22,7 @@ var (
 	hashSeparator = []byte(",")
 
 	errSecretUnknownType     = errors.New("unknown secret type")
-	errMissingSecretField    = errors.New("missing secret field")
+	errSecretMissingField    = errors.New("missing secret field")
 	errSecretFieldNotAllowed = errors.New("secret field not allowed")
 	errSecretUnknownSSEType  = errors.New("unsupported SSE type (supported: SSE-KMS, SSE-S3)")
 	errSecretHashError       = errors.New("error calculating hash for secret")
@@ -159,19 +159,19 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 	// Extract and validate mandatory fields
 	env := s.Data[storage.KeyAzureEnvironmentName]
 	if len(env) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureEnvironmentName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureEnvironmentName)
 	}
 	container := s.Data[storage.KeyAzureStorageContainerName]
 	if len(container) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageContainerName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageContainerName)
 	}
 	name := s.Data[storage.KeyAzureStorageAccountName]
 	if len(name) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageAccountName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountName)
 	}
 	key := s.Data[storage.KeyAzureStorageAccountKey]
 	if len(key) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAzureStorageAccountKey)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountKey)
 	}
 
 	// Extract and validate optional fields
@@ -188,13 +188,13 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	// Extract and validate mandatory fields
 	bucket := s.Data[storage.KeyGCPStorageBucketName]
 	if len(bucket) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyGCPStorageBucketName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPStorageBucketName)
 	}
 
 	// Check if google authentication credentials is provided
 	keyJSON := s.Data[storage.KeyGCPServiceAccountKeyFilename]
 	if len(keyJSON) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyGCPServiceAccountKeyFilename)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPServiceAccountKeyFilename)
 	}
 
 	return &storage.GCSStorageConfig{
@@ -206,7 +206,7 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 	// Extract and validate mandatory fields
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAWSBucketNames)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSBucketNames)
 	}
 
 	var (
@@ -250,7 +250,7 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 		}
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
-			return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAWSRegion)
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 
 		return cfg, nil
@@ -258,13 +258,13 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 		cfg.Endpoint = string(endpoint)
 
 		if len(endpoint) == 0 {
-			return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAWSEndpoint)
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
 		}
 		if len(id) == 0 {
-			return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAWSAccessKeyID)
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
 		}
 		if len(secret) == 0 {
-			return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAWSAccessKeySecret)
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeySecret)
 		}
 
 		return cfg, nil
@@ -274,7 +274,7 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
-			return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAWSRegion)
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 		return cfg, nil
 	default:
@@ -293,7 +293,7 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 		kmsEncryptionCtx = string(d[storage.KeyAWSSseKmsEncryptionContext])
 		kmsKeyId = string(d[storage.KeyAWSSseKmsKeyID])
 		if kmsKeyId == "" {
-			return storage.S3SSEConfig{}, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAWSSseKmsKeyID)
+			return storage.S3SSEConfig{}, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSSseKmsKeyID)
 		}
 
 	case storage.SSES3Type:
@@ -315,39 +315,39 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, er
 	// Extract and validate mandatory fields
 	url := s.Data[storage.KeySwiftAuthURL]
 	if len(url) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftAuthURL)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftAuthURL)
 	}
 	username := s.Data[storage.KeySwiftUsername]
 	if len(username) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftUsername)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUsername)
 	}
 	userDomainName := s.Data[storage.KeySwiftUserDomainName]
 	if len(userDomainName) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftUserDomainName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUserDomainName)
 	}
 	userDomainID := s.Data[storage.KeySwiftUserDomainID]
 	if len(userDomainID) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftUserDomainID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUserDomainID)
 	}
 	userID := s.Data[storage.KeySwiftUserID]
 	if len(userID) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftUserID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUserID)
 	}
 	password := s.Data[storage.KeySwiftPassword]
 	if len(password) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftPassword)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftPassword)
 	}
 	domainID := s.Data[storage.KeySwiftDomainID]
 	if len(domainID) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftDomainID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftDomainID)
 	}
 	domainName := s.Data[storage.KeySwiftDomainName]
 	if len(domainName) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftDomainName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftDomainName)
 	}
 	containerName := s.Data[storage.KeySwiftContainerName]
 	if len(containerName) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeySwiftContainerName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftContainerName)
 	}
 
 	// Extract and validate optional fields
@@ -377,19 +377,19 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 	// Extract and validate mandatory fields
 	endpoint := s.Data[storage.KeyAlibabaCloudEndpoint]
 	if len(endpoint) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAlibabaCloudEndpoint)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudEndpoint)
 	}
 	bucket := s.Data[storage.KeyAlibabaCloudBucket]
 	if len(bucket) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAlibabaCloudBucket)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudBucket)
 	}
 	id := s.Data[storage.KeyAlibabaCloudAccessKeyID]
 	if len(id) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAlibabaCloudAccessKeyID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudAccessKeyID)
 	}
 	secret := s.Data[storage.KeyAlibabaCloudSecretAccessKey]
 	if len(secret) == 0 {
-		return nil, fmt.Errorf("%w: %s", errMissingSecretField, storage.KeyAlibabaCloudSecretAccessKey)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudSecretAccessKey)
 	}
 
 	return &storage.AlibabaCloudStorageConfig{
