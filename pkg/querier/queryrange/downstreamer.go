@@ -103,8 +103,16 @@ type instance struct {
 	handler     queryrangebase.Handler
 }
 
+// withoutOffset returns the given DownstreamQuery with offsets removed and timestamp adjusted accordingly. If no offset is present in original query, it will be returned as is.
+func withoutOffset(query logql.DownstreamQuery) logql.DownstreamQuery {
+	expr := query.Params.GetExpression()
+	expr.Walk()
+}
+
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
+		qry = withoutOffset(qry)
+
 		req := ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
