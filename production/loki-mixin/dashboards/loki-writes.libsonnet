@@ -65,7 +65,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.distributor + [utils.selector.eq('route', 'api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle')],
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.distributor + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle')],
                             )
                           )
                         )
