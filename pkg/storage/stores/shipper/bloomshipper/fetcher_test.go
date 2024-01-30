@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
-func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, dir string, keyspaces []Keyspace) []Meta {
+func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, keyspaces []Keyspace) []Meta {
 	t.Helper()
 
 	metas := make([]Meta, len(keyspaces))
@@ -76,23 +76,23 @@ func TestMetasFetcher(t *testing.T) {
 		{
 			name:  "all metas found in cache",
 			store: []Meta{},
-			start: makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}}),
-			end:   makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}}),
-			fetch: makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}}),
+			start: makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}}),
+			fetch: makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}}),
 		},
 		{
 			name:  "no metas found in cache",
-			store: makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}}),
+			store: makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}}),
 			start: []Meta{},
-			end:   makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}}),
-			fetch: makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}}),
+			fetch: makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}}),
 		},
 		{
 			name:  "some metas found in cache",
-			store: makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
-			start: makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}}),
-			end:   makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
-			fetch: makeMetas(t, schemaCfg, now, dir, []Keyspace{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
+			store: makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
+			start: makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
+			fetch: makeMetas(t, schemaCfg, now, []Keyspace{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
 		},
 	}
 
