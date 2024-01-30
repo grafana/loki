@@ -123,9 +123,9 @@ type TSDBStore interface {
 }
 
 type MetaStore interface {
+	ResolveMetas(bounds v1.FingerprintBounds) ([]MetaRef, error)
 	GetMetas([]MetaRef) ([]Meta, error)
 	PutMeta(Meta) error
-	ResolveMetas(bounds v1.FingerprintBounds) ([]MetaRef, error)
 }
 
 type BlockStore interface {

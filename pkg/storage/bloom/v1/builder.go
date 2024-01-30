@@ -15,6 +15,10 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
+var (
+	DefaultBlockOptions = NewBlockOptions(4, 0)
+)
+
 type BlockOptions struct {
 	// Schema determines the Schema of the block and cannot be changed
 	Schema Schema

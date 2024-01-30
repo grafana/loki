@@ -17,6 +17,9 @@ type SimpleBloomController struct {
 	tsdbStore      TSDBStore
 	metaStore      MetaStore
 	blockStore     BlockStore
+	chunkLoader    ChunkLoader
+	rwFn           func() (v1.BlockWriter, v1.BlockReader)
+	metrics        *Metrics
 
 	// TODO(owen-d): add metrics
 	logger log.Logger
@@ -27,6 +30,9 @@ func NewSimpleBloomController(
 	tsdbStore TSDBStore,
 	metaStore MetaStore,
 	blockStore BlockStore,
+	chunkLoader ChunkLoader,
+	rwFn func() (v1.BlockWriter, v1.BlockReader),
+	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
 	return &SimpleBloomController{
@@ -34,11 +40,14 @@ func NewSimpleBloomController(
 		tsdbStore:      tsdbStore,
 		metaStore:      metaStore,
 		blockStore:     blockStore,
+		chunkLoader:    chunkLoader,
+		rwFn:           rwFn,
+		metrics:        metrics,
 		logger:         log.With(logger, "ownership", ownershipRange),
 	}
 }
 
-func (s *SimpleBloomController) do(_ context.Context) error {
+func (s *SimpleBloomController) do(ctx context.Context) error {
 	// 1. Resolve TSDBs
 	tsdbs, err := s.tsdbStore.ResolveTSDBs()
 	if err != nil {
@@ -78,9 +87,7 @@ func (s *SimpleBloomController) do(_ context.Context) error {
 		return nil
 	}
 
-	// TODO(owen-d): finish
-	panic("not implemented")
-
+	// 5. Generate Blooms
 	// Now that we have the gaps, we will generate a bloom block for each gap.
 	// We can accelerate this by using existing blocks which may already contain
 	// needed chunks in their blooms, for instance after a new TSDB version is generated
@@ -89,6 +96,63 @@ func (s *SimpleBloomController) do(_ context.Context) error {
 	// overlapping the ownership ranges we've identified as needing updates.
 	// With these in hand, we can download the old blocks and use them to
 	// accelerate bloom generation for the new blocks.
+
+	var (
+		blockCt int
+		tsdbCt  = len(work)
+	)
+
+	for _, db := range work {
+
+		for _, gap := range db.gaps {
+			// Fetch blocks that aren't up to date but are in the desired fingerprint range
+			// to try and accelerate bloom creation
+			seriesItr, preExistingBlocks := s.get(db.tsdb, gap)
+
+			gen := NewSimpleBloomGenerator(
+				v1.DefaultBlockOptions,
+				seriesItr,
+				s.chunkLoader,
+				preExistingBlocks,
+				s.rwFn,
+				s.metrics,
+				log.With(s.logger, "tsdb", db.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
+			)
+
+			_, newBlocks, err := gen.Generate(ctx)
+			if err != nil {
+				// TODO(owen-d): metrics
+				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				return errors.Wrap(err, "failed to generate bloom")
+			}
+
+			// TODO(owen-d): dispatch this to a queue for writing, handling retries/backpressure, etc?
+			for newBlocks.Next() {
+				blockCt++
+				blk := newBlocks.At()
+				if err := s.blockStore.PutBlock(blk); err != nil {
+					level.Error(s.logger).Log("msg", "failed to write block", "err", err)
+					return errors.Wrap(err, "failed to write block")
+				}
+			}
+
+			if err := newBlocks.Err(); err != nil {
+				// TODO(owen-d): metrics
+				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				return errors.Wrap(err, "failed to generate bloom")
+			}
+
+		}
+	}
+
+	level.Debug(s.logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
+	return nil
+
+}
+
+func (s *SimpleBloomController) get(tsdb tsdb.Identifier, gap v1.FingerprintBounds) (v1.Iterator[*v1.Series], []*v1.Block) {
+	// TODO(owen-d): finish
+	panic("not implemented")
 }
 
 type tsdbGaps struct {
