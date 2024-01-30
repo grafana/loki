@@ -193,6 +193,10 @@ func (s *cacheDownloadingStrategy) refillCacheFromDisk(ctx context.Context) erro
 		level.Warn(s.logger).Log("msg", "bloom blocks cache refilling is disabled, consider enabling this option to avoid disk overfilling.")
 		return nil
 	}
+	if _, err := os.Stat(s.workingDirectory); os.IsNotExist(err) {
+		level.Warn(s.logger).Log("msg", "working directory does not exists, skipping cache refilling")
+		return nil
+	}
 	err := filepath.Walk(s.workingDirectory, func(path string, info fs.FileInfo, err error) error {
 		//find `bloom` file
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, v1.BloomFileName) {

@@ -92,7 +92,8 @@ func Test_blockDownloader_cacheRefilledAfterRestart(t *testing.T) {
 			overrides, err := validation.NewOverrides(validation.Limits{BloomGatewayBlocksDownloadingParallelism: 20}, nil)
 			require.NoError(t, err)
 			workingDirectory := t.TempDir()
-
+			// it's needed to assert the case when working directory is not created yet
+			workingDirectory = filepath.Join(workingDirectory, "non-existent-sub-folder")
 			blockReferences, blockClient := createFakeBlocks(t, blocksCount)
 			workersCount := 10
 
