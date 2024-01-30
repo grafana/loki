@@ -67,7 +67,7 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 	return append(fromCache, fromStorage...), err
 }
 
-func (f *Fetcher) processCacheResponse(ctx context.Context, refs []MetaRef, keys []string, bufs [][]byte) ([]Meta, []MetaRef, error) {
+func (f *Fetcher) processCacheResponse(_ context.Context, refs []MetaRef, keys []string, bufs [][]byte) ([]Meta, []MetaRef, error) {
 
 	found := make(map[string][]byte, len(refs))
 	for i, k := range keys {

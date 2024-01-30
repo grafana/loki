@@ -156,8 +156,8 @@ func NewBloomStore(
 }
 
 // SearchMetas implements store.
-func (c *BloomStore) Fetcher(ts model.Time) *Fetcher {
-	if store := c.getStore(ts); store != nil {
+func (b *BloomStore) Fetcher(ts model.Time) *Fetcher {
+	if store := b.getStore(ts); store != nil {
 		return store.Fetcher(ts)
 	}
 	return nil
@@ -283,51 +283,51 @@ func (b *BloomStore) Stop() {
 	}
 }
 
-func (c *BloomStore) getStore(ts model.Time) *bloomStoreEntry {
+func (b *BloomStore) getStore(ts model.Time) *bloomStoreEntry {
 	// find the schema with the lowest start _after_ tm
-	j := sort.Search(len(c.stores), func(j int) bool {
-		return c.stores[j].start > ts
+	j := sort.Search(len(b.stores), func(j int) bool {
+		return b.stores[j].start > ts
 	})
 
 	// reduce it by 1 because we want a schema with start <= tm
 	j--
 
-	if 0 <= j && j < len(c.stores) {
-		return c.stores[j]
+	if 0 <= j && j < len(b.stores) {
+		return b.stores[j]
 	}
 
 	return nil
 }
 
-func (c *BloomStore) storeDo(ts model.Time, f func(s *bloomStoreEntry) error) error {
-	if store := c.getStore(ts); store != nil {
+func (b *BloomStore) storeDo(ts model.Time, f func(s *bloomStoreEntry) error) error {
+	if store := b.getStore(ts); store != nil {
 		return f(store)
 	}
 	return nil
 }
 
-func (c *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store Store) error) error {
-	if len(c.stores) == 0 {
+func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store Store) error) error {
+	if len(b.stores) == 0 {
 		return nil
 	}
 
 	from, through := interval.Start, interval.End
 
 	// first, find the schema with the highest start _before or at_ from
-	i := sort.Search(len(c.stores), func(i int) bool {
-		return c.stores[i].start > from
+	i := sort.Search(len(b.stores), func(i int) bool {
+		return b.stores[i].start > from
 	})
 	if i > 0 {
 		i--
 	} else {
 		// This could happen if we get passed a sample from before 1970.
 		i = 0
-		from = c.stores[0].start
+		from = b.stores[0].start
 	}
 
 	// next, find the schema with the lowest start _after_ through
-	j := sort.Search(len(c.stores), func(j int) bool {
-		return c.stores[j].start > through
+	j := sort.Search(len(b.stores), func(j int) bool {
+		return b.stores[j].start > through
 	})
 
 	min := func(a, b model.Time) model.Time {
@@ -340,12 +340,12 @@ func (c *BloomStore) forStores(ctx context.Context, interval Interval, f func(in
 	start := from
 	for ; i < j; i++ {
 		nextSchemaStarts := model.Latest
-		if i+1 < len(c.stores) {
-			nextSchemaStarts = c.stores[i+1].start
+		if i+1 < len(b.stores) {
+			nextSchemaStarts = b.stores[i+1].start
 		}
 
 		end := min(through, nextSchemaStarts-1)
-		err := f(ctx, Interval{start, end}, c.stores[i])
+		err := f(ctx, Interval{start, end}, b.stores[i])
 		if err != nil {
 			return err
 		}
