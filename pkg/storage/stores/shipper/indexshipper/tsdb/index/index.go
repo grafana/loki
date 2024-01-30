@@ -2290,14 +2290,12 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 	// later used to incrementally skip pages
 	initialLn := d.Len()
 
-	chunkMetas := make(ChunkMetas, 0)
 	for markerIdx := 0; markerIdx < len(relevantPages); markerIdx++ {
 		curMarker := relevantPages[markerIdx]
 
 		if curMarker.subsetOf(from, through) {
 			// use aggregated stats for this page
-			//res.addRaw(curMarker.ChunksInPage, curMarker.KB, curMarker.Entries)
-			chunkMetas = append(chunkMetas, ChunkMeta{MinTime: curMarker.MinTime, MaxTime: curMarker.MaxTime, KB: curMarker.KB, Entries: curMarker.Entries})
+			res.addRaw(curMarker.ChunksInPage, curMarker.KB, curMarker.Entries)
 			continue
 		}
 
@@ -2327,25 +2325,36 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 			prevMaxT = chunkMeta.MaxTime
 
-			chunkMetas = append(chunkMetas, *chunkMeta)
+			if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
+				// add to stats
+				res.AddChunk(chunkMeta, from, through)
+			} else if chunkMeta.MinTime >= through {
+				break
+			}
 		}
 	}
 
-	return chunkMetas.Stats(from, through, true), d.Err()
+	return res, d.Err()
 
 }
 
 func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
 	var prevMaxT int64
-	chunkMetas := make(ChunkMetas, nChunks)
-	for i := range chunkMetas {
-		chunkMeta := &chunkMetas[i]
+	chunkMeta := &ChunkMeta{}
+	for i := 0; i < nChunks; i++ {
 		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
 			return res, errors.Wrap(d.Err(), "read meta for chunk")
 		}
 		prevMaxT = chunkMeta.MaxTime
+
+		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
+			// add to stats
+			res.AddChunk(chunkMeta, from, through)
+		} else if chunkMeta.MinTime >= through {
+			break
+		}
 	}
-	return chunkMetas.Stats(from, through, true), d.Err()
+	return res, d.Err()
 }
 
 func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
@@ -2357,7 +2366,17 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 		return ChunkStats{}, err
 	}
 
-	return ChunkMetas(chks).Stats(from, through, true), nil
+	for _, chk := range chks {
+		if overlap(from, through, chk.MinTime, chk.MaxTime) {
+			res.AddChunk(&chk, from, through)
+		} else if chk.MinTime >= through {
+			break
+		}
+
+	}
+
+	return res, nil
+
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
