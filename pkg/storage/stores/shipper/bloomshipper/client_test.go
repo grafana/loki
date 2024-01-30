@@ -69,11 +69,9 @@ func Test_BloomClient_GetMetas(t *testing.T) {
 	createMetaInStorage(t, folder2, "second-period-19624", "tenantB", 0, 100, fixedDay.Add(-3*day))
 
 	actual, err := shipper.GetMetas(context.Background(), MetaSearchParams{
-		TenantID:       "tenantA",
-		MinFingerprint: 50,
-		MaxFingerprint: 150,
-		StartTimestamp: fixedDay.Add(-6 * day),
-		EndTimestamp:   fixedDay.Add(-1*day - 1*time.Hour),
+		TenantID: "tenantA",
+		Keyspace: Keyspace{Min: 50, Max: 150},
+		Interval: Interval{Start: fixedDay.Add(-6 * day), End: fixedDay.Add(-1*day - 1*time.Hour)},
 	})
 	require.NoError(t, err)
 	require.ElementsMatch(t, expected, actual)

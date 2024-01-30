@@ -1,6 +1,7 @@
 package bloomgateway
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func TestTask(t *testing.T) {
 			},
 		}
 		swb := partitionRequest(req)[0]
-		task, err := NewTask("tenant", swb, nil)
+		task, err := NewTask(context.Background(), "tenant", swb, nil)
 		require.NoError(t, err)
 		from, through := task.Bounds()
 		require.Equal(t, ts.Add(-1*time.Hour), from)
@@ -43,7 +44,7 @@ func createTasksForRequests(t *testing.T, tenant string, requests ...*logproto.F
 	tasks := make([]Task, 0, len(requests))
 	for _, r := range requests {
 		for _, swb := range partitionRequest(r) {
-			task, err := NewTask(tenant, swb, nil)
+			task, err := NewTask(context.Background(), tenant, swb, nil)
 			require.NoError(t, err)
 			tasks = append(tasks, task)
 		}
@@ -61,7 +62,7 @@ func TestTask_RequestIterator(t *testing.T) {
 			bounds: model.Interval{Start: 0, End: math.MaxInt64},
 			series: []*logproto.GroupedChunkRefs{},
 		}
-		task, _ := NewTask(tenant, swb, []syntax.LineFilter{})
+		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilter{})
 		it := task.RequestIter(tokenizer)
 		// nothing to iterate over
 		require.False(t, it.Next())
