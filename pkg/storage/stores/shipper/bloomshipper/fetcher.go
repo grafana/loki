@@ -15,6 +15,7 @@ type metrics struct{}
 
 type fetcher interface {
 	FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
+	// TODO(chaudum): Integrate block fetching
 	// FetchBlocks(ctx context.Context, refs []BlockRef) ([]Block, error)
 }
 
@@ -106,6 +107,8 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	return f.metasCache.Store(ctx, keys, data)
 }
 
+// TODO(chaudum): Integrate block fetching
+
 // func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) (v1.Iterator[Block], error) {
 // 	if ctx.Err() != nil {
 // 		return nil, errors.Wrap(ctx.Err(), "fetch Blocks")
@@ -145,30 +148,30 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 // 	return f.blocksCache.Store(ctx, keys, data)
 // }
 
-type ChannelIter[T any] struct {
-	ch  <-chan T
-	cur T
-}
+// type ChannelIter[T any] struct {
+// 	ch  <-chan T
+// 	cur T
+// }
 
-func NewChannelIter[T any](ch <-chan T) *ChannelIter[T] {
-	return &ChannelIter[T]{
-		ch: ch,
-	}
-}
+// func NewChannelIter[T any](ch <-chan T) *ChannelIter[T] {
+// 	return &ChannelIter[T]{
+// 		ch: ch,
+// 	}
+// }
 
-func (it *ChannelIter[T]) Next() bool {
-	el, ok := <-it.ch
-	if ok {
-		it.cur = el
-		return true
-	}
-	return false
-}
+// func (it *ChannelIter[T]) Next() bool {
+// 	el, ok := <-it.ch
+// 	if ok {
+// 		it.cur = el
+// 		return true
+// 	}
+// 	return false
+// }
 
-func (it *ChannelIter[T]) At() T {
-	return it.cur
-}
+// func (it *ChannelIter[T]) At() T {
+// 	return it.cur
+// }
 
-func (it *ChannelIter[T]) Err() error {
-	return nil
-}
+// func (it *ChannelIter[T]) Err() error {
+// 	return nil
+// }
