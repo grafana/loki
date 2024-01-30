@@ -42,7 +42,7 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 			End:   ts.Add(Day),
 		}
 		tenant := tasks[0].Tenant
-		err := p.do(ctx, tenant, interval, []bloomshipper.Keyspace{{Min: 0, Max: math.MaxUint64}}, tasks)
+		err := p.processTasks(ctx, tenant, interval, []bloomshipper.Keyspace{{Min: 0, Max: math.MaxUint64}}, tasks)
 		if err != nil {
 			for _, task := range tasks {
 				task.CloseWithError(err)
@@ -56,7 +56,7 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 	return nil
 }
 
-func (p *processor) do(ctx context.Context, tenant string, interval bloomshipper.Interval, keyspaces []bloomshipper.Keyspace, tasks []Task) error {
+func (p *processor) processTasks(ctx context.Context, tenant string, interval bloomshipper.Interval, keyspaces []bloomshipper.Keyspace, tasks []Task) error {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
 	metaSearch := bloomshipper.MetaSearchParams{
 		TenantID: tenant,
@@ -68,10 +68,10 @@ func (p *processor) do(ctx context.Context, tenant string, interval bloomshipper
 		return err
 	}
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-	return p.process(ctx, partition(tasks, blocksRefs))
+	return p.processBlocks(ctx, partition(tasks, blocksRefs))
 }
 
-func (p *processor) process(ctx context.Context, data []tasksForBlock) error {
+func (p *processor) processBlocks(ctx context.Context, data []tasksForBlock) error {
 	refs := make([]bloomshipper.BlockRef, len(data))
 	for _, block := range data {
 		refs = append(refs, block.blockRef)
