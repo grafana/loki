@@ -902,6 +902,10 @@ func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
 	return o.getOverridesForUser(userID).OTLPConfig
 }
 
+func (o *Overrides) CustomTrackerMatchers(userID string) []string {
+	return nil
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.TenantLimits(userID)

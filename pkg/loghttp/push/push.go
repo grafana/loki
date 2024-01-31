@@ -36,6 +36,11 @@ var (
 		Name:      "distributor_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
 	}, []string{"tenant", "retention_hours"})
+	bytesIngestedCustom = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_bytes_received_custom_tracker_total",
+		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
+	}, []string{"tenant", "retention_hours", "tacker"})
 	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_structured_metadata_bytes_received_total",
@@ -60,6 +65,7 @@ type TenantsRetention interface {
 
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
+	CustomTrackerMatchers(userID string) []string
 }
 
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error)
@@ -74,6 +80,9 @@ type Stats struct {
 	contentType              string
 	contentEncoding          string
 	bodySize                 int64
+
+	logLinesBytesCustomTracker           map[string]map[time.Duration]int64
+	structuredMetadataBytesCustomTracker map[string]map[time.Duration]int64
 }
 
 func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser) (*logproto.PushRequest, error) {
@@ -95,6 +104,28 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
 		bytesReceivedStats.Inc(size)
 		entriesSize += size
+	}
+
+	// Process custom trackers
+	for name, logLinesBytes := range pushStats.logLinesBytesCustomTracker {
+		for retentionPeriod, size := range logLinesBytes {
+			var retentionHours string
+			if retentionPeriod > 0 {
+				retentionHours = fmt.Sprintf("%d", int64(math.Floor(retentionPeriod.Hours())))
+			}
+
+			bytesIngestedCustom.WithLabelValues(userID, retentionHours, name).Add(float64(size))
+		}
+	}
+	for name, structuredMetadataBytes := range pushStats.structuredMetadataBytesCustomTracker {
+		for retentionPeriod, size := range structuredMetadataBytes {
+			var retentionHours string
+			if retentionPeriod > 0 {
+				retentionHours = fmt.Sprintf("%d", int64(math.Floor(retentionPeriod.Hours())))
+			}
+
+			bytesIngestedCustom.WithLabelValues(userID, retentionHours, name).Add(float64(size))
+		}
 	}
 
 	for retentionPeriod, size := range pushStats.structuredMetadataBytes {
@@ -135,7 +166,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, _ Limits) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -224,6 +255,17 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			pushStats.structuredMetadataBytes[retentionPeriod] += entryLabelsSize
 			if e.Timestamp.After(pushStats.mostRecentEntryTimestamp) {
 				pushStats.mostRecentEntryTimestamp = e.Timestamp
+			}
+
+			trackers := limits.CustomTrackerMatchers(userID)
+			for _, t := range trackers {
+				// if matchers s.Labels
+				logLinesBytes, ok := pushStats.structuredMetadataBytesCustomTracker[t]
+				if !ok {
+					pushStats.structuredMetadataBytesCustomTracker[t] = map[time.Duration]int64{}
+					logLinesBytes = pushStats.structuredMetadataBytesCustomTracker[t]
+				}
+				logLinesBytes[retentionPeriod] += int64(len(e.Line))
 			}
 		}
 	}
