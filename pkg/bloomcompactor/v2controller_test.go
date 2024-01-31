@@ -237,6 +237,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 		ownershipRange v1.FingerprintBounds
 		tsdbs          []tsdb.Identifier
 		metas          []Meta
+		err            bool
 		exp            []blockPlan
 	}{
 		{
@@ -403,7 +404,11 @@ func Test_blockPlansForGaps(t *testing.T) {
 			gaps, err := gapsBetweenTSDBsAndMetas(tc.ownershipRange, tc.tsdbs, tc.metas)
 			require.NoError(t, err)
 
-			plans := blockPlansForGaps(gaps, tc.metas)
+			plans, err := blockPlansForGaps(gaps, tc.metas)
+			if tc.err {
+				require.Error(t, err)
+				return
+			}
 			require.Equal(t, tc.exp, plans)
 
 		})

@@ -88,7 +88,11 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 		return nil
 	}
 
-	work := blockPlansForGaps(tsdbsWithGaps, metas)
+	work, err := blockPlansForGaps(tsdbsWithGaps, metas)
+	if err != nil {
+		level.Error(s.logger).Log("msg", "failed to create plan", "err", err)
+		return errors.Wrap(err, "failed to create plan")
+	}
 
 	// 5. Generate Blooms
 	// Now that we have the gaps, we will generate a bloom block for each gap.
@@ -194,7 +198,7 @@ type blockPlan struct {
 // blockPlansForGaps groups tsdb gaps we wish to fill with overlapping but out of date blocks.
 // This allows us to expedite bloom generation by using existing blocks to fill in the gaps
 // since many will contain the same chunks.
-func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) []blockPlan {
+func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) ([]blockPlan, error) {
 	plans := make([]blockPlan, 0, len(tsdbs))
 
 	for _, idx := range tsdbs {
@@ -248,7 +252,10 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) []blockPlan {
 				peekingBlocks,
 			)
 
-			deduped := v1.Collect[BlockRef](itr)
+			deduped, err := v1.Collect[BlockRef](itr)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to dedupe blocks")
+			}
 			planGap.blocks = deduped
 
 			plan.gaps = append(plan.gaps, planGap)
@@ -257,7 +264,7 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) []blockPlan {
 		plans = append(plans, plan)
 	}
 
-	return plans
+	return plans, nil
 }
 
 // Used to signal the gaps that need to be populated for a tsdb

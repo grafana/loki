@@ -55,17 +55,17 @@ func (it *DedupeIter[A, B]) At() B {
 
 // Collect collects an interator into a slice. It uses
 // CollectInto with a new slice
-func Collect[T any](itr Iterator[T]) []T {
+func Collect[T any](itr Iterator[T]) ([]T, error) {
 	return CollectInto(itr, nil)
 }
 
 // CollectInto collects the elements of an iterator into a provided slice
 // which is returned
-func CollectInto[T any](itr Iterator[T], into []T) []T {
+func CollectInto[T any](itr Iterator[T], into []T) ([]T, error) {
 	into = into[:0]
 
 	for itr.Next() {
 		into = append(into, itr.At())
 	}
-	return into
+	return into, itr.Err()
 }
