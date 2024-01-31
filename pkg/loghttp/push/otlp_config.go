@@ -56,9 +56,9 @@ var DefaultOTLPConfig = OTLPConfig{
 }
 
 type OTLPConfig struct {
-	ResourceAttributes ResourceAttributesConfig `yaml:"resource_attributes,omitempty"`
-	ScopeAttributes    []AttributesConfig       `yaml:"scope_attributes,omitempty"`
-	LogAttributes      []AttributesConfig       `yaml:"log_attributes,omitempty"`
+	ResourceAttributes ResourceAttributesConfig `yaml:"resource_attributes,omitempty" doc:"description=Configuration for Resource Attributes to store them as index labels or Structured Metadata or drop them altogether"`
+	ScopeAttributes    []AttributesConfig       `yaml:"scope_attributes,omitempty" doc:"description=Configuration for Scope Attributes to store them as Structured Metadata or drop them altogether"`
+	LogAttributes      []AttributesConfig       `yaml:"log_attributes,omitempty" doc:"description=Configuration for Log Attributes to store them as Structured Metadata or drop them altogether"`
 }
 
 func (c *OTLPConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -115,9 +115,9 @@ func (c *OTLPConfig) Validate() error {
 }
 
 type AttributesConfig struct {
-	Action     Action         `yaml:"action,omitempty"`
-	Attributes []string       `yaml:"attributes,omitempty"`
-	Regex      relabel.Regexp `yaml:"regex,omitempty"`
+	Action     Action         `yaml:"action,omitempty" doc:"description=Configures action to take on matching Attributes. It allows one of [structured_metadata, drop] for all Attribute types. It additionally allows index_label action for Resource Attributes"`
+	Attributes []string       `yaml:"attributes,omitempty" doc:"description=List of attributes to configure how to store them or drop them altogether"`
+	Regex      relabel.Regexp `yaml:"regex,omitempty" doc:"description=Regex to choose attributes to configure how to store them or drop them altogether"`
 }
 
 func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -146,8 +146,8 @@ func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 }
 
 type ResourceAttributesConfig struct {
-	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty"`
-	AttributesConfig []AttributesConfig `yaml:"attributes,omitempty"`
+	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty" doc:"description=Configure whether to ignore the default list of Resource Attributes to be stored as Index Labels and only use the given Resource Attributes config"`
+	AttributesConfig []AttributesConfig `yaml:"attributes_config,omitempty"`
 }
 
 func (c *ResourceAttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {

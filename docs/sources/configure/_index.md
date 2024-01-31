@@ -3143,14 +3143,22 @@ shard_streams:
 
 # OTLP log ingestion configurations
 otlp_config:
+  # Configuration for Resource Attributes to store them as index labels or
+  # Structured Metadata or drop them altogether
   resource_attributes:
+    # Configure whether to ignore the default list of Resource Attributes to be
+    # stored as Index Labels and only use the given Resource Attributes config
     [ignore_defaults: <boolean>]
 
-    [attributes: <list of AttributesConfigs>]
+    [attributes_config: <list of attributes_configs>]
 
-  [scope_attributes: <list of AttributesConfigs>]
+  # Configuration for Scope Attributes to store them as Structured Metadata or
+  # drop them altogether
+  [scope_attributes: <list of attributes_configs>]
 
-  [log_attributes: <list of AttributesConfigs>]
+  # Configuration for Log Attributes to store them as Structured Metadata or
+  # drop them altogether
+  [log_attributes: <list of attributes_configs>]
 ```
 
 ### frontend_worker
@@ -5290,6 +5298,24 @@ Named store from this example can be used by setting object_store to store-1 in 
 [swift: <map of string to swift_storage_config>]
 
 [cos: <map of string to cos_storage_config>]
+```
+
+### attributes_config
+
+Define actions for matching OTEL Attributes
+
+```yaml
+# Configures action to take on matching Attributes. It allows one of
+# [structured_metadata, drop] for all Attribute types. It additionally allows
+# index_label action for Resource Attributes
+[action: <string> | default = ""]
+
+# List of attributes to configure how to store them or drop them altogether
+[attributes: <list of strings>]
+
+# Regex to choose attributes to configure how to store them or drop them
+# altogether
+[regex: <Regexp>]
 ```
 
 ## Runtime Configuration file
