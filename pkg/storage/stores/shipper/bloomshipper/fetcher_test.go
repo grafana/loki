@@ -77,23 +77,23 @@ func TestMetasFetcher(t *testing.T) {
 		{
 			name:  "all metas found in cache",
 			store: []Meta{},
-			start: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}}),
-			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}}),
-			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}}),
+			start: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
 		},
 		{
 			name:  "no metas found in cache",
-			store: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}}),
+			store: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
 			start: []Meta{},
-			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}}),
-			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
 		},
 		{
 			name:  "some metas found in cache",
-			store: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
-			start: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}}),
-			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
-			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{0x0000, 0xffff}, {0x10000, 0x1ffff}}),
+			store: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
+			start: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
+			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
 		},
 	}
 
