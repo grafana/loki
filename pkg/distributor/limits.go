@@ -31,7 +31,5 @@ type Limits interface {
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig
-
-	// TODO: return the custom tracker config instead.
-	CustomTrackerMatchers(userID string) []string
+	CustomTrackersConfig(userID string) push.CustomTrackersConfig
 }
