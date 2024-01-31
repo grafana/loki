@@ -202,7 +202,7 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, tableNa
 	// TODO: Delete local files for unowned tenants, if there are any.
 }
 
-func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, tableName string, tenant string) error {
+func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, _ string, tenant string) error {
 	level.Info(logger).Log("msg", "starting compaction of tenant")
 
 	// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
