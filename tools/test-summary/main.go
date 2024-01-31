@@ -5,28 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"text/scanner"
 )
 
 func main() {
-
-	summary := &TestSummary{}
-
-	var s scanner.Scanner
-	s.Init(os.Stdin)
-	for tok := s.Scan(); tok != scanner.EOF; tok = s.Scan() {
-	}
-	for reader.Scan() {
-		result, err := parse(reader.Text())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warn: %s\n", err)
-			continue
-		}
-		summary.Add(result)
-
-	}
-
+	summary := parse(os.Stdin)
 	summary.Write(os.Stdout)
 }
 
@@ -74,28 +57,76 @@ func (s *TestSummary) Write(w io.Writer) {
 	for _, r := range s.results {
 		if r.status == Fail {
 			sw.WriteString(r.test)
+			sw.WriteString("\n")
 		}
 	}
 
 	sw.Flush()
 }
 
-func parse(line string) (TestResult, error) {
+type TokenType int
 
-	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return TestResult{}, fmt.Errorf("too few test result fields: %d", len(fields))
+const (
+	trippleEquals TokenType = iota
+	result
+	test
+)
+
+type Token struct {
+	token TokenType
+	text  string
+}
+
+func parse(r io.Reader) *TestSummary {
+	tokens := lex(r)
+
+	summary := &TestSummary{}
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+		next := peek(tokens, i)
+		if token.token == result && next.token == test {
+			status, _ := parseStatus(token.text)
+			summary.Add(TestResult{status: status, test: next.text})
+			i++
+		}
 	}
 
-	status, err := parseStatus(fields[0])
-	if err != nil {
-		return TestResult{}, fmt.Errorf("error parsing status: %w", err)
+	return summary
+}
+
+func lex(r io.Reader) []Token {
+	var s scanner.Scanner
+	s.Init(os.Stdin)
+	s.Mode = scanner.GoTokens
+	tokens := make([]Token, 0)
+	for tok := s.Scan(); tok != scanner.EOF; tok = s.Scan() {
+		switch text := s.TokenText(); {
+		case text == "===":
+			tokens = append(tokens, Token{token: trippleEquals})
+		case text == "PASS":
+			tokens = append(tokens, Token{token: result, text: text})
+		case text == "FAIL" || text == "SKIP":
+			// both are followed by ':'
+			if s.Peek() == ':' {
+				tokens = append(tokens, Token{token: result, text: text})
+			}
+			// Skip ':'
+			s.Scan()
+		default:
+			tokens = append(tokens, Token{token: test, text: text})
+		}
 	}
 
-	return TestResult{
-		status: status,
-		test:   fields[1],
-	}, nil
+	return tokens
+}
+
+func peek(tokens []Token, i int) Token {
+	next := i + 1
+	if next >= len(tokens) {
+		return Token{}
+	}
+
+	return tokens[next]
 }
 
 func parseStatus(s string) (Status, error) {
@@ -104,7 +135,7 @@ func parseStatus(s string) (Status, error) {
 		return Pass, nil
 	case "FAIL":
 		return Fail, nil
-	case "SKIPPED":
+	case "SKIP":
 		return Skip, nil
 	default:
 		return Status(""), fmt.Errorf("unknown test status: %s", s)
