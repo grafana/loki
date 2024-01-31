@@ -510,9 +510,17 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	//TODO  Configure pool for these to avoid allocations
 	var activeBloomBlocksRefs []bloomshipper.BlockRef
 
-	metas, err := c.bloomShipperClient.SearchMetas(ctx, metaSearchParams)
+	metaRefs, fetchers, err := c.bloomShipperClient.ResolveMetas(ctx, metaSearchParams)
 	if err != nil {
 		return err
+	}
+
+	for i := range fetchers {
+		res, err := fetchers[i].FetchMetas(ctx, metaRefs[i])
+		if err != nil {
+			return err
+		}
+		metas = append(metas, res...)
 	}
 
 	// TODO This logic currently is NOT concerned with cutting blocks upon topology changes to bloom-compactors.

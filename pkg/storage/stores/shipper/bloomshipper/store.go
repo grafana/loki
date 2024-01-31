@@ -18,7 +18,8 @@ import (
 )
 
 type Store interface {
-	SearchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
+	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
+	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
 	Fetcher(ts model.Time) *Fetcher
 	Stop()
 }
@@ -37,21 +38,21 @@ type bloomStoreEntry struct {
 	fetcher      *Fetcher
 }
 
-// SearchMetas implements store.
-func (b *bloomStoreEntry) SearchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+// ResolveMetas implements store.
+func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error) {
 	var refs []MetaRef
 	tables := tablesForRange(b.cfg, params.Interval.Start, params.Interval.End)
 	for _, table := range tables {
 		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
 		list, _, err := b.objectClient.List(ctx, prefix, "")
 		if err != nil {
-			return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
+			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 		}
 		for _, object := range list {
 			metaRef, err := createMetaRef(object.Key, params.TenantID, table)
 
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if metaRef.MaxFingerprint < uint64(params.Keyspace.Min) || uint64(params.Keyspace.Max) < metaRef.MinFingerprint ||
 				metaRef.EndTimestamp.Before(params.Interval.Start) || metaRef.StartTimestamp.After(params.Interval.End) {
@@ -60,7 +61,28 @@ func (b *bloomStoreEntry) SearchMetas(ctx context.Context, params MetaSearchPara
 			refs = append(refs, metaRef)
 		}
 	}
-	return b.fetcher.FetchMetas(ctx, refs)
+	return [][]MetaRef{refs}, []*Fetcher{b.fetcher}, nil
+}
+
+// FetchMetas implements store.
+func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+	metaRefs, fetchers, err := b.ResolveMetas(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	if len(metaRefs) != len(fetchers) {
+		return nil, errors.New("metaRefs and fetchers have unequal length")
+	}
+
+	var metas []Meta
+	for i := range fetchers {
+		res, err := fetchers[i].FetchMetas(ctx, metaRefs[i])
+		if err != nil {
+			return nil, err
+		}
+		metas = append(metas, res...)
+	}
+	return metas, nil
 }
 
 // SearchMetas implements store.
@@ -158,7 +180,7 @@ func NewBloomStore(
 	return store, nil
 }
 
-// SearchMetas implements store.
+// Fetcher implements Store.
 func (b *BloomStore) Fetcher(ts model.Time) *Fetcher {
 	if store := b.getStore(ts); store != nil {
 		return store.Fetcher(ts)
@@ -166,20 +188,43 @@ func (b *BloomStore) Fetcher(ts model.Time) *Fetcher {
 	return nil
 }
 
-// SearchMetas implements store.
-func (b *BloomStore) SearchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
-	var result []Meta
+// ResolveMetas implements Store.
+func (b *BloomStore) ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error) {
+	var refs [][]MetaRef
+	var fetchers []*Fetcher
 	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store Store) error {
 		newParams := params
 		newParams.Interval = interval
-		metas, err := store.SearchMetas(innerCtx, newParams)
+		metas, fetcher, err := store.ResolveMetas(innerCtx, newParams)
 		if err != nil {
 			return err
 		}
-		result = append(result, metas...)
+		refs = append(refs, metas...)
+		fetchers = append(fetchers, fetcher...)
 		return nil
 	})
-	return result, err
+	return refs, fetchers, err
+}
+
+// FetchMetas implements Store.
+func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+	metaRefs, fetchers, err := b.ResolveMetas(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	if len(metaRefs) != len(fetchers) {
+		return nil, errors.New("metaRefs and fetchers have unequal length")
+	}
+
+	var metas []Meta
+	for i := range fetchers {
+		res, err := fetchers[i].FetchMetas(ctx, metaRefs[i])
+		if err != nil {
+			return nil, err
+		}
+		metas = append(metas, res...)
+	}
+	return metas, nil
 }
 
 // DeleteBlocks implements Client.

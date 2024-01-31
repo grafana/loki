@@ -48,7 +48,7 @@ func parseDayTime(s string) config.DayTime {
 	}
 }
 
-func Test_BloomClient_GetMetas(t *testing.T) {
+func Test_BloomClient_FetchMetas(t *testing.T) {
 	store := createStore(t)
 
 	var expected []Meta
@@ -70,14 +70,28 @@ func Test_BloomClient_GetMetas(t *testing.T) {
 	// must not be present in results because it belongs to another tenant
 	createMetaInStorage(t, folder2, "second-period-19624", "tenantB", 0, 100, fixedDay.Add(-3*day))
 
-	actual, err := store.SearchMetas(context.Background(), MetaSearchParams{
+	searchParams := MetaSearchParams{
 		TenantID: "tenantA",
 		Keyspace: Keyspace{Min: 50, Max: 150},
 		Interval: Interval{Start: fixedDay.Add(-6 * day), End: fixedDay.Add(-1*day - 1*time.Hour)},
-	})
+	}
+
+	fetched, err := store.FetchMetas(context.Background(), searchParams)
 	require.NoError(t, err)
-	require.Equal(t, len(expected), len(actual))
-	require.ElementsMatch(t, expected, actual)
+
+	require.Equal(t, len(expected), len(fetched))
+	require.ElementsMatch(t, expected, fetched)
+
+	resolved, _, err := store.ResolveMetas(context.Background(), searchParams)
+	require.NoError(t, err)
+
+	var resolvedRefs []MetaRef
+	for _, refs := range resolved {
+		resolvedRefs = append(resolvedRefs, refs...)
+	}
+	for i := range resolvedRefs {
+		require.Equal(t, fetched[i].MetaRef, resolvedRefs[i])
+	}
 }
 
 func Test_BloomClient_PutMeta(t *testing.T) {

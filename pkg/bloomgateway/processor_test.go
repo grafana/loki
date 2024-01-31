@@ -24,7 +24,16 @@ type dummyStore struct {
 	querieres []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
-func (s *dummyStore) SearchMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
+func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([][]bloomshipper.MetaRef, []*bloomshipper.Fetcher, error) {
+	//TODO(chaudum) Filter metas based on search params
+	refs := make([]bloomshipper.MetaRef, 0, len(s.metas))
+	for _, meta := range s.metas {
+		refs = append(refs, meta.MetaRef)
+	}
+	return [][]bloomshipper.MetaRef{refs}, []*bloomshipper.Fetcher{nil}, nil
+}
+
+func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
 	//TODO(chaudum) Filter metas based on search params
 	return s.metas, nil
 }

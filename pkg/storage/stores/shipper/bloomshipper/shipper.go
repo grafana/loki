@@ -160,7 +160,7 @@ func getFirstLast[T any](s []T) (T, T) {
 
 func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, interval Interval, keyspaces []Keyspace) ([]BlockRef, error) {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
-	metas, err := s.store.SearchMetas(ctx, MetaSearchParams{
+	metas, err := s.store.FetchMetas(ctx, MetaSearchParams{
 		TenantID: tenantID,
 		Keyspace: Keyspace{Min: minFpRange.Min, Max: maxFpRange.Max},
 		Interval: interval,

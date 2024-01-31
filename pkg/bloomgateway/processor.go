@@ -59,7 +59,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, interval bl
 		Interval: interval,
 		Keyspace: bloomshipper.Keyspace{Min: minFpRange.Min, Max: maxFpRange.Max},
 	}
-	metas, err := p.store.SearchMetas(ctx, metaSearch)
+	metas, err := p.store.FetchMetas(ctx, metaSearch)
 	if err != nil {
 		return err
 	}
