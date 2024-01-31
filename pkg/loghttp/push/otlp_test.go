@@ -83,6 +83,78 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 		},
 		{
+			name:       "no resource attributes defined",
+			otlpConfig: DefaultOTLPConfig,
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				ld.ResourceLogs().AppendEmpty()
+				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				return ld
+			},
+			expectedPushRequest: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{service_name="unknown_service"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp:          now,
+								Line:               "test body",
+								StructuredMetadata: push.LabelsAdapter{},
+							},
+						},
+					},
+				},
+			},
+			expectedStats: Stats{
+				numLines: 1,
+				logLinesBytes: map[time.Duration]int64{
+					time.Hour: 9,
+				},
+				structuredMetadataBytes: map[time.Duration]int64{
+					time.Hour: 0,
+				},
+				streamLabelsSize:         27,
+				mostRecentEntryTimestamp: now,
+			},
+		},
+		{
+			name:       "service.name not defined in resource attributes",
+			otlpConfig: DefaultOTLPConfig,
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.namespace", "foo")
+				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				return ld
+			},
+			expectedPushRequest: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{service_name="unknown_service", service_namespace="foo"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp:          now,
+								Line:               "test body",
+								StructuredMetadata: push.LabelsAdapter{},
+							},
+						},
+					},
+				},
+			},
+			expectedStats: Stats{
+				numLines: 1,
+				logLinesBytes: map[time.Duration]int64{
+					time.Hour: 9,
+				},
+				structuredMetadataBytes: map[time.Duration]int64{
+					time.Hour: 0,
+				},
+				streamLabelsSize:         47,
+				mostRecentEntryTimestamp: now,
+			},
+		},
+		{
 			name:       "resource attributes and scope attributes stored as structured metadata",
 			otlpConfig: DefaultOTLPConfig,
 			generateLogs: func() plog.Logs {
