@@ -193,6 +193,16 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 			}
 		}
 	case lokiv1.ObjectStorageSecretAzure:
+		if opts.OpenShift.ManagedAuthEnabled() {
+			return []corev1.EnvVar{
+				envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
+				envVarFromSecret(EnvAzureClientID, opts.OpenShift.CloudCredentials.SecretName, "azure_client_id"),
+				envVarFromSecret(EnvAzureTenantID, opts.OpenShift.CloudCredentials.SecretName, "azure_tenant_id"),
+				envVarFromSecret(EnvAzureSubscriptionID, opts.OpenShift.CloudCredentials.SecretName, "azure_subscription_id"),
+				envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
+			}
+		}
+
 		return []corev1.EnvVar{
 			envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
 			envVarFromSecret(EnvAzureClientID, opts.SecretName, KeyAzureStorageClientID),
