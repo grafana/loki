@@ -113,7 +113,7 @@ func Test_findGaps(t *testing.T) {
 	}
 }
 
-func tsdbId(n int) tsdb.SingleTenantTSDBIdentifier {
+func tsdbID(n int) tsdb.SingleTenantTSDBIdentifier {
 	return tsdb.SingleTenantTSDBIdentifier{
 		TS: time.Unix(int64(n), 0),
 	}
@@ -125,7 +125,7 @@ func genMeta(min, max model.Fingerprint, sources []int, blocks []BlockRef) Meta 
 		Blocks:         blocks,
 	}
 	for _, source := range sources {
-		m.Sources = append(m.Sources, tsdbId(source))
+		m.Sources = append(m.Sources, tsdbID(source))
 	}
 	return m
 }
@@ -144,7 +144,7 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 			desc:           "non-overlapping tsdbs and metas",
 			err:            true,
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
 				genMeta(11, 20, []int{0}, nil),
 			},
@@ -152,13 +152,13 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 		{
 			desc:           "single tsdb",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
 				genMeta(4, 8, []int{0}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(0, 3),
 						v1.NewBounds(9, 10),
@@ -169,20 +169,20 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 		{
 			desc:           "multiple tsdbs with separate blocks",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0), tsdbId(1)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0), tsdbID(1)},
 			metas: []Meta{
 				genMeta(0, 5, []int{0}, nil),
 				genMeta(6, 10, []int{1}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(6, 10),
 					},
 				},
 				{
-					tsdb: tsdbId(1),
+					tsdb: tsdbID(1),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(0, 5),
 					},
@@ -192,20 +192,20 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 		{
 			desc:           "multiple tsdbs with the same blocks",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0), tsdbId(1)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0), tsdbID(1)},
 			metas: []Meta{
 				genMeta(0, 5, []int{0, 1}, nil),
 				genMeta(6, 8, []int{1}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(6, 10),
 					},
 				},
 				{
-					tsdb: tsdbId(1),
+					tsdb: tsdbID(1),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(9, 10),
 					},
@@ -242,13 +242,13 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "single overlapping meta+no overlapping block",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
 				genMeta(5, 20, []int{1}, []BlockRef{genBlockRef(11, 20)}),
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 10),
@@ -260,13 +260,13 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "single overlapping meta+one overlapping block",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
 				genMeta(5, 20, []int{1}, []BlockRef{genBlockRef(9, 20)}),
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 10),
@@ -282,14 +282,14 @@ func Test_blockPlansForGaps(t *testing.T) {
 			// but we can trim the range needing generation
 			desc:           "trims up to date area",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
 				genMeta(9, 20, []int{0}, []BlockRef{genBlockRef(9, 20)}), // block for same tsdb
 				genMeta(9, 20, []int{1}, []BlockRef{genBlockRef(9, 20)}), // block for different tsdb
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 8),
@@ -301,14 +301,14 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "uses old block for overlapping range",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
 				genMeta(9, 20, []int{0}, []BlockRef{genBlockRef(9, 20)}), // block for same tsdb
 				genMeta(5, 20, []int{1}, []BlockRef{genBlockRef(5, 20)}), // block for different tsdb
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 8),
@@ -321,7 +321,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "multi case",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0), tsdbId(1)}, // generate for both tsdbs
+			tsdbs:          []tsdb.Identifier{tsdbID(0), tsdbID(1)}, // generate for both tsdbs
 			metas: []Meta{
 				genMeta(0, 2, []int{0}, []BlockRef{
 					genBlockRef(0, 1),
@@ -334,7 +334,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []gapWithBlocks{
 						// tsdb (id=0) can source chunks from the blocks built from tsdb (id=1)
 						{
@@ -349,7 +349,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 				},
 				// tsdb (id=1) can source chunks from the blocks built from tsdb (id=0)
 				{
-					tsdb: tsdbId(1),
+					tsdb: tsdbID(1),
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 2),
@@ -369,7 +369,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "dedupes block refs",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.Identifier{tsdbId(0)},
+			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
 				genMeta(9, 20, []int{1}, []BlockRef{
 					genBlockRef(1, 4),
@@ -382,7 +382,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbId(0),
+					tsdb: tsdbID(0),
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 10),

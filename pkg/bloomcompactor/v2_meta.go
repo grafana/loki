@@ -62,7 +62,7 @@ type Meta struct {
 	// is greater than or equal to the range of the actual data in the underlying blocks.
 	OwnershipRange v1.FingerprintBounds
 
-	// Old blocks which can be deleted in the future. These should be from pervious compaction rounds.
+	// Old blocks which can be deleted in the future. These should be from previous compaction rounds.
 	Tombstones []BlockRef
 
 	// The specific TSDB files used to generate the block.

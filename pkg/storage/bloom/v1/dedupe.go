@@ -12,7 +12,7 @@ type DedupeIter[A, B any] struct {
 }
 
 // general helper, in this case created for DedupeIter[T,T]
-func Id[A any](a A) A { return a }
+func Identity[A any](a A) A { return a }
 
 func NewDedupingIter[A, B any](
 	eq func(A, B) bool,

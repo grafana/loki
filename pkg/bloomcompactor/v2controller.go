@@ -241,7 +241,7 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) []blockPlan {
 				func(a, b BlockRef) bool {
 					return a == b
 				},
-				v1.Id[BlockRef],
+				v1.Identity[BlockRef],
 				func(a, _ BlockRef) BlockRef {
 					return a
 				},
