@@ -943,7 +943,8 @@ func TestShardedPostings(t *testing.T) {
 		refs = append(refs, storage.SeriesRef(i))
 	}
 	ps := newListPostings(refs...)
-	shardedPostings := NewShardedPostings(ps, shard, offsets)
+	from, through := shard.Bounds()
+	shardedPostings := NewShardedPostings(ps, from, through, offsets)
 
 	for i := 0; i < 10; i++ {
 		require.Equal(t, true, shardedPostings.Next())

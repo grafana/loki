@@ -3,13 +3,14 @@ package index
 import (
 	"math"
 	"sort"
+
+	"github.com/prometheus/common/model"
 )
 
 // (SeriesRef, Fingerprint) tuples
 type FingerprintOffsets [][2]uint64
 
-func (xs FingerprintOffsets) Range(shard ShardAnnotation) (minOffset, maxOffset uint64) {
-	from, through := shard.Bounds()
+func (xs FingerprintOffsets) Range(from, through model.Fingerprint) (minOffset, maxOffset uint64) {
 	lower := sort.Search(len(xs), func(i int) bool {
 		return xs[i][1] >= uint64(from)
 	})

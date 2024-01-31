@@ -17,6 +17,11 @@ const (
 
 var errDisallowedIdentityShard = errors.New("shard with factor of 1 is explicitly disallowed. It's equivalent to no sharding")
 
+type FingerprintFilter interface {
+	Match(model.Fingerprint) bool
+	Bounds() (model.Fingerprint, model.Fingerprint)
+}
+
 // ShardAnnotation is a convenience struct which holds data from a parsed shard label
 // Of MUST be a power of 2 to ensure sharding logic works correctly.
 type ShardAnnotation struct {
