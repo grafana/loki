@@ -45,14 +45,18 @@ func (r Ref) Cmp(fp uint64) v1.BoundsCheck {
 	return v1.Overlap
 }
 
+func (r Ref) Bounds() v1.FingerprintBounds {
+	return v1.NewBounds(model.Fingerprint(r.MinFingerprint), model.Fingerprint(r.MaxFingerprint))
+}
+
+func (r Ref) Interval() Interval {
+	return NewInterval(r.StartTimestamp, r.EndTimestamp)
+}
+
 type BlockRef struct {
 	Ref
 	IndexPath string
 	BlockPath string
-}
-
-func (b *BlockRef) Bounds() v1.FingerprintBounds {
-	return v1.NewBounds(model.Fingerprint(b.MinFingerprint), model.Fingerprint(b.MaxFingerprint))
 }
 
 type MetaRef struct {
@@ -282,19 +286,13 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 	}, nil
 }
 
-func tablesForRange(periodConfig config.PeriodConfig, from, to model.Time) []string {
-	interval := periodConfig.IndexTables.Period
-	step := int64(interval.Seconds())
-	lower := from.Unix() / step
-	upper := to.Unix() / step
+func tablesForRange(periodConfig config.PeriodConfig, interval Interval) []string {
+	step := int64(periodConfig.IndexTables.Period.Seconds())
+	lower := interval.Start.Unix() / step
+	upper := interval.End.Unix() / step
 	tables := make([]string, 0, 1+upper-lower)
-	prefix := periodConfig.IndexTables.Prefix
 	for i := lower; i <= upper; i++ {
-		tables = append(tables, joinTableName(prefix, i))
+		tables = append(tables, fmt.Sprintf("%s%d", periodConfig.IndexTables.Prefix, i))
 	}
 	return tables
-}
-
-func joinTableName(prefix string, tableNumber int64) string {
-	return fmt.Sprintf("%s%d", prefix, tableNumber)
 }

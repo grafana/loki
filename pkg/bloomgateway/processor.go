@@ -33,10 +33,7 @@ type processor struct {
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
 	for ts, tasks := range group(tasks, func(t Task) model.Time { return t.day }) {
-		interval := bloomshipper.Interval{
-			Start: ts,
-			End:   ts.Add(Day),
-		}
+		interval := bloomshipper.NewInterval(ts, ts.Add(Day))
 		tenant := tasks[0].Tenant
 		err := p.processTasks(ctx, tenant, interval, []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}}, tasks)
 		if err != nil {

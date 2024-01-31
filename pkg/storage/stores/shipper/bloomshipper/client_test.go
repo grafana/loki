@@ -73,8 +73,9 @@ func Test_BloomClient_FetchMetas(t *testing.T) {
 
 	searchParams := MetaSearchParams{
 		TenantID: "tenantA",
+
 		Keyspace: v1.NewBounds(50, 150),
-		Interval: Interval{Start: fixedDay.Add(-6 * day), End: fixedDay.Add(-1*day - 1*time.Hour)},
+		Interval: NewInterval(fixedDay.Add(-6*day), fixedDay.Add(-1*day-1*time.Hour)),
 	}
 
 	fetched, err := store.FetchMetas(context.Background(), searchParams)
