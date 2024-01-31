@@ -404,26 +404,24 @@ func (c *Compactor) compactTenant(ctx context.Context, logger log.Logger, sc sto
 
 		var seriesMetas []seriesMeta
 
-		err := tsdbIndex.ForSeries(
-			ctx, nil,
-			0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
-			func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
-				if !tokenRanges.Contains(uint32(fingerprint)) {
-					return
-				}
-
-				temp := make([]tsdbindex.ChunkMeta, len(chksMetas))
-				ls := labels.Copy()
-				_ = copy(temp, chksMetas)
-				//All seriesMetas given a table within fp of this compactor shard
-				seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: ls, chunkRefs: temp})
-			},
-			labels.MustNewMatcher(labels.MatchEqual, "", ""),
-		)
-
-		if err != nil {
-			errs.Add(err)
-			return nil
+		for _, fpRange := range tokenRanges {
+			err := tsdbIndex.ForSeries(
+				ctx,
+				v1.NewBounds(model.Fingerprint(fpRange.MinToken), model.Fingerprint(fpRange.MaxToken)),
+				0, math.MaxInt64, // TODO: Replace with MaxLookBackPeriod
+				func(labels labels.Labels, fingerprint model.Fingerprint, chksMetas []tsdbindex.ChunkMeta) {
+					temp := make([]tsdbindex.ChunkMeta, len(chksMetas))
+					ls := labels.Copy()
+					_ = copy(temp, chksMetas)
+					//All seriesMetas given a table within fp of this compactor shard
+					seriesMetas = append(seriesMetas, seriesMeta{seriesFP: fingerprint, seriesLbs: ls, chunkRefs: temp})
+				},
+				labels.MustNewMatcher(labels.MatchEqual, "", ""),
+			)
+			if err != nil {
+				errs.Add(err)
+				return nil
+			}
 		}
 
 		if len(seriesMetas) == 0 {

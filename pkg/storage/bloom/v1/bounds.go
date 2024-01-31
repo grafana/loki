@@ -51,6 +51,16 @@ func (b FingerprintBounds) Overlaps(target FingerprintBounds) bool {
 	return b.Cmp(target.Min) != After && b.Cmp(target.Max) != Before
 }
 
+// Match implements TSDBs FingerprintFilter interface
+func (b FingerprintBounds) Match(fp model.Fingerprint) bool {
+	return b.Cmp(fp) == Overlap
+}
+
+// Bounds implements TSDBs FingerprintFilter interface
+func (b FingerprintBounds) Bounds() (model.Fingerprint, model.Fingerprint) {
+	return b.Min, b.Max
+}
+
 // Slice returns a new fingerprint bounds clipped to the target bounds or nil if there is no overlap
 func (b FingerprintBounds) Slice(min, max model.Fingerprint) *FingerprintBounds {
 	return b.Intersection(FingerprintBounds{Min: min, Max: max})

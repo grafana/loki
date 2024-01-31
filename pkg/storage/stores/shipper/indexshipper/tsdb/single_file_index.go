@@ -230,7 +230,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return res, nil
 }
 
-func (i *TSDBIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	if res == nil {
 		res = SeriesPool.Get()
 	}
@@ -280,7 +280,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
