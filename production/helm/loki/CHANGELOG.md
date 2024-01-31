@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.42.1
 
+- [BUGFIX] Added condition for `egress-discovery` networkPolicies and ciliumNetworkPolicies.
+
+## 5.42.1
+
 - [BUGFIX] Added missing annotations to loki-read StatefulSet.
 
 ## 5.42.0
