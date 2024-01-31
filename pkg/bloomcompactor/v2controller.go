@@ -159,13 +159,17 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 
 func (s *SimpleBloomController) loadWorkForGap(id tsdb.Identifier, gap gapWithBlocks) (v1.CloseableIterator[*v1.Series], []*v1.Block, error) {
 	// load a series iterator for the gap
-	_, err := s.tsdbStore.LoadTSDB(id, gap.bounds)
+	seriesItr, err := s.tsdbStore.LoadTSDB(id, gap.bounds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
 
-	// TODO(owen-d): finish
-	panic("not implemented")
+	blocks, err := s.blockStore.GetBlocks(gap.blocks)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to get blocks")
+	}
+
+	return seriesItr, blocks, nil
 }
 
 type gapWithBlocks struct {

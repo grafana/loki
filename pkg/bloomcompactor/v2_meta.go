@@ -131,6 +131,6 @@ type MetaStore interface {
 
 type BlockStore interface {
 	// TODO(owen-d): flesh out|integrate against bloomshipper.Client
-	GetBlocks([]BlockRef) ([]interface{}, error)
+	GetBlocks([]BlockRef) ([]*v1.Block, error)
 	PutBlock(interface{}) error
 }
