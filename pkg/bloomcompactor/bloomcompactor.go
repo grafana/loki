@@ -503,7 +503,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	metaSearchParams := bloomshipper.MetaSearchParams{
 		TenantID: job.tenantID,
-		Keyspace: bloomshipper.Keyspace{Min: job.minFp, Max: job.maxFp},
+		Keyspace: v1.NewBounds(job.minFp, job.maxFp),
 		Interval: bloomshipper.Interval{Start: job.from, End: job.through},
 	}
 	var metas []bloomshipper.Meta

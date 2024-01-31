@@ -68,6 +68,11 @@ func (b FingerprintBounds) Within(target FingerprintBounds) bool {
 	return b.Min >= target.Min && b.Max <= target.Max
 }
 
+// Returns whether the fingerprint bounds is equal to the target bounds
+func (b FingerprintBounds) Equal(target FingerprintBounds) bool {
+	return b.Min == target.Min && b.Max == target.Max
+}
+
 // Intersection returns the intersection of the two bounds
 func (b FingerprintBounds) Intersection(target FingerprintBounds) *FingerprintBounds {
 	if !b.Overlaps(target) {

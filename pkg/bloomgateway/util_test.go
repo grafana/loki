@@ -311,9 +311,8 @@ func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, 
 		}
 		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
 		bq := bloomshipper.BlockQuerierWithFingerprintRange{
-			BlockQuerier: blockQuerier,
-			MinFp:        fromFp,
-			MaxFp:        throughFp,
+			BlockQuerier:      blockQuerier,
+			FingerprintBounds: v1.NewBounds(fromFp, throughFp),
 		}
 		bqs = append(bqs, bq)
 		series = append(series, data)
@@ -359,9 +358,8 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		}
 		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
 		querier := bloomshipper.BlockQuerierWithFingerprintRange{
-			BlockQuerier: blockQuerier,
-			MinFp:        fromFp,
-			MaxFp:        throughFp,
+			BlockQuerier:      blockQuerier,
+			FingerprintBounds: v1.NewBounds(fromFp, throughFp),
 		}
 		queriers = append(queriers, querier)
 		metas = append(metas, meta)
@@ -392,8 +390,8 @@ func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _ blooms
 	for i := range s.bqs {
 		blocks = append(blocks, bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
-				MinFingerprint: uint64(s.bqs[i].MinFp),
-				MaxFingerprint: uint64(s.bqs[i].MaxFp),
+				MinFingerprint: uint64(s.bqs[i].Min),
+				MaxFingerprint: uint64(s.bqs[i].Max),
 				TenantID:       tenant,
 			},
 		})
@@ -421,7 +419,7 @@ func (s *mockBloomStore) Fetch(_ context.Context, _ string, _ []bloomshipper.Blo
 	for _, bq := range shuffled {
 		// ignore errors in the mock
 		time.Sleep(s.delay)
-		err := callback(bq.BlockQuerier, uint64(bq.MinFp), uint64(bq.MaxFp))
+		err := callback(bq.BlockQuerier, bq.FingerprintBounds)
 		if err != nil {
 			return err
 		}
@@ -459,8 +457,8 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipp
 			Ref: bloomshipper.Ref{
 				TenantID:       tenant,
 				TableName:      "",
-				MinFingerprint: uint64(data[i].MinFp),
-				MaxFingerprint: uint64(data[i].MaxFp),
+				MinFingerprint: uint64(data[i].Min),
+				MaxFingerprint: uint64(data[i].Max),
 				StartTimestamp: 0,
 				EndTimestamp:   0,
 				Checksum:       0,

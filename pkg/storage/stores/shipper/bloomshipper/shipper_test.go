@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func interval(start, end model.Time) Interval {
@@ -48,7 +50,7 @@ func Test_Shipper_findBlocks(t *testing.T) {
 			Start: ts.Add(-2 * time.Hour),
 			End:   ts.Add(-1 * time.Hour),
 		}
-		blocks := BlocksForMetas(metas, interval, []Keyspace{{Min: 100, Max: 200}})
+		blocks := BlocksForMetas(metas, interval, []v1.FingerprintBounds{{Min: 100, Max: 200}})
 
 		expectedBlockRefs := []BlockRef{
 			createMatchingBlockRef("block2"),
@@ -101,7 +103,7 @@ func Test_Shipper_findBlocks(t *testing.T) {
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
 			ref := createBlockRef("fake-block", data.minFingerprint, data.maxFingerprint, data.startTimestamp, data.endTimestamp)
-			blocks := BlocksForMetas([]Meta{{Blocks: []BlockRef{ref}}}, interval(300, 400), []Keyspace{{Min: 100, Max: 200}})
+			blocks := BlocksForMetas([]Meta{{Blocks: []BlockRef{ref}}}, interval(300, 400), []v1.FingerprintBounds{{Min: 100, Max: 200}})
 			if data.filtered {
 				require.Empty(t, blocks)
 				return
@@ -118,67 +120,67 @@ func TestIsOutsideRange(t *testing.T) {
 
 	t.Run("is outside if startTs > through", func(t *testing.T) {
 		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(0, 900), []Keyspace{})
+		isOutside := isOutsideRange(b, interval(0, 900), []v1.FingerprintBounds{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if startTs == through ", func(t *testing.T) {
 		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(900, 1000), []Keyspace{})
+		isOutside := isOutsideRange(b, interval(900, 1000), []v1.FingerprintBounds{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if endTs < from", func(t *testing.T) {
 		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(2100, 3000), []Keyspace{})
+		isOutside := isOutsideRange(b, interval(2100, 3000), []v1.FingerprintBounds{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if endFp < first fingerprint", func(t *testing.T) {
 		b := createBlockRef("block", 0, 90, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(startTs, endTs), []Keyspace{{100, 199}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []v1.FingerprintBounds{{Min: 100, Max: 199}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if startFp > last fingerprint", func(t *testing.T) {
 		b := createBlockRef("block", 200, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(startTs, endTs), []Keyspace{{0, 49}, {100, 149}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 49}, {Min: 100, Max: 149}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if within gaps in fingerprints", func(t *testing.T) {
 		b := createBlockRef("block", 100, 199, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(startTs, endTs), []Keyspace{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is not outside if within fingerprints 1", func(t *testing.T) {
 		b := createBlockRef("block", 10, 90, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(startTs, endTs), []Keyspace{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if within fingerprints 2", func(t *testing.T) {
 		b := createBlockRef("block", 210, 290, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(startTs, endTs), []Keyspace{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if spans across multiple fingerprint ranges", func(t *testing.T) {
 		b := createBlockRef("block", 50, 250, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(startTs, endTs), []Keyspace{{0, 99}, {200, 299}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if fingerprint range and time range are larger than block", func(t *testing.T) {
 		b := createBlockRef("block", math.MaxUint64/3, math.MaxUint64/3*2, startTs, endTs)
-		isOutside := isOutsideRange(b, interval(0, 3000), []Keyspace{{0, math.MaxUint64}})
+		isOutside := isOutsideRange(b, interval(0, 3000), []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if block fingerprint range is bigger that search keyspace", func(t *testing.T) {
 		b := createBlockRef("block", 0x0000, 0xffff, model.Earliest, model.Latest)
-		isOutside := isOutsideRange(b, interval(startTs, endTs), []Keyspace{{0x0100, 0xff00}})
+		isOutside := isOutsideRange(b, interval(startTs, endTs), []v1.FingerprintBounds{{Min: 0x0100, Max: 0xff00}})
 		require.False(t, isOutside)
 	})
 }

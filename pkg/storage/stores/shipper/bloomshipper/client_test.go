@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 )
@@ -72,7 +73,7 @@ func Test_BloomClient_FetchMetas(t *testing.T) {
 
 	searchParams := MetaSearchParams{
 		TenantID: "tenantA",
-		Keyspace: Keyspace{Min: 50, Max: 150},
+		Keyspace: v1.NewBounds(50, 150),
 		Interval: Interval{Start: fixedDay.Add(-6 * day), End: fixedDay.Add(-1*day - 1*time.Hour)},
 	}
 

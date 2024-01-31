@@ -244,9 +244,9 @@ func (w *worker) stopping(err error) error {
 }
 
 func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
-	return w.shipper.Fetch(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
+	return w.shipper.Fetch(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, bounds v1.FingerprintBounds) error {
 		for _, b := range boundedRefs {
-			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
+			if b.blockRef.Bounds().Equal(bounds) {
 				return w.processBlock(bq, b.tasks)
 			}
 		}
