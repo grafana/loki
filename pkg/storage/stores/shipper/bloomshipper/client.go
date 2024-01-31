@@ -100,6 +100,7 @@ type Client interface {
 	Stop()
 }
 
+// Compiler check to ensure BloomClient implements the Client interface
 var _ Client = &BloomClient{}
 
 type BloomClient struct {

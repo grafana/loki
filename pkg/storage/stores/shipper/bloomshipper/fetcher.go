@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
+// TODO(chaudum): Add metric for cache hits/misses, and bytes stored/retrieved
 type metrics struct{}
 
 type fetcher interface {

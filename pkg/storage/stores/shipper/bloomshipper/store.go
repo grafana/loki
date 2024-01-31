@@ -23,7 +23,10 @@ type Store interface {
 	Stop()
 }
 
+// Compiler check to ensure bloomStoreEntry implements the Client interface
 var _ Client = &bloomStoreEntry{}
+
+// Compiler check to ensure bloomStoreEntry implements the Store interface
 var _ Store = &bloomStoreEntry{}
 
 type bloomStoreEntry struct {
