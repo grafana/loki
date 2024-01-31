@@ -25,7 +25,7 @@ Structured metadata can also be used to query commonly needed metadata from log 
 ## Attaching structured metadata to log lines
 
 You have the option to attach structured metadata to log lines in the push payload along with each log line and the timestamp.
-For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#ingest-logs" >}}).
+For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#push-log-entries-to-loki" >}}).
 
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach structured metadata to your log lines.
 See the [Promtail: Structured metadata stage]({{< relref "../../send-data/promtail/stages/structured_metadata" >}}) for more information.
