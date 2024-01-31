@@ -51,6 +51,10 @@ type BlockRef struct {
 	BlockPath string
 }
 
+func (b *BlockRef) Bounds() v1.FingerprintBounds {
+	return v1.NewBounds(model.Fingerprint(b.MinFingerprint), model.Fingerprint(b.MaxFingerprint))
+}
+
 type MetaRef struct {
 	Ref
 	FilePath string
@@ -67,7 +71,7 @@ type Meta struct {
 type MetaSearchParams struct {
 	TenantID string
 	Interval Interval
-	Keyspace Keyspace
+	Keyspace v1.FingerprintBounds
 }
 
 type MetaClient interface {
