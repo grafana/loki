@@ -32,7 +32,6 @@ See the [Promtail: Structured metadata stage]({{< relref "../../send-data/promta
 
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash]({{< relref "../../send-data/logstash/_index.md" >}}).
 
-
 {{% admonition type="warning" %}}
 There are defaults for how much structured metadata can be attached per log line.
 ```
