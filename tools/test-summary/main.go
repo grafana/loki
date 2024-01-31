@@ -6,13 +6,17 @@ import (
 	"io"
 	"os"
 	"strings"
+	"text/scanner"
 )
 
 func main() {
-	reader := bufio.NewScanner(os.Stdin)
 
 	summary := &TestSummary{}
 
+	var s scanner.Scanner
+	s.Init(os.Stdin)
+	for tok := s.Scan(); tok != scanner.EOF; tok = s.Scan() {
+	}
 	for reader.Scan() {
 		result, err := parse(reader.Text())
 		if err != nil {
@@ -65,10 +69,19 @@ func (s *TestSummary) Write(w io.Writer) {
 		}
 	}
 	sw.WriteString(fmt.Sprintf("%d ✅, %d ❌\n", passedTests, failedTests))
+
+	sw.WriteString("## Failed Tests\n")
+	for _, r := range s.results {
+		if r.status == Fail {
+			sw.WriteString(r.test)
+		}
+	}
+
 	sw.Flush()
 }
 
 func parse(line string) (TestResult, error) {
+
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
 		return TestResult{}, fmt.Errorf("too few test result fields: %d", len(fields))
