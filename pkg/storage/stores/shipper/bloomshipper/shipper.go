@@ -59,7 +59,7 @@ type Interface interface {
 }
 
 type Shipper struct {
-	client          Client
+	store           Store
 	config          config.Config
 	logger          log.Logger
 	blockDownloader *blockDownloader
@@ -69,14 +69,20 @@ type Limits interface {
 	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
 }
 
-func NewShipper(client Client, config config.Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Shipper, error) {
+// TODO(chaudum): resolve and rip out
+type StoreAndClient interface {
+	Store
+	Client
+}
+
+func NewShipper(client StoreAndClient, config config.Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Shipper, error) {
 	logger = log.With(logger, "component", "bloom-shipper")
 	downloader, err := newBlockDownloader(config, client, limits, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("error creating block downloader: %w", err)
 	}
 	return &Shipper{
-		client:          client,
+		store:           client,
 		config:          config,
 		logger:          logger,
 		blockDownloader: downloader,
@@ -138,7 +144,7 @@ func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
 }
 
 func (s *Shipper) Stop() {
-	s.client.Stop()
+	s.store.Stop()
 	s.blockDownloader.stop()
 }
 
@@ -154,7 +160,7 @@ func getFirstLast[T any](s []T) (T, T) {
 
 func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, interval Interval, keyspaces []Keyspace) ([]BlockRef, error) {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
-	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
+	metas, err := s.store.FetchMetas(ctx, MetaSearchParams{
 		TenantID: tenantID,
 		Keyspace: Keyspace{Min: minFpRange.Min, Max: maxFpRange.Max},
 		Interval: interval,
