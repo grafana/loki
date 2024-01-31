@@ -46,18 +46,8 @@ func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunks")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
-	level.Debug(log).Log(
-		"shortcut", shortcut,
-		"from", from.Time(),
-		"through", through.Time(),
-		"err", err,
-	)
 	if err != nil {
 		return nil, nil, err
 	} else if shortcut {
