@@ -1,0 +1,47 @@
+---
+monitoring:
+  dashboards:
+    namespace: k3d-helm-cluster
+  selfMonitoring:
+    tenant:
+      name: loki
+      secretNamespace: k3d-helm-cluster
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+  rules:
+    namespace: k3d-helm-cluster
+    labels:
+      release: "prometheus"
+minio:
+  enabled: true
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+singleBinary:
+  replicas: 0
+compactor:
+  replicas: 1
+  enabled: true
+distributor:
+  replicas: 1
+indexGateway:
+  replicas: 1
+  enabled: true
+ingester:
+  replicas: 3
+  maxUnavailable: 1
+querier:
+  replicas: 3
+  maxUnavailable: 1
+queryFrontend:
+  replicas: 1
+queryScheduler:
+  replicas: 2
+  enabled: true
+ruler:
+  replicas: 1
+  enabled: true

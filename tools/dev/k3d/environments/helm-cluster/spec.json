@@ -6,7 +6,7 @@
     "namespace": "environments/helm-cluster/main.jsonnet"
   },
   "spec": {
-    "apiServer": "https://0.0.0.0:38311",
+    "apiServer": "https://0.0.0.0:45479",
     "namespace": "k3d-helm-cluster",
     "resourceDefaults": {},
     "expectVersions": {}

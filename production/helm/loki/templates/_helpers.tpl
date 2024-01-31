@@ -50,7 +50,8 @@ Params:
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
-  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (eq (int .Values.singleBinary.replicas) 0) }}
+  {{- $nonZeroScalableReplicas := (or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0)) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (eq (int .Values.singleBinary.replicas) 0) ($nonZeroScalableReplicas) }}
 {{- end -}}
 
 {{/*
@@ -60,6 +61,15 @@ Return if deployment mode is single binary
   {{- $nonZeroReplicas := gt (int .Values.singleBinary.replicas) 0 }}
   {{- or (eq (include "loki.isUsingObjectStorage" . ) "false") ($nonZeroReplicas) }}
 {{- end -}}
+
+{{/*
+Return if deployment mode is distributed
+*/}}
+{{- define "loki.deployment.isDistributed" -}}
+  {{- $zeroScalableReplicas := (and (eq (int .Values.backend.replicas) 0) (eq (int .Values.read.replicas) 0) (eq (int .Values.write.replicas) 0)) }}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") ($zeroScalableReplicas) }}
+{{- end -}}
+
 
 {{/*
 Create a default fully qualified app name.
@@ -897,3 +907,19 @@ enableServiceLinks: false
 {{- end -}}
 {{- printf "%s" $schedulerAddress }}
 {{- end }}
+
+
+{{- define "loki.config.checksum" -}}
+checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+{{- end -}}
+
+{{/*
+Return the appropriate apiVersion for PodDisruptionBudget.
+*/}}
+{{- define "loki.pdb.apiVersion" -}}
+  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version) -}}
+    {{- print "policy/v1" -}}
+  {{- else -}}
+    {{- print "policy/v1beta1" -}}
+  {{- end -}}
+{{- end -}}

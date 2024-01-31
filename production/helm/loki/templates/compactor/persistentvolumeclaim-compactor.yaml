@@ -1,0 +1,25 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed .Values.compactor.enabled .Values.compactor.persistence.enabled }}
+{{- if eq .Values.compactor.kind "Deployment"}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-{{ include "loki.compactorFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.compactorLabels" . | nindent 4 }}
+  {{- with .Values.compactor.persistence.annotations }}
+  annotations:
+    {{- . | toYaml | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.compactor.persistence.storageClass }}
+  storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+  {{- end }}
+  resources:
+    requests:
+      storage: "{{ .Values.compactor.persistence.size }}"
+{{- end }}
+{{- end }}
