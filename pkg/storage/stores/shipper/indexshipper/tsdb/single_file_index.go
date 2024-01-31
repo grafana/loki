@@ -280,7 +280,7 @@ func (i *TSDBIndex) Identifier(string) SingleTenantTSDBIdentifier {
 	}
 }
 
-func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Time, acc IndexStatsAccumulator, fpFilter index.FingerprintFilter, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
