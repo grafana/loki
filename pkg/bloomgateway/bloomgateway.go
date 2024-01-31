@@ -42,6 +42,7 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 	"time"
@@ -59,6 +60,7 @@ import (
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
@@ -200,22 +202,24 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 		workerConfig: workerConfig{
-			maxWaitTime: 200 * time.Millisecond,
-			maxItems:    100,
+			maxItems: 100,
 		},
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
 
-	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{100}, g.queueMetrics)
+	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
-	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
+	// TODO(chaudum): Plug in cache
+	var metasCache cache.Cache
+	var blocksCache *cache.EmbeddedCache[string, io.ReadCloser]
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, metasCache, blocksCache, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	bloomShipper, err := bloomshipper.NewShipper(client, storageCfg.BloomShipperConfig, overrides, logger, reg)
+	bloomShipper, err := bloomshipper.NewShipper(store, storageCfg.BloomShipperConfig, overrides, logger, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +303,20 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
+	logger := log.With(g.logger, "tenant", tenantID)
+
+	// start time == end time --> empty response
+	if req.From.Equal(req.Through) {
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: []*logproto.GroupedChunkRefs{},
+		}, nil
+	}
+
+	// start time > end time --> error response
+	if req.Through.Before(req.From) {
+		return nil, errors.New("from time must not be after through time")
+	}
+
 	numChunksUnfiltered := len(req.Refs)
 
 	// Shortcut if request does not contain filters
@@ -315,36 +333,60 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	task, resCh, errCh, err := NewTask(tenantID, req)
+	var numSeries int
+	seriesByDay := partitionRequest(req)
 
-	if err != nil {
-		return nil, err
+	// no tasks --> empty response
+	if len(seriesByDay) == 0 {
+		return &logproto.FilterChunkRefResponse{
+			ChunkRefs: []*logproto.GroupedChunkRefs{},
+		}, nil
+	}
+
+	tasks := make([]Task, 0, len(seriesByDay))
+	for _, seriesWithBounds := range seriesByDay {
+		task, err := NewTask(ctx, tenantID, seriesWithBounds, req.Filters)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+		numSeries += len(seriesWithBounds.series)
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
-	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID)
-	g.queue.Enqueue(tenantID, []string{}, task, func() {
-		// When enqueuing, we also add the task to the pending tasks
-		g.pendingTasks.Add(task.ID, task)
-	})
 
-	requestCount := len(req.Refs)
-	responses := responsesPool.Get(requestCount)
+	// Ideally we could use an unbuffered channel here, but since we return the
+	// request on the first error, there can be cases where the request context
+	// is not done yet and the consumeTask() function wants to send to the
+	// tasksCh, but nobody reads from it any more.
+	tasksCh := make(chan Task, len(tasks))
+	for _, task := range tasks {
+		task := task
+		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "day", task.day, "series", len(task.series))
+		g.queue.Enqueue(tenantID, []string{}, task, func() {
+			// When enqueuing, we also add the task to the pending tasks
+			g.pendingTasks.Add(task.ID, task)
+		})
+		go consumeTask(ctx, task, tasksCh, logger)
+	}
+
+	responses := responsesPool.Get(numSeries)
 	defer responsesPool.Put(responses)
+	remaining := len(tasks)
 
 outer:
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, errors.Wrap(ctx.Err(), "waiting for results")
-		case err := <-errCh:
-			return nil, errors.Wrap(err, "waiting for results")
-		case res := <-resCh:
-			responses = append(responses, res)
-			// log line is helpful for debugging tests
-			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
-			// wait for all parts of the full response
-			if len(responses) == requestCount {
+			return nil, errors.Wrap(ctx.Err(), "request failed")
+		case task := <-tasksCh:
+			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
+			if task.Err() != nil {
+				return nil, errors.Wrap(task.Err(), "request failed")
+			}
+			responses = append(responses, task.responses...)
+			remaining--
+			if remaining == 0 {
 				break outer
 			}
 		}
@@ -354,18 +396,45 @@ outer:
 		if o.Removals.Len() == 0 {
 			continue
 		}
-		// we must not remove items from req.Refs as long as the worker may iterater over them
-		g.removeNotMatchingChunks(req, o)
+		removeNotMatchingChunks(req, o, g.logger)
 	}
 
 	g.metrics.addUnfilteredCount(numChunksUnfiltered)
 	g.metrics.addFilteredCount(len(req.Refs))
 
-	level.Debug(g.logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
+	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
-func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) {
+// consumeTask receives v1.Output yielded from the block querier on the task's
+// result channel and stores them on the task.
+// In case the context task is done, it drains the remaining items until the
+// task is closed by the worker.
+// Once the tasks is closed, it will send the task with the results from the
+// block querier to the supplied task channel.
+func consumeTask(ctx context.Context, task Task, tasksCh chan<- Task, logger log.Logger) {
+	logger = log.With(logger, "task", task.ID)
+
+	for res := range task.resCh {
+		select {
+		case <-ctx.Done():
+			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+		default:
+			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			task.responses = append(task.responses, res)
+		}
+	}
+
+	select {
+	case <-ctx.Done():
+		// do nothing
+	case <-task.Done():
+		// notify request handler about finished task
+		tasksCh <- task
+	}
+}
+
+func removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output, logger log.Logger) {
 	// binary search index of fingerprint
 	idx := sort.Search(len(req.Refs), func(i int) bool {
 		return req.Refs[i].Fingerprint >= uint64(res.Fp)
@@ -373,7 +442,7 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	// fingerprint not found
 	if idx >= len(req.Refs) {
-		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
+		level.Error(logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
 		return
 	}
 
@@ -387,10 +456,11 @@ func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, r
 
 	for i := range res.Removals {
 		toRemove := res.Removals[i]
-		for j := range req.Refs[idx].Refs {
+		for j := 0; j < len(req.Refs[idx].Refs); j++ {
 			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
 				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
 				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
+				j-- // since we removed the current item at index, we have to redo the same index
 			}
 		}
 	}

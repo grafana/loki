@@ -16,7 +16,12 @@ import (
 )
 
 type BlockOptions struct {
-	schema Schema
+	// Schema determines the Schema of the block and cannot be changed
+	Schema Schema
+
+	// The following options can be changed on the fly.
+	// For instance, adding another page to a block with
+	// a different target page size is supported.
 
 	// target size in bytes (decompressed)
 	// of each page type
@@ -31,14 +36,19 @@ type BlockBuilder struct {
 }
 
 func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
+	return NewBlockOptionsFromSchema(Schema{
+		version:     byte(1),
+		nGramLength: NGramLength,
+		nGramSkip:   NGramSkip,
+	})
+}
+
+func NewBlockOptionsFromSchema(s Schema) BlockOptions {
 	return BlockOptions{
-		schema: Schema{
-			version:     byte(1),
-			nGramLength: NGramLength,
-			nGramSkip:   NGramSkip,
-		},
-		SeriesPageSize: 100,
-		BloomPageSize:  10 << 10, // 0.01MB
+		Schema: s,
+		// TODO(owen-d): benchmark and find good defaults
+		SeriesPageSize: 4 << 10,   // 4KB, typical page size
+		BloomPageSize:  256 << 10, // 256KB, no idea what to make this
 	}
 }
 
@@ -124,7 +134,7 @@ func NewBloomBlockBuilder(opts BlockOptions, writer io.WriteCloser) *BloomBlockB
 
 func (b *BloomBlockBuilder) WriteSchema() error {
 	b.scratch.Reset()
-	b.opts.schema.Encode(b.scratch)
+	b.opts.Schema.Encode(b.scratch)
 	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
 		return errors.Wrap(err, "writing schema")
 	}
@@ -191,7 +201,7 @@ func (b *BloomBlockBuilder) flushPage() error {
 
 	decompressedLen, compressedLen, err := b.page.writePage(
 		b.writer,
-		b.opts.schema.CompressorPool(),
+		b.opts.Schema.CompressorPool(),
 		crc32Hash,
 	)
 	if err != nil {
@@ -300,7 +310,7 @@ func NewIndexBuilder(opts BlockOptions, writer io.WriteCloser) *IndexBuilder {
 
 func (b *IndexBuilder) WriteSchema() error {
 	b.scratch.Reset()
-	b.opts.schema.Encode(b.scratch)
+	b.opts.Schema.Encode(b.scratch)
 	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
 		return errors.Wrap(err, "writing schema")
 	}
@@ -381,7 +391,7 @@ func (b *IndexBuilder) flushPage() error {
 
 	decompressedLen, compressedLen, err := b.page.writePage(
 		b.writer,
-		b.opts.schema.CompressorPool(),
+		b.opts.Schema.CompressorPool(),
 		crc32Hash,
 	)
 	if err != nil {

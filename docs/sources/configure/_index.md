@@ -3140,6 +3140,17 @@ shard_streams:
 # Maximum number of structured metadata entries per log line.
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
+
+# OTLP log ingestion configurations
+otlp_config:
+  resource_attributes:
+    [ignore_defaults: <boolean>]
+
+    [attributes: <list of AttributesConfigs>]
+
+  [scope_attributes: <list of AttributesConfigs>]
+
+  [log_attributes: <list of AttributesConfigs>]
 ```
 
 ### frontend_worker
@@ -5334,7 +5345,8 @@ place in the `limits_config` section:
 configure a runtime configuration file:
 
     ```
-    runtime_config: overrides.yaml
+    runtime_config:
+      file: overrides.yaml
     ```
 
     In the `overrides.yaml` file, add `unordered_writes` for each tenant
