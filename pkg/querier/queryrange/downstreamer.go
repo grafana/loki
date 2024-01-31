@@ -108,9 +108,10 @@ type instance struct {
 func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 	expr := query.Params.GetExpression()
 	var (
-		newStart = query.Params.Start().UTC()
-		newEnd   = query.Params.End().UTC()
+		newStart = query.Params.Start()
+		newEnd   = query.Params.End()
 	)
+	fmt.Println("newStart", newStart, "newEnd", newEnd)
 	expr.Walk(func(e syntax.Expr) {
 		switch rng := e.(type) {
 		case *syntax.RangeAggregationExpr:
@@ -119,9 +120,9 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 			if off != 0 {
 				rng.Left.Offset = 0     // remove offset
 				if newStart == newEnd { // instant query
-					newEnd = newEnd.Add(off)
+					newEnd = newEnd.Add(-off)
 				}
-				newStart = newStart.Add(off)
+				newStart = newStart.Add(-off)
 
 			}
 		}

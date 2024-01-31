@@ -590,6 +590,41 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 	}
 }
 
+func TestDownstream_withoutOffset(t *testing.T) {
+	start := time.Now()
+	end := start.Add(2 * time.Hour)
+
+	t.Log("start", start, "end", end)
+	cases := []struct {
+		in logql.Params
+
+		exp logql.Params
+	}{
+		{in: newTestParams(t, `sum(rate({job="foo"}[5m] offset 2h))`, start, end), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start.Add(-2*time.Hour), end)}, // range query
+		// {in: newTestParams(t, `sum(rate({job="foo"}[5m] offset 2h))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start.Add(-2*time.Hour), start.Add(-2*time.Hour))}, // instant query
+	}
+
+	for _, tc := range cases {
+		qry := logql.DownstreamQuery{
+			Params: tc.in,
+		}
+		q, start, end := withoutOffset(qry)
+
+		assert.Equal(t, tc.exp.QueryString(), q)
+		assert.Equal(t, tc.exp.Start(), start)
+		assert.Equal(t, tc.exp.End(), end)
+	}
+}
+
+func newTestParams(t *testing.T, q string, start, end time.Time) logql.Params {
+	t.Helper()
+
+	params, err := logql.NewLiteralParams(q, start, end, 10*time.Second, 10*time.Second, logproto.BACKWARD, 0, nil)
+	require.NoError(t, err)
+
+	return params
+}
+
 // TestDownstreamAccumulatorMultiMerge simulates merging multiple
 // sub-results from different queries.
 func TestDownstreamAccumulatorMultiMerge(t *testing.T) {

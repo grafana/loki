@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -137,7 +138,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 					// Assert subquery request
 					for _, reqResp := range tc.subQueries {
 						if req.GetQuery() == reqResp.Request.GetQuery() {
-							require.Equal(t, reqResp.Request, req)
+							assert.Equal(t, reqResp.Request, req)
 							// return the test data subquery response
 							return reqResp.Response, nil
 						}
@@ -146,7 +147,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 					return nil, fmt.Errorf("subquery request '" + req.GetQuery() + "' not found")
 				})).Do(ctx, tc.in)
 			require.NoError(t, err)
-			require.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
+			assert.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
 		})
 	}
 }
