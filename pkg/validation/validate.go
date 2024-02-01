@@ -102,6 +102,7 @@ var MutatedBytes = promauto.NewCounterVec(
 	[]string{ReasonLabel, "truncated"},
 )
 
+// TODO: add custom tracker
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
 var DiscardedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{

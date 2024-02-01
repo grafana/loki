@@ -36,6 +36,8 @@ var (
 		Name:      "distributor_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
 	}, []string{"tenant", "retention_hours"})
+
+	// TODO: track discarded bytes as well
 	bytesIngestedCustom = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_bytes_received_custom_tracker_total",
