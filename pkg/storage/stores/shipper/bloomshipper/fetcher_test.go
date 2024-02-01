@@ -28,8 +28,7 @@ func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, keysp
 				Ref: Ref{
 					TenantID:       "fake",
 					TableName:      fmt.Sprintf("%s%d", schemaCfg.Configs[0].IndexTables.Prefix, 0),
-					MinFingerprint: uint64(keyspace.Min),
-					MaxFingerprint: uint64(keyspace.Max),
+					Bounds:         keyspace,
 					StartTimestamp: ts,
 					EndTimestamp:   ts,
 				},

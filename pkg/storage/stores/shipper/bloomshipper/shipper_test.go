@@ -195,8 +195,7 @@ func createBlockRef(
 		Ref: Ref{
 			TenantID:       "fake",
 			TableName:      fmt.Sprintf("%d", day),
-			MinFingerprint: minFingerprint,
-			MaxFingerprint: maxFingerprint,
+			Bounds:         v1.NewBounds(model.Fingerprint(minFingerprint), model.Fingerprint(maxFingerprint)),
 			StartTimestamp: startTimestamp,
 			EndTimestamp:   endTimestamp,
 			Checksum:       0,

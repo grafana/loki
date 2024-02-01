@@ -28,25 +28,16 @@ const (
 )
 
 type Ref struct {
-	TenantID                       string
-	TableName                      string
-	MinFingerprint, MaxFingerprint uint64
-	StartTimestamp, EndTimestamp   model.Time
-	Checksum                       uint32
+	TenantID                     string
+	TableName                    string
+	Bounds                       v1.FingerprintBounds
+	StartTimestamp, EndTimestamp model.Time
+	Checksum                     uint32
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
 func (r Ref) Cmp(fp uint64) v1.BoundsCheck {
-	if fp < r.MinFingerprint {
-		return v1.Before
-	} else if fp > r.MaxFingerprint {
-		return v1.After
-	}
-	return v1.Overlap
-}
-
-func (r Ref) Bounds() v1.FingerprintBounds {
-	return v1.NewBounds(model.Fingerprint(r.MinFingerprint), model.Fingerprint(r.MaxFingerprint))
+	return r.Bounds.Cmp(model.Fingerprint(fp))
 }
 
 func (r Ref) Interval() Interval {
@@ -135,13 +126,13 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 }
 
 func externalBlockKey(ref BlockRef) string {
-	blockParentFolder := fmt.Sprintf("%x-%x", ref.MinFingerprint, ref.MaxFingerprint)
+	blockParentFolder := ref.Bounds.String()
 	filename := fmt.Sprintf("%d-%d-%x", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
 	return path.Join(rootFolder, ref.TableName, ref.TenantID, bloomsFolder, blockParentFolder, filename)
 }
 
 func externalMetaKey(ref MetaRef) string {
-	filename := fmt.Sprintf("%x-%x-%d-%d-%x", ref.MinFingerprint, ref.MaxFingerprint, ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
+	filename := fmt.Sprintf("%s-%d-%d-%x", ref.Bounds.String(), ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
 	return path.Join(rootFolder, ref.TableName, ref.TenantID, metasFolder, filename)
 }
 
@@ -251,15 +242,11 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 	if len(parts) != 5 {
 		return MetaRef{}, fmt.Errorf("%s filename parts count must be 5 but was %d: [%s]", objectKey, len(parts), strings.Join(parts, ", "))
 	}
+	bounds, err := v1.ParseBoundsFromParts(parts[0], parts[1])
+	if err != nil {
+		return MetaRef{}, fmt.Errorf("error parsing bounds %s : %w", parts[0], err)
+	}
 
-	minFingerprint, err := strconv.ParseUint(parts[0], 16, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing minFingerprint %s : %w", parts[0], err)
-	}
-	maxFingerprint, err := strconv.ParseUint(parts[1], 16, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing maxFingerprint %s : %w", parts[1], err)
-	}
 	startTimestamp, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
 		return MetaRef{}, fmt.Errorf("error parsing startTimestamp %s : %w", parts[2], err)
@@ -276,8 +263,7 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 		Ref: Ref{
 			TenantID:       tenantID,
 			TableName:      tableName,
-			MinFingerprint: minFingerprint,
-			MaxFingerprint: maxFingerprint,
+			Bounds:         bounds,
 			StartTimestamp: model.Time(startTimestamp),
 			EndTimestamp:   model.Time(endTimestamp),
 			Checksum:       uint32(checksum),
