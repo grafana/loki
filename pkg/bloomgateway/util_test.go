@@ -344,7 +344,6 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		}
 		block := bloomshipper.BlockRef{
 			Ref:       ref,
-			IndexPath: "index.tsdb.gz",
 			BlockPath: fmt.Sprintf("block-%d", i),
 		}
 		meta := bloomshipper.Meta{
@@ -459,7 +458,6 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipp
 				EndTimestamp:   0,
 				Checksum:       0,
 			},
-			IndexPath: fmt.Sprintf("index-%d", i),
 			BlockPath: fmt.Sprintf("block-%d", i),
 		})
 	}

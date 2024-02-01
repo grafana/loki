@@ -265,7 +265,6 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 				Checksum:       1,
 			},
-			IndexPath: uuid.New().String(),
 		},
 		Data: awsio.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
 	}
@@ -281,7 +280,6 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 				Checksum:       2,
 			},
-			IndexPath: uuid.New().String(),
 		},
 		Data: awsio.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
 	}
@@ -305,7 +303,6 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, blockForFirstFolder.StartTimestamp, firstResultBlock.StartTimestamp)
 	require.Equal(t, blockForFirstFolder.EndTimestamp, firstResultBlock.EndTimestamp)
 	require.Equal(t, blockForFirstFolder.Checksum, firstResultBlock.Checksum)
-	require.Equal(t, blockForFirstFolder.IndexPath, firstResultBlock.IndexPath)
 	folder1 := bloomClient.storageConfig.NamedStores.Filesystem["folder-1"].Directory
 	savedFilePath := filepath.Join(folder1, path)
 	require.FileExists(t, savedFilePath)
@@ -329,7 +326,6 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, blockForSecondFolder.StartTimestamp, secondResultBlock.StartTimestamp)
 	require.Equal(t, blockForSecondFolder.EndTimestamp, secondResultBlock.EndTimestamp)
 	require.Equal(t, blockForSecondFolder.Checksum, secondResultBlock.Checksum)
-	require.Equal(t, blockForSecondFolder.IndexPath, secondResultBlock.IndexPath)
 	folder2 := bloomClient.storageConfig.NamedStores.Filesystem["folder-2"].Directory
 
 	savedFilePath = filepath.Join(folder2, path)
@@ -359,7 +355,6 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 				Checksum:       2,
 			},
-			IndexPath: uuid.New().String(),
 		},
 		{
 			Ref: Ref{
@@ -370,7 +365,6 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 				Checksum:       1,
 			},
-			IndexPath: uuid.New().String(),
 		},
 	}
 	err := bloomClient.DeleteBlocks(context.Background(), blocksToDelete)
@@ -556,7 +550,6 @@ func createMetaEntity(
 					StartTimestamp: startTimestamp,
 					EndTimestamp:   endTimestamp,
 				},
-				IndexPath: uuid.New().String(),
 				BlockPath: uuid.New().String(),
 			},
 		},
@@ -569,7 +562,6 @@ func createMetaEntity(
 					StartTimestamp: startTimestamp,
 					EndTimestamp:   endTimestamp,
 				},
-				IndexPath: uuid.New().String(),
 				BlockPath: uuid.New().String(),
 			},
 		},

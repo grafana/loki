@@ -69,7 +69,6 @@ func (r Ref) Interval() Interval {
 
 type BlockRef struct {
 	Ref
-	IndexPath string
 	BlockPath string
 }
 
