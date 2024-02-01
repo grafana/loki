@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/queue"
 )
 
 const (
@@ -116,7 +115,6 @@ func (m ProbabilisticQuantileMatrix) Release() {
 	for _, vec := range m {
 		vec.Release()
 	}
-	quantileVectorPool.Put(m)
 }
 
 func (m ProbabilisticQuantileMatrix) ToProto() *logproto.QuantileSketchMatrix {
@@ -242,10 +240,14 @@ type quantileSketchBatchRangeVectorIterator struct {
 }
 
 func (r *quantileSketchBatchRangeVectorIterator) At() (int64, StepResult) {
-	if r.at == nil {
-		r.at = make([]ProbabilisticQuantileSample, 0, len(r.window))
-	}
+	/*
+		if r.at == nil {
+			r.at = make([]ProbabilisticQuantileSample, 0, len(r.window))
+		}
+		clear(r.at)
+	*/
 	r.at = r.at[:0]
+	r.at = make([]ProbabilisticQuantileSample, 0, len(r.window))
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
@@ -268,9 +270,6 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
-// quantileVectorPool slice of ProbabilisticQuantileVector [64, 128, 256, ..., 65536]
-var quantileVectorPool = queue.NewSlicePool[ProbabilisticQuantileVector](1<<6, 1<<16, 2)
-
 // JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
 func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
@@ -283,9 +282,7 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		stepCount = 1
 	}
 
-	// The result is released to the pool when the matrix is serialized.
-	//result := quantileVectorPool.Get(stepCount)
-	result := ProbabilisticQuantileMatrix{}
+	result := make(ProbabilisticQuantileMatrix, 0, stepCount)
 
 	for next {
 		result = append(result, vec)

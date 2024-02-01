@@ -136,9 +136,9 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 			iter: iter,
 		}
 		_, _, r := ev.Next()
-		_, err := JoinQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
+		m, err := JoinQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
 		require.NoError(b, err)
-		//r.(ProbabilisticQuantileMatrix).Release()
+		m.(ProbabilisticQuantileMatrix).Release()
 	}
 }
 
