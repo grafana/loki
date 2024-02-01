@@ -113,7 +113,7 @@ func Test_BloomClient_PutMeta(t *testing.T) {
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-1",
-			expectedFilePath: "bloom/first-period-19621/tenantA/metas/ff-fff-1695272400000-1695276000000-aaa",
+			expectedFilePath: fmt.Sprintf("bloom/first-period-19621/tenantA/metas/%s-1695272400000-1695276000000-aaa", v1.NewBounds(0xff, 0xfff)),
 		},
 		"expected meta to be uploaded to the second folder": {
 			source: createMetaEntity("tenantA",
@@ -126,7 +126,7 @@ func Test_BloomClient_PutMeta(t *testing.T) {
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-2",
-			expectedFilePath: "bloom/second-period-19625/tenantA/metas/c8-12c-1695600000000-1695603600000-bbb",
+			expectedFilePath: fmt.Sprintf("bloom/second-period-19625/tenantA/metas/%s-1695600000000-1695603600000-bbb", v1.NewBounds(200, 300)),
 		},
 	}
 	for name, data := range tests {
@@ -169,7 +169,7 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-1",
-			expectedFilePath: "bloom/first-period-19621/tenantA/metas/ff-fff-1695272400000-1695276000000-aaa",
+			expectedFilePath: fmt.Sprintf("bloom/first-period-19621/tenantA/metas/%s-1695272400000-1695276000000-aaa", v1.NewBounds(0xff, 0xfff)),
 		},
 		"expected meta to be delete from the second folder": {
 			source: createMetaEntity("tenantA",
@@ -182,7 +182,7 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-2",
-			expectedFilePath: "bloom/second-period-19625/tenantA/metas/c8-12c-1695600000000-1695603600000-bbb",
+			expectedFilePath: fmt.Sprintf("bloom/second-period-19625/tenantA/metas/%s-1695600000000-1695603600000-bbb", v1.NewBounds(200, 300)),
 		},
 	}
 	for name, data := range tests {
@@ -207,10 +207,10 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 func Test_BloomClient_GetBlocks(t *testing.T) {
 	bloomClient := createStore(t)
 	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
-	firstBlockPath := "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1"
+	firstBlockPath := fmt.Sprintf("bloom/first-period-19621/tenantA/blooms/%s/1695272400000-1695276000000-1", v1.NewBounds(0xeeee, 0xffff))
 	firstBlockFullPath := filepath.Join(fsNamedStores["folder-1"].Directory, firstBlockPath)
 	firstBlockData := createBlockFile(t, firstBlockFullPath)
-	secondBlockPath := "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600000-1695535200000-2"
+	secondBlockPath := fmt.Sprintf("bloom/second-period-19624/tenantA/blooms/%s/1695531600000-1695535200000-2", v1.NewBounds(0xaaaa, 0xbbbb))
 	secondBlockFullPath := filepath.Join(fsNamedStores["folder-2"].Directory, secondBlockPath)
 	secondBlockData := createBlockFile(t, secondBlockFullPath)
 	require.FileExists(t, firstBlockFullPath)
@@ -291,7 +291,13 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Len(t, results, 2)
 	firstResultBlock := results[0]
 	path := firstResultBlock.BlockPath
-	require.Equal(t, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1", path)
+	require.Equal(t,
+		fmt.Sprintf(
+			"bloom/first-period-19621/tenantA/blooms/%s/1695272400000-1695276000000-1",
+			v1.NewBounds(0xeeee, 0xffff),
+		),
+		path,
+	)
 	require.Equal(t, blockForFirstFolder.TenantID, firstResultBlock.TenantID)
 	require.Equal(t, blockForFirstFolder.TableName, firstResultBlock.TableName)
 	require.Equal(t, blockForFirstFolder.Bounds.Min, firstResultBlock.Bounds.Min)
@@ -309,7 +315,13 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 
 	secondResultBlock := results[1]
 	path = secondResultBlock.BlockPath
-	require.Equal(t, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600000-1695535200000-2", path)
+	require.Equal(t,
+		fmt.Sprintf(
+			"bloom/second-period-19624/tenantA/blooms/%s/1695531600000-1695535200000-2",
+			v1.NewBounds(0xaaaa, 0xbbbb),
+		),
+		path,
+	)
 	require.Equal(t, blockForSecondFolder.TenantID, secondResultBlock.TenantID)
 	require.Equal(t, blockForSecondFolder.TableName, secondResultBlock.TableName)
 	require.Equal(t, blockForSecondFolder.Bounds.Min, secondResultBlock.Bounds.Min)
@@ -330,9 +342,9 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 func Test_BloomClient_DeleteBlocks(t *testing.T) {
 	bloomClient := createStore(t)
 	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
-	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1")
+	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom/first-period-19621/tenantA/blooms/000000000000eeee-000000000000ffff/1695272400000-1695276000000-1")
 	createBlockFile(t, block1Path)
-	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600000-1695535200000-2")
+	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "bloom/second-period-19624/tenantA/blooms/000000000000aaaa-000000000000bbbb/1695531600000-1695535200000-2")
 	createBlockFile(t, block2Path)
 	require.FileExists(t, block1Path)
 	require.FileExists(t, block2Path)
