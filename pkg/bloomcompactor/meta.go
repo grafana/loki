@@ -62,7 +62,7 @@ type Meta struct {
 	// is greater than or equal to the range of the actual data in the underlying blocks.
 	OwnershipRange v1.FingerprintBounds
 
-	// Old blocks which can be deleted in the future. These should be from pervious compaction rounds.
+	// Old blocks which can be deleted in the future. These should be from previous compaction rounds.
 	Tombstones []BlockRef
 
 	// The specific TSDB files used to generate the block.
@@ -119,17 +119,18 @@ func (m Meta) Checksum() (uint32, error) {
 }
 
 type TSDBStore interface {
-	ResolveTSDBs() ([]*tsdb.TSDBFile, error)
+	ResolveTSDBs() ([]*tsdb.SingleTenantTSDBIdentifier, error)
+	LoadTSDB(id tsdb.Identifier, bounds v1.FingerprintBounds) (v1.CloseableIterator[*v1.Series], error)
 }
 
 type MetaStore interface {
+	ResolveMetas(bounds v1.FingerprintBounds) ([]MetaRef, error)
 	GetMetas([]MetaRef) ([]Meta, error)
 	PutMeta(Meta) error
-	ResolveMetas(bounds v1.FingerprintBounds) ([]MetaRef, error)
 }
 
 type BlockStore interface {
 	// TODO(owen-d): flesh out|integrate against bloomshipper.Client
-	GetBlocks([]BlockRef) ([]interface{}, error)
+	GetBlocks([]BlockRef) ([]*v1.Block, error)
 	PutBlock(interface{}) error
 }

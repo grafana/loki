@@ -14,11 +14,14 @@ import (
 	"time"
 
 	awsio "github.com/aws/smithy-go/io"
+	"github.com/go-kit/log"
 	"github.com/google/uuid"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
@@ -46,11 +49,11 @@ func parseDayTime(s string) config.DayTime {
 	}
 }
 
-func Test_BloomClient_GetMetas(t *testing.T) {
-	shipper := createClient(t)
+func Test_BloomClient_FetchMetas(t *testing.T) {
+	store := createStore(t)
 
 	var expected []Meta
-	folder1 := shipper.storageConfig.NamedStores.Filesystem["folder-1"].Directory
+	folder1 := store.storageConfig.NamedStores.Filesystem["folder-1"].Directory
 	// must not be present in results because it is outside of time range
 	createMetaInStorage(t, folder1, "first-period-19621", "tenantA", 0, 100, fixedDay.Add(-7*day))
 	// must be present in the results
@@ -60,7 +63,7 @@ func Test_BloomClient_GetMetas(t *testing.T) {
 	// must be present in the results
 	expected = append(expected, createMetaInStorage(t, folder1, "first-period-19621", "tenantA", 101, 200, fixedDay.Add(-6*day)))
 
-	folder2 := shipper.storageConfig.NamedStores.Filesystem["folder-2"].Directory
+	folder2 := store.storageConfig.NamedStores.Filesystem["folder-2"].Directory
 	// must not be present in results because it's out of the time range
 	createMetaInStorage(t, folder2, "second-period-19626", "tenantA", 0, 100, fixedDay.Add(-1*day))
 	// must be present in the results
@@ -68,13 +71,29 @@ func Test_BloomClient_GetMetas(t *testing.T) {
 	// must not be present in results because it belongs to another tenant
 	createMetaInStorage(t, folder2, "second-period-19624", "tenantB", 0, 100, fixedDay.Add(-3*day))
 
-	actual, err := shipper.GetMetas(context.Background(), MetaSearchParams{
+	searchParams := MetaSearchParams{
 		TenantID: "tenantA",
-		Keyspace: Keyspace{Min: 50, Max: 150},
-		Interval: Interval{Start: fixedDay.Add(-6 * day), End: fixedDay.Add(-1*day - 1*time.Hour)},
-	})
+
+		Keyspace: v1.NewBounds(50, 150),
+		Interval: NewInterval(fixedDay.Add(-6*day), fixedDay.Add(-1*day-1*time.Hour)),
+	}
+
+	fetched, err := store.FetchMetas(context.Background(), searchParams)
 	require.NoError(t, err)
-	require.ElementsMatch(t, expected, actual)
+
+	require.Equal(t, len(expected), len(fetched))
+	require.ElementsMatch(t, expected, fetched)
+
+	resolved, _, err := store.ResolveMetas(context.Background(), searchParams)
+	require.NoError(t, err)
+
+	var resolvedRefs []MetaRef
+	for _, refs := range resolved {
+		resolvedRefs = append(resolvedRefs, refs...)
+	}
+	for i := range resolvedRefs {
+		require.Equal(t, fetched[i].MetaRef, resolvedRefs[i])
+	}
 }
 
 func Test_BloomClient_PutMeta(t *testing.T) {
@@ -112,7 +131,7 @@ func Test_BloomClient_PutMeta(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			bloomClient := createClient(t)
+			bloomClient := createStore(t)
 
 			err := bloomClient.PutMeta(context.Background(), data.source)
 			require.NoError(t, err)
@@ -168,7 +187,7 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			bloomClient := createClient(t)
+			bloomClient := createStore(t)
 			directory := bloomClient.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
 			file := filepath.Join(directory, data.expectedFilePath)
 			err := os.MkdirAll(file[:strings.LastIndex(file, delimiter)], 0755)
@@ -186,7 +205,7 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 }
 
 func Test_BloomClient_GetBlocks(t *testing.T) {
-	bloomClient := createClient(t)
+	bloomClient := createStore(t)
 	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
 	firstBlockPath := "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1"
 	firstBlockFullPath := filepath.Join(fsNamedStores["folder-1"].Directory, firstBlockPath)
@@ -236,7 +255,7 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 }
 
 func Test_BloomClient_PutBlocks(t *testing.T) {
-	bloomClient := createClient(t)
+	bloomClient := createStore(t)
 	blockForFirstFolderData := "data1"
 	blockForFirstFolder := Block{
 		BlockRef: BlockRef{
@@ -313,7 +332,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 }
 
 func Test_BloomClient_DeleteBlocks(t *testing.T) {
-	bloomClient := createClient(t)
+	bloomClient := createStore(t)
 	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
 	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1")
 	createBlockFile(t, block1Path)
@@ -361,56 +380,6 @@ func createBlockFile(t *testing.T, path string) string {
 	err = os.WriteFile(path, []byte(fileContent), 0700)
 	require.NoError(t, err)
 	return fileContent
-}
-
-func Test_TablesByPeriod(t *testing.T) {
-	configs := createPeriodConfigs()
-	firstPeriodFrom := configs[0].From
-	secondPeriodFrom := configs[1].From
-	tests := map[string]struct {
-		from, to               model.Time
-		expectedTablesByPeriod map[config.DayTime][]string
-	}{
-		"expected 1 table": {
-			from: model.TimeFromUnix(time.Date(2023, time.September, 20, 0, 0, 0, 0, time.UTC).Unix()),
-			to:   model.TimeFromUnix(time.Date(2023, time.September, 20, 23, 59, 59, 0, time.UTC).Unix()),
-			expectedTablesByPeriod: map[config.DayTime][]string{
-				firstPeriodFrom: {"first-period-19620"}},
-		},
-		"expected tables for both periods": {
-			from: model.TimeFromUnix(time.Date(2023, time.September, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			to:   model.TimeFromUnix(time.Date(2023, time.September, 25, 23, 59, 59, 0, time.UTC).Unix()),
-			expectedTablesByPeriod: map[config.DayTime][]string{
-				firstPeriodFrom:  {"first-period-19621", "first-period-19622", "first-period-19623"},
-				secondPeriodFrom: {"second-period-19624", "second-period-19625"},
-			},
-		},
-		"expected tables for the second period": {
-			from: model.TimeFromUnix(time.Date(2023, time.September, 24, 0, 0, 0, 0, time.UTC).Unix()),
-			to:   model.TimeFromUnix(time.Date(2023, time.September, 25, 1, 0, 0, 0, time.UTC).Unix()),
-			expectedTablesByPeriod: map[config.DayTime][]string{
-				secondPeriodFrom: {"second-period-19624", "second-period-19625"},
-			},
-		},
-		"expected only one table from the second period": {
-			from: model.TimeFromUnix(time.Date(2023, time.September, 25, 0, 0, 0, 0, time.UTC).Unix()),
-			to:   model.TimeFromUnix(time.Date(2023, time.September, 25, 1, 0, 0, 0, time.UTC).Unix()),
-			expectedTablesByPeriod: map[config.DayTime][]string{
-				secondPeriodFrom: {"second-period-19625"},
-			},
-		},
-	}
-	for name, data := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := tablesByPeriod(configs, data.from, data.to)
-			for periodFrom, expectedTables := range data.expectedTablesByPeriod {
-				actualTables, exists := result[periodFrom]
-				require.Truef(t, exists, "tables for %s period must be provided but was not in the result: %+v", periodFrom.String(), result)
-				require.ElementsMatchf(t, expectedTables, actualTables, "tables mismatch for period %s", periodFrom.String())
-			}
-			require.Len(t, result, len(data.expectedTablesByPeriod))
-		})
-	}
 }
 
 func Test_createMetaRef(t *testing.T) {
@@ -490,7 +459,7 @@ func Test_createMetaRef(t *testing.T) {
 	}
 }
 
-func createClient(t *testing.T) *BloomClient {
+func createStore(t *testing.T) *BloomStore {
 	periodicConfigs := createPeriodConfigs()
 	namedStores := storage.NamedStores{
 		Filesystem: map[string]storage.NamedFSConfig{
@@ -503,9 +472,9 @@ func createClient(t *testing.T) *BloomClient {
 
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
-	bloomClient, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
+	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, cache.NewNoopCache(), nil, log.NewNopLogger())
 	require.NoError(t, err)
-	return bloomClient
+	return store
 }
 
 func createPeriodConfigs() []config.PeriodConfig {

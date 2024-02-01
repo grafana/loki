@@ -24,9 +24,25 @@ type dummyStore struct {
 	querieres []bloomshipper.BlockQuerierWithFingerprintRange
 }
 
-func (s *dummyStore) LoadMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
+func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([][]bloomshipper.MetaRef, []*bloomshipper.Fetcher, error) {
+	//TODO(chaudum) Filter metas based on search params
+	refs := make([]bloomshipper.MetaRef, 0, len(s.metas))
+	for _, meta := range s.metas {
+		refs = append(refs, meta.MetaRef)
+	}
+	return [][]bloomshipper.MetaRef{refs}, []*bloomshipper.Fetcher{nil}, nil
+}
+
+func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([]bloomshipper.Meta, error) {
 	//TODO(chaudum) Filter metas based on search params
 	return s.metas, nil
+}
+
+func (s *dummyStore) Fetcher(_ model.Time) *bloomshipper.Fetcher {
+	return nil
+}
+
+func (s *dummyStore) Stop() {
 }
 
 func (s *dummyStore) LoadBlocks(_ context.Context, refs []bloomshipper.BlockRef) (v1.Iterator[bloomshipper.BlockQuerierWithFingerprintRange], error) {
@@ -34,7 +50,7 @@ func (s *dummyStore) LoadBlocks(_ context.Context, refs []bloomshipper.BlockRef)
 
 	for _, ref := range refs {
 		for _, bq := range s.querieres {
-			if ref.MinFingerprint == uint64(bq.MinFp) && ref.MaxFingerprint == uint64(bq.MaxFp) {
+			if ref.Bounds().Equal(bq.FingerprintBounds) {
 				result = append(result, bq)
 			}
 		}

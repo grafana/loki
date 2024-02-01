@@ -241,3 +241,8 @@ func PointerSlice[T any](xs []T) []*T {
 	}
 	return out
 }
+
+type CloseableIterator[T any] interface {
+	Iterator[T]
+	Close() error
+}
