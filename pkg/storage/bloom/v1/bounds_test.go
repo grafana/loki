@@ -8,14 +8,14 @@ import (
 )
 
 func Test_ParseFingerprint(t *testing.T) {
-	fp, err := ParseFingerprint("7d0")
+	fp, err := model.ParseFingerprint("7d0")
 	assert.NoError(t, err)
 	assert.Equal(t, model.Fingerprint(2000), fp)
 }
 
-func Test_FingerprintBounds_Addr(t *testing.T) {
+func Test_FingerprintBounds_String(t *testing.T) {
 	bounds := NewBounds(10, 2000)
-	assert.Equal(t, "a-7d0", bounds.Addr())
+	assert.Equal(t, "000000000000000a-00000000000007d0", bounds.String())
 }
 
 func Test_ParseBoundsFromAddr(t *testing.T) {
