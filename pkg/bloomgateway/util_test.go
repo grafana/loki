@@ -71,8 +71,7 @@ func TestTruncateDay(t *testing.T) {
 func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {
 	return bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
-			MinFingerprint: minFp,
-			MaxFingerprint: maxFp,
+			Bounds: v1.NewBounds(model.Fingerprint(minFp), model.Fingerprint(maxFp)),
 		},
 	}
 }
@@ -339,8 +338,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		ref := bloomshipper.Ref{
 			TenantID:       tenant,
 			TableName:      "table_0",
-			MinFingerprint: uint64(fromFp),
-			MaxFingerprint: uint64(throughFp),
+			Bounds:         v1.NewBounds(fromFp, throughFp),
 			StartTimestamp: from,
 			EndTimestamp:   through,
 		}
@@ -390,9 +388,8 @@ func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _ blooms
 	for i := range s.bqs {
 		blocks = append(blocks, bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
-				MinFingerprint: uint64(s.bqs[i].Min),
-				MaxFingerprint: uint64(s.bqs[i].Max),
-				TenantID:       tenant,
+				Bounds:   v1.NewBounds(s.bqs[i].Min, s.bqs[i].Max),
+				TenantID: tenant,
 			},
 		})
 	}
@@ -457,8 +454,7 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipp
 			Ref: bloomshipper.Ref{
 				TenantID:       tenant,
 				TableName:      "",
-				MinFingerprint: uint64(data[i].Min),
-				MaxFingerprint: uint64(data[i].Max),
+				Bounds:         v1.NewBounds(data[i].Min, data[i].Max),
 				StartTimestamp: 0,
 				EndTimestamp:   0,
 				Checksum:       0,
