@@ -160,11 +160,7 @@ func (w *worker) running(_ context.Context) error {
 			}
 
 			// interval is [Start, End)
-			interval := bloomshipper.Interval{
-				Start: day,          // inclusive
-				End:   day.Add(Day), // non-inclusive
-			}
-
+			interval := bloomshipper.NewInterval(day, day.Add(Day))
 			logger := log.With(w.logger, "day", day.Time(), "tenant", tasks[0].Tenant)
 			level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 

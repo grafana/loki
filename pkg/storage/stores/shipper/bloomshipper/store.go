@@ -41,7 +41,7 @@ type bloomStoreEntry struct {
 // ResolveMetas implements store.
 func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error) {
 	var refs []MetaRef
-	tables := tablesForRange(b.cfg, params.Interval.Start, params.Interval.End)
+	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
 		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
 		list, _, err := b.objectClient.List(ctx, prefix, "")
@@ -393,7 +393,7 @@ func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(in
 		}
 
 		end := min(through, nextSchemaStarts-1)
-		err := f(ctx, Interval{start, end}, b.stores[i])
+		err := f(ctx, NewInterval(start, end), b.stores[i])
 		if err != nil {
 			return err
 		}
