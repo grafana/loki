@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -15,12 +14,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
 	"k8s.io/utils/keymutex"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/pkg/util"
@@ -170,7 +166,7 @@ type cacheDownloadingStrategy struct {
 	config           config.Config
 	workingDirectory string
 	blockClient      BlockClient
-	blocksCache      *cache.EmbeddedCache[string, *cachedBlock]
+	blocksCache      *cache.EmbeddedCache[string, CachedBlock]
 	keyMutex         keymutex.KeyMutex
 }
 
@@ -193,7 +189,7 @@ func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, log
 		return blockWithQuerier{}, err
 	}
 	blockFromCache = newCachedBlock(directory, s.config.BlocksCache.RemoveDirectoryGracefulPeriod, logger)
-	err = s.blocksCache.Store(task.ctx, []string{key}, []*cachedBlock{blockFromCache})
+	err = s.blocksCache.Store(task.ctx, []string{key}, []CachedBlock{blockFromCache})
 	if err != nil {
 		level.Error(logger).Log("msg", "error storing the block in the cache", "block", key, "err", err)
 		return blockWithQuerier{}, fmt.Errorf("error storing the block %s in the cache : %w", key, err)
@@ -299,109 +295,4 @@ func (d *blockDownloader) stop() {
 	_ = services.StopManagerAndAwaitStopped(d.ctx, d.manager)
 	d.wg.Wait()
 	d.strategy.close()
-}
-
-type closableBlockQuerier struct {
-	*v1.BlockQuerier
-	Close func() error
-}
-
-func newBlockQuerierFromCache(cached *cachedBlock) *closableBlockQuerier {
-	cached.activeQueriers.Inc()
-	return &closableBlockQuerier{
-		BlockQuerier: createBlockQuerier(cached.blockDirectory),
-		Close: func() error {
-			cached.activeQueriers.Dec()
-			return nil
-		},
-	}
-}
-
-func newBlockQuerierFromFS(blockDirectory string) *closableBlockQuerier {
-	return &closableBlockQuerier{
-		BlockQuerier: createBlockQuerier(blockDirectory),
-		Close: func() error {
-			return deleteFolder(blockDirectory)
-		},
-	}
-}
-
-func createBlockQuerier(directory string) *v1.BlockQuerier {
-	reader := v1.NewDirectoryBlockReader(directory)
-	block := v1.NewBlock(reader)
-	return v1.NewBlockQuerier(block)
-}
-
-func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, *cachedBlock] {
-	return cache.NewTypedEmbeddedCache[string, *cachedBlock](
-		"bloom-blocks-cache",
-		config.BlocksCache.EmbeddedCacheConfig,
-		reg,
-		logger,
-		stats.BloomBlocksCache,
-		calculateBlockDirectorySize,
-		func(key string, value *cachedBlock) {
-			value.removeDirectoryAsync()
-		})
-}
-
-func calculateBlockDirectorySize(entry *cache.Entry[string, *cachedBlock]) uint64 {
-	value := entry.Value
-	bloomFileStats, _ := os.Lstat(path.Join(value.blockDirectory, v1.BloomFileName))
-	seriesFileStats, _ := os.Lstat(path.Join(value.blockDirectory, v1.SeriesFileName))
-	return uint64(bloomFileStats.Size() + seriesFileStats.Size())
-}
-
-func newCachedBlock(blockDirectory string, removeDirectoryTimeout time.Duration, logger log.Logger) *cachedBlock {
-	return &cachedBlock{
-		blockDirectory:              blockDirectory,
-		removeDirectoryTimeout:      removeDirectoryTimeout,
-		logger:                      logger,
-		activeQueriersCheckInterval: defaultActiveQueriersCheckInterval,
-	}
-}
-
-type cachedBlock struct {
-	blockDirectory              string
-	removeDirectoryTimeout      time.Duration
-	activeQueriers              atomic.Int32
-	logger                      log.Logger
-	activeQueriersCheckInterval time.Duration
-}
-
-const defaultActiveQueriersCheckInterval = 100 * time.Millisecond
-
-func (b *cachedBlock) removeDirectoryAsync() {
-	go func() {
-		timeout := time.After(b.removeDirectoryTimeout)
-		ticker := time.NewTicker(b.activeQueriersCheckInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if b.activeQueriers.Load() == 0 {
-					err := deleteFolder(b.blockDirectory)
-					if err == nil {
-						return
-					}
-					level.Error(b.logger).Log("msg", "error deleting block directory", "err", err)
-				}
-			case <-timeout:
-				level.Warn(b.logger).Log("msg", "force deleting block folder after timeout", "timeout", b.removeDirectoryTimeout)
-				err := deleteFolder(b.blockDirectory)
-				if err == nil {
-					return
-				}
-				level.Error(b.logger).Log("msg", "error force deleting block directory", "err", err)
-			}
-		}
-	}()
-}
-
-func deleteFolder(folderPath string) error {
-	err := os.RemoveAll(folderPath)
-	if err != nil {
-		return fmt.Errorf("error deleting bloom block directory: %w", err)
-	}
-	return nil
 }
