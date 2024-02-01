@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	stdErrors "errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -395,6 +395,39 @@ func maxTime(t1, t2 time.Time) time.Time {
 	return t2
 }
 
+func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaConfig, error) {
+	var searchFor string
+	searchFor = fmt.Sprintf("%s.yaml", schemaConfigFilename) // schemaconfig.yaml for backwards compatibility
+	loadedSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
+	if err == nil {
+		return loadedSchema, nil
+	}
+	if err != nil && err != errNotExists {
+		return nil, err
+	}
+
+	// Get the latest
+	iteration := 0
+	for {
+		if iteration == 0 {
+			searchFor = fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename) // schemaconfig-tenant.yaml
+		} else {
+			searchFor = fmt.Sprintf("%s-%s-%d.yaml", orgID, schemaConfigFilename, iteration) // tenant-schemaconfig-1.yaml
+		}
+		tempSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
+		if err == errNotExists {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		loadedSchema = tempSchema
+		iteration++
+	}
+	return loadedSchema, nil
+}
+
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
 func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string, useRemoteSchema bool) error {
 	var conf loki.Config
@@ -417,15 +450,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			return err
 		}
 
-		objects := []string{
-			fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename), // schemaconfig-tenant.yaml
-			fmt.Sprintf("%s.yaml", schemaConfigFilename),           // schemaconfig.yaml for backwards compatibility
-		}
-		loadedSchema, err := LoadSchemaUsingObjectClient(client, objects...)
+		loadedSchema, err := getLatestConfig(client, orgID)
 		if err != nil {
 			return err
 		}
-
 		conf.SchemaConfig = *loadedSchema
 	}
 
@@ -521,41 +549,40 @@ func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (
 	return oc, nil
 }
 
+var errNotExists = stdErrors.New("doesn't exist")
+
 type schemaConfigSection struct {
 	config.SchemaConfig `yaml:"schema_config"`
 }
 
-// LoadSchemaUsingObjectClient returns the loaded schema from the first found object
-func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*config.SchemaConfig, error) {
-	errs := multierror.New()
-	for _, name := range names {
-		schema, err := func(name string) (*config.SchemaConfig, error) {
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Minute))
-			defer cancel()
-			rdr, _, err := oc.GetObject(ctx, name)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to load schema object '%s'", name)
-			}
-			defer rdr.Close()
+// LoadSchemaUsingObjectClient returns the loaded schema from the object with the given name
+func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.SchemaConfig, error) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Minute))
+	defer cancel()
 
-			decoder := yaml.NewDecoder(rdr)
-			decoder.SetStrict(true)
-			section := schemaConfigSection{}
-			err = decoder.Decode(&section)
-			if err != nil {
-				return nil, err
-			}
-
-			return &section.SchemaConfig, nil
-		}(name)
-
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		return schema, nil
+	ok, err := oc.ObjectExists(ctx, name)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errs.Err()
+	if !ok {
+		return nil, errNotExists
+	}
+
+	rdr, _, err := oc.GetObject(ctx, name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load schema object '%s'", name)
+	}
+	defer rdr.Close()
+
+	decoder := yaml.NewDecoder(rdr)
+	decoder.SetStrict(true)
+	section := schemaConfigSection{}
+	err = decoder.Decode(&section)
+	if err != nil {
+		return nil, err
+	}
+
+	return &section.SchemaConfig, nil
 }
 
 // SetInstant makes the Query an instant type

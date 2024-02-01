@@ -537,12 +537,10 @@ func TestLoadFromURL(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)
+}
 
-	// Load multiple schemaconfig files
-	schemaConfig, err = LoadSchemaUsingObjectClient(client, "foo.yaml", filename, "bar.yaml")
-
-	require.NoError(t, err)
-	require.NotNil(t, schemaConfig)
+func TestMultipleConfigs(t *testing.T) {
+	// TODO: implement this
 }
 
 func TestDurationCeilDiv(t *testing.T) {
