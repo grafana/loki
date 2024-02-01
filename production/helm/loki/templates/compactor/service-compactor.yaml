@@ -18,9 +18,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - name: http
+    - name: http-metrics
       port: 3100
-      targetPort: http
+      targetPort: http-metrics
       protocol: TCP
     - name: grpc
       port: 9095

@@ -19,7 +19,7 @@ spec:
   clusterIP: None
   publishNotReadyAddresses: true
   ports:
-    - name: http
+    - name: http-metrics
       port: 3100
       targetPort: http
       protocol: TCP
