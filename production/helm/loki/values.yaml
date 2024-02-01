@@ -262,10 +262,7 @@ loki:
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
   # -- Provides a reloadable runtime configuration file for some specific configuration
-  runtimeConfig:
-    configs:
-      loki:
-        log_push_request: true
+  runtimeConfig: {}
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
     path_prefix: /var/loki
@@ -657,7 +654,7 @@ monitoring:
     # -- Tenant to use for self monitoring
     tenant:
       # -- Name of the tenant
-      name: "loki"
+      name: "self-monitoring"
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
