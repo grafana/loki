@@ -200,7 +200,8 @@ func TestParseRequest(t *testing.T) {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
 			}
 
-			data, err := ParseRequest(util_log.Logger, "fake", request, nil, nil, ParseLokiRequest)
+			limits := &mockLimits{}
+			data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest)
 
 			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
 			previousStructuredMetadataBytesReceived += structuredMetadataBytesReceived
@@ -230,4 +231,16 @@ func TestParseRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mockLimits struct{}
+
+// CustomTrackersConfig implements Limits.
+func (*mockLimits) CustomTrackersConfig(userID string) CustomTrackersConfig {
+	return CustomTrackersConfig{}
+}
+
+// OTLPConfig implements Limits.
+func (*mockLimits) OTLPConfig(userID string) OTLPConfig {
+	return DefaultOTLPConfig
 }
