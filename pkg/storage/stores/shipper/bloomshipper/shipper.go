@@ -9,28 +9,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
-
-type Interval struct {
-	Start, End model.Time
-}
-
-func (i Interval) String() string {
-	return fmt.Sprintf("[%s, %s)", i.Start.Time(), i.End.Time())
-}
-
-func (i Interval) Cmp(other model.Time) v1.BoundsCheck {
-	if other.Before(i.Start) {
-		return v1.Before
-	} else if other.After(i.End) || other.Equal(i.End) {
-		return v1.After
-	}
-	return v1.Overlap
-}
 
 type BlockQuerierWithFingerprintRange struct {
 	*v1.BlockQuerier
@@ -196,18 +178,16 @@ func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintB
 // isOutsideRange tests if a given BlockRef b is outside of search boundaries
 // defined by min/max timestamp and min/max fingerprint.
 // Fingerprint ranges must be sorted in ascending order.
-func isOutsideRange(b BlockRef, interval Interval, keyspaces []v1.FingerprintBounds) bool {
+func isOutsideRange(b BlockRef, interval Interval, bounds []v1.FingerprintBounds) bool {
 	// check time interval
-	if interval.Cmp(b.EndTimestamp) == v1.Before || interval.Cmp(b.StartTimestamp) == v1.After {
+	if !interval.Overlaps(b.Interval()) {
 		return true
 	}
 
 	// check fingerprint ranges
-	for _, keyspace := range keyspaces {
+	for _, keyspace := range bounds {
 		if keyspace.Overlaps(b.Bounds) {
-			return false
 		}
-
 	}
 
 	return true
