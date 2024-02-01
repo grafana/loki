@@ -49,11 +49,11 @@ func (i Interval) Cmp(ts model.Time) v1.BoundsCheck {
 }
 
 // Overlaps returns whether the interval overlaps (partially) with the target interval
-func (b Interval) Overlaps(target Interval) bool {
-	return b.Cmp(target.Start) != v1.After && b.Cmp(target.End) != v1.Before
+func (i Interval) Overlaps(target Interval) bool {
+	return i.Cmp(target.Start) != v1.After && i.Cmp(target.End) != v1.Before
 }
 
 // Within returns whether the interval is fully within the target interval
-func (b Interval) Within(target Interval) bool {
-	return b.Start >= target.Start && b.End <= target.End
+func (i Interval) Within(target Interval) bool {
+	return i.Start >= target.Start && i.End <= target.End
 }
