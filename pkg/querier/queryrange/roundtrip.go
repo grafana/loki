@@ -168,6 +168,9 @@ func NewMiddleware(
 
 	if cfg.CacheInstantMetricResults {
 		instantMetricCache, err = newResultsCacheFromConfig(cfg.InstantMetricCacheConfig.ResultsCacheConfig, registerer, log, stats.InstantMetricResultsCache)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if cfg.CacheSeriesResults {
