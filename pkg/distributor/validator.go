@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -46,6 +47,8 @@ type validationContext struct {
 	maxStructuredMetadataCount int
 
 	userID string
+
+	customTrackerConfig push.CustomTrackersConfig
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
@@ -63,11 +66,12 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
+		customTrackerConfig:          v.CustomTrackersConfig(userID),
 	}
 }
 
 // ValidateEntry returns an error if the entry is invalid and report metrics for invalid entries accordingly.
-func (v Validator) ValidateEntry(ctx validationContext, labels string, entry logproto.Entry) error {
+func (v Validator) ValidateEntry(ctx validationContext, labels labels.Labels, entry logproto.Entry) error {
 	ts := entry.Timestamp.UnixNano()
 	validation.LineLengthHist.Observe(float64(len(entry.Line)))
 
@@ -77,6 +81,9 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
+		for _, tracker := range ctx.customTrackerConfig.MatchTrackers(labels) {
+			validation.DiscardedBytesCustom.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID, tracker).Add(float64(len(entry.Line)))
+		}
 		return fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
@@ -84,6 +91,9 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, ctx.userID).Add(float64(len(entry.Line)))
+		for _, tracker := range ctx.customTrackerConfig.MatchTrackers(labels) {
+			validation.DiscardedBytesCustom.WithLabelValues(validation.TooFarInFuture, ctx.userID, tracker).Add(float64(len(entry.Line)))
+		}
 		return fmt.Errorf(validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
 	}
 
@@ -94,6 +104,9 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		// for parity.
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, ctx.userID).Add(float64(len(entry.Line)))
+		for _, tracker := range ctx.customTrackerConfig.MatchTrackers(labels) {
+			validation.DiscardedBytesCustom.WithLabelValues(validation.LineTooLong, ctx.userID, tracker).Add(float64(len(entry.Line)))
+		}
 		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
 	}
 
@@ -101,6 +114,9 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		if !ctx.allowStructuredMetadata {
 			validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Inc()
 			validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Add(float64(len(entry.Line)))
+			for _, tracker := range ctx.customTrackerConfig.MatchTrackers(labels) {
+				validation.DiscardedBytesCustom.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID, tracker).Add(float64(len(entry.Line)))
+			}
 			return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
 		}
 
@@ -113,12 +129,18 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		if maxSize := ctx.maxStructuredMetadataSize; maxSize != 0 && structuredMetadataSizeBytes > maxSize {
 			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Inc()
 			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID).Add(float64(len(entry.Line)))
+			for _, tracker := range ctx.customTrackerConfig.MatchTrackers(labels) {
+				validation.DiscardedBytesCustom.WithLabelValues(validation.StructuredMetadataTooLarge, ctx.userID, tracker).Add(float64(len(entry.Line)))
+			}
 			return fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, labels, structuredMetadataSizeBytes, ctx.maxStructuredMetadataSize)
 		}
 
 		if maxCount := ctx.maxStructuredMetadataCount; maxCount != 0 && structuredMetadataCount > maxCount {
 			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Inc()
 			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID).Add(float64(len(entry.Line)))
+			for _, tracker := range ctx.customTrackerConfig.MatchTrackers(labels) {
+				validation.DiscardedBytesCustom.WithLabelValues(validation.StructuredMetadataTooMany, ctx.userID, tracker).Add(float64(len(entry.Line)))
+			}
 			return fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, labels, structuredMetadataCount, ctx.maxStructuredMetadataCount)
 		}
 	}

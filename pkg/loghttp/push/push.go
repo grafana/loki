@@ -227,12 +227,18 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 
 	for _, s := range req.Streams {
 		pushStats.streamLabelsSize += int64(len(s.Labels))
-		var retentionPeriod time.Duration
-		if tenantsRetention != nil {
-			lbs, err := syntax.ParseLabels(s.Labels)
+
+		customTrackers := limits.CustomTrackersConfig(userID)
+		var lbs labels.Labels
+		if tenantsRetention != nil || len(customTrackers.config) > 0 {
+			lbs, err = syntax.ParseLabels(s.Labels)
 			if err != nil {
 				return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 			}
+		}
+
+		var retentionPeriod time.Duration
+		if tenantsRetention != nil {
 			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
 		}
 		for _, e := range s.Entries {
@@ -247,14 +253,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 				pushStats.mostRecentEntryTimestamp = e.Timestamp
 			}
 
-			trackers := limits.CustomTrackersConfig(userID)
-
-			// TODO: do not duplicate
-			lbs, err := syntax.ParseLabels(s.Labels)
-			if err != nil {
-				return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
-			}
-			for _, t := range trackers.MatchTrackers(lbs) {
+			for _, t := range customTrackers.MatchTrackers(lbs) {
 				logLinesBytes, ok := pushStats.structuredMetadataBytesCustomTrackers[t]
 				if !ok {
 					pushStats.structuredMetadataBytesCustomTrackers[t] = map[time.Duration]int64{}

@@ -337,7 +337,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// Truncate first so subsequent steps have consistent line lengths
 			d.truncateLines(validationContext, &stream)
 
-			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
+			var lbs labels.Labels
+			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -347,6 +348,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					bytes += len(e.Line)
 				}
 				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
+				for _, tracker := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
+					validation.DiscardedBytesCustom.WithLabelValues(validation.RateLimited, tenantID, tracker).Add(float64(validatedLineSize))
+				}
 				continue
 			}
 
@@ -354,7 +358,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
+				if err := d.validator.ValidateEntry(validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -411,6 +415,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
+
+		for _, tracker := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
+			validation.DiscardedBytesCustom.WithLabelValues(validation.RateLimited, tenantID, tracker).Add(float64(validatedLineSize))
+		}
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -684,30 +692,31 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 }
 
 type labelData struct {
+	ls     labels.Labels
 	labels string
 	hash   uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream *logproto.Stream) (labels.Labels, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		labelVal := val.(labelData)
-		return labelVal.labels, labelVal.hash, nil
+		return labelVal.ls, labelVal.labels, labelVal.hash, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
-		return "", 0, err
+		return nil, "", 0, err
 	}
 
 	lsVal := ls.String()
 	lsHash := ls.Hash()
 
-	d.labelCache.Add(key, labelData{lsVal, lsHash})
-	return lsVal, lsHash, nil
+	d.labelCache.Add(key, labelData{ls, lsVal, lsHash})
+	return ls, lsVal, lsHash, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.

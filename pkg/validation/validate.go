@@ -102,7 +102,6 @@ var MutatedBytes = promauto.NewCounterVec(
 	[]string{ReasonLabel, "truncated"},
 )
 
-// TODO: add custom tracker
 // DiscardedBytes is a metric of the total discarded bytes, by reason.
 var DiscardedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
@@ -111,6 +110,15 @@ var DiscardedBytes = promauto.NewCounterVec(
 		Help:      "The total number of bytes that were discarded.",
 	},
 	[]string{ReasonLabel, "tenant"},
+)
+
+var DiscardedBytesCustom = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "discarded_bytes_custom_total",
+		Help:      "The total number of bytes that were discarded for tracked streams.",
+	},
+	[]string{ReasonLabel, "tenant", "tracker"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.

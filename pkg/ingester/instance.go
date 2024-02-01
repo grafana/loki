@@ -262,6 +262,20 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
+
+	labels, err := syntax.ParseLabels(pushReqStream.Labels)
+	if err != nil {
+		if i.configs.LogStreamCreation(i.instanceID) {
+			level.Debug(util_log.Logger).Log(
+				"msg", "failed to create stream, failed to parse labels",
+				"org_id", i.instanceID,
+				"err", err,
+				"stream", pushReqStream.Labels,
+			)
+		}
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	if record != nil {
 		err = i.limiter.AssertMaxStreamsPerUser(i.instanceID, i.streams.Len())
 	}
@@ -282,21 +296,12 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+		for _, tracker := range []string{} { // TODO: call customTracker.MatchedTrackers(lbs)
+			validation.DiscardedBytesCustom.WithLabelValues(validation.StreamLimit, i.instanceID, tracker).Add(float64(bytes))
+		}
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}
 
-	labels, err := syntax.ParseLabels(pushReqStream.Labels)
-	if err != nil {
-		if i.configs.LogStreamCreation(i.instanceID) {
-			level.Debug(util_log.Logger).Log(
-				"msg", "failed to create stream, failed to parse labels",
-				"org_id", i.instanceID,
-				"err", err,
-				"stream", pushReqStream.Labels,
-			)
-		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)

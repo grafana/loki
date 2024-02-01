@@ -236,11 +236,11 @@ func TestParseRequest(t *testing.T) {
 type mockLimits struct{}
 
 // CustomTrackersConfig implements Limits.
-func (*mockLimits) CustomTrackersConfig(userID string) CustomTrackersConfig {
+func (*mockLimits) CustomTrackersConfig(string) CustomTrackersConfig {
 	return CustomTrackersConfig{}
 }
 
 // OTLPConfig implements Limits.
-func (*mockLimits) OTLPConfig(userID string) OTLPConfig {
+func (*mockLimits) OTLPConfig(string) OTLPConfig {
 	return DefaultOTLPConfig
 }
