@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"path"
 	"strconv"
@@ -12,11 +13,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 const (
@@ -33,6 +36,26 @@ type Ref struct {
 	Bounds                       v1.FingerprintBounds
 	StartTimestamp, EndTimestamp model.Time
 	Checksum                     uint32
+}
+
+// Hash hashes the ref
+// NB(owen-d): we don't include the tenant in the hash
+// as it's not included in the data and leaving it out gives
+// flexibility for migrating data between tenants
+func (r Ref) Hash(h hash.Hash32) error {
+	if err := r.Bounds.Hash(h); err != nil {
+		return err
+	}
+
+	var enc encoding.Encbuf
+
+	enc.PutString(r.TableName)
+	enc.PutBE64(uint64(r.StartTimestamp))
+	enc.PutBE64(uint64(r.EndTimestamp))
+	enc.PutBE32(r.Checksum)
+
+	_, err := h.Write(enc.Get())
+	return errors.Wrap(err, "writing BlockRef")
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
