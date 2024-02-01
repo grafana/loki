@@ -33,12 +33,9 @@ type processor struct {
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
 	for ts, tasks := range group(tasks, func(t Task) model.Time { return t.day }) {
-		interval := bloomshipper.Interval{
-			Start: ts,
-			End:   ts.Add(Day),
-		}
+		interval := bloomshipper.NewInterval(ts, ts.Add(Day))
 		tenant := tasks[0].Tenant
-		err := p.processTasks(ctx, tenant, interval, []bloomshipper.Keyspace{{Min: 0, Max: math.MaxUint64}}, tasks)
+		err := p.processTasks(ctx, tenant, interval, []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}}, tasks)
 		if err != nil {
 			for _, task := range tasks {
 				task.CloseWithError(err)
@@ -52,12 +49,12 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, interval bloomshipper.Interval, keyspaces []bloomshipper.Keyspace, tasks []Task) error {
+func (p *processor) processTasks(ctx context.Context, tenant string, interval bloomshipper.Interval, keyspaces []v1.FingerprintBounds, tasks []Task) error {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
 	metaSearch := bloomshipper.MetaSearchParams{
 		TenantID: tenant,
 		Interval: interval,
-		Keyspace: bloomshipper.Keyspace{Min: minFpRange.Min, Max: maxFpRange.Max},
+		Keyspace: v1.FingerprintBounds{Min: minFpRange.Min, Max: maxFpRange.Max},
 	}
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
 	if err != nil {
@@ -82,7 +79,7 @@ outer:
 	for blockIter.Next() {
 		bq := blockIter.At()
 		for i, block := range data {
-			if block.blockRef.MinFingerprint == uint64(bq.MinFp) && block.blockRef.MaxFingerprint == uint64(bq.MaxFp) {
+			if block.blockRef.Bounds().Equal(bq.FingerprintBounds) {
 				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
 				if err != nil {
 					return err

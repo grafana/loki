@@ -30,11 +30,18 @@ func (b FingerprintBounds) Hash(h hash.Hash32) error {
 	enc.PutBE64(uint64(b.Min))
 	enc.PutBE64(uint64(b.Max))
 	_, err := h.Write(enc.Get())
-	return errors.Wrap(err, "writing OwnershipRange")
+	return errors.Wrap(err, "writing FingerprintBounds")
 }
 
 func (b FingerprintBounds) String() string {
 	return b.Min.String() + "-" + b.Max.String()
+}
+
+func (b FingerprintBounds) Less(other FingerprintBounds) bool {
+	if b.Min != other.Min {
+		return b.Min < other.Min
+	}
+	return b.Max <= other.Max
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
@@ -47,6 +54,7 @@ func (b FingerprintBounds) Cmp(fp model.Fingerprint) BoundsCheck {
 	return Overlap
 }
 
+// Overlaps returns whether the bounds (partially) overlap with the target bounds
 func (b FingerprintBounds) Overlaps(target FingerprintBounds) bool {
 	return b.Cmp(target.Min) != After && b.Cmp(target.Max) != Before
 }
@@ -56,9 +64,14 @@ func (b FingerprintBounds) Slice(min, max model.Fingerprint) *FingerprintBounds 
 	return b.Intersection(FingerprintBounds{Min: min, Max: max})
 }
 
-// Returns whether the fingerprint is fully within the target bounds
+// Within returns whether the fingerprint is fully within the target bounds
 func (b FingerprintBounds) Within(target FingerprintBounds) bool {
 	return b.Min >= target.Min && b.Max <= target.Max
+}
+
+// Returns whether the fingerprint bounds is equal to the target bounds
+func (b FingerprintBounds) Equal(target FingerprintBounds) bool {
+	return b.Min == target.Min && b.Max == target.Max
 }
 
 // Intersection returns the intersection of the two bounds

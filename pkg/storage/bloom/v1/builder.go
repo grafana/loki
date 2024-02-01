@@ -15,6 +15,10 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
+var (
+	DefaultBlockOptions = NewBlockOptions(4, 0)
+)
+
 type BlockOptions struct {
 	// Schema determines the Schema of the block and cannot be changed
 	Schema Schema
@@ -521,7 +525,7 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		func(a, b *SeriesWithBloom) bool {
 			return a.Series.Fingerprint == b.Series.Fingerprint
 		},
-		id[*SeriesWithBloom],
+		Identity[*SeriesWithBloom],
 		func(a, b *SeriesWithBloom) *SeriesWithBloom {
 			if len(a.Series.Chunks) > len(b.Series.Chunks) {
 				return a
