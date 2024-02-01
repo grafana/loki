@@ -126,13 +126,13 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 }
 
 func externalBlockKey(ref BlockRef) string {
-	blockParentFolder := ref.Bounds.Addr()
+	blockParentFolder := ref.Bounds.String()
 	filename := fmt.Sprintf("%d-%d-%x", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
 	return path.Join(rootFolder, ref.TableName, ref.TenantID, bloomsFolder, blockParentFolder, filename)
 }
 
 func externalMetaKey(ref MetaRef) string {
-	filename := fmt.Sprintf("%s-%d-%d-%x", ref.Bounds.Addr(), ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
+	filename := fmt.Sprintf("%s-%d-%d-%x", ref.Bounds.String(), ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
 	return path.Join(rootFolder, ref.TableName, ref.TenantID, metasFolder, filename)
 }
 

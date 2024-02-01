@@ -60,7 +60,7 @@ func (b FingerprintBounds) Hash(h hash.Hash32) error {
 // TODO(owen-d): incorporate this into the schema so we can change it,
 // similar to `{,Parse}ExternalKey`
 func (b FingerprintBounds) String() string {
-	return fmt.Sprint(fmt.Sprintf("%016x-%016x", uint64(b.Min), uint64(b.Max)))
+	return fmt.Sprintf("%016x-%016x", uint64(b.Min), uint64(b.Max))
 }
 
 func (b FingerprintBounds) Less(other FingerprintBounds) bool {
