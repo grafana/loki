@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
@@ -123,7 +123,7 @@ func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
 		_ = b.Close()
 	}(block)
 
-	err := callback(block.closableBlockQuerier.BlockQuerier, block.Bounds())
+	err := callback(block.closableBlockQuerier.BlockQuerier, block.Bounds)
 	if err != nil {
 		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
 	}
@@ -186,15 +186,8 @@ func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintB
 		blockRefs = append(blockRefs, ref)
 	}
 
-	slices.SortStableFunc(blockRefs, func(a, b BlockRef) int {
-		if a.MinFingerprint < b.MinFingerprint {
-			return -1
-		}
-		if a.MinFingerprint > b.MinFingerprint {
-			return 1
-		}
-
-		return 0
+	sort.Slice(blockRefs, func(i, j int) bool {
+		return blockRefs[i].Bounds.Less(blockRefs[j].Bounds)
 	})
 
 	return blockRefs
@@ -211,9 +204,10 @@ func isOutsideRange(b BlockRef, interval Interval, keyspaces []v1.FingerprintBou
 
 	// check fingerprint ranges
 	for _, keyspace := range keyspaces {
-		if keyspace.Within(b.Bounds()) || keyspace.Overlaps(b.Bounds()) {
+		if keyspace.Overlaps(b.Bounds) {
 			return false
 		}
+
 	}
 
 	return true

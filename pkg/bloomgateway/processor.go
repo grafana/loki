@@ -82,7 +82,7 @@ outer:
 	for blockIter.Next() {
 		bq := blockIter.At()
 		for i, block := range data {
-			if block.blockRef.Bounds().Equal(bq.FingerprintBounds) {
+			if block.blockRef.Bounds.Equal(bq.FingerprintBounds) {
 				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
 				if err != nil {
 					return err

@@ -219,8 +219,7 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 		Ref: Ref{
 			TenantID:       "tenantA",
 			TableName:      "first-period-19621",
-			MinFingerprint: 0xeeee,
-			MaxFingerprint: 0xffff,
+			Bounds:         v1.NewBounds(0xeeee, 0xffff),
 			StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
 			EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 			Checksum:       1,
@@ -231,8 +230,7 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 		Ref: Ref{
 			TenantID:       "tenantA",
 			TableName:      "second-period-19624",
-			MinFingerprint: 0xaaaa,
-			MaxFingerprint: 0xbbbb,
+			Bounds:         v1.NewBounds(0xaaaa, 0xbbbb),
 			StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
 			EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 			Checksum:       2,
@@ -261,8 +259,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			Ref: Ref{
 				TenantID:       "tenantA",
 				TableName:      "first-period-19621",
-				MinFingerprint: 0xeeee,
-				MaxFingerprint: 0xffff,
+				Bounds:         v1.NewBounds(0xeeee, 0xffff),
 				StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
 				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 				Checksum:       1,
@@ -278,8 +275,7 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 			Ref: Ref{
 				TenantID:       "tenantA",
 				TableName:      "second-period-19624",
-				MinFingerprint: 0xaaaa,
-				MaxFingerprint: 0xbbbb,
+				Bounds:         v1.NewBounds(0xaaaa, 0xbbbb),
 				StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
 				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 				Checksum:       2,
@@ -297,8 +293,8 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, "bloom/first-period-19621/tenantA/blooms/eeee-ffff/1695272400000-1695276000000-1", path)
 	require.Equal(t, blockForFirstFolder.TenantID, firstResultBlock.TenantID)
 	require.Equal(t, blockForFirstFolder.TableName, firstResultBlock.TableName)
-	require.Equal(t, blockForFirstFolder.MinFingerprint, firstResultBlock.MinFingerprint)
-	require.Equal(t, blockForFirstFolder.MaxFingerprint, firstResultBlock.MaxFingerprint)
+	require.Equal(t, blockForFirstFolder.Bounds.Min, firstResultBlock.Bounds.Min)
+	require.Equal(t, blockForFirstFolder.Bounds.Max, firstResultBlock.Bounds.Max)
 	require.Equal(t, blockForFirstFolder.StartTimestamp, firstResultBlock.StartTimestamp)
 	require.Equal(t, blockForFirstFolder.EndTimestamp, firstResultBlock.EndTimestamp)
 	require.Equal(t, blockForFirstFolder.Checksum, firstResultBlock.Checksum)
@@ -315,8 +311,8 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 	require.Equal(t, "bloom/second-period-19624/tenantA/blooms/aaaa-bbbb/1695531600000-1695535200000-2", path)
 	require.Equal(t, blockForSecondFolder.TenantID, secondResultBlock.TenantID)
 	require.Equal(t, blockForSecondFolder.TableName, secondResultBlock.TableName)
-	require.Equal(t, blockForSecondFolder.MinFingerprint, secondResultBlock.MinFingerprint)
-	require.Equal(t, blockForSecondFolder.MaxFingerprint, secondResultBlock.MaxFingerprint)
+	require.Equal(t, blockForSecondFolder.Bounds.Min, secondResultBlock.Bounds.Min)
+	require.Equal(t, blockForSecondFolder.Bounds.Max, secondResultBlock.Bounds.Max)
 	require.Equal(t, blockForSecondFolder.StartTimestamp, secondResultBlock.StartTimestamp)
 	require.Equal(t, blockForSecondFolder.EndTimestamp, secondResultBlock.EndTimestamp)
 	require.Equal(t, blockForSecondFolder.Checksum, secondResultBlock.Checksum)
@@ -345,8 +341,7 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 			Ref: Ref{
 				TenantID:       "tenantA",
 				TableName:      "second-period-19624",
-				MinFingerprint: 0xaaaa,
-				MaxFingerprint: 0xbbbb,
+				Bounds:         v1.NewBounds(0xaaaa, 0xbbbb),
 				StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
 				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 				Checksum:       2,
@@ -357,8 +352,7 @@ func Test_BloomClient_DeleteBlocks(t *testing.T) {
 			Ref: Ref{
 				TenantID:       "tenantA",
 				TableName:      "first-period-19621",
-				MinFingerprint: 0xeeee,
-				MaxFingerprint: 0xffff,
+				Bounds:         v1.NewBounds(0xeeee, 0xffff),
 				StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
 				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 				Checksum:       1,
@@ -398,8 +392,7 @@ func Test_createMetaRef(t *testing.T) {
 				Ref: Ref{
 					TenantID:       "tenant1",
 					TableName:      "table1",
-					MinFingerprint: 0xaaa,
-					MaxFingerprint: 0xbbb,
+					Bounds:         v1.NewBounds(0xaaa, 0xbbb),
 					StartTimestamp: 1234567890,
 					EndTimestamp:   9876543210,
 					Checksum:       0xabcdef,
@@ -534,8 +527,7 @@ func createMetaEntity(
 			Ref: Ref{
 				TenantID:       tenant,
 				TableName:      tableName,
-				MinFingerprint: minFingerprint,
-				MaxFingerprint: maxFingerprint,
+				Bounds:         v1.NewBounds(model.Fingerprint(minFingerprint), model.Fingerprint(maxFingerprint)),
 				StartTimestamp: startTimestamp,
 				EndTimestamp:   endTimestamp,
 				Checksum:       metaChecksum,
@@ -547,8 +539,7 @@ func createMetaEntity(
 				Ref: Ref{
 					TenantID:       tenant,
 					Checksum:       metaChecksum + 1,
-					MinFingerprint: minFingerprint,
-					MaxFingerprint: maxFingerprint,
+					Bounds:         v1.NewBounds(model.Fingerprint(minFingerprint), model.Fingerprint(maxFingerprint)),
 					StartTimestamp: startTimestamp,
 					EndTimestamp:   endTimestamp,
 				},
@@ -561,8 +552,7 @@ func createMetaEntity(
 				Ref: Ref{
 					TenantID:       tenant,
 					Checksum:       metaChecksum + 2,
-					MinFingerprint: minFingerprint,
-					MaxFingerprint: maxFingerprint,
+					Bounds:         v1.NewBounds(model.Fingerprint(minFingerprint), model.Fingerprint(maxFingerprint)),
 					StartTimestamp: startTimestamp,
 					EndTimestamp:   endTimestamp,
 				},

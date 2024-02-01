@@ -1,7 +1,10 @@
 package v1
 
 import (
+	"fmt"
 	"hash"
+	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -16,6 +19,34 @@ const (
 	Overlap
 	After
 )
+
+func ParseFingerprint(s string) (model.Fingerprint, error) {
+	fp, err := strconv.ParseUint(s, 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing fingerprint %s : %w", s, err)
+	}
+	return model.Fingerprint(fp), nil
+}
+
+// ParseBoundsFromAddr parses a fingerprint bounds from a string
+func ParseBoundsFromAddr(s string) (FingerprintBounds, error) {
+	parts := strings.Split(s, "-")
+	return ParseBoundsFromParts(parts[0], parts[1])
+}
+
+// ParseBoundsFromParts parses a fingerprint bounds already separated strings
+func ParseBoundsFromParts(a, b string) (FingerprintBounds, error) {
+	minFingerprint, err := ParseFingerprint(a)
+	if err != nil {
+		return FingerprintBounds{}, fmt.Errorf("error parsing minFingerprint %s : %w", a, err)
+	}
+	maxFingerprint, err := ParseFingerprint(b)
+	if err != nil {
+		return FingerprintBounds{}, fmt.Errorf("error parsing maxFingerprint %s : %w", b, err)
+	}
+
+	return NewBounds(minFingerprint, maxFingerprint), nil
+}
 
 type FingerprintBounds struct {
 	Min, Max model.Fingerprint
@@ -33,8 +64,16 @@ func (b FingerprintBounds) Hash(h hash.Hash32) error {
 	return errors.Wrap(err, "writing OwnershipRange")
 }
 
+// Addr returns the string representation of the fingerprint bounds for use in
+// content addressable storage.
+// TODO(owen-d): incorporate this into the schema so we can change it,
+// similar to `{,Parse}ExternalKey`
+func (b FingerprintBounds) Addr() string {
+	return fmt.Sprintf("%x-%x", uint64(b.Min), uint64(b.Max))
+}
+
 func (b FingerprintBounds) String() string {
-	return b.Min.String() + "-" + b.Max.String()
+	return b.Addr()
 }
 
 func (b FingerprintBounds) Less(other FingerprintBounds) bool {

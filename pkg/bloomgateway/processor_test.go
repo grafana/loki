@@ -50,7 +50,7 @@ func (s *dummyStore) LoadBlocks(_ context.Context, refs []bloomshipper.BlockRef)
 
 	for _, ref := range refs {
 		for _, bq := range s.querieres {
-			if ref.Bounds().Equal(bq.FingerprintBounds) {
+			if ref.Bounds.Equal(bq.FingerprintBounds) {
 				result = append(result, bq)
 			}
 		}
