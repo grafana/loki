@@ -541,6 +541,7 @@ func TestLoadFromURL(t *testing.T) {
 
 func TestMultipleConfigs(t *testing.T) {
 	// TODO: implement this
+	t.Fail()
 }
 
 func TestDurationCeilDiv(t *testing.T) {
