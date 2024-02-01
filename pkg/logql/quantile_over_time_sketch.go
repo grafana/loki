@@ -284,7 +284,8 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 	}
 
 	// The result is released to the pool when the matrix is serialized.
-	result := quantileVectorPool.Get(stepCount)
+	//result := quantileVectorPool.Get(stepCount)
+	result := ProbabilisticQuantileMatrix{}
 
 	for next {
 		result = append(result, vec)
@@ -295,7 +296,7 @@ func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluat
 		}
 	}
 
-	return ProbabilisticQuantileMatrix(result), stepEvaluator.Error()
+	return result, stepEvaluator.Error()
 }
 
 // QuantileSketchMatrixStepEvaluator steps through a matrix of quantile sketch

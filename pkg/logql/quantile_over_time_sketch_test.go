@@ -113,81 +113,33 @@ func (e errorStepEvaluator) Error() error {
 func (e errorStepEvaluator) Explain(Node) {}
 
 func BenchmarkJoinQuantileSketchVector(b *testing.B) {
-	results := make([]ProbabilisticQuantileVector, 100)
-	for i := range results {
-		results[i] = make(ProbabilisticQuantileVector, 10)
-		for j := range results[i] {
-			results[i][j] = ProbabilisticQuantileSample{
-				T:      int64(i),
-				F:      newRandomSketch(),
-				Metric: []labels.Label{{Name: "foo", Value: fmt.Sprintf("bar-%d", j)}},
-			}
-		}
-	}
 
-	ev := &sliceStepEvaluator{
-		slice: results,
-		cur:   1,
-	}
+	selRange := (5 * time.Second).Nanoseconds()
+	step := (30 * time.Second)
+	offset := int64(0)
+	start := time.Unix(10, 0)
+	end := time.Unix(100, 0)
 
 	// (end - start) / step == len(results)
 	params := LiteralParams{
-		start: time.Unix(0, 0),
-		end:   time.Unix(int64(len(results)), 0),
-		step:  time.Second,
+		start: start,
+		end:   end,
+		step:  step,
 	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		// Reset step evaluator
-		ev.cur = 1
-		r, err := JoinQuantileSketchVector(true, results[0], ev, params)
+		iter := newQuantileSketchIterator(newfakePeekingSampleIterator(samples), selRange, step.Nanoseconds(), start.UnixNano(), end.UnixNano(), offset)
+		ev := &QuantileSketchStepEvaluator{
+			iter: iter,
+		}
+		_, _, r := ev.Next()
+		_, err := JoinQuantileSketchVector(true, r.QuantileSketchVec(), ev, params)
 		require.NoError(b, err)
-		r.(ProbabilisticQuantileMatrix).Release()
+		//r.(ProbabilisticQuantileMatrix).Release()
 	}
-}
-
-func newRandomSketch() sketch.QuantileSketch {
-	r := rand.New(rand.NewSource(42))
-	s := sketch.NewDDSketch()
-	for i := 0; i < 1000; i++ {
-		_ = s.Add(r.Float64())
-	}
-	return s
-}
-
-type sliceStepEvaluator struct {
-	err   error
-	slice []ProbabilisticQuantileVector
-	cur   int
-}
-
-// Close implements StepEvaluator.
-func (*sliceStepEvaluator) Close() error {
-	return nil
-}
-
-// Error implements StepEvaluator.
-func (ev *sliceStepEvaluator) Error() error {
-	return ev.err
-}
-
-// Explain implements StepEvaluator.
-func (*sliceStepEvaluator) Explain(Node) {}
-
-// Next implements StepEvaluator.
-func (ev *sliceStepEvaluator) Next() (ok bool, ts int64, r StepResult) {
-	if ev.cur >= len(ev.slice) {
-		return false, 0, nil
-	}
-
-	r = ev.slice[ev.cur]
-	ts = ev.slice[ev.cur][0].T
-	ev.cur++
-	ok = ev.cur < len(ev.slice)
-	return
 }
 
 func BenchmarkQuantileBatchRangeVectorIteratorAt(b *testing.B) {
