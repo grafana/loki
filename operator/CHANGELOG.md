@@ -1,5 +1,6 @@
 ## Main
 
+- [11854](https://github.com/grafana/loki/pull/11854) **periklis**: Remove hardcoded audience AWS reqs on STS
 - [11824](https://github.com/grafana/loki/pull/11824) **xperimental**: Improve messages for errors in storage secret
 - [11524](https://github.com/grafana/loki/pull/11524) **JoaoBraveCoding**, **periklis**: Add OpenShift cloud credentials support for AWS STS
 - [11513](https://github.com/grafana/loki/pull/11513) **btaani**: Add a custom metric that collects Lokistacks requiring a schema upgrade
