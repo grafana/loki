@@ -240,13 +240,10 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 	switch {
 	case fg.OpenShift.ManagedAuthEnabled():
 		cfg.STS = true
-		cfg.Audience = storage.AWSOpenShiftAudience
+		cfg.Audience = string(audience)
 		// Do not allow users overriding the role arn provided on Loki Operator installation
 		if len(roleArn) != 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
-		}
-		if len(audience) != 0 {
-			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSAudience)
 		}
 		// In the STS case region is not an optional field
 		if len(region) == 0 {

@@ -108,7 +108,6 @@ const (
 	KeySwiftUsername = "username"
 
 	saTokenVolumeK8sDirectory       = "/var/run/secrets/kubernetes.io/serviceaccount"
-	SATokenVolumeOcpDirectory       = "/var/run/secrets/openshift/serviceaccount"
 	saTokenVolumeName               = "bound-sa-token"
 	saTokenExpiration         int64 = 3600
 
@@ -117,8 +116,8 @@ const (
 	storageTLSVolume           = "storage-tls"
 	caDirectory                = "/etc/storage/ca"
 
-	awsDefaultAudience   = "sts.amazonaws.com"
-	AWSOpenShiftAudience = "openshift"
+	awsDefaultAudience      = "sts.amazonaws.com"
+	AWSTokenVolumeDirectory = "/var/run/secrets/aws/serviceaccount"
 
 	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )
