@@ -20,7 +20,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 )
@@ -846,8 +845,8 @@ type ShardedPostings struct {
 // For example (below), given a shard, we'll likely return a slight superset of offsets surrounding the shard.
 // ---[shard0]--- # Shard membership
 // -[--shard0--]- # Series returned by shardedPostings
-func NewShardedPostings(p Postings, from, through model.Fingerprint, offsets FingerprintOffsets) *ShardedPostings {
-	min, max := offsets.Range(from, through)
+func NewShardedPostings(p Postings, fpFilter FingerprintFilter, offsets FingerprintOffsets) *ShardedPostings {
+	min, max := offsets.Range(fpFilter)
 	return &ShardedPostings{
 		p:         p,
 		minOffset: min,

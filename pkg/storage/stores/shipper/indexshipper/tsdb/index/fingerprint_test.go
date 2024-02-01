@@ -37,7 +37,7 @@ func Test_FingerprintOffsetRange(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprint(tc.shard, tc.min, tc.max), func(t *testing.T) {
-			left, right := offsets.Range(tc.shard.Bounds())
+			left, right := offsets.Range(tc.shard)
 			require.Equal(t, tc.min, left)
 			require.Equal(t, tc.max, right)
 		})

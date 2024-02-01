@@ -1948,8 +1948,7 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 
 	merged := Merge(res...)
 	if fpFilter != nil {
-		from, through := fpFilter.Bounds()
-		return NewShardedPostings(merged, from, through, r.fingerprintOffsets), nil
+		return NewShardedPostings(merged, fpFilter, r.fingerprintOffsets), nil
 	}
 
 	return merged, nil

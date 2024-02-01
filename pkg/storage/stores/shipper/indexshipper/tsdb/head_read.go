@@ -116,8 +116,7 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 	}
 
 	if fpFilter != nil {
-		from, through := fpFilter.Bounds()
-		return index.NewShardedPostings(p, from, through, nil), nil
+		return index.NewShardedPostings(p, fpFilter, nil), nil
 	}
 	return p, nil
 }

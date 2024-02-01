@@ -56,8 +56,8 @@ func (b FingerprintBounds) Match(fp model.Fingerprint) bool {
 	return b.Cmp(fp) == Overlap
 }
 
-// Bounds implements TSDBs FingerprintFilter interface
-func (b FingerprintBounds) Bounds() (model.Fingerprint, model.Fingerprint) {
+// GetFromThrough implements TSDBs FingerprintFilter interface
+func (b FingerprintBounds) GetFromThrough() (model.Fingerprint, model.Fingerprint) {
 	return b.Min, b.Max
 }
 
