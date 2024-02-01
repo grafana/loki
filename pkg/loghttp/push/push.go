@@ -105,6 +105,18 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		entriesSize += size
 	}
 
+	for retentionPeriod, size := range pushStats.structuredMetadataBytes {
+		retentionHours := retentionPeriodToString(retentionPeriod)
+
+		structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
+		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
+		bytesReceivedStats.Inc(size)
+		structuredMetadataBytesReceivedStats.Inc(size)
+
+		entriesSize += size
+		structuredMetadataSize += size
+	}
+
 	// Process custom trackers
 	for name, logLinesBytes := range pushStats.logLinesBytesCustomTrackers {
 		for retentionPeriod, size := range logLinesBytes {
@@ -119,18 +131,6 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 
 			bytesIngestedCustom.WithLabelValues(userID, retentionHours, name).Add(float64(size))
 		}
-	}
-
-	for retentionPeriod, size := range pushStats.structuredMetadataBytes {
-		retentionHours := retentionPeriodToString(retentionPeriod)
-
-		structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
-		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
-		bytesReceivedStats.Inc(size)
-		structuredMetadataBytesReceivedStats.Inc(size)
-
-		entriesSize += size
-		structuredMetadataSize += size
 	}
 
 	// incrementing tenant metrics if we have a tenant.
