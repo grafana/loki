@@ -103,7 +103,7 @@ func NewSimpleBloomGenerator(
 		store:        store,
 		chunkLoader:  chunkLoader,
 		blocks:       blocks,
-		logger:       logger,
+		logger:       log.With(logger, "component", "bloom_generator"),
 		readWriterFn: readWriterFn,
 		metrics:      metrics,
 

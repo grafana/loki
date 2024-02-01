@@ -56,7 +56,7 @@ type Task struct {
 	// the last error of the task
 	// needs to be a pointer so multiple copies of the task can modify its value
 	err *wrappedError
-	// the respones received from the block queriers
+	// the responses received from the block queriers
 	responses []v1.Output
 
 	// series of the original request

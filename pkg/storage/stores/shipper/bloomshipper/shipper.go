@@ -8,49 +8,18 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
-type Interval struct {
-	Start, End model.Time
-}
-
-func (i Interval) String() string {
-	return fmt.Sprintf("[%s, %s)", i.Start.Time(), i.End.Time())
-}
-
-func (i Interval) Cmp(other model.Time) v1.BoundsCheck {
-	if other.Before(i.Start) {
-		return v1.Before
-	} else if other.After(i.End) || other.Equal(i.End) {
-		return v1.After
-	}
-	return v1.Overlap
-}
-
-type Keyspace struct {
-	Min, Max model.Fingerprint
-}
-
-func (r Keyspace) Cmp(other model.Fingerprint) v1.BoundsCheck {
-	if other < r.Min {
-		return v1.Before
-	} else if other > r.Max {
-		return v1.After
-	}
-	return v1.Overlap
-}
-
 type BlockQuerierWithFingerprintRange struct {
 	*v1.BlockQuerier
-	MinFp, MaxFp model.Fingerprint
+	v1.FingerprintBounds
 }
 
-type ForEachBlockCallback func(bq *v1.BlockQuerier, minFp, maxFp uint64) error
+type ForEachBlockCallback func(bq *v1.BlockQuerier, bounds v1.FingerprintBounds) error
 
 type Interface interface {
 	GetBlockRefs(ctx context.Context, tenant string, interval Interval) ([]BlockRef, error)
@@ -93,8 +62,8 @@ func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, interval In
 	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "[", interval.Start, "", interval.End)
 
 	// TODO(chaudum): The bloom gateway should not fetch blocks for the complete key space
-	keyspaces := []Keyspace{{0, math.MaxUint64}}
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, interval, keyspaces)
+	bounds := []v1.FingerprintBounds{v1.NewBounds(0, math.MaxUint64)}
+	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, interval, bounds)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching active block references : %w", err)
 	}
@@ -136,7 +105,7 @@ func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
 		_ = b.Close()
 	}(block)
 
-	err := callback(block.closableBlockQuerier.BlockQuerier, block.MinFingerprint, block.MaxFingerprint)
+	err := callback(block.closableBlockQuerier.BlockQuerier, block.Bounds())
 	if err != nil {
 		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
 	}
@@ -158,11 +127,11 @@ func getFirstLast[T any](s []T) (T, T) {
 	return s[0], s[len(s)-1]
 }
 
-func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, interval Interval, keyspaces []Keyspace) ([]BlockRef, error) {
-	minFpRange, maxFpRange := getFirstLast(keyspaces)
+func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, interval Interval, bounds []v1.FingerprintBounds) ([]BlockRef, error) {
+	minFpRange, maxFpRange := getFirstLast(bounds)
 	metas, err := s.store.FetchMetas(ctx, MetaSearchParams{
 		TenantID: tenantID,
-		Keyspace: Keyspace{Min: minFpRange.Min, Max: maxFpRange.Max},
+		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
 		Interval: interval,
 	})
 	if err != nil {
@@ -170,10 +139,10 @@ func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, inter
 	}
 	level.Debug(s.logger).Log("msg", "dowloaded metas", "count", len(metas))
 
-	return BlocksForMetas(metas, interval, keyspaces), nil
+	return BlocksForMetas(metas, interval, bounds), nil
 }
 
-func BlocksForMetas(metas []Meta, interval Interval, keyspaces []Keyspace) []BlockRef {
+func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintBounds) []BlockRef {
 	tombstones := make(map[string]interface{})
 	for _, meta := range metas {
 		for _, tombstone := range meta.Tombstones {
@@ -216,18 +185,15 @@ func BlocksForMetas(metas []Meta, interval Interval, keyspaces []Keyspace) []Blo
 // isOutsideRange tests if a given BlockRef b is outside of search boundaries
 // defined by min/max timestamp and min/max fingerprint.
 // Fingerprint ranges must be sorted in ascending order.
-func isOutsideRange(b BlockRef, interval Interval, keyspaces []Keyspace) bool {
+func isOutsideRange(b BlockRef, interval Interval, bounds []v1.FingerprintBounds) bool {
 	// check time interval
-	if interval.Cmp(b.EndTimestamp) == v1.Before || interval.Cmp(b.StartTimestamp) == v1.After {
+	if !interval.Overlaps(b.Interval()) {
 		return true
 	}
 
 	// check fingerprint ranges
-	for _, keyspace := range keyspaces {
-		if keyspace.Cmp(model.Fingerprint(b.MinFingerprint)) == v1.Before && keyspace.Cmp(model.Fingerprint(b.MaxFingerprint)) == v1.After {
-			return false
-		}
-		if keyspace.Cmp(model.Fingerprint(b.MinFingerprint)) == v1.Overlap || keyspace.Cmp(model.Fingerprint(b.MaxFingerprint)) == v1.Overlap {
+	for _, keyspace := range bounds {
+		if keyspace.Within(b.Bounds()) || keyspace.Overlaps(b.Bounds()) {
 			return false
 		}
 	}
