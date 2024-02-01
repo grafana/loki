@@ -789,8 +789,6 @@ func NewInstantMetricTripperware(
 	indexStatsTripperware base.Middleware,
 	metricsNamespace string,
 ) (base.Middleware, error) {
-	limits = WithSplitByLimits(limits, 24*time.Hour)
-
 	var cacheMiddleware base.Middleware
 	if cfg.CacheInstantMetricResults {
 		var err error
