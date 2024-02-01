@@ -187,6 +187,7 @@ func isOutsideRange(b BlockRef, interval Interval, bounds []v1.FingerprintBounds
 	// check fingerprint ranges
 	for _, keyspace := range bounds {
 		if keyspace.Overlaps(b.Bounds) {
+			return false
 		}
 	}
 
