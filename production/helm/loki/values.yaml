@@ -262,7 +262,10 @@ loki:
     max_cache_freshness_per_query: 10m
     split_queries_by_interval: 15m
   # -- Provides a reloadable runtime configuration file for some specific configuration
-  runtimeConfig: {}
+  runtimeConfig:
+    configs:
+      loki:
+        log_push_request: true
   # -- Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration
   commonConfig:
     path_prefix: /var/loki
@@ -362,9 +365,10 @@ loki:
   ingester: {}
   # --  Optional index gateway configuration
   index_gateway:
-    mode: ring
+    mode: simple
   frontend:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
+    tail_proxy_url: '{{ include "loki.querierAddress" . }}'
   frontend_worker:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   # -- Optional distributor configuration
@@ -653,7 +657,7 @@ monitoring:
     # -- Tenant to use for self monitoring
     tenant:
       # -- Name of the tenant
-      name: "self-monitoring"
+      name: "loki"
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
@@ -2337,7 +2341,7 @@ gateway:
   readinessProbe:
     httpGet:
       path: /
-      port: http
+      port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
