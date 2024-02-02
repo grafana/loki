@@ -905,6 +905,10 @@ func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
 }
 
 func (o *Overrides) CustomTrackersConfig(userID string) *push.CustomTrackersConfig {
+	if o.getOverridesForUser(userID).CustomTrackersConfig == nil {
+		return push.EmptyCustomTrackersConfig
+	}
+
 	return o.getOverridesForUser(userID).CustomTrackersConfig
 }
 

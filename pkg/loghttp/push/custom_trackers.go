@@ -13,6 +13,11 @@ type CustomTrackersConfig struct {
 	config map[string][]*labels.Matcher
 }
 
+var EmptyCustomTrackersConfig = &CustomTrackersConfig{
+	source: map[string]string{},
+	config: map[string][]*labels.Matcher{},
+}
+
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 // CustomTrackersConfig are marshaled in yaml as a map[string]string, with matcher names as keys and strings as matchers definitions.
 func (c *CustomTrackersConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
