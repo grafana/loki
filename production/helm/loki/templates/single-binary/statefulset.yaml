@@ -176,7 +176,7 @@ spec:
         {{- end }}
   {{- if .Values.singleBinary.persistence.enabled }}
   volumeClaimTemplates:
-    - apiVersion: v1	
+    - apiVersion: v1
       kind: PersistentVolumeClaim
       metadata:
         name: storage
