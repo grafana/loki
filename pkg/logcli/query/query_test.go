@@ -526,6 +526,7 @@ var schemaConfigContents2 = `schema_config:
       prefix: index_
       period: 24h
 `
+var cm = storage.NewClientMetrics()
 
 func TestLoadFromURL(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -537,7 +538,6 @@ func TestLoadFromURL(t *testing.T) {
 		},
 	}
 
-	cm := storage.NewClientMetrics()
 	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)
 	require.NotNil(t, client)
@@ -573,7 +573,6 @@ func TestMultipleConfigs(t *testing.T) {
 		},
 	}
 
-	cm := storage.NewClientMetrics()
 	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)
 	require.NotNil(t, client)
