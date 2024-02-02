@@ -3,12 +3,15 @@ package bloomshipper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"k8s.io/utils/keymutex"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -20,6 +23,7 @@ type metrics struct{}
 type fetcher interface {
 	FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
 	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
+	Close()
 }
 
 // Compiler check to ensure Fetcher implements the fetcher interface
@@ -31,6 +35,8 @@ type Fetcher struct {
 	metasCache      cache.Cache
 	blocksCache     *cache.EmbeddedCache[string, BlockDirectory]
 	localFSResolver KeyResolver
+
+	q *downloadQueue[BlockRef, BlockDirectory]
 
 	metrics *metrics
 	logger  log.Logger
@@ -44,7 +50,12 @@ func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blo
 		localFSResolver: NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
 		logger:          logger,
 	}
+	fetcher.q = newDownloadQueue[BlockRef, BlockDirectory](1000, cfg.numWorkers, fetcher.processTask, logger)
 	return fetcher, nil
+}
+
+func (f *Fetcher) Close() {
+	f.q.close()
 }
 
 func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
@@ -112,6 +123,58 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 		return err
 	}
 	return f.metasCache.Store(ctx, keys, data)
+}
+
+func (f *Fetcher) FetchBlocksWithQueue(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	responses := make(chan BlockDirectory, len(refs))
+	errors := make(chan error, len(refs))
+	for _, ref := range refs {
+		f.q.enqueue(downloadTask[BlockRef, BlockDirectory]{
+			ctx:     ctx,
+			item:    ref,
+			key:     f.client.Block(ref).Addr(),
+			results: responses,
+			errors:  errors,
+		})
+	}
+
+	results := make([]BlockDirectory, len(refs))
+
+outer:
+	for i := 0; i < len(refs); i++ {
+		select {
+		case err := <-errors:
+			return results, err
+		case res := <-responses:
+			for j, ref := range refs {
+				if res.BlockRef == ref {
+					results[j] = res
+					continue outer
+				}
+			}
+			return results, fmt.Errorf("no matching request found for response %s", res)
+		}
+	}
+
+	return results, nil
+}
+
+func (f *Fetcher) processTask(ctx context.Context, task downloadTask[BlockRef, BlockDirectory]) {
+	if ctx.Err() != nil {
+		task.errors <- ctx.Err()
+		return
+	}
+
+	refs := []BlockRef{task.item}
+	results, err := f.FetchBlocks(ctx, refs)
+	if err != nil {
+		task.errors <- err
+		return
+	}
+
+	for _, res := range results {
+		task.results <- res
+	}
 }
 
 func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
@@ -219,4 +282,69 @@ func (f *Fetcher) writeBackBlocks(ctx context.Context, blocks []BlockDirectory) 
 		keys[i] = f.client.Block(blocks[i].BlockRef).Addr()
 	}
 	return f.blocksCache.Store(ctx, keys, blocks)
+}
+
+type processFunc[T any, R any] func(context.Context, downloadTask[T, R])
+
+type downloadTask[T any, R any] struct {
+	ctx     context.Context
+	item    T
+	key     string
+	results chan<- R
+	errors  chan<- error
+}
+
+type downloadQueue[T any, R any] struct {
+	queue   chan downloadTask[T, R]
+	mu      keymutex.KeyMutex
+	wg      sync.WaitGroup
+	done    chan struct{}
+	process processFunc[T, R]
+	logger  log.Logger
+}
+
+func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R], logger log.Logger) *downloadQueue[T, R] {
+	q := &downloadQueue[T, R]{
+		queue:   make(chan downloadTask[T, R], size),
+		mu:      keymutex.NewHashed(workers),
+		done:    make(chan struct{}),
+		process: process,
+		logger:  logger,
+	}
+	for i := 0; i < workers; i++ {
+		q.wg.Add(1)
+		go q.runWorker()
+	}
+	return q
+}
+
+func (q *downloadQueue[T, R]) enqueue(t downloadTask[T, R]) {
+	q.queue <- t
+}
+
+func (q *downloadQueue[T, R]) runWorker() {
+	defer q.wg.Done()
+	for {
+		select {
+		case <-q.done:
+			return
+		case task := <-q.queue:
+			q.do(task.ctx, task)
+		}
+	}
+}
+
+func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadTask[T, R]) {
+	q.mu.LockKey(task.key)
+	defer func() {
+		err := q.mu.UnlockKey(task.key)
+		level.Error(q.logger).Log("msg", "failed to unlock key in block lock", "err", err)
+	}()
+
+	q.process(ctx, task)
+}
+
+func (q *downloadQueue[T, R]) close() {
+	close(q.done)
+	q.wg.Wait()
 }

@@ -149,6 +149,7 @@ func (b *bloomStoreEntry) PutMeta(ctx context.Context, meta Meta) error {
 // Stop implements Client.
 func (b bloomStoreEntry) Stop() {
 	b.bloomClient.Stop()
+	b.fetcher.Close()
 }
 
 // Compiler check to ensure BloomStore implements the Client interface
