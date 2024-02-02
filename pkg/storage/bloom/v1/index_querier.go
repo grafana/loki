@@ -49,7 +49,7 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 	// first potentially relevant page
 	desiredPage := sort.Search(len(it.b.index.pageHeaders), func(i int) bool {
 		header := it.b.index.pageHeaders[i]
-		return header.ThroughFp >= fp
+		return header.Bounds.Max >= fp
 	})
 
 	switch {

@@ -213,12 +213,12 @@ func (h *SeriesPageHeaderWithOffset) Decode(dec *encoding.Decbuf) error {
 
 type SeriesHeader struct {
 	NumSeries         int
-	FromFp, ThroughFp model.Fingerprint
+	Bounds            FingerprintBounds
 	FromTs, ThroughTs model.Time
 }
 
 func (h SeriesHeader) OverlapFingerprintRange(other SeriesHeader) bool {
-	return h.ThroughFp >= other.FromFp && h.FromFp <= other.ThroughFp
+	return h.Bounds.Overlaps(other.Bounds)
 }
 
 // build one aggregated header for the entire block
@@ -227,9 +227,10 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 		return SeriesHeader{}
 	}
 
+	fromFp, _ := xs[0].Bounds.GetFromThrough()
+	_, throughFP := xs[len(xs)-1].Bounds.GetFromThrough()
 	res := SeriesHeader{
-		FromFp:    xs[0].FromFp,
-		ThroughFp: xs[len(xs)-1].ThroughFp,
+		Bounds: NewBounds(fromFp, throughFP),
 	}
 
 	for _, x := range xs {
@@ -245,16 +246,16 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 
 func (h *SeriesHeader) Encode(enc *encoding.Encbuf) {
 	enc.PutUvarint(h.NumSeries)
-	enc.PutUvarint64(uint64(h.FromFp))
-	enc.PutUvarint64(uint64(h.ThroughFp))
+	enc.PutUvarint64(uint64(h.Bounds.Min))
+	enc.PutUvarint64(uint64(h.Bounds.Max))
 	enc.PutVarint64(int64(h.FromTs))
 	enc.PutVarint64(int64(h.ThroughTs))
 }
 
 func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 	h.NumSeries = dec.Uvarint()
-	h.FromFp = model.Fingerprint(dec.Uvarint64())
-	h.ThroughFp = model.Fingerprint(dec.Uvarint64())
+	h.Bounds.Min = model.Fingerprint(dec.Uvarint64())
+	h.Bounds.Max = model.Fingerprint(dec.Uvarint64())
 	h.FromTs = model.Time(dec.Varint64())
 	h.ThroughTs = model.Time(dec.Varint64())
 	return dec.Err()
@@ -305,7 +306,7 @@ func (d *SeriesPageDecoder) Next() bool {
 }
 
 func (d *SeriesPageDecoder) Seek(fp model.Fingerprint) {
-	if fp > d.header.ThroughFp {
+	if fp > d.header.Bounds.Max {
 		// shortcut: we know the fingerprint is too large so nothing in this page
 		// will match the seek call, which returns the first found fingerprint >= fp.
 		// so masquerade the index as if we've already iterated through

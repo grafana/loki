@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"sort"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -408,8 +407,7 @@ func (b *IndexBuilder) flushPage() error {
 		DecompressedLen: decompressedLen,
 		SeriesHeader: SeriesHeader{
 			NumSeries: b.page.Count(),
-			FromFp:    b.fromFp,
-			ThroughFp: b.previousFp,
+			Bounds:    NewBounds(b.fromFp, b.previousFp),
 			FromTs:    b.fromTs,
 			ThroughTs: b.throughTs,
 		},
@@ -454,36 +452,6 @@ func (b *IndexBuilder) Close() error {
 		return errors.Wrap(err, "writing series page headers")
 	}
 	return errors.Wrap(b.writer.Close(), "closing series writer")
-}
-
-// SortBlocksIntoOverlappingGroups sorts a list of blocks into a sorted list of lists,
-// where each list contains blocks that overlap with each other.
-// TODO(owen-d): implement as an iterator so we don't have to load all blocks at once
-// NB: unused now, but likely useful when we want to optimize compaction. I wrote this expecting to need it now
-// but it feels unsavory to remove it
-func SortBlocksIntoOverlappingGroups(xs []*Block) (groups [][]*Block) {
-	sort.Slice(xs, func(i, j int) bool {
-		a, b := xs[i].index, xs[j].index
-		return a.pageHeaders[0].FromFp <= b.pageHeaders[0].FromFp
-	})
-
-	var curGroup []*Block
-	for _, x := range xs {
-		switch {
-		case len(curGroup) == 0:
-			curGroup = append(curGroup, x)
-		case curGroup[len(curGroup)-1].dataRange.OverlapFingerprintRange(x.dataRange):
-			curGroup = append(curGroup, x)
-		default:
-			groups = append(groups, curGroup)
-			curGroup = []*Block{x}
-		}
-	}
-
-	if len(curGroup) > 0 {
-		groups = append(groups, curGroup)
-	}
-	return groups
 }
 
 // Simplistic implementation of a merge builder that builds a single block
