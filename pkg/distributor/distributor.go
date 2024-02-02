@@ -416,9 +416,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
 
+		/* We would have to filter all streams again here.
 		for _, tracker := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
 			validation.DiscardedBytesCustom.WithLabelValues(validation.RateLimited, tenantID, tracker).Add(float64(validatedLineSize))
 		}
+		*/
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)

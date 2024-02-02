@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	testStreamLabels       = labels.Labels{{Name:"my", Value:"label"}}
+	testStreamLabels       = labels.Labels{{Name: "my", Value: "label"}}
 	testStreamLabelsString = testStreamLabels.String()
 	testTime               = time.Now()
 )
