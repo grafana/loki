@@ -3151,6 +3151,9 @@ otlp_config:
   [scope_attributes: <list of AttributesConfigs>]
 
   [log_attributes: <list of AttributesConfigs>]
+
+# Defines a set of custom trackers for ingested bytes.
+custom_trackers:
 ```
 
 ### frontend_worker
