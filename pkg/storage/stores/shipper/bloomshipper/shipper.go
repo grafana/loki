@@ -28,10 +28,9 @@ type Interface interface {
 }
 
 type Shipper struct {
-	store           Store
-	config          config.Config
-	logger          log.Logger
-	blockDownloader *blockDownloader
+	store  Store
+	config config.Config
+	logger log.Logger
 }
 
 type Limits interface {
@@ -44,17 +43,12 @@ type StoreAndClient interface {
 	Client
 }
 
-func NewShipper(client StoreAndClient, config config.Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Shipper, error) {
+func NewShipper(client StoreAndClient, config config.Config, _ Limits, logger log.Logger, _ prometheus.Registerer) (*Shipper, error) {
 	logger = log.With(logger, "component", "bloom-shipper")
-	downloader, err := newBlockDownloader(config, client, limits, logger, reg)
-	if err != nil {
-		return nil, fmt.Errorf("error creating block downloader: %w", err)
-	}
 	return &Shipper{
-		store:           client,
-		config:          config,
-		logger:          logger,
-		blockDownloader: downloader,
+		store:  client,
+		config: config,
+		logger: logger,
 	}, nil
 }
 
@@ -70,52 +64,31 @@ func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, interval In
 	return blockRefs, nil
 }
 
-func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef, callback ForEachBlockCallback) error {
-	// TODO(chaudum): Hook up store
-	cancelContext, cancelFunc := context.WithCancel(ctx)
-	defer cancelFunc()
-	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blocks)
-
-	// track how many blocks are still remaning to be downloaded
-	remaining := len(blocks)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
-		case result, sentBeforeClosed := <-blocksChannel:
-			if !sentBeforeClosed {
-				return nil
-			}
-			err := runCallback(callback, result)
-			if err != nil {
-				return err
-			}
-			remaining--
-			if remaining == 0 {
-				return nil
-			}
-		case err := <-errorsChannel:
-			return fmt.Errorf("error downloading blocks : %w", err)
-		}
-	}
-}
-
-func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
-	defer func(b blockWithQuerier) {
-		_ = b.Close()
-	}(block)
-
-	err := callback(block.ClosableBlockQuerier.BlockQuerier, block.Bounds)
+func (s *Shipper) Fetch(ctx context.Context, _ string, blocks []BlockRef, callback ForEachBlockCallback) error {
+	blockDirs, err := s.store.FetchBlocks(ctx, blocks)
 	if err != nil {
-		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockRef, err)
+		return err
+	}
+
+	for _, dir := range blockDirs {
+		err := runCallback(callback, dir.BlockQuerier(), dir.BlockRef.Bounds)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
+func runCallback(callback ForEachBlockCallback, bq *ClosableBlockQuerier, bounds v1.FingerprintBounds) error {
+	defer func(b *ClosableBlockQuerier) {
+		_ = b.Close()
+	}(bq)
+
+	return callback(bq.BlockQuerier, bounds)
+}
+
 func (s *Shipper) Stop() {
 	s.store.Stop()
-	s.blockDownloader.stop()
 }
 
 // getFirstLast returns the first and last item of a fingerprint slice

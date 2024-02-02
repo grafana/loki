@@ -55,3 +55,25 @@ func extractArchive(archivePath string, workingDirectoryPath string) error {
 	}
 	return v1.UnTarGz(workingDirectoryPath, file)
 }
+
+func extractBlock(data io.ReadCloser, blockDir string, logger log.Logger) error {
+	err := os.MkdirAll(blockDir, os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("can not create directory to extract the block: %w", err)
+	}
+	archivePath, err := writeDataToTempFile(blockDir, data)
+	if err != nil {
+		return fmt.Errorf("error writing data to temp file: %w", err)
+	}
+	defer func() {
+		err = os.Remove(archivePath)
+		if err != nil {
+			level.Error(logger).Log("msg", "error removing temp archive file", "err", err)
+		}
+	}()
+	err = extractArchive(archivePath, blockDir)
+	if err != nil {
+		return fmt.Errorf("error extracting archive: %w", err)
+	}
+	return nil
+}

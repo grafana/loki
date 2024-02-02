@@ -20,6 +20,7 @@ import (
 type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
 	Fetcher(ts model.Time) *Fetcher
 	Stop()
 }
@@ -101,7 +102,12 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 	return metas, nil
 }
 
-// SearchMetas implements store.
+// FetchBlocks implements Store.
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	return b.fetcher.FetchBlocksWithQueue(ctx, refs)
+}
+
+// Fetcher implements Store.
 func (b *bloomStoreEntry) Fetcher(_ model.Time) *Fetcher {
 	return b.fetcher
 }
@@ -298,6 +304,11 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 	return metas, nil
 }
 
+// FetchBlocks implements Store.
+func (b *BloomStore) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	return b.GetBlocks(ctx, refs)
+}
+
 // DeleteBlocks implements Client.
 func (b *BloomStore) DeleteBlocks(ctx context.Context, refs []BlockRef) error {
 	for _, ref := range refs {
@@ -371,7 +382,7 @@ func (b *BloomStore) GetBlocks(ctx context.Context, blocks []BlockRef) ([]BlockD
 
 	results := make([]BlockDirectory, 0, len(blocks))
 	for i := range fetchers {
-		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
+		res, err := fetchers[i].FetchBlocksWithQueue(ctx, refs[i])
 		results = append(results, res...)
 		if err != nil {
 			return results, err
