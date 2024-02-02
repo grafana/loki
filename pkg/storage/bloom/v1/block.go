@@ -40,7 +40,8 @@ func (b *Block) LoadHeaders() error {
 			return errors.Wrap(err, "getting index reader")
 		}
 
-		if err := b.index.DecodeHeaders(idx); err != nil {
+		indexChecksum, err := b.index.DecodeHeaders(idx)
+		if err != nil {
 			return errors.Wrap(err, "decoding index")
 		}
 
@@ -57,14 +58,29 @@ func (b *Block) LoadHeaders() error {
 		if err != nil {
 			return errors.Wrap(err, "getting blooms reader")
 		}
-		if err := b.blooms.DecodeHeaders(blooms); err != nil {
+		bloomChecksum, err := b.blooms.DecodeHeaders(blooms)
+		if err != nil {
 			return errors.Wrap(err, "decoding blooms")
 		}
 		b.initialized = true
 
+		if !b.metadata.Options.Schema.Compatible(b.blooms.schema) {
+			return fmt.Errorf(
+				"schema mismatch: index (%v) vs blooms (%v)",
+				b.metadata.Options.Schema, b.blooms.schema,
+			)
+		}
+
+		b.metadata.Checksum = combineChecksums(indexChecksum, bloomChecksum)
 	}
 	return nil
 
+}
+
+// XOR checksums as a simple checksum combiner with the benefit that
+// each part can be recomputed by XORing the result against the other
+func combineChecksums(index, blooms uint32) uint32 {
+	return index ^ blooms
 }
 
 // convenience method

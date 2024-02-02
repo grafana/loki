@@ -120,14 +120,19 @@ func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) 
 		return 0, errors.Wrap(err, "iterating series with blooms")
 	}
 
-	checksum, err := b.blooms.Close()
+	return b.Close()
+}
+
+func (b *BlockBuilder) Close() (uint32, error) {
+	bloomChecksum, err := b.blooms.Close()
 	if err != nil {
 		return 0, errors.Wrap(err, "closing bloom file")
 	}
-	if err := b.index.Close(); err != nil {
+	indexCheckSum, err := b.index.Close()
+	if err != nil {
 		return 0, errors.Wrap(err, "closing series file")
 	}
-	return checksum, nil
+	return combineChecksums(indexCheckSum, bloomChecksum), nil
 }
 
 func (b *BlockBuilder) AddSeries(series SeriesWithBloom) error {
@@ -457,10 +462,10 @@ func (b *IndexBuilder) flushPage() error {
 	return nil
 }
 
-func (b *IndexBuilder) Close() error {
+func (b *IndexBuilder) Close() (uint32, error) {
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
-			return errors.Wrap(err, "flushing final series page")
+			return 0, errors.Wrap(err, "flushing final series page")
 		}
 	}
 
@@ -480,9 +485,9 @@ func (b *IndexBuilder) Close() error {
 	b.scratch.PutHash(crc32Hash)
 	_, err := b.writer.Write(b.scratch.Get())
 	if err != nil {
-		return errors.Wrap(err, "writing series page headers")
+		return 0, errors.Wrap(err, "writing series page headers")
 	}
-	return errors.Wrap(b.writer.Close(), "closing series writer")
+	return crc32Hash.Sum32(), errors.Wrap(b.writer.Close(), "closing series writer")
 }
 
 // Simplistic implementation of a merge builder that builds a single block
@@ -585,12 +590,9 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		}
 	}
 
-	checksum, err := builder.blooms.Close()
+	checksum, err := builder.Close()
 	if err != nil {
-		return 0, errors.Wrap(err, "closing bloom file")
-	}
-	if err := builder.index.Close(); err != nil {
-		return 0, errors.Wrap(err, "closing series file")
+		return 0, errors.Wrap(err, "closing block")
 	}
 	return checksum, nil
 }
