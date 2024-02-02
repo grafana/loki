@@ -391,6 +391,7 @@ func Test_blockDownloader_extractBlock(t *testing.T) {
 	}
 
 	err = extractBlock(block.Data, workingDir, nil)
+	require.NoError(t, err)
 
 	require.FileExists(t, filepath.Join(workingDir, v1.BloomFileName))
 	require.FileExists(t, filepath.Join(workingDir, v1.SeriesFileName))
