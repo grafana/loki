@@ -330,8 +330,7 @@ test: all ## run the unit tests
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
-test_results.txt: test
-test-summary: test_results.txt ## Generates a Markdown formatted test summary based on test_results.txt 
+test-summary: ## Generates a Markdown formatted test summary based on test_results.txt
 	@cat test_results.txt | go run ./tools/test-summary
 
 #########
