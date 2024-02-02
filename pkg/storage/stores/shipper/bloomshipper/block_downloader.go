@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -166,7 +165,7 @@ type cacheDownloadingStrategy struct {
 	config           config.Config
 	workingDirectory string
 	blockClient      BlockClient
-	blocksCache      *cache.EmbeddedCache[string, CachedBlock]
+	blocksCache      *cache.EmbeddedCache[string, BlockDirectory]
 	keyMutex         keymutex.KeyMutex
 }
 
@@ -176,27 +175,30 @@ func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, log
 	defer func() {
 		_ = s.keyMutex.UnlockKey(key)
 	}()
+
 	blockFromCache, exists := s.blocksCache.Get(task.ctx, key)
 	if exists {
 		return blockWithQuerier{
 			BlockRef:             task.block,
-			closableBlockQuerier: newBlockQuerierFromCache(blockFromCache),
+			ClosableBlockQuerier: blockFromCache.BlockQuerier(),
 		}, nil
 	}
 
-	directory, err := downloadBlockToDirectory(logger, task, s.workingDirectory, s.blockClient)
+	directory, err := downloadBlockToDirectory(logger, task, s.blockClient)
 	if err != nil {
 		return blockWithQuerier{}, err
 	}
-	blockFromCache = newCachedBlock(directory, s.config.BlocksCache.RemoveDirectoryGracefulPeriod, logger)
-	err = s.blocksCache.Store(task.ctx, []string{key}, []CachedBlock{blockFromCache})
+
+	blockFromCache = NewBlockDirectory(task.block, directory, logger)
+	err = s.blocksCache.Store(task.ctx, []string{key}, []BlockDirectory{blockFromCache})
 	if err != nil {
 		level.Error(logger).Log("msg", "error storing the block in the cache", "block", key, "err", err)
 		return blockWithQuerier{}, fmt.Errorf("error storing the block %s in the cache : %w", key, err)
 	}
+
 	return blockWithQuerier{
 		BlockRef:             task.block,
-		closableBlockQuerier: newBlockQuerierFromCache(blockFromCache),
+		ClosableBlockQuerier: blockFromCache.BlockQuerier(),
 	}, nil
 }
 
@@ -210,13 +212,13 @@ type storageDownloadingStrategy struct {
 }
 
 func (s *storageDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
-	directory, err := downloadBlockToDirectory(logger, task, s.workingDirectory, s.blockClient)
+	directory, err := downloadBlockToDirectory(logger, task, s.blockClient)
 	if err != nil {
 		return blockWithQuerier{}, err
 	}
 	return blockWithQuerier{
 		BlockRef:             task.block,
-		closableBlockQuerier: newBlockQuerierFromFS(directory),
+		ClosableBlockQuerier: newBlockQuerierFromFS(directory),
 	}, nil
 }
 
@@ -224,21 +226,15 @@ func (s *storageDownloadingStrategy) close() {
 	// noop implementation
 }
 
-func downloadBlockToDirectory(logger log.Logger, task *BlockDownloadingTask, workingDirectory string, blockClient BlockClient) (string, error) {
-	blockPath := filepath.Join(workingDirectory, blockClient.Block(task.block).LocalPath())
-	level.Debug(logger).Log("msg", "start downloading the block", "block", blockPath)
+func downloadBlockToDirectory(logger log.Logger, task *BlockDownloadingTask, blockClient BlockClient) (string, error) {
+	level.Debug(logger).Log("msg", "start downloading the block", "block", task.block)
 	block, err := blockClient.GetBlock(task.ctx, task.block)
 	if err != nil {
-		level.Error(logger).Log("msg", "error downloading the block", "block", blockPath, "err", err)
-		return "", fmt.Errorf("error downloading the block %s : %w", blockPath, err)
+		return "", err
 	}
-	err = extractBlock(block.Data, blockPath, logger)
-	if err != nil {
-		level.Error(logger).Log("msg", "error extracting the block", "block", blockPath, "err", err)
-		return "", fmt.Errorf("error extracting the block %s : %w", blockPath, err)
-	}
-	level.Debug(logger).Log("msg", "block has been downloaded and extracted", "block", blockPath)
-	return blockPath, nil
+
+	level.Debug(logger).Log("msg", "block has been downloaded and extracted", "path", block.Path)
+	return block.Path, nil
 }
 
 func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, references []BlockRef) (chan blockWithQuerier, chan error) {
@@ -264,12 +260,11 @@ func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, r
 
 type blockWithQuerier struct {
 	BlockRef
-	*closableBlockQuerier
+	*ClosableBlockQuerier
 }
 
 // extract the files into directory and returns absolute path to this directory.
 func extractBlock(data io.ReadCloser, blockDir string, logger log.Logger) error {
-
 	err := os.MkdirAll(blockDir, os.ModePerm)
 	if err != nil {
 		return fmt.Errorf("can not create directory to extract the block: %w", err)

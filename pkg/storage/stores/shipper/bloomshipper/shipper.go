@@ -71,6 +71,7 @@ func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, interval In
 }
 
 func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef, callback ForEachBlockCallback) error {
+	// TODO(chaudum): Hook up store
 	cancelContext, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blocks)
@@ -105,7 +106,7 @@ func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
 		_ = b.Close()
 	}(block)
 
-	err := callback(block.closableBlockQuerier.BlockQuerier, block.Bounds)
+	err := callback(block.ClosableBlockQuerier.BlockQuerier, block.Bounds)
 	if err != nil {
 		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockRef, err)
 	}

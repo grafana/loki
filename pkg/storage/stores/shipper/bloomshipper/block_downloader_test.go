@@ -235,7 +235,7 @@ func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 	mockData := make(map[BlockRef]blockSupplier, count)
 	refs := make([]BlockRef, 0, count)
 	for i := 0; i < count; i++ {
-		archivePath, _, _ := createBlockArchive(t)
+		archivePath, blockDir, _, _ := createBlockArchive(t)
 		_, err := os.OpenFile(archivePath, os.O_RDONLY, 0700)
 		//ensure file can be opened
 		require.NoError(t, err)
@@ -249,19 +249,16 @@ func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 				Checksum:       0,
 			},
 		}
-		mockData[blockRef] = func() LazyBlock {
-			file, _ := os.OpenFile(archivePath, os.O_RDONLY, 0700)
-			return LazyBlock{
-				BlockRef: blockRef,
-				Data:     file,
-			}
+
+		mockData[blockRef] = func() BlockDirectory {
+			return NewBlockDirectory(blockRef, blockDir, log.NewNopLogger())
 		}
 		refs = append(refs, blockRef)
 	}
 	return refs, &mockBlockClient{mockData: mockData}
 }
 
-type blockSupplier func() LazyBlock
+type blockSupplier func() BlockDirectory
 
 type mockBlockClient struct {
 	responseDelay time.Duration
@@ -270,7 +267,11 @@ type mockBlockClient struct {
 	defaultKeyResolver
 }
 
-func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (LazyBlock, error) {
+func (m *mockBlockClient) GetBlocks(_ context.Context, _ []BlockRef) ([]BlockDirectory, error) {
+	panic("implement me")
+}
+
+func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (BlockDirectory, error) {
 	m.getBlockCalls.Inc()
 	time.Sleep(m.responseDelay)
 	supplier, exists := m.mockData[reference]
@@ -278,10 +279,10 @@ func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (LazyB
 		return supplier(), nil
 	}
 
-	return LazyBlock{}, fmt.Errorf("block %s is not found in mockData", reference)
+	return BlockDirectory{}, fmt.Errorf("block %s is not found in mockData", reference)
 }
 
-func (m *mockBlockClient) PutBlocks(_ context.Context, _ []Block) ([]Block, error) {
+func (m *mockBlockClient) PutBlock(_ context.Context, _ Block) error {
 	panic("implement me")
 }
 
@@ -290,26 +291,13 @@ func (m *mockBlockClient) DeleteBlocks(_ context.Context, _ []BlockRef) error {
 }
 
 func Test_blockDownloader_extractBlock(t *testing.T) {
-	blockFilePath, bloomFileContent, seriesFileContent := createBlockArchive(t)
+	blockFilePath, _, bloomFileContent, seriesFileContent := createBlockArchive(t)
 	blockFile, err := os.OpenFile(blockFilePath, os.O_RDONLY, 0700)
 	require.NoError(t, err)
 
 	workingDir := t.TempDir()
-	block := LazyBlock{
-		BlockRef: BlockRef{
-			Ref: Ref{
-				TenantID:       "",
-				TableName:      "",
-				Bounds:         v1.NewBounds(0, 1),
-				StartTimestamp: 0,
-				EndTimestamp:   0,
-				Checksum:       0,
-			},
-		},
-		Data: blockFile,
-	}
 
-	err = extractBlock(block.Data, workingDir, nil)
+	err = extractBlock(blockFile, workingDir, nil)
 	require.NoError(t, err)
 
 	require.FileExists(t, filepath.Join(workingDir, v1.BloomFileName))
@@ -331,7 +319,7 @@ func directoryDoesNotExist(path string) bool {
 
 const testArchiveFileName = "test-block-archive"
 
-func createBlockArchive(t *testing.T) (string, string, string) {
+func createBlockArchive(t *testing.T) (string, string, string, string) {
 	dir := t.TempDir()
 	mockBlockDir := filepath.Join(dir, "mock-block-dir")
 	err := os.MkdirAll(mockBlockDir, 0777)
@@ -354,5 +342,5 @@ func createBlockArchive(t *testing.T) (string, string, string) {
 	err = v1.TarGz(file, v1.NewDirectoryBlockReader(mockBlockDir))
 	require.NoError(t, err)
 
-	return blockFilePath, bloomFileContent, seriesFileContent
+	return blockFilePath, mockBlockDir, bloomFileContent, seriesFileContent
 }

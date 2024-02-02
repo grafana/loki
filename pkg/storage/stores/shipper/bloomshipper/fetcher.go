@@ -3,11 +3,14 @@ package bloomshipper
 import (
 	"context"
 	"encoding/json"
-	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 )
 
@@ -16,27 +19,32 @@ type metrics struct{}
 
 type fetcher interface {
 	FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
-	// TODO(chaudum): Integrate block fetching
-	// FetchBlocks(ctx context.Context, refs []BlockRef) ([]Block, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
 }
+
+// Compiler check to ensure Fetcher implements the fetcher interface
+var _ fetcher = &Fetcher{}
 
 type Fetcher struct {
 	client Client
 
-	metasCache  cache.Cache
-	blocksCache *cache.EmbeddedCache[string, io.ReadCloser]
+	metasCache      cache.Cache
+	blocksCache     *cache.EmbeddedCache[string, BlockDirectory]
+	localFSResolver KeyResolver
 
 	metrics *metrics
 	logger  log.Logger
 }
 
-func NewFetcher(client Client, metasCache cache.Cache, blocksCache *cache.EmbeddedCache[string, io.ReadCloser], logger log.Logger) (*Fetcher, error) {
-	return &Fetcher{
-		client:      client,
-		metasCache:  metasCache,
-		blocksCache: blocksCache,
-		logger:      logger,
-	}, nil
+func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache *cache.EmbeddedCache[string, BlockDirectory], logger log.Logger) (*Fetcher, error) {
+	fetcher := &Fetcher{
+		client:          client,
+		metasCache:      metasCache,
+		blocksCache:     blocksCache,
+		localFSResolver: NewPrefixedResolver(cfg.workingDir, defaultKeyResolver{}),
+		logger:          logger,
+	}
+	return fetcher, nil
 }
 
 func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
@@ -46,14 +54,14 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 
 	keys := make([]string, 0, len(refs))
 	for _, ref := range refs {
-		keys = append(keys, externalMetaKey(ref))
+		keys = append(keys, f.client.Meta(ref).Addr())
 	}
 	cacheHits, cacheBufs, _, err := f.metasCache.Fetch(ctx, keys)
 	if err != nil {
 		return nil, err
 	}
 
-	fromCache, missing, err := f.processCacheResponse(ctx, refs, cacheHits, cacheBufs)
+	fromCache, missing, err := f.processMetasCacheResponse(ctx, refs, cacheHits, cacheBufs)
 	if err != nil {
 		return nil, err
 	}
@@ -63,13 +71,11 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 		return nil, err
 	}
 
-	// TODO(chaudum): Make async
 	err = f.writeBackMetas(ctx, fromStorage)
 	return append(fromCache, fromStorage...), err
 }
 
-func (f *Fetcher) processCacheResponse(_ context.Context, refs []MetaRef, keys []string, bufs [][]byte) ([]Meta, []MetaRef, error) {
-
+func (f *Fetcher) processMetasCacheResponse(_ context.Context, refs []MetaRef, keys []string, bufs [][]byte) ([]Meta, []MetaRef, error) {
 	found := make(map[string][]byte, len(refs))
 	for i, k := range keys {
 		found[k] = bufs[i]
@@ -80,7 +86,7 @@ func (f *Fetcher) processCacheResponse(_ context.Context, refs []MetaRef, keys [
 
 	var lastErr error
 	for i, ref := range refs {
-		if raw, ok := found[externalMetaKey(ref)]; ok {
+		if raw, ok := found[f.client.Meta(ref).Addr()]; ok {
 			meta := Meta{
 				MetaRef: ref,
 			}
@@ -99,7 +105,7 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	keys := make([]string, len(metas))
 	data := make([][]byte, len(metas))
 	for i := range metas {
-		keys[i] = externalMetaKey(metas[i].MetaRef)
+		keys[i] = f.client.Meta(metas[i].MetaRef).Addr()
 		data[i], err = json.Marshal(metas[i])
 	}
 	if err != nil {
@@ -108,71 +114,109 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	return f.metasCache.Store(ctx, keys, data)
 }
 
-// TODO(chaudum): Integrate block fetching
+func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	if ctx.Err() != nil {
+		return nil, errors.Wrap(ctx.Err(), "fetch Blocks")
+	}
 
-// func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) (v1.Iterator[Block], error) {
-// 	if ctx.Err() != nil {
-// 		return nil, errors.Wrap(ctx.Err(), "fetch Blocks")
-// 	}
+	keys := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		keys = append(keys, f.client.Block(ref).Addr())
+	}
+	cacheHits, cacheBufs, _, err := f.blocksCache.Fetch(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
 
-// 	keys := make([]string, 0, len(refs))
-// 	for _, ref := range refs {
-// 		keys = append(keys, externalBlockKey(ref))
-// 	}
-// 	found, blocksFromCache, missing, err := f.blocksCache.Fetch(ctx, keys)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+	var results []BlockDirectory
 
-// 	if len(missing) > 0 {
-// 		for _, key := range missing {
-// 			for i, ref := range refs {
-// 				if key == externalBlockKey(ref) {
-// 					refs = append(refs[:i], refs[i+1:]...)
-// 					i--
-// 				}
-// 			}
-// 		}
+	fromCache, missing, err := f.processBlocksCacheResponse(ctx, refs, cacheHits, cacheBufs)
+	if err != nil {
+		return nil, err
+	}
+	results = append(results, fromCache...)
 
-// 		blocksFromStorage, err := f.client.GetBlock(ctx, refs)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 	}
+	fromLocalFS, missing, err := f.loadBlocksFromFS(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	results = append(results, fromLocalFS...)
 
-// 	return nil, nil
-// }
+	fromStorage, err := f.client.GetBlocks(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	results = append(results, fromStorage...)
 
-// func (f *Fetcher) writeBackBlocks(ctx context.Context, blocks []Block) error {
-// 	keys := make([]string, 0, len(blocks))
-// 	data := make([]io.ReadCloser, 0, len(blocks))
-// 	return f.blocksCache.Store(ctx, keys, data)
-// }
+	err = f.writeBackBlocks(ctx, fromStorage)
+	return results, err
+}
 
-// type ChannelIter[T any] struct {
-// 	ch  <-chan T
-// 	cur T
-// }
+func (f *Fetcher) processBlocksCacheResponse(_ context.Context, refs []BlockRef, keys []string, entries []BlockDirectory) ([]BlockDirectory, []BlockRef, error) {
+	found := make(map[string]BlockDirectory, len(refs))
+	for i, k := range keys {
+		found[k] = entries[i]
+	}
 
-// func NewChannelIter[T any](ch <-chan T) *ChannelIter[T] {
-// 	return &ChannelIter[T]{
-// 		ch: ch,
-// 	}
-// }
+	blockDirs := make([]BlockDirectory, 0, len(found))
+	missing := make([]BlockRef, 0, len(refs)-len(keys))
 
-// func (it *ChannelIter[T]) Next() bool {
-// 	el, ok := <-it.ch
-// 	if ok {
-// 		it.cur = el
-// 		return true
-// 	}
-// 	return false
-// }
+	var lastErr error
+	for i, ref := range refs {
+		if raw, ok := found[f.client.Block(ref).Addr()]; ok {
+			blockDirs = append(blockDirs, raw)
+		} else {
+			missing = append(missing, refs[i])
+		}
+	}
 
-// func (it *ChannelIter[T]) At() T {
-// 	return it.cur
-// }
+	return blockDirs, missing, lastErr
+}
 
-// func (it *ChannelIter[T]) Err() error {
-// 	return nil
-// }
+func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockDirectory, []BlockRef, error) {
+	blockDirs := make([]BlockDirectory, 0, len(refs))
+	missing := make([]BlockRef, 0, len(refs))
+
+	for _, ref := range refs {
+		path := f.localFSResolver.Block(ref).LocalPath()
+		if ok, clean := f.isBlockDir(path); ok {
+			blockDirs = append(blockDirs, NewBlockDirectory(ref, path, f.logger))
+		} else {
+			_ = clean(path)
+			missing = append(missing, ref)
+		}
+	}
+
+	return blockDirs, missing, nil
+}
+
+var noopClean = func(string) error { return nil }
+
+func (f *Fetcher) isBlockDir(path string) (bool, func(string) error) {
+	info, err := os.Stat(path)
+	if err != nil && os.IsNotExist(err) {
+		level.Warn(f.logger).Log("msg", "path does not exist", "path", path)
+		return false, noopClean
+	}
+	if !info.IsDir() {
+		return false, os.Remove
+	}
+	for _, file := range []string{
+		filepath.Join(path, v1.BloomFileName),
+		filepath.Join(path, v1.SeriesFileName),
+	} {
+		if _, err := os.Stat(file); err != nil && os.IsNotExist(err) {
+			level.Warn(f.logger).Log("msg", "path does not contain required file", "path", path, "file", file)
+			return false, os.RemoveAll
+		}
+	}
+	return true, nil
+}
+
+func (f *Fetcher) writeBackBlocks(ctx context.Context, blocks []BlockDirectory) error {
+	keys := make([]string, len(blocks))
+	for i := range blocks {
+		keys[i] = f.client.Block(blocks[i].BlockRef).Addr()
+	}
+	return f.blocksCache.Store(ctx, keys, blocks)
+}

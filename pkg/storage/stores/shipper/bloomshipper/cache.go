@@ -17,78 +17,78 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
-type closableBlockQuerier struct {
+type ClosableBlockQuerier struct {
 	*v1.BlockQuerier
 	Close func() error
 }
 
-func newBlockQuerierFromCache(cached CachedBlock) *closableBlockQuerier {
-	cached.activeQueriers.Inc()
-	return &closableBlockQuerier{
-		BlockQuerier: createBlockQuerier(cached.Directory),
-		Close: func() error {
-			cached.activeQueriers.Dec()
-			return nil
-		},
-	}
-}
-
-func newBlockQuerierFromFS(blockDirectory string) *closableBlockQuerier {
-	return &closableBlockQuerier{
-		BlockQuerier: createBlockQuerier(blockDirectory),
+func newBlockQuerierFromFS(blockDirectory string) *ClosableBlockQuerier {
+	return &ClosableBlockQuerier{
+		BlockQuerier: v1.NewBlockQuerier(v1.NewBlock(v1.NewDirectoryBlockReader(blockDirectory))),
 		Close: func() error {
 			return deleteFolder(blockDirectory)
 		},
 	}
 }
 
-func createBlockQuerier(directory string) *v1.BlockQuerier {
-	reader := v1.NewDirectoryBlockReader(directory)
-	block := v1.NewBlock(reader)
-	return v1.NewBlockQuerier(block)
-}
-
-func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, CachedBlock] {
-	return cache.NewTypedEmbeddedCache[string, CachedBlock](
+func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
+	return cache.NewTypedEmbeddedCache[string, BlockDirectory](
 		"bloom-blocks-cache",
 		config.BlocksCache.EmbeddedCacheConfig,
 		reg,
 		logger,
 		stats.BloomBlocksCache,
 		calculateBlockDirectorySize,
-		func(_ string, value CachedBlock) {
+		func(_ string, value BlockDirectory) {
 			value.removeDirectoryAsync()
 		})
 }
 
-func calculateBlockDirectorySize(entry *cache.Entry[string, CachedBlock]) uint64 {
+func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uint64 {
 	value := entry.Value
-	bloomFileStats, _ := os.Lstat(path.Join(value.Directory, v1.BloomFileName))
-	seriesFileStats, _ := os.Lstat(path.Join(value.Directory, v1.SeriesFileName))
+	bloomFileStats, _ := os.Lstat(path.Join(value.Path, v1.BloomFileName))
+	seriesFileStats, _ := os.Lstat(path.Join(value.Path, v1.SeriesFileName))
 	return uint64(bloomFileStats.Size() + seriesFileStats.Size())
 }
 
-func newCachedBlock(blockDirectory string, removeDirectoryTimeout time.Duration, logger log.Logger) CachedBlock {
-	return CachedBlock{
-		Directory:                   blockDirectory,
+func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirectory {
+	return BlockDirectory{
+		BlockRef:                    ref,
+		Path:                        path,
 		activeQueriers:              atomic.NewInt32(0),
-		removeDirectoryTimeout:      removeDirectoryTimeout,
+		removeDirectoryTimeout:      time.Minute,
 		logger:                      logger,
 		activeQueriersCheckInterval: defaultActiveQueriersCheckInterval,
 	}
 }
 
-type CachedBlock struct {
-	Directory                   string
+type BlockDirectory struct {
+	BlockRef
+	Path                        string
 	removeDirectoryTimeout      time.Duration
 	activeQueriers              *atomic.Int32
 	logger                      log.Logger
 	activeQueriersCheckInterval time.Duration
 }
 
+func (b BlockDirectory) Block() *v1.Block {
+	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
+}
+
+func (b BlockDirectory) BlockQuerier() *ClosableBlockQuerier {
+	b.activeQueriers.Inc()
+	return &ClosableBlockQuerier{
+		BlockQuerier: v1.NewBlockQuerier(b.Block()),
+		Close: func() error {
+			_ = b.activeQueriers.Dec()
+			return nil
+		},
+	}
+}
+
 const defaultActiveQueriersCheckInterval = 100 * time.Millisecond
 
-func (b *CachedBlock) removeDirectoryAsync() {
+func (b *BlockDirectory) removeDirectoryAsync() {
 	go func() {
 		timeout := time.After(b.removeDirectoryTimeout)
 		ticker := time.NewTicker(b.activeQueriersCheckInterval)
@@ -97,7 +97,7 @@ func (b *CachedBlock) removeDirectoryAsync() {
 			select {
 			case <-ticker.C:
 				if b.activeQueriers.Load() == 0 {
-					err := deleteFolder(b.Directory)
+					err := deleteFolder(b.Path)
 					if err == nil {
 						return
 					}
@@ -105,7 +105,7 @@ func (b *CachedBlock) removeDirectoryAsync() {
 				}
 			case <-timeout:
 				level.Warn(b.logger).Log("msg", "force deleting block folder after timeout", "timeout", b.removeDirectoryTimeout)
-				err := deleteFolder(b.Directory)
+				err := deleteFolder(b.Path)
 				if err == nil {
 					return
 				}

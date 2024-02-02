@@ -29,13 +29,13 @@ func Test_CachedBlock(t *testing.T) {
 	for name, testData := range tests {
 		t.Run(name, func(t *testing.T) {
 			extractedBlockDirectory := t.TempDir()
-			blockFilePath, _, _ := createBlockArchive(t)
+			blockFilePath, _, _, _ := createBlockArchive(t)
 			err := extractArchive(blockFilePath, extractedBlockDirectory)
 			require.NoError(t, err)
 			require.DirExists(t, extractedBlockDirectory)
 
-			cached := CachedBlock{
-				Directory:                   extractedBlockDirectory,
+			cached := BlockDirectory{
+				Path:                        extractedBlockDirectory,
 				removeDirectoryTimeout:      500 * time.Millisecond,
 				activeQueriersCheckInterval: 50 * time.Millisecond,
 				logger:                      log.NewLogfmtLogger(os.Stderr),
@@ -60,25 +60,25 @@ func Test_CachedBlock(t *testing.T) {
 
 func Test_ClosableBlockQuerier(t *testing.T) {
 	t.Run("cached", func(t *testing.T) {
-		blockFilePath, _, _ := createBlockArchive(t)
+		blockFilePath, _, _, _ := createBlockArchive(t)
 		extractedBlockDirectory := t.TempDir()
 		err := extractArchive(blockFilePath, extractedBlockDirectory)
 		require.NoError(t, err)
 
-		cached := CachedBlock{
-			Directory:              extractedBlockDirectory,
+		cached := BlockDirectory{
+			Path:                   extractedBlockDirectory,
 			removeDirectoryTimeout: 100 * time.Millisecond,
 			activeQueriers:         atomic.NewInt32(0),
 		}
 
-		querier := newBlockQuerierFromCache(cached)
+		querier := cached.BlockQuerier()
 		require.Equal(t, int32(1), cached.activeQueriers.Load())
 		require.NoError(t, querier.Close())
 		require.Equal(t, int32(0), cached.activeQueriers.Load())
 	})
 
 	t.Run("file system", func(t *testing.T) {
-		blockFilePath, _, _ := createBlockArchive(t)
+		blockFilePath, _, _, _ := createBlockArchive(t)
 		extractedBlockDirectory := t.TempDir()
 		err := extractArchive(blockFilePath, extractedBlockDirectory)
 		require.NoError(t, err)
