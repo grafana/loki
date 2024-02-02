@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/scanner"
 )
 
@@ -24,6 +25,7 @@ const (
 type TestResult struct {
 	status Status
 	test   string
+	pkg    string
 }
 
 type TestSummary struct {
@@ -54,10 +56,32 @@ func (s *TestSummary) Write(w io.Writer) {
 	sw.WriteString(fmt.Sprintf("%d ✅, %d ❌\n", passedTests, failedTests))
 
 	sw.WriteString("## Failed Tests\n")
+	sw.WriteString(`| Package | Test |
+| --- | --- |
+`)
+
+	testsByPackage := make(map[string][]string, 0)
 	for _, r := range s.results {
 		if r.status == Fail {
-			sw.WriteString(r.test)
-			sw.WriteString("\n")
+			if _, ok := testsByPackage[r.pkg]; !ok {
+				testsByPackage[r.pkg] = []string{r.test}
+			} else {
+				testsByPackage[r.pkg] = append(testsByPackage[r.pkg], r.test)
+			}
+		}
+	}
+
+	for pkg, tests := range testsByPackage {
+		// Only print package name once.
+		sw.WriteString("| ")
+		sw.WriteString(pkg)
+		sw.WriteString(" | ")
+		sw.WriteString(tests[0])
+		sw.WriteString(" |\n")
+		for _, test := range tests[1:] {
+			sw.WriteString("| | ")
+			sw.WriteString(test)
+			sw.WriteString(" |\n")
 		}
 	}
 
@@ -85,9 +109,21 @@ func parse(r io.Reader) *TestSummary {
 		token := tokens[i]
 		next := peek(tokens, i)
 		if token.token == result && next.token == test {
-			status, _ := parseStatus(token.text)
-			summary.Add(TestResult{status: status, test: next.text})
 			i++
+			status, _ := parseStatus(token.text)
+			switch status {
+			case Pass:
+				summary.Add(TestResult{status: status, test: next.text})
+			case Skip, Fail:
+				// Skip and Fail have the pattern: <Status> <package> <test name>
+				testName := peek(tokens, i)
+				i++
+				summary.Add(TestResult{
+					status: status,
+					test:   testName.text,
+					pkg:    next.text,
+				})
+			}
 		}
 	}
 
@@ -99,19 +135,17 @@ func lex(r io.Reader) []Token {
 	s.Init(os.Stdin)
 	s.Mode = scanner.GoTokens
 	tokens := make([]Token, 0)
-	for tok := s.Scan(); tok != scanner.EOF; tok = s.Scan() {
-		switch text := s.TokenText(); {
-		case text == "===":
+	b, _ := io.ReadAll(r)
+	fields := strings.Fields(string(b))
+	for i := 0; i < len(fields); i++ {
+		text := fields[i]
+		switch text {
+		case "===":
 			tokens = append(tokens, Token{token: trippleEquals})
-		case text == "PASS":
+		case "PASS":
 			tokens = append(tokens, Token{token: result, text: text})
-		case text == "FAIL" || text == "SKIP":
-			// both are followed by ':'
-			if s.Peek() == ':' {
-				tokens = append(tokens, Token{token: result, text: text})
-			}
-			// Skip ':'
-			s.Scan()
+		case "FAIL:", "SKIP:":
+			tokens = append(tokens, Token{token: result, text: strings.TrimSuffix(text, ":")})
 		default:
 			tokens = append(tokens, Token{token: test, text: text})
 		}
