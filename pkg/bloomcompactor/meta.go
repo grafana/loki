@@ -2,41 +2,19 @@ package bloomcompactor
 
 import (
 	"fmt"
-	"hash"
 	"path"
 
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 const (
 	BloomPrefix = "bloom"
 	MetasPrefix = "metas"
 )
-
-// TODO(owen-d): Probably want to integrate against the block shipper
-// instead of defining here, but only (min,max,fp) should be required for
-// the ref. Things like index-paths, etc are not needed and possibly harmful
-// in the case we want to do migrations. It's easier to load a block-ref or similar
-// within the context of a specific tenant+period+index path and not couple them.
-type BlockRef struct {
-	OwnershipRange v1.FingerprintBounds
-	Checksum       uint32
-}
-
-func (r BlockRef) Hash(h hash.Hash32) error {
-	if err := r.OwnershipRange.Hash(h); err != nil {
-		return err
-	}
-
-	var enc encoding.Encbuf
-	enc.PutBE32(r.Checksum)
-	_, err := h.Write(enc.Get())
-	return errors.Wrap(err, "writing BlockRef")
-}
 
 type MetaRef struct {
 	OwnershipRange v1.FingerprintBounds
@@ -63,13 +41,13 @@ type Meta struct {
 	OwnershipRange v1.FingerprintBounds
 
 	// Old blocks which can be deleted in the future. These should be from previous compaction rounds.
-	Tombstones []BlockRef
+	Tombstones []bloomshipper.BlockRef
 
 	// The specific TSDB files used to generate the block.
 	Sources []tsdb.SingleTenantTSDBIdentifier
 
 	// A list of blocks that were generated
-	Blocks []BlockRef
+	Blocks []bloomshipper.BlockRef
 }
 
 // Generate MetaRef from Meta
@@ -131,6 +109,6 @@ type MetaStore interface {
 
 type BlockStore interface {
 	// TODO(owen-d): flesh out|integrate against bloomshipper.Client
-	GetBlocks([]BlockRef) ([]*v1.Block, error)
+	GetBlocks([]bloomshipper.BlockRef) ([]*v1.Block, error)
 	PutBlock(interface{}) error
 }

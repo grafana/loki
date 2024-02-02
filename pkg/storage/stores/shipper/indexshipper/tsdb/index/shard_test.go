@@ -104,7 +104,7 @@ func TestShardBounds(t *testing.T) {
 		},
 	} {
 		t.Run(tc.shard.String(), func(t *testing.T) {
-			from, through := tc.shard.Bounds()
+			from, through := tc.shard.GetFromThrough()
 			require.Equal(t, model.Fingerprint(tc.from), from)
 			require.Equal(t, model.Fingerprint(tc.through), through)
 		})
