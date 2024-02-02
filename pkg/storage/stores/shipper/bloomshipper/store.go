@@ -32,11 +32,12 @@ var _ Client = &bloomStoreEntry{}
 var _ Store = &bloomStoreEntry{}
 
 type bloomStoreEntry struct {
-	start        model.Time
-	cfg          config.PeriodConfig
-	objectClient client.ObjectClient
-	bloomClient  Client
-	fetcher      *Fetcher
+	start              model.Time
+	cfg                config.PeriodConfig
+	objectClient       client.ObjectClient
+	bloomClient        Client
+	fetcher            *Fetcher
+	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
 // ResolveMetas implements store.
@@ -189,6 +190,38 @@ func NewBloomStore(
 	}
 
 	return store, nil
+}
+
+// Impements KeyResolver
+func (b *BloomStore) Meta(ref MetaRef) (loc Location) {
+	_ = b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
+		loc = s.Meta(ref)
+		return nil
+	})
+
+	// NB(owen-d): should not happen unless a ref is requested outside the store's accepted range.
+	// This should be prevented during query validation
+	if loc == nil {
+		loc = defaultKeyResolver{}.Meta(ref)
+	}
+
+	return
+}
+
+// Impements KeyResolver
+func (b *BloomStore) Block(ref BlockRef) (loc Location) {
+	_ = b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
+		loc = s.Block(ref)
+		return nil
+	})
+
+	// NB(owen-d): should not happen unless a ref is requested outside the store's accepted range.
+	// This should be prevented during query validation
+	if loc == nil {
+		loc = defaultKeyResolver{}.Block(ref)
+	}
+
+	return
 }
 
 // Fetcher implements Store.

@@ -69,7 +69,10 @@ func (r Ref) Interval() Interval {
 
 type BlockRef struct {
 	Ref
-	BlockPath string
+}
+
+func (r BlockRef) String() string {
+	return defaultKeyResolver{}.Block(r).Addr()
 }
 
 type MetaRef struct {
@@ -110,6 +113,7 @@ type Block struct {
 }
 
 type BlockClient interface {
+	KeyResolver
 	GetBlock(ctx context.Context, ref BlockRef) (LazyBlock, error)
 	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
@@ -125,6 +129,7 @@ type Client interface {
 var _ Client = &BloomClient{}
 
 type BloomClient struct {
+	KeyResolver
 	concurrency int
 	client      client.ObjectClient
 	logger      log.Logger
@@ -132,7 +137,8 @@ type BloomClient struct {
 
 func NewBloomClient(client client.ObjectClient, logger log.Logger) (*BloomClient, error) {
 	return &BloomClient{
-		concurrency: 100, // make configurable?
+		KeyResolver: defaultKeyResolver{}, // TODO(owen-d): hook into schema, similar to `{,Parse}ExternalKey`
+		concurrency: 100,                  // make configurable?
 		client:      client,
 		logger:      logger,
 	}, nil
@@ -145,12 +151,6 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	}
 	key := externalMetaKey(meta.MetaRef)
 	return b.client.PutObject(ctx, key, bytes.NewReader(data))
-}
-
-func externalBlockKey(ref BlockRef) string {
-	blockParentFolder := ref.Bounds.String()
-	filename := fmt.Sprintf("%d-%d-%x", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
-	return path.Join(rootFolder, ref.TableName, ref.TenantID, bloomsFolder, blockParentFolder, filename)
 }
 
 func externalMetaKey(ref MetaRef) string {
@@ -175,7 +175,7 @@ func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 
 // GetBlock downloads the blocks from objectStorage and returns the downloaded block
 func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error) {
-	readCloser, _, err := b.client.GetObject(ctx, externalBlockKey(reference))
+	readCloser, _, err := b.client.GetObject(ctx, b.Block(reference).Addr())
 	if err != nil {
 		return LazyBlock{}, fmt.Errorf("error while fetching object from storage: %w", err)
 	}
@@ -195,7 +195,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 
 		var err error
 
-		key := externalBlockKey(block.BlockRef)
+		key := b.Block(block.BlockRef).Addr()
 		_, err = block.Data.Seek(0, 0)
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)
@@ -205,7 +205,6 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)
 		}
-		block.BlockPath = key
 		results[idx] = block
 		return nil
 	})
@@ -215,7 +214,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) error {
 	return concurrency.ForEachJob(ctx, len(references), b.concurrency, func(ctx context.Context, idx int) error {
 		ref := references[idx]
-		key := externalBlockKey(ref)
+		key := b.Block(ref).Addr()
 		err := b.client.DeleteObject(ctx, key)
 		if err != nil {
 			return fmt.Errorf("error deleting block file: %w", err)
