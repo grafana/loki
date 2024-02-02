@@ -53,7 +53,7 @@ func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), stats)
+	req := otlpToLokiPushRequest(otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), limits.CustomTrackersConfig(userID), stats)
 	return req, stats, nil
 }
 
@@ -104,7 +104,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, stats *Stats) *logproto.PushRequest {
+func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, customTrackersConfig *CustomTrackersConfig, stats *Stats) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -148,6 +148,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		labelsStr := streamLabels.String()
 
 		lbs := modelLabelsSetToLabelsList(streamLabels)
+		trackers := customTrackersConfig.MatchTrackers(lbs)
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
 				Labels: labelsStr,
@@ -228,6 +229,12 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 
 				stats.structuredMetadataBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
 				stats.logLinesBytes[tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+				for _, tracker := range trackers {
+					if _, ok := stats.logLinesBytesCustomTrackers[tracker]; !ok {
+						stats.logLinesBytesCustomTrackers[tracker] = map[time.Duration]int64{}
+					}
+					stats.logLinesBytesCustomTrackers[tracker][tenantsRetention.RetentionPeriodFor(userID, lbs)] += int64(len(entry.Line))
+				}
 				stats.numLines++
 				if entry.Timestamp.After(stats.mostRecentEntryTimestamp) {
 					stats.mostRecentEntryTimestamp = entry.Timestamp

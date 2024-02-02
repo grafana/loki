@@ -20,20 +20,22 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 	now := time.Unix(0, time.Now().UnixNano())
 
 	for _, tc := range []struct {
-		name                string
-		generateLogs        func() plog.Logs
-		expectedPushRequest logproto.PushRequest
-		expectedStats       Stats
-		otlpConfig          OTLPConfig
+		name                 string
+		generateLogs         func() plog.Logs
+		expectedPushRequest  logproto.PushRequest
+		expectedStats        Stats
+		otlpConfig           OTLPConfig
+		customTrackersConfig *CustomTrackersConfig
 	}{
 		{
 			name: "no logs",
 			generateLogs: func() plog.Logs {
 				return plog.NewLogs()
 			},
-			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
-			otlpConfig:          DefaultOTLPConfig,
+			expectedPushRequest:  logproto.PushRequest{},
+			expectedStats:        *newPushStats(),
+			otlpConfig:           DefaultOTLPConfig,
+			customTrackersConfig: EmptyCustomTrackersConfig,
 		},
 		{
 			name: "resource with no logs",
@@ -42,13 +44,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "service-1")
 				return ld
 			},
-			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
-			otlpConfig:          DefaultOTLPConfig,
+			expectedPushRequest:  logproto.PushRequest{},
+			expectedStats:        *newPushStats(),
+			otlpConfig:           DefaultOTLPConfig,
+			customTrackersConfig: EmptyCustomTrackersConfig,
 		},
 		{
-			name:       "resource with a log entry",
-			otlpConfig: DefaultOTLPConfig,
+			name:                 "resource with a log entry",
+			otlpConfig:           DefaultOTLPConfig,
+			customTrackersConfig: EmptyCustomTrackersConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.name", "service-1")
@@ -78,13 +82,16 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				structuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
 				},
-				streamLabelsSize:         21,
-				mostRecentEntryTimestamp: now,
+				streamLabelsSize:                      21,
+				mostRecentEntryTimestamp:              now,
+				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
+				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 			},
 		},
 		{
-			name:       "no resource attributes defined",
-			otlpConfig: DefaultOTLPConfig,
+			name:                 "no resource attributes defined",
+			otlpConfig:           DefaultOTLPConfig,
+			customTrackersConfig: EmptyCustomTrackersConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -114,13 +121,16 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				structuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 0,
 				},
-				streamLabelsSize:         27,
-				mostRecentEntryTimestamp: now,
+				streamLabelsSize:                      27,
+				mostRecentEntryTimestamp:              now,
+				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
+				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 			},
 		},
 		{
-			name:       "service.name not defined in resource attributes",
-			otlpConfig: DefaultOTLPConfig,
+			name:                 "service.name not defined in resource attributes",
+			otlpConfig:           DefaultOTLPConfig,
+			customTrackersConfig: MustNewCustomTrackersConfig(map[string]string{"foo": `{service_namespace="foo"}`}),
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("service.namespace", "foo")
@@ -152,11 +162,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 				streamLabelsSize:         47,
 				mostRecentEntryTimestamp: now,
+				logLinesBytesCustomTrackers: map[string]map[time.Duration]int64{
+					"foo": {
+						time.Hour: 9,
+					},
+				},
+				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 			},
 		},
 		{
-			name:       "resource attributes and scope attributes stored as structured metadata",
-			otlpConfig: DefaultOTLPConfig,
+			name:                 "resource attributes and scope attributes stored as structured metadata",
+			otlpConfig:           DefaultOTLPConfig,
+			customTrackersConfig: EmptyCustomTrackersConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -225,13 +242,16 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				structuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 37,
 				},
-				streamLabelsSize:         21,
-				mostRecentEntryTimestamp: now,
+				streamLabelsSize:                      21,
+				mostRecentEntryTimestamp:              now,
+				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
+				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 			},
 		},
 		{
-			name:       "attributes with nested data",
-			otlpConfig: DefaultOTLPConfig,
+			name:                 "attributes with nested data",
+			otlpConfig:           DefaultOTLPConfig,
+			customTrackersConfig: EmptyCustomTrackersConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -309,8 +329,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				structuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 97,
 				},
-				streamLabelsSize:         21,
-				mostRecentEntryTimestamp: now,
+				streamLabelsSize:                      21,
+				mostRecentEntryTimestamp:              now,
+				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
+				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 			},
 		},
 		{
@@ -352,6 +374,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 					},
 				},
 			},
+			customTrackersConfig: EmptyCustomTrackersConfig,
 			generateLogs: func() plog.Logs {
 				ld := plog.NewLogs()
 				ld.ResourceLogs().AppendEmpty()
@@ -452,14 +475,16 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				structuredMetadataBytes: map[time.Duration]int64{
 					time.Hour: 113,
 				},
-				streamLabelsSize:         42,
-				mostRecentEntryTimestamp: now,
+				streamLabelsSize:                      42,
+				mostRecentEntryTimestamp:              now,
+				logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
+				structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stats := newPushStats()
-			pushReq := otlpToLokiPushRequest(tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, stats)
+			pushReq := otlpToLokiPushRequest(tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, tc.customTrackersConfig, stats)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 		})

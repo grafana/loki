@@ -26,13 +26,16 @@ func (c *CustomTrackersConfig) UnmarshalYAML(unmarshal func(interface{}) error) 
 	if err != nil {
 		return err
 	}
-	*c, err = NewCustomTrackersConfig(stringMap)
+	tmp, err := NewCustomTrackersConfig(stringMap)
+	*c = *tmp
 	return err
 }
 
-func NewCustomTrackersConfig(m map[string]string) (c CustomTrackersConfig, err error) {
-	c.source = m
-	c.config = map[string][]*labels.Matcher{}
+func NewCustomTrackersConfig(m map[string]string) (*CustomTrackersConfig, error) {
+	c := &CustomTrackersConfig{
+		source: m,
+		config: map[string][]*labels.Matcher{},
+	}
 	for name, selector := range m {
 		matchers, err := syntax.ParseMatchers(selector, true)
 		if err != nil {
@@ -41,6 +44,15 @@ func NewCustomTrackersConfig(m map[string]string) (c CustomTrackersConfig, err e
 		c.config[name] = matchers
 	}
 	return c, nil
+}
+
+func MustNewCustomTrackersConfig(m map[string]string) *CustomTrackersConfig {
+	c, err := NewCustomTrackersConfig(m)
+	if err != nil {
+		panic(err)
+	}
+
+	return c
 }
 
 // MatchTrackers returns a list of names of all trackers that match the given labels.

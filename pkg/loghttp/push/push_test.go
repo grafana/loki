@@ -205,10 +205,10 @@ func TestParseRequest(t *testing.T) {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
 			}
 
-			CustomTrackersConfig, err := NewCustomTrackersConfig(test.customTrackers)
+			customTrackersConfig, err := NewCustomTrackersConfig(test.customTrackers)
 			require.NoError(t, err)
 			limits := &mockLimits{
-				customTrackers: CustomTrackersConfig,
+				customTrackers: customTrackersConfig,
 			}
 			data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest)
 
@@ -246,12 +246,12 @@ func TestParseRequest(t *testing.T) {
 }
 
 type mockLimits struct {
-	customTrackers CustomTrackersConfig
+	customTrackers *CustomTrackersConfig
 }
 
 // CustomTrackersConfig implements Limits.
 func (m *mockLimits) CustomTrackersConfig(string) *CustomTrackersConfig {
-	return &m.customTrackers
+	return m.customTrackers
 }
 
 // OTLPConfig implements Limits.
