@@ -3,6 +3,7 @@ package query
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -501,10 +502,33 @@ var schemaConfigContents = `schema_config:
       prefix: index_
       period: 24h
 `
+var schemaConfigContents2 = `schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v10
+    index:
+      prefix: index_
+      period: 168h
+  - from: 2020-07-31
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+  - from: 2020-09-30
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v12
+    index:
+      prefix: index_
+      period: 24h
+`
 
 func TestLoadFromURL(t *testing.T) {
 	tmpDir := t.TempDir()
-
 	conf := loki.Config{
 		StorageConfig: storage.Config{
 			FSConfig: local.FSConfig{
@@ -540,8 +564,47 @@ func TestLoadFromURL(t *testing.T) {
 }
 
 func TestMultipleConfigs(t *testing.T) {
-	// TODO: implement this
-	t.Fail()
+	tmpDir := t.TempDir()
+	conf := loki.Config{
+		StorageConfig: storage.Config{
+			FSConfig: local.FSConfig{
+				Directory: tmpDir,
+			},
+		},
+	}
+
+	cm := storage.NewClientMetrics()
+	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	_, err = getLatestConfig(client, "456")
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errNotExists))
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig.yaml"),
+		[]byte(schemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err := getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 2)
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig-1.yaml"),
+		[]byte(schemaConfigContents2),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err = getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 3)
+
 }
 
 func TestDurationCeilDiv(t *testing.T) {

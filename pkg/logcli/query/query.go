@@ -402,7 +402,7 @@ func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaCon
 	if err == nil {
 		return loadedSchema, nil
 	}
-	if err != nil && err != errNotExists {
+	if err != errNotExists && err != nil {
 		return nil, err
 	}
 
@@ -424,6 +424,9 @@ func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaCon
 
 		loadedSchema = tempSchema
 		iteration++
+	}
+	if loadedSchema == nil {
+		return nil, errNotExists
 	}
 	return loadedSchema, nil
 }
@@ -561,11 +564,11 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.Sc
 	defer cancel()
 
 	ok, err := oc.ObjectExists(ctx, name)
-	if err != nil {
-		return nil, err
-	}
 	if !ok {
 		return nil, errNotExists
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	rdr, _, err := oc.GetObject(ctx, name)
