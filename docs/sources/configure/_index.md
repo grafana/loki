@@ -5302,12 +5302,12 @@ Named store from this example can be used by setting object_store to store-1 in 
 
 ### attributes_config
 
-Define actions for matching OTEL Attributes
+Define actions for matching OpenTelemetry (OTEL) attributes.
 
 ```yaml
-# Configures action to take on matching Attributes. It allows one of
-# [structured_metadata, drop] for all Attribute types. It additionally allows
-# index_label action for Resource Attributes
+# Configures action to take on matching attributes. It allows one of
+# [structured_metadata, drop] for all attribute types. It additionally allows
+# index_label action for resource attributes
 [action: <string> | default = ""]
 
 # List of attributes to configure how to store them or drop them altogether
