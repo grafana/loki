@@ -205,17 +205,6 @@ func Test_BloomClient_DeleteMeta(t *testing.T) {
 }
 
 func Test_BloomClient_GetBlocks(t *testing.T) {
-	bloomClient := createStore(t)
-	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
-	firstBlockPath := fmt.Sprintf("bloom/first-period-19621/tenantA/blooms/%s/1695272400000-1695276000000-1", v1.NewBounds(0xeeee, 0xffff))
-	firstBlockFullPath := filepath.Join(fsNamedStores["folder-1"].Directory, firstBlockPath)
-	firstBlockData := createBlockFile(t, firstBlockFullPath)
-	secondBlockPath := fmt.Sprintf("bloom/second-period-19624/tenantA/blooms/%s/1695531600000-1695535200000-2", v1.NewBounds(0xaaaa, 0xbbbb))
-	secondBlockFullPath := filepath.Join(fsNamedStores["folder-2"].Directory, secondBlockPath)
-	secondBlockData := createBlockFile(t, secondBlockFullPath)
-	require.FileExists(t, firstBlockFullPath)
-	require.FileExists(t, secondBlockFullPath)
-
 	firstBlockRef := BlockRef{
 		Ref: Ref{
 			TenantID:       "tenantA",
@@ -225,7 +214,6 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 			EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 			Checksum:       1,
 		},
-		BlockPath: firstBlockPath,
 	}
 	secondBlockRef := BlockRef{
 		Ref: Ref{
@@ -236,8 +224,22 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 			EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
 			Checksum:       2,
 		},
-		BlockPath: secondBlockPath,
 	}
+
+	bloomClient := createStore(t)
+	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
+	firstBlockFullPath := NewPrefixedResolver(
+		fsNamedStores["folder-1"].Directory,
+		defaultKeyResolver{},
+	).Block(firstBlockRef).LocalPath()
+	firstBlockData := createBlockFile(t, firstBlockFullPath)
+	secondBlockFullPath := NewPrefixedResolver(
+		fsNamedStores["folder-2"].Directory,
+		defaultKeyResolver{},
+	).Block(secondBlockRef).LocalPath()
+	secondBlockData := createBlockFile(t, secondBlockFullPath)
+	require.FileExists(t, firstBlockFullPath)
+	require.FileExists(t, secondBlockFullPath)
 
 	downloadedFirstBlock, err := bloomClient.GetBlock(context.Background(), firstBlockRef)
 	require.NoError(t, err)
@@ -254,8 +256,7 @@ func Test_BloomClient_GetBlocks(t *testing.T) {
 
 func Test_BloomClient_PutBlocks(t *testing.T) {
 	bloomClient := createStore(t)
-	blockForFirstFolderData := "data1"
-	blockForFirstFolder := Block{
+	block := Block{
 		BlockRef: BlockRef{
 			Ref: Ref{
 				TenantID:       "tenantA",
@@ -265,118 +266,44 @@ func Test_BloomClient_PutBlocks(t *testing.T) {
 				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
 				Checksum:       1,
 			},
-			IndexPath: uuid.New().String(),
 		},
-		Data: awsio.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
+		Data: awsio.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte("data"))},
 	}
-
-	blockForSecondFolderData := "data2"
-	blockForSecondFolder := Block{
-		BlockRef: BlockRef{
-			Ref: Ref{
-				TenantID:       "tenantA",
-				TableName:      "second-period-19624",
-				Bounds:         v1.NewBounds(0xaaaa, 0xbbbb),
-				StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
-				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
-				Checksum:       2,
-			},
-			IndexPath: uuid.New().String(),
-		},
-		Data: awsio.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
-	}
-
-	results, err := bloomClient.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
+	_, err := bloomClient.PutBlocks(context.Background(), []Block{block})
 	require.NoError(t, err)
-	require.Len(t, results, 2)
-	firstResultBlock := results[0]
-	path := firstResultBlock.BlockPath
-	require.Equal(t,
-		fmt.Sprintf(
-			"bloom/first-period-19621/tenantA/blooms/%s/1695272400000-1695276000000-1",
-			v1.NewBounds(0xeeee, 0xffff),
-		),
-		path,
-	)
-	require.Equal(t, blockForFirstFolder.TenantID, firstResultBlock.TenantID)
-	require.Equal(t, blockForFirstFolder.TableName, firstResultBlock.TableName)
-	require.Equal(t, blockForFirstFolder.Bounds.Min, firstResultBlock.Bounds.Min)
-	require.Equal(t, blockForFirstFolder.Bounds.Max, firstResultBlock.Bounds.Max)
-	require.Equal(t, blockForFirstFolder.StartTimestamp, firstResultBlock.StartTimestamp)
-	require.Equal(t, blockForFirstFolder.EndTimestamp, firstResultBlock.EndTimestamp)
-	require.Equal(t, blockForFirstFolder.Checksum, firstResultBlock.Checksum)
-	require.Equal(t, blockForFirstFolder.IndexPath, firstResultBlock.IndexPath)
-	folder1 := bloomClient.storageConfig.NamedStores.Filesystem["folder-1"].Directory
-	savedFilePath := filepath.Join(folder1, path)
-	require.FileExists(t, savedFilePath)
-	savedData, err := os.ReadFile(savedFilePath)
+	got, err := bloomClient.GetBlock(context.Background(), block.BlockRef)
 	require.NoError(t, err)
-	require.Equal(t, blockForFirstFolderData, string(savedData))
-
-	secondResultBlock := results[1]
-	path = secondResultBlock.BlockPath
-	require.Equal(t,
-		fmt.Sprintf(
-			"bloom/second-period-19624/tenantA/blooms/%s/1695531600000-1695535200000-2",
-			v1.NewBounds(0xaaaa, 0xbbbb),
-		),
-		path,
-	)
-	require.Equal(t, blockForSecondFolder.TenantID, secondResultBlock.TenantID)
-	require.Equal(t, blockForSecondFolder.TableName, secondResultBlock.TableName)
-	require.Equal(t, blockForSecondFolder.Bounds.Min, secondResultBlock.Bounds.Min)
-	require.Equal(t, blockForSecondFolder.Bounds.Max, secondResultBlock.Bounds.Max)
-	require.Equal(t, blockForSecondFolder.StartTimestamp, secondResultBlock.StartTimestamp)
-	require.Equal(t, blockForSecondFolder.EndTimestamp, secondResultBlock.EndTimestamp)
-	require.Equal(t, blockForSecondFolder.Checksum, secondResultBlock.Checksum)
-	require.Equal(t, blockForSecondFolder.IndexPath, secondResultBlock.IndexPath)
-	folder2 := bloomClient.storageConfig.NamedStores.Filesystem["folder-2"].Directory
-
-	savedFilePath = filepath.Join(folder2, path)
-	require.FileExists(t, savedFilePath)
-	savedData, err = os.ReadFile(savedFilePath)
+	require.Equal(t, block.BlockRef, got.BlockRef)
+	data, err := io.ReadAll(got.Data)
 	require.NoError(t, err)
-	require.Equal(t, blockForSecondFolderData, string(savedData))
+	require.Equal(t, "data", string(data))
 }
 
 func Test_BloomClient_DeleteBlocks(t *testing.T) {
-	bloomClient := createStore(t)
-	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
-	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "bloom/first-period-19621/tenantA/blooms/000000000000eeee-000000000000ffff/1695272400000-1695276000000-1")
-	createBlockFile(t, block1Path)
-	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "bloom/second-period-19624/tenantA/blooms/000000000000aaaa-000000000000bbbb/1695531600000-1695535200000-2")
-	createBlockFile(t, block2Path)
-	require.FileExists(t, block1Path)
-	require.FileExists(t, block2Path)
-
-	blocksToDelete := []BlockRef{
-		{
-			Ref: Ref{
-				TenantID:       "tenantA",
-				TableName:      "second-period-19624",
-				Bounds:         v1.NewBounds(0xaaaa, 0xbbbb),
-				StartTimestamp: Date(2023, time.September, 24, 5, 0, 0),
-				EndTimestamp:   Date(2023, time.September, 24, 6, 0, 0),
-				Checksum:       2,
-			},
-			IndexPath: uuid.New().String(),
-		},
-		{
-			Ref: Ref{
-				TenantID:       "tenantA",
-				TableName:      "first-period-19621",
-				Bounds:         v1.NewBounds(0xeeee, 0xffff),
-				StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
-				EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
-				Checksum:       1,
-			},
-			IndexPath: uuid.New().String(),
+	block := BlockRef{
+		Ref: Ref{
+			TenantID:       "tenantA",
+			TableName:      "first-period-19621",
+			Bounds:         v1.NewBounds(0xeeee, 0xffff),
+			StartTimestamp: Date(2023, time.September, 21, 5, 0, 0),
+			EndTimestamp:   Date(2023, time.September, 21, 6, 0, 0),
+			Checksum:       1,
 		},
 	}
-	err := bloomClient.DeleteBlocks(context.Background(), blocksToDelete)
+
+	bloomClient := createStore(t)
+	fsNamedStores := bloomClient.storageConfig.NamedStores.Filesystem
+	blockFullPath := NewPrefixedResolver(
+		fsNamedStores["folder-1"].Directory,
+		defaultKeyResolver{},
+	).Block(block).LocalPath()
+	_ = createBlockFile(t, blockFullPath)
+	require.FileExists(t, blockFullPath)
+
+	err := bloomClient.DeleteBlocks(context.Background(), []BlockRef{block})
 	require.NoError(t, err)
-	require.NoFileExists(t, block1Path)
-	require.NoFileExists(t, block2Path)
+	require.NoFileExists(t, blockFullPath)
+
 }
 
 func createBlockFile(t *testing.T, path string) string {
@@ -556,8 +483,6 @@ func createMetaEntity(
 					StartTimestamp: startTimestamp,
 					EndTimestamp:   endTimestamp,
 				},
-				IndexPath: uuid.New().String(),
-				BlockPath: uuid.New().String(),
 			},
 		},
 		Blocks: []BlockRef{
@@ -569,8 +494,6 @@ func createMetaEntity(
 					StartTimestamp: startTimestamp,
 					EndTimestamp:   endTimestamp,
 				},
-				IndexPath: uuid.New().String(),
-				BlockPath: uuid.New().String(),
 			},
 		},
 	}
