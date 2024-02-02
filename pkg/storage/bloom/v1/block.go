@@ -7,21 +7,23 @@ import (
 	"github.com/prometheus/common/model"
 )
 
+type BlockMetadata struct {
+	Options  BlockOptions
+	Series   SeriesHeader
+	Checksum uint32
+}
+
 type Block struct {
 	// covers series pages
 	index BlockIndex
 	// covers bloom pages
 	blooms BloomBlock
 
-	// TODO(owen-d): implement
-	// synthetic header for the entire block
-	// built from all the pages in the index
-	header SeriesHeader
+	metadata BlockMetadata
 
 	reader BlockReader // should this be decoupled from the struct (accepted as method arg instead)?
 
 	initialized bool
-	dataRange   SeriesHeader
 }
 
 func NewBlock(reader BlockReader) *Block {
@@ -42,12 +44,14 @@ func (b *Block) LoadHeaders() error {
 			return errors.Wrap(err, "decoding index")
 		}
 
+		b.metadata.Options = b.index.opts
+
 		// TODO(owen-d): better pattern
 		xs := make([]SeriesHeader, 0, len(b.index.pageHeaders))
 		for _, h := range b.index.pageHeaders {
 			xs = append(xs, h.SeriesHeader)
 		}
-		b.dataRange = aggregateHeaders(xs)
+		b.metadata.Series = aggregateHeaders(xs)
 
 		blooms, err := b.reader.Blooms()
 		if err != nil {
@@ -57,6 +61,7 @@ func (b *Block) LoadHeaders() error {
 			return errors.Wrap(err, "decoding blooms")
 		}
 		b.initialized = true
+
 	}
 	return nil
 
@@ -75,11 +80,18 @@ func (b *Block) Blooms() *LazyBloomIter {
 	return NewLazyBloomIter(b)
 }
 
+func (b *Block) Metadata() (BlockMetadata, error) {
+	if err := b.LoadHeaders(); err != nil {
+		return BlockMetadata{}, err
+	}
+	return b.metadata, nil
+}
+
 func (b *Block) Schema() (Schema, error) {
 	if err := b.LoadHeaders(); err != nil {
 		return Schema{}, err
 	}
-	return b.index.schema, nil
+	return b.metadata.Options.Schema, nil
 }
 
 type BlockQuerier struct {

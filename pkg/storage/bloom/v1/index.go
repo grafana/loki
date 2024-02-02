@@ -89,19 +89,14 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 // Block index is a set of series pages along with
 // the headers for each page
 type BlockIndex struct {
-	schema      Schema
+	opts BlockOptions
+
 	pageHeaders []SeriesPageHeaderWithOffset // headers for each series page
 }
 
-func NewBlockIndex(encoding chunkenc.Encoding) BlockIndex {
-	return BlockIndex{
-		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
-	}
-}
-
 func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) error {
-	if err := b.schema.DecodeFrom(r); err != nil {
-		return errors.Wrap(err, "decoding schema")
+	if err := b.opts.DecodeFrom(r); err != nil {
+		return errors.Wrap(err, "decoding block options")
 	}
 
 	var (
@@ -167,7 +162,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 		return nil, errors.Wrap(err, "checksumming series page")
 	}
 
-	decompressor, err := b.schema.DecompressorPool().GetReader(bytes.NewReader(dec.Get()))
+	decompressor, err := b.opts.Schema.DecompressorPool().GetReader(bytes.NewReader(dec.Get()))
 	if err != nil {
 		return nil, errors.Wrap(err, "getting decompressor")
 	}

@@ -20,15 +20,46 @@ var (
 
 type BlockOptions struct {
 	// Schema determines the Schema of the block and cannot be changed
+	// without recreating the block from underlying data
 	Schema Schema
 
 	// The following options can be changed on the fly.
 	// For instance, adding another page to a block with
-	// a different target page size is supported.
+	// a different target page size is supported, although
+	// the block will store the original sizes it was created with
 
 	// target size in bytes (decompressed)
 	// of each page type
-	SeriesPageSize, BloomPageSize, BlockSize int
+	SeriesPageSize, BloomPageSize, BlockSize uint64
+}
+
+func (b BlockOptions) Len() int {
+	return 3*8 + b.Schema.Len()
+}
+
+func (b *BlockOptions) DecodeFrom(r io.ReadSeeker) error {
+	buf := make([]byte, b.Len())
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return errors.Wrap(err, "reading block options")
+	}
+
+	dec := encoding.DecWith(buf)
+
+	if err := b.Schema.Decode(&dec); err != nil {
+		return errors.Wrap(err, "decoding schema")
+	}
+	b.SeriesPageSize = dec.Be64()
+	b.BloomPageSize = dec.Be64()
+	b.BlockSize = dec.Be64()
+	return nil
+}
+
+func (b BlockOptions) Encode(enc *encoding.Encbuf) {
+	b.Schema.Encode(enc)
+	enc.PutBE64(b.SeriesPageSize)
+	enc.PutBE64(b.BloomPageSize)
+	enc.PutBE64(b.BlockSize)
 }
 
 type BlockBuilder struct {
@@ -130,7 +161,7 @@ func NewBloomBlockBuilder(opts BlockOptions, writer io.WriteCloser) *BloomBlockB
 	return &BloomBlockBuilder{
 		opts:    opts,
 		writer:  writer,
-		page:    NewPageWriter(opts.BloomPageSize),
+		page:    NewPageWriter(int(opts.BloomPageSize)),
 		scratch: &encoding.Encbuf{},
 	}
 }
@@ -306,16 +337,16 @@ func NewIndexBuilder(opts BlockOptions, writer io.WriteCloser) *IndexBuilder {
 	return &IndexBuilder{
 		opts:    opts,
 		writer:  writer,
-		page:    NewPageWriter(opts.SeriesPageSize),
+		page:    NewPageWriter(int(opts.SeriesPageSize)),
 		scratch: &encoding.Encbuf{},
 	}
 }
 
-func (b *IndexBuilder) WriteSchema() error {
+func (b *IndexBuilder) WriteOpts() error {
 	b.scratch.Reset()
-	b.opts.Schema.Encode(b.scratch)
+	b.opts.Encode(b.scratch)
 	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
-		return errors.Wrap(err, "writing schema")
+		return errors.Wrap(err, "writing opts+schema")
 	}
 	b.writtenSchema = true
 	b.offset += b.scratch.Len()
@@ -324,8 +355,8 @@ func (b *IndexBuilder) WriteSchema() error {
 
 func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 	if !b.writtenSchema {
-		if err := b.WriteSchema(); err != nil {
-			return errors.Wrap(err, "writing schema")
+		if err := b.WriteOpts(); err != nil {
+			return errors.Wrap(err, "appending series")
 		}
 	}
 
