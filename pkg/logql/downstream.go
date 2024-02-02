@@ -177,10 +177,6 @@ type QuantileSketchMergeExpr struct {
 	downstreams []DownstreamSampleExpr
 }
 
-func (e QuantileSketchMergeExpr) empty(unused string) string {
-	return ""
-}
-
 func (e QuantileSketchMergeExpr) String() string {
 	var sb strings.Builder
 	for i, d := range e.downstreams {
