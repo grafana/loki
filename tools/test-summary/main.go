@@ -55,11 +55,6 @@ func (s *TestSummary) Write(w io.Writer) {
 	}
 	sw.WriteString(fmt.Sprintf("%d ✅, %d ❌\n", passedTests, failedTests))
 
-	sw.WriteString("## Failed Tests\n")
-	sw.WriteString(`| Package | Test |
-| --- | --- |
-`)
-
 	testsByPackage := make(map[string][]string, 0)
 	for _, r := range s.results {
 		if r.status == Fail {
@@ -69,6 +64,13 @@ func (s *TestSummary) Write(w io.Writer) {
 				testsByPackage[r.pkg] = append(testsByPackage[r.pkg], r.test)
 			}
 		}
+	}
+
+	if len(testsByPackage) > 0 {
+		sw.WriteString("## Failed Tests\n")
+		sw.WriteString(`| Package | Test |
+| --- | --- |
+`)
 	}
 
 	for pkg, tests := range testsByPackage {
