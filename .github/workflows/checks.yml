@@ -10,8 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: make test
-      - name: test-summary
+      - name: test
         run: make test-summary >> $GITHUB_STEP_SUMMARY
       - name: golangci-lint
         uses: golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5

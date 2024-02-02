@@ -330,8 +330,8 @@ test: all ## run the unit tests
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
-test-summary: ## Generates a Markdown formatted test summary based on test_results.txt
-	@cat "${GITHUB_WORKSPACE}/test_results.txt" | go run ./tools/test-summary
+test-summary: test ## Generates a Markdown formatted test summary based on test_results.txt
+	@cat "${GITHUB_WORKSPACE}/test_results.txt" | go run ./tools/test-summary >> "${$GITHUB_STEP_SUMMARY}"
 
 #########
 # Clean #
