@@ -37,7 +37,6 @@ var (
 		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
 	}, []string{"tenant", "retention_hours"})
 
-	// TODO: track discarded bytes as well
 	bytesIngestedCustom = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_bytes_received_custom_tracker_total",
@@ -236,6 +235,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 				return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 			}
 		}
+		trackers := customTrackers.MatchTrackers(lbs)
 
 		var retentionPeriod time.Duration
 		if tenantsRetention != nil {
@@ -253,7 +253,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 				pushStats.mostRecentEntryTimestamp = e.Timestamp
 			}
 
-			for _, t := range customTrackers.MatchTrackers(lbs) {
+			for _, t := range trackers {
 				logLinesBytes, ok := pushStats.structuredMetadataBytesCustomTrackers[t]
 				if !ok {
 					pushStats.structuredMetadataBytesCustomTrackers[t] = map[time.Duration]int64{}

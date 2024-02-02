@@ -40,6 +40,9 @@ func newPushStats() *Stats {
 	return &Stats{
 		logLinesBytes:           map[time.Duration]int64{},
 		structuredMetadataBytes: map[time.Duration]int64{},
+
+		logLinesBytesCustomTrackers:           map[string]map[time.Duration]int64{},
+		structuredMetadataBytesCustomTrackers: map[string]map[time.Duration]int64{},
 	}
 }
 

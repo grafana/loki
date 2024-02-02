@@ -349,7 +349,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
 				for _, tracker := range validationContext.customTrackerConfig.MatchTrackers(lbs) {
-					validation.DiscardedBytesCustom.WithLabelValues(validation.RateLimited, tenantID, tracker).Add(float64(validatedLineSize))
+					validation.DiscardedBytesCustom.WithLabelValues(validation.RateLimited, tenantID, tracker).Add(float64(bytes))
 				}
 				continue
 			}

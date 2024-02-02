@@ -54,6 +54,8 @@ func TestParseRequest(t *testing.T) {
 		expectedStructuredMetadataBytes int
 		expectedBytes                   int
 		expectedLines                   int
+		customTrackers                  map[string]string
+		expectedBytesCustomTracker      map[string]int
 	}{
 		{
 			path:        `/loki/api/v1/push`,
@@ -76,13 +78,15 @@ func TestParseRequest(t *testing.T) {
 			expectedLines: 1,
 		},
 		{
-			path:            `/loki/api/v1/push`,
-			body:            `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
-			contentType:     `application/json`,
-			contentEncoding: ``,
-			valid:           true,
-			expectedBytes:   len("fizzbuzz"),
-			expectedLines:   1,
+			path:                       `/loki/api/v1/push`,
+			body:                       `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
+			contentType:                `application/json`,
+			contentEncoding:            ``,
+			valid:                      true,
+			expectedBytes:              len("fizzbuzz"),
+			expectedLines:              1,
+			customTrackers:             map[string]string{"t": `{foo=~"b.*2"}`},
+			expectedBytesCustomTracker: map[string]int{"t": len("fizzbuss")},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -190,6 +194,7 @@ func TestParseRequest(t *testing.T) {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
 			structuredMetadataBytesIngested.Reset()
 			bytesIngested.Reset()
+			bytesIngestedCustom.Reset()
 			linesIngested.Reset()
 
 			request := httptest.NewRequest("POST", test.path, strings.NewReader(test.body))
@@ -200,7 +205,11 @@ func TestParseRequest(t *testing.T) {
 				request.Header.Add("Content-Encoding", test.contentEncoding)
 			}
 
-			limits := &mockLimits{}
+			CustomTrackersConfig, err := NewCustomTrackersConfig(test.customTrackers)
+			require.NoError(t, err)
+			limits := &mockLimits{
+				customTrackers: CustomTrackersConfig,
+			}
 			data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest)
 
 			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
@@ -211,7 +220,7 @@ func TestParseRequest(t *testing.T) {
 			previousLinesReceived += linesReceived
 
 			if test.valid {
-				assert.Nil(t, err, "Should not give error for %d", index)
+				assert.NoErrorf(t, err, "Should not give error for %d", index)
 				assert.NotNil(t, data, "Should give data for %d", index)
 				require.Equal(t, test.expectedStructuredMetadataBytes, structuredMetadataBytesReceived)
 				require.Equal(t, test.expectedBytes, bytesReceived)
@@ -219,8 +228,11 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, float64(test.expectedStructuredMetadataBytes), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
+				for tracker, value := range test.expectedBytesCustomTracker {
+					require.Equal(t, float64(value), testutil.ToFloat64(bytesIngestedCustom.WithLabelValues("fake", "", tracker)))
+				}
 			} else {
-				assert.NotNil(t, err, "Should give error for %d", index)
+				assert.Errorf(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
 				require.Equal(t, 0, structuredMetadataBytesReceived)
 				require.Equal(t, 0, bytesReceived)
@@ -233,11 +245,13 @@ func TestParseRequest(t *testing.T) {
 	}
 }
 
-type mockLimits struct{}
+type mockLimits struct {
+	customTrackers CustomTrackersConfig
+}
 
 // CustomTrackersConfig implements Limits.
-func (*mockLimits) CustomTrackersConfig(string) *CustomTrackersConfig {
-	return &CustomTrackersConfig{}
+func (m *mockLimits) CustomTrackersConfig(string) *CustomTrackersConfig {
+	return &m.customTrackers
 }
 
 // OTLPConfig implements Limits.
