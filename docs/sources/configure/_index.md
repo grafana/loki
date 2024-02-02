@@ -3143,20 +3143,20 @@ shard_streams:
 
 # OTLP log ingestion configurations
 otlp_config:
-  # Configuration for Resource Attributes to store them as index labels or
+  # Configuration for resource attributes to store them as index labels or
   # Structured Metadata or drop them altogether
   resource_attributes:
-    # Configure whether to ignore the default list of Resource Attributes to be
-    # stored as Index Labels and only use the given Resource Attributes config
+    # Configure whether to ignore the default list of resource attributes to be
+    # stored as index labels and only use the given resource attributes config
     [ignore_defaults: <boolean>]
 
     [attributes_config: <list of attributes_configs>]
 
-  # Configuration for Scope Attributes to store them as Structured Metadata or
+  # Configuration for scope attributes to store them as Structured Metadata or
   # drop them altogether
   [scope_attributes: <list of attributes_configs>]
 
-  # Configuration for Log Attributes to store them as Structured Metadata or
+  # Configuration for log attributes to store them as Structured Metadata or
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 ```

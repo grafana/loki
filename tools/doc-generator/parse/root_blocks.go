@@ -278,7 +278,7 @@ Named store from this example can be used by setting object_store to store-1 in 
 		{
 			Name:       "attributes_config",
 			StructType: []reflect.Type{reflect.TypeOf(push.AttributesConfig{})},
-			Desc:       "Define actions for matching OTEL Attributes",
+			Desc:       "Define actions for matching OpenTelemetry (OTEL) attributes.",
 		},
 	}
 )
