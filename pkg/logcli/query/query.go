@@ -74,7 +74,7 @@ type Query struct {
 	// files as each worker gets to that part file, so the part will be downloaded again.
 	OverwriteCompleted bool
 
-	// If true, the part files will be read in order, and the data will be output to stdout.
+	// If true, the part files will be read in order, and the data will be output to the log output writer.
 	MergeParts bool
 
 	// If MergeParts is false, this parameter has no effect, part files will be kept.
@@ -297,8 +297,8 @@ func (q *Query) parallelJobs() []*parallelJob {
 	return jobs
 }
 
-// Waits for each job to finish in order, reads the part file and copies it to stdout
-func (q *Query) mergeJobs(jobs []*parallelJob) error {
+// Waits for each job to finish in order, reads the part file and copies it to the LogOutput writer
+func (q *Query) mergeJobs(jobs []*parallelJob, out output.LogOutput) error {
 	if !q.MergeParts {
 		return nil
 	}
@@ -313,7 +313,7 @@ func (q *Query) mergeJobs(jobs []*parallelJob) error {
 		}
 		defer f.Close()
 
-		_, err = io.Copy(os.Stdout, f)
+		_, err = io.Copy(out.GetWriter(), f)
 		if err != nil {
 			return fmt.Errorf("copying file error: %w", err)
 		}
@@ -374,7 +374,7 @@ func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistic
 
 	wg := q.startWorkers(jobs, c, out, statistics)
 
-	if err := q.mergeJobs(jobs); err != nil {
+	if err := q.mergeJobs(jobs, out); err != nil {
 		log.Fatalf("Merging part files error: %s\n", err)
 	}
 
