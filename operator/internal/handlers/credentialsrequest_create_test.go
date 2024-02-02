@@ -16,7 +16,7 @@ func TestCreateCredentialsRequest_DoNothing_WhenManagedAuthEnvMissing(t *testing
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	secretRef, err := CreateCredentialsRequest(context.Background(), k, key)
+	secretRef, err := CreateCredentialsRequest(context.Background(), k, key, nil)
 	require.NoError(t, err)
 	require.Empty(t, secretRef)
 }
@@ -27,7 +27,7 @@ func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
 
 	t.Setenv("ROLEARN", "a-role-arn")
 
-	secretRef, err := CreateCredentialsRequest(context.Background(), k, key)
+	secretRef, err := CreateCredentialsRequest(context.Background(), k, key, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, secretRef)
 	require.Equal(t, 1, k.CreateCallCount())
@@ -43,7 +43,7 @@ func TestCreateCredentialsRequest_DoNothing_WhenCredentialsRequestExist(t *testi
 		return errors.NewAlreadyExists(schema.GroupResource{}, "credentialsrequest exists")
 	}
 
-	secretRef, err := CreateCredentialsRequest(context.Background(), k, key)
+	secretRef, err := CreateCredentialsRequest(context.Background(), k, key, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, secretRef)
 	require.Equal(t, 1, k.CreateCallCount())

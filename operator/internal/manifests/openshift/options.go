@@ -63,6 +63,7 @@ type AzureWIFEnvironment struct {
 	ClientID       string
 	SubscriptionID string
 	TenantID       string
+	Region         string
 }
 
 type ManagedAuthEnv struct {

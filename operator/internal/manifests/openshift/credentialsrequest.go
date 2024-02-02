@@ -97,7 +97,7 @@ func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExte
 				"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/move/action",
 			},
 			AzureClientID:       azure.ClientID,
-			AzureRegion:         "germanywestcentral", // TODO pass proper region
+			AzureRegion:         azure.Region,
 			AzureSubscriptionID: azure.SubscriptionID,
 			AzureTenantID:       azure.TenantID,
 		}
