@@ -296,7 +296,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		for _, tracker := range []string{} { // TODO: call customTracker.MatchedTrackers(lbs)
+		for _, tracker := range i.limiter.CustumTrackersConfig(i.instanceID).MatchTrackers(labels) {
 			validation.DiscardedBytesCustom.WithLabelValues(validation.StreamLimit, i.instanceID, tracker).Add(float64(bytes))
 		}
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)

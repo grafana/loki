@@ -48,7 +48,7 @@ type validationContext struct {
 
 	userID string
 
-	customTrackerConfig push.CustomTrackersConfig
+	customTrackerConfig *push.CustomTrackersConfig
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {

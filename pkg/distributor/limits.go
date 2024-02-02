@@ -31,5 +31,5 @@ type Limits interface {
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig
-	CustomTrackersConfig(userID string) push.CustomTrackersConfig
+	CustomTrackersConfig(userID string) *push.CustomTrackersConfig
 }

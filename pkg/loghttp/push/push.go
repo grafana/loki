@@ -67,7 +67,7 @@ type TenantsRetention interface {
 
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
-	CustomTrackersConfig(userID string) CustomTrackersConfig
+	CustomTrackersConfig(userID string) *CustomTrackersConfig
 }
 
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error)

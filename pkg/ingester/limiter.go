@@ -9,6 +9,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/loghttp/push"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -28,6 +29,7 @@ type Limits interface {
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) *shardstreams.Config
+	CustomTrackersConfig(userID string) *push.CustomTrackersConfig
 }
 
 // Limiter implements primitives to get the maximum number of streams
@@ -137,6 +139,10 @@ func (l *Limiter) minNonZero(first, second int) int {
 	}
 
 	return first
+}
+
+func (l *Limiter) CustumTrackersConfig(userID string) *push.CustomTrackersConfig {
+	return l.limits.CustomTrackersConfig(userID)
 }
 
 type RateLimiterStrategy interface {
