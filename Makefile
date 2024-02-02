@@ -333,7 +333,7 @@ compare-coverage:
 
 test_results.txt: test
 test-summary: test_results.txt ## Generates a Markdown formatted test summary based on test_results.txt 
-	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+	@cat test_results.txt | go run ./tools/test-summary
 
 #########
 # Clean #
