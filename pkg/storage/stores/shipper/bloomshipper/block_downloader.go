@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -175,12 +175,12 @@ type cacheDownloadingStrategy struct {
 }
 
 func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, logger log.Logger) (blockWithQuerier, error) {
-	blockPath := task.block.BlockPath
-	s.keyMutex.LockKey(blockPath)
+	key := s.blockClient.Block(task.block).Addr()
+	s.keyMutex.LockKey(key)
 	defer func() {
-		_ = s.keyMutex.UnlockKey(blockPath)
+		_ = s.keyMutex.UnlockKey(key)
 	}()
-	blockFromCache, exists := s.blocksCache.Get(task.ctx, task.block.BlockPath)
+	blockFromCache, exists := s.blocksCache.Get(task.ctx, key)
 	if exists {
 		return blockWithQuerier{
 			BlockRef:             task.block,
@@ -193,10 +193,10 @@ func (s *cacheDownloadingStrategy) downloadBlock(task *BlockDownloadingTask, log
 		return blockWithQuerier{}, err
 	}
 	blockFromCache = newCachedBlock(directory, s.config.BlocksCache.RemoveDirectoryGracefulPeriod, logger)
-	err = s.blocksCache.Store(task.ctx, []string{task.block.BlockPath}, []*cachedBlock{blockFromCache})
+	err = s.blocksCache.Store(task.ctx, []string{key}, []*cachedBlock{blockFromCache})
 	if err != nil {
-		level.Error(logger).Log("msg", "error storing the block in the cache", "block", blockPath, "err", err)
-		return blockWithQuerier{}, fmt.Errorf("error storing the block %s in the cache : %w", blockPath, err)
+		level.Error(logger).Log("msg", "error storing the block in the cache", "block", key, "err", err)
+		return blockWithQuerier{}, fmt.Errorf("error storing the block %s in the cache : %w", key, err)
 	}
 	return blockWithQuerier{
 		BlockRef:             task.block,
@@ -229,20 +229,20 @@ func (s *storageDownloadingStrategy) close() {
 }
 
 func downloadBlockToDirectory(logger log.Logger, task *BlockDownloadingTask, workingDirectory string, blockClient BlockClient) (string, error) {
-	blockPath := task.block.BlockPath
+	blockPath := filepath.Join(workingDirectory, blockClient.Block(task.block).LocalPath())
 	level.Debug(logger).Log("msg", "start downloading the block", "block", blockPath)
 	block, err := blockClient.GetBlock(task.ctx, task.block)
 	if err != nil {
 		level.Error(logger).Log("msg", "error downloading the block", "block", blockPath, "err", err)
 		return "", fmt.Errorf("error downloading the block %s : %w", blockPath, err)
 	}
-	directory, err := extractBlock(&block, time.Now(), workingDirectory, logger)
+	err = extractBlock(block.Data, blockPath, logger)
 	if err != nil {
 		level.Error(logger).Log("msg", "error extracting the block", "block", blockPath, "err", err)
 		return "", fmt.Errorf("error extracting the block %s : %w", blockPath, err)
 	}
-	level.Debug(logger).Log("msg", "block has been downloaded and extracted", "block", task.block.BlockPath, "directory", directory)
-	return directory, nil
+	level.Debug(logger).Log("msg", "block has been downloaded and extracted", "block", blockPath)
+	return blockPath, nil
 }
 
 func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, references []BlockRef) (chan blockWithQuerier, chan error) {
@@ -256,10 +256,10 @@ func (d *blockDownloader) downloadBlocks(ctx context.Context, tenantID string, r
 
 	for _, reference := range references {
 		task := NewBlockDownloadingTask(ctx, reference, blocksCh, errCh)
-		level.Debug(d.logger).Log("msg", "enqueuing task to download block", "block", reference.BlockPath)
+		level.Debug(d.logger).Log("msg", "enqueuing task to download block", "block", reference)
 		err := d.queue.Enqueue(tenantID, nil, task, nil)
 		if err != nil {
-			errCh <- fmt.Errorf("error enquing downloading task for block %s : %w", reference.BlockPath, err)
+			errCh <- fmt.Errorf("error enquing downloading task for block %s : %w", reference, err)
 			return blocksCh, errCh
 		}
 	}
@@ -272,15 +272,15 @@ type blockWithQuerier struct {
 }
 
 // extract the files into directory and returns absolute path to this directory.
-func extractBlock(block *LazyBlock, ts time.Time, workingDirectory string, logger log.Logger) (string, error) {
-	workingDirectoryPath := filepath.Join(workingDirectory, block.BlockPath, strconv.FormatInt(ts.UnixNano(), 10))
-	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
+func extractBlock(data io.ReadCloser, blockDir string, logger log.Logger) error {
+
+	err := os.MkdirAll(blockDir, os.ModePerm)
 	if err != nil {
-		return "", fmt.Errorf("can not create directory to extract the block: %w", err)
+		return fmt.Errorf("can not create directory to extract the block: %w", err)
 	}
-	archivePath, err := writeDataToTempFile(workingDirectoryPath, block)
+	archivePath, err := writeDataToTempFile(blockDir, data)
 	if err != nil {
-		return "", fmt.Errorf("error writing data to temp file: %w", err)
+		return fmt.Errorf("error writing data to temp file: %w", err)
 	}
 	defer func() {
 		err = os.Remove(archivePath)
@@ -288,11 +288,11 @@ func extractBlock(block *LazyBlock, ts time.Time, workingDirectory string, logge
 			level.Error(logger).Log("msg", "error removing temp archive file", "err", err)
 		}
 	}()
-	err = extractArchive(archivePath, workingDirectoryPath)
+	err = extractArchive(archivePath, blockDir)
 	if err != nil {
-		return "", fmt.Errorf("error extracting archive: %w", err)
+		return fmt.Errorf("error extracting archive: %w", err)
 	}
-	return workingDirectoryPath, nil
+	return nil
 }
 
 func (d *blockDownloader) stop() {

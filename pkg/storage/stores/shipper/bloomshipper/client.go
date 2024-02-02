@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"path"
 	"strconv"
@@ -12,11 +13,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 const (
@@ -28,25 +31,36 @@ const (
 )
 
 type Ref struct {
-	TenantID                       string
-	TableName                      string
-	MinFingerprint, MaxFingerprint uint64
-	StartTimestamp, EndTimestamp   model.Time
-	Checksum                       uint32
+	TenantID                     string
+	TableName                    string
+	Bounds                       v1.FingerprintBounds
+	StartTimestamp, EndTimestamp model.Time
+	Checksum                     uint32
+}
+
+// Hash hashes the ref
+// NB(owen-d): we don't include the tenant in the hash
+// as it's not included in the data and leaving it out gives
+// flexibility for migrating data between tenants
+func (r Ref) Hash(h hash.Hash32) error {
+	if err := r.Bounds.Hash(h); err != nil {
+		return err
+	}
+
+	var enc encoding.Encbuf
+
+	enc.PutString(r.TableName)
+	enc.PutBE64(uint64(r.StartTimestamp))
+	enc.PutBE64(uint64(r.EndTimestamp))
+	enc.PutBE32(r.Checksum)
+
+	_, err := h.Write(enc.Get())
+	return errors.Wrap(err, "writing BlockRef")
 }
 
 // Cmp returns the fingerprint's position relative to the bounds
 func (r Ref) Cmp(fp uint64) v1.BoundsCheck {
-	if fp < r.MinFingerprint {
-		return v1.Before
-	} else if fp > r.MaxFingerprint {
-		return v1.After
-	}
-	return v1.Overlap
-}
-
-func (r Ref) Bounds() v1.FingerprintBounds {
-	return v1.NewBounds(model.Fingerprint(r.MinFingerprint), model.Fingerprint(r.MaxFingerprint))
+	return r.Bounds.Cmp(model.Fingerprint(fp))
 }
 
 func (r Ref) Interval() Interval {
@@ -55,8 +69,10 @@ func (r Ref) Interval() Interval {
 
 type BlockRef struct {
 	Ref
-	IndexPath string
-	BlockPath string
+}
+
+func (r BlockRef) String() string {
+	return defaultKeyResolver{}.Block(r).Addr()
 }
 
 type MetaRef struct {
@@ -97,6 +113,7 @@ type Block struct {
 }
 
 type BlockClient interface {
+	KeyResolver
 	GetBlock(ctx context.Context, ref BlockRef) (LazyBlock, error)
 	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
@@ -112,6 +129,7 @@ type Client interface {
 var _ Client = &BloomClient{}
 
 type BloomClient struct {
+	KeyResolver
 	concurrency int
 	client      client.ObjectClient
 	logger      log.Logger
@@ -119,7 +137,8 @@ type BloomClient struct {
 
 func NewBloomClient(client client.ObjectClient, logger log.Logger) (*BloomClient, error) {
 	return &BloomClient{
-		concurrency: 100, // make configurable?
+		KeyResolver: defaultKeyResolver{}, // TODO(owen-d): hook into schema, similar to `{,Parse}ExternalKey`
+		concurrency: 100,                  // make configurable?
 		client:      client,
 		logger:      logger,
 	}, nil
@@ -134,14 +153,8 @@ func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	return b.client.PutObject(ctx, key, bytes.NewReader(data))
 }
 
-func externalBlockKey(ref BlockRef) string {
-	blockParentFolder := fmt.Sprintf("%x-%x", ref.MinFingerprint, ref.MaxFingerprint)
-	filename := fmt.Sprintf("%d-%d-%x", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
-	return path.Join(rootFolder, ref.TableName, ref.TenantID, bloomsFolder, blockParentFolder, filename)
-}
-
 func externalMetaKey(ref MetaRef) string {
-	filename := fmt.Sprintf("%x-%x-%d-%d-%x", ref.MinFingerprint, ref.MaxFingerprint, ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
+	filename := fmt.Sprintf("%s-%d-%d-%x", ref.Bounds.String(), ref.StartTimestamp, ref.EndTimestamp, ref.Checksum)
 	return path.Join(rootFolder, ref.TableName, ref.TenantID, metasFolder, filename)
 }
 
@@ -162,7 +175,7 @@ func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 
 // GetBlock downloads the blocks from objectStorage and returns the downloaded block
 func (b *BloomClient) GetBlock(ctx context.Context, reference BlockRef) (LazyBlock, error) {
-	readCloser, _, err := b.client.GetObject(ctx, externalBlockKey(reference))
+	readCloser, _, err := b.client.GetObject(ctx, b.Block(reference).Addr())
 	if err != nil {
 		return LazyBlock{}, fmt.Errorf("error while fetching object from storage: %w", err)
 	}
@@ -182,7 +195,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 
 		var err error
 
-		key := externalBlockKey(block.BlockRef)
+		key := b.Block(block.BlockRef).Addr()
 		_, err = block.Data.Seek(0, 0)
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)
@@ -192,7 +205,6 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 		if err != nil {
 			return fmt.Errorf("error uploading block file: %w", err)
 		}
-		block.BlockPath = key
 		results[idx] = block
 		return nil
 	})
@@ -202,7 +214,7 @@ func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, e
 func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) error {
 	return concurrency.ForEachJob(ctx, len(references), b.concurrency, func(ctx context.Context, idx int) error {
 		ref := references[idx]
-		key := externalBlockKey(ref)
+		key := b.Block(ref).Addr()
 		err := b.client.DeleteObject(ctx, key)
 		if err != nil {
 			return fmt.Errorf("error deleting block file: %w", err)
@@ -251,15 +263,11 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 	if len(parts) != 5 {
 		return MetaRef{}, fmt.Errorf("%s filename parts count must be 5 but was %d: [%s]", objectKey, len(parts), strings.Join(parts, ", "))
 	}
+	bounds, err := v1.ParseBoundsFromParts(parts[0], parts[1])
+	if err != nil {
+		return MetaRef{}, fmt.Errorf("error parsing bounds %s : %w", parts[0], err)
+	}
 
-	minFingerprint, err := strconv.ParseUint(parts[0], 16, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing minFingerprint %s : %w", parts[0], err)
-	}
-	maxFingerprint, err := strconv.ParseUint(parts[1], 16, 64)
-	if err != nil {
-		return MetaRef{}, fmt.Errorf("error parsing maxFingerprint %s : %w", parts[1], err)
-	}
 	startTimestamp, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
 		return MetaRef{}, fmt.Errorf("error parsing startTimestamp %s : %w", parts[2], err)
@@ -276,8 +284,7 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 		Ref: Ref{
 			TenantID:       tenantID,
 			TableName:      tableName,
-			MinFingerprint: minFingerprint,
-			MaxFingerprint: maxFingerprint,
+			Bounds:         bounds,
 			StartTimestamp: model.Time(startTimestamp),
 			EndTimestamp:   model.Time(endTimestamp),
 			Checksum:       uint32(checksum),

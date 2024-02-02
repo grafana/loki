@@ -3,12 +3,31 @@ package v1
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 )
 
+func Test_ParseFingerprint(t *testing.T) {
+	fp, err := model.ParseFingerprint("7d0")
+	assert.NoError(t, err)
+	assert.Equal(t, model.Fingerprint(2000), fp)
+}
+
 func Test_FingerprintBounds_String(t *testing.T) {
-	bounds := NewBounds(1, 2)
-	assert.Equal(t, "0000000000000001-0000000000000002", bounds.String())
+	bounds := NewBounds(10, 2000)
+	assert.Equal(t, "000000000000000a-00000000000007d0", bounds.String())
+}
+
+func Test_ParseBoundsFromAddr(t *testing.T) {
+	bounds, err := ParseBoundsFromAddr("a-7d0")
+	assert.NoError(t, err)
+	assert.Equal(t, NewBounds(10, 2000), bounds)
+}
+
+func Test_ParseBoundsFromParts(t *testing.T) {
+	bounds, err := ParseBoundsFromParts("a", "7d0")
+	assert.NoError(t, err)
+	assert.Equal(t, NewBounds(10, 2000), bounds)
 }
 
 func Test_FingerprintBounds_Cmp(t *testing.T) {

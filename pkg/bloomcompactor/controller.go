@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
@@ -178,7 +179,7 @@ func (s *SimpleBloomController) loadWorkForGap(id tsdb.Identifier, gap gapWithBl
 
 type gapWithBlocks struct {
 	bounds v1.FingerprintBounds
-	blocks []BlockRef
+	blocks []bloomshipper.BlockRef
 }
 
 // blockPlan is a plan for all the work needed to build a meta.json
@@ -220,7 +221,7 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) ([]blockPlan, error) {
 				}
 
 				for _, block := range meta.Blocks {
-					if block.OwnershipRange.Intersection(gap) == nil {
+					if block.Bounds.Intersection(gap) == nil {
 						// this block doesn't overlap the gap, skip
 						continue
 					}
@@ -232,27 +233,27 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) ([]blockPlan, error) {
 
 			// ensure we sort blocks so deduping iterator works as expected
 			sort.Slice(planGap.blocks, func(i, j int) bool {
-				return planGap.blocks[i].OwnershipRange.Less(planGap.blocks[j].OwnershipRange)
+				return planGap.blocks[i].Bounds.Less(planGap.blocks[j].Bounds)
 			})
 
-			peekingBlocks := v1.NewPeekingIter[BlockRef](
-				v1.NewSliceIter[BlockRef](
+			peekingBlocks := v1.NewPeekingIter[bloomshipper.BlockRef](
+				v1.NewSliceIter[bloomshipper.BlockRef](
 					planGap.blocks,
 				),
 			)
 			// dedupe blocks which could be in multiple metas
-			itr := v1.NewDedupingIter[BlockRef, BlockRef](
-				func(a, b BlockRef) bool {
+			itr := v1.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
+				func(a, b bloomshipper.BlockRef) bool {
 					return a == b
 				},
-				v1.Identity[BlockRef],
-				func(a, _ BlockRef) BlockRef {
+				v1.Identity[bloomshipper.BlockRef],
+				func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
 					return a
 				},
 				peekingBlocks,
 			)
 
-			deduped, err := v1.Collect[BlockRef](itr)
+			deduped, err := v1.Collect[bloomshipper.BlockRef](itr)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to dedupe blocks")
 			}

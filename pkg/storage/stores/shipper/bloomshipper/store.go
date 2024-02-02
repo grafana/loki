@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -31,11 +32,12 @@ var _ Client = &bloomStoreEntry{}
 var _ Store = &bloomStoreEntry{}
 
 type bloomStoreEntry struct {
-	start        model.Time
-	cfg          config.PeriodConfig
-	objectClient client.ObjectClient
-	bloomClient  Client
-	fetcher      *Fetcher
+	start              model.Time
+	cfg                config.PeriodConfig
+	objectClient       client.ObjectClient
+	bloomClient        Client
+	fetcher            *Fetcher
+	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
 // ResolveMetas implements store.
@@ -54,10 +56,20 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 			if err != nil {
 				return nil, nil, err
 			}
-			if metaRef.MaxFingerprint < uint64(params.Keyspace.Min) || uint64(params.Keyspace.Max) < metaRef.MinFingerprint ||
+
+			// LIST calls return keys in lexicographic order.
+			// Since fingerprints are the first part of the path,
+			// we can stop iterating once we find an item greater
+			// than the keyspace we're looking for
+			if params.Keyspace.Cmp(metaRef.Bounds.Min) == v1.After {
+				break
+			}
+
+			if !params.Keyspace.Overlaps(metaRef.Bounds) ||
 				metaRef.EndTimestamp.Before(params.Interval.Start) || metaRef.StartTimestamp.After(params.Interval.End) {
 				continue
 			}
+
 			refs = append(refs, metaRef)
 		}
 	}
@@ -178,6 +190,38 @@ func NewBloomStore(
 	}
 
 	return store, nil
+}
+
+// Impements KeyResolver
+func (b *BloomStore) Meta(ref MetaRef) (loc Location) {
+	_ = b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
+		loc = s.Meta(ref)
+		return nil
+	})
+
+	// NB(owen-d): should not happen unless a ref is requested outside the store's accepted range.
+	// This should be prevented during query validation
+	if loc == nil {
+		loc = defaultKeyResolver{}.Meta(ref)
+	}
+
+	return
+}
+
+// Impements KeyResolver
+func (b *BloomStore) Block(ref BlockRef) (loc Location) {
+	_ = b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
+		loc = s.Block(ref)
+		return nil
+	})
+
+	// NB(owen-d): should not happen unless a ref is requested outside the store's accepted range.
+	// This should be prevented during query validation
+	if loc == nil {
+		loc = defaultKeyResolver{}.Block(ref)
+	}
+
+	return
 }
 
 // Fetcher implements Store.
