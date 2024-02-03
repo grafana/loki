@@ -22,15 +22,6 @@ type ClosableBlockQuerier struct {
 	Close func() error
 }
 
-func newBlockQuerierFromFS(blockDirectory string) *ClosableBlockQuerier {
-	return &ClosableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(v1.NewBlock(v1.NewDirectoryBlockReader(blockDirectory))),
-		Close: func() error {
-			return deleteFolder(blockDirectory)
-		},
-	}
-}
-
 func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
 	return cache.NewTypedEmbeddedCache[string, BlockDirectory](
 		"bloom-blocks-cache",
@@ -62,6 +53,8 @@ func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirect
 	}
 }
 
+// A BlockDirectory is a local file path that contains a bloom block.
+// It maintains a counter for currently active readers.
 type BlockDirectory struct {
 	BlockRef
 	Path                        string
@@ -75,6 +68,9 @@ func (b BlockDirectory) Block() *v1.Block {
 	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
 }
 
+// BlockQuerier returns a new block querier from the directory.
+// It increments the counter of active queriers for this directory.
+// The counter is decreased when the returned querier is closed.
 func (b BlockDirectory) BlockQuerier() *ClosableBlockQuerier {
 	b.activeQueriers.Inc()
 	return &ClosableBlockQuerier{

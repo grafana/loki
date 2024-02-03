@@ -59,38 +59,20 @@ func Test_CachedBlock(t *testing.T) {
 }
 
 func Test_ClosableBlockQuerier(t *testing.T) {
-	t.Run("cached", func(t *testing.T) {
-		blockFilePath, _, _, _ := createBlockArchive(t)
-		extractedBlockDirectory := t.TempDir()
-		err := extractArchive(blockFilePath, extractedBlockDirectory)
-		require.NoError(t, err)
+	blockFilePath, _, _, _ := createBlockArchive(t)
+	extractedBlockDirectory := t.TempDir()
+	err := extractArchive(blockFilePath, extractedBlockDirectory)
+	require.NoError(t, err)
 
-		cached := BlockDirectory{
-			Path:                   extractedBlockDirectory,
-			removeDirectoryTimeout: 100 * time.Millisecond,
-			activeQueriers:         atomic.NewInt32(0),
-		}
+	cached := BlockDirectory{
+		Path:                   extractedBlockDirectory,
+		removeDirectoryTimeout: 100 * time.Millisecond,
+		activeQueriers:         atomic.NewInt32(0),
+	}
 
-		querier := cached.BlockQuerier()
-		require.Equal(t, int32(1), cached.activeQueriers.Load())
-		require.NoError(t, querier.Close())
-		require.Equal(t, int32(0), cached.activeQueriers.Load())
-	})
+	querier := cached.BlockQuerier()
+	require.Equal(t, int32(1), cached.activeQueriers.Load())
+	require.NoError(t, querier.Close())
+	require.Equal(t, int32(0), cached.activeQueriers.Load())
 
-	t.Run("file system", func(t *testing.T) {
-		blockFilePath, _, _, _ := createBlockArchive(t)
-		extractedBlockDirectory := t.TempDir()
-		err := extractArchive(blockFilePath, extractedBlockDirectory)
-		require.NoError(t, err)
-
-		querier := newBlockQuerierFromFS(extractedBlockDirectory)
-		require.DirExists(t, extractedBlockDirectory)
-
-		require.NoError(t, querier.Close())
-
-		//ensure directory does not exist
-		require.Eventually(t, func() bool {
-			return directoryDoesNotExist(extractedBlockDirectory)
-		}, 1*time.Second, 100*time.Millisecond)
-	})
 }

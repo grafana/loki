@@ -177,6 +177,11 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadTask[BlockRef, B
 	}
 }
 
+// FetchBlocks returns a list of block directories
+// It resolves them from three locations:
+//  1. from cache
+//  2. from file system
+//  3. from remote storage
 func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
 	if ctx.Err() != nil {
 		return nil, errors.Wrap(ctx.Err(), "fetch Blocks")
