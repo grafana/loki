@@ -56,7 +56,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			token, prefixLn := prefixedToken(tc.ngram, ref)
+			token, prefixLn := prefixedToken(tc.ngram, ref, nil)
 			require.Equal(t, 20, prefixLn)
 			require.Equal(t, tc.expLen, len(token))
 			// first 8 bytes should be zeros from `from`
