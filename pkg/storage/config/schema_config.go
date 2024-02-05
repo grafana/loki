@@ -164,7 +164,7 @@ type PeriodConfig struct {
 	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
 	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
-	RowShards   uint32                   `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
+	RowShards   uint32                   `yaml:"row_shards" doc:"default=16|description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`

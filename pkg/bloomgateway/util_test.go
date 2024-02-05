@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -71,8 +70,7 @@ func TestTruncateDay(t *testing.T) {
 func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {
 	return bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
-			MinFingerprint: minFp,
-			MaxFingerprint: maxFp,
+			Bounds: v1.NewBounds(model.Fingerprint(minFp), model.Fingerprint(maxFp)),
 		},
 	}
 }
@@ -311,9 +309,8 @@ func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, 
 		}
 		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
 		bq := bloomshipper.BlockQuerierWithFingerprintRange{
-			BlockQuerier: blockQuerier,
-			MinFp:        fromFp,
-			MaxFp:        throughFp,
+			BlockQuerier:      blockQuerier,
+			FingerprintBounds: v1.NewBounds(fromFp, throughFp),
 		}
 		bqs = append(bqs, bq)
 		series = append(series, data)
@@ -340,15 +337,12 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		ref := bloomshipper.Ref{
 			TenantID:       tenant,
 			TableName:      "table_0",
-			MinFingerprint: uint64(fromFp),
-			MaxFingerprint: uint64(throughFp),
+			Bounds:         v1.NewBounds(fromFp, throughFp),
 			StartTimestamp: from,
 			EndTimestamp:   through,
 		}
 		block := bloomshipper.BlockRef{
-			Ref:       ref,
-			IndexPath: "index.tsdb.gz",
-			BlockPath: fmt.Sprintf("block-%d", i),
+			Ref: ref,
 		}
 		meta := bloomshipper.Meta{
 			MetaRef: bloomshipper.MetaRef{
@@ -359,9 +353,8 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		}
 		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
 		querier := bloomshipper.BlockQuerierWithFingerprintRange{
-			BlockQuerier: blockQuerier,
-			MinFp:        fromFp,
-			MaxFp:        throughFp,
+			BlockQuerier:      blockQuerier,
+			FingerprintBounds: v1.NewBounds(fromFp, throughFp),
 		}
 		queriers = append(queriers, querier)
 		metas = append(metas, meta)
@@ -392,9 +385,8 @@ func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _ blooms
 	for i := range s.bqs {
 		blocks = append(blocks, bloomshipper.BlockRef{
 			Ref: bloomshipper.Ref{
-				MinFingerprint: uint64(s.bqs[i].MinFp),
-				MaxFingerprint: uint64(s.bqs[i].MaxFp),
-				TenantID:       tenant,
+				Bounds:   v1.NewBounds(s.bqs[i].Min, s.bqs[i].Max),
+				TenantID: tenant,
 			},
 		})
 	}
@@ -421,7 +413,7 @@ func (s *mockBloomStore) Fetch(_ context.Context, _ string, _ []bloomshipper.Blo
 	for _, bq := range shuffled {
 		// ignore errors in the mock
 		time.Sleep(s.delay)
-		err := callback(bq.BlockQuerier, uint64(bq.MinFp), uint64(bq.MaxFp))
+		err := callback(bq.BlockQuerier, bq.FingerprintBounds)
 		if err != nil {
 			return err
 		}
@@ -459,14 +451,11 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipp
 			Ref: bloomshipper.Ref{
 				TenantID:       tenant,
 				TableName:      "",
-				MinFingerprint: uint64(data[i].MinFp),
-				MaxFingerprint: uint64(data[i].MaxFp),
+				Bounds:         v1.NewBounds(data[i].Min, data[i].Max),
 				StartTimestamp: 0,
 				EndTimestamp:   0,
 				Checksum:       0,
 			},
-			IndexPath: fmt.Sprintf("index-%d", i),
-			BlockPath: fmt.Sprintf("block-%d", i),
 		})
 	}
 	return res

@@ -9,7 +9,31 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
+
+func TestBlockOptionsRoundTrip(t *testing.T) {
+	opts := BlockOptions{
+		Schema: Schema{
+			version:     V1,
+			encoding:    chunkenc.EncSnappy,
+			nGramLength: 10,
+			nGramSkip:   2,
+		},
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10,
+		BlockSize:      10 << 20,
+	}
+
+	var enc encoding.Encbuf
+	opts.Encode(&enc)
+
+	var got BlockOptions
+	err := got.DecodeFrom(bytes.NewReader(enc.Get()))
+	require.Nil(t, err)
+
+	require.Equal(t, opts, got)
+}
 
 func TestBlockBuilderRoundTrip(t *testing.T) {
 	numSeries := 100
@@ -334,7 +358,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	checksum, err := mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0x2ec4fd6a), checksum)
+	require.Equal(t, uint32(0xe306ec6e), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data

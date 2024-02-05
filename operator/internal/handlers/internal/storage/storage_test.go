@@ -293,7 +293,7 @@ func TestBuildOptions_WhenInvalidSecret_SetDegraded(t *testing.T) {
 	}
 
 	degradedErr := &status.DegradedError{
-		Message: "Invalid object storage secret contents: missing secret field",
+		Message: "Invalid object storage secret contents: missing secret field: bucketnames",
 		Reason:  lokiv1.ReasonInvalidObjectStorageSecret,
 		Requeue: false,
 	}
