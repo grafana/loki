@@ -833,17 +833,16 @@ func (fs StringFilterSet) IsFiltered(val string) bool {
 }
 
 func (r *Ruler) getLocalRules(userID string, req *RulesRequest) ([]*GroupStateDesc, error) {
-	var (
-		getRecordingRules = true
-		getAlertingRules  = true
-	)
+	var getRecordingRules, getAlertingRules bool
 
 	switch req.Filter {
 	case AlertingRule:
-		getRecordingRules = false
+		getAlertingRules = true
 	case RecordingRule:
-		getAlertingRules = false
+		getRecordingRules = true
 	case AnyRule:
+		getAlertingRules = true
+		getRecordingRules = true
 	default:
 		return nil, fmt.Errorf("unexpected rule filter %s", req.Filter)
 	}
