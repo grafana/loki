@@ -362,9 +362,10 @@ loki:
   ingester: {}
   # --  Optional index gateway configuration
   index_gateway:
-    mode: ring
+    mode: simple
   frontend:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
+    tail_proxy_url: '{{ include "loki.querierAddress" . }}'
   frontend_worker:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
   # -- Optional distributor configuration
@@ -2337,7 +2338,7 @@ gateway:
   readinessProbe:
     httpGet:
       path: /
-      port: http
+      port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
