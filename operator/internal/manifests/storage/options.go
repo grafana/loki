@@ -16,17 +16,19 @@ type Options struct {
 	Swift        *SwiftStorageConfig
 	AlibabaCloud *AlibabaCloudStorageConfig
 
-	SecretName       string
-	SecretSHA1       string
-	TLS              *TLSConfig
-	OpenShiftEnabled bool
+	SecretName string
+	SecretSHA1 string
+	TLS        *TLSConfig
+
+	OpenShift OpenShiftOptions
 }
 
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
-	Env            string
-	Container      string
-	EndpointSuffix string
+	Env              string
+	Container        string
+	EndpointSuffix   string
+	WorkloadIdentity bool
 }
 
 // GCSStorageConfig for GCS storage config
@@ -85,4 +87,18 @@ type AlibabaCloudStorageConfig struct {
 type TLSConfig struct {
 	CA  string
 	Key string
+}
+
+type OpenShiftOptions struct {
+	Enabled          bool
+	CloudCredentials CloudCredentials
+}
+
+type CloudCredentials struct {
+	SecretName string
+	SHA1       string
+}
+
+func (o OpenShiftOptions) ManagedAuthEnabled() bool {
+	return o.CloudCredentials.SecretName != "" && o.CloudCredentials.SHA1 != ""
 }

@@ -7,7 +7,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/pool"
 )
 
@@ -201,8 +200,8 @@ func (it *EmptyIter[T]) At() T {
 // noop
 func (it *EmptyIter[T]) Reset() {}
 
-func NewEmptyIter[T any](zero T) *EmptyIter[T] {
-	return &EmptyIter[T]{zero: zero}
+func NewEmptyIter[T any]() *EmptyIter[T] {
+	return &EmptyIter[T]{}
 }
 
 type CancellableIter[T any] struct {
@@ -243,48 +242,7 @@ func PointerSlice[T any](xs []T) []*T {
 	return out
 }
 
-type BoundsCheck uint8
-
-const (
-	Before BoundsCheck = iota
-	Overlap
-	After
-)
-
-type FingerprintBounds struct {
-	Min, Max model.Fingerprint
-}
-
-// Cmp returns the fingerprint's position relative to the bounds
-func (b FingerprintBounds) Cmp(fp model.Fingerprint) BoundsCheck {
-	if fp < b.Min {
-		return Before
-	} else if fp > b.Max {
-		return After
-	}
-	return Overlap
-}
-
-// unused, but illustrative
-type BoundedIter[V any] struct {
-	Iterator[V]
-	cmp func(V) BoundsCheck
-}
-
-func (bi *BoundedIter[V]) Next() bool {
-	for bi.Iterator.Next() {
-		switch bi.cmp(bi.Iterator.At()) {
-		case Before:
-			continue
-		case After:
-			return false
-		default:
-			return true
-		}
-	}
-	return false
-}
-
-func NewBoundedIter[V any](itr Iterator[V], cmp func(V) BoundsCheck) *BoundedIter[V] {
-	return &BoundedIter[V]{Iterator: itr, cmp: cmp}
+type CloseableIterator[T any] interface {
+	Iterator[T]
+	Close() error
 }

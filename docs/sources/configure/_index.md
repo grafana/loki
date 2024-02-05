@@ -731,6 +731,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.log-queries-longer-than
 [log_queries_longer_than: <duration> | default = 0s]
 
+# Comma-separated list of request header names to include in query logs. Applies
+# to both query stats and slow queries logs.
+# CLI flag: -frontend.log-query-request-headers
+[log_query_request_headers: <string> | default = ""]
+
 # Max body size for downstream prometheus.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]
@@ -3135,6 +3140,25 @@ shard_streams:
 # Maximum number of structured metadata entries per log line.
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
+
+# OTLP log ingestion configurations
+otlp_config:
+  # Configuration for resource attributes to store them as index labels or
+  # Structured Metadata or drop them altogether
+  resource_attributes:
+    # Configure whether to ignore the default list of resource attributes to be
+    # stored as index labels and only use the given resource attributes config
+    [ignore_defaults: <boolean> | default = false]
+
+    [attributes_config: <list of attributes_configs>]
+
+  # Configuration for scope attributes to store them as Structured Metadata or
+  # drop them altogether
+  [scope_attributes: <list of attributes_configs>]
+
+  # Configuration for log attributes to store them as Structured Metadata or
+  # drop them altogether
+  [log_attributes: <list of attributes_configs>]
 ```
 
 ### frontend_worker
@@ -4561,7 +4585,7 @@ chunks:
   [tags: <map of string to string>]
 
 # How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int>]
+[row_shards: <int> | default = 16]
 ```
 
 ### aws_storage_config
@@ -5286,6 +5310,24 @@ Named store from this example can be used by setting object_store to store-1 in 
 [cos: <map of string to cos_storage_config>]
 ```
 
+### attributes_config
+
+Define actions for matching OpenTelemetry (OTEL) attributes.
+
+```yaml
+# Configures action to take on matching attributes. It allows one of
+# [structured_metadata, drop] for all attribute types. It additionally allows
+# index_label action for resource attributes
+[action: <string> | default = ""]
+
+# List of attributes to configure how to store them or drop them altogether
+[attributes: <list of strings>]
+
+# Regex to choose attributes to configure how to store them or drop them
+# altogether
+[regex: <Regexp>]
+```
+
 ## Runtime Configuration file
 
 Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
@@ -5339,7 +5381,8 @@ place in the `limits_config` section:
 configure a runtime configuration file:
 
     ```
-    runtime_config: overrides.yaml
+    runtime_config:
+      file: overrides.yaml
     ```
 
     In the `overrides.yaml` file, add `unordered_writes` for each tenant

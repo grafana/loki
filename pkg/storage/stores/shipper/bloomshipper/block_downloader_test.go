@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -42,12 +42,12 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 	}, blockClient, overrides, log.NewNopLogger(), prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 	blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
-	downloadedBlocks := make(map[string]any, len(blockReferences))
+	downloadedBlocks := make(map[BlockRef]any, len(blockReferences))
 	done := make(chan bool)
 	go func() {
 		for i := 0; i < 20; i++ {
 			block := <-blocksCh
-			downloadedBlocks[block.BlockPath] = nil
+			downloadedBlocks[block.BlockRef] = nil
 		}
 		done <- true
 	}()
@@ -74,7 +74,7 @@ func Test_blockDownloader_downloadBlocks(t *testing.T) {
 func Test_blockDownloader_downloadBlock(t *testing.T) {
 	tests := map[string]struct {
 		cacheEnabled                bool
-		expectedTotalGetBlocksCalls int
+		expectedTotalGetBlocksCalls int32
 	}{
 		"cache disabled": {
 			cacheEnabled:                false,
@@ -111,12 +111,12 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			require.NoError(t, err)
 
 			blocksCh, errorsCh := downloader.downloadBlocks(context.Background(), "fake", blockReferences)
-			downloadedBlocks := make(map[string]any, len(blockReferences))
+			downloadedBlocks := make(map[BlockRef]any, len(blockReferences))
 			done := make(chan bool)
 			go func() {
 				for i := 0; i < 20; i++ {
 					block := <-blocksCh
-					downloadedBlocks[block.BlockPath] = nil
+					downloadedBlocks[block.BlockRef] = nil
 				}
 				done <- true
 			}()
@@ -129,15 +129,15 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			case <-done:
 			}
 			require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
-			require.Equal(t, 20, blockClient.getBlockCalls)
+			require.Equal(t, int32(20), blockClient.getBlockCalls.Load())
 
 			blocksCh, errorsCh = downloader.downloadBlocks(context.Background(), "fake", blockReferences)
-			downloadedBlocks = make(map[string]any, len(blockReferences))
+			downloadedBlocks = make(map[BlockRef]any, len(blockReferences))
 			done = make(chan bool)
 			go func() {
 				for i := 0; i < 20; i++ {
 					block := <-blocksCh
-					downloadedBlocks[block.BlockPath] = nil
+					downloadedBlocks[block.BlockRef] = nil
 				}
 				done <- true
 			}()
@@ -150,7 +150,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 			case <-done:
 			}
 			require.Len(t, downloadedBlocks, 20, "all 20 block must be downloaded")
-			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls)
+			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls.Load())
 		})
 	}
 }
@@ -158,7 +158,7 @@ func Test_blockDownloader_downloadBlock(t *testing.T) {
 func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
 	tests := map[string]struct {
 		cacheEnabled                bool
-		expectedTotalGetBlocksCalls int
+		expectedTotalGetBlocksCalls int32
 	}{
 		"requests to blockClient must be deduplicated by blockPath if cache is enabled": {
 			cacheEnabled:                true,
@@ -195,7 +195,7 @@ func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
 			t.Cleanup(downloader.stop)
 			require.NoError(t, err)
 
-			blocksDownloadedCount := atomic.Uint32{}
+			var blocksDownloadedCount atomic.Uint32
 			mutex := sync.Mutex{}
 			multiError := util.MultiError{}
 			waitGroup := sync.WaitGroup{}
@@ -225,7 +225,7 @@ func Test_blockDownloader_downloadBlock_deduplication(t *testing.T) {
 
 			require.NoError(t, multiError.Err())
 			require.Equal(t, uint32(10), blocksDownloadedCount.Load())
-			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls)
+			require.Equal(t, testData.expectedTotalGetBlocksCalls, blockClient.getBlockCalls.Load())
 		})
 	}
 }
@@ -313,7 +313,7 @@ func Test_closableBlockQuerier(t *testing.T) {
 
 // creates fake blocks and returns map[block-path]Block and mockBlockClient
 func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
-	mockData := make(map[string]blockSupplier, count)
+	mockData := make(map[BlockRef]blockSupplier, count)
 	refs := make([]BlockRef, 0, count)
 	for i := 0; i < count; i++ {
 		archivePath, _, _ := createBlockArchive(t)
@@ -321,9 +321,16 @@ func createFakeBlocks(t *testing.T, count int) ([]BlockRef, *mockBlockClient) {
 		//ensure file can be opened
 		require.NoError(t, err)
 		blockRef := BlockRef{
-			BlockPath: fmt.Sprintf("block-path-%d", i),
+			Ref: Ref{
+				TenantID:       "",
+				TableName:      "",
+				Bounds:         v1.NewBounds(model.Fingerprint(i), model.Fingerprint(i+1)),
+				StartTimestamp: 0,
+				EndTimestamp:   0,
+				Checksum:       0,
+			},
 		}
-		mockData[blockRef.BlockPath] = func() LazyBlock {
+		mockData[blockRef] = func() LazyBlock {
 			file, _ := os.OpenFile(archivePath, os.O_RDONLY, 0700)
 			return LazyBlock{
 				BlockRef: blockRef,
@@ -339,19 +346,20 @@ type blockSupplier func() LazyBlock
 
 type mockBlockClient struct {
 	responseDelay time.Duration
-	mockData      map[string]blockSupplier
-	getBlockCalls int
+	mockData      map[BlockRef]blockSupplier
+	getBlockCalls atomic.Int32
+	defaultKeyResolver
 }
 
 func (m *mockBlockClient) GetBlock(_ context.Context, reference BlockRef) (LazyBlock, error) {
-	m.getBlockCalls++
+	m.getBlockCalls.Inc()
 	time.Sleep(m.responseDelay)
-	supplier, exists := m.mockData[reference.BlockPath]
+	supplier, exists := m.mockData[reference]
 	if exists {
 		return supplier(), nil
 	}
 
-	return LazyBlock{}, fmt.Errorf("block %s is not found in mockData", reference.BlockPath)
+	return LazyBlock{}, fmt.Errorf("block %s is not found in mockData", reference)
 }
 
 func (m *mockBlockClient) PutBlocks(_ context.Context, _ []Block) ([]Block, error) {
@@ -368,26 +376,31 @@ func Test_blockDownloader_extractBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	workingDir := t.TempDir()
-	ts := time.Now().UTC()
 	block := LazyBlock{
-		BlockRef: BlockRef{BlockPath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa"},
-		Data:     blockFile,
+		BlockRef: BlockRef{
+			Ref: Ref{
+				TenantID:       "",
+				TableName:      "",
+				Bounds:         v1.NewBounds(0, 1),
+				StartTimestamp: 0,
+				EndTimestamp:   0,
+				Checksum:       0,
+			},
+		},
+		Data: blockFile,
 	}
 
-	actualPath, err := extractBlock(&block, ts, workingDir, nil)
-
+	err = extractBlock(block.Data, workingDir, nil)
 	require.NoError(t, err)
-	expectedPath := filepath.Join(workingDir, block.BlockPath, strconv.FormatInt(ts.UnixNano(), 10))
-	require.Equal(t, expectedPath, actualPath,
-		"expected archive to be extracted to working directory under the same path as blockPath and with timestamp suffix")
-	require.FileExists(t, filepath.Join(expectedPath, v1.BloomFileName))
-	require.FileExists(t, filepath.Join(expectedPath, v1.SeriesFileName))
 
-	actualBloomFileContent, err := os.ReadFile(filepath.Join(expectedPath, v1.BloomFileName))
+	require.FileExists(t, filepath.Join(workingDir, v1.BloomFileName))
+	require.FileExists(t, filepath.Join(workingDir, v1.SeriesFileName))
+
+	actualBloomFileContent, err := os.ReadFile(filepath.Join(workingDir, v1.BloomFileName))
 	require.NoError(t, err)
 	require.Equal(t, bloomFileContent, string(actualBloomFileContent))
 
-	actualSeriesFileContent, err := os.ReadFile(filepath.Join(expectedPath, v1.SeriesFileName))
+	actualSeriesFileContent, err := os.ReadFile(filepath.Join(workingDir, v1.SeriesFileName))
 	require.NoError(t, err)
 	require.Equal(t, seriesFileContent, string(actualSeriesFileContent))
 }
