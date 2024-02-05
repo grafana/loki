@@ -90,13 +90,13 @@ func TestShuffleSharding(t *testing.T) {
 
 		for j := 0; j < jobsPerTenant; j++ {
 			lbls := labels.FromStrings("namespace", fmt.Sprintf("namespace-%d", j))
-			job := NewJob(tenant, "", "", model.Fingerprint(lbls.Hash()), lbls, nil)
-			ownsJob, err := shard.OwnsJob(job)
+			fp := model.Fingerprint(lbls.Hash())
+			ownsFingerprint, err := shard.OwnsFingerprint(tenant, uint64(fp))
 			require.NoError(t, err)
 
 			var jobOwnedByOther int
 			for _, other := range otherShards {
-				otherOwns, err := other.OwnsJob(job)
+				otherOwns, err := other.OwnsFingerprint(tenant, uint64(fp))
 				require.NoError(t, err)
 				if otherOwns {
 					jobOwnedByOther++
@@ -105,7 +105,7 @@ func TestShuffleSharding(t *testing.T) {
 
 			// If this shard owns the job, no one else should own the job.
 			// And if this shard doesn't own the job, only one of the other shards should own the job.
-			if ownsJob {
+			if ownsFingerprint {
 				require.Equal(t, 0, jobOwnedByOther)
 				ownedJobs++
 			} else {
@@ -128,9 +128,22 @@ func TestShuffleSharding(t *testing.T) {
 
 type mockLimits struct {
 	*validation.Overrides
-	bloomCompactorShardSize int
+	bloomCompactorShardSize    int
+	chunksDownloadingBatchSize int
+	fpRate                     float64
+}
+
+func (m mockLimits) BloomFalsePositiveRate(_ string) float64 {
+	return m.fpRate
 }
 
 func (m mockLimits) BloomCompactorShardSize(_ string) int {
 	return m.bloomCompactorShardSize
+}
+
+func (m mockLimits) BloomCompactorChunksBatchSize(_ string) int {
+	if m.chunksDownloadingBatchSize != 0 {
+		return m.chunksDownloadingBatchSize
+	}
+	return 1
 }

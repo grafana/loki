@@ -286,7 +286,7 @@ func Test_schemaPeriodForTable(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, actualFound := schemaPeriodForTable(tt.config, tt.tableName)
+			actual, actualFound := SchemaPeriodForTable(tt.config, tt.tableName)
 			require.Equal(t, tt.expectedFound, actualFound)
 			require.Equal(t, tt.expected, actual)
 		})
@@ -300,7 +300,7 @@ func Test_tableSort(t *testing.T) {
 		"index_19192",
 	}
 
-	sortTablesByRange(intervals)
+	SortTablesByRange(intervals)
 	require.Equal(t, []string{"index_19195", "index_19192", "index_19191"}, intervals)
 }
 
@@ -420,7 +420,12 @@ func TestCompactor_TableLocking(t *testing.T) {
 						if tc.applyRetention {
 							require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						} else {
-							require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
+							// we only lock table during first run so second run should reset the skip count metric to 0
+							skipCount := float64(0)
+							if n == 1 {
+								skipCount = 1
+							}
+							require.Equal(t, skipCount, testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables.WithLabelValues(tc.lockTable)))
 						}
 					}
 

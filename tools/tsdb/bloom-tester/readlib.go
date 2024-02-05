@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
 	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -125,7 +126,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 	// searchString := os.Getenv("SEARCH_STRING")
 	// 147854,148226,145541,145603,147159,147836,145551,145599,147393,147841,145265,145620,146181,147225,147167,146131,146189,146739,147510,145572,146710,148031,29,146205,147175,146984,147345
 	// mytenants := []string{"29"}
-	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
+	bloomTokenizer, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := shipper.ForEach(
@@ -199,7 +200,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 											tenant,
 											ls.String(),
 											objectClient)
-										bloomTokenizer.SetLineTokenizer(&experiment.tokenizer)
+										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
 										for gotIdx := range got { // for every chunk
 											for _, queryExperiment := range queryExperiments { // for each search string
 												if len(queryExperiment.searchString) >= experiment.tokenizer.N+experiment.tokenizer.Skip {
@@ -207,7 +208,7 @@ func analyzeRead(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexSh
 													foundInChunk := false
 													foundInSbf := false
 
-													foundInSbf = searchSbf(sbf, experiment.tokenizer, queryExperiment.searchString)
+													foundInSbf = searchSbf(sbf, *experiment.tokenizer, queryExperiment.searchString)
 
 													lc := got[gotIdx].Data.(*chunkenc.Facade).LokiChunk()
 

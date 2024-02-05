@@ -164,7 +164,7 @@ type PeriodConfig struct {
 	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
 	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
-	RowShards   uint32                   `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
+	RowShards   uint32                   `yaml:"row_shards" doc:"default=16|description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
@@ -491,6 +491,42 @@ func (cfg *IndexPeriodicTableConfig) Validate() error {
 	return ValidatePathPrefix(cfg.PathPrefix)
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	g := struct {
+		PathPrefix string         `yaml:"path_prefix"`
+		Prefix     string         `yaml:"prefix"`
+		Period     model.Duration `yaml:"period"`
+		Tags       Tags           `yaml:"tags"`
+	}{}
+	if err := unmarshal(&g); err != nil {
+		return err
+	}
+
+	cfg.PathPrefix = g.PathPrefix
+	cfg.Prefix = g.Prefix
+	cfg.Period = time.Duration(g.Period)
+	cfg.Tags = g.Tags
+
+	return nil
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
+	g := &struct {
+		PathPrefix string         `yaml:"path_prefix"`
+		Prefix     string         `yaml:"prefix"`
+		Period     model.Duration `yaml:"period"`
+		Tags       Tags           `yaml:"tags"`
+	}{
+		PathPrefix: cfg.PathPrefix,
+		Prefix:     cfg.Prefix,
+		Period:     model.Duration(cfg.Period),
+		Tags:       cfg.Tags,
+	}
+
+	return g, nil
+}
 func ValidatePathPrefix(prefix string) error {
 	if prefix == "" {
 		return errors.New("prefix must be set")

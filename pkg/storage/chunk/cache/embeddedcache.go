@@ -58,10 +58,10 @@ type EmbeddedCache[K comparable, V any] struct {
 	memoryBytes     prometheus.Gauge
 }
 
-type cacheEntry[K comparable, V any] struct {
+type Entry[K comparable, V any] struct {
 	updated time.Time
-	key     K
-	value   V
+	Key     K
+	Value   V
 }
 
 // EmbeddedCacheConfig represents in-process embedded cache config.
@@ -77,17 +77,21 @@ type EmbeddedCacheConfig struct {
 }
 
 func (cfg *EmbeddedCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, prefix+"embedded-cache.enabled", false, description+"Whether embedded cache is enabled.")
-	f.Int64Var(&cfg.MaxSizeMB, prefix+"embedded-cache.max-size-mb", 100, description+"Maximum memory size of the cache in MB.")
-	f.IntVar(&cfg.MaxSizeItems, prefix+"embedded-cache.max-size-items", 0, description+"Maximum number of entries in the cache.")
-	f.DurationVar(&cfg.TTL, prefix+"embedded-cache.ttl", time.Hour, description+"The time to live for items in the cache before they get purged.")
+	cfg.RegisterFlagsWithPrefixAndDefaults(prefix, description, f, time.Hour)
+}
+
+func (cfg *EmbeddedCacheConfig) RegisterFlagsWithPrefixAndDefaults(prefix, description string, f *flag.FlagSet, defaultTTL time.Duration) {
+	f.BoolVar(&cfg.Enabled, prefix+"enabled", false, description+"Whether embedded cache is enabled.")
+	f.Int64Var(&cfg.MaxSizeMB, prefix+"max-size-mb", 100, description+"Maximum memory size of the cache in MB.")
+	f.IntVar(&cfg.MaxSizeItems, prefix+"max-size-items", 0, description+"Maximum number of entries in the cache.")
+	f.DurationVar(&cfg.TTL, prefix+"ttl", defaultTTL, description+"The time to live for items in the cache before they get purged.")
 }
 
 func (cfg *EmbeddedCacheConfig) IsEnabled() bool {
 	return cfg.Enabled
 }
 
-type cacheEntrySizeCalculator[K comparable, V any] func(entry *cacheEntry[K, V]) uint64
+type cacheEntrySizeCalculator[K comparable, V any] func(entry *Entry[K, V]) uint64
 
 // NewEmbeddedCache returns a new initialised EmbeddedCache where the key is a string and the value is a slice of bytes.
 func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *EmbeddedCache[string, []byte] {
@@ -191,7 +195,7 @@ func (c *EmbeddedCache[K, V]) pruneExpiredItems(ttl time.Duration) {
 	defer c.lock.Unlock()
 
 	for k, v := range c.entries {
-		entry := v.Value.(*cacheEntry[K, V])
+		entry := v.Value.(*Entry[K, V])
 		if time.Since(entry.updated) > ttl {
 			c.remove(k, v, expiredReason)
 		}
@@ -244,10 +248,10 @@ func (c *EmbeddedCache[K, V]) GetCacheType() stats.CacheType {
 }
 
 func (c *EmbeddedCache[K, V]) remove(key K, element *list.Element, reason string) {
-	entry := c.lru.Remove(element).(*cacheEntry[K, V])
+	entry := c.lru.Remove(element).(*Entry[K, V])
 	delete(c.entries, key)
 	if c.onEntryRemoved != nil {
-		c.onEntryRemoved(entry.key, entry.value)
+		c.onEntryRemoved(entry.Key, entry.Value)
 	}
 	c.currSizeBytes -= c.cacheEntrySizeCalculator(entry)
 	c.entriesCurrent.Dec()
@@ -262,10 +266,10 @@ func (c *EmbeddedCache[K, V]) put(key K, value V) {
 		c.remove(key, element, replacedReason)
 	}
 
-	entry := &cacheEntry[K, V]{
+	entry := &Entry[K, V]{
 		updated: time.Now(),
-		key:     key,
-		value:   value,
+		Key:     key,
+		Value:   value,
 	}
 	entrySz := c.cacheEntrySizeCalculator(entry)
 
@@ -285,8 +289,8 @@ func (c *EmbeddedCache[K, V]) put(key K, value V) {
 		if lastElement == nil {
 			break
 		}
-		entryToRemove := lastElement.Value.(*cacheEntry[K, V])
-		c.remove(entryToRemove.key, lastElement, fullReason)
+		entryToRemove := lastElement.Value.(*Entry[K, V])
+		c.remove(entryToRemove.Key, lastElement, fullReason)
 	}
 
 	// Finally, we have space to add the item.
@@ -306,17 +310,17 @@ func (c *EmbeddedCache[K, V]) Get(_ context.Context, key K) (V, bool) {
 
 	element, ok := c.entries[key]
 	if ok {
-		entry := element.Value.(*cacheEntry[K, V])
-		return entry.value, true
+		entry := element.Value.(*Entry[K, V])
+		return entry.Value, true
 	}
 	var empty V
 	return empty, false
 }
 
-func sizeOf(item *cacheEntry[string, []byte]) uint64 {
-	return uint64(int(unsafe.Sizeof(*item)) + // size of cacheEntry
-		len(item.key) + // size of key
-		cap(item.value) + // size of value
+func sizeOf(item *Entry[string, []byte]) uint64 {
+	return uint64(int(unsafe.Sizeof(*item)) + // size of Entry
+		len(item.Key) + // size of Key
+		cap(item.Value) + // size of Value
 		elementSize + // size of the element in linked list
 		elementPrtSize) // size of the pointer to an element in the map
 }

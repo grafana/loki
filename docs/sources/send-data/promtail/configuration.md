@@ -66,10 +66,12 @@ ${VAR:-default_value}
 
 Where default_value is the value to use if the environment variable is undefined.
 
-**Note**: With `expand-env=true` the configuration will first run through
+{{% admonition type="note" %}}
+With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
 backslashes with single backslashes. Because of this every use of a backslash `\` needs to
-be replaced with a double backslash `\\`
+be replaced with a double backslash `\\`.
+{{% /admonition %}}
 
 ### Generic placeholders
 
@@ -848,7 +850,9 @@ labels:
 [path: <string>]
 ```
 
-**Note**: priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
+{{% admonition type="note" %}}
+Priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
+{{% /admonition %}}
 
 ### syslog
 
@@ -1936,7 +1940,7 @@ users with thousands of services it can be more efficient to use the Consul API
 directly which has basic support for filtering nodes (currently by node
 metadata and a single tag).
 
-### docker_sd_config
+### docker_sd_configs
 
 Docker service discovery allows retrieving targets from a Docker daemon.
 It will only watch containers of the Docker daemon referenced with the host parameter. Docker

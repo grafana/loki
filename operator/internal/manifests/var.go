@@ -59,7 +59,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:2.9.2"
+	DefaultContainerImage = "docker.io/grafana/loki:2.9.4"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -76,6 +76,10 @@ const (
 	AnnotationCertRotationRequiredAt string = "loki.grafana.com/certRotationRequiredAt"
 	// AnnotationLokiConfigHash stores the last SHA1 hash of the loki configuration
 	AnnotationLokiConfigHash string = "loki.grafana.com/config-hash"
+	// AnnotationLokiObjectStoreHash stores the last SHA1 hash of the loki object storage credetials.
+	AnnotationLokiObjectStoreHash string = "loki.grafana.com/object-store-hash"
+	// AnnotationLokiManagedAuthHash stores the last SHA1 hash of the loki managed auth credentials.
+	AnnotationLokiManagedAuthHash string = "loki.grafana.com/managed-auth-hash"
 
 	// LabelCompactorComponent is the label value for the compactor component
 	LabelCompactorComponent string = "compactor"
@@ -126,14 +130,32 @@ const (
 var (
 	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
 
-	defaultConfigMapMode = int32(420)
-	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
+	defaultRevHistoryLimit int32 = 10
+	defaultConfigMapMode   int32 = 420
+	volumeFileSystemMode         = corev1.PersistentVolumeFilesystem
 )
 
-func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
+func commonAnnotations(opts Options) map[string]string {
+	a := map[string]string{
+		AnnotationLokiConfigHash:         opts.ConfigSHA1,
+		AnnotationCertRotationRequiredAt: opts.CertRotationRequiredAt,
+	}
+
+	if opts.ObjectStorage.SecretSHA1 != "" {
+		a[AnnotationLokiObjectStoreHash] = opts.ObjectStorage.SecretSHA1
+	}
+
+	if opts.ObjectStorage.OpenShift.CloudCredentials.SHA1 != "" {
+		a[AnnotationLokiManagedAuthHash] = opts.ObjectStorage.OpenShift.CloudCredentials.SHA1
+	}
+
+	return a
+}
+
+func gatewayAnnotations(configSHA1, certRotationRequiredAt string) map[string]string {
 	return map[string]string{
-		AnnotationLokiConfigHash:         configHash,
-		AnnotationCertRotationRequiredAt: rotationRequiredAt,
+		AnnotationLokiConfigHash:         configSHA1,
+		AnnotationCertRotationRequiredAt: certRotationRequiredAt,
 	}
 }
 

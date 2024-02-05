@@ -71,7 +71,7 @@ func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 // In the future, we should use dynamic sharding in TSDB to determine the shard factors
 // and we may no longer wish to send a shard label inside the queries,
 // but rather expose it as part of the stores.Index interface
-func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.ShardAnnotation, error) {
+func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.FingerprintFilter, error) {
 	// first use withoutNameLabel to make a copy with the name label removed
 	matchers = withoutNameLabel(matchers)
 	s, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
@@ -79,13 +79,14 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 		return nil, nil, err
 	}
 
-	var shard *index.ShardAnnotation
+	var fpFilter index.FingerprintFilter
 	if s != nil {
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
-		shard = &index.ShardAnnotation{
+		shard := index.ShardAnnotation{
 			Shard: uint32(s.Shard),
 			Of:    uint32(s.Of),
 		}
+		fpFilter = shard
 
 		if err := shard.Validate(); err != nil {
 			return nil, nil, err
@@ -97,40 +98,21 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	}
 
-	return matchers, shard, err
+	return matchers, fpFilter, err
 
 }
 
 // TODO(owen-d): synchronize logproto.ChunkRef and tsdb.ChunkRef so we don't have to convert.
 // They share almost the same fields, so we can add the missing `KB` field to the proto and then
 // use that within the tsdb package.
-func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.GetChunkRefs")
-	defer sp.Finish()
-
-	var kvps []interface{}
-	defer func() {
-		sp.LogKV(kvps...)
-	}()
-
-	matchers, shard, err := cleanMatchers(matchers...)
-	kvps = append(kvps,
-		"from", from.Time(),
-		"through", through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"shard", shard,
-		"cleanMatcherErr", err,
-	)
+func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
+	matchers, shard, err := cleanMatchers(predicate.Matchers...)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO(owen-d): use a pool to reduce allocs here
 	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
-	kvps = append(kvps,
-		"chunks", len(chks),
-		"indexErr", err,
-	)
 	if err != nil {
 		return nil, err
 	}

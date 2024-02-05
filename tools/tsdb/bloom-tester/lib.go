@@ -113,7 +113,7 @@ var experiments = []Experiment{
 	*/
 	NewExperiment(
 		"token=4skip0_error=1%_indexchunks=true",
-		*four,
+		four,
 		true,
 		onePctError,
 	),
@@ -266,7 +266,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 	var n int // count iterated series
 	// pool := newPool(runtime.NumCPU())
 	// pool := newPool(1)
-	bloomTokenizer, _ := bt.NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
+	bloomTokenizer, _ := NewBloomTokenizer(prometheus.DefaultRegisterer, DefaultNGramLength, DefaultNGramSkip)
 	for _, tenant := range tenants {
 		level.Info(util_log.Logger).Log("Analyzing tenant", tenant, "table", tableName)
 		err := indexShipper.ForEach(
@@ -341,7 +341,7 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 										tenant,
 										ls.String(),
 										objectClient) {
-										bloomTokenizer.SetLineTokenizer(&experiment.tokenizer)
+										bloomTokenizer.SetLineTokenizer(experiment.tokenizer)
 
 										level.Info(util_log.Logger).Log("Starting work on: ", ls.String(), "'", FNV32a(ls.String()), "'", experiment.name, tenant)
 										startTime := time.Now().UnixMilli()
@@ -357,8 +357,10 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 											Bloom:  &bloom,
 											Series: &series,
 										}
-										bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
-
+										err := bloomTokenizer.PopulateSeriesWithBloom(&swb, got)
+										if err != nil {
+											level.Error(util_log.Logger).Log("msg", "failed populating SeriesWithBloom", "err", err)
+										}
 										endTime := time.Now().UnixMilli()
 										if len(got) > 0 {
 											metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))
@@ -378,7 +380,6 @@ func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexS
 
 											metrics.sbfCreationTime.WithLabelValues(experiment.name).Add(float64(endTime - startTime))
 											metrics.sbfsCreated.WithLabelValues(experiment.name).Inc()
-											metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 
 											if err != nil {
 												helpers.ExitErr("writing sbf to file", err)

@@ -2,36 +2,32 @@ package bloomgateway
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	lokiring "github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/pkg/validation"
 )
-
-func parseDayTime(s string) config.DayTime {
-	t, err := time.Parse("2006-01-02", s)
-	if err != nil {
-		panic(err)
-	}
-	return config.DayTime{
-		Time: model.TimeFromUnix(t.Unix()),
-	}
-}
 
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
 	t.Helper()
@@ -39,17 +35,33 @@ func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.Grouped
 	return groupChunkRefs(chunkRefs, grouped)
 }
 
+func newLimits() *validation.Overrides {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	limits.BloomGatewayEnabled = true
+
+	overrides, _ := validation.NewOverrides(limits, nil)
+	return overrides
+}
+
 func TestBloomGateway_StartStopService(t *testing.T) {
 
 	ss := NewNoopStrategy()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
+	limits := newLimits()
 
 	cm := storage.NewClientMetrics()
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{
-		From:       parseDayTime("2023-09-01"),
+		From: parseDayTime("2023-09-01"),
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 24 * time.Hour,
+			},
+		},
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v13",
@@ -80,9 +92,11 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 				},
 				ReplicationFactor: 1,
 			},
+			WorkerConcurrency:       4,
+			MaxOutstandingPerTenant: 1024,
 		}
 
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -90,7 +104,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 		// Wait for workers to connect to queue
 		time.Sleep(50 * time.Millisecond)
-		require.Equal(t, float64(numWorkers), gw.queue.GetConnectedConsumersMetric())
+		require.Equal(t, float64(cfg.WorkerConcurrency), gw.queue.GetConnectedConsumersMetric())
 
 		err = services.StopAndAwaitTerminated(context.Background(), gw)
 		require.NoError(t, err)
@@ -103,12 +117,19 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	ss := NewNoopStrategy()
 	logger := log.NewLogfmtLogger(os.Stderr)
 	reg := prometheus.NewRegistry()
+	limits := newLimits()
 
 	cm := storage.NewClientMetrics()
 	t.Cleanup(cm.Unregister)
 
 	p := config.PeriodConfig{
-		From:       parseDayTime("2023-09-01"),
+		From: parseDayTime("2023-09-01"),
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: "index_",
+				Period: 24 * time.Hour,
+			},
+		},
 		IndexType:  config.TSDBType,
 		ObjectType: config.StorageTypeFileSystem,
 		Schema:     "v13",
@@ -138,11 +159,23 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			},
 			ReplicationFactor: 1,
 		},
+		WorkerConcurrency:       4,
+		MaxOutstandingPerTenant: 1024,
 	}
 
-	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
+	t.Run("shipper error is propagated", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		require.NoError(t, err)
+
+		now := mktime("2023-10-03 10:00")
+
+		bqs, data := createBlockQueriers(t, 10, now.Add(-24*time.Hour), now, 0, 1000)
+		mockStore := newMockBloomStore(bqs)
+		mockStore.err = errors.New("failed to fetch block")
+		gw.bloomShipper = mockStore
+
+		err = gw.initServices()
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -152,8 +185,87 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 10)
+
+		// saturate workers
+		// then send additional request
+		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
+			req := &logproto.FilterChunkRefRequest{
+				From:    now.Add(-24 * time.Hour),
+				Through: now,
+				Refs:    groupRefs(t, chunkRefs),
+				Filters: []syntax.LineFilter{
+					{Ty: labels.MatchEqual, Match: "does not match"},
+				},
+			}
+
+			ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx = user.InjectOrgID(ctx, tenantID)
+			t.Cleanup(cancelFn)
+
+			res, err := gw.FilterChunkRefs(ctx, req)
+			require.ErrorContainsf(t, err, "request failed: failed to fetch block", "%+v", res)
+		}
+	})
+
+	t.Run("request cancellation does not result in channel locking", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		require.NoError(t, err)
+
+		now := mktime("2024-01-25 10:00")
+
+		bqs, data := createBlockQueriers(t, 50, now.Add(-24*time.Hour), now, 0, 1024)
+		mockStore := newMockBloomStore(bqs)
+		mockStore.delay = 50 * time.Millisecond // delay for each block - 50x50=2500ms
+		gw.bloomShipper = mockStore
+
+		err = gw.initServices()
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+
+		// saturate workers
+		// then send additional request
+		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
+			req := &logproto.FilterChunkRefRequest{
+				From:    now.Add(-24 * time.Hour),
+				Through: now,
+				Refs:    groupRefs(t, chunkRefs),
+				Filters: []syntax.LineFilter{
+					{Ty: labels.MatchEqual, Match: "does not match"},
+				},
+			}
+
+			ctx, cancelFn := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			ctx = user.InjectOrgID(ctx, tenantID)
+			t.Cleanup(cancelFn)
+
+			res, err := gw.FilterChunkRefs(ctx, req)
+			require.ErrorContainsf(t, err, context.DeadlineExceeded.Error(), "%+v", res)
+		}
+	})
+
+	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		now := mktime("2023-10-03 10:00")
 
 		chunkRefs := []*logproto.ChunkRef{
 			{Fingerprint: 3000, UserID: tenantID, From: now.Add(-24 * time.Hour), Through: now.Add(-23 * time.Hour), Checksum: 1},
@@ -186,33 +298,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		}, res)
 	})
 
-	t.Run("returns error if chunk refs do not belong to tenant", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
-		require.NoError(t, err)
-
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
-
-		chunkRefs := []*logproto.ChunkRef{
-			{Fingerprint: 1000, UserID: tenantID, From: now.Add(-22 * time.Hour), Through: now.Add(-21 * time.Hour), Checksum: 1},
-			{Fingerprint: 2000, UserID: "other", From: now.Add(-20 * time.Hour), Through: now.Add(-19 * time.Hour), Checksum: 2},
-		}
-		req := &logproto.FilterChunkRefRequest{
-			From:    now.Add(-24 * time.Hour),
-			Through: now,
-			Refs:    groupRefs(t, chunkRefs),
-		}
-
-		ctx := user.InjectOrgID(context.Background(), tenantID)
-		_, err = gw.FilterChunkRefs(ctx, req)
-		require.Error(t, err)
-		require.Equal(t, "expected chunk refs from tenant test, got tenant other: invalid tenant in chunk refs", err.Error())
-	})
-
 	t.Run("gateway tracks active users", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -222,8 +310,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		ts, _ := time.Parse("2006-01-02 15:04", "2023-10-03 10:00")
-		now := model.TimeFromUnix(ts.Unix())
+		now := mktime("2023-10-03 10:00")
 
 		tenants := []string{"tenant-a", "tenant-b", "tenant-c"}
 		for idx, tenantID := range tenants {
@@ -240,6 +327,9 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				From:    now.Add(-24 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
+				Filters: []syntax.LineFilter{
+					{Ty: labels.MatchEqual, Match: "foo"},
+				},
 			}
 			ctx := user.InjectOrgID(context.Background(), tenantID)
 			_, err = gw.FilterChunkRefs(ctx, req)
@@ -247,4 +337,133 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		}
 		require.ElementsMatch(t, tenants, gw.activeUsers.ActiveUsers())
 	})
+
+	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		require.NoError(t, err)
+
+		now := mktime("2023-10-03 10:00")
+
+		// replace store implementation and re-initialize workers and sub-services
+		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
+		gw.bloomShipper = newMockBloomStore(bqs)
+		err = gw.initServices()
+		require.NoError(t, err)
+
+		err = services.StartAndAwaitRunning(context.Background(), gw)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			err = services.StopAndAwaitTerminated(context.Background(), gw)
+			require.NoError(t, err)
+		})
+
+		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
+
+		t.Run("no match - return empty response", func(t *testing.T) {
+			inputChunkRefs := groupRefs(t, chunkRefs)
+			req := &logproto.FilterChunkRefRequest{
+				From:    now.Add(-8 * time.Hour),
+				Through: now,
+				Refs:    inputChunkRefs,
+				Filters: []syntax.LineFilter{
+					{Ty: labels.MatchEqual, Match: "does not match"},
+				},
+			}
+			ctx := user.InjectOrgID(context.Background(), tenantID)
+			res, err := gw.FilterChunkRefs(ctx, req)
+			require.NoError(t, err)
+
+			expectedResponse := &logproto.FilterChunkRefResponse{
+				ChunkRefs: []*logproto.GroupedChunkRefs{},
+			}
+			require.Equal(t, expectedResponse, res)
+		})
+
+		t.Run("match - return filtered", func(t *testing.T) {
+			inputChunkRefs := groupRefs(t, chunkRefs)
+			// hack to get indexed key for a specific series
+			// the indexed key range for a series is defined as
+			// i * keysPerSeries ... i * keysPerSeries + keysPerSeries - 1
+			// where i is the nth series in a block
+			// fortunately, i is also used as Checksum for the single chunk of a series
+			// see mkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
+			key := inputChunkRefs[0].Refs[0].Checksum*1000 + 500
+
+			req := &logproto.FilterChunkRefRequest{
+				From:    now.Add(-8 * time.Hour),
+				Through: now,
+				Refs:    inputChunkRefs,
+				Filters: []syntax.LineFilter{
+					{Ty: labels.MatchEqual, Match: fmt.Sprintf("series %d", key)},
+				},
+			}
+			ctx := user.InjectOrgID(context.Background(), tenantID)
+			res, err := gw.FilterChunkRefs(ctx, req)
+			require.NoError(t, err)
+			expectedResponse := &logproto.FilterChunkRefResponse{
+				ChunkRefs: inputChunkRefs[:1],
+			}
+			require.Equal(t, expectedResponse, res)
+		})
+
+	})
+}
+
+func TestBloomGateway_RemoveNotMatchingChunks(t *testing.T) {
+	t.Run("removing chunks partially", func(t *testing.T) {
+		req := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+					{Checksum: 0x1},
+					{Checksum: 0x2},
+					{Checksum: 0x3},
+					{Checksum: 0x4},
+					{Checksum: 0x5},
+				}},
+			},
+		}
+		res := v1.Output{
+			Fp: 0x00, Removals: v1.ChunkRefs{
+				{Checksum: 0x2},
+				{Checksum: 0x4},
+			},
+		}
+		expected := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+					{Checksum: 0x1},
+					{Checksum: 0x3},
+					{Checksum: 0x5},
+				}},
+			},
+		}
+		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		require.Equal(t, expected, req)
+	})
+
+	t.Run("removing all chunks removed fingerprint ref", func(t *testing.T) {
+		req := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 0x00, Tenant: "fake", Refs: []*logproto.ShortRef{
+					{Checksum: 0x1},
+					{Checksum: 0x2},
+					{Checksum: 0x3},
+				}},
+			},
+		}
+		res := v1.Output{
+			Fp: 0x00, Removals: v1.ChunkRefs{
+				{Checksum: 0x1},
+				{Checksum: 0x2},
+				{Checksum: 0x2},
+			},
+		}
+		expected := &logproto.FilterChunkRefRequest{
+			Refs: []*logproto.GroupedChunkRefs{},
+		}
+		removeNotMatchingChunks(req, res, log.NewNopLogger())
+		require.Equal(t, expected, req)
+	})
+
 }

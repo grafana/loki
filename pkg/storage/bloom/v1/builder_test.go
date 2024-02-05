@@ -3,66 +3,42 @@ package v1
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
-func mkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
-	seriesList = make([]SeriesWithBloom, 0, nSeries)
-	keysList = make([][][]byte, 0, nSeries)
-	for i := 0; i < nSeries; i++ {
-		var series Series
-		step := (throughFp - fromFp) / (model.Fingerprint(nSeries))
-		series.Fingerprint = fromFp + model.Fingerprint(i)*step
-		timeDelta := fromTs + (throughTs-fromTs)/model.Time(nSeries)*model.Time(i)
-		series.Chunks = []ChunkRef{
-			{
-				Start:    fromTs + timeDelta*model.Time(i),
-				End:      fromTs + timeDelta*model.Time(i),
-				Checksum: uint32(i),
-			},
-		}
-
-		var bloom Bloom
-		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
-
-		keys := make([][]byte, 0, keysPerSeries)
-		for j := 0; j < keysPerSeries; j++ {
-			key := []byte(fmt.Sprint(j))
-			bloom.Add(key)
-			keys = append(keys, key)
-		}
-
-		seriesList = append(seriesList, SeriesWithBloom{
-			Series: &series,
-			Bloom:  &bloom,
-		})
-		keysList = append(keysList, keys)
+func TestBlockOptionsRoundTrip(t *testing.T) {
+	opts := BlockOptions{
+		Schema: Schema{
+			version:     V1,
+			encoding:    chunkenc.EncSnappy,
+			nGramLength: 10,
+			nGramSkip:   2,
+		},
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10,
+		BlockSize:      10 << 20,
 	}
-	return
-}
 
-func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
-	for expected.Next() {
-		require.True(t, actual.Next())
-		a, b := expected.At(), actual.At()
-		test(a, b)
-	}
-	require.False(t, actual.Next())
-	require.Nil(t, expected.Err())
-	require.Nil(t, actual.Err())
+	var enc encoding.Encbuf
+	opts.Encode(&enc)
+
+	var got BlockOptions
+	err := got.DecodeFrom(bytes.NewReader(enc.Get()))
+	require.Nil(t, err)
+
+	require.Equal(t, opts, got)
 }
 
 func TestBlockBuilderRoundTrip(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, keys := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
@@ -96,7 +72,7 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					schema:         schema,
+					Schema:         schema,
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 				},
@@ -152,9 +128,9 @@ func TestMergeBuilder(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 100
 	blocks := make([]PeekingIterator[*SeriesWithBloom], 0, nBlocks)
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
-		schema: Schema{
+		Schema: Schema{
 			version:  DefaultSchemaVersion,
 			encoding: chunkenc.EncSnappy,
 		},
@@ -216,7 +192,9 @@ func TestMergeBuilder(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	require.Nil(t, mergeBuilder.Build(builder))
+	_, err = mergeBuilder.Build(builder)
+	require.Nil(t, err)
+
 	block := NewBlock(reader)
 	querier := NewBlockQuerier(block)
 
@@ -227,5 +205,172 @@ func TestMergeBuilder(t *testing.T) {
 		},
 		NewSliceIter[*SeriesWithBloom](PointerSlice(data)),
 		querier,
+	)
+}
+
+func TestBlockReset(t *testing.T) {
+	numSeries := 100
+	numKeysPerSeries := 10000
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
+
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	schema := Schema{
+		version:     DefaultSchemaVersion,
+		encoding:    chunkenc.EncSnappy,
+		nGramLength: 10,
+		nGramSkip:   2,
+	}
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			Schema:         schema,
+			SeriesPageSize: 100,
+			BloomPageSize:  10 << 10,
+		},
+		writer,
+	)
+
+	require.Nil(t, err)
+	itr := NewSliceIter[SeriesWithBloom](data)
+	_, err = builder.BuildFrom(itr)
+	require.Nil(t, err)
+	block := NewBlock(reader)
+	querier := NewBlockQuerier(block)
+
+	rounds := make([][]model.Fingerprint, 2)
+
+	for i := 0; i < len(rounds); i++ {
+		for querier.Next() {
+			rounds[i] = append(rounds[i], querier.At().Series.Fingerprint)
+		}
+
+		err = querier.Seek(0) // reset at end
+		require.Nil(t, err)
+	}
+
+	require.Equal(t, rounds[0], rounds[1])
+}
+
+// This test is a basic roundtrip test for the merge builder.
+// It creates one set of blocks with the same (duplicate) data, and another set of blocks with
+// disjoint data. It then merges the two sets of blocks and ensures that the merged blocks contain
+// one copy of the first set (duplicate data) and one copy of the second set (disjoint data).
+func TestMergeBuilder_Roundtrip(t *testing.T) {
+	numSeries := 100
+	numKeysPerSeries := 100
+	minTs, maxTs := model.Time(0), model.Time(10000)
+	xs, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, minTs, maxTs)
+
+	var data [][]*SeriesWithBloom
+
+	// First, we build the blocks
+
+	sets := []int{
+		2, // 2 blocks containint the same data
+		1, // 1 block containing disjoint data
+	}
+
+	for i, copies := range sets {
+		for j := 0; j < copies; j++ {
+			// references for linking in memory reader+writer
+			indexBuf := bytes.NewBuffer(nil)
+			bloomsBuf := bytes.NewBuffer(nil)
+
+			writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+			reader := NewByteReader(indexBuf, bloomsBuf)
+
+			builder, err := NewBlockBuilder(
+				BlockOptions{
+					Schema: Schema{
+						version:  DefaultSchemaVersion,
+						encoding: chunkenc.EncSnappy,
+					},
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer,
+			)
+
+			require.Nil(t, err)
+			// each set of copies gets a different slice of the data
+			minIdx, maxIdx := i*len(xs)/len(sets), (i+1)*len(xs)/len(sets)
+			itr := NewSliceIter[SeriesWithBloom](xs[minIdx:maxIdx])
+			_, err = builder.BuildFrom(itr)
+			require.Nil(t, err)
+			block := NewBlock(reader)
+			querier := NewBlockQuerier(block)
+
+			// rather than use the block querier directly, collect it's data
+			// so we can use it in a few places later
+			var tmp []*SeriesWithBloom
+			for querier.Next() {
+				tmp = append(tmp, querier.At())
+			}
+			data = append(data, tmp)
+		}
+	}
+
+	// we keep 2 copies of the data as iterators. One for the blocks, and one for the "store"
+	// which will force it to reference the same series
+	var blocks []PeekingIterator[*SeriesWithBloom]
+	var store []PeekingIterator[*SeriesWithBloom]
+
+	for _, x := range data {
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](x)))
+		store = append(store, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](x)))
+	}
+
+	orderedStore := NewHeapIterForSeriesWithBloom(store...)
+	dedupedStore := NewDedupingIter[*SeriesWithBloom, *Series](
+		func(a *SeriesWithBloom, b *Series) bool {
+			return a.Series.Fingerprint == b.Fingerprint
+		},
+		func(swb *SeriesWithBloom) *Series {
+			return swb.Series
+		},
+		func(a *SeriesWithBloom, b *Series) *Series {
+			if len(a.Series.Chunks) > len(b.Chunks) {
+				return a.Series
+			}
+			return b
+		},
+		NewPeekingIter[*SeriesWithBloom](orderedStore),
+	)
+
+	// build the new block from the old ones
+	indexBuf, bloomBuf := bytes.NewBuffer(nil), bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomBuf)
+	reader := NewByteReader(indexBuf, bloomBuf)
+	mb := NewMergeBuilder(
+		blocks,
+		dedupedStore,
+		func(s *Series, b *Bloom) error {
+			// We're not actually indexing new data in this test
+			return nil
+		},
+	)
+	builder, err := NewBlockBuilder(NewBlockOptions(4, 0), writer)
+	require.Nil(t, err)
+
+	checksum, err := mb.Build(builder)
+	require.Nil(t, err)
+	require.Equal(t, uint32(0xe306ec6e), checksum)
+
+	// ensure the new block contains one copy of all the data
+	// by comparing it against an iterator over the source data
+	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader))
+	sourceItr := NewSliceIter[*SeriesWithBloom](PointerSlice[SeriesWithBloom](xs))
+
+	EqualIterators[*SeriesWithBloom](
+		t,
+		func(a, b *SeriesWithBloom) {
+			require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
+		},
+		sourceItr,
+		mergedBlockQuerier,
 	)
 }

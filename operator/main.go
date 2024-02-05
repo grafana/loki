@@ -2,14 +2,13 @@ package main
 
 import (
 	"flag"
-	"net/http"
-	"net/http/pprof"
 	"os"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
+	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -21,6 +20,8 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
+	"github.com/grafana/loki/operator/internal/config"
+	manifestsocp "github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/operator"
 	"github.com/grafana/loki/operator/internal/validation"
@@ -59,14 +60,10 @@ func main() {
 
 	var err error
 
-	ctrlCfg := ctrlconfigv1.ProjectConfig{}
-	options := ctrl.Options{Scheme: scheme}
-	if configFile != "" {
-		options, err = options.AndFrom(ctrl.ConfigFile().AtPath(configFile).OfKind(&ctrlCfg)) //nolint:staticcheck
-		if err != nil {
-			logger.Error(err, "failed to parse controller manager config file")
-			os.Exit(1)
-		}
+	ctrlCfg, options, err := config.LoadConfig(scheme, configFile)
+	if err != nil {
+		logger.Error(err, "failed to load operator configuration")
+		os.Exit(1)
 	}
 
 	if ctrlCfg.Gates.LokiStackAlerts && !ctrlCfg.Gates.ServiceMonitors {
@@ -88,6 +85,7 @@ func main() {
 
 		if ctrlCfg.Gates.OpenShift.Enabled {
 			utilruntime.Must(routev1.AddToScheme(scheme))
+			utilruntime.Must(cloudcredentialv1.AddToScheme(scheme))
 		}
 	}
 
@@ -95,6 +93,11 @@ func main() {
 	if err != nil {
 		logger.Error(err, "unable to start manager")
 		os.Exit(1)
+	}
+
+	if ctrlCfg.Gates.OpenShift.Enabled && manifestsocp.DiscoverManagedAuthEnv() != nil {
+		logger.Info("discovered OpenShift Cluster within a managed authentication environment")
+		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
 	}
 
 	if err = (&lokictrl.LokiStackReconciler{
@@ -122,6 +125,17 @@ func main() {
 			OperatorNs: ns,
 		}).SetupWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
+			os.Exit(1)
+		}
+	}
+
+	if ctrlCfg.Gates.OpenShift.ManagedAuthEnabled() {
+		if err = (&lokictrl.CredentialsRequestsReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+			Log:    logger.WithName("controllers").WithName("lokistack-credentialsrequest"),
+		}).SetupWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create controller", "controller", "lokistack-credentialsrequest")
 			os.Exit(1)
 		}
 	}
@@ -218,35 +232,9 @@ func main() {
 	logger.Info("registering metrics")
 	metrics.RegisterMetricCollectors()
 
-	logger.Info("Registering profiling endpoints.")
-	err = registerProfiler(mgr)
-	if err != nil {
-		logger.Error(err, "failed to register extra pprof handler")
-		os.Exit(1)
-	}
-
 	logger.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		logger.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func registerProfiler(m ctrl.Manager) error {
-	endpoints := map[string]http.HandlerFunc{
-		"/debug/pprof/":        pprof.Index,
-		"/debug/pprof/cmdline": pprof.Cmdline,
-		"/debug/pprof/profile": pprof.Profile,
-		"/debug/pprof/symbol":  pprof.Symbol,
-		"/debug/pprof/trace":   pprof.Trace,
-	}
-
-	for path, handler := range endpoints {
-		err := m.AddMetricsExtraHandler(path, handler)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

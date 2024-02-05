@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
-	lokiutil "github.com/grafana/loki/pkg/util"
 )
 
 type Config struct {
@@ -71,7 +70,7 @@ type processor interface {
 	// This method must react on context being finished, and stop when that happens.
 	//
 	// processorManager (not processor) is responsible for starting as many goroutines as needed for each connection.
-	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string)
+	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address, workerID string)
 
 	// notifyShutdown notifies the remote query-frontend or query-scheduler that the querier is
 	// shutting down.
@@ -151,7 +150,7 @@ func newQuerierWorkerWithProcessor(cfg Config, metrics *Metrics, logger log.Logg
 	}
 
 	if ring != nil {
-		w, err := lokiutil.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		w, err := util.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}
