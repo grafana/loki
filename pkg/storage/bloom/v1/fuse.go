@@ -135,7 +135,7 @@ func (fq *FusedQuerier) Run() error {
 				for _, search := range input.Searches {
 					tokenBuf = append(tokenBuf[:prefixLen], search...)
 
-					if !bloom.ScalableBloomFilter.Test(tokenBuf) {
+					if !bloom.Test(tokenBuf) {
 						removals = append(removals, chk)
 						continue chunkLoop
 					}

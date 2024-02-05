@@ -47,13 +47,14 @@ func MakeBlockQuerier(t testing.TB, fromFp, throughFp model.Fingerprint, fromTs,
 }
 
 func MkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
+	const nGramLen = 4
 	seriesList = make([]SeriesWithBloom, 0, nSeries)
 	keysList = make([][][]byte, 0, nSeries)
 
 	step := (throughFp - fromFp) / model.Fingerprint(nSeries)
 	timeDelta := time.Duration(throughTs.Sub(fromTs).Nanoseconds() / int64(nSeries))
 
-	tokenizer := NewNGramTokenizer(4, 0)
+	tokenizer := NewNGramTokenizer(nGramLen, 0)
 	for i := 0; i < nSeries; i++ {
 		var series Series
 		series.Fingerprint = fromFp + model.Fingerprint(i)*step
@@ -74,8 +75,16 @@ func MkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 			it := tokenizer.Tokens(fmt.Sprintf("series %d", i*keysPerSeries+j))
 			for it.Next() {
 				key := it.At()
+				// series-level key
 				bloom.Add(key)
 				keys = append(keys, key)
+
+				// chunk-level key
+				for _, chk := range series.Chunks {
+					tokenBuf, prefixLen := prefixedToken(nGramLen, chk, nil)
+					tokenBuf = append(tokenBuf[:prefixLen], key...)
+					bloom.Add(tokenBuf)
+				}
 			}
 		}
 
