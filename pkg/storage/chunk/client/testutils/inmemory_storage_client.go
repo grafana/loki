@@ -59,6 +59,10 @@ func NewInMemoryObjectClient() *InMemoryObjectClient {
 	}
 }
 
+func (m *InMemoryObjectClient) Internals() map[string][]byte {
+	return m.objects
+}
+
 type mockTable struct {
 	items       map[string][]mockItem
 	write, read int64
