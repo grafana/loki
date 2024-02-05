@@ -6,10 +6,6 @@ description: Describes how to enable structure metadata for logs and how to quer
 # What is structured metadata
 
 {{% admonition type="warning" %}}
-This feature is not yet available for Cloud Logs users.
-{{% /admonition %}}
-
-{{% admonition type="warning" %}}
 Structured metadata was added to chunk format V4 which is used if the schema version is greater or equal to `13`. (See [Schema Config]({{< relref "../../storage#schema-config" >}}) for more details about schema versions. )
 {{% /admonition %}}
 
