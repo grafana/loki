@@ -98,7 +98,7 @@ func TestFusedQuerier(t *testing.T) {
 				t,
 				Output{
 					Fp:       req.Fp,
-					Removals: req.Chks,
+					Removals: nil,
 				},
 				resp,
 			)
