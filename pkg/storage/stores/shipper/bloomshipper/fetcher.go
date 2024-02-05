@@ -196,7 +196,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDire
 		return nil, err
 	}
 
-	var results []BlockDirectory
+	results := make([]BlockDirectory, 0, len(refs))
 
 	fromCache, missing, err := f.processBlocksCacheResponse(ctx, refs, cacheHits, cacheBufs)
 	if err != nil {
