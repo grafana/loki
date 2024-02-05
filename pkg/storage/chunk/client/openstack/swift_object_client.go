@@ -29,6 +29,15 @@ var defaultTransport http.RoundTripper = &http.Transport{
 	ExpectContinueTimeout: 5 * time.Second,
 }
 
+// HTTPConfig stores the http.Transport configuration
+type HTTPConfig struct {
+	Timeout               time.Duration `yaml:"timeout"`
+	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
+	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
+	CAFile                string        `yaml:"ca_file"`
+}
+
 type SwiftObjectClient struct {
 	conn        *swift.Connection
 	hedgingConn *swift.Connection
@@ -38,6 +47,7 @@ type SwiftObjectClient struct {
 // SwiftConfig is config for the Swift Chunk Client.
 type SwiftConfig struct {
 	bucket_swift.Config `yaml:",inline"`
+	HTTPConfig          HTTPConfig `yaml:"http_config"`
 }
 
 // RegisterFlags registers flags.
@@ -53,6 +63,8 @@ func (cfg *SwiftConfig) Validate() error {
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
+	f.DurationVar(&cfg.HTTPConfig.Timeout, prefix+"swift.http.timeout", 0, "Timeout specifies a time limit for requests made by swift Client.")
+	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"swift.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the Swift endpoint.")
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
@@ -80,7 +92,7 @@ func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObj
 
 func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
+		InsecureSkipVerify: cfg.HTTP.InsecureSkipVerify,
 	}
 	if cfg.HTTPConfig.CAFile != "" {
 		tlsConfig.RootCAs = x509.NewCertPool()
@@ -89,10 +101,9 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 			return nil, err
 		}
 		tlsConfig.RootCAs.AppendCertsFromPEM(data)
+		defaultTransport := defaultTransport.(*http.Transport)
+		defaultTransport.TLSClientConfig = tlsConfig
 	}
-
-	newTransport := defaultTransport.(*http.Transport)
-	newTransport.TLSClientConfig = tlsConfig
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
 		AuthUrl:        cfg.AuthURL,
@@ -110,7 +121,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 		Domain:         cfg.DomainName,
 		DomainId:       cfg.DomainID,
 		Region:         cfg.RegionName,
-		Transport:      newTransport,
+		Transport:      defaultTransport,
 	}
 
 	// Create a connection
