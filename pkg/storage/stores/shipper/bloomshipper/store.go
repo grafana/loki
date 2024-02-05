@@ -30,9 +30,6 @@ type bloomStoreConfig struct {
 	numWorkers int
 }
 
-// Compiler check to ensure bloomStoreEntry implements the Client interface
-var _ Client = &bloomStoreEntry{}
-
 // Compiler check to ensure bloomStoreEntry implements the Store interface
 var _ Store = &bloomStoreEntry{}
 
@@ -112,54 +109,11 @@ func (b *bloomStoreEntry) Fetcher(_ model.Time) *Fetcher {
 	return b.fetcher
 }
 
-// DeleteBlocks implements Client.
-func (b *bloomStoreEntry) DeleteBlocks(ctx context.Context, refs []BlockRef) error {
-	return b.bloomClient.DeleteBlocks(ctx, refs)
-}
-
-// DeleteMeta implements Client.
-func (b *bloomStoreEntry) DeleteMetas(ctx context.Context, refs []MetaRef) error {
-	return b.bloomClient.DeleteMetas(ctx, refs)
-}
-
-// GetBlock implements Client.
-func (b *bloomStoreEntry) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
-	return b.bloomClient.GetBlock(ctx, ref)
-}
-
-// GetBlocks implements Client.
-func (b *bloomStoreEntry) GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
-	return b.fetcher.FetchBlocks(ctx, refs)
-}
-
-// GetMeta implements Client.
-func (b *bloomStoreEntry) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
-	return b.bloomClient.GetMeta(ctx, ref)
-}
-
-// GetMetas implements Client.
-func (b *bloomStoreEntry) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	return b.fetcher.FetchMetas(ctx, refs)
-}
-
-// PutBlocks implements Client.
-func (b *bloomStoreEntry) PutBlock(ctx context.Context, block Block) error {
-	return b.bloomClient.PutBlock(ctx, block)
-}
-
-// PutMeta implements Client.
-func (b *bloomStoreEntry) PutMeta(ctx context.Context, meta Meta) error {
-	return b.bloomClient.PutMeta(ctx, meta)
-}
-
-// Stop implements Client.
+// Stop implements Store.
 func (b bloomStoreEntry) Stop() {
 	b.bloomClient.Stop()
 	b.fetcher.Close()
 }
-
-// Compiler check to ensure BloomStore implements the Client interface
-var _ Client = &BloomStore{}
 
 // Compiler check to ensure BloomStore implements the Store interface
 var _ Store = &BloomStore{}
@@ -305,58 +259,8 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 }
 
 // FetchBlocks implements Store.
-func (b *BloomStore) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
-	return b.GetBlocks(ctx, refs)
-}
+func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]BlockDirectory, error) {
 
-// DeleteBlocks implements Client.
-func (b *BloomStore) DeleteBlocks(ctx context.Context, refs []BlockRef) error {
-	for _, ref := range refs {
-		err := b.storeDo(
-			ref.StartTimestamp,
-			func(s *bloomStoreEntry) error {
-				return s.DeleteBlocks(ctx, []BlockRef{ref})
-			},
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// DeleteMetas implements Client.
-func (b *BloomStore) DeleteMetas(ctx context.Context, refs []MetaRef) error {
-	for _, ref := range refs {
-		err := b.storeDo(
-			ref.StartTimestamp,
-			func(s *bloomStoreEntry) error {
-				return s.DeleteMetas(ctx, []MetaRef{ref})
-			},
-		)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// GetBlock implements Client.
-func (b *BloomStore) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
-	res := make([]BlockDirectory, 1)
-	err := b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
-		block, err := s.GetBlock(ctx, ref)
-		if err != nil {
-			return err
-		}
-		res[0] = block
-		return nil
-	})
-	return res[0], err
-}
-
-// GetBlocks implements Client.
-func (b *BloomStore) GetBlocks(ctx context.Context, blocks []BlockRef) ([]BlockDirectory, error) {
 	var refs [][]BlockRef
 	var fetchers []*Fetcher
 
@@ -392,72 +296,7 @@ func (b *BloomStore) GetBlocks(ctx context.Context, blocks []BlockRef) ([]BlockD
 	return results, nil
 }
 
-// GetMeta implements Client.
-func (b *BloomStore) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
-	res := make([]Meta, 1)
-	err := b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
-		meta, err := s.GetMeta(ctx, ref)
-		if err != nil {
-			return err
-		}
-		res[0] = meta
-		return nil
-	})
-	return res[0], err
-}
-
-// GetMetas implements Client.
-func (b *BloomStore) GetMetas(ctx context.Context, metas []MetaRef) ([]Meta, error) {
-	var refs [][]MetaRef
-	var fetchers []*Fetcher
-
-	for i := len(b.stores) - 1; i >= 0; i-- {
-		s := b.stores[i]
-		from, through := s.start, model.Latest
-		if i < len(b.stores)-1 {
-			through = b.stores[i+1].start
-		}
-
-		var res []MetaRef
-		for _, meta := range metas {
-			if meta.StartTimestamp >= from && meta.StartTimestamp < through {
-				res = append(res, meta)
-			}
-		}
-
-		if len(res) > 0 {
-			refs = append(refs, res)
-			fetchers = append(fetchers, s.Fetcher(s.start))
-		}
-	}
-
-	results := make([]Meta, 0, len(metas))
-	for i := range fetchers {
-		res, err := fetchers[i].FetchMetas(ctx, refs[i])
-		results = append(results, res...)
-		if err != nil {
-			return results, err
-		}
-	}
-
-	return results, nil
-}
-
-// PutBlock implements Client.
-func (b *BloomStore) PutBlock(ctx context.Context, block Block) error {
-	return b.storeDo(block.StartTimestamp, func(s *bloomStoreEntry) error {
-		return s.PutBlock(ctx, block)
-	})
-}
-
-// PutMeta implements Client.
-func (b *BloomStore) PutMeta(ctx context.Context, meta Meta) error {
-	return b.storeDo(meta.StartTimestamp, func(s *bloomStoreEntry) error {
-		return s.PutMeta(ctx, meta)
-	})
-}
-
-// Stop implements Client.
+// Stop implements Store.
 func (b *BloomStore) Stop() {
 	for _, s := range b.stores {
 		s.Stop()

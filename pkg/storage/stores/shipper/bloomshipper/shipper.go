@@ -37,13 +37,7 @@ type Limits interface {
 	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
 }
 
-// TODO(chaudum): resolve and rip out
-type StoreAndClient interface {
-	Store
-	Client
-}
-
-func NewShipper(client StoreAndClient, config config.Config, _ Limits, logger log.Logger, _ prometheus.Registerer) (*Shipper, error) {
+func NewShipper(client Store, config config.Config, _ Limits, logger log.Logger, _ prometheus.Registerer) (*Shipper, error) {
 	logger = log.With(logger, "component", "bloom-shipper")
 	return &Shipper{
 		store:  client,
