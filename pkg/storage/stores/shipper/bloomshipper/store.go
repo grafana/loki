@@ -3,7 +3,6 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
-	"io"
 	"path/filepath"
 	"sort"
 
@@ -21,8 +20,14 @@ import (
 type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
 	Fetcher(ts model.Time) *Fetcher
 	Stop()
+}
+
+type bloomStoreConfig struct {
+	workingDir string
+	numWorkers int
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Client interface
@@ -51,7 +56,7 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 		}
 		for _, object := range list {
-			metaRef, err := createMetaRef(object.Key, params.TenantID, table)
+			metaRef, err := b.ParseMetaKey(key(object.Key))
 
 			if err != nil {
 				return nil, nil, err
@@ -65,8 +70,8 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 				break
 			}
 
-			if !params.Keyspace.Overlaps(metaRef.Bounds) ||
-				metaRef.EndTimestamp.Before(params.Interval.Start) || metaRef.StartTimestamp.After(params.Interval.End) {
+			// Only check keyspace for now, because we don't have start/end timestamps in the refs
+			if !params.Keyspace.Overlaps(metaRef.Bounds) {
 				continue
 			}
 
@@ -97,7 +102,12 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 	return metas, nil
 }
 
-// SearchMetas implements store.
+// FetchBlocks implements Store.
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	return b.fetcher.FetchBlocksWithQueue(ctx, refs)
+}
+
+// Fetcher implements Store.
 func (b *bloomStoreEntry) Fetcher(_ model.Time) *Fetcher {
 	return b.fetcher
 }
@@ -108,23 +118,33 @@ func (b *bloomStoreEntry) DeleteBlocks(ctx context.Context, refs []BlockRef) err
 }
 
 // DeleteMeta implements Client.
-func (b *bloomStoreEntry) DeleteMeta(ctx context.Context, meta Meta) error {
-	return b.bloomClient.DeleteMeta(ctx, meta)
+func (b *bloomStoreEntry) DeleteMetas(ctx context.Context, refs []MetaRef) error {
+	return b.bloomClient.DeleteMetas(ctx, refs)
 }
 
 // GetBlock implements Client.
-func (b *bloomStoreEntry) GetBlock(ctx context.Context, ref BlockRef) (LazyBlock, error) {
+func (b *bloomStoreEntry) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
 	return b.bloomClient.GetBlock(ctx, ref)
+}
+
+// GetBlocks implements Client.
+func (b *bloomStoreEntry) GetBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	return b.fetcher.FetchBlocks(ctx, refs)
+}
+
+// GetMeta implements Client.
+func (b *bloomStoreEntry) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
+	return b.bloomClient.GetMeta(ctx, ref)
 }
 
 // GetMetas implements Client.
 func (b *bloomStoreEntry) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	return b.bloomClient.GetMetas(ctx, refs)
+	return b.fetcher.FetchMetas(ctx, refs)
 }
 
 // PutBlocks implements Client.
-func (b *bloomStoreEntry) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
-	return b.bloomClient.PutBlocks(ctx, blocks)
+func (b *bloomStoreEntry) PutBlock(ctx context.Context, block Block) error {
+	return b.bloomClient.PutBlock(ctx, block)
 }
 
 // PutMeta implements Client.
@@ -135,14 +155,19 @@ func (b *bloomStoreEntry) PutMeta(ctx context.Context, meta Meta) error {
 // Stop implements Client.
 func (b bloomStoreEntry) Stop() {
 	b.bloomClient.Stop()
+	b.fetcher.Close()
 }
 
+// Compiler check to ensure BloomStore implements the Client interface
 var _ Client = &BloomStore{}
+
+// Compiler check to ensure BloomStore implements the Store interface
 var _ Store = &BloomStore{}
 
 type BloomStore struct {
-	stores        []*bloomStoreEntry
-	storageConfig storage.Config
+	stores             []*bloomStoreEntry
+	storageConfig      storage.Config
+	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
 func NewBloomStore(
@@ -150,7 +175,7 @@ func NewBloomStore(
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
-	blocksCache *cache.EmbeddedCache[string, io.ReadCloser],
+	blocksCache *cache.EmbeddedCache[string, BlockDirectory],
 	logger log.Logger,
 ) (*BloomStore, error) {
 	store := &BloomStore{
@@ -166,16 +191,24 @@ func NewBloomStore(
 		return periodicConfigs[i].From.Time.Before(periodicConfigs[i].From.Time)
 	})
 
+	// TODO(chaudum): Remove wrapper
+	cfg := bloomStoreConfig{
+		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
+		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+	}
+
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}
-		bloomClient, err := NewBloomClient(objectClient, logger)
+
+		bloomClient, err := NewBloomClient(cfg, objectClient, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating bloom client for period %s", periodicConfig.From)
 		}
-		fetcher, err := NewFetcher(bloomClient, metasCache, blocksCache, logger)
+
+		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating fetcher for period %s", periodicConfig.From)
 		}
@@ -271,9 +304,14 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 	return metas, nil
 }
 
+// FetchBlocks implements Store.
+func (b *BloomStore) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+	return b.GetBlocks(ctx, refs)
+}
+
 // DeleteBlocks implements Client.
-func (b *BloomStore) DeleteBlocks(ctx context.Context, blocks []BlockRef) error {
-	for _, ref := range blocks {
+func (b *BloomStore) DeleteBlocks(ctx context.Context, refs []BlockRef) error {
+	for _, ref := range refs {
 		err := b.storeDo(
 			ref.StartTimestamp,
 			func(s *bloomStoreEntry) error {
@@ -287,22 +325,85 @@ func (b *BloomStore) DeleteBlocks(ctx context.Context, blocks []BlockRef) error 
 	return nil
 }
 
-// DeleteMeta implements Client.
-func (b *BloomStore) DeleteMeta(ctx context.Context, meta Meta) error {
-	return b.storeDo(meta.StartTimestamp, func(s *bloomStoreEntry) error {
-		return s.DeleteMeta(ctx, meta)
-	})
+// DeleteMetas implements Client.
+func (b *BloomStore) DeleteMetas(ctx context.Context, refs []MetaRef) error {
+	for _, ref := range refs {
+		err := b.storeDo(
+			ref.StartTimestamp,
+			func(s *bloomStoreEntry) error {
+				return s.DeleteMetas(ctx, []MetaRef{ref})
+			},
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetBlock implements Client.
-func (b *BloomStore) GetBlock(ctx context.Context, ref BlockRef) (LazyBlock, error) {
-	var block LazyBlock
-	var err error
-	err = b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
-		block, err = s.GetBlock(ctx, ref)
-		return err
+func (b *BloomStore) GetBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
+	res := make([]BlockDirectory, 1)
+	err := b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
+		block, err := s.GetBlock(ctx, ref)
+		if err != nil {
+			return err
+		}
+		res[0] = block
+		return nil
 	})
-	return block, err
+	return res[0], err
+}
+
+// GetBlocks implements Client.
+func (b *BloomStore) GetBlocks(ctx context.Context, blocks []BlockRef) ([]BlockDirectory, error) {
+	var refs [][]BlockRef
+	var fetchers []*Fetcher
+
+	for i := len(b.stores) - 1; i >= 0; i-- {
+		s := b.stores[i]
+		from, through := s.start, model.Latest
+		if i < len(b.stores)-1 {
+			through = b.stores[i+1].start
+		}
+
+		var res []BlockRef
+		for _, meta := range blocks {
+			if meta.StartTimestamp >= from && meta.StartTimestamp < through {
+				res = append(res, meta)
+			}
+		}
+
+		if len(res) > 0 {
+			refs = append(refs, res)
+			fetchers = append(fetchers, s.Fetcher(s.start))
+		}
+	}
+
+	results := make([]BlockDirectory, 0, len(blocks))
+	for i := range fetchers {
+		res, err := fetchers[i].FetchBlocksWithQueue(ctx, refs[i])
+		results = append(results, res...)
+		if err != nil {
+			return results, err
+		}
+	}
+
+	return results, nil
+}
+
+// GetMeta implements Client.
+func (b *BloomStore) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
+	res := make([]Meta, 1)
+	err := b.storeDo(ref.StartTimestamp, func(s *bloomStoreEntry) error {
+		meta, err := s.GetMeta(ctx, ref)
+		if err != nil {
+			return err
+		}
+		res[0] = meta
+		return nil
+	})
+	return res[0], err
 }
 
 // GetMetas implements Client.
@@ -342,23 +443,11 @@ func (b *BloomStore) GetMetas(ctx context.Context, metas []MetaRef) ([]Meta, err
 	return results, nil
 }
 
-// PutBlocks implements Client.
-func (b *BloomStore) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
-	results := make([]Block, 0, len(blocks))
-	for _, ref := range blocks {
-		err := b.storeDo(
-			ref.StartTimestamp,
-			func(s *bloomStoreEntry) error {
-				res, err := s.PutBlocks(ctx, []Block{ref})
-				results = append(results, res...)
-				return err
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return results, nil
+// PutBlock implements Client.
+func (b *BloomStore) PutBlock(ctx context.Context, block Block) error {
+	return b.storeDo(block.StartTimestamp, func(s *bloomStoreEntry) error {
+		return s.PutBlock(ctx, block)
+	})
 }
 
 // PutMeta implements Client.
@@ -395,7 +484,7 @@ func (b *BloomStore) storeDo(ts model.Time, f func(s *bloomStoreEntry) error) er
 	if store := b.getStore(ts); store != nil {
 		return f(store)
 	}
-	return nil
+	return fmt.Errorf("no store found for timestamp %s", ts.Time())
 }
 
 func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store Store) error) error {
@@ -445,4 +534,15 @@ func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(in
 		start = nextSchemaStarts
 	}
 	return nil
+}
+
+func tablesForRange(periodConfig config.PeriodConfig, interval Interval) []string {
+	step := int64(periodConfig.IndexTables.Period.Seconds())
+	lower := interval.Start.Unix() / step
+	upper := interval.End.Unix() / step
+	tables := make([]string, 0, 1+upper-lower)
+	for i := lower; i <= upper; i++ {
+		tables = append(tables, fmt.Sprintf("%s%d", periodConfig.IndexTables.Prefix, i))
+	}
+	return tables
 }
