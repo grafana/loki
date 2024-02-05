@@ -263,7 +263,7 @@ func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
 func findPeriod(configs []config.PeriodConfig, ts model.Time) (config.DayTime, error) {
 	for i := len(configs) - 1; i >= 0; i-- {
 		periodConfig := configs[i]
-		if periodConfig.From.Before(ts) || periodConfig.From.Equal(ts) {
+		if !periodConfig.From.After(ts) {
 			return periodConfig.From, nil
 		}
 	}
