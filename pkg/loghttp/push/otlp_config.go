@@ -146,7 +146,7 @@ func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 }
 
 type ResourceAttributesConfig struct {
-	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty" doc:"description=Configure whether to ignore the default list of resource attributes to be stored as index labels and only use the given resource attributes config"`
+	IgnoreDefaults   bool               `yaml:"ignore_defaults,omitempty" doc:"default=false|description=Configure whether to ignore the default list of resource attributes to be stored as index labels and only use the given resource attributes config"`
 	AttributesConfig []AttributesConfig `yaml:"attributes_config,omitempty"`
 }
 

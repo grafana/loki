@@ -3148,7 +3148,7 @@ otlp_config:
   resource_attributes:
     # Configure whether to ignore the default list of resource attributes to be
     # stored as index labels and only use the given resource attributes config
-    [ignore_defaults: <boolean>]
+    [ignore_defaults: <boolean> | default = false]
 
     [attributes_config: <list of attributes_configs>]
 
