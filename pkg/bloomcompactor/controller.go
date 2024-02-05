@@ -122,7 +122,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 			}
 
 			gen := NewSimpleBloomGenerator(
-				v1.DefaultBlockOptions,
+				v1.DefaultBlockOptions, // TODO(salvacorts) make block options configurable
 				seriesItr,
 				s.chunkLoader,
 				preExistingBlocks,

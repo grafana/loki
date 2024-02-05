@@ -131,7 +131,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 
 func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error) {
 
-	blocksMatchingSchema := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(s.blocks))
+	blocksMatchingSchema := make([]*v1.Block, 0, len(s.blocks))
 	for _, block := range s.blocks {
 		// TODO(owen-d): implement block naming so we can log the affected block in all these calls
 		logger := log.With(s.logger, "block", fmt.Sprintf("%+v", block))
@@ -147,27 +147,90 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v
 		}
 
 		level.Debug(logger).Log("msg", "adding compatible block to bloom generation inputs")
-		itr := v1.NewPeekingIter[*v1.SeriesWithBloom](v1.NewBlockQuerier(block))
-		blocksMatchingSchema = append(blocksMatchingSchema, itr)
+		blocksMatchingSchema = append(blocksMatchingSchema, block)
 	}
 
 	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
-	// TODO(owen-d): implement bounded block sizes
+	series := v1.NewPeekingIter(s.store)
+	blockIter := NewLazyBlockBuilderIterator(ctx, s.opts, s.populator(ctx), s.readWriterFn, series, blocksMatchingSchema)
+	return skippedBlocks, blockIter, nil
+}
 
-	mergeBuilder := v1.NewMergeBuilder(blocksMatchingSchema, s.store, s.populator(ctx))
-	writer, reader := s.readWriterFn()
-	blockBuilder, err := v1.NewBlockBuilder(v1.NewBlockOptionsFromSchema(s.opts.Schema), writer)
+// LazyBlockBuilderIterator is a lazy iterator over blocks that builds
+// each block by adding series to them until they are full.
+type LazyBlockBuilderIterator struct {
+	ctx          context.Context
+	opts         v1.BlockOptions
+	populate     func(*v1.Series, *v1.Bloom) error
+	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
+	series       v1.PeekingIterator[*v1.Series]
+	blocks       []*v1.Block
+
+	blockIters []v1.PeekingIterator[*v1.SeriesWithBloom]
+	curr       *v1.Block
+	err        error
+}
+
+func NewLazyBlockBuilderIterator(
+	ctx context.Context,
+	opts v1.BlockOptions,
+	populate func(*v1.Series, *v1.Bloom) error,
+	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
+	series v1.PeekingIterator[*v1.Series],
+	blocks []*v1.Block,
+) *LazyBlockBuilderIterator {
+	return &LazyBlockBuilderIterator{
+		ctx:          ctx,
+		opts:         opts,
+		populate:     populate,
+		readWriterFn: readWriterFn,
+		series:       series,
+		blocks:       blocks,
+		blockIters:   make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocks)),
+	}
+}
+
+func (b *LazyBlockBuilderIterator) Next() bool {
+	// No more series to process
+	if _, hasNext := b.series.Peek(); !hasNext {
+		return false
+	}
+
+	if err := b.ctx.Err(); err != nil {
+		b.err = errors.Wrap(err, "context canceled")
+		return false
+	}
+
+	// Reset blockIters with original blocks
+	for i, block := range b.blocks {
+		itr := v1.NewPeekingIter[*v1.SeriesWithBloom](block.Querier())
+		b.blockIters[i] = itr
+	}
+
+	mergeBuilder := v1.NewMergeBuilder(b.blockIters, b.series, b.populate)
+	writer, reader := b.readWriterFn()
+	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {
-		return skippedBlocks, nil, errors.Wrap(err, "failed to create bloom block builder")
+		b.err = errors.Wrap(err, "failed to create bloom block builder")
+		return false
 	}
 	_, err = mergeBuilder.Build(blockBuilder)
 	if err != nil {
-		return skippedBlocks, nil, errors.Wrap(err, "failed to build bloom block")
+		b.err = errors.Wrap(err, "failed to build bloom block")
+		return false
 	}
 
-	return skippedBlocks, v1.NewSliceIter[*v1.Block]([]*v1.Block{v1.NewBlock(reader)}), nil
+	b.curr = v1.NewBlock(reader)
+	return true
+}
 
+func (b *LazyBlockBuilderIterator) At() *v1.Block {
+	return b.curr
+}
+
+func (b *LazyBlockBuilderIterator) Err() error {
+	return nil
 }
 
 // IndexLoader loads an index. This helps us do things like
