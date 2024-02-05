@@ -88,6 +88,8 @@ const (
 	KeyAzureEnvironmentName = "environment"
 	// KeyAzureRegion is the secret data key for storing the Azure cloud region.
 	KeyAzureRegion = "region"
+	// KeyAzureAudience is the secret data key for customizing the audience used for the ServiceAccount token.
+	KeyAzureAudience = "audience"
 
 	// KeyGCPStorageBucketName is the secret data key for the GCS bucket name.
 	KeyGCPStorageBucketName = "bucketname"

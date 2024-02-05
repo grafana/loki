@@ -200,6 +200,20 @@ func TestAzureExtract(t *testing.T) {
 			wantError: errAzureManagedIdentityNoOverride.Error(),
 		},
 		{
+			name: "audience used with static authentication",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("id"),
+					"account_key":  []byte("secret"),
+					"audience":     []byte("test-audience"),
+				},
+			},
+			wantError: "secret field not allowed: audience",
+		},
+		{
 			name: "mandatory for normal authentication set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},

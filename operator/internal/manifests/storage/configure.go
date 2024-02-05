@@ -320,6 +320,9 @@ func saTokenVolume(opts Options) corev1.Volume {
 		}
 	case lokiv1.ObjectStorageSecretAzure:
 		audience = azureDefaultAudience
+		if opts.Azure.Audience != "" {
+			audience = opts.Azure.Audience
+		}
 	}
 	return corev1.Volume{
 		Name: saTokenVolumeName,

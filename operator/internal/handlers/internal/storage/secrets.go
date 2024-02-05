@@ -183,11 +183,17 @@ func extractAzureConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*stor
 
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
+	audience := s.Data[storage.KeyAzureAudience]
+
+	if !workloadIdentity && len(audience) > 0 {
+		return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAzureAudience)
+	}
 
 	return &storage.AzureStorageConfig{
 		Env:              string(env),
 		Container:        string(container),
 		EndpointSuffix:   string(endpointSuffix),
+		Audience:         string(audience),
 		WorkloadIdentity: workloadIdentity,
 	}, nil
 }
