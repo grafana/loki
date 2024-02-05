@@ -18,22 +18,22 @@ import (
 // NewBufferedAccumulator returns an accumulator which aggregates all query
 // results in a slice. This is useful for metric queries, which are generally
 // small payloads and the memory overhead for buffering is negligible.
-func NewBufferedAccumulator(n int) *bufferedAccumulator {
-	return &bufferedAccumulator{
+func NewBufferedAccumulator(n int) *BufferedAccumulator {
+	return &BufferedAccumulator{
 		results: make([]logqlmodel.Result, n),
 	}
 }
 
-type bufferedAccumulator struct {
+type BufferedAccumulator struct {
 	results []logqlmodel.Result
 }
 
-func (a *bufferedAccumulator) Accumulate(_ context.Context, acc logqlmodel.Result, i int) error {
+func (a *BufferedAccumulator) Accumulate(_ context.Context, acc logqlmodel.Result, i int) error {
 	a.results[i] = acc
 	return nil
 }
 
-func (a *bufferedAccumulator) Result() []logqlmodel.Result {
+func (a *BufferedAccumulator) Result() []logqlmodel.Result {
 	return a.results
 }
 
@@ -70,7 +70,7 @@ func (a *quantileSketchAccumulator) Result() []logqlmodel.Result {
 }
 
 // heap impl for keeping only the top n results across m streams
-// importantly, accumulatedStreams is _bounded_, so it will only
+// importantly, AccumulatedStreams is _bounded_, so it will only
 // store the top `limit` results across all streams.
 // To implement this, we use a min-heap when looking
 // for the max values (logproto.FORWARD)
@@ -84,7 +84,7 @@ func (a *quantileSketchAccumulator) Result() []logqlmodel.Result {
 // solely to use heap.Interface as a library.
 // It is not intended for the heap pkg functions
 // to otherwise call this type.
-type accumulatedStreams struct {
+type AccumulatedStreams struct {
 	count, limit int
 	labelmap     map[string]int
 	streams      []*logproto.Stream
@@ -100,7 +100,7 @@ type accumulatedStreams struct {
 // accumulate the results into a logsAccumulator, discarding values
 // over the limit to keep memory pressure down while other subqueries
 // are executing.
-func NewStreamAccumulator(params Params) *accumulatedStreams {
+func NewStreamAccumulator(params Params) *AccumulatedStreams {
 	// the stream accumulator stores a heap with reversed order
 	// from the results we expect, so we need to reverse the direction
 	order := logproto.FORWARD
@@ -108,7 +108,7 @@ func NewStreamAccumulator(params Params) *accumulatedStreams {
 		order = logproto.BACKWARD
 	}
 
-	return &accumulatedStreams{
+	return &AccumulatedStreams{
 		labelmap: make(map[string]int),
 		order:    order,
 		limit:    int(params.Limit()),
@@ -118,22 +118,22 @@ func NewStreamAccumulator(params Params) *accumulatedStreams {
 }
 
 // returns the top priority
-func (acc *accumulatedStreams) top() (time.Time, bool) {
+func (acc *AccumulatedStreams) top() (time.Time, bool) {
 	if len(acc.streams) > 0 && len(acc.streams[0].Entries) > 0 {
 		return acc.streams[0].Entries[len(acc.streams[0].Entries)-1].Timestamp, true
 	}
 	return time.Time{}, false
 }
 
-func (acc *accumulatedStreams) Find(labels string) (int, bool) {
+func (acc *AccumulatedStreams) Find(labels string) (int, bool) {
 	i, ok := acc.labelmap[labels]
 	return i, ok
 }
 
 // number of streams
-func (acc *accumulatedStreams) Len() int { return len(acc.streams) }
+func (acc *AccumulatedStreams) Len() int { return len(acc.streams) }
 
-func (acc *accumulatedStreams) Swap(i, j int) {
+func (acc *AccumulatedStreams) Swap(i, j int) {
 	// for i=0, j=1
 
 	// {'a': 0, 'b': 1}
@@ -148,7 +148,7 @@ func (acc *accumulatedStreams) Swap(i, j int) {
 }
 
 // first order by timestamp, then by labels
-func (acc *accumulatedStreams) Less(i, j int) bool {
+func (acc *AccumulatedStreams) Less(i, j int) bool {
 	// order by the 'oldest' entry in the stream
 	if a, b := acc.streams[i].Entries[len(acc.streams[i].Entries)-1].Timestamp, acc.streams[j].Entries[len(acc.streams[j].Entries)-1].Timestamp; !a.Equal(b) {
 		return acc.less(a, b)
@@ -156,7 +156,7 @@ func (acc *accumulatedStreams) Less(i, j int) bool {
 	return acc.streams[i].Labels <= acc.streams[j].Labels
 }
 
-func (acc *accumulatedStreams) less(a, b time.Time) bool {
+func (acc *AccumulatedStreams) less(a, b time.Time) bool {
 	// use after for stable sort
 	if acc.order == logproto.FORWARD {
 		return !a.After(b)
@@ -164,7 +164,7 @@ func (acc *accumulatedStreams) less(a, b time.Time) bool {
 	return !b.After(a)
 }
 
-func (acc *accumulatedStreams) Push(x any) {
+func (acc *AccumulatedStreams) Push(x any) {
 	s := x.(*logproto.Stream)
 	if len(s.Entries) == 0 {
 		return
@@ -199,7 +199,7 @@ func (acc *accumulatedStreams) Push(x any) {
 // (i.e. the max value for FORWARD, the min value for BACKWARD),
 // we test if the new entry is better than the worst entry,
 // swapping them if so.
-func (acc *accumulatedStreams) push(s *logproto.Stream) {
+func (acc *AccumulatedStreams) push(s *logproto.Stream) {
 	worst, ok := acc.top()
 	room := math.Min(acc.limit-acc.count, len(s.Entries))
 
@@ -245,7 +245,7 @@ func (acc *accumulatedStreams) push(s *logproto.Stream) {
 	}
 }
 
-func (acc *accumulatedStreams) addStream(s *logproto.Stream) {
+func (acc *AccumulatedStreams) addStream(s *logproto.Stream) {
 	// ensure entries conform to order we expect
 	// TODO(owen-d): remove? should be unnecessary since we insert in appropriate order
 	// but it's nice to have the safeguard
@@ -261,7 +261,7 @@ func (acc *accumulatedStreams) addStream(s *logproto.Stream) {
 }
 
 // dst must already exist in acc
-func (acc *accumulatedStreams) appendTo(dst, src *logproto.Stream) {
+func (acc *AccumulatedStreams) appendTo(dst, src *logproto.Stream) {
 	// these are already guaranteed to be sorted
 	// Reasoning: we shard subrequests so each stream exists on only one
 	// shard. Therefore, the only time a stream should already exist
@@ -290,7 +290,7 @@ func (acc *accumulatedStreams) appendTo(dst, src *logproto.Stream) {
 }
 
 // Pop returns a stream with one entry. It pops the first entry of the first stream
-func (acc *accumulatedStreams) Pop() any {
+func (acc *AccumulatedStreams) Pop() any {
 	n := acc.Len()
 	if n == 0 {
 		return nil
@@ -320,7 +320,7 @@ func (acc *accumulatedStreams) Pop() any {
 }
 
 // Note: can only be called once as it will alter stream ordreing.
-func (acc *accumulatedStreams) Result() []logqlmodel.Result {
+func (acc *AccumulatedStreams) Result() []logqlmodel.Result {
 	// sort streams by label
 	sort.Slice(acc.streams, func(i, j int) bool {
 		return acc.streams[i].Labels < acc.streams[j].Labels
@@ -356,7 +356,7 @@ func (acc *accumulatedStreams) Result() []logqlmodel.Result {
 	return []logqlmodel.Result{res}
 }
 
-func (acc *accumulatedStreams) Accumulate(_ context.Context, x logqlmodel.Result, _ int) error {
+func (acc *AccumulatedStreams) Accumulate(_ context.Context, x logqlmodel.Result, _ int) error {
 	// TODO(owen-d/ewelch): Shard counts should be set by the querier
 	// so we don't have to do it in tricky ways in multiple places.
 	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
