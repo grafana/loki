@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/require"
 )
 
 func parseTime(s string) model.Time {
@@ -106,10 +107,10 @@ func TestBloomClient_GetMetas(t *testing.T) {
 	})
 
 	t.Run("does not exist", func(t *testing.T) {
-		metas, err := c.GetMetas(ctx, []MetaRef{MetaRef{}})
+		metas, err := c.GetMetas(ctx, []MetaRef{{}})
 		require.Error(t, err)
 		require.True(t, c.client.IsObjectNotFoundErr(err))
-		require.Equal(t, metas, []Meta{Meta{}})
+		require.Equal(t, metas, []Meta{{}})
 	})
 }
 
@@ -254,7 +255,7 @@ func TestBloomClient_GetBlocks(t *testing.T) {
 	})
 
 	t.Run("does not exist", func(t *testing.T) {
-		_, err := c.GetBlocks(ctx, []BlockRef{BlockRef{}})
+		_, err := c.GetBlocks(ctx, []BlockRef{{}})
 		require.Error(t, err)
 		require.True(t, c.client.IsObjectNotFoundErr(err))
 	})
