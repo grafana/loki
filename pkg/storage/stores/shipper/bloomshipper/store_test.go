@@ -1,22 +1,20 @@
 package bloomshipper
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	storageconfig "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
@@ -53,14 +51,24 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
+			BlocksCache: config.BlocksCacheConfig{
+				EmbeddedCacheConfig: cache.EmbeddedCacheConfig{
+					MaxSizeItems: 1000,
+					TTL:          1 * time.Hour,
+				},
+			},
 		},
 	}
 
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
 	logger := log.NewLogfmtLogger(os.Stderr)
-	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, cache.NewNoopCache(), nil, logger)
+
+	metasCache := cache.NewMockCache()
+	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig, prometheus.NewPedanticRegistry(), logger)
+	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, logger)
 	require.NoError(t, err)
+	t.Cleanup(store.Stop)
 
 	return store, workDir
 }
@@ -85,6 +93,37 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 		return s.objectClient.PutObject(context.Background(), s.Meta(meta.MetaRef).Addr(), bytes.NewReader(raw))
 	})
 	return meta, err
+}
+
+func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start model.Time, minFp, maxFp model.Fingerprint) (Block, error) {
+	tmpDir := t.TempDir()
+	fp, _ := os.CreateTemp(t.TempDir(), "*.tar.gz")
+
+	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
+	err := blockWriter.Init()
+	require.NoError(t, err)
+
+	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
+	require.NoError(t, err)
+
+	_, _ = fp.Seek(0, 0)
+
+	block := Block{
+		BlockRef: BlockRef{
+			Ref: Ref{
+				TenantID:       tenant,
+				Bounds:         v1.NewBounds(minFp, maxFp),
+				StartTimestamp: start,
+				EndTimestamp:   start.Add(12 * time.Hour),
+			},
+		},
+		Data: fp,
+	}
+	err = store.storeDo(start, func(s *bloomStoreEntry) error {
+		block.BlockRef.Ref.TableName = tablesForRange(s.cfg, NewInterval(start, start.Add(12*time.Hour)))[0]
+		return s.objectClient.PutObject(context.Background(), s.Block(block.BlockRef).Addr(), block.Data)
+	})
+	return block, err
 }
 
 func TestBloomStore_ResolveMetas(t *testing.T) {
@@ -195,32 +234,34 @@ func TestBloomStore_FetchMetas(t *testing.T) {
 	})
 }
 
-func TestBloomStore_FetchBlocks(t *testing.T) {}
+func TestBloomStore_FetchBlocks(t *testing.T) {
+	store, _ := newMockBloomStore(t)
 
-func TestBloomStore_Fetcher(t *testing.T) {}
+	// schema 1
+	b1, _ := createBlockInStorage(t, store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+	b2, _ := createBlockInStorage(t, store, "tenant", parseTime("2024-01-20 00:00"), 0x00010000, 0x0001ffff)
+	// schema 2
+	b3, _ := createBlockInStorage(t, store, "tenant", parseTime("2024-02-05 00:00"), 0x00000000, 0x0000ffff)
+	b4, _ := createBlockInStorage(t, store, "tenant", parseTime("2024-02-05 00:00"), 0x00000000, 0x0001ffff)
 
-func TarGz(t *testing.T, dst io.Writer, file string) {
-	src, err := os.Open(file)
+	ctx := context.Background()
+
+	// first call fetches two blocks from cache
+	blockDirs, err := store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b3.BlockRef})
 	require.NoError(t, err)
-	defer src.Close()
+	require.Len(t, blockDirs, 2)
 
-	gzipper := chunkenc.GetWriterPool(chunkenc.EncGZIP).GetWriter(dst)
-	defer gzipper.Close()
+	require.ElementsMatch(t, []BlockRef{b1.BlockRef, b3.BlockRef}, []BlockRef{blockDirs[0].BlockRef, blockDirs[1].BlockRef})
 
-	tarballer := tar.NewWriter(gzipper)
-	defer tarballer.Close()
+	// second call fetches two blocks from cache and two from storage
+	blockDirs, err = store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef})
+	require.NoError(t, err)
+	require.Len(t, blockDirs, 4)
 
-	for _, f := range []*os.File{src} {
-		info, err := f.Stat()
-		require.NoError(t, err)
-
-		header, err := tar.FileInfoHeader(info, f.Name())
-		require.NoError(t, err)
-
-		err = tarballer.WriteHeader(header)
-		require.NoError(t, err)
-
-		_, err = io.Copy(tarballer, f)
-		require.NoError(t, err)
-	}
+	// Note the order: b1 and b2 come from cache, so they are in the beginning of the response
+	// Do we need to sort the response based on the request order of block refs?
+	require.ElementsMatch(t,
+		[]BlockRef{b1.BlockRef, b3.BlockRef, b2.BlockRef, b4.BlockRef},
+		[]BlockRef{blockDirs[0].BlockRef, blockDirs[1].BlockRef, blockDirs[2].BlockRef, blockDirs[3].BlockRef},
+	)
 }

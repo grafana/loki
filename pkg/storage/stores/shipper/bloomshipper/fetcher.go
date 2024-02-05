@@ -343,7 +343,9 @@ func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadTask[T, R]) {
 	q.mu.LockKey(task.key)
 	defer func() {
 		err := q.mu.UnlockKey(task.key)
-		level.Error(q.logger).Log("msg", "failed to unlock key in block lock", "err", err)
+		if err != nil {
+			level.Error(q.logger).Log("msg", "failed to unlock key in block lock", "key", task.key, "err", err)
+		}
 	}()
 
 	q.process(ctx, task)
