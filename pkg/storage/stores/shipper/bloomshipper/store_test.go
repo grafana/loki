@@ -142,7 +142,58 @@ func TestBloomStore_ResolveMetas(t *testing.T) {
 	})
 }
 
-func TestBloomStore_FetchMetas(t *testing.T) {}
+func TestBloomStore_FetchMetas(t *testing.T) {
+	store, _ := newMockBloomStore(t)
+
+	// schema 1
+	// outside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-01-19 00:00"), 0x00010000, 0x0001ffff)
+	// outside of interval, inside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-01-19 00:00"), 0x00000000, 0x0000ffff)
+	// inside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-01-20 00:00"), 0x00010000, 0x0001ffff)
+	// inside of interval, inside of bounds
+	m1, _ := createMetaInStorage(store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+
+	// schema 2
+	// inside of interval, inside of bounds
+	m2, _ := createMetaInStorage(store, "tenant", parseTime("2024-02-05 00:00"), 0x00000000, 0x0000ffff)
+	// inside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-02-05 00:00"), 0x00010000, 0x0001ffff)
+	// outside of interval, inside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-02-11 00:00"), 0x00000000, 0x0000ffff)
+	// outside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-02-11 00:00"), 0x00010000, 0x0001ffff)
+
+	t.Run("tenant matches", func(t *testing.T) {
+		ctx := context.Background()
+		params := MetaSearchParams{
+			"tenant",
+			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			v1.NewBounds(0x00000000, 0x0000ffff),
+		}
+
+		metas, err := store.FetchMetas(ctx, params)
+		require.NoError(t, err)
+		require.Len(t, metas, 2)
+
+		require.Equal(t, []Meta{m1, m2}, metas)
+	})
+
+	t.Run("tenant does not match", func(t *testing.T) {
+		ctx := context.Background()
+		params := MetaSearchParams{
+			"other",
+			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			v1.NewBounds(0x00000000, 0x0000ffff),
+		}
+
+		metas, err := store.FetchMetas(ctx, params)
+		require.NoError(t, err)
+		require.Len(t, metas, 0)
+		require.Equal(t, []Meta{}, metas)
+	})
+}
 
 func TestBloomStore_FetchBlocks(t *testing.T) {}
 

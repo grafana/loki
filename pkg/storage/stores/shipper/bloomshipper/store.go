@@ -258,13 +258,15 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 		return nil, errors.New("metaRefs and fetchers have unequal length")
 	}
 
-	var metas []Meta
+	metas := []Meta{}
 	for i := range fetchers {
 		res, err := fetchers[i].FetchMetas(ctx, metaRefs[i])
 		if err != nil {
 			return nil, err
 		}
-		metas = append(metas, res...)
+		if len(res) > 0 {
+			metas = append(metas, res...)
+		}
 	}
 	return metas, nil
 }
