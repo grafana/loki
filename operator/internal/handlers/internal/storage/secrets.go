@@ -3,65 +3,124 @@ package storage
 import (
 	"context"
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"sort"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
-var hashSeparator = []byte(",")
+var (
+	hashSeparator = []byte(",")
 
-func getSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (*corev1.Secret, error) {
-	var storageSecret corev1.Secret
+	errSecretUnknownType     = errors.New("unknown secret type")
+	errSecretMissingField    = errors.New("missing secret field")
+	errSecretFieldNotAllowed = errors.New("secret field not allowed")
+	errSecretUnknownSSEType  = errors.New("unsupported SSE type (supported: SSE-KMS, SSE-S3)")
+	errSecretHashError       = errors.New("error calculating hash for secret")
+
+	errS3NoAuth = errors.New("missing secret fields for static or sts authentication")
+
+	errAzureNoCredentials    = errors.New("azure storage secret does contain neither account_key or client_id")
+	errAzureMixedCredentials = errors.New("azure storage secret can not contain both account_key and client_id")
+)
+
+func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
+	var (
+		storageSecret     corev1.Secret
+		managedAuthSecret corev1.Secret
+	)
+
 	key := client.ObjectKey{Name: stack.Spec.Storage.Secret.Name, Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &storageSecret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, &status.DegradedError{
+			return nil, nil, &status.DegradedError{
 				Message: "Missing object storage secret",
 				Reason:  lokiv1.ReasonMissingObjectStorageSecret,
 				Requeue: false,
 			}
 		}
-		return nil, kverrors.Wrap(err, "failed to lookup lokistack storage secret", "name", key)
+		return nil, nil, fmt.Errorf("failed to lookup lokistack storage secret: %w", err)
 	}
 
-	return &storageSecret, nil
+	if fg.OpenShift.ManagedAuthEnv {
+		secretName, ok := stack.Annotations[storage.AnnotationCredentialsRequestsSecretRef]
+		if !ok {
+			return nil, nil, &status.DegradedError{
+				Message: "Missing OpenShift cloud credentials request",
+				Reason:  lokiv1.ReasonMissingCredentialsRequest,
+				Requeue: true,
+			}
+		}
+
+		managedAuthCredsKey := client.ObjectKey{Name: secretName, Namespace: stack.Namespace}
+		if err := k.Get(ctx, managedAuthCredsKey, &managedAuthSecret); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, nil, &status.DegradedError{
+					Message: "Missing OpenShift cloud credentials secret",
+					Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+					Requeue: true,
+				}
+			}
+			return nil, nil, fmt.Errorf("failed to lookup OpenShift CCO managed authentication credentials secret: %w", err)
+		}
+
+		return &storageSecret, &managedAuthSecret, nil
+	}
+
+	return &storageSecret, nil, nil
 }
 
-// extractSecret reads a k8s secret into a manifest object storage struct if valid.
-func extractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) (storage.Options, error) {
-	hash, err := hashSecretData(s)
+// extractSecrets reads the k8s obj storage secret into a manifest object storage struct if valid.
+// The managed auth is also read into the manifest object under the right circumstances.
+func extractSecrets(secretType lokiv1.ObjectStorageSecretType, objStore, managedAuth *corev1.Secret, fg configv1.FeatureGates) (storage.Options, error) {
+	hash, err := hashSecretData(objStore)
 	if err != nil {
-		return storage.Options{}, kverrors.Wrap(err, "error calculating hash for secret", "type", secretType)
+		return storage.Options{}, errSecretHashError
 	}
 
 	storageOpts := storage.Options{
-		SecretName:  s.Name,
+		SecretName:  objStore.Name,
 		SecretSHA1:  hash,
 		SharedStore: secretType,
 	}
 
+	if fg.OpenShift.ManagedAuthEnabled() {
+		var managedAuthHash string
+		managedAuthHash, err = hashSecretData(managedAuth)
+		if err != nil {
+			return storage.Options{}, errSecretHashError
+		}
+
+		storageOpts.OpenShift = storage.OpenShiftOptions{
+			CloudCredentials: storage.CloudCredentials{
+				SecretName: managedAuth.Name,
+				SHA1:       managedAuthHash,
+			},
+		}
+	}
+
 	switch secretType {
 	case lokiv1.ObjectStorageSecretAzure:
-		storageOpts.Azure, err = extractAzureConfigSecret(s)
+		storageOpts.Azure, err = extractAzureConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretGCS:
-		storageOpts.GCS, err = extractGCSConfigSecret(s)
+		storageOpts.GCS, err = extractGCSConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretS3:
-		storageOpts.S3, err = extractS3ConfigSecret(s)
+		storageOpts.S3, err = extractS3ConfigSecret(objStore, fg)
 	case lokiv1.ObjectStorageSecretSwift:
-		storageOpts.Swift, err = extractSwiftConfigSecret(s)
+		storageOpts.Swift, err = extractSwiftConfigSecret(objStore)
 	case lokiv1.ObjectStorageSecretAlibabaCloud:
-		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
+		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(objStore)
 	default:
-		return storage.Options{}, kverrors.New("unknown secret type", "type", secretType)
+		return storage.Options{}, fmt.Errorf("%w: %s", errSecretUnknownType, secretType)
 	}
 
 	if err != nil {
@@ -103,42 +162,75 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 	// Extract and validate mandatory fields
 	env := s.Data[storage.KeyAzureEnvironmentName]
 	if len(env) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureEnvironmentName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureEnvironmentName)
 	}
 	container := s.Data[storage.KeyAzureStorageContainerName]
 	if len(container) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageContainerName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageContainerName)
 	}
-	name := s.Data[storage.KeyAzureStorageAccountName]
-	if len(name) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountName)
-	}
-	key := s.Data[storage.KeyAzureStorageAccountKey]
-	if len(key) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAzureStorageAccountKey)
+	workloadIdentity, err := validateAzureCredentials(s)
+	if err != nil {
+		return nil, err
 	}
 
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 
 	return &storage.AzureStorageConfig{
-		Env:            string(env),
-		Container:      string(container),
-		EndpointSuffix: string(endpointSuffix),
+		Env:              string(env),
+		Container:        string(container),
+		EndpointSuffix:   string(endpointSuffix),
+		WorkloadIdentity: workloadIdentity,
 	}, nil
+}
+
+func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err error) {
+	accountName := s.Data[storage.KeyAzureStorageAccountName]
+	accountKey := s.Data[storage.KeyAzureStorageAccountKey]
+	clientID := s.Data[storage.KeyAzureStorageClientID]
+	tenantID := s.Data[storage.KeyAzureStorageTenantID]
+	subscriptionID := s.Data[storage.KeyAzureStorageSubscriptionID]
+
+	if len(accountName) == 0 {
+		return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountName)
+	}
+
+	if len(accountKey) == 0 && len(clientID) == 0 {
+		return false, errAzureNoCredentials
+	}
+
+	if len(accountKey) > 0 && len(clientID) > 0 {
+		return false, errAzureMixedCredentials
+	}
+
+	if len(accountKey) > 0 {
+		// have both account_name and account_key -> no workload identity federation
+		return false, nil
+	}
+
+	// assume workload-identity from here on
+	if len(tenantID) == 0 {
+		return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageTenantID)
+	}
+
+	if len(subscriptionID) == 0 {
+		return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageSubscriptionID)
+	}
+
+	return true, nil
 }
 
 func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {
 	// Extract and validate mandatory fields
 	bucket := s.Data[storage.KeyGCPStorageBucketName]
 	if len(bucket) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyGCPStorageBucketName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPStorageBucketName)
 	}
 
 	// Check if google authentication credentials is provided
 	keyJSON := s.Data[storage.KeyGCPServiceAccountKeyFilename]
 	if len(keyJSON) == 0 {
-		return nil, kverrors.New("missing google authentication credentials", "field", storage.KeyGCPServiceAccountKeyFilename)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPServiceAccountKeyFilename)
 	}
 
 	return &storage.GCSStorageConfig{
@@ -146,11 +238,11 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	}, nil
 }
 
-func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
+func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage.S3StorageConfig, error) {
 	// Extract and validate mandatory fields
 	buckets := s.Data[storage.KeyAWSBucketNames]
 	if len(buckets) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAWSBucketNames)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSBucketNames)
 	}
 
 	var (
@@ -176,33 +268,50 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 		SSE:     sseCfg,
 	}
 
-	switch {
-	case len(roleArn) == 0:
-		cfg.Endpoint = string(endpoint)
+	var (
+		isManagedAuthEnv = len(roleArn) != 0
+		isStaticAuthEnv  = !isManagedAuthEnv
+	)
 
-		if len(endpoint) == 0 {
-			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSEndpoint)
+	switch {
+	case fg.OpenShift.ManagedAuthEnabled():
+		cfg.STS = true
+		cfg.Audience = string(audience)
+		// Do not allow users overriding the role arn provided on Loki Operator installation
+		if len(roleArn) != 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
 		}
-		if len(id) == 0 {
-			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeyID)
-		}
-		if len(secret) == 0 {
-			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSAccessKeySecret)
+		// In the STS case region is not an optional field
+		if len(region) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 
 		return cfg, nil
-	// TODO(JoaoBraveCoding) For CCO integration here we will first check if we get a secret, OS use-case
-	case len(roleArn) != 0: // Extract STS from user provided values
+	case isStaticAuthEnv:
+		cfg.Endpoint = string(endpoint)
+
+		if len(endpoint) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
+		}
+		if len(id) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
+		}
+		if len(secret) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeySecret)
+		}
+
+		return cfg, nil
+	case isManagedAuthEnv: // Extract STS from user provided values
 		cfg.STS = true
 		cfg.Audience = string(audience)
 
 		// In the STS case region is not an optional field
 		if len(region) == 0 {
-			return nil, kverrors.New("missing secret field", "field", storage.KeyAWSRegion)
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 		return cfg, nil
 	default:
-		return nil, kverrors.New("missing secret fields for static or sts authentication")
+		return nil, errS3NoAuth
 	}
 }
 
@@ -217,7 +326,7 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 		kmsEncryptionCtx = string(d[storage.KeyAWSSseKmsEncryptionContext])
 		kmsKeyId = string(d[storage.KeyAWSSseKmsKeyID])
 		if kmsKeyId == "" {
-			return storage.S3SSEConfig{}, kverrors.New("missing secret field", "field", storage.KeyAWSSseKmsKeyID)
+			return storage.S3SSEConfig{}, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSSseKmsKeyID)
 		}
 
 	case storage.SSES3Type:
@@ -225,13 +334,13 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 		return storage.S3SSEConfig{}, nil
 
 	default:
-		return storage.S3SSEConfig{}, kverrors.New("unsupported secret field value (Supported: SSE-KMS, SSE-S3)", "field", storage.KeyAWSSSEType, "value", sseType)
+		return storage.S3SSEConfig{}, fmt.Errorf("%w: %s", errSecretUnknownSSEType, sseType)
 	}
 
 	return storage.S3SSEConfig{
 		Type:                 sseType,
-		KMSKeyID:             string(kmsKeyId),
-		KMSEncryptionContext: string(kmsEncryptionCtx),
+		KMSKeyID:             kmsKeyId,
+		KMSEncryptionContext: kmsEncryptionCtx,
 	}, nil
 }
 
@@ -239,39 +348,39 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, er
 	// Extract and validate mandatory fields
 	url := s.Data[storage.KeySwiftAuthURL]
 	if len(url) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftAuthURL)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftAuthURL)
 	}
 	username := s.Data[storage.KeySwiftUsername]
 	if len(username) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUsername)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUsername)
 	}
 	userDomainName := s.Data[storage.KeySwiftUserDomainName]
 	if len(userDomainName) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUserDomainName)
 	}
 	userDomainID := s.Data[storage.KeySwiftUserDomainID]
 	if len(userDomainID) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserDomainID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUserDomainID)
 	}
 	userID := s.Data[storage.KeySwiftUserID]
 	if len(userID) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftUserID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftUserID)
 	}
 	password := s.Data[storage.KeySwiftPassword]
 	if len(password) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftPassword)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftPassword)
 	}
 	domainID := s.Data[storage.KeySwiftDomainID]
 	if len(domainID) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftDomainID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftDomainID)
 	}
 	domainName := s.Data[storage.KeySwiftDomainName]
 	if len(domainName) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftDomainName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftDomainName)
 	}
 	containerName := s.Data[storage.KeySwiftContainerName]
 	if len(containerName) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeySwiftContainerName)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeySwiftContainerName)
 	}
 
 	// Extract and validate optional fields
@@ -301,19 +410,19 @@ func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudSto
 	// Extract and validate mandatory fields
 	endpoint := s.Data[storage.KeyAlibabaCloudEndpoint]
 	if len(endpoint) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudEndpoint)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudEndpoint)
 	}
 	bucket := s.Data[storage.KeyAlibabaCloudBucket]
 	if len(bucket) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudBucket)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudBucket)
 	}
 	id := s.Data[storage.KeyAlibabaCloudAccessKeyID]
 	if len(id) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudAccessKeyID)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudAccessKeyID)
 	}
 	secret := s.Data[storage.KeyAlibabaCloudSecretAccessKey]
 	if len(secret) == 0 {
-		return nil, kverrors.New("missing secret field", "field", storage.KeyAlibabaCloudSecretAccessKey)
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAlibabaCloudSecretAccessKey)
 	}
 
 	return &storage.AlibabaCloudStorageConfig{

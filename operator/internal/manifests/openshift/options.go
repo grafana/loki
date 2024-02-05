@@ -14,6 +14,7 @@ type Options struct {
 	BuildOpts      BuildOptions
 	Authentication []AuthenticationSpec
 	Authorization  AuthorizationSpec
+	ManagedAuthEnv *ManagedAuthEnv
 }
 
 // AuthenticationSpec describes the authentication specification
@@ -52,6 +53,14 @@ type BuildOptions struct {
 // TenantData defines the existing cookieSecret for lokistack reconcile.
 type TenantData struct {
 	CookieSecret string
+}
+
+type AWSSTSEnv struct {
+	RoleARN string
+}
+
+type ManagedAuthEnv struct {
+	AWS *AWSSTSEnv
 }
 
 // NewOptions returns an openshift options struct.

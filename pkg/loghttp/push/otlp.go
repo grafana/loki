@@ -114,7 +114,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 		res := rls.At(i).Resource()
 		resAttrs := res.Attributes()
 
-		if v, _ := resAttrs.Get(attrServiceName); v.AsString() == "" {
+		if v, ok := resAttrs.Get(attrServiceName); !ok || v.AsString() == "" {
 			resAttrs.PutStr(attrServiceName, "unknown_service")
 		}
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
