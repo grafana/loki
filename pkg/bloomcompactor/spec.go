@@ -287,7 +287,7 @@ func (b *batchedLoader) Next() bool {
 
 	// setup next batch
 	next := b.work[0]
-	batchSize := min(b.batchSize, len(next.chks))
+	batchSize := int(math.Min(float64(b.batchSize), float64(len(next.chks))))
 	toFetch := next.chks[:batchSize]
 	// update work
 	b.work[0].chks = next.chks[batchSize:]
