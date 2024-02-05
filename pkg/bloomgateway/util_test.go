@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -343,9 +342,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 			EndTimestamp:   through,
 		}
 		block := bloomshipper.BlockRef{
-			Ref:       ref,
-			IndexPath: "index.tsdb.gz",
-			BlockPath: fmt.Sprintf("block-%d", i),
+			Ref: ref,
 		}
 		meta := bloomshipper.Meta{
 			MetaRef: bloomshipper.MetaRef{
@@ -459,8 +456,6 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipp
 				EndTimestamp:   0,
 				Checksum:       0,
 			},
-			IndexPath: fmt.Sprintf("index-%d", i),
-			BlockPath: fmt.Sprintf("block-%d", i),
 		})
 	}
 	return res

@@ -107,7 +107,7 @@ func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
 
 	err := callback(block.closableBlockQuerier.BlockQuerier, block.Bounds)
 	if err != nil {
-		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
+		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockRef, err)
 	}
 	return nil
 }
@@ -142,37 +142,36 @@ func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, inter
 	return BlocksForMetas(metas, interval, bounds), nil
 }
 
+// BlocksForMetas returns all the blocks from all the metas listed that are within the requested bounds
+// and not tombstoned in any of the metas
 func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintBounds) []BlockRef {
-	tombstones := make(map[string]interface{})
+	blocks := make(map[BlockRef]bool) // block -> isTombstoned
+
 	for _, meta := range metas {
 		for _, tombstone := range meta.Tombstones {
-			tombstones[tombstone.BlockPath] = nil
+			blocks[tombstone] = true
 		}
-	}
-	blocksSet := make(map[string]BlockRef)
-	for _, meta := range metas {
 		for _, block := range meta.Blocks {
-			if _, contains := tombstones[block.BlockPath]; contains {
+			tombstoned, ok := blocks[block]
+			if ok && tombstoned {
 				// skip tombstoned blocks
 				continue
 			}
-			if isOutsideRange(block, interval, keyspaces) {
-				// skip block that are outside of interval or keyspaces
-				continue
-			}
-			blocksSet[block.BlockPath] = block
+			blocks[block] = false
 		}
 	}
-	blockRefs := make([]BlockRef, 0, len(blocksSet))
-	for _, ref := range blocksSet {
-		blockRefs = append(blockRefs, ref)
-	}
 
-	sort.Slice(blockRefs, func(i, j int) bool {
-		return blockRefs[i].Bounds.Less(blockRefs[j].Bounds)
+	refs := make([]BlockRef, 0, len(blocks))
+	for ref, tombstoned := range blocks {
+		if !tombstoned && !isOutsideRange(ref, interval, keyspaces) {
+			refs = append(refs, ref)
+		}
+	}
+	sort.Slice(refs, func(i, j int) bool {
+		return refs[i].Bounds.Less(refs[j].Bounds)
 	})
 
-	return blockRefs
+	return refs
 }
 
 // isOutsideRange tests if a given BlockRef b is outside of search boundaries
