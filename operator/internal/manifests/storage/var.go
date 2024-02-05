@@ -136,5 +136,7 @@ const (
 	azureDefaultAudience      = "api://AzureADTokenExchange"
 	azureTokenVolumeDirectory = "/var/run/secrets/azure/serviceaccount"
 
+	gcpTokenVolumeDirectory = "/var/run/secrets/gcp/serviceaccount"
+
 	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )

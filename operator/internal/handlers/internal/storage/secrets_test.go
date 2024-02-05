@@ -234,12 +234,33 @@ func TestGCSExtract(t *testing.T) {
 			wantError: "missing secret field: key.json",
 		},
 		{
+			name: "missing audience",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"key.json":   []byte("{\"type\": \"external_account\"}"),
+				},
+			},
+			wantError: "missing secret field: audience in key.json",
+		},
+		{
 			name: "all set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
-					"key.json":   []byte("{\"type\": \"SA\"}"),
+					"key.json":   []byte("{\"type\": \"service_account\"}"),
+				},
+			},
+		},
+		{
+			name: "mandatory for workload-identity set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"audience\":\"test\"}"),
 				},
 			},
 		},

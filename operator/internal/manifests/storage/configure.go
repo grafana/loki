@@ -200,6 +200,10 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 			envVarFromSecret(EnvAzureSubscriptionID, opts.SecretName, KeyAzureStorageSubscriptionID),
 			envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
 		}
+	case lokiv1.ObjectStorageSecretGCS:
+		return []corev1.EnvVar{
+			envVarFromValue(EnvGoogleApplicationCredentials, path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename)),
+		}
 	default:
 		return []corev1.EnvVar{}
 	}
@@ -280,6 +284,8 @@ func managedAuthEnabled(opts Options) bool {
 		return opts.S3 != nil && opts.S3.STS
 	case lokiv1.ObjectStorageSecretAzure:
 		return opts.Azure != nil && opts.Azure.WorkloadIdentity
+	case lokiv1.ObjectStorageSecretGCS:
+		return opts.GCS != nil && opts.GCS.WorkloadIdentity
 	default:
 		return false
 	}
@@ -292,6 +298,8 @@ func saTokenVolumeMount(opts Options) corev1.VolumeMount {
 		tokenPath = AWSTokenVolumeDirectory
 	case lokiv1.ObjectStorageSecretAzure:
 		tokenPath = azureTokenVolumeDirectory
+	case lokiv1.ObjectStorageSecretGCS:
+		tokenPath = gcpTokenVolumeDirectory
 	}
 	return corev1.VolumeMount{
 		Name:      saTokenVolumeName,
@@ -310,6 +318,8 @@ func saTokenVolume(opts Options) corev1.Volume {
 		}
 	case lokiv1.ObjectStorageSecretAzure:
 		audience = azureDefaultAudience
+	case lokiv1.ObjectStorageSecretGCS:
+		audience = opts.GCS.Audience
 	}
 	return corev1.Volume{
 		Name: saTokenVolumeName,
