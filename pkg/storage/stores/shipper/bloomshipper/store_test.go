@@ -2,6 +2,9 @@ package bloomshipper
 
 import (
 	"archive/tar"
+	"bytes"
+	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"testing"
@@ -10,13 +13,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage"
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	storageconfig "github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
 
-func createStore(t *testing.T) (*BloomStore, string) {
+func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 	workDir := t.TempDir()
 
 	periodicConfigs := []storageconfig.PeriodConfig{
@@ -60,7 +65,82 @@ func createStore(t *testing.T) (*BloomStore, string) {
 	return store, workDir
 }
 
-func TestBloomStore_ResolveMetas(t *testing.T) {}
+func createMetaInStorage(store *BloomStore, tenant string, start model.Time, minFp, maxFp model.Fingerprint) (Meta, error) {
+	meta := Meta{
+		MetaRef: MetaRef{
+			Ref: Ref{
+				TenantID: tenant,
+				Bounds:   v1.NewBounds(minFp, maxFp),
+				// Unused
+				// StartTimestamp: start,
+				// EndTimestamp:   start.Add(12 * time.Hour),
+			},
+		},
+		Blocks:     []BlockRef{},
+		Tombstones: []BlockRef{},
+	}
+	err := store.storeDo(start, func(s *bloomStoreEntry) error {
+		raw, _ := json.Marshal(meta)
+		meta.MetaRef.Ref.TableName = tablesForRange(s.cfg, NewInterval(start, start.Add(12*time.Hour)))[0]
+		return s.objectClient.PutObject(context.Background(), s.Meta(meta.MetaRef).Addr(), bytes.NewReader(raw))
+	})
+	return meta, err
+}
+
+func TestBloomStore_ResolveMetas(t *testing.T) {
+	store, _ := newMockBloomStore(t)
+
+	// schema 1
+	// outside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-01-19 00:00"), 0x00010000, 0x0001ffff)
+	// outside of interval, inside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-01-19 00:00"), 0x00000000, 0x0000ffff)
+	// inside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-01-20 00:00"), 0x00010000, 0x0001ffff)
+	// inside of interval, inside of bounds
+	m1, _ := createMetaInStorage(store, "tenant", parseTime("2024-01-20 00:00"), 0x00000000, 0x0000ffff)
+
+	// schema 2
+	// inside of interval, inside of bounds
+	m2, _ := createMetaInStorage(store, "tenant", parseTime("2024-02-05 00:00"), 0x00000000, 0x0000ffff)
+	// inside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-02-05 00:00"), 0x00010000, 0x0001ffff)
+	// outside of interval, inside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-02-11 00:00"), 0x00000000, 0x0000ffff)
+	// outside of interval, outside of bounds
+	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-02-11 00:00"), 0x00010000, 0x0001ffff)
+
+	t.Run("tenant matches", func(t *testing.T) {
+		ctx := context.Background()
+		params := MetaSearchParams{
+			"tenant",
+			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			v1.NewBounds(0x00000000, 0x0000ffff),
+		}
+
+		refs, fetchers, err := store.ResolveMetas(ctx, params)
+		require.NoError(t, err)
+		require.Len(t, refs, 2)
+		require.Len(t, fetchers, 2)
+
+		require.Equal(t, [][]MetaRef{{m1.MetaRef}, {m2.MetaRef}}, refs)
+	})
+
+	t.Run("tenant does not match", func(t *testing.T) {
+		ctx := context.Background()
+		params := MetaSearchParams{
+			"other",
+			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			v1.NewBounds(0x00000000, 0x0000ffff),
+		}
+
+		refs, fetchers, err := store.ResolveMetas(ctx, params)
+		require.NoError(t, err)
+		require.Len(t, refs, 0)
+		require.Len(t, fetchers, 0)
+		require.Equal(t, [][]MetaRef{}, refs)
+	})
+}
 
 func TestBloomStore_FetchMetas(t *testing.T) {}
 

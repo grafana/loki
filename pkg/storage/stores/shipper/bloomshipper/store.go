@@ -75,6 +75,12 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 			refs = append(refs, metaRef)
 		}
 	}
+
+	// return empty metaRefs/fetchers if there are no refs
+	if len(refs) == 0 {
+		return [][]MetaRef{}, []*Fetcher{}, nil
+	}
+
 	return [][]MetaRef{refs}, []*Fetcher{b.fetcher}, nil
 }
 
@@ -221,8 +227,9 @@ func (b *BloomStore) Fetcher(ts model.Time) *Fetcher {
 
 // ResolveMetas implements Store.
 func (b *BloomStore) ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error) {
-	var refs [][]MetaRef
-	var fetchers []*Fetcher
+	refs := make([][]MetaRef, 0, len(b.stores))
+	fetchers := make([]*Fetcher, 0, len(b.stores))
+
 	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store Store) error {
 		newParams := params
 		newParams.Interval = interval
@@ -230,10 +237,14 @@ func (b *BloomStore) ResolveMetas(ctx context.Context, params MetaSearchParams) 
 		if err != nil {
 			return err
 		}
-		refs = append(refs, metas...)
-		fetchers = append(fetchers, fetcher...)
+		if len(metas) > 0 {
+			// only append if there are any results
+			refs = append(refs, metas...)
+			fetchers = append(fetchers, fetcher...)
+		}
 		return nil
 	})
+
 	return refs, fetchers, err
 }
 

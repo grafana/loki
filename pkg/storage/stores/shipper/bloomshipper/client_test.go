@@ -16,6 +16,14 @@ const (
 	day = 24 * time.Hour
 )
 
+func parseTime(s string) model.Time {
+	t, err := time.Parse("2006-01-02 15:04", s)
+	if err != nil {
+		panic(err)
+	}
+	return model.TimeFromUnix(t.Unix())
+}
+
 func parseDayTime(s string) config.DayTime {
 	t, err := time.Parse("2006-01-02", s)
 	if err != nil {
