@@ -1,7 +1,6 @@
 package bloomshipper
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -10,23 +9,25 @@ import (
 	"go.uber.org/atomic"
 )
 
-func Test_CachedBlock(t *testing.T) {
+func TestBlockDirectory_Cleanup(t *testing.T) {
+	checkInterval := 50 * time.Millisecond
+	timeout := 200 * time.Millisecond
+
 	tests := map[string]struct {
 		releaseQuerier                   bool
 		expectDirectoryToBeDeletedWithin time.Duration
 	}{
-		"expected block directory to be removed once all queriers are released": {
-			releaseQuerier: true,
-			// four times grater than activeQueriersCheckInterval
-			expectDirectoryToBeDeletedWithin: 200 * time.Millisecond,
+		"expect directory to be removed once all queriers are released": {
+			releaseQuerier:                   true,
+			expectDirectoryToBeDeletedWithin: 2 * checkInterval,
 		},
-		"expected block directory to be force removed after timeout": {
-			releaseQuerier: false,
-			// four times grater than removeDirectoryTimeout
-			expectDirectoryToBeDeletedWithin: 2 * time.Second,
+		"expect directory to be force removed after timeout": {
+			releaseQuerier:                   false,
+			expectDirectoryToBeDeletedWithin: 2 * timeout,
 		},
 	}
-	for name, testData := range tests {
+	for name, tc := range tests {
+		tc := tc
 		t.Run(name, func(t *testing.T) {
 			extractedBlockDirectory := t.TempDir()
 			blockFilePath, _, _, _ := createBlockArchive(t)
@@ -36,24 +37,25 @@ func Test_CachedBlock(t *testing.T) {
 
 			cached := BlockDirectory{
 				Path:                        extractedBlockDirectory,
-				removeDirectoryTimeout:      500 * time.Millisecond,
-				activeQueriersCheckInterval: 50 * time.Millisecond,
-				logger:                      log.NewLogfmtLogger(os.Stderr),
-				activeQueriers:              atomic.NewInt32(1),
+				removeDirectoryTimeout:      timeout,
+				activeQueriersCheckInterval: checkInterval,
+				logger:                      log.NewNopLogger(),
+				activeQueriers:              atomic.NewInt32(0),
 			}
+			// acquire directory
+			cached.activeQueriers.Inc()
+			// start cleanup goroutine
 			cached.removeDirectoryAsync()
-			//ensure directory exists
-			require.Never(t, func() bool {
-				return directoryDoesNotExist(extractedBlockDirectory)
-			}, 200*time.Millisecond, 50*time.Millisecond)
 
-			if testData.releaseQuerier {
+			if tc.releaseQuerier {
+				// release directory
 				cached.activeQueriers.Dec()
 			}
-			//ensure directory does not exist
+
+			// ensure directory does not exist any more
 			require.Eventually(t, func() bool {
 				return directoryDoesNotExist(extractedBlockDirectory)
-			}, testData.expectDirectoryToBeDeletedWithin, 50*time.Millisecond)
+			}, tc.expectDirectoryToBeDeletedWithin, 10*time.Millisecond)
 		})
 	}
 }
