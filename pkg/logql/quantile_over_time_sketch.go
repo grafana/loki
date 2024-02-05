@@ -236,28 +236,20 @@ func probabilisticQuantileSampleFromProto(proto *logproto.QuantileSketchSample) 
 
 type quantileSketchBatchRangeVectorIterator struct {
 	*batchRangeVectorIterator
-	at []ProbabilisticQuantileSample
 }
 
 func (r *quantileSketchBatchRangeVectorIterator) At() (int64, StepResult) {
-	/*
-		if r.at == nil {
-			r.at = make([]ProbabilisticQuantileSample, 0, len(r.window))
-		}
-		clear(r.at)
-	*/
-	r.at = r.at[:0]
-	r.at = make([]ProbabilisticQuantileSample, 0, len(r.window))
+	at := make([]ProbabilisticQuantileSample, 0, len(r.window))
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
-		r.at = append(r.at, ProbabilisticQuantileSample{
+		at = append(at, ProbabilisticQuantileSample{
 			F:      r.agg(series.Floats),
 			T:      ts,
 			Metric: series.Metric,
 		})
 	}
-	return ts, ProbabilisticQuantileVector(r.at)
+	return ts, ProbabilisticQuantileVector(at)
 }
 
 func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
