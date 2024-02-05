@@ -464,10 +464,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: "/var/run/secrets/azure/serviceaccount",
 										},
-										{
-											Name:      "cloud-credentials",
-											MountPath: managedAuthSecretDirectory,
-										},
 									},
 									Env: []corev1.EnvVar{
 										{
@@ -543,14 +539,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													},
 												},
 											},
-										},
-									},
-								},
-								{
-									Name: "cloud-credentials",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "cloud-credentials",
 										},
 									},
 								},
@@ -910,11 +898,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: "/var/run/secrets/aws/serviceaccount",
 										},
-										{
-											Name:      "cloud-credentials",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/managed-auth",
-										},
+										managedAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
@@ -954,7 +938,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: "cloud-credentials",
+									Name: managedAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",
@@ -1598,10 +1582,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: "/var/run/secrets/azure/serviceaccount",
 										},
-										{
-											Name:      "cloud-credentials",
-											MountPath: managedAuthSecretDirectory,
-										},
 									},
 									Env: []corev1.EnvVar{
 										{
@@ -1677,14 +1657,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													},
 												},
 											},
-										},
-									},
-								},
-								{
-									Name: "cloud-credentials",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "cloud-credentials",
 										},
 									},
 								},
@@ -1952,11 +1924,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: "/var/run/secrets/aws/serviceaccount",
 										},
-										{
-											Name:      "cloud-credentials",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/managed-auth",
-										},
+										managedAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
@@ -1996,7 +1964,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: "cloud-credentials",
+									Name: managedAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",

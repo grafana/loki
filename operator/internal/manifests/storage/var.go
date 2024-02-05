@@ -130,10 +130,12 @@ const (
 	saTokenVolumeName       = "bound-sa-token"
 	saTokenExpiration int64 = 3600
 
-	secretDirectory            = "/etc/storage/secrets"
-	managedAuthSecretDirectory = "/etc/storage/managed-auth"
-	storageTLSVolume           = "storage-tls"
-	caDirectory                = "/etc/storage/ca"
+	secretDirectory  = "/etc/storage/secrets"
+	storageTLSVolume = "storage-tls"
+	caDirectory      = "/etc/storage/ca"
+
+	managedAuthConfigVolumeName = "managed-auth-config"
+	managedAuthConfigDirectory  = "/etc/storage/managed-auth"
 
 	awsDefaultAudience      = "sts.amazonaws.com"
 	AWSTokenVolumeDirectory = "/var/run/secrets/aws/serviceaccount"
