@@ -22,6 +22,7 @@ type Store interface {
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
 	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
 	Fetcher(ts model.Time) *Fetcher
+	Client(ts model.Time) Client
 	Stop()
 }
 
@@ -113,6 +114,11 @@ func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]B
 // Fetcher implements Store.
 func (b *bloomStoreEntry) Fetcher(_ model.Time) *Fetcher {
 	return b.fetcher
+}
+
+// Client implements Store.
+func (b *bloomStoreEntry) Client(_ model.Time) Client {
+	return b.bloomClient
 }
 
 // Stop implements Store.
@@ -221,6 +227,14 @@ func (b *BloomStore) Block(ref BlockRef) (loc Location) {
 func (b *BloomStore) Fetcher(ts model.Time) *Fetcher {
 	if store := b.getStore(ts); store != nil {
 		return store.Fetcher(ts)
+	}
+	return nil
+}
+
+// Client implements Store.
+func (b *BloomStore) Client(ts model.Time) Client {
+	if store := b.getStore(ts); store != nil {
+		return store.Client(ts)
 	}
 	return nil
 }
