@@ -396,8 +396,8 @@ func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _ blooms
 // Stop implements bloomshipper.Interface
 func (s *mockBloomStore) Stop() {}
 
-// Fetch implements bloomshipper.Interface
-func (s *mockBloomStore) Fetch(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
+// ForEach implements bloomshipper.Interface
+func (s *mockBloomStore) ForEach(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
 	if s.err != nil {
 		time.Sleep(s.delay)
 		return s.err

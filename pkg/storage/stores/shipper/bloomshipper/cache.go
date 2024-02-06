@@ -19,7 +19,14 @@ import (
 
 type ClosableBlockQuerier struct {
 	*v1.BlockQuerier
-	Close func() error
+	close func() error
+}
+
+func (c *ClosableBlockQuerier) Close() error {
+	if c.close != nil {
+		return c.close()
+	}
+	return nil
 }
 
 func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
@@ -75,7 +82,7 @@ func (b BlockDirectory) BlockQuerier() *ClosableBlockQuerier {
 	b.activeQueriers.Inc()
 	return &ClosableBlockQuerier{
 		BlockQuerier: v1.NewBlockQuerier(b.Block()),
-		Close: func() error {
+		close: func() error {
 			_ = b.activeQueriers.Dec()
 			return nil
 		},

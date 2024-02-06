@@ -6,6 +6,7 @@ import (
 
 	cloudcredentialsv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -81,16 +82,24 @@ func TestCredentialsRequestController_CreateCredentialsRequest_WhenLokiStackNotA
 			ManagementState: lokiv1.ManagementStateManaged,
 		},
 	}
+	secret := &corev1.Secret{}
 
 	// Set managed auth environment
 	t.Setenv("ROLEARN", "a-role-arn")
 
 	k.GetStub = func(_ context.Context, key types.NamespacedName, out client.Object, _ ...client.GetOption) error {
-		if key.Name == r.Name && key.Namespace == r.Namespace {
-			k.SetClientObject(out, &s)
+		switch out.(type) {
+		case *lokiv1.LokiStack:
+			if key.Name == r.Name && key.Namespace == r.Namespace {
+				k.SetClientObject(out, &s)
+				return nil
+			}
+			return apierrors.NewNotFound(schema.GroupResource{}, "lokistack not found")
+		case *corev1.Secret:
+			k.SetClientObject(out, secret)
 			return nil
 		}
-		return apierrors.NewNotFound(schema.GroupResource{}, "lokistack not found")
+		return nil
 	}
 
 	k.CreateStub = func(_ context.Context, o client.Object, _ ...client.CreateOption) error {
