@@ -43,8 +43,9 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 			ProviderSpec: providerSpec,
 			ServiceAccountNames: []string{
 				stack.Name,
+				rulerServiceAccountName(opts),
 			},
-			CloudTokenPath: path.Join(storage.SATokenVolumeOcpDirectory, "token"),
+			CloudTokenPath: path.Join(storage.AWSTokenVolumeDirectory, "token"),
 		},
 	}, nil
 }
