@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
@@ -18,7 +19,7 @@ func TestCreateCredentialsRequest_DoNothing_WhenManagedAuthEnvMissing(t *testing
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	secretRef, err := CreateCredentialsRequest(context.Background(), k, key, nil)
+	secretRef, err := CreateCredentialsRequest(context.Background(), nil, k, key, nil)
 	require.NoError(t, err)
 	require.Empty(t, secretRef)
 }
@@ -27,9 +28,13 @@ func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	t.Setenv("ROLEARN", "a-role-arn")
+	managedAuth := &config.ManagedAuthEnv{
+		AWS: &config.AWSSTSEnv{
+			RoleARN: "a-role-arn",
+		},
+	}
 
-	secretRef, err := CreateCredentialsRequest(context.Background(), k, key, nil)
+	secretRef, err := CreateCredentialsRequest(context.Background(), managedAuth, k, key, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, secretRef)
 	require.Equal(t, 1, k.CreateCallCount())
@@ -46,11 +51,15 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 		},
 	}
 
-	t.Setenv("CLIENTID", "test-client-id")
-	t.Setenv("TENANTID", "test-tenant-id")
-	t.Setenv("SUBSCRIPTIONID", "test-subscription-id")
+	managedAuth := &config.ManagedAuthEnv{
+		Azure: &config.AzureWIFEnvironment{
+			ClientID:       "test-client-id",
+			SubscriptionID: "test-tenant-id",
+			TenantID:       "test-subscription-id",
+		},
+	}
 
-	secretRef, err := CreateCredentialsRequest(context.Background(), k, key, secret)
+	secretRef, err := CreateCredentialsRequest(context.Background(), managedAuth, k, key, secret)
 	require.NoError(t, err)
 	require.NotEmpty(t, secretRef)
 
@@ -86,12 +95,17 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure_Errors(t *testing.T) {
 	for _, tc := range tt {
 		tc := tc
 		t.Run(tc.wantError, func(t *testing.T) {
-			// Not parallel (environment variables)
-			t.Setenv("CLIENTID", "test-client-id")
-			t.Setenv("TENANTID", "test-tenant-id")
-			t.Setenv("SUBSCRIPTIONID", "test-subscription-id")
+			t.Parallel()
 
-			_, err := CreateCredentialsRequest(context.Background(), k, key, tc.secret)
+			managedAuth := &config.ManagedAuthEnv{
+				Azure: &config.AzureWIFEnvironment{
+					ClientID:       "test-client-id",
+					SubscriptionID: "test-tenant-id",
+					TenantID:       "test-subscription-id",
+				},
+			}
+
+			_, err := CreateCredentialsRequest(context.Background(), managedAuth, k, key, tc.secret)
 			require.EqualError(t, err, tc.wantError)
 		})
 	}
@@ -101,13 +115,17 @@ func TestCreateCredentialsRequest_DoNothing_WhenCredentialsRequestExist(t *testi
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	t.Setenv("ROLEARN", "a-role-arn")
+	managedAuth := &config.ManagedAuthEnv{
+		AWS: &config.AWSSTSEnv{
+			RoleARN: "a-role-arn",
+		},
+	}
 
 	k.CreateStub = func(_ context.Context, _ client.Object, _ ...client.CreateOption) error {
 		return errors.NewAlreadyExists(schema.GroupResource{}, "credentialsrequest exists")
 	}
 
-	secretRef, err := CreateCredentialsRequest(context.Background(), k, key, nil)
+	secretRef, err := CreateCredentialsRequest(context.Background(), managedAuth, k, key, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, secretRef)
 	require.Equal(t, 1, k.CreateCallCount())

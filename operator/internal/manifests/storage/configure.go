@@ -13,12 +13,10 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-var (
-	managedAuthConfigVolumeMount = corev1.VolumeMount{
-		Name:      managedAuthConfigVolumeName,
-		MountPath: managedAuthConfigDirectory,
-	}
-)
+var managedAuthConfigVolumeMount = corev1.VolumeMount{
+	Name:      managedAuthConfigVolumeName,
+	MountPath: managedAuthConfigDirectory,
+}
 
 // ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
 // based on the object storage type. Currently supported amendments:

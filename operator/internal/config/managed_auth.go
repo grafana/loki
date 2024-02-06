@@ -18,7 +18,7 @@ type ManagedAuthEnv struct {
 	Azure *AzureWIFEnvironment
 }
 
-func DiscoverManagedAuthEnv() *ManagedAuthEnv {
+func discoverManagedAuthEnv() *ManagedAuthEnv {
 	// AWS
 	roleARN := os.Getenv("ROLEARN")
 

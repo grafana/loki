@@ -2,7 +2,6 @@ package openshift
 
 import (
 	"fmt"
-	"github.com/grafana/loki/operator/internal/config"
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -12,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 

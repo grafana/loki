@@ -3,13 +3,13 @@ package handlers
 import (
 	"context"
 	"errors"
-	"github.com/grafana/loki/operator/internal/config"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -22,13 +22,12 @@ var (
 
 // CreateCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
 // to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
-func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.ObjectKey, secret *corev1.Secret) (string, error) {
-	managedAuthEnv := config.DiscoverManagedAuthEnv()
-	if managedAuthEnv == nil {
+func CreateCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAuthEnv, k k8s.Client, stack client.ObjectKey, secret *corev1.Secret) (string, error) {
+	if managedAuth == nil {
 		return "", nil
 	}
 
-	if managedAuthEnv.Azure != nil && managedAuthEnv.Azure.Region == "" {
+	if managedAuth.Azure != nil && managedAuth.Azure.Region == "" {
 		// Managed environment for Azure does not provide Region, but we need this for the CredentialsRequest.
 		// This looks like an oversight when creating the UI in OpenShift, but for now we need to pull this data
 		// from somewhere else -> the Azure Storage Secret
@@ -41,7 +40,7 @@ func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.Ob
 			return "", errAzureNoRegion
 		}
 
-		managedAuthEnv.Azure.Region = string(region)
+		managedAuth.Azure.Region = string(region)
 	}
 
 	opts := openshift.Options{
@@ -49,7 +48,7 @@ func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.Ob
 			LokiStackName:      stack.Name,
 			LokiStackNamespace: stack.Namespace,
 		},
-		ManagedAuthEnv: managedAuthEnv,
+		ManagedAuthEnv: managedAuth,
 	}
 
 	credReq, err := openshift.BuildCredentialsRequest(opts)

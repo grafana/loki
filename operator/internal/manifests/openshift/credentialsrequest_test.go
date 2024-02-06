@@ -1,12 +1,12 @@
 package openshift
 
 import (
-	"github.com/grafana/loki/operator/internal/config"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 

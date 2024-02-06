@@ -59,7 +59,7 @@ func main() {
 
 	var err error
 
-	ctrlCfg, options, err := config.LoadConfig(scheme, configFile)
+	ctrlCfg, managedAuth, options, err := config.LoadConfig(scheme, configFile)
 	if err != nil {
 		logger.Error(err, "failed to load operator configuration")
 		os.Exit(1)
@@ -94,11 +94,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if ctrlCfg.Gates.OpenShift.Enabled && config.DiscoverManagedAuthEnv() != nil {
-		logger.Info("discovered OpenShift Cluster within a managed authentication environment")
-		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
-	}
-
 	if err = (&lokictrl.LokiStackReconciler{
 		Client:       mgr.GetClient(),
 		Log:          logger.WithName("controllers").WithName("lokistack"),
@@ -129,10 +124,17 @@ func main() {
 	}
 
 	if ctrlCfg.Gates.OpenShift.ManagedAuthEnabled() {
+		logger.Info("discovered OpenShift Cluster within a managed authentication environment")
+		if managedAuth == nil {
+			logger.Info("Running in managed-authentication environment but no credentials provided")
+			os.Exit(1)
+		}
+
 		if err = (&lokictrl.CredentialsRequestsReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-			Log:    logger.WithName("controllers").WithName("lokistack-credentialsrequest"),
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Log:        logger.WithName("controllers").WithName("lokistack-credentialsrequest"),
+			AuthConfig: managedAuth,
 		}).SetupWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-credentialsrequest")
 			os.Exit(1)

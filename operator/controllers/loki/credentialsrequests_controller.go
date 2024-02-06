@@ -13,6 +13,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
 )
@@ -20,8 +21,9 @@ import (
 // CredentialsRequestsReconciler reconciles a single CredentialsRequest resource for each LokiStack request.
 type CredentialsRequestsReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Log    logr.Logger
+	Scheme     *runtime.Scheme
+	Log        logr.Logger
+	AuthConfig *config.ManagedAuthEnv
 }
 
 // Reconcile creates a single CredentialsRequest per LokiStack for the OpenShift cloud-credentials-operator (CCO) to
@@ -32,7 +34,7 @@ func (r *CredentialsRequestsReconciler) Reconcile(ctx context.Context, req ctrl.
 	var stack lokiv1.LokiStack
 	if err := r.Client.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, handlers.DeleteCredentialsRequest(ctx, r.Client, req.NamespacedName)
+			return ctrl.Result{}, handlers.DeleteCredentialsRequest(ctx, r.AuthConfig, r.Client, req.NamespacedName)
 		}
 		return ctrl.Result{}, err
 	}
@@ -57,7 +59,7 @@ func (r *CredentialsRequestsReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, err
 	}
 
-	secretRef, err := handlers.CreateCredentialsRequest(ctx, r.Client, req.NamespacedName, storageSecret)
+	secretRef, err := handlers.CreateCredentialsRequest(ctx, r.AuthConfig, r.Client, req.NamespacedName, storageSecret)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

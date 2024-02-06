@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -39,17 +40,23 @@ func TestCredentialsRequestController_RegistersCustomResource_WithDefaultPredica
 }
 
 func TestCredentialsRequestController_DeleteCredentialsRequest_WhenLokiStackNotFound(t *testing.T) {
+	managedAuth := &config.ManagedAuthEnv{
+		AWS: &config.AWSSTSEnv{
+			RoleARN: "a-role-arn",
+		},
+	}
 	k := &k8sfakes.FakeClient{}
-	c := &CredentialsRequestsReconciler{Client: k, Scheme: scheme}
+	c := &CredentialsRequestsReconciler{
+		Client:     k,
+		Scheme:     scheme,
+		AuthConfig: managedAuth,
+	}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
 			Name:      "my-stack",
 			Namespace: "ns",
 		},
 	}
-
-	// Set managed auth environment
-	t.Setenv("ROLEARN", "a-role-arn")
 
 	k.GetStub = func(_ context.Context, key types.NamespacedName, _ client.Object, _ ...client.GetOption) error {
 		if key.Name == r.Name && key.Namespace == r.Namespace {
@@ -65,8 +72,17 @@ func TestCredentialsRequestController_DeleteCredentialsRequest_WhenLokiStackNotF
 }
 
 func TestCredentialsRequestController_CreateCredentialsRequest_WhenLokiStackNotAnnotated(t *testing.T) {
+	managedAuth := &config.ManagedAuthEnv{
+		AWS: &config.AWSSTSEnv{
+			RoleARN: "a-role-arn",
+		},
+	}
 	k := &k8sfakes.FakeClient{}
-	c := &CredentialsRequestsReconciler{Client: k, Scheme: scheme}
+	c := &CredentialsRequestsReconciler{
+		Client:     k,
+		Scheme:     scheme,
+		AuthConfig: managedAuth,
+	}
 	r := ctrl.Request{
 		NamespacedName: types.NamespacedName{
 			Name:      "my-stack",
@@ -83,9 +99,6 @@ func TestCredentialsRequestController_CreateCredentialsRequest_WhenLokiStackNotA
 		},
 	}
 	secret := &corev1.Secret{}
-
-	// Set managed auth environment
-	t.Setenv("ROLEARN", "a-role-arn")
 
 	k.GetStub = func(_ context.Context, key types.NamespacedName, out client.Object, _ ...client.GetOption) error {
 		switch out.(type) {
