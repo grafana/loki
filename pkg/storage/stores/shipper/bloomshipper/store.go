@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -107,7 +108,7 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 
 // FetchBlocks implements Store.
 func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
-	return b.fetcher.FetchBlocksWithQueue(ctx, refs)
+	return b.fetcher.FetchBlocks(ctx, refs)
 }
 
 // Fetcher implements Store.
@@ -299,12 +300,23 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]Bloc
 
 	results := make([]BlockDirectory, 0, len(blocks))
 	for i := range fetchers {
-		res, err := fetchers[i].FetchBlocksWithQueue(ctx, refs[i])
+		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
 		results = append(results, res...)
 		if err != nil {
 			return results, err
 		}
 	}
+
+	// sort responses (results []BlockDirectory) based on requests (blocks []BlockRef)
+	slices.SortFunc(results, func(a, b BlockDirectory) int {
+		ia, ib := slices.Index(blocks, a.BlockRef), slices.Index(blocks, b.BlockRef)
+		if ia < ib {
+			return -1
+		} else if ia > ib {
+			return +1
+		}
+		return 0
+	})
 
 	return results, nil
 }
