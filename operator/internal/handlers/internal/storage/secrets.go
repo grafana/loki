@@ -240,7 +240,6 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 
 	credentialsFile := struct {
 		CredentialsType string `json:"type"`
-		Audience        string `json:"audience"`
 	}{}
 
 	err := json.Unmarshal(keyJSON, &credentialsFile)
@@ -248,15 +247,18 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 		return nil, errGCPParsingCredentialsFile
 	}
 
-	isWorkloadIdentity := credentialsFile.CredentialsType == gcpExternalAccountType
-	if isWorkloadIdentity && credentialsFile.Audience == "" {
-		return nil, fmt.Errorf("%w: audience in key.json", errSecretMissingField)
+	var (
+		audience           = string(s.Data[storage.KeyGCPWorkloadIdentityProviderAudience])
+		isWorkloadIdentity = credentialsFile.CredentialsType == gcpExternalAccountType
+	)
+	if isWorkloadIdentity && len(audience) == 0 {
+		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPWorkloadIdentityProviderAudience)
 	}
 
 	return &storage.GCSStorageConfig{
 		Bucket:           string(bucket),
 		WorkloadIdentity: isWorkloadIdentity,
-		Audience:         credentialsFile.Audience,
+		Audience:         audience,
 	}, nil
 }
 

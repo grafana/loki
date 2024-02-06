@@ -242,7 +242,7 @@ func TestGCSExtract(t *testing.T) {
 					"key.json":   []byte("{\"type\": \"external_account\"}"),
 				},
 			},
-			wantError: "missing secret field: audience in key.json",
+			wantError: "missing secret field: audience",
 		},
 		{
 			name: "all set",
@@ -260,7 +260,8 @@ func TestGCSExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
-					"key.json":   []byte("{\"type\": \"external_account\", \"audience\":\"test\"}"),
+					"audience":   []byte("test"),
+					"key.json":   []byte("{\"type\": \"external_account\"}"),
 				},
 			},
 		},

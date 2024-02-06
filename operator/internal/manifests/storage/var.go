@@ -87,6 +87,8 @@ const (
 	// KeyAzureEnvironmentName is the secret data key for the Azure cloud environment name.
 	KeyAzureEnvironmentName = "environment"
 
+	// KeyGCPWorkloadIdentityProviderAudience is the secret data key for the GCP Workload Identity Provider audience.
+	KeyGCPWorkloadIdentityProviderAudience = "audience"
 	// KeyGCPStorageBucketName is the secret data key for the GCS bucket name.
 	KeyGCPStorageBucketName = "bucketname"
 	// KeyGCPServiceAccountKeyFilename is the service account key filename containing the Google authentication credentials.
