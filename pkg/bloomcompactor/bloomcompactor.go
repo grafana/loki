@@ -38,7 +38,7 @@ type Compactor struct {
 	limits Limits
 
 	// temporary workaround until store has implemented read/write shipper interface
-	store bloomshipper.StoreAndClient
+	store bloomshipper.Store
 
 	sharding ShardingStrategy
 
@@ -48,7 +48,7 @@ type Compactor struct {
 
 func New(
 	cfg Config,
-	store bloomshipper.StoreAndClient,
+	store bloomshipper.Store,
 	sharding ShardingStrategy,
 	limits Limits,
 	logger log.Logger,
