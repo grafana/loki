@@ -25,7 +25,7 @@ var (
 type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
-	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*ClosableBlockQuerier, error)
 	Fetcher(ts model.Time) (*Fetcher, error)
 	Client(ts model.Time) (Client, error)
 	Stop()
@@ -112,7 +112,7 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 }
 
 // FetchBlocks implements Store.
-func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*ClosableBlockQuerier, error) {
 	return b.fetcher.FetchBlocks(ctx, refs)
 }
 
@@ -291,7 +291,7 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 }
 
 // FetchBlocks implements Store.
-func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]BlockDirectory, error) {
+func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*ClosableBlockQuerier, error) {
 
 	var refs [][]BlockRef
 	var fetchers []*Fetcher
@@ -316,7 +316,7 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]Bloc
 		}
 	}
 
-	results := make([]BlockDirectory, 0, len(blocks))
+	results := make([]*ClosableBlockQuerier, 0, len(blocks))
 	for i := range fetchers {
 		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
 		results = append(results, res...)
@@ -325,8 +325,8 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]Bloc
 		}
 	}
 
-	// sort responses (results []BlockDirectory) based on requests (blocks []BlockRef)
-	slices.SortFunc(results, func(a, b BlockDirectory) int {
+	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)
+	slices.SortFunc(results, func(a, b *ClosableBlockQuerier) int {
 		ia, ib := slices.Index(blocks, a.BlockRef), slices.Index(blocks, b.BlockRef)
 		if ia < ib {
 			return -1

@@ -18,6 +18,7 @@ import (
 )
 
 type ClosableBlockQuerier struct {
+	BlockRef
 	*v1.BlockQuerier
 	close func() error
 }
@@ -53,7 +54,7 @@ func NewBlockDirectory(ref BlockRef, path string, logger log.Logger) BlockDirect
 	return BlockDirectory{
 		BlockRef:                    ref,
 		Path:                        path,
-		activeQueriers:              atomic.NewInt32(0),
+		refCount:                    atomic.NewInt32(0),
 		removeDirectoryTimeout:      time.Minute,
 		logger:                      logger,
 		activeQueriersCheckInterval: defaultActiveQueriersCheckInterval,
@@ -66,7 +67,7 @@ type BlockDirectory struct {
 	BlockRef
 	Path                        string
 	removeDirectoryTimeout      time.Duration
-	activeQueriers              *atomic.Int32
+	refCount                    *atomic.Int32
 	logger                      log.Logger
 	activeQueriersCheckInterval time.Duration
 }
@@ -75,17 +76,24 @@ func (b BlockDirectory) Block() *v1.Block {
 	return v1.NewBlock(v1.NewDirectoryBlockReader(b.Path))
 }
 
+func (b BlockDirectory) Acquire() {
+	_ = b.refCount.Inc()
+}
+
+func (b BlockDirectory) Release() error {
+	_ = b.refCount.Dec()
+	return nil
+}
+
 // BlockQuerier returns a new block querier from the directory.
 // It increments the counter of active queriers for this directory.
 // The counter is decreased when the returned querier is closed.
 func (b BlockDirectory) BlockQuerier() *ClosableBlockQuerier {
-	b.activeQueriers.Inc()
+	b.Acquire()
 	return &ClosableBlockQuerier{
 		BlockQuerier: v1.NewBlockQuerier(b.Block()),
-		close: func() error {
-			_ = b.activeQueriers.Dec()
-			return nil
-		},
+		BlockRef:     b.BlockRef,
+		close:        b.Release,
 	}
 }
 
@@ -99,7 +107,7 @@ func (b *BlockDirectory) removeDirectoryAsync() {
 		for {
 			select {
 			case <-ticker.C:
-				if b.activeQueriers.Load() == 0 {
+				if b.refCount.Load() == 0 {
 					err := deleteFolder(b.Path)
 					if err == nil {
 						return
