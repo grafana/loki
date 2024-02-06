@@ -259,10 +259,8 @@ func TestBloomStore_FetchBlocks(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, blockDirs, 4)
 
-	// Note the order: b1 and b2 come from cache, so they are in the beginning of the response
-	// Do we need to sort the response based on the request order of block refs?
-	require.ElementsMatch(t,
-		[]BlockRef{b1.BlockRef, b3.BlockRef, b2.BlockRef, b4.BlockRef},
+	require.Equal(t,
+		[]BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef},
 		[]BlockRef{blockDirs[0].BlockRef, blockDirs[1].BlockRef, blockDirs[2].BlockRef, blockDirs[3].BlockRef},
 	)
 }

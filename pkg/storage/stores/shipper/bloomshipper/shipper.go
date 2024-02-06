@@ -23,7 +23,7 @@ type ForEachBlockCallback func(bq *v1.BlockQuerier, bounds v1.FingerprintBounds)
 
 type Interface interface {
 	GetBlockRefs(ctx context.Context, tenant string, interval Interval) ([]BlockRef, error)
-	Fetch(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
+	ForEach(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
 	Stop()
 }
 
@@ -58,14 +58,21 @@ func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, interval In
 	return blockRefs, nil
 }
 
-func (s *Shipper) Fetch(ctx context.Context, _ string, blocks []BlockRef, callback ForEachBlockCallback) error {
+func (s *Shipper) ForEach(ctx context.Context, _ string, blocks []BlockRef, callback ForEachBlockCallback) error {
 	blockDirs, err := s.store.FetchBlocks(ctx, blocks)
 	if err != nil {
 		return err
 	}
 
-	for _, dir := range blockDirs {
-		err := runCallback(callback, dir.BlockQuerier(), dir.BlockRef.Bounds)
+	if len(blockDirs) != len(blocks) {
+		return fmt.Errorf("number of responses (%d) does not match number of requests (%d)", len(blockDirs), len(blocks))
+	}
+
+	for i := range blocks {
+		if blockDirs[i].BlockRef != blocks[i] {
+			return fmt.Errorf("invalid order of responses: expected: %v, got: %v", blocks[i], blockDirs[i].BlockRef)
+		}
+		err := runCallback(callback, blockDirs[i].BlockQuerier(), blockDirs[i].BlockRef.Bounds)
 		if err != nil {
 			return err
 		}
