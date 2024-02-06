@@ -230,7 +230,7 @@ func (b *LazyBlockBuilderIterator) At() *v1.Block {
 }
 
 func (b *LazyBlockBuilderIterator) Err() error {
-	return nil
+	return b.err
 }
 
 // IndexLoader loads an index. This helps us do things like
