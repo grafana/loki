@@ -32,32 +32,8 @@ func CompressBloomBlock(ref BlockRef, archivePath, localDst string, logger log.L
 	return blockToUpload, nil
 }
 
-func UncompressBloomBlock(block *LazyBlock, workingDirectory string, logger log.Logger) (string, error) {
-	workingDirectoryPath := filepath.Join(workingDirectory, block.BlockPath)
-	err := os.MkdirAll(workingDirectoryPath, os.ModePerm)
-	if err != nil {
-		return "", fmt.Errorf("can not create directory to extract the block: %w", err)
-	}
-	archivePath, err := writeDataToTempFile(workingDirectoryPath, block)
-	if err != nil {
-		return "", fmt.Errorf("error writing data to temp file: %w", err)
-	}
-	level.Info(logger).Log("msg", "extracting archive", "archive", archivePath, "workingDirectory", workingDirectoryPath, "blockPath", block.BlockPath)
-	defer func() {
-		err = os.Remove(archivePath)
-		if err != nil {
-			level.Error(logger).Log("msg", "removing archive file", "err", err, "file", archivePath)
-		}
-	}()
-	err = extractArchive(archivePath, workingDirectoryPath)
-	if err != nil {
-		return "", fmt.Errorf("error extracting archive: %w", err)
-	}
-	return workingDirectoryPath, nil
-}
-
-func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string, error) {
-	defer block.Data.Close()
+func writeDataToTempFile(workingDirectoryPath string, data io.ReadCloser) (string, error) {
+	defer data.Close()
 	archivePath := filepath.Join(workingDirectoryPath, uuid.New().String())
 
 	archiveFile, err := os.Create(archivePath)
@@ -65,7 +41,7 @@ func writeDataToTempFile(workingDirectoryPath string, block *LazyBlock) (string,
 		return "", fmt.Errorf("error creating empty file to store the archiver: %w", err)
 	}
 	defer archiveFile.Close()
-	_, err = io.Copy(archiveFile, block.Data)
+	_, err = io.Copy(archiveFile, data)
 	if err != nil {
 		return "", fmt.Errorf("error writing data to archive file: %w", err)
 	}
@@ -78,4 +54,26 @@ func extractArchive(archivePath string, workingDirectoryPath string) error {
 		return fmt.Errorf("error opening archive file %s: %w", archivePath, err)
 	}
 	return v1.UnTarGz(workingDirectoryPath, file)
+}
+
+func extractBlock(data io.ReadCloser, blockDir string, logger log.Logger) error {
+	err := os.MkdirAll(blockDir, os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("can not create directory to extract the block: %w", err)
+	}
+	archivePath, err := writeDataToTempFile(blockDir, data)
+	if err != nil {
+		return fmt.Errorf("error writing data to temp file: %w", err)
+	}
+	defer func() {
+		err = os.Remove(archivePath)
+		if err != nil {
+			level.Error(logger).Log("msg", "error removing temp archive file", "err", err)
+		}
+	}()
+	err = extractArchive(archivePath, blockDir)
+	if err != nil {
+		return fmt.Errorf("error extracting archive: %w", err)
+	}
+	return nil
 }

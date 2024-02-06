@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
@@ -119,7 +120,7 @@ func tsdbID(n int) tsdb.SingleTenantTSDBIdentifier {
 	}
 }
 
-func genMeta(min, max model.Fingerprint, sources []int, blocks []BlockRef) Meta {
+func genMeta(min, max model.Fingerprint, sources []int, blocks []bloomshipper.BlockRef) Meta {
 	m := Meta{
 		OwnershipRange: v1.NewBounds(min, max),
 		Blocks:         blocks,
@@ -224,10 +225,12 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 	}
 }
 
-func genBlockRef(min, max model.Fingerprint) BlockRef {
+func genBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
 	bounds := v1.NewBounds(min, max)
-	return BlockRef{
-		OwnershipRange: bounds,
+	return bloomshipper.BlockRef{
+		Ref: bloomshipper.Ref{
+			Bounds: bounds,
+		},
 	}
 }
 
@@ -245,7 +248,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
-				genMeta(5, 20, []int{1}, []BlockRef{genBlockRef(11, 20)}),
+				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(11, 20)}),
 			},
 			exp: []blockPlan{
 				{
@@ -263,7 +266,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
-				genMeta(5, 20, []int{1}, []BlockRef{genBlockRef(9, 20)}),
+				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(9, 20)}),
 			},
 			exp: []blockPlan{
 				{
@@ -271,7 +274,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 10),
-							blocks: []BlockRef{genBlockRef(9, 20)},
+							blocks: []bloomshipper.BlockRef{genBlockRef(9, 20)},
 						},
 					},
 				},
@@ -285,8 +288,8 @@ func Test_blockPlansForGaps(t *testing.T) {
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
-				genMeta(9, 20, []int{0}, []BlockRef{genBlockRef(9, 20)}), // block for same tsdb
-				genMeta(9, 20, []int{1}, []BlockRef{genBlockRef(9, 20)}), // block for different tsdb
+				genMeta(9, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for same tsdb
+				genMeta(9, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for different tsdb
 			},
 			exp: []blockPlan{
 				{
@@ -304,8 +307,8 @@ func Test_blockPlansForGaps(t *testing.T) {
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
-				genMeta(9, 20, []int{0}, []BlockRef{genBlockRef(9, 20)}), // block for same tsdb
-				genMeta(5, 20, []int{1}, []BlockRef{genBlockRef(5, 20)}), // block for different tsdb
+				genMeta(9, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for same tsdb
+				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(5, 20)}), // block for different tsdb
 			},
 			exp: []blockPlan{
 				{
@@ -313,7 +316,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 8),
-							blocks: []BlockRef{genBlockRef(5, 20)},
+							blocks: []bloomshipper.BlockRef{genBlockRef(5, 20)},
 						},
 					},
 				},
@@ -324,14 +327,14 @@ func Test_blockPlansForGaps(t *testing.T) {
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs:          []tsdb.Identifier{tsdbID(0), tsdbID(1)}, // generate for both tsdbs
 			metas: []Meta{
-				genMeta(0, 2, []int{0}, []BlockRef{
+				genMeta(0, 2, []int{0}, []bloomshipper.BlockRef{
 					genBlockRef(0, 1),
 					genBlockRef(1, 2),
 				}), // tsdb_0
-				genMeta(6, 8, []int{0}, []BlockRef{genBlockRef(6, 8)}), // tsdb_0
+				genMeta(6, 8, []int{0}, []bloomshipper.BlockRef{genBlockRef(6, 8)}), // tsdb_0
 
-				genMeta(3, 5, []int{1}, []BlockRef{genBlockRef(3, 5)}),   // tsdb_1
-				genMeta(8, 10, []int{1}, []BlockRef{genBlockRef(8, 10)}), // tsdb_1
+				genMeta(3, 5, []int{1}, []bloomshipper.BlockRef{genBlockRef(3, 5)}),   // tsdb_1
+				genMeta(8, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(8, 10)}), // tsdb_1
 			},
 			exp: []blockPlan{
 				{
@@ -340,11 +343,11 @@ func Test_blockPlansForGaps(t *testing.T) {
 						// tsdb (id=0) can source chunks from the blocks built from tsdb (id=1)
 						{
 							bounds: v1.NewBounds(3, 5),
-							blocks: []BlockRef{genBlockRef(3, 5)},
+							blocks: []bloomshipper.BlockRef{genBlockRef(3, 5)},
 						},
 						{
 							bounds: v1.NewBounds(9, 10),
-							blocks: []BlockRef{genBlockRef(8, 10)},
+							blocks: []bloomshipper.BlockRef{genBlockRef(8, 10)},
 						},
 					},
 				},
@@ -354,14 +357,14 @@ func Test_blockPlansForGaps(t *testing.T) {
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 2),
-							blocks: []BlockRef{
+							blocks: []bloomshipper.BlockRef{
 								genBlockRef(0, 1),
 								genBlockRef(1, 2),
 							},
 						},
 						{
 							bounds: v1.NewBounds(6, 7),
-							blocks: []BlockRef{genBlockRef(6, 8)},
+							blocks: []bloomshipper.BlockRef{genBlockRef(6, 8)},
 						},
 					},
 				},
@@ -372,11 +375,11 @@ func Test_blockPlansForGaps(t *testing.T) {
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs:          []tsdb.Identifier{tsdbID(0)},
 			metas: []Meta{
-				genMeta(9, 20, []int{1}, []BlockRef{
+				genMeta(9, 20, []int{1}, []bloomshipper.BlockRef{
 					genBlockRef(1, 4),
 					genBlockRef(9, 20),
 				}), // blocks for first diff tsdb
-				genMeta(5, 20, []int{2}, []BlockRef{
+				genMeta(5, 20, []int{2}, []bloomshipper.BlockRef{
 					genBlockRef(5, 10),
 					genBlockRef(9, 20), // same block references in prior meta (will be deduped)
 				}), // block for second diff tsdb
@@ -387,7 +390,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 					gaps: []gapWithBlocks{
 						{
 							bounds: v1.NewBounds(0, 10),
-							blocks: []BlockRef{
+							blocks: []bloomshipper.BlockRef{
 								genBlockRef(1, 4),
 								genBlockRef(5, 10),
 								genBlockRef(9, 20),

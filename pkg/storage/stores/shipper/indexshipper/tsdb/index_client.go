@@ -71,7 +71,7 @@ func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 // In the future, we should use dynamic sharding in TSDB to determine the shard factors
 // and we may no longer wish to send a shard label inside the queries,
 // but rather expose it as part of the stores.Index interface
-func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.ShardAnnotation, error) {
+func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.FingerprintFilter, error) {
 	// first use withoutNameLabel to make a copy with the name label removed
 	matchers = withoutNameLabel(matchers)
 	s, shardLabelIndex, err := astmapper.ShardFromMatchers(matchers)
@@ -79,13 +79,14 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 		return nil, nil, err
 	}
 
-	var shard *index.ShardAnnotation
+	var fpFilter index.FingerprintFilter
 	if s != nil {
 		matchers = append(matchers[:shardLabelIndex], matchers[shardLabelIndex+1:]...)
-		shard = &index.ShardAnnotation{
+		shard := index.ShardAnnotation{
 			Shard: uint32(s.Shard),
 			Of:    uint32(s.Of),
 		}
+		fpFilter = shard
 
 		if err := shard.Validate(); err != nil {
 			return nil, nil, err
@@ -97,7 +98,7 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	}
 
-	return matchers, shard, err
+	return matchers, fpFilter, err
 
 }
 

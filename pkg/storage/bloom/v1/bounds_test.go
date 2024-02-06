@@ -3,15 +3,39 @@ package v1
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 )
 
+func Test_ParseFingerprint(t *testing.T) {
+	t.Parallel()
+	fp, err := model.ParseFingerprint("7d0")
+	assert.NoError(t, err)
+	assert.Equal(t, model.Fingerprint(2000), fp)
+}
+
 func Test_FingerprintBounds_String(t *testing.T) {
-	bounds := NewBounds(1, 2)
-	assert.Equal(t, "0000000000000001-0000000000000002", bounds.String())
+	t.Parallel()
+	bounds := NewBounds(10, 2000)
+	assert.Equal(t, "000000000000000a-00000000000007d0", bounds.String())
+}
+
+func Test_ParseBoundsFromAddr(t *testing.T) {
+	t.Parallel()
+	bounds, err := ParseBoundsFromAddr("a-7d0")
+	assert.NoError(t, err)
+	assert.Equal(t, NewBounds(10, 2000), bounds)
+}
+
+func Test_ParseBoundsFromParts(t *testing.T) {
+	t.Parallel()
+	bounds, err := ParseBoundsFromParts("a", "7d0")
+	assert.NoError(t, err)
+	assert.Equal(t, NewBounds(10, 2000), bounds)
 }
 
 func Test_FingerprintBounds_Cmp(t *testing.T) {
+	t.Parallel()
 	bounds := NewBounds(10, 20)
 	assert.Equal(t, Before, bounds.Cmp(0))
 	assert.Equal(t, Overlap, bounds.Cmp(10))
@@ -21,6 +45,7 @@ func Test_FingerprintBounds_Cmp(t *testing.T) {
 }
 
 func Test_FingerprintBounds_Overlap(t *testing.T) {
+	t.Parallel()
 	bounds := NewBounds(10, 20)
 	assert.True(t, bounds.Overlaps(FingerprintBounds{Min: 5, Max: 15}))
 	assert.True(t, bounds.Overlaps(FingerprintBounds{Min: 15, Max: 25}))
@@ -31,6 +56,7 @@ func Test_FingerprintBounds_Overlap(t *testing.T) {
 }
 
 func Test_FingerprintBounds_Within(t *testing.T) {
+	t.Parallel()
 	target := NewBounds(10, 20)
 	assert.False(t, NewBounds(1, 9).Within(target))
 	assert.False(t, NewBounds(21, 30).Within(target))
@@ -42,6 +68,7 @@ func Test_FingerprintBounds_Within(t *testing.T) {
 }
 
 func Test_FingerprintBounds_Intersection(t *testing.T) {
+	t.Parallel()
 	target := NewBounds(10, 20)
 	assert.Nil(t, NewBounds(1, 9).Intersection(target))
 	assert.Nil(t, NewBounds(21, 30).Intersection(target))
@@ -53,6 +80,7 @@ func Test_FingerprintBounds_Intersection(t *testing.T) {
 }
 
 func Test_FingerprintBounds_Union(t *testing.T) {
+	t.Parallel()
 	target := NewBounds(10, 20)
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 1, Max: 9},
@@ -71,6 +99,7 @@ func Test_FingerprintBounds_Union(t *testing.T) {
 }
 
 func Test_FingerprintBounds_Xor(t *testing.T) {
+	t.Parallel()
 	target := NewBounds(10, 20)
 	assert.Equal(t, []FingerprintBounds{
 		{Min: 1, Max: 9},

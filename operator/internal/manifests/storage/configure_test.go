@@ -169,6 +169,130 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			},
 		},
 		{
+			desc: "object storage Azure with WIF",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				Azure: &AzureStorageConfig{
+					WorkloadIdentity: true,
+				},
+			},
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      saTokenVolumeName,
+											ReadOnly:  false,
+											MountPath: "/var/run/secrets/azure/serviceaccount",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAzureStorageAccountName,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageAccountName,
+												},
+											},
+										},
+										{
+											Name: EnvAzureClientID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageClientID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureTenantID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageTenantID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureSubscriptionID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageSubscriptionID,
+												},
+											},
+										},
+										{
+											Name:  EnvAzureFederatedTokenFile,
+											Value: "/var/run/secrets/azure/serviceaccount/token",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: saTokenVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										Projected: &corev1.ProjectedVolumeSource{
+											Sources: []corev1.VolumeProjection{
+												{
+													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+														Audience:          azureDefaultAudience,
+														ExpirationSeconds: ptr.To[int64](3600),
+														Path:              corev1.ServiceAccountTokenKey,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			desc: "object storage GCS",
 			opts: Options{
 				SecretName:  "test",
@@ -337,7 +461,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
+											MountPath: "/var/run/secrets/aws/serviceaccount",
 										},
 									},
 									Env: []corev1.EnvVar{
@@ -354,7 +478,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										},
 										{
 											Name:  "AWS_WEB_IDENTITY_TOKEN_FILE",
-											Value: "/var/run/secrets/kubernetes.io/serviceaccount/token",
+											Value: "/var/run/secrets/aws/serviceaccount/token",
 										},
 									},
 								},
@@ -396,8 +520,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					STS:      true,
-					Audience: "test",
+					STS: true,
 				},
 				OpenShift: OpenShiftOptions{
 					Enabled: true,
@@ -436,7 +559,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/openshift/serviceaccount",
+											MountPath: "/var/run/secrets/aws/serviceaccount",
 										},
 										{
 											Name:      "cloud-credentials",
@@ -472,7 +595,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											Sources: []corev1.VolumeProjection{
 												{
 													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-														Audience:          "openshift",
+														Audience:          awsDefaultAudience,
 														ExpirationSeconds: ptr.To[int64](3600),
 														Path:              corev1.ServiceAccountTokenKey,
 													},
@@ -966,8 +1089,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretS3,
 				S3: &S3StorageConfig{
-					STS:      true,
-					Audience: "test",
+					STS: true,
 				},
 				OpenShift: OpenShiftOptions{
 					Enabled: true,
@@ -1006,7 +1128,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 										{
 											Name:      saTokenVolumeName,
 											ReadOnly:  false,
-											MountPath: "/var/run/secrets/openshift/serviceaccount",
+											MountPath: "/var/run/secrets/aws/serviceaccount",
 										},
 										{
 											Name:      "cloud-credentials",
@@ -1042,7 +1164,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											Sources: []corev1.VolumeProjection{
 												{
 													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-														Audience:          "openshift",
+														Audience:          awsDefaultAudience,
 														ExpirationSeconds: ptr.To[int64](3600),
 														Path:              corev1.ServiceAccountTokenKey,
 													},

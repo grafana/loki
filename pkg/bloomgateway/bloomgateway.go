@@ -42,7 +42,6 @@ package bloomgateway
 import (
 	"context"
 	"fmt"
-	"io"
 	"sort"
 	"sync"
 	"time"
@@ -213,7 +212,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 
 	// TODO(chaudum): Plug in cache
 	var metasCache cache.Cache
-	var blocksCache *cache.EmbeddedCache[string, io.ReadCloser]
+	var blocksCache *cache.EmbeddedCache[string, bloomshipper.BlockDirectory]
 	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, metasCache, blocksCache, logger)
 	if err != nil {
 		return nil, err

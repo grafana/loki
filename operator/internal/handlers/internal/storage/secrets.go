@@ -28,6 +28,9 @@ var (
 	errSecretHashError       = errors.New("error calculating hash for secret")
 
 	errS3NoAuth = errors.New("missing secret fields for static or sts authentication")
+
+	errAzureNoCredentials    = errors.New("azure storage secret does contain neither account_key or client_id")
+	errAzureMixedCredentials = errors.New("azure storage secret can not contain both account_key and client_id")
 )
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
@@ -165,23 +168,56 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 	if len(container) == 0 {
 		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageContainerName)
 	}
-	name := s.Data[storage.KeyAzureStorageAccountName]
-	if len(name) == 0 {
-		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountName)
-	}
-	key := s.Data[storage.KeyAzureStorageAccountKey]
-	if len(key) == 0 {
-		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountKey)
+	workloadIdentity, err := validateAzureCredentials(s)
+	if err != nil {
+		return nil, err
 	}
 
 	// Extract and validate optional fields
 	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 
 	return &storage.AzureStorageConfig{
-		Env:            string(env),
-		Container:      string(container),
-		EndpointSuffix: string(endpointSuffix),
+		Env:              string(env),
+		Container:        string(container),
+		EndpointSuffix:   string(endpointSuffix),
+		WorkloadIdentity: workloadIdentity,
 	}, nil
+}
+
+func validateAzureCredentials(s *corev1.Secret) (workloadIdentity bool, err error) {
+	accountName := s.Data[storage.KeyAzureStorageAccountName]
+	accountKey := s.Data[storage.KeyAzureStorageAccountKey]
+	clientID := s.Data[storage.KeyAzureStorageClientID]
+	tenantID := s.Data[storage.KeyAzureStorageTenantID]
+	subscriptionID := s.Data[storage.KeyAzureStorageSubscriptionID]
+
+	if len(accountName) == 0 {
+		return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountName)
+	}
+
+	if len(accountKey) == 0 && len(clientID) == 0 {
+		return false, errAzureNoCredentials
+	}
+
+	if len(accountKey) > 0 && len(clientID) > 0 {
+		return false, errAzureMixedCredentials
+	}
+
+	if len(accountKey) > 0 {
+		// have both account_name and account_key -> no workload identity federation
+		return false, nil
+	}
+
+	// assume workload-identity from here on
+	if len(tenantID) == 0 {
+		return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageTenantID)
+	}
+
+	if len(subscriptionID) == 0 {
+		return false, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageSubscriptionID)
+	}
+
+	return true, nil
 }
 
 func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error) {
@@ -240,13 +276,10 @@ func extractS3ConfigSecret(s *corev1.Secret, fg configv1.FeatureGates) (*storage
 	switch {
 	case fg.OpenShift.ManagedAuthEnabled():
 		cfg.STS = true
-		cfg.Audience = storage.AWSOpenShiftAudience
+		cfg.Audience = string(audience)
 		// Do not allow users overriding the role arn provided on Loki Operator installation
 		if len(roleArn) != 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSRoleArn)
-		}
-		if len(audience) != 0 {
-			return nil, fmt.Errorf("%w: %s", errSecretFieldNotAllowed, storage.KeyAWSAudience)
 		}
 		// In the STS case region is not an optional field
 		if len(region) == 0 {

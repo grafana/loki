@@ -101,7 +101,7 @@ func TestAzureExtract(t *testing.T) {
 			wantError: "missing secret field: account_name",
 		},
 		{
-			name: "missing account_key",
+			name: "no account_key or client_id",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -110,10 +110,51 @@ func TestAzureExtract(t *testing.T) {
 					"account_name": []byte("id"),
 				},
 			},
-			wantError: "missing secret field: account_key",
+			wantError: errAzureNoCredentials.Error(),
 		},
 		{
-			name: "all mandatory set",
+			name: "both account_key and client_id set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"account_key":  []byte("test-account-key"),
+					"client_id":    []byte("test-client-id"),
+				},
+			},
+			wantError: errAzureMixedCredentials.Error(),
+		},
+		{
+			name: "missing tenant_id",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"client_id":    []byte("test-client-id"),
+				},
+			},
+			wantError: "missing secret field: tenant_id",
+		},
+		{
+			name: "missing subscription_id",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"client_id":    []byte("test-client-id"),
+					"tenant_id":    []byte("test-tenant-id"),
+				},
+			},
+			wantError: "missing secret field: subscription_id",
+		},
+		{
+			name: "mandatory for normal authentication set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -121,6 +162,21 @@ func TestAzureExtract(t *testing.T) {
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
 					"account_key":  []byte("secret"),
+				},
+			},
+		},
+		{
+			name: "mandatory for workload-identity set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":     []byte("here"),
+					"container":       []byte("this,that"),
+					"account_name":    []byte("test-account-name"),
+					"client_id":       []byte("test-client-id"),
+					"tenant_id":       []byte("test-tenant-id"),
+					"subscription_id": []byte("test-subscription-id"),
+					"region":          []byte("test-region"),
 				},
 			},
 		},
@@ -422,18 +478,6 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 			wantError:         "secret field not allowed: role_arn",
 		},
 		{
-			name: "override audience not allowed",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
-				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
-					"audience":    []byte("test-audience"),
-				},
-			},
-			managedAuthSecret: &corev1.Secret{},
-			wantError:         "secret field not allowed: audience",
-		},
-		{
 			name: "STS all set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
@@ -459,7 +503,6 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
 				require.True(t, opts.S3.STS)
-				require.Equal(t, opts.S3.Audience, "openshift")
 				require.Equal(t, opts.OpenShift.CloudCredentials.SecretName, tst.managedAuthSecret.Name)
 				require.NotEmpty(t, opts.OpenShift.CloudCredentials.SHA1)
 			} else {
