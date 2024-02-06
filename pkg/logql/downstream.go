@@ -152,9 +152,9 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 		return c.DownstreamSampleExpr.String()
 	}
 	if maxDepth <= 1 {
-		return fmt.Sprintf("concat(%s ++ ...)", c.DownstreamSampleExpr.String())
+		return fmt.Sprintf("%s ++ ...", c.DownstreamSampleExpr.String())
 	}
-	return fmt.Sprintf("concat(%s ++ %s)", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
+	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
 }
 
 func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
