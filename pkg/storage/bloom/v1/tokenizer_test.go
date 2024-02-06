@@ -9,6 +9,7 @@ import (
 const BigFile = "../../../logql/sketch/testdata/war_peace.txt"
 
 func TestNGramIterator(t *testing.T) {
+	t.Parallel()
 	var (
 		three      = NewNGramTokenizer(3, 0)
 		threeSkip1 = NewNGramTokenizer(3, 1)
@@ -72,6 +73,7 @@ func TestNGramIterator(t *testing.T) {
 }
 
 func TestPrefixedIterator(t *testing.T) {
+	t.Parallel()
 	var (
 		three = NewNGramTokenizer(3, 0)
 	)
