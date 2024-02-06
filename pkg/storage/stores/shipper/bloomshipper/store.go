@@ -18,11 +18,16 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 )
 
+var (
+	errNoStore = errors.New("no store found for time")
+)
+
 type Store interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
 	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
-	Fetcher(ts model.Time) *Fetcher
+	Fetcher(ts model.Time) (*Fetcher, error)
+	Client(ts model.Time) (Client, error)
 	Stop()
 }
 
@@ -112,8 +117,13 @@ func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]B
 }
 
 // Fetcher implements Store.
-func (b *bloomStoreEntry) Fetcher(_ model.Time) *Fetcher {
-	return b.fetcher
+func (b *bloomStoreEntry) Fetcher(_ model.Time) (*Fetcher, error) {
+	return b.fetcher, nil
+}
+
+// Client implements Store.
+func (b *bloomStoreEntry) Client(_ model.Time) (Client, error) {
+	return b.bloomClient, nil
 }
 
 // Stop implements Store.
@@ -219,11 +229,19 @@ func (b *BloomStore) Block(ref BlockRef) (loc Location) {
 }
 
 // Fetcher implements Store.
-func (b *BloomStore) Fetcher(ts model.Time) *Fetcher {
+func (b *BloomStore) Fetcher(ts model.Time) (*Fetcher, error) {
 	if store := b.getStore(ts); store != nil {
 		return store.Fetcher(ts)
 	}
-	return nil
+	return nil, errNoStore
+}
+
+// Client implements Store.
+func (b *BloomStore) Client(ts model.Time) (Client, error) {
+	if store := b.getStore(ts); store != nil {
+		return store.Client(ts)
+	}
+	return nil, errNoStore
 }
 
 // ResolveMetas implements Store.
@@ -294,7 +312,7 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]Bloc
 
 		if len(res) > 0 {
 			refs = append(refs, res)
-			fetchers = append(fetchers, s.Fetcher(s.start))
+			fetchers = append(fetchers, s.fetcher)
 		}
 	}
 
@@ -341,6 +359,7 @@ func (b *BloomStore) getStore(ts model.Time) *bloomStoreEntry {
 		return b.stores[j]
 	}
 
+	// should in theory never happen
 	return nil
 }
 
