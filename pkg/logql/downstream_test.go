@@ -8,12 +8,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/querier/astmapper"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -541,5 +543,102 @@ func relativeError(t *testing.T, expected, actual promql.Matrix, alpha float64) 
 			a[j] = actualSeries.Floats[j].F
 		}
 		require.InEpsilonSlice(t, e, a, alpha)
+	}
+}
+
+func TestFormat_ShardedExpr(t *testing.T) {
+	oldMax := syntax.MaxCharsPerLine
+	syntax.MaxCharsPerLine = 20
+
+	oldDefaultDepth := defaultMaxDepth
+	defaultMaxDepth = 2
+	defer func() {
+		syntax.MaxCharsPerLine = oldMax
+		defaultMaxDepth = oldDefaultDepth
+	}()
+
+	cases := []struct {
+		name string
+		in   syntax.Expr
+		exp  string
+	}{
+		{
+			name: "ConcatSampleExpr",
+			in: &ConcatSampleExpr{
+				DownstreamSampleExpr: DownstreamSampleExpr{
+					shard: &astmapper.ShardAnnotation{
+						Shard: 0,
+						Of:    3,
+					},
+					SampleExpr: &syntax.RangeAggregationExpr{
+						Operation: syntax.OpRangeTypeRate,
+						Left: &syntax.LogRange{
+							Left: &syntax.MatchersExpr{
+								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+							},
+							Interval: time.Minute,
+						},
+					},
+				},
+				next: &ConcatSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
+						shard: &astmapper.ShardAnnotation{
+							Shard: 1,
+							Of:    3,
+						},
+						SampleExpr: &syntax.RangeAggregationExpr{
+							Operation: syntax.OpRangeTypeRate,
+							Left: &syntax.LogRange{
+								Left: &syntax.MatchersExpr{
+									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+								},
+								Interval: time.Minute,
+							},
+						},
+					},
+					next: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 1,
+								Of:    3,
+							},
+							SampleExpr: &syntax.RangeAggregationExpr{
+								Operation: syntax.OpRangeTypeRate,
+								Left: &syntax.LogRange{
+									Left: &syntax.MatchersExpr{
+										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+									},
+									Interval: time.Minute,
+								},
+							},
+						},
+						next: nil,
+					},
+				},
+			},
+			exp: `concat(
+  downstream<
+    rate(
+      {foo="bar"} [1m]
+    ),
+    shard=0_of_3
+  >
+  ++
+  downstream<
+    rate(
+      {foo="bar"} [1m]
+    ),
+    shard=1_of_3
+  >
+  ++ ...
+)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := syntax.Prettify(c.in)
+			assert.Equal(t, c.exp, got)
+		})
 	}
 }
