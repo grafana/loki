@@ -42,8 +42,12 @@ func (s *dummyStore) FetchBlocks(_ context.Context, _ []bloomshipper.BlockRef) (
 	panic("don't call me")
 }
 
-func (s *dummyStore) Fetcher(_ model.Time) *bloomshipper.Fetcher {
-	return nil
+func (s *dummyStore) Fetcher(_ model.Time) (*bloomshipper.Fetcher, error) {
+	return nil, nil
+}
+
+func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
+	return nil, nil
 }
 
 func (s *dummyStore) Stop() {
