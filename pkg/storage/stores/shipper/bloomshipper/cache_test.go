@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -91,7 +92,11 @@ func TestBlockDirectory_Cleanup(t *testing.T) {
 			// acquire directory
 			blockDir.refCount.Inc()
 			// start cleanup goroutine
-			blockDir.removeDirectoryAsync()
+			e := &cache.Entry[string, BlockDirectory]{
+				Key:   blockDir.Path,
+				Value: blockDir,
+			}
+			go removeBlockDirectory(e)
 
 			if tc.releaseQuerier {
 				// release directory
