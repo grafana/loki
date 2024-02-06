@@ -61,7 +61,7 @@ func (s *Shipper) ForEach(ctx context.Context, _ string, refs []BlockRef, callba
 	}
 
 	if len(bqs) != len(refs) {
-		return fmt.Errorf("number of respones (%d) does not match number of requests (%d)", len(bqs), len(refs))
+		return fmt.Errorf("number of response (%d) does not match number of requests (%d)", len(bqs), len(refs))
 	}
 
 	for i := range bqs {
