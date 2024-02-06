@@ -1222,6 +1222,398 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 			},
 		},
 		{
+			desc: "object storage Azure with WIF",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				Azure: &AzureStorageConfig{
+					WorkloadIdentity: true,
+				},
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      saTokenVolumeName,
+											ReadOnly:  false,
+											MountPath: "/var/run/secrets/azure/serviceaccount",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAzureStorageAccountName,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageAccountName,
+												},
+											},
+										},
+										{
+											Name: EnvAzureClientID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageClientID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureTenantID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageTenantID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureSubscriptionID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageSubscriptionID,
+												},
+											},
+										},
+										{
+											Name:  EnvAzureFederatedTokenFile,
+											Value: "/var/run/secrets/azure/serviceaccount/token",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: saTokenVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										Projected: &corev1.ProjectedVolumeSource{
+											Sources: []corev1.VolumeProjection{
+												{
+													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+														Audience:          azureDefaultAudience,
+														ExpirationSeconds: ptr.To[int64](3600),
+														Path:              corev1.ServiceAccountTokenKey,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "object storage Azure with WIF and custom audience",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				Azure: &AzureStorageConfig{
+					WorkloadIdentity: true,
+					Audience:         "custom-audience",
+				},
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      saTokenVolumeName,
+											ReadOnly:  false,
+											MountPath: "/var/run/secrets/azure/serviceaccount",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAzureStorageAccountName,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageAccountName,
+												},
+											},
+										},
+										{
+											Name: EnvAzureClientID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageClientID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureTenantID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageTenantID,
+												},
+											},
+										},
+										{
+											Name: EnvAzureSubscriptionID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageSubscriptionID,
+												},
+											},
+										},
+										{
+											Name:  EnvAzureFederatedTokenFile,
+											Value: "/var/run/secrets/azure/serviceaccount/token",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: saTokenVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										Projected: &corev1.ProjectedVolumeSource{
+											Sources: []corev1.VolumeProjection{
+												{
+													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+														Audience:          "custom-audience",
+														ExpirationSeconds: ptr.To[int64](3600),
+														Path:              corev1.ServiceAccountTokenKey,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "object storage Azure with WIF and OpenShift Managed Credentials",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				Azure: &AzureStorageConfig{
+					WorkloadIdentity: true,
+				},
+				OpenShift: OpenShiftOptions{
+					Enabled: true,
+					CloudCredentials: CloudCredentials{
+						SecretName: "cloud-credentials",
+						SHA1:       "deadbeef",
+					},
+				},
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      saTokenVolumeName,
+											ReadOnly:  false,
+											MountPath: "/var/run/secrets/azure/serviceaccount",
+										},
+										{
+											Name:      "cloud-credentials",
+											MountPath: managedAuthSecretDirectory,
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAzureStorageAccountName,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAzureStorageAccountName,
+												},
+											},
+										},
+										{
+											Name: EnvAzureClientID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "cloud-credentials",
+													},
+													Key: "azure_client_id",
+												},
+											},
+										},
+										{
+											Name: EnvAzureTenantID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "cloud-credentials",
+													},
+													Key: "azure_tenant_id",
+												},
+											},
+										},
+										{
+											Name: EnvAzureSubscriptionID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "cloud-credentials",
+													},
+													Key: "azure_subscription_id",
+												},
+											},
+										},
+										{
+											Name:  EnvAzureFederatedTokenFile,
+											Value: "/var/run/secrets/azure/serviceaccount/token",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: saTokenVolumeName,
+									VolumeSource: corev1.VolumeSource{
+										Projected: &corev1.ProjectedVolumeSource{
+											Sources: []corev1.VolumeProjection{
+												{
+													ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+														Audience:          azureDefaultAudience,
+														ExpirationSeconds: ptr.To[int64](3600),
+														Path:              corev1.ServiceAccountTokenKey,
+													},
+												},
+											},
+										},
+									},
+								},
+								{
+									Name: "cloud-credentials",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "cloud-credentials",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			desc: "object storage GCS",
 			opts: Options{
 				SecretName:  "test",
