@@ -488,7 +488,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "cloud-credentials",
 													},
-													Key: "azure_client_id",
+													Key: azureManagedCredentialKeyClientID,
 												},
 											},
 										},
@@ -499,7 +499,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "cloud-credentials",
 													},
-													Key: "azure_tenant_id",
+													Key: azureManagedCredentialKeyTenantID,
 												},
 											},
 										},
@@ -510,7 +510,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "cloud-credentials",
 													},
-													Key: "azure_subscription_id",
+													Key: azureManagedCredentialKeySubscriptionID,
 												},
 											},
 										},
@@ -1541,7 +1541,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "cloud-credentials",
 													},
-													Key: "azure_client_id",
+													Key: azureManagedCredentialKeyClientID,
 												},
 											},
 										},
@@ -1552,7 +1552,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "cloud-credentials",
 													},
-													Key: "azure_tenant_id",
+													Key: azureManagedCredentialKeyTenantID,
 												},
 											},
 										},
@@ -1563,7 +1563,7 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "cloud-credentials",
 													},
-													Key: "azure_subscription_id",
+													Key: azureManagedCredentialKeySubscriptionID,
 												},
 											},
 										},

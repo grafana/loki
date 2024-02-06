@@ -140,5 +140,9 @@ const (
 	azureDefaultAudience      = "api://AzureADTokenExchange"
 	azureTokenVolumeDirectory = "/var/run/secrets/azure/serviceaccount"
 
+	azureManagedCredentialKeyClientID       = "azure_client_id"
+	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
+	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
+
 	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )

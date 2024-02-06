@@ -196,9 +196,9 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 		if opts.OpenShift.ManagedAuthEnabled() {
 			return []corev1.EnvVar{
 				envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
-				envVarFromSecret(EnvAzureClientID, opts.OpenShift.CloudCredentials.SecretName, "azure_client_id"),
-				envVarFromSecret(EnvAzureTenantID, opts.OpenShift.CloudCredentials.SecretName, "azure_tenant_id"),
-				envVarFromSecret(EnvAzureSubscriptionID, opts.OpenShift.CloudCredentials.SecretName, "azure_subscription_id"),
+				envVarFromSecret(EnvAzureClientID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyClientID),
+				envVarFromSecret(EnvAzureTenantID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyTenantID),
+				envVarFromSecret(EnvAzureSubscriptionID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeySubscriptionID),
 				envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
 			}
 		}
