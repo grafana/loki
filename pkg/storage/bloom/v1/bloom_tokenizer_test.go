@@ -33,6 +33,7 @@ var (
 )
 
 func TestPrefixedKeyCreation(t *testing.T) {
+	t.Parallel()
 	var ones uint64 = 0xffffffffffffffff
 
 	ref := ChunkRef{
@@ -76,6 +77,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 }
 
 func TestSetLineTokenizer(t *testing.T) {
+	t.Parallel()
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	// Validate defaults
@@ -89,6 +91,7 @@ func TestSetLineTokenizer(t *testing.T) {
 }
 
 func TestTokenizerPopulate(t *testing.T) {
+	t.Parallel()
 	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
