@@ -1,7 +1,6 @@
 package openshift
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -80,7 +79,7 @@ func TestBuildCredentialsRequest_CloudTokenPath_MatchinOpenShiftSADirectory(t *t
 
 	credReq, err := BuildCredentialsRequest(opts)
 	require.NoError(t, err)
-	require.True(t, strings.HasPrefix(credReq.Spec.CloudTokenPath, storage.AWSTokenVolumeDirectory))
+	require.Equal(t, storage.ServiceAccountTokenFilePath, credReq.Spec.CloudTokenPath)
 }
 
 func TestBuildCredentialsRequest_FollowsNamingConventions(t *testing.T) {

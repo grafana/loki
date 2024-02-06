@@ -282,8 +282,8 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPWorkloadIdentityProviderAudience)
 		}
 
-		if credentialsFile.CredentialsSource.File != storage.GCPDefautCredentialsFile {
-			return nil, fmt.Errorf("%w: %s", errGCPWrongCredentialSourceFile, storage.GCPDefautCredentialsFile)
+		if credentialsFile.CredentialsSource.File != storage.ServiceAccountTokenFilePath {
+			return nil, fmt.Errorf("%w: %s", errGCPWrongCredentialSourceFile, storage.ServiceAccountTokenFilePath)
 		}
 	}
 

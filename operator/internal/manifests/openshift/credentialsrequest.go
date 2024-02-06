@@ -2,8 +2,6 @@ package openshift
 
 import (
 	"fmt"
-	"path"
-
 	"github.com/ViaQ/logerr/v2/kverrors"
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -45,7 +43,7 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 				stack.Name,
 				rulerServiceAccountName(opts),
 			},
-			CloudTokenPath: path.Join(storage.AWSTokenVolumeDirectory, "token"),
+			CloudTokenPath: storage.ServiceAccountTokenFilePath,
 		},
 	}, nil
 }

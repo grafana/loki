@@ -127,8 +127,11 @@ const (
 	// KeySwiftUsername is the secret data key for the OpenStack Swift password.
 	KeySwiftUsername = "username"
 
-	saTokenVolumeName       = "bound-sa-token"
-	saTokenExpiration int64 = 3600
+	saTokenVolumeName            = "bound-sa-token"
+	saTokenExpiration      int64 = 3600
+	saTokenVolumeMountPath       = "/var/run/secrets/storage/serviceaccount"
+
+	ServiceAccountTokenFilePath = saTokenVolumeMountPath + "/token"
 
 	secretDirectory  = "/etc/storage/secrets"
 	storageTLSVolume = "storage-tls"
@@ -137,18 +140,13 @@ const (
 	managedAuthConfigVolumeName = "managed-auth-config"
 	managedAuthConfigDirectory  = "/etc/storage/managed-auth"
 
-	awsDefaultAudience      = "sts.amazonaws.com"
-	AWSTokenVolumeDirectory = "/var/run/secrets/aws/serviceaccount"
+	awsDefaultAudience = "sts.amazonaws.com"
 
-	azureDefaultAudience      = "api://AzureADTokenExchange"
-	azureTokenVolumeDirectory = "/var/run/secrets/azure/serviceaccount"
+	azureDefaultAudience = "api://AzureADTokenExchange"
 
 	azureManagedCredentialKeyClientID       = "azure_client_id"
 	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
 	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
-
-	gcpTokenVolumeDirectory  = "/var/run/secrets/gcp/serviceaccount"
-	GCPDefautCredentialsFile = gcpTokenVolumeDirectory + "/token"
 
 	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )

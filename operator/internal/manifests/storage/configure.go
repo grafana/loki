@@ -13,10 +13,17 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-var managedAuthConfigVolumeMount = corev1.VolumeMount{
-	Name:      managedAuthConfigVolumeName,
-	MountPath: managedAuthConfigDirectory,
-}
+var (
+	managedAuthConfigVolumeMount = corev1.VolumeMount{
+		Name:      managedAuthConfigVolumeName,
+		MountPath: managedAuthConfigDirectory,
+	}
+
+	saTokenVolumeMount = corev1.VolumeMount{
+		Name:      saTokenVolumeName,
+		MountPath: saTokenVolumeMountPath,
+	}
+)
 
 // ConfigureDeployment appends additional pod volumes and container env vars, args, volume mounts
 // based on the object storage type. Currently supported amendments:
@@ -132,7 +139,7 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 	if managedAuthEnabled(opts) {
 		container.Env = append(container.Env, managedAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
-		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
+		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount)
 
 		if opts.OpenShift.ManagedAuthEnabled() && opts.S3 != nil && opts.S3.STS {
 			volumes = append(volumes, managedAuthConfigVolume(opts))
@@ -194,7 +201,7 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 		} else {
 			return []corev1.EnvVar{
 				envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
-				envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(AWSTokenVolumeDirectory, "token")),
+				envVarFromValue(EnvAWSWebIdentityTokenFile, ServiceAccountTokenFilePath),
 			}
 		}
 	case lokiv1.ObjectStorageSecretAzure:
@@ -204,7 +211,7 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 				envVarFromSecret(EnvAzureClientID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyClientID),
 				envVarFromSecret(EnvAzureTenantID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyTenantID),
 				envVarFromSecret(EnvAzureSubscriptionID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeySubscriptionID),
-				envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
+				envVarFromValue(EnvAzureFederatedTokenFile, ServiceAccountTokenFilePath),
 			}
 		}
 
@@ -213,7 +220,7 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 			envVarFromSecret(EnvAzureClientID, opts.SecretName, KeyAzureStorageClientID),
 			envVarFromSecret(EnvAzureTenantID, opts.SecretName, KeyAzureStorageTenantID),
 			envVarFromSecret(EnvAzureSubscriptionID, opts.SecretName, KeyAzureStorageSubscriptionID),
-			envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
+			envVarFromValue(EnvAzureFederatedTokenFile, ServiceAccountTokenFilePath),
 		}
 	case lokiv1.ObjectStorageSecretGCS:
 		return []corev1.EnvVar{
@@ -303,22 +310,6 @@ func managedAuthEnabled(opts Options) bool {
 		return opts.GCS != nil && opts.GCS.WorkloadIdentity
 	default:
 		return false
-	}
-}
-
-func saTokenVolumeMount(opts Options) corev1.VolumeMount {
-	var tokenPath string
-	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretS3:
-		tokenPath = AWSTokenVolumeDirectory
-	case lokiv1.ObjectStorageSecretAzure:
-		tokenPath = azureTokenVolumeDirectory
-	case lokiv1.ObjectStorageSecretGCS:
-		tokenPath = gcpTokenVolumeDirectory
-	}
-	return corev1.VolumeMount{
-		Name:      saTokenVolumeName,
-		MountPath: tokenPath,
 	}
 }
 

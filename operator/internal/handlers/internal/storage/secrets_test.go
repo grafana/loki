@@ -332,10 +332,10 @@ func TestGCSExtract(t *testing.T) {
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
 					"audience":   []byte("test"),
-					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/custom/path/to/secret/gcp/serviceaccount/token\"}}"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/custom/path/to/secret/storage/serviceaccount/token\"}}"),
 				},
 			},
-			wantError: "credential source in secret needs to point to token file: /var/run/secrets/gcp/serviceaccount/token",
+			wantError: "credential source in secret needs to point to token file: /var/run/secrets/storage/serviceaccount/token",
 		},
 		{
 			name: "all set",
@@ -354,7 +354,7 @@ func TestGCSExtract(t *testing.T) {
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
 					"audience":   []byte("test"),
-					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/var/run/secrets/gcp/serviceaccount/token\"}}"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/var/run/secrets/storage/serviceaccount/token\"}}"),
 				},
 			},
 		},
