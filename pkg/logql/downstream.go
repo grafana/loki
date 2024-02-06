@@ -183,7 +183,7 @@ func (c *ConcatSampleExpr) Pretty(level int) string {
 	if head != nil {
 		s += syntax.Indent(level+1) + "++ ...\n"
 	}
-	s += ")"
+	s += syntax.Indent(level) + ")"
 
 	return s
 }
