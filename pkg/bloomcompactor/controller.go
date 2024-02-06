@@ -195,12 +195,8 @@ func (s *SimpleBloomController) loadWorkForGap(ctx context.Context, id tsdb.Iden
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get blocks")
 	}
-	results := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blocks))
-	for _, block := range blocks {
-		results = append(results, block.BlockQuerier())
-	}
 
-	return seriesItr, results, nil
+	return seriesItr, blocks, nil
 }
 
 type gapWithBlocks struct {
