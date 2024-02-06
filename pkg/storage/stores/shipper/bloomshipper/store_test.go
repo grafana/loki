@@ -248,19 +248,19 @@ func TestBloomStore_FetchBlocks(t *testing.T) {
 	ctx := context.Background()
 
 	// first call fetches two blocks from cache
-	blockDirs, err := store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b3.BlockRef})
+	bqs, err := store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b3.BlockRef})
 	require.NoError(t, err)
-	require.Len(t, blockDirs, 2)
+	require.Len(t, bqs, 2)
 
-	require.ElementsMatch(t, []BlockRef{b1.BlockRef, b3.BlockRef}, []BlockRef{blockDirs[0].BlockRef, blockDirs[1].BlockRef})
+	require.Equal(t, []BlockRef{b1.BlockRef, b3.BlockRef}, []BlockRef{bqs[0].BlockRef, bqs[1].BlockRef})
 
 	// second call fetches two blocks from cache and two from storage
-	blockDirs, err = store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef})
+	bqs, err = store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef})
 	require.NoError(t, err)
-	require.Len(t, blockDirs, 4)
+	require.Len(t, bqs, 4)
 
 	require.Equal(t,
 		[]BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef},
-		[]BlockRef{blockDirs[0].BlockRef, blockDirs[1].BlockRef, blockDirs[2].BlockRef, blockDirs[3].BlockRef},
+		[]BlockRef{bqs[0].BlockRef, bqs[1].BlockRef, bqs[2].BlockRef, bqs[3].BlockRef},
 	)
 }

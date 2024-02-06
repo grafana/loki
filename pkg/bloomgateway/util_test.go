@@ -295,10 +295,10 @@ func TestPartitionRequest(t *testing.T) {
 
 }
 
-func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockQuerierWithFingerprintRange, [][]v1.SeriesWithBloom) {
+func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]*bloomshipper.CloseableBlockQuerier, [][]v1.SeriesWithBloom) {
 	t.Helper()
 	step := (maxFp - minFp) / model.Fingerprint(numBlocks)
-	bqs := make([]bloomshipper.BlockQuerierWithFingerprintRange, 0, numBlocks)
+	bqs := make([]*bloomshipper.CloseableBlockQuerier, 0, numBlocks)
 	series := make([][]v1.SeriesWithBloom, 0, numBlocks)
 	for i := 0; i < numBlocks; i++ {
 		fromFp := minFp + (step * model.Fingerprint(i))
@@ -308,9 +308,15 @@ func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, 
 			throughFp = maxFp
 		}
 		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
-		bq := bloomshipper.BlockQuerierWithFingerprintRange{
-			BlockQuerier:      blockQuerier,
-			FingerprintBounds: v1.NewBounds(fromFp, throughFp),
+		bq := &bloomshipper.CloseableBlockQuerier{
+			BlockQuerier: blockQuerier,
+			BlockRef: bloomshipper.BlockRef{
+				Ref: bloomshipper.Ref{
+					Bounds:         v1.NewBounds(fromFp, throughFp),
+					StartTimestamp: from,
+					EndTimestamp:   through,
+				},
+			},
 		}
 		bqs = append(bqs, bq)
 		series = append(series, data)
@@ -318,12 +324,12 @@ func createBlockQueriers(t *testing.T, numBlocks int, from, through model.Time, 
 	return bqs, series
 }
 
-func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []bloomshipper.BlockQuerierWithFingerprintRange, [][]v1.SeriesWithBloom) {
+func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, minFp, maxFp model.Fingerprint) ([]bloomshipper.BlockRef, []bloomshipper.Meta, []*bloomshipper.CloseableBlockQuerier, [][]v1.SeriesWithBloom) {
 	t.Helper()
 
 	blocks := make([]bloomshipper.BlockRef, 0, n)
 	metas := make([]bloomshipper.Meta, 0, n)
-	queriers := make([]bloomshipper.BlockQuerierWithFingerprintRange, 0, n)
+	queriers := make([]*bloomshipper.CloseableBlockQuerier, 0, n)
 	series := make([][]v1.SeriesWithBloom, 0, n)
 
 	step := (maxFp - minFp) / model.Fingerprint(n)
@@ -352,9 +358,9 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 			Blocks:     []bloomshipper.BlockRef{block},
 		}
 		blockQuerier, data := v1.MakeBlockQuerier(t, fromFp, throughFp, from, through)
-		querier := bloomshipper.BlockQuerierWithFingerprintRange{
-			BlockQuerier:      blockQuerier,
-			FingerprintBounds: v1.NewBounds(fromFp, throughFp),
+		querier := &bloomshipper.CloseableBlockQuerier{
+			BlockQuerier: blockQuerier,
+			BlockRef:     block,
 		}
 		queriers = append(queriers, querier)
 		metas = append(metas, meta)
@@ -364,12 +370,12 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 	return blocks, metas, queriers, series
 }
 
-func newMockBloomStore(bqs []bloomshipper.BlockQuerierWithFingerprintRange) *mockBloomStore {
+func newMockBloomStore(bqs []*bloomshipper.CloseableBlockQuerier) *mockBloomStore {
 	return &mockBloomStore{bqs: bqs}
 }
 
 type mockBloomStore struct {
-	bqs []bloomshipper.BlockQuerierWithFingerprintRange
+	bqs []*bloomshipper.CloseableBlockQuerier
 	// mock how long it takes to serve block queriers
 	delay time.Duration
 	// mock response error when serving block queriers in ForEach
@@ -379,16 +385,11 @@ type mockBloomStore struct {
 var _ bloomshipper.Interface = &mockBloomStore{}
 
 // GetBlockRefs implements bloomshipper.Interface
-func (s *mockBloomStore) GetBlockRefs(_ context.Context, tenant string, _ bloomshipper.Interval) ([]bloomshipper.BlockRef, error) {
+func (s *mockBloomStore) GetBlockRefs(_ context.Context, _ string, _ bloomshipper.Interval) ([]bloomshipper.BlockRef, error) {
 	time.Sleep(s.delay)
 	blocks := make([]bloomshipper.BlockRef, 0, len(s.bqs))
 	for i := range s.bqs {
-		blocks = append(blocks, bloomshipper.BlockRef{
-			Ref: bloomshipper.Ref{
-				Bounds:   v1.NewBounds(s.bqs[i].Min, s.bqs[i].Max),
-				TenantID: tenant,
-			},
-		})
+		blocks = append(blocks, s.bqs[i].BlockRef)
 	}
 	return blocks, nil
 }
@@ -403,7 +404,7 @@ func (s *mockBloomStore) ForEach(_ context.Context, _ string, _ []bloomshipper.B
 		return s.err
 	}
 
-	shuffled := make([]bloomshipper.BlockQuerierWithFingerprintRange, len(s.bqs))
+	shuffled := make([]*bloomshipper.CloseableBlockQuerier, len(s.bqs))
 	_ = copy(shuffled, s.bqs)
 
 	rand.Shuffle(len(shuffled), func(i, j int) {
@@ -413,7 +414,7 @@ func (s *mockBloomStore) ForEach(_ context.Context, _ string, _ []bloomshipper.B
 	for _, bq := range shuffled {
 		// ignore errors in the mock
 		time.Sleep(s.delay)
-		err := callback(bq.BlockQuerier, bq.FingerprintBounds)
+		err := callback(bq.BlockQuerier, bq.Bounds)
 		if err != nil {
 			return err
 		}
@@ -443,7 +444,7 @@ func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.Seri
 	return res
 }
 
-func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipper.BlockQuerierWithFingerprintRange) []bloomshipper.BlockRef {
+func createBlockRefsFromBlockData(t *testing.T, tenant string, data []*bloomshipper.CloseableBlockQuerier) []bloomshipper.BlockRef {
 	t.Helper()
 	res := make([]bloomshipper.BlockRef, 0)
 	for i := range data {
@@ -451,7 +452,7 @@ func createBlockRefsFromBlockData(t *testing.T, tenant string, data []bloomshipp
 			Ref: bloomshipper.Ref{
 				TenantID:       tenant,
 				TableName:      "",
-				Bounds:         v1.NewBounds(data[i].Min, data[i].Max),
+				Bounds:         v1.NewBounds(data[i].Bounds.Min, data[i].Bounds.Max),
 				StartTimestamp: 0,
 				EndTimestamp:   0,
 				Checksum:       0,
