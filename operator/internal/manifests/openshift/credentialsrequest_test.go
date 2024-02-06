@@ -45,7 +45,7 @@ func TestBuildCredentialsRequest_HasSecretRef_MatchingLokiStackNamespace(t *test
 	require.Equal(t, opts.BuildOpts.LokiStackNamespace, credReq.Spec.SecretRef.Namespace)
 }
 
-func TestBuildCredentialsRequest_HasServiceAccountNames_ContainsLokiStackName(t *testing.T) {
+func TestBuildCredentialsRequest_HasServiceAccountNames_ContainsAllLokiStackServiceAccounts(t *testing.T) {
 	opts := Options{
 		BuildOpts: BuildOptions{
 			LokiStackName:      "a-stack",
@@ -61,6 +61,7 @@ func TestBuildCredentialsRequest_HasServiceAccountNames_ContainsLokiStackName(t 
 	credReq, err := BuildCredentialsRequest(opts)
 	require.NoError(t, err)
 	require.Contains(t, credReq.Spec.ServiceAccountNames, opts.BuildOpts.LokiStackName)
+	require.Contains(t, credReq.Spec.ServiceAccountNames, rulerServiceAccountName(opts))
 }
 
 func TestBuildCredentialsRequest_CloudTokenPath_MatchinOpenShiftSADirectory(t *testing.T) {
@@ -78,7 +79,7 @@ func TestBuildCredentialsRequest_CloudTokenPath_MatchinOpenShiftSADirectory(t *t
 
 	credReq, err := BuildCredentialsRequest(opts)
 	require.NoError(t, err)
-	require.True(t, strings.HasPrefix(credReq.Spec.CloudTokenPath, storage.SATokenVolumeOcpDirectory))
+	require.True(t, strings.HasPrefix(credReq.Spec.CloudTokenPath, storage.AWSTokenVolumeDirectory))
 }
 
 func TestBuildCredentialsRequest_FollowsNamingConventions(t *testing.T) {

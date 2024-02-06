@@ -38,6 +38,10 @@ func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchPara
 	return s.metas, nil
 }
 
+func (s *dummyStore) FetchBlocks(_ context.Context, _ []bloomshipper.BlockRef) ([]bloomshipper.BlockDirectory, error) {
+	panic("don't call me")
+}
+
 func (s *dummyStore) Fetcher(_ model.Time) *bloomshipper.Fetcher {
 	return nil
 }

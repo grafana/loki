@@ -125,7 +125,6 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 	})
 
 	if managedAuthEnabled(opts) {
-		setSATokenPath(&opts)
 		container.Env = append(container.Env, managedAuthCredentials(opts)...)
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount(opts))
@@ -190,7 +189,7 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 		} else {
 			return []corev1.EnvVar{
 				envVarFromSecret(EnvAWSRoleArn, opts.SecretName, KeyAWSRoleArn),
-				envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(opts.S3.WebIdentityTokenFile, "token")),
+				envVarFromValue(EnvAWSWebIdentityTokenFile, path.Join(AWSTokenVolumeDirectory, "token")),
 			}
 		}
 	case lokiv1.ObjectStorageSecretAzure:
@@ -286,21 +285,11 @@ func managedAuthEnabled(opts Options) bool {
 	}
 }
 
-func setSATokenPath(opts *Options) {
-	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretS3:
-		opts.S3.WebIdentityTokenFile = saTokenVolumeK8sDirectory
-		if opts.OpenShift.Enabled {
-			opts.S3.WebIdentityTokenFile = SATokenVolumeOcpDirectory
-		}
-	}
-}
-
 func saTokenVolumeMount(opts Options) corev1.VolumeMount {
 	var tokenPath string
 	switch opts.SharedStore {
 	case lokiv1.ObjectStorageSecretS3:
-		tokenPath = opts.S3.WebIdentityTokenFile
+		tokenPath = AWSTokenVolumeDirectory
 	case lokiv1.ObjectStorageSecretAzure:
 		tokenPath = azureTokenVolumeDirectory
 	}
@@ -318,9 +307,6 @@ func saTokenVolume(opts Options) corev1.Volume {
 		audience = awsDefaultAudience
 		if opts.S3.Audience != "" {
 			audience = opts.S3.Audience
-		}
-		if opts.OpenShift.Enabled {
-			audience = AWSOpenShiftAudience
 		}
 	case lokiv1.ObjectStorageSecretAzure:
 		audience = azureDefaultAudience

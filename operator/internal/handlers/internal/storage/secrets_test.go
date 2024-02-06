@@ -478,18 +478,6 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 			wantError:         "secret field not allowed: role_arn",
 		},
 		{
-			name: "override audience not allowed",
-			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
-				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
-					"audience":    []byte("test-audience"),
-				},
-			},
-			managedAuthSecret: &corev1.Secret{},
-			wantError:         "secret field not allowed: audience",
-		},
-		{
 			name: "STS all set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
@@ -515,7 +503,6 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
 				require.True(t, opts.S3.STS)
-				require.Equal(t, opts.S3.Audience, "openshift")
 				require.Equal(t, opts.OpenShift.CloudCredentials.SecretName, tst.managedAuthSecret.Name)
 				require.NotEmpty(t, opts.OpenShift.CloudCredentials.SHA1)
 			} else {
