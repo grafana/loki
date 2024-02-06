@@ -16,6 +16,7 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
@@ -84,8 +85,49 @@ func (r MetaRef) String() string {
 type Meta struct {
 	MetaRef `json:"-"`
 
+	// The specific TSDB files used to generate the block.
+	Sources []tsdb.SingleTenantTSDBIdentifier
+
+	// Old blocks which can be deleted in the future. These should be from previous compaction rounds.
 	Tombstones []BlockRef
-	Blocks     []BlockRef
+
+	// A list of blocks that were generated
+	Blocks []BlockRef
+}
+
+// TODO(owen-d): use this to update internal ref's checksum.
+func (m Meta) Checksum() (uint32, error) {
+	h := v1.Crc32HashPool.Get()
+	defer v1.Crc32HashPool.Put(h)
+
+	err := m.Bounds.Hash(h)
+	if err != nil {
+		return 0, errors.Wrap(err, "writing OwnershipRange")
+	}
+
+	for _, tombstone := range m.Tombstones {
+		err = tombstone.Hash(h)
+		if err != nil {
+			return 0, errors.Wrap(err, "writing Tombstones")
+		}
+	}
+
+	for _, source := range m.Sources {
+		err = source.Hash(h)
+		if err != nil {
+			return 0, errors.Wrap(err, "writing Sources")
+		}
+	}
+
+	for _, block := range m.Blocks {
+		err = block.Hash(h)
+		if err != nil {
+			return 0, errors.Wrap(err, "writing Blocks")
+		}
+	}
+
+	return h.Sum32(), nil
+
 }
 
 type MetaSearchParams struct {
@@ -105,6 +147,21 @@ type MetaClient interface {
 type Block struct {
 	BlockRef
 	Data io.ReadSeekCloser
+}
+
+func BlockFrom(tenant, table string, blk *v1.Block) Block {
+	md, _ := blk.Metadata()
+	ref := Ref{
+		TenantID:       tenant,
+		TableName:      table,
+		Bounds:         md.Series.Bounds,
+		StartTimestamp: md.Series.FromTs,
+		EndTimestamp:   md.Series.ThroughTs,
+		Checksum:       md.Checksum,
+	}
+	return Block{
+		BlockRef: BlockRef{Ref: ref},
+	}
 }
 
 type BlockClient interface {
