@@ -20,11 +20,12 @@ type uploader interface {
 }
 
 type SimpleBloomController struct {
+	// TODO(owen-d): consider making tenant+table dynamic (not 1 struct per combination)
 	tenant         string
 	table          string
 	ownershipRange v1.FingerprintBounds // ownership range of this controller
 	tsdbStore      TSDBStore
-	blockStore     bloomshipper.Store
+	bloomStore     bloomshipper.Store
 	uploader       uploader
 	chunkLoader    ChunkLoader
 	rwFn           func() (v1.BlockWriter, v1.BlockReader)
@@ -50,7 +51,7 @@ func NewSimpleBloomController(
 		table:          table,
 		ownershipRange: ownershipRange,
 		tsdbStore:      tsdbStore,
-		blockStore:     blockStore,
+		bloomStore:     blockStore,
 		uploader:       uploader,
 		chunkLoader:    chunkLoader,
 		rwFn:           rwFn,
@@ -77,7 +78,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 	}
 
 	// 2. Fetch metas
-	metas, err := s.blockStore.FetchMetas(
+	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: s.tenant,
@@ -159,7 +160,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 
 				if err := s.uploader.PutBlock(
 					ctx,
-					bloomshipper.BlockFrom(s.table, s.table, blk),
+					bloomshipper.BlockFrom(s.tenant, s.table, blk),
 				); err != nil {
 					level.Error(s.logger).Log("msg", "failed to write block", "err", err)
 					return errors.Wrap(err, "failed to write block")
@@ -190,7 +191,7 @@ func (s *SimpleBloomController) loadWorkForGap(ctx context.Context, id tsdb.Iden
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
 
-	blocks, err := s.blockStore.FetchBlocks(ctx, gap.blocks)
+	blocks, err := s.bloomStore.FetchBlocks(ctx, gap.blocks)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get blocks")
 	}
