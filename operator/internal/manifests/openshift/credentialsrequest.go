@@ -22,7 +22,7 @@ const (
 func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsRequest, error) {
 	stack := client.ObjectKey{Name: opts.BuildOpts.LokiStackName, Namespace: opts.BuildOpts.LokiStackNamespace}
 
-	providerSpec, secretName, err := encodeProviderSpec(opts.BuildOpts.LokiStackName, opts.ManagedAuthEnv)
+	providerSpec, secretName, err := encodeProviderSpec(opts.BuildOpts.LokiStackName, opts.ManagedAuth)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "failed encoding credentialsrequest provider spec")
 	}
@@ -50,7 +50,7 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 	}, nil
 }
 
-func encodeProviderSpec(stackName string, env *config.ManagedAuthEnv) (*runtime.RawExtension, string, error) {
+func encodeProviderSpec(stackName string, env *config.ManagedAuthConfig) (*runtime.RawExtension, string, error) {
 	var (
 		spec       runtime.Object
 		secretName string

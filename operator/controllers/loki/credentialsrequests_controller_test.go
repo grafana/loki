@@ -40,8 +40,8 @@ func TestCredentialsRequestController_RegistersCustomResource_WithDefaultPredica
 }
 
 func TestCredentialsRequestController_DeleteCredentialsRequest_WhenLokiStackNotFound(t *testing.T) {
-	managedAuth := &config.ManagedAuthEnv{
-		AWS: &config.AWSSTSEnv{
+	managedAuth := &config.ManagedAuthConfig{
+		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
 	}
@@ -72,8 +72,8 @@ func TestCredentialsRequestController_DeleteCredentialsRequest_WhenLokiStackNotF
 }
 
 func TestCredentialsRequestController_CreateCredentialsRequest_WhenLokiStackNotAnnotated(t *testing.T) {
-	managedAuth := &config.ManagedAuthEnv{
-		AWS: &config.AWSSTSEnv{
+	managedAuth := &config.ManagedAuthConfig{
+		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
 	}

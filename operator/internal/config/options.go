@@ -17,7 +17,7 @@ import (
 
 // LoadConfig initializes the controller configuration, optionally overriding the defaults
 // from a provided configuration file.
-func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, *ManagedAuthEnv, ctrl.Options, error) {
+func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, *ManagedAuthConfig, ctrl.Options, error) {
 	options := ctrl.Options{Scheme: scheme}
 	if configFile == "" {
 		return &configv1.ProjectConfig{}, nil, options, nil
@@ -28,7 +28,7 @@ func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectCon
 		return nil, nil, options, fmt.Errorf("failed to parse controller manager config file: %w", err)
 	}
 
-	managedAuth := discoverManagedAuthEnv()
+	managedAuth := discoverManagedAuthConfig()
 	if ctrlCfg.Gates.OpenShift.Enabled && managedAuth != nil {
 		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
 	}

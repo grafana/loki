@@ -15,7 +15,7 @@ type Options struct {
 	BuildOpts      BuildOptions
 	Authentication []AuthenticationSpec
 	Authorization  AuthorizationSpec
-	ManagedAuthEnv *config.ManagedAuthEnv
+	ManagedAuth    *config.ManagedAuthConfig
 }
 
 // AuthenticationSpec describes the authentication specification

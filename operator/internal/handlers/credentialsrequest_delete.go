@@ -15,7 +15,7 @@ import (
 // DeleteCredentialsRequest deletes a LokiStack's accompanying CredentialsRequest resource
 // to trigger the OpenShift cloud-credentials-operator to wipe out any credentials related
 // Secret resource on the LokiStack namespace.
-func DeleteCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAuthEnv, k k8s.Client, stack client.ObjectKey) error {
+func DeleteCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAuthConfig, k k8s.Client, stack client.ObjectKey) error {
 	if managedAuth == nil {
 		return nil
 	}
@@ -25,7 +25,7 @@ func DeleteCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAu
 			LokiStackName:      stack.Name,
 			LokiStackNamespace: stack.Namespace,
 		},
-		ManagedAuthEnv: managedAuth,
+		ManagedAuth: managedAuth,
 	}
 
 	credReq, err := openshift.BuildCredentialsRequest(opts)

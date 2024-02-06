@@ -23,7 +23,7 @@ type CredentialsRequestsReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Log        logr.Logger
-	AuthConfig *config.ManagedAuthEnv
+	AuthConfig *config.ManagedAuthConfig
 }
 
 // Reconcile creates a single CredentialsRequest per LokiStack for the OpenShift cloud-credentials-operator (CCO) to

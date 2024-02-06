@@ -2,23 +2,23 @@ package config
 
 import "os"
 
-type AWSSTSEnv struct {
+type AWSEnvironment struct {
 	RoleARN string
 }
 
-type AzureWIFEnvironment struct {
+type AzureEnvironment struct {
 	ClientID       string
 	SubscriptionID string
 	TenantID       string
 	Region         string
 }
 
-type ManagedAuthEnv struct {
-	AWS   *AWSSTSEnv
-	Azure *AzureWIFEnvironment
+type ManagedAuthConfig struct {
+	AWS   *AWSEnvironment
+	Azure *AzureEnvironment
 }
 
-func discoverManagedAuthEnv() *ManagedAuthEnv {
+func discoverManagedAuthConfig() *ManagedAuthConfig {
 	// AWS
 	roleARN := os.Getenv("ROLEARN")
 
@@ -29,14 +29,14 @@ func discoverManagedAuthEnv() *ManagedAuthEnv {
 
 	switch {
 	case roleARN != "":
-		return &ManagedAuthEnv{
-			AWS: &AWSSTSEnv{
+		return &ManagedAuthConfig{
+			AWS: &AWSEnvironment{
 				RoleARN: roleARN,
 			},
 		}
 	case clientID != "" && tenantID != "" && subscriptionID != "":
-		return &ManagedAuthEnv{
-			Azure: &AzureWIFEnvironment{
+		return &ManagedAuthConfig{
+			Azure: &AzureEnvironment{
 				ClientID:       clientID,
 				SubscriptionID: subscriptionID,
 				TenantID:       tenantID,

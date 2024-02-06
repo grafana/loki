@@ -28,8 +28,8 @@ func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	managedAuth := &config.ManagedAuthEnv{
-		AWS: &config.AWSSTSEnv{
+	managedAuth := &config.ManagedAuthConfig{
+		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
 	}
@@ -51,8 +51,8 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {
 		},
 	}
 
-	managedAuth := &config.ManagedAuthEnv{
-		Azure: &config.AzureWIFEnvironment{
+	managedAuth := &config.ManagedAuthConfig{
+		Azure: &config.AzureEnvironment{
 			ClientID:       "test-client-id",
 			SubscriptionID: "test-tenant-id",
 			TenantID:       "test-subscription-id",
@@ -97,8 +97,8 @@ func TestCreateCredentialsRequest_CreateNewResourceAzure_Errors(t *testing.T) {
 		t.Run(tc.wantError, func(t *testing.T) {
 			t.Parallel()
 
-			managedAuth := &config.ManagedAuthEnv{
-				Azure: &config.AzureWIFEnvironment{
+			managedAuth := &config.ManagedAuthConfig{
+				Azure: &config.AzureEnvironment{
 					ClientID:       "test-client-id",
 					SubscriptionID: "test-tenant-id",
 					TenantID:       "test-subscription-id",
@@ -115,8 +115,8 @@ func TestCreateCredentialsRequest_DoNothing_WhenCredentialsRequestExist(t *testi
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	managedAuth := &config.ManagedAuthEnv{
-		AWS: &config.AWSSTSEnv{
+	managedAuth := &config.ManagedAuthConfig{
+		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
 	}

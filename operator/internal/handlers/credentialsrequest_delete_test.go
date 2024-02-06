@@ -25,8 +25,8 @@ func TestDeleteCredentialsRequest_DeleteExistingResource(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	managedAuth := &config.ManagedAuthEnv{
-		AWS: &config.AWSSTSEnv{
+	managedAuth := &config.ManagedAuthConfig{
+		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
 	}
@@ -40,8 +40,8 @@ func TestDeleteCredentialsRequest_DoNothing_WhenCredentialsRequestNotExists(t *t
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
-	managedAuth := &config.ManagedAuthEnv{
-		AWS: &config.AWSSTSEnv{
+	managedAuth := &config.ManagedAuthConfig{
+		AWS: &config.AWSEnvironment{
 			RoleARN: "a-role-arn",
 		},
 	}

@@ -22,7 +22,7 @@ var (
 
 // CreateCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
 // to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
-func CreateCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAuthEnv, k k8s.Client, stack client.ObjectKey, secret *corev1.Secret) (string, error) {
+func CreateCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAuthConfig, k k8s.Client, stack client.ObjectKey, secret *corev1.Secret) (string, error) {
 	if managedAuth == nil {
 		return "", nil
 	}
@@ -48,7 +48,7 @@ func CreateCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAu
 			LokiStackName:      stack.Name,
 			LokiStackNamespace: stack.Namespace,
 		},
-		ManagedAuthEnv: managedAuth,
+		ManagedAuth: managedAuth,
 	}
 
 	credReq, err := openshift.BuildCredentialsRequest(opts)
