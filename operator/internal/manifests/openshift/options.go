@@ -2,6 +2,7 @@ package openshift
 
 import (
 	"fmt"
+	"github.com/grafana/loki/operator/internal/config"
 	"math/rand"
 	"time"
 
@@ -14,7 +15,7 @@ type Options struct {
 	BuildOpts      BuildOptions
 	Authentication []AuthenticationSpec
 	Authorization  AuthorizationSpec
-	ManagedAuthEnv *ManagedAuthEnv
+	ManagedAuthEnv *config.ManagedAuthEnv
 }
 
 // AuthenticationSpec describes the authentication specification
@@ -53,22 +54,6 @@ type BuildOptions struct {
 // TenantData defines the existing cookieSecret for lokistack reconcile.
 type TenantData struct {
 	CookieSecret string
-}
-
-type AWSSTSEnv struct {
-	RoleARN string
-}
-
-type AzureWIFEnvironment struct {
-	ClientID       string
-	SubscriptionID string
-	TenantID       string
-	Region         string
-}
-
-type ManagedAuthEnv struct {
-	AWS   *AWSSTSEnv
-	Azure *AzureWIFEnvironment
 }
 
 // NewOptions returns an openshift options struct.

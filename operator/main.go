@@ -21,7 +21,6 @@ import (
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
 	"github.com/grafana/loki/operator/internal/config"
-	manifestsocp "github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/operator"
 	"github.com/grafana/loki/operator/internal/validation"
@@ -95,7 +94,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if ctrlCfg.Gates.OpenShift.Enabled && manifestsocp.DiscoverManagedAuthEnv() != nil {
+	if ctrlCfg.Gates.OpenShift.Enabled && config.DiscoverManagedAuthEnv() != nil {
 		logger.Info("discovered OpenShift Cluster within a managed authentication environment")
 		ctrlCfg.Gates.OpenShift.ManagedAuthEnv = true
 	}

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"github.com/grafana/loki/operator/internal/config"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -15,7 +16,7 @@ import (
 // to trigger the OpenShift cloud-credentials-operator to wipe out any credentials related
 // Secret resource on the LokiStack namespace.
 func DeleteCredentialsRequest(ctx context.Context, k k8s.Client, stack client.ObjectKey) error {
-	managedAuthEnv := openshift.DiscoverManagedAuthEnv()
+	managedAuthEnv := config.DiscoverManagedAuthEnv()
 	if managedAuthEnv == nil {
 		return nil
 	}

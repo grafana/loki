@@ -1,6 +1,7 @@
 package openshift
 
 import (
+	"github.com/grafana/loki/operator/internal/config"
 	"strings"
 	"testing"
 
@@ -15,8 +16,8 @@ func TestBuildCredentialsRequest_HasOwnerAnnotation(t *testing.T) {
 			LokiStackName:      "a-stack",
 			LokiStackNamespace: "ns",
 		},
-		ManagedAuthEnv: &ManagedAuthEnv{
-			AWS: &AWSSTSEnv{
+		ManagedAuthEnv: &config.ManagedAuthEnv{
+			AWS: &config.AWSSTSEnv{
 				RoleARN: "role-arn",
 			},
 		},
@@ -33,8 +34,8 @@ func TestBuildCredentialsRequest_HasSecretRef_MatchingLokiStackNamespace(t *test
 			LokiStackName:      "a-stack",
 			LokiStackNamespace: "ns",
 		},
-		ManagedAuthEnv: &ManagedAuthEnv{
-			AWS: &AWSSTSEnv{
+		ManagedAuthEnv: &config.ManagedAuthEnv{
+			AWS: &config.AWSSTSEnv{
 				RoleARN: "role-arn",
 			},
 		},
@@ -51,8 +52,8 @@ func TestBuildCredentialsRequest_HasServiceAccountNames_ContainsAllLokiStackServ
 			LokiStackName:      "a-stack",
 			LokiStackNamespace: "ns",
 		},
-		ManagedAuthEnv: &ManagedAuthEnv{
-			AWS: &AWSSTSEnv{
+		ManagedAuthEnv: &config.ManagedAuthEnv{
+			AWS: &config.AWSSTSEnv{
 				RoleARN: "role-arn",
 			},
 		},
@@ -70,8 +71,8 @@ func TestBuildCredentialsRequest_CloudTokenPath_MatchinOpenShiftSADirectory(t *t
 			LokiStackName:      "a-stack",
 			LokiStackNamespace: "ns",
 		},
-		ManagedAuthEnv: &ManagedAuthEnv{
-			AWS: &AWSSTSEnv{
+		ManagedAuthEnv: &config.ManagedAuthEnv{
+			AWS: &config.AWSSTSEnv{
 				RoleARN: "role-arn",
 			},
 		},
@@ -96,8 +97,8 @@ func TestBuildCredentialsRequest_FollowsNamingConventions(t *testing.T) {
 					LokiStackName:      "a-stack",
 					LokiStackNamespace: "ns",
 				},
-				ManagedAuthEnv: &ManagedAuthEnv{
-					AWS: &AWSSTSEnv{
+				ManagedAuthEnv: &config.ManagedAuthEnv{
+					AWS: &config.AWSSTSEnv{
 						RoleARN: "role-arn",
 					},
 				},

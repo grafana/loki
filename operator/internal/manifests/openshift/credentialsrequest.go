@@ -2,7 +2,7 @@ package openshift
 
 import (
 	"fmt"
-	"os"
+	"github.com/grafana/loki/operator/internal/config"
 	"path"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -50,7 +50,7 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 	}, nil
 }
 
-func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExtension, string, error) {
+func encodeProviderSpec(stackName string, env *config.ManagedAuthEnv) (*runtime.RawExtension, string, error) {
 	var (
 		spec       runtime.Object
 		secretName string
@@ -106,33 +106,4 @@ func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExte
 
 	encodedSpec, err := cloudcredentialv1.Codec.EncodeProviderSpec(spec.DeepCopyObject())
 	return encodedSpec, secretName, err
-}
-
-func DiscoverManagedAuthEnv() *ManagedAuthEnv {
-	// AWS
-	roleARN := os.Getenv("ROLEARN")
-
-	// Azure
-	clientID := os.Getenv("CLIENTID")
-	tenantID := os.Getenv("TENANTID")
-	subscriptionID := os.Getenv("SUBSCRIPTIONID")
-
-	switch {
-	case roleARN != "":
-		return &ManagedAuthEnv{
-			AWS: &AWSSTSEnv{
-				RoleARN: roleARN,
-			},
-		}
-	case clientID != "" && tenantID != "" && subscriptionID != "":
-		return &ManagedAuthEnv{
-			Azure: &AzureWIFEnvironment{
-				ClientID:       clientID,
-				SubscriptionID: subscriptionID,
-				TenantID:       tenantID,
-			},
-		}
-	}
-
-	return nil
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"github.com/grafana/loki/operator/internal/config"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
@@ -22,7 +23,7 @@ var (
 // CreateCredentialsRequest creates a new CredentialsRequest resource for a Lokistack
 // to request a cloud credentials Secret resource from the OpenShift cloud-credentials-operator.
 func CreateCredentialsRequest(ctx context.Context, k k8s.Client, stack client.ObjectKey, secret *corev1.Secret) (string, error) {
-	managedAuthEnv := openshift.DiscoverManagedAuthEnv()
+	managedAuthEnv := config.DiscoverManagedAuthEnv()
 	if managedAuthEnv == nil {
 		return "", nil
 	}
