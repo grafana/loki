@@ -107,7 +107,7 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 
 // FetchBlocks implements Store.
 func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
-	return b.fetcher.FetchBlocksWithQueue(ctx, refs)
+	return b.fetcher.FetchBlocks(ctx, refs)
 }
 
 // Fetcher implements Store.
@@ -299,7 +299,7 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]Bloc
 
 	results := make([]BlockDirectory, 0, len(blocks))
 	for i := range fetchers {
-		res, err := fetchers[i].FetchBlocksWithQueue(ctx, refs[i])
+		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
 		results = append(results, res...)
 		if err != nil {
 			return results, err

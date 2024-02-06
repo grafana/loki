@@ -125,7 +125,12 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	return f.metasCache.Store(ctx, keys, data)
 }
 
-func (f *Fetcher) FetchBlocksWithQueue(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+// FetchBlocks returns a list of block directories
+// It resolves them from three locations:
+//  1. from cache
+//  2. from file system
+//  3. from remote storage
+func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
 	responses := make(chan BlockDirectory, len(refs))
 	errors := make(chan error, len(refs))
 	for _, ref := range refs {
@@ -165,59 +170,53 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadTask[BlockRef, B
 		return
 	}
 
-	refs := []BlockRef{task.item}
-	results, err := f.FetchBlocks(ctx, refs)
+	result, err := f.fetchBlock(ctx, task.item)
 	if err != nil {
 		task.errors <- err
 		return
 	}
-
-	for _, res := range results {
-		task.results <- res
-	}
+	task.results <- result
 }
 
-// FetchBlocks returns a list of block directories
-// It resolves them from three locations:
-//  1. from cache
-//  2. from file system
-//  3. from remote storage
-func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
+	var zero BlockDirectory
+
 	if ctx.Err() != nil {
-		return nil, errors.Wrap(ctx.Err(), "fetch Blocks")
+		return BlockDirectory{}, errors.Wrap(ctx.Err(), "fetch block")
 	}
 
+	refs := []BlockRef{ref}
 	keys := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		keys = append(keys, f.client.Block(ref).Addr())
 	}
 	cacheHits, cacheBufs, _, err := f.blocksCache.Fetch(ctx, keys)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 
 	results := make([]BlockDirectory, 0, len(refs))
 
 	fromCache, missing, err := f.processBlocksCacheResponse(ctx, refs, cacheHits, cacheBufs)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	results = append(results, fromCache...)
 
 	fromLocalFS, missing, err := f.loadBlocksFromFS(ctx, missing)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	results = append(results, fromLocalFS...)
 
 	fromStorage, err := f.client.GetBlocks(ctx, missing)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	results = append(results, fromStorage...)
 
 	err = f.writeBackBlocks(ctx, fromStorage)
-	return results, err
+	return results[0], err
 }
 
 func (f *Fetcher) processBlocksCacheResponse(_ context.Context, refs []BlockRef, keys []string, entries []BlockDirectory) ([]BlockDirectory, []BlockRef, error) {
