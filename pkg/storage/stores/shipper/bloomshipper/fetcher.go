@@ -21,7 +21,7 @@ type metrics struct{}
 
 type fetcher interface {
 	FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
-	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*ClosableBlockQuerier, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error)
 	Close()
 }
 
@@ -124,7 +124,7 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	return f.metasCache.Store(ctx, keys, data)
 }
 
-func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*ClosableBlockQuerier, error) {
+func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error) {
 	n := len(refs)
 
 	responses := make(chan downloadResponse[BlockDirectory], n)
@@ -140,7 +140,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*Closable
 		})
 	}
 
-	results := make([]*ClosableBlockQuerier, n)
+	results := make([]*CloseableBlockQuerier, n)
 	for i := 0; i < n; i++ {
 		select {
 		case err := <-errors:

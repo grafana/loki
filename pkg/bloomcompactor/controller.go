@@ -184,7 +184,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 
 }
 
-func (s *SimpleBloomController) loadWorkForGap(ctx context.Context, id tsdb.Identifier, gap gapWithBlocks) (v1.CloseableIterator[*v1.Series], []*bloomshipper.ClosableBlockQuerier, error) {
+func (s *SimpleBloomController) loadWorkForGap(ctx context.Context, id tsdb.Identifier, gap gapWithBlocks) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(id, gap.bounds)
 	if err != nil {
@@ -195,7 +195,7 @@ func (s *SimpleBloomController) loadWorkForGap(ctx context.Context, id tsdb.Iden
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get blocks")
 	}
-	results := make([]*bloomshipper.ClosableBlockQuerier, 0, len(blocks))
+	results := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blocks))
 	for _, block := range blocks {
 		results = append(results, block.BlockQuerier())
 	}

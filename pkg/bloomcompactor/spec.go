@@ -74,7 +74,7 @@ type SimpleBloomGenerator struct {
 	chunkLoader ChunkLoader
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
 	// as an iterator of iterators, where each iterator is a batch of overlapping blocks.
-	blocks []*bloomshipper.ClosableBlockQuerier
+	blocks []*bloomshipper.CloseableBlockQuerier
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -95,7 +95,7 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocks []*bloomshipper.ClosableBlockQuerier,
+	blocks []*bloomshipper.CloseableBlockQuerier,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
@@ -136,7 +136,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1
 
 	var closeErrors multierror.MultiError
 	blocksMatchingSchema := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(s.blocks))
-	toClose := make([]*bloomshipper.ClosableBlockQuerier, 0, len(s.blocks))
+	toClose := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.blocks))
 	// Close all remaining blocks on exit
 	defer func() {
 		for _, block := range toClose {

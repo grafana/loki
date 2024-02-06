@@ -20,7 +20,7 @@ var _ bloomshipper.Store = &dummyStore{}
 type dummyStore struct {
 	metas     []bloomshipper.Meta
 	blocks    []bloomshipper.BlockRef
-	querieres []*bloomshipper.ClosableBlockQuerier
+	querieres []*bloomshipper.CloseableBlockQuerier
 }
 
 func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([][]bloomshipper.MetaRef, []*bloomshipper.Fetcher, error) {
@@ -48,8 +48,8 @@ func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 func (s *dummyStore) Stop() {
 }
 
-func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.ClosableBlockQuerier, error) {
-	result := make([]*bloomshipper.ClosableBlockQuerier, 0, len(s.querieres))
+func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
 
 	for _, ref := range refs {
 		for _, bq := range s.querieres {

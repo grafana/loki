@@ -17,13 +17,13 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
-type ClosableBlockQuerier struct {
+type CloseableBlockQuerier struct {
 	BlockRef
 	*v1.BlockQuerier
 	close func() error
 }
 
-func (c *ClosableBlockQuerier) Close() error {
+func (c *CloseableBlockQuerier) Close() error {
 	if c.close != nil {
 		return c.close()
 	}
@@ -88,9 +88,9 @@ func (b BlockDirectory) Release() error {
 // BlockQuerier returns a new block querier from the directory.
 // It increments the counter of active queriers for this directory.
 // The counter is decreased when the returned querier is closed.
-func (b BlockDirectory) BlockQuerier() *ClosableBlockQuerier {
+func (b BlockDirectory) BlockQuerier() *CloseableBlockQuerier {
 	b.Acquire()
-	return &ClosableBlockQuerier{
+	return &CloseableBlockQuerier{
 		BlockQuerier: v1.NewBlockQuerier(b.Block()),
 		BlockRef:     b.BlockRef,
 		close:        b.Release,

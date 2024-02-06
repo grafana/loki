@@ -64,9 +64,9 @@ func (dummyChunkLoader) Load(_ context.Context, series *v1.Series) (*ChunkItersB
 }
 
 func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks []*v1.Block) *SimpleBloomGenerator {
-	bqs := make([]*bloomshipper.ClosableBlockQuerier, 0, len(blocks))
+	bqs := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blocks))
 	for _, b := range blocks {
-		bqs = append(bqs, &bloomshipper.ClosableBlockQuerier{
+		bqs = append(bqs, &bloomshipper.CloseableBlockQuerier{
 			BlockQuerier: v1.NewBlockQuerier(b),
 		})
 	}
