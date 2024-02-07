@@ -56,6 +56,7 @@ const (
 
 	defaultMaxStructuredMetadataSize  = "64kb"
 	defaultMaxStructuredMetadataCount = 128
+	defaultBloomCompactorMaxBlockSize = "200MB"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -187,15 +188,16 @@ type Limits struct {
 	BloomGatewayShardSize int  `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size"`
 	BloomGatewayEnabled   bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering"`
 
-	BloomCompactorShardSize                  int           `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
-	BloomCompactorMaxTableAge                time.Duration `yaml:"bloom_compactor_max_table_age" json:"bloom_compactor_max_table_age"`
-	BloomCompactorEnabled                    bool          `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
-	BloomCompactorChunksBatchSize            int           `yaml:"bloom_compactor_chunks_batch_size" json:"bloom_compactor_chunks_batch_size"`
-	BloomNGramLength                         int           `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
-	BloomNGramSkip                           int           `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
-	BloomFalsePositiveRate                   float64       `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
-	BloomGatewayBlocksDownloadingParallelism int           `yaml:"bloom_gateway_blocks_downloading_parallelism" json:"bloom_gateway_blocks_downloading_parallelism"`
-	BloomGatewayCacheKeyInterval             time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval"`
+	BloomCompactorShardSize                  int              `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size"`
+	BloomCompactorMaxTableAge                time.Duration    `yaml:"bloom_compactor_max_table_age" json:"bloom_compactor_max_table_age"`
+	BloomCompactorEnabled                    bool             `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction"`
+	BloomCompactorChunksBatchSize            int              `yaml:"bloom_compactor_chunks_batch_size" json:"bloom_compactor_chunks_batch_size"`
+	BloomNGramLength                         int              `yaml:"bloom_ngram_length" json:"bloom_ngram_length"`
+	BloomNGramSkip                           int              `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip"`
+	BloomFalsePositiveRate                   float64          `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate"`
+	BloomGatewayBlocksDownloadingParallelism int              `yaml:"bloom_gateway_blocks_downloading_parallelism" json:"bloom_gateway_blocks_downloading_parallelism"`
+	BloomGatewayCacheKeyInterval             time.Duration    `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval"`
+	BloomCompactorMaxBlockSize               flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size"`
 
 	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
@@ -333,6 +335,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Scalable Bloom Filter desired false-positive rate.")
 	f.IntVar(&l.BloomGatewayBlocksDownloadingParallelism, "bloom-gateway.blocks-downloading-parallelism", 50, "Maximum number of blocks will be downloaded in parallel by the Bloom Gateway.")
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Interval for computing the cache key in the Bloom Gateway.")
+	_ = l.BloomCompactorMaxBlockSize.Set(defaultBloomCompactorMaxBlockSize)
+	f.Var(&l.BloomCompactorMaxBlockSize, "bloom-compactor.max-block-size", "The maximum bloom block size. A value of 0 sets an unlimited size. Default is 200MB. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.")
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
@@ -880,6 +884,10 @@ func (o *Overrides) BloomNGramLength(userID string) int {
 
 func (o *Overrides) BloomNGramSkip(userID string) int {
 	return o.getOverridesForUser(userID).BloomNGramSkip
+}
+
+func (o *Overrides) BloomCompactorMaxBlockSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorMaxBlockSize.Val()
 }
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {

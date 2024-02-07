@@ -21,6 +21,7 @@ type SimpleBloomController struct {
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
 	metrics     *Metrics
+	limits      Limits
 
 	// TODO(owen-d): add metrics
 	logger log.Logger
@@ -30,6 +31,7 @@ func NewSimpleBloomController(
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
 	chunkLoader ChunkLoader,
+	limits Limits,
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
@@ -38,6 +40,7 @@ func NewSimpleBloomController(
 		bloomStore:  blockStore,
 		chunkLoader: chunkLoader,
 		metrics:     metrics,
+		limits:      limits,
 		logger:      logger,
 	}
 }
@@ -110,6 +113,11 @@ func (s *SimpleBloomController) buildBlocks(
 		return errors.Wrap(err, "failed to create plan")
 	}
 
+	nGramSize := uint64(s.limits.BloomNGramLength(tenant))
+	nGramSkip := uint64(s.limits.BloomNGramSkip(tenant))
+	maxBlockSize := uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
+	blockOpts := v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
+
 	// 4. Generate Blooms
 	// Now that we have the gaps, we will generate a bloom block for each gap.
 	// We can accelerate this by using existing blocks which may already contain
@@ -148,7 +156,7 @@ func (s *SimpleBloomController) buildBlocks(
 
 			gen := NewSimpleBloomGenerator(
 				tenant,
-				v1.DefaultBlockOptions, // TODO(salvacorts) make block options configurable
+				blockOpts,
 				seriesItr,
 				s.chunkLoader,
 				preExistingBlocks,
