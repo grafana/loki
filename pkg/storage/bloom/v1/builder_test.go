@@ -13,6 +13,7 @@ import (
 )
 
 func TestBlockOptionsRoundTrip(t *testing.T) {
+	t.Parallel()
 	opts := BlockOptions{
 		Schema: Schema{
 			version:     V1,
@@ -123,6 +124,7 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 }
 
 func TestMergeBuilder(t *testing.T) {
+	t.Parallel()
 
 	nBlocks := 10
 	numSeries := 100
@@ -209,6 +211,7 @@ func TestMergeBuilder(t *testing.T) {
 }
 
 func TestBlockReset(t *testing.T) {
+	t.Parallel()
 	numSeries := 100
 	numKeysPerSeries := 10000
 	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
@@ -260,6 +263,7 @@ func TestBlockReset(t *testing.T) {
 // disjoint data. It then merges the two sets of blocks and ensures that the merged blocks contain
 // one copy of the first set (duplicate data) and one copy of the second set (disjoint data).
 func TestMergeBuilder_Roundtrip(t *testing.T) {
+	t.Parallel()
 	numSeries := 100
 	numKeysPerSeries := 100
 	minTs, maxTs := model.Time(0), model.Time(10000)
