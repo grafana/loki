@@ -44,9 +44,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum(bytes_over_time({app="foo"}[1m]))`, 1),
-				subQueryRequestResponse(`sum(bytes_over_time({app="foo"}[1m] offset 1m0s))`, 2),
-				subQueryRequestResponse(`sum(bytes_over_time({app="foo"}[1m] offset 2m0s))`, 3),
+				subQueryRequestResponse(`sum(bytes_over_time({app="foo"}[1m]))`, 1, 0),
+				subQueryRequestResponse(`sum(bytes_over_time({app="foo"}[1m]))`, 2, 1*time.Minute),
+				subQueryRequestResponse(`sum(bytes_over_time({app="foo"}[1m]))`, 3, 2*time.Minute),
 			},
 			expected: expectedMergedResponse(1 + 2 + 3),
 		},
@@ -60,9 +60,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m]))`, 10),
-				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m] offset 1m0s))`, 20),
-				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m] offset 2m0s))`, 30),
+				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m]))`, 10, 0),
+				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m]))`, 20, 1*time.Minute),
+				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m]))`, 30, 2*time.Minute),
 			},
 			expected: expectedMergedResponse(10 + 20 + 30),
 		},
@@ -76,9 +76,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum(count_over_time({app="foo"}[1m]))`, 1),
-				subQueryRequestResponse(`sum(count_over_time({app="foo"}[1m] offset 1m0s))`, 1),
-				subQueryRequestResponse(`sum(count_over_time({app="foo"}[1m] offset 2m0s))`, 1),
+				subQueryRequestResponse(`sum(count_over_time({app="foo"}[1m]))`, 1, 0),
+				subQueryRequestResponse(`sum(count_over_time({app="foo"}[1m]))`, 1, 1*time.Minute),
+				subQueryRequestResponse(`sum(count_over_time({app="foo"}[1m]))`, 1, 2*time.Minute),
 			},
 			expected: expectedMergedResponse(1 + 1 + 1),
 		},
@@ -92,9 +92,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m]))`, 0),
-				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m] offset 1m0s))`, 0),
-				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m] offset 2m0s))`, 0),
+				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m]))`, 0, 0),
+				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m]))`, 0, 1*time.Minute),
+				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m]))`, 0, 2*time.Minute),
 			},
 			expected: expectedMergedResponse(0 + 0 + 0),
 		},
@@ -108,9 +108,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1),
-				subQueryRequestResponse(`sum(sum_over_time({app="foo"} | unwrap bar[1m] offset 1m0s))`, 2),
-				subQueryRequestResponse(`sum(sum_over_time({app="foo"} | unwrap bar[1m] offset 2m0s))`, 3),
+				subQueryRequestResponse(`sum(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1, 0),
+				subQueryRequestResponse(`sum(sum_over_time({app="foo"} | unwrap bar[1m]))`, 2, time.Minute),
+				subQueryRequestResponse(`sum(sum_over_time({app="foo"} | unwrap bar[1m]))`, 3, 2*time.Minute),
 			},
 			expected: expectedMergedResponse(1 + 2 + 3),
 		},
@@ -124,38 +124,45 @@ func Test_RangeVectorSplit(t *testing.T) {
 				},
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1),
-				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m] offset 1m0s))`, 2),
-				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m] offset 2m0s))`, 3),
+				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1, 0),
+				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m]))`, 2, time.Minute),
+				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m]))`, 3, 2*time.Minute),
 			},
 			expected: expectedMergedResponse(1 + 2 + 3),
 		},
 	} {
 		tc := tc
 		t.Run(tc.in.GetQuery(), func(t *testing.T) {
+			byTimeTs := make(map[int64]queryrangebase.RequestResponse)
+			for _, v := range tc.subQueries {
+				byTimeTs[v.Request.(*LokiInstantRequest).TimeTs.UnixNano()] = v
+			}
+
 			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
 				func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-					// Assert subquery request
-					for _, reqResp := range tc.subQueries {
-						if req.GetQuery() == reqResp.Request.GetQuery() {
-							assert.Equal(t, reqResp.Request, req)
-							// return the test data subquery response
-							return reqResp.Response, nil
-						}
+					// req should match with one of the subqueries.
+					ts := req.(*LokiInstantRequest).TimeTs.UnixNano()
+					subq, ok := byTimeTs[ts]
+					if !ok { // every req **should** match with one of the subqueries
+						return nil, fmt.Errorf("subquery request '%s-%d' not found", req.GetQuery(), ts)
 					}
 
-					return nil, fmt.Errorf("subquery request '" + req.GetQuery() + "' not found")
+					// Assert subquery request
+					assert.Equal(t, subq.Request.GetQuery(), req.GetQuery())
+					assert.Equal(t, subq.Request, req)
+					return subq.Response, nil
+
 				})).Do(ctx, tc.in)
 			require.NoError(t, err)
-			assert.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
+			require.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
 		})
 	}
 }
 
 // subQueryRequestResponse returns a RequestResponse containing the expected subQuery instant request
 // and a response containing a sample value returned from the following wrapper
-func subQueryRequestResponse(expectedSubQuery string, sampleValue float64) queryrangebase.RequestResponse {
-	return queryrangebase.RequestResponse{
+func subQueryRequestResponse(expectedSubQuery string, sampleValue float64, offset time.Duration) queryrangebase.RequestResponse {
+	res := queryrangebase.RequestResponse{
 		Request: &LokiInstantRequest{
 			Query:  expectedSubQuery,
 			TimeTs: time.Unix(1, 0),
@@ -183,6 +190,14 @@ func subQueryRequestResponse(expectedSubQuery string, sampleValue float64) query
 			},
 		},
 	}
+	// The `TimeTs` (exec time) of instant (sub)query is adjusted with given offset.
+	// Because subqueries would no longer contains the offset.
+	if offset != 0 {
+		ts := res.Request.(*LokiInstantRequest).TimeTs
+		ts = ts.Add(-offset)
+		res.Request.(*LokiInstantRequest).TimeTs = ts
+	}
+	return res
 }
 
 // expectedMergedResponse returns the expected middleware Prometheus response with the samples

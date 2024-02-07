@@ -523,6 +523,11 @@ func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator
 		step  = params.Step()
 	)
 
+	if res.Data == nil {
+		return nil, fmt.Errorf("data in the passed result is nil (res.Data), cannot be processed by stepevaluator")
+	}
+
+
 	switch data := res.Data.(type) {
 	case promql.Vector:
 		return NewVectorStepEvaluator(start, data), nil

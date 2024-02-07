@@ -107,11 +107,11 @@ type instance struct {
 // withoutOffset returns the given query string with offsets removed and timestamp adjusted accordingly. If no offset is present in original query, it will be returned as is.
 func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 	expr := query.Params.GetExpression()
+
 	var (
 		newStart = query.Params.Start()
 		newEnd   = query.Params.End()
 	)
-	// fmt.Println("newStart", newStart, "newEnd", newEnd)
 	expr.Walk(func(e syntax.Expr) {
 		switch rng := e.(type) {
 		case *syntax.RangeAggregationExpr:
@@ -127,7 +127,6 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 			}
 		}
 	})
-
 	return expr.String(), newStart, newEnd
 }
 

@@ -610,8 +610,8 @@ func TestDownstream_withoutOffset(t *testing.T) {
 
 		exp logql.Params
 	}{
-		{in: newTestParams(t, `sum(rate({job="foo"}[5m] offset 2h))`, start, end), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start.Add(-2*time.Hour), end)}, // range query
-		// {in: newTestParams(t, `sum(rate({job="foo"}[5m] offset 2h))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start.Add(-2*time.Hour), start.Add(-2*time.Hour))}, // instant query
+		{in: newTestParams(t, `sum(rate({job="foo"}[5m] offset 2h))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start.Add(-2*time.Hour), start.Add(-2*time.Hour))}, // instant query
+		{in: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start)}, // instant query without offset in original query. start and end shouldn't change
 	}
 
 	for _, tc := range cases {
