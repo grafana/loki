@@ -13,11 +13,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/multierror"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	logql_log "github.com/grafana/loki/pkg/logql/log"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
@@ -71,7 +74,7 @@ type SimpleBloomGenerator struct {
 	chunkLoader ChunkLoader
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
 	// as an iterator of iterators, where each iterator is a batch of overlapping blocks.
-	blocks []*v1.Block
+	blocks []*bloomshipper.CloseableBlockQuerier
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -92,7 +95,7 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocks []*v1.Block,
+	blocks []*bloomshipper.CloseableBlockQuerier,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
@@ -103,7 +106,7 @@ func NewSimpleBloomGenerator(
 		store:        store,
 		chunkLoader:  chunkLoader,
 		blocks:       blocks,
-		logger:       logger,
+		logger:       log.With(logger, "component", "bloom_generator"),
 		readWriterFn: readWriterFn,
 		metrics:      metrics,
 
@@ -115,7 +118,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 	return func(series *v1.Series, bloom *v1.Bloom) error {
 		chunkItersWithFP, err := s.chunkLoader.Load(ctx, series)
 		if err != nil {
-			return errors.Wrapf(err, "failed to load chunks for series: %#v", series)
+			return errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
 
 		return s.tokenizer.Populate(
@@ -129,38 +132,62 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 
 }
 
-func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []*v1.Block, results v1.Iterator[*v1.Block], err error) {
+func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, results v1.Iterator[*v1.Block], err error) {
 
+	var closeErrors multierror.MultiError
 	blocksMatchingSchema := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(s.blocks))
+	toClose := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.blocks))
+	// Close all remaining blocks on exit
+	defer func() {
+		for _, block := range toClose {
+			closeErrors.Add(block.Close())
+		}
+		if err := closeErrors.Err(); err != nil {
+			level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
+		}
+	}()
+
 	for _, block := range s.blocks {
 		// TODO(owen-d): implement block naming so we can log the affected block in all these calls
-		logger := log.With(s.logger, "block", fmt.Sprintf("%#v", block))
-		schema, err := block.Schema()
+		logger := log.With(s.logger, "block", fmt.Sprintf("%+v", block))
+		md, err := block.Metadata()
+		schema := md.Options.Schema
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to get schema for block", "err", err)
-			skippedBlocks = append(skippedBlocks, block)
+			skippedBlocks = append(skippedBlocks, md)
+
+			// Close unneeded block
+			closeErrors.Add(block.Close())
+			continue
 		}
 
 		if !s.opts.Schema.Compatible(schema) {
-			level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%#v", s.opts.Schema), "block_schema", fmt.Sprintf("%#v", schema))
-			skippedBlocks = append(skippedBlocks, block)
+			level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%+v", s.opts.Schema), "block_schema", fmt.Sprintf("%+v", schema))
+			skippedBlocks = append(skippedBlocks, md)
+
+			// Close unneeded block
+			closeErrors.Add(block.Close())
+			continue
 		}
 
 		level.Debug(logger).Log("msg", "adding compatible block to bloom generation inputs")
-		itr := v1.NewPeekingIter[*v1.SeriesWithBloom](v1.NewBlockQuerier(block))
+		itr := v1.NewPeekingIter[*v1.SeriesWithBloom](block)
 		blocksMatchingSchema = append(blocksMatchingSchema, itr)
+		// append needed block to close list (when finished)
+		toClose = append(toClose, block)
 	}
 
-	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%#v", s.opts.Schema))
+	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%+v", s.opts.Schema))
 
 	// TODO(owen-d): implement bounded block sizes
-
 	mergeBuilder := v1.NewMergeBuilder(blocksMatchingSchema, s.store, s.populator(ctx))
 	writer, reader := s.readWriterFn()
+
 	blockBuilder, err := v1.NewBlockBuilder(v1.NewBlockOptionsFromSchema(s.opts.Schema), writer)
 	if err != nil {
 		return skippedBlocks, nil, errors.Wrap(err, "failed to create bloom block builder")
 	}
+
 	_, err = mergeBuilder.Build(blockBuilder)
 	if err != nil {
 		return skippedBlocks, nil, errors.Wrap(err, "failed to build bloom block")
@@ -330,11 +357,4 @@ func (b *batchedLoader) At() v1.ChunkRefWithIter {
 
 func (b *batchedLoader) Err() error {
 	return b.err
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

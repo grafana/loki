@@ -62,39 +62,48 @@ func TestHashSecretData(t *testing.T) {
 	}
 }
 
+func TestUnknownType(t *testing.T) {
+	wantError := "unknown secret type: test-unknown-type"
+
+	_, err := extractSecrets("test-unknown-type", &corev1.Secret{}, nil, configv1.FeatureGates{})
+	require.EqualError(t, err, wantError)
+}
+
 func TestAzureExtract(t *testing.T) {
 	type test struct {
-		name    string
-		secret  *corev1.Secret
-		wantErr bool
+		name          string
+		secret        *corev1.Secret
+		managedSecret *corev1.Secret
+		featureGates  configv1.FeatureGates
+		wantError     string
 	}
 	table := []test{
 		{
-			name:    "missing environment",
-			secret:  &corev1.Secret{},
-			wantErr: true,
-		},
-		{
-			name: "missing container",
-			secret: &corev1.Secret{
-				Data: map[string][]byte{
-					"environment": []byte("here"),
-				},
-			},
-			wantErr: true,
+			name:      "missing environment",
+			secret:    &corev1.Secret{},
+			wantError: "missing secret field: environment",
 		},
 		{
 			name: "missing account_name",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"environment": []byte("here"),
-					"container":   []byte("this,that"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: account_name",
 		},
 		{
-			name: "missing account_key",
+			name: "missing container",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("id"),
+				},
+			},
+			wantError: "missing secret field: container",
+		},
+		{
+			name: "no account_key or client_id",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -103,10 +112,95 @@ func TestAzureExtract(t *testing.T) {
 					"account_name": []byte("id"),
 				},
 			},
-			wantErr: true,
+			wantError: errAzureNoCredentials.Error(),
 		},
 		{
-			name: "all mandatory set",
+			name: "both account_key and client_id set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"account_key":  []byte("test-account-key"),
+					"client_id":    []byte("test-client-id"),
+				},
+			},
+			wantError: errAzureMixedCredentials.Error(),
+		},
+		{
+			name: "missing tenant_id",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"client_id":    []byte("test-client-id"),
+				},
+			},
+			wantError: "missing secret field: tenant_id",
+		},
+		{
+			name: "missing subscription_id",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("test-account-name"),
+					"client_id":    []byte("test-client-id"),
+					"tenant_id":    []byte("test-tenant-id"),
+				},
+			},
+			wantError: "missing secret field: subscription_id",
+		},
+		{
+			name: "managed auth - no region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("test-account-name"),
+					"container":    []byte("this,that"),
+				},
+			},
+			managedSecret: &corev1.Secret{
+				Data: map[string][]byte{},
+			},
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:        true,
+					ManagedAuthEnv: true,
+				},
+			},
+			wantError: "missing secret field: region",
+		},
+		{
+			name: "managed auth - no auth override",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("test-account-name"),
+					"container":    []byte("this,that"),
+					"region":       []byte("test-region"),
+					"account_key":  []byte("test-account-key"),
+				},
+			},
+			managedSecret: &corev1.Secret{
+				Data: map[string][]byte{},
+			},
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:        true,
+					ManagedAuthEnv: true,
+				},
+			},
+			wantError: errAzureManagedIdentityNoOverride.Error(),
+		},
+		{
+			name: "audience used with static authentication",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
@@ -114,6 +208,56 @@ func TestAzureExtract(t *testing.T) {
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
 					"account_key":  []byte("secret"),
+					"audience":     []byte("test-audience"),
+				},
+			},
+			wantError: "secret field not allowed: audience",
+		},
+		{
+			name: "mandatory for normal authentication set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("id"),
+					"account_key":  []byte("secret"),
+				},
+			},
+		},
+		{
+			name: "mandatory for workload-identity set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":     []byte("here"),
+					"container":       []byte("this,that"),
+					"account_name":    []byte("test-account-name"),
+					"client_id":       []byte("test-client-id"),
+					"tenant_id":       []byte("test-tenant-id"),
+					"subscription_id": []byte("test-subscription-id"),
+					"region":          []byte("test-region"),
+				},
+			},
+		},
+		{
+			name: "mandatory for managed workload-identity set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("test-account-name"),
+					"container":    []byte("this,that"),
+					"region":       []byte("test-region"),
+				},
+			},
+			managedSecret: &corev1.Secret{
+				Data: map[string][]byte{},
+			},
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:        true,
+					ManagedAuthEnv: true,
 				},
 			},
 		},
@@ -136,15 +280,14 @@ func TestAzureExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := extractSecrets(lokiv1.ObjectStorageSecretAzure, tst.secret, nil, configv1.FeatureGates{})
-			if !tst.wantErr {
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretAzure, tst.secret, tst.managedSecret, tst.featureGates)
+			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretAzure)
-			}
-			if tst.wantErr {
-				require.NotNil(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantError)
 			}
 		})
 	}
@@ -152,15 +295,15 @@ func TestAzureExtract(t *testing.T) {
 
 func TestGCSExtract(t *testing.T) {
 	type test struct {
-		name    string
-		secret  *corev1.Secret
-		wantErr bool
+		name      string
+		secret    *corev1.Secret
+		wantError string
 	}
 	table := []test{
 		{
-			name:    "missing bucketname",
-			secret:  &corev1.Secret{},
-			wantErr: true,
+			name:      "missing bucketname",
+			secret:    &corev1.Secret{},
+			wantError: "missing secret field: bucketname",
 		},
 		{
 			name: "missing key.json",
@@ -169,7 +312,7 @@ func TestGCSExtract(t *testing.T) {
 					"bucketname": []byte("here"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: key.json",
 		},
 		{
 			name: "all set",
@@ -188,11 +331,10 @@ func TestGCSExtract(t *testing.T) {
 			t.Parallel()
 
 			_, err := extractSecrets(lokiv1.ObjectStorageSecretGCS, tst.secret, nil, configv1.FeatureGates{})
-			if !tst.wantErr {
+			if tst.wantError == "" {
 				require.NoError(t, err)
-			}
-			if tst.wantErr {
-				require.NotNil(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantError)
 			}
 		})
 	}
@@ -200,24 +342,24 @@ func TestGCSExtract(t *testing.T) {
 
 func TestS3Extract(t *testing.T) {
 	type test struct {
-		name    string
-		secret  *corev1.Secret
-		wantErr bool
+		name      string
+		secret    *corev1.Secret
+		wantError string
 	}
 	table := []test{
 		{
-			name:    "missing endpoint",
-			secret:  &corev1.Secret{},
-			wantErr: true,
+			name:      "missing bucketnames",
+			secret:    &corev1.Secret{},
+			wantError: "missing secret field: bucketnames",
 		},
 		{
-			name: "missing bucketnames",
+			name: "missing endpoint",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"endpoint": []byte("here"),
+					"bucketnames": []byte("this,that"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: endpoint",
 		},
 		{
 			name: "missing access_key_id",
@@ -227,7 +369,7 @@ func TestS3Extract(t *testing.T) {
 					"bucketnames": []byte("this,that"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: access_key_id",
 		},
 		{
 			name: "missing access_key_secret",
@@ -238,7 +380,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_id": []byte("id"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: access_key_secret",
 		},
 		{
 			name: "unsupported SSE type",
@@ -251,7 +393,7 @@ func TestS3Extract(t *testing.T) {
 					"sse_type":          []byte("unsupported"),
 				},
 			},
-			wantErr: true,
+			wantError: "unsupported SSE type (supported: SSE-KMS, SSE-S3): unsupported",
 		},
 		{
 			name: "missing SSE-KMS kms_key_id",
@@ -265,7 +407,7 @@ func TestS3Extract(t *testing.T) {
 					"sse_kms_encryption_context": []byte("kms-encryption-ctx"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: sse_kms_key_id",
 		},
 		{
 			name: "all set with SSE-KMS",
@@ -330,7 +472,7 @@ func TestS3Extract(t *testing.T) {
 					"role_arn":    []byte("role"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: region",
 		},
 		{
 			name: "STS with region",
@@ -362,14 +504,13 @@ func TestS3Extract(t *testing.T) {
 			t.Parallel()
 
 			opts, err := extractSecrets(lokiv1.ObjectStorageSecretS3, tst.secret, nil, configv1.FeatureGates{})
-			if !tst.wantErr {
+			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
-			}
-			if tst.wantErr {
-				require.NotNil(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantError)
 			}
 		})
 	}
@@ -386,31 +527,36 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 		name              string
 		secret            *corev1.Secret
 		managedAuthSecret *corev1.Secret
-		wantErr           bool
+		wantError         string
 	}
 	table := []test{
 		{
-			name:              "missing role-arn",
+			name:              "missing bucketnames",
 			secret:            &corev1.Secret{},
 			managedAuthSecret: &corev1.Secret{},
-			wantErr:           true,
+			wantError:         "missing secret field: bucketnames",
 		},
 		{
-			name:              "missing region",
-			secret:            &corev1.Secret{},
-			managedAuthSecret: &corev1.Secret{},
-			wantErr:           true,
-		},
-		{
-			name: "override role arn not allowed",
+			name: "missing region",
 			secret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"role_arn": []byte("role-arn"),
+					"bucketnames": []byte("this,that"),
 				},
 			},
 			managedAuthSecret: &corev1.Secret{},
-			wantErr:           true,
+			wantError:         "missing secret field: region",
+		},
+		{
+			name: "override role_arn not allowed",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketnames": []byte("this,that"),
+					"role_arn":    []byte("role-arn"),
+				},
+			},
+			managedAuthSecret: &corev1.Secret{},
+			wantError:         "secret field not allowed: role_arn",
 		},
 		{
 			name: "STS all set",
@@ -432,18 +578,16 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 			t.Parallel()
 
 			opts, err := extractSecrets(lokiv1.ObjectStorageSecretS3, tst.secret, tst.managedAuthSecret, fg)
-			if !tst.wantErr {
+			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretS3)
 				require.True(t, opts.S3.STS)
-				require.Equal(t, opts.S3.Audience, "openshift")
 				require.Equal(t, opts.OpenShift.CloudCredentials.SecretName, tst.managedAuthSecret.Name)
 				require.NotEmpty(t, opts.OpenShift.CloudCredentials.SHA1)
-			}
-			if tst.wantErr {
-				require.NotNil(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantError)
 			}
 		})
 	}
@@ -451,15 +595,15 @@ func TestS3Extract_WithOpenShiftManagedAuth(t *testing.T) {
 
 func TestSwiftExtract(t *testing.T) {
 	type test struct {
-		name    string
-		secret  *corev1.Secret
-		wantErr bool
+		name      string
+		secret    *corev1.Secret
+		wantError string
 	}
 	table := []test{
 		{
-			name:    "missing auth_url",
-			secret:  &corev1.Secret{},
-			wantErr: true,
+			name:      "missing auth_url",
+			secret:    &corev1.Secret{},
+			wantError: "missing secret field: auth_url",
 		},
 		{
 			name: "missing username",
@@ -468,7 +612,7 @@ func TestSwiftExtract(t *testing.T) {
 					"auth_url": []byte("here"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: username",
 		},
 		{
 			name: "missing user_domain_name",
@@ -478,7 +622,7 @@ func TestSwiftExtract(t *testing.T) {
 					"username": []byte("this,that"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: user_domain_name",
 		},
 		{
 			name: "missing user_domain_id",
@@ -489,7 +633,7 @@ func TestSwiftExtract(t *testing.T) {
 					"user_domain_name": []byte("id"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: user_domain_id",
 		},
 		{
 			name: "missing user_id",
@@ -501,7 +645,7 @@ func TestSwiftExtract(t *testing.T) {
 					"user_domain_id":   []byte("secret"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: user_id",
 		},
 		{
 			name: "missing password",
@@ -514,7 +658,7 @@ func TestSwiftExtract(t *testing.T) {
 					"user_id":          []byte("there"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: password",
 		},
 		{
 			name: "missing domain_id",
@@ -528,7 +672,7 @@ func TestSwiftExtract(t *testing.T) {
 					"password":         []byte("cred"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: domain_id",
 		},
 		{
 			name: "missing domain_name",
@@ -543,7 +687,7 @@ func TestSwiftExtract(t *testing.T) {
 					"domain_id":        []byte("text"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: domain_name",
 		},
 		{
 			name: "missing container_name",
@@ -559,7 +703,7 @@ func TestSwiftExtract(t *testing.T) {
 					"domain_name":      []byte("where"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: container_name",
 		},
 		{
 			name: "all set",
@@ -585,14 +729,13 @@ func TestSwiftExtract(t *testing.T) {
 			t.Parallel()
 
 			opts, err := extractSecrets(lokiv1.ObjectStorageSecretSwift, tst.secret, nil, configv1.FeatureGates{})
-			if !tst.wantErr {
+			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretSwift)
-			}
-			if tst.wantErr {
-				require.NotNil(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantError)
 			}
 		})
 	}
@@ -600,24 +743,24 @@ func TestSwiftExtract(t *testing.T) {
 
 func TestAlibabaCloudExtract(t *testing.T) {
 	type test struct {
-		name    string
-		secret  *corev1.Secret
-		wantErr bool
+		name      string
+		secret    *corev1.Secret
+		wantError string
 	}
 	table := []test{
 		{
-			name:    "missing endpoint",
-			secret:  &corev1.Secret{},
-			wantErr: true,
+			name:      "missing endpoint",
+			secret:    &corev1.Secret{},
+			wantError: "missing secret field: endpoint",
 		},
 		{
-			name: "missing bucketnames",
+			name: "missing bucket",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint": []byte("here"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: bucket",
 		},
 		{
 			name: "missing access_key_id",
@@ -627,10 +770,10 @@ func TestAlibabaCloudExtract(t *testing.T) {
 					"bucket":   []byte("this,that"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: access_key_id",
 		},
 		{
-			name: "missing access_key_secret",
+			name: "missing secret_access_key",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint":      []byte("here"),
@@ -638,7 +781,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 					"access_key_id": []byte("id"),
 				},
 			},
-			wantErr: true,
+			wantError: "missing secret field: secret_access_key",
 		},
 		{
 			name: "all set",
@@ -659,14 +802,13 @@ func TestAlibabaCloudExtract(t *testing.T) {
 			t.Parallel()
 
 			opts, err := extractSecrets(lokiv1.ObjectStorageSecretAlibabaCloud, tst.secret, nil, configv1.FeatureGates{})
-			if !tst.wantErr {
+			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
 				require.NotEmpty(t, opts.SecretSHA1)
 				require.Equal(t, opts.SharedStore, lokiv1.ObjectStorageSecretAlibabaCloud)
-			}
-			if tst.wantErr {
-				require.NotNil(t, err)
+			} else {
+				require.EqualError(t, err, tst.wantError)
 			}
 		})
 	}

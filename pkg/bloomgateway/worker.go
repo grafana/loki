@@ -19,8 +19,7 @@ import (
 )
 
 type workerConfig struct {
-	maxWaitTime time.Duration
-	maxItems    int
+	maxItems int
 }
 
 type workerMetrics struct {
@@ -111,7 +110,7 @@ func (w *worker) running(_ context.Context) error {
 	for st := w.State(); st == services.Running || st == services.Stopping; {
 		taskCtx := context.Background()
 		dequeueStart := time.Now()
-		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems, w.cfg.maxWaitTime)
+		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems)
 		w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
 		if err != nil {
 			// We only return an error if the queue is stopped and dequeuing did not yield any items
@@ -161,11 +160,7 @@ func (w *worker) running(_ context.Context) error {
 			}
 
 			// interval is [Start, End)
-			interval := bloomshipper.Interval{
-				Start: day,          // inclusive
-				End:   day.Add(Day), // non-inclusive
-			}
-
+			interval := bloomshipper.NewInterval(day, day.Add(Day))
 			logger := log.With(w.logger, "day", day.Time(), "tenant", tasks[0].Tenant)
 			level.Debug(logger).Log("msg", "process tasks", "tasks", len(tasks))
 
@@ -245,9 +240,9 @@ func (w *worker) stopping(err error) error {
 }
 
 func (w *worker) processBlocksWithCallback(taskCtx context.Context, tenant string, blockRefs []bloomshipper.BlockRef, boundedRefs []boundedTasks) error {
-	return w.shipper.Fetch(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
+	return w.shipper.ForEach(taskCtx, tenant, blockRefs, func(bq *v1.BlockQuerier, bounds v1.FingerprintBounds) error {
 		for _, b := range boundedRefs {
-			if b.blockRef.MinFingerprint == minFp && b.blockRef.MaxFingerprint == maxFp {
+			if b.blockRef.Bounds.Equal(bounds) {
 				return w.processBlock(bq, b.tasks)
 			}
 		}
