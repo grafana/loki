@@ -8,16 +8,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
-
-type uploader interface {
-	PutBlock(ctx context.Context, block bloomshipper.Block) error
-	PutMeta(ctx context.Context, meta bloomshipper.Meta) error
-}
 
 type SimpleBloomController struct {
 	// TODO(owen-d): consider making tenant+table dynamic (not 1 struct per combination)
@@ -26,7 +22,6 @@ type SimpleBloomController struct {
 	ownershipRange v1.FingerprintBounds // ownership range of this controller
 	tsdbStore      TSDBStore
 	bloomStore     bloomshipper.Store
-	uploader       uploader
 	chunkLoader    ChunkLoader
 	rwFn           func() (v1.BlockWriter, v1.BlockReader)
 	metrics        *Metrics
@@ -40,7 +35,6 @@ func NewSimpleBloomController(
 	ownershipRange v1.FingerprintBounds,
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
-	uploader uploader,
 	chunkLoader ChunkLoader,
 	rwFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
@@ -52,7 +46,6 @@ func NewSimpleBloomController(
 		ownershipRange: ownershipRange,
 		tsdbStore:      tsdbStore,
 		bloomStore:     blockStore,
-		uploader:       uploader,
 		chunkLoader:    chunkLoader,
 		rwFn:           rwFn,
 		metrics:        metrics,
@@ -153,12 +146,19 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
+			var ts model.Time // TODO(owen-d): period injection
+			client, err := s.bloomStore.Client(ts)
+
+			if err != nil {
+				level.Error(s.logger).Log("msg", "failed to get client", "err", err)
+				return errors.Wrap(err, "failed to get client")
+			}
 			// TODO(owen-d): dispatch this to a queue for writing, handling retries/backpressure, etc?
 			for newBlocks.Next() {
 				blockCt++
 				blk := newBlocks.At()
 
-				if err := s.uploader.PutBlock(
+				if err := client.PutBlock(
 					ctx,
 					bloomshipper.BlockFrom(s.tenant, s.table, blk),
 				); err != nil {
