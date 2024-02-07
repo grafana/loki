@@ -98,13 +98,14 @@ func (c *Context) Ingester() Ingester {
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
-		Chunk:        c.caches.Chunk,
-		Index:        c.caches.Index,
-		Result:       c.caches.Result,
-		StatsResult:  c.caches.StatsResult,
-		VolumeResult: c.caches.VolumeResult,
-		SeriesResult: c.caches.SeriesResult,
-		LabelResult:  c.caches.LabelResult,
+		Chunk:               c.caches.Chunk,
+		Index:               c.caches.Index,
+		Result:              c.caches.Result,
+		StatsResult:         c.caches.StatsResult,
+		VolumeResult:        c.caches.VolumeResult,
+		SeriesResult:        c.caches.SeriesResult,
+		LabelResult:         c.caches.LabelResult,
+		InstantMetricResult: c.caches.InstantMetricResult,
 	}
 }
 
@@ -222,6 +223,7 @@ func (c *Caches) Merge(m Caches) {
 	c.VolumeResult.Merge(m.VolumeResult)
 	c.SeriesResult.Merge(m.SeriesResult)
 	c.LabelResult.Merge(m.LabelResult)
+	c.InstantMetricResult.Merge(m.InstantMetricResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -470,6 +472,8 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.SeriesResult
 	case LabelResultCache:
 		stats = &c.caches.LabelResult
+	case InstantMetricResultsCache:
+		stats = &c.caches.InstantMetricResult
 	default:
 		return nil
 	}
@@ -571,6 +575,12 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Result.EntriesStored", c.Result.EntriesStored,
 		"Cache.Result.BytesSent", humanize.Bytes(uint64(c.Result.BytesSent)),
 		"Cache.Result.BytesReceived", humanize.Bytes(uint64(c.Result.BytesReceived)),
-		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
+		"Cache.InstantMetricResult.Requests", c.InstantMetricResult.Requests,
+		"Cache.InstantMetricResult.EntriesRequested", c.InstantMetricResult.EntriesRequested,
+		"Cache.InstantMetricResult.EntriesFound", c.InstantMetricResult.EntriesFound,
+		"Cache.InstantMetricResult.EntriesStored", c.InstantMetricResult.EntriesStored,
+		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
+		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
+		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
 	)
 }
