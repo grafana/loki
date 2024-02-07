@@ -9,7 +9,7 @@ weight: 400
 # Install Loki with Docker or Docker Compose
 
 You can install Loki and Promtail with Docker or Docker Compose if you are evaluating, testing, or developing Loki.
-For production, we recommend installing with Tanka or Helm.
+For production, Grafana recommends installing with Tanka or Helm.
 
 The configuration acquired with these installation instructions run Loki as a single binary.
 
