@@ -16,23 +16,17 @@ import (
 )
 
 type SimpleBloomController struct {
-	// TODO(owen-d): consider making tenant+table dynamic (not 1 struct per combination)
-	tenant         string
-	table          string
-	ownershipRange v1.FingerprintBounds // ownership range of this controller
-	tsdbStore      TSDBStore
-	bloomStore     bloomshipper.Store
-	chunkLoader    ChunkLoader
-	rwFn           func() (v1.BlockWriter, v1.BlockReader)
-	metrics        *Metrics
+	tsdbStore   TSDBStore
+	bloomStore  bloomshipper.Store
+	chunkLoader ChunkLoader
+	rwFn        func() (v1.BlockWriter, v1.BlockReader)
+	metrics     *Metrics
 
 	// TODO(owen-d): add metrics
 	logger log.Logger
 }
 
 func NewSimpleBloomController(
-	tenant, table string,
-	ownershipRange v1.FingerprintBounds,
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
 	chunkLoader ChunkLoader,
@@ -41,23 +35,27 @@ func NewSimpleBloomController(
 	logger log.Logger,
 ) *SimpleBloomController {
 	return &SimpleBloomController{
-		tenant:         tenant,
-		table:          table,
-		ownershipRange: ownershipRange,
-		tsdbStore:      tsdbStore,
-		bloomStore:     blockStore,
-		chunkLoader:    chunkLoader,
-		rwFn:           rwFn,
-		metrics:        metrics,
-		logger:         log.With(logger, "ownership", ownershipRange),
+		tsdbStore:   tsdbStore,
+		bloomStore:  blockStore,
+		chunkLoader: chunkLoader,
+		rwFn:        rwFn,
+		metrics:     metrics,
+		logger:      logger,
 	}
 }
 
-func (s *SimpleBloomController) do(ctx context.Context) error {
+func (s *SimpleBloomController) buildBlocks(
+	ctx context.Context,
+	tenant,
+	table string,
+	ownershipRange v1.FingerprintBounds,
+) error {
+	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
+
 	// 1. Resolve TSDBs
 	tsdbs, err := s.tsdbStore.ResolveTSDBs()
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to resolve tsdbs", "err", err)
+		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
 	}
 
@@ -74,32 +72,32 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
-			TenantID: s.tenant,
+			TenantID: tenant,
 			Interval: bloomshipper.Interval{}, // TODO(owen-d): gen interval
-			Keyspace: s.ownershipRange,
+			Keyspace: ownershipRange,
 		},
 	)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to get metas", "err", err)
+		level.Error(logger).Log("msg", "failed to get metas", "err", err)
 		return errors.Wrap(err, "failed to get metas")
 	}
 
 	// 3. Determine which TSDBs have gaps in the ownership range and need to
 	// be processed.
-	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(s.ownershipRange, ids, metas)
+	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(ownershipRange, ids, metas)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to find gaps", "err", err)
+		level.Error(logger).Log("msg", "failed to find gaps", "err", err)
 		return errors.Wrap(err, "failed to find gaps")
 	}
 
 	if len(tsdbsWithGaps) == 0 {
-		level.Debug(s.logger).Log("msg", "blooms exist for all tsdbs")
+		level.Debug(logger).Log("msg", "blooms exist for all tsdbs")
 		return nil
 	}
 
 	work, err := blockPlansForGaps(tsdbsWithGaps, metas)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to create plan", "err", err)
+		level.Error(logger).Log("msg", "failed to create plan", "err", err)
 		return errors.Wrap(err, "failed to create plan")
 	}
 
@@ -125,7 +123,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 			// to try and accelerate bloom creation
 			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, plan.tsdb, gap)
 			if err != nil {
-				level.Error(s.logger).Log("msg", "failed to get series and blocks", "err", err)
+				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
 
@@ -136,13 +134,13 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 				preExistingBlocks,
 				s.rwFn,
 				s.metrics,
-				log.With(s.logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
+				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
 			)
 
 			_, newBlocks, err := gen.Generate(ctx)
 			if err != nil {
 				// TODO(owen-d): metrics
-				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
@@ -150,7 +148,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 			client, err := s.bloomStore.Client(ts)
 
 			if err != nil {
-				level.Error(s.logger).Log("msg", "failed to get client", "err", err)
+				level.Error(logger).Log("msg", "failed to get client", "err", err)
 				return errors.Wrap(err, "failed to get client")
 			}
 			// TODO(owen-d): dispatch this to a queue for writing, handling retries/backpressure, etc?
@@ -160,16 +158,16 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 
 				if err := client.PutBlock(
 					ctx,
-					bloomshipper.BlockFrom(s.tenant, s.table, blk),
+					bloomshipper.BlockFrom(tenant, table, blk),
 				); err != nil {
-					level.Error(s.logger).Log("msg", "failed to write block", "err", err)
+					level.Error(logger).Log("msg", "failed to write block", "err", err)
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
 
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
-				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
@@ -179,7 +177,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 	// TODO(owen-d): build meta from blocks
 	// TODO(owen-d): reap tombstones, old metas
 
-	level.Debug(s.logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
+	level.Debug(logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
 	return nil
 
 }
