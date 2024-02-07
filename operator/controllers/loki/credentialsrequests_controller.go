@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -46,7 +47,17 @@ func (r *CredentialsRequestsReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	secretRef, err := handlers.CreateCredentialsRequest(ctx, r.Client, req.NamespacedName)
+	storageSecretName := client.ObjectKey{
+		Namespace: req.Namespace,
+		Name:      stack.Spec.Storage.Secret.Name,
+	}
+	storageSecret := &corev1.Secret{}
+	err = r.Client.Get(ctx, storageSecretName, storageSecret)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	secretRef, err := handlers.CreateCredentialsRequest(ctx, r.Client, req.NamespacedName, storageSecret)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

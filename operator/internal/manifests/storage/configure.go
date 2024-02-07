@@ -193,6 +193,16 @@ func managedAuthCredentials(opts Options) []corev1.EnvVar {
 			}
 		}
 	case lokiv1.ObjectStorageSecretAzure:
+		if opts.OpenShift.ManagedAuthEnabled() {
+			return []corev1.EnvVar{
+				envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
+				envVarFromSecret(EnvAzureClientID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyClientID),
+				envVarFromSecret(EnvAzureTenantID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeyTenantID),
+				envVarFromSecret(EnvAzureSubscriptionID, opts.OpenShift.CloudCredentials.SecretName, azureManagedCredentialKeySubscriptionID),
+				envVarFromValue(EnvAzureFederatedTokenFile, path.Join(azureTokenVolumeDirectory, "token")),
+			}
+		}
+
 		return []corev1.EnvVar{
 			envVarFromSecret(EnvAzureStorageAccountName, opts.SecretName, KeyAzureStorageAccountName),
 			envVarFromSecret(EnvAzureClientID, opts.SecretName, KeyAzureStorageClientID),
@@ -310,6 +320,9 @@ func saTokenVolume(opts Options) corev1.Volume {
 		}
 	case lokiv1.ObjectStorageSecretAzure:
 		audience = azureDefaultAudience
+		if opts.Azure.Audience != "" {
+			audience = opts.Azure.Audience
+		}
 	}
 	return corev1.Volume{
 		Name: saTokenVolumeName,

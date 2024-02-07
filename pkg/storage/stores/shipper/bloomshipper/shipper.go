@@ -14,16 +14,11 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
-type BlockQuerierWithFingerprintRange struct {
-	*v1.BlockQuerier
-	v1.FingerprintBounds
-}
-
 type ForEachBlockCallback func(bq *v1.BlockQuerier, bounds v1.FingerprintBounds) error
 
 type Interface interface {
 	GetBlockRefs(ctx context.Context, tenant string, interval Interval) ([]BlockRef, error)
-	Fetch(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
+	ForEach(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
 	Stop()
 }
 
@@ -58,27 +53,26 @@ func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, interval In
 	return blockRefs, nil
 }
 
-func (s *Shipper) Fetch(ctx context.Context, _ string, blocks []BlockRef, callback ForEachBlockCallback) error {
-	blockDirs, err := s.store.FetchBlocks(ctx, blocks)
+func (s *Shipper) ForEach(ctx context.Context, _ string, refs []BlockRef, callback ForEachBlockCallback) error {
+	bqs, err := s.store.FetchBlocks(ctx, refs)
+
 	if err != nil {
 		return err
 	}
 
-	for _, dir := range blockDirs {
-		err := runCallback(callback, dir.BlockQuerier(), dir.BlockRef.Bounds)
+	if len(bqs) != len(refs) {
+		return fmt.Errorf("number of response (%d) does not match number of requests (%d)", len(bqs), len(refs))
+	}
+
+	for i := range bqs {
+		err := callback(bqs[i].BlockQuerier, bqs[i].Bounds)
+		// close querier to decrement ref count
+		bqs[i].Close()
 		if err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func runCallback(callback ForEachBlockCallback, bq *ClosableBlockQuerier, bounds v1.FingerprintBounds) error {
-	defer func(b *ClosableBlockQuerier) {
-		_ = b.Close()
-	}(bq)
-
-	return callback(bq.BlockQuerier, bounds)
 }
 
 func (s *Shipper) Stop() {

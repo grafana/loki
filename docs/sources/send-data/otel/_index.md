@@ -9,10 +9,6 @@ weight:  250
 
 # Ingesting logs to Loki using OpenTelemetry Collector
 
-{{% admonition type="warning" %}}
-OpenTelemetry logs ingestion is an experimental feature and is subject to change in future releases of Grafana Loki.
-{{% /admonition %}}
-
 Loki natively supports ingesting OpenTelemetry logs over HTTP.
 For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [`otlphttp` exporter](https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlphttpexporter).
 
