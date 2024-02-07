@@ -441,7 +441,7 @@ func TestInstanceDownstream(t *testing.T) {
 				// for some reason these seemingly can't be checked in their own goroutines,
 				// so we assign them to scoped variables for later comparison.
 				got = req
-				want = ParamsToLokiRequest(params).WithQuery(`sum(rate({foo="bar"}[2h]))`) // without offset
+				want = ParamsToLokiRequest(params).WithQuery(`sum(rate({foo="bar"}[2h]))`).WithStartEnd(ts.Add(-1*time.Hour), ts.Add(-1*time.Hour)) // without offset and start, end adjusted for instant query
 
 				return expectedResp(), nil
 			},
@@ -611,7 +611,7 @@ func TestDownstream_withoutOffset(t *testing.T) {
 		exp logql.Params
 	}{
 		{in: newTestParams(t, `sum(rate({job="foo"}[5m] offset 2h))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start.Add(-2*time.Hour), start.Add(-2*time.Hour))}, // instant query
-		{in: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start)}, // instant query without offset in original query. start and end shouldn't change
+		{in: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start), exp: newTestParams(t, `sum(rate({job="foo"}[5m]))`, start, start)},                                               // instant query without offset in original query. start and end shouldn't change
 	}
 
 	for _, tc := range cases {
