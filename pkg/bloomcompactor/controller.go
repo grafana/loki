@@ -68,14 +68,14 @@ func (s *SimpleBloomController) buildBlocks(
 	}
 
 	// 2. Fetch metas
-	from, through := table.Bounds()
+	bounds := table.Bounds()
 	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: tenant,
 			Interval: bloomshipper.Interval{
-				Start: from,
-				End:   through,
+				Start: bounds.Start,
+				End:   bounds.End,
 			},
 			Keyspace: ownershipRange,
 		},

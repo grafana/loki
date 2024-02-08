@@ -16,6 +16,7 @@ import (
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 type DayTable model.Time
@@ -44,8 +45,11 @@ func (d DayTable) ModelTime() model.Time {
 	return model.Time(d)
 }
 
-func (d DayTable) Bounds() (start, end model.Time) {
-	return model.Time(d), model.Time(d.Inc())
+func (d DayTable) Bounds() bloomshipper.Interval {
+	return bloomshipper.Interval{
+		Start: model.Time(d),
+		End:   model.Time(d.Inc()),
+	}
 }
 
 type router struct {
@@ -93,6 +97,7 @@ func (r *router) run(ctx context.Context) error {
 	}
 
 	ticker := time.NewTicker(r.interval)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
