@@ -35,7 +35,7 @@ var (
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
 
 	errGCPParseCredentialsFile        = errors.New("gcp storage secret cannot be parsed from JSON content")
-	errGCPCredentialsSourceNoOverride = errors.New("when managed mode, storage secret can not override the default credentials source file")
+	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 )
 
 const gcpAccountTypeExternal = "external_account"
@@ -283,7 +283,7 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 		}
 
 		if credentialsFile.CredentialsSource.File != storage.GCPDefautCredentialsFile {
-			return nil, fmt.Errorf("%w: %s", errGCPCredentialsSourceNoOverride, storage.GCPDefautCredentialsFile)
+			return nil, fmt.Errorf("%w: %s", errGCPWrongCredentialSourceFile, storage.GCPDefautCredentialsFile)
 		}
 	}
 

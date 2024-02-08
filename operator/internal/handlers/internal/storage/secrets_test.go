@@ -335,7 +335,7 @@ func TestGCSExtract(t *testing.T) {
 					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/custom/path/to/secret/gcp/serviceaccount/token\"}}"),
 				},
 			},
-			wantError: "when managed mode, storage secret can not override the default credentials source file: /var/run/secrets/gcp/serviceaccount/token",
+			wantError: "credential source in secret needs to point to token file: /var/run/secrets/gcp/serviceaccount/token",
 		},
 		{
 			name: "all set",

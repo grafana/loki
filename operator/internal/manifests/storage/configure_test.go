@@ -617,7 +617,7 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 			},
 		},
 		{
-			desc: "object storage GCS with WorkloadIdentity",
+			desc: "object storage GCS with Workload Identity",
 			opts: Options{
 				SecretName:  "test",
 				SharedStore: lokiv1.ObjectStorageSecretGCS,
