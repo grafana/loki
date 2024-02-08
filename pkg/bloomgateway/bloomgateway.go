@@ -59,6 +59,7 @@ import (
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
@@ -210,7 +211,12 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
 	// TODO(chaudum): Plug in cache
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, nil, logger)
+	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
+	bcCfg := storageCfg.BloomShipperConfig.BlocksCache
+	if bcCfg.EmbeddedCacheConfig.IsEnabled() {
+		blocksCache = bloomshipper.NewBlocksCache(bcCfg, reg, logger)
+	}
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, logger)
 	if err != nil {
 		return nil, err
 	}

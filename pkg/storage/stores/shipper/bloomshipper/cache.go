@@ -30,10 +30,10 @@ func (c *CloseableBlockQuerier) Close() error {
 	return nil
 }
 
-func NewBlocksCache(config config.Config, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
+func NewBlocksCache(cfg config.BlocksCacheConfig, reg prometheus.Registerer, logger log.Logger) *cache.EmbeddedCache[string, BlockDirectory] {
 	return cache.NewTypedEmbeddedCache[string, BlockDirectory](
 		"bloom-blocks-cache",
-		config.BlocksCache.EmbeddedCacheConfig,
+		cfg.EmbeddedCacheConfig,
 		reg,
 		logger,
 		stats.BloomBlocksCache,
