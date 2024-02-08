@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -135,12 +136,26 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 				level.Error(s.logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
+			preExistingBlocksQueriers := make([]*v1.BlockQuerier, 0, len(preExistingBlocks))
+			for _, block := range preExistingBlocks {
+				preExistingBlocksQueriers = append(preExistingBlocksQueriers, block.BlockQuerier)
+			}
+			// Close all remaining blocks on exit
+			closePreExistingBlocks := func() {
+				var closeErrors multierror.MultiError
+				for _, block := range preExistingBlocks {
+					closeErrors.Add(block.Close())
+				}
+				if err := closeErrors.Err(); err != nil {
+					level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
+				}
+			}
 
 			gen := NewSimpleBloomGenerator(
 				v1.DefaultBlockOptions, // TODO(salvacorts) make block options configurable
 				seriesItr,
 				s.chunkLoader,
-				preExistingBlocks,
+				preExistingBlocksQueriers,
 				s.rwFn,
 				s.metrics,
 				log.With(s.logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
@@ -150,6 +165,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 			if err != nil {
 				// TODO(owen-d): metrics
 				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
@@ -163,6 +179,7 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 					bloomshipper.BlockFrom(s.tenant, s.table, blk),
 				); err != nil {
 					level.Error(s.logger).Log("msg", "failed to write block", "err", err)
+					closePreExistingBlocks()
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
@@ -170,9 +187,12 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
 				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
+			// Close pre-existing blocks
+			closePreExistingBlocks()
 		}
 	}
 

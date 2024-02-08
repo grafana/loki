@@ -521,7 +521,7 @@ func (b *IndexBuilder) Close() (uint32, error) {
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks []PeekingIterator[*SeriesWithBloom]
+	blocks []PeekingSeekableIter[model.Fingerprint, *SeriesWithBloom]
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
@@ -532,7 +532,11 @@ type MergeBuilder struct {
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
-func NewMergeBuilder(blocks []PeekingIterator[*SeriesWithBloom], store Iterator[*Series], populate func(*Series, *Bloom) error) *MergeBuilder {
+func NewMergeBuilder(
+	blocks []PeekingSeekableIter[model.Fingerprint, *SeriesWithBloom],
+	store Iterator[*Series],
+	populate func(*Series, *Bloom) error,
+) *MergeBuilder {
 	return &MergeBuilder{
 		blocks:   blocks,
 		store:    store,
@@ -545,8 +549,17 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (uint32, error) {
 		nextInBlocks *SeriesWithBloom
 	)
 
+	// reset all the blocks to the start
+	blocksAsPeekIters := make([]PeekingIterator[*SeriesWithBloom], 0, len(mb.blocks))
+	for _, block := range mb.blocks {
+		if err := block.Seek(0); err != nil {
+			return 0, errors.Wrap(err, "seeking to first series in block")
+		}
+		blocksAsPeekIters = append(blocksAsPeekIters, block)
+	}
+
 	// Turn the list of blocks into a single iterator that returns the next series
-	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(mb.blocks...))
+	mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(blocksAsPeekIters...))
 	// two overlapping blocks can conceivably have the same series, so we need to dedupe,
 	// preferring the one with the most chunks already indexed since we'll have
 	// to add fewer chunks to the bloom

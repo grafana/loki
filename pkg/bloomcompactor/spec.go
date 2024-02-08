@@ -13,14 +13,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/multierror"
-
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	logql_log "github.com/grafana/loki/pkg/logql/log"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
@@ -74,7 +71,7 @@ type SimpleBloomGenerator struct {
 	chunkLoader ChunkLoader
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
 	// as an iterator of iterators, where each iterator is a batch of overlapping blocks.
-	blocks []*bloomshipper.CloseableBlockQuerier
+	blocks []*v1.BlockQuerier
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -95,7 +92,7 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocks []*bloomshipper.CloseableBlockQuerier,
+	blocks []*v1.BlockQuerier,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
@@ -133,20 +130,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 }
 
 func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, results v1.Iterator[*v1.Block], err error) {
-
-	var closeErrors multierror.MultiError
-	blocksMatchingSchema := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(s.blocks))
-	toClose := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.blocks))
-	// Close all remaining blocks on exit
-	defer func() {
-		for _, block := range toClose {
-			closeErrors.Add(block.Close())
-		}
-		if err := closeErrors.Err(); err != nil {
-			level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
-		}
-	}()
-
+	blocksMatchingSchema := make([]*v1.BlockQuerier, 0, len(s.blocks))
 	for _, block := range s.blocks {
 		// TODO(owen-d): implement block naming so we can log the affected block in all these calls
 		logger := log.With(s.logger, "block", fmt.Sprintf("%+v", block))
@@ -155,26 +139,17 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to get schema for block", "err", err)
 			skippedBlocks = append(skippedBlocks, md)
-
-			// Close unneeded block
-			closeErrors.Add(block.Close())
 			continue
 		}
 
 		if !s.opts.Schema.Compatible(schema) {
 			level.Warn(logger).Log("msg", "block schema incompatible with options", "generator_schema", fmt.Sprintf("%+v", s.opts.Schema), "block_schema", fmt.Sprintf("%+v", schema))
 			skippedBlocks = append(skippedBlocks, md)
-
-			// Close unneeded block
-			closeErrors.Add(block.Close())
 			continue
 		}
 
 		level.Debug(logger).Log("msg", "adding compatible block to bloom generation inputs")
-		itr := v1.NewPeekingIter[*v1.SeriesWithBloom](block)
-		blocksMatchingSchema = append(blocksMatchingSchema, itr)
-		// append needed block to close list (when finished)
-		toClose = append(toClose, block)
+		blocksMatchingSchema = append(blocksMatchingSchema, block)
 	}
 
 	level.Debug(s.logger).Log("msg", "generating bloom filters for blocks", "num_blocks", len(blocksMatchingSchema), "skipped_blocks", len(skippedBlocks), "schema", fmt.Sprintf("%+v", s.opts.Schema))
@@ -192,11 +167,10 @@ type LazyBlockBuilderIterator struct {
 	populate     func(*v1.Series, *v1.Bloom) error
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
-	blocks       []*v1.Block
+	blocks       []v1.PeekingSeekableIter[model.Fingerprint, *v1.SeriesWithBloom]
 
-	blockIters []v1.PeekingIterator[*v1.SeriesWithBloom]
-	curr       *v1.Block
-	err        error
+	curr *v1.Block
+	err  error
 }
 
 func NewLazyBlockBuilderIterator(
@@ -205,17 +179,24 @@ func NewLazyBlockBuilderIterator(
 	populate func(*v1.Series, *v1.Bloom) error,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
-	blocks []*v1.Block,
+	blocks []*v1.BlockQuerier,
 ) *LazyBlockBuilderIterator {
-	return &LazyBlockBuilderIterator{
+	it := &LazyBlockBuilderIterator{
 		ctx:          ctx,
 		opts:         opts,
 		populate:     populate,
 		readWriterFn: readWriterFn,
 		series:       series,
-		blocks:       blocks,
-		blockIters:   make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocks)),
+		blocks:       make([]v1.PeekingSeekableIter[model.Fingerprint, *v1.SeriesWithBloom], len(blocks)),
 	}
+
+	// Initialize blockIters with original blocks
+	for i, block := range blocks {
+		itr := v1.NewPeekSeekIter[model.Fingerprint, *v1.SeriesWithBloom](block)
+		it.blocks[i] = itr
+	}
+
+	return it
 }
 
 func (b *LazyBlockBuilderIterator) Next() bool {
@@ -229,13 +210,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	// Reset blockIters with original blocks
-	for i, block := range b.blocks {
-		itr := v1.NewPeekingIter[*v1.SeriesWithBloom](block.Querier())
-		b.blockIters[i] = itr
-	}
-
-	mergeBuilder := v1.NewMergeBuilder(b.blockIters, b.series, b.populate)
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate)
 	writer, reader := b.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {
