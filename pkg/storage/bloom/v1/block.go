@@ -127,6 +127,10 @@ func NewBlockQuerier(b *Block) *BlockQuerier {
 	}
 }
 
+func (bq *BlockQuerier) Metadata() (BlockMetadata, error) {
+	return bq.block.Metadata()
+}
+
 func (bq *BlockQuerier) Schema() (Schema, error) {
 	return bq.block.Schema()
 }
@@ -174,6 +178,11 @@ func (bq *BlockQuerier) Err() error {
 // passed as the `chks` argument. Chunks will be removed from the result set if they are indexed in the bloom
 // and fail to pass all the searches.
 func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRefs, searches [][]byte) (ChunkRefs, error) {
+	schema, err := bq.Schema()
+	if err != nil {
+		return chks, fmt.Errorf("getting schema: %w", err)
+	}
+
 	if err := bq.Seek(fp); err != nil {
 		return chks, errors.Wrapf(err, "seeking to series for fp: %v", fp)
 	}
@@ -205,18 +214,22 @@ func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRef
 		}
 	}
 
-	// TODO(owen-d): pool, memoize chunk search prefix creation
+	// TODO(salvacorts): pool tokenBuf
+	var tokenBuf []byte
+	var prefixLen int
 
 	// Check chunks individually now
 	mustCheck, inBlooms := chks.Compare(series.Chunks, true)
 
 outer:
 	for _, chk := range inBlooms {
+		// Get buf to concatenate the chunk and search token
+		tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
 		for _, search := range searches {
-			// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
-			var combined = search
+			tokenBuf = append(tokenBuf[:prefixLen], search...)
 
-			if !bloom.Test(combined) {
+			if !bloom.Test(tokenBuf) {
+				// chunk didn't pass the search, continue to the next chunk
 				continue outer
 			}
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func blocksFromSchema(t *testing.T, n int, options v1.BlockOptions) (res []*v1.Block, data []v1.SeriesWithBloom) {
@@ -63,11 +64,18 @@ func (dummyChunkLoader) Load(_ context.Context, series *v1.Series) (*ChunkItersB
 }
 
 func dummyBloomGen(opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks []*v1.Block) *SimpleBloomGenerator {
+	bqs := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blocks))
+	for _, b := range blocks {
+		bqs = append(bqs, &bloomshipper.CloseableBlockQuerier{
+			BlockQuerier: v1.NewBlockQuerier(b),
+		})
+	}
+
 	return NewSimpleBloomGenerator(
 		opts,
 		store,
 		dummyChunkLoader{},
-		blocks,
+		bqs,
 		func() (v1.BlockWriter, v1.BlockReader) {
 			indexBuf := bytes.NewBuffer(nil)
 			bloomsBuf := bytes.NewBuffer(nil)

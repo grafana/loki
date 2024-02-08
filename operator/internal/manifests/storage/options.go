@@ -28,6 +28,7 @@ type AzureStorageConfig struct {
 	Env              string
 	Container        string
 	EndpointSuffix   string
+	Audience         string
 	WorkloadIdentity bool
 }
 
@@ -38,13 +39,12 @@ type GCSStorageConfig struct {
 
 // S3StorageConfig for S3 storage config
 type S3StorageConfig struct {
-	Endpoint             string
-	Region               string
-	Buckets              string
-	WebIdentityTokenFile string
-	Audience             string
-	STS                  bool
-	SSE                  S3SSEConfig
+	Endpoint string
+	Region   string
+	Buckets  string
+	Audience string
+	STS      bool
+	SSE      S3SSEConfig
 }
 
 type S3SSEType string

@@ -33,6 +33,7 @@ var (
 )
 
 func TestPrefixedKeyCreation(t *testing.T) {
+	t.Parallel()
 	var ones uint64 = 0xffffffffffffffff
 
 	ref := ChunkRef{
@@ -56,7 +57,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			token, prefixLn := prefixedToken(tc.ngram, ref)
+			token, prefixLn := prefixedToken(tc.ngram, ref, nil)
 			require.Equal(t, 20, prefixLn)
 			require.Equal(t, tc.expLen, len(token))
 			// first 8 bytes should be zeros from `from`
@@ -76,6 +77,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 }
 
 func TestSetLineTokenizer(t *testing.T) {
+	t.Parallel()
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
 	// Validate defaults
@@ -89,6 +91,7 @@ func TestSetLineTokenizer(t *testing.T) {
 }
 
 func TestTokenizerPopulate(t *testing.T) {
+	t.Parallel()
 	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, metrics)
 
