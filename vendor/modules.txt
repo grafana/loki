@@ -1169,6 +1169,9 @@ github.com/mwitkow/go-conntrack
 # github.com/ncw/swift v1.0.53
 ## explicit
 github.com/ncw/swift
+# github.com/nlm/go-multicontext v1.0.0
+## explicit; go 1.18
+github.com/nlm/go-multicontext
 # github.com/oklog/run v1.1.0
 ## explicit; go 1.13
 github.com/oklog/run

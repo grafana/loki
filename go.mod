@@ -127,6 +127,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
+	github.com/nlm/go-multicontext v1.0.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.86.0
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0

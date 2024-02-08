@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
+	"github.com/nlm/go-multicontext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -86,15 +87,14 @@ func (w *worker) starting(_ context.Context) error {
 	return nil
 }
 
-func (w *worker) running(_ context.Context) error {
+func (w *worker) running(ctx context.Context) error {
 	idx := queue.StartIndexWithLocalQueue
 
 	p := processor{store: w.store, logger: w.logger}
 
 	for st := w.State(); st == services.Running || st == services.Stopping; {
-		taskCtx := context.Background()
 		dequeueStart := time.Now()
-		items, newIdx, err := w.queue.DequeueMany(taskCtx, idx, w.id, w.cfg.maxItems)
+		items, newIdx, err := w.queue.DequeueMany(ctx, idx, w.id, w.cfg.maxItems)
 		w.metrics.dequeueWaitTime.WithLabelValues(w.id).Observe(time.Since(dequeueStart).Seconds())
 		if err != nil {
 			// We only return an error if the queue is stopped and dequeuing did not yield any items
@@ -113,6 +113,7 @@ func (w *worker) running(_ context.Context) error {
 		w.metrics.dequeuedTasks.WithLabelValues(w.id).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
+		ctxs := make([]context.Context, 0, len(items))
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
@@ -123,9 +124,11 @@ func (w *worker) running(_ context.Context) error {
 			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			w.pending.Delete(task.ID)
 			tasks = append(tasks, task)
+			ctxs = append(ctxs, task.ctx)
 		}
 
-		err = p.run(taskCtx, tasks)
+		multiCtx := multicontext.WithContexts(ctxs...)
+		err = p.run(multiCtx, tasks)
 		if err != nil {
 			level.Error(w.logger).Log("msg", "failed to process tasks", "err", err)
 		}
