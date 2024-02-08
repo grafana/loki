@@ -396,8 +396,7 @@ func maxTime(t1, t2 time.Time) time.Time {
 }
 
 func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaConfig, error) {
-	var searchFor string
-	searchFor = fmt.Sprintf("%s.yaml", schemaConfigFilename) // schemaconfig.yaml for backwards compatibility
+	searchFor := fmt.Sprintf("%s.yaml", schemaConfigFilename) // schemaconfig.yaml for backwards compatibility
 	loadedSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
 	if err == nil {
 		return loadedSchema, nil
