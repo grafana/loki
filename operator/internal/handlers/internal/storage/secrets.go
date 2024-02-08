@@ -34,10 +34,11 @@ var (
 	errAzureMixedCredentials          = errors.New("azure storage secret can not contain both account_key and client_id")
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
 
-	errGCPParsingCredentialsFile = errors.New("gcp storage secret cannot be parsed from JSON content")
+	errGCPParseCredentialsFile        = errors.New("gcp storage secret cannot be parsed from JSON content")
+	errGCPCredentialsSourceNoOverride = errors.New("when managed mode, storage secret can not override the default credentials source file")
 )
 
-const gcpExternalAccountType = "external_account"
+const gcpAccountTypeExternal = "external_account"
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
 	var (
@@ -261,26 +262,35 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 	}
 
 	credentialsFile := struct {
-		CredentialsType string `json:"type"`
+		CredentialsType   string `json:"type"`
+		CredentialsSource struct {
+			File string `json:"file"`
+		} `json:"credential_source"`
 	}{}
 
 	err := json.Unmarshal(keyJSON, &credentialsFile)
 	if err != nil {
-		return nil, errGCPParsingCredentialsFile
+		return nil, errGCPParseCredentialsFile
 	}
 
 	var (
-		audience           = string(s.Data[storage.KeyGCPWorkloadIdentityProviderAudience])
-		isWorkloadIdentity = credentialsFile.CredentialsType == gcpExternalAccountType
+		audience           = s.Data[storage.KeyGCPWorkloadIdentityProviderAudience]
+		isWorkloadIdentity = credentialsFile.CredentialsType == gcpAccountTypeExternal
 	)
-	if isWorkloadIdentity && len(audience) == 0 {
-		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPWorkloadIdentityProviderAudience)
+	if isWorkloadIdentity {
+		if len(audience) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPWorkloadIdentityProviderAudience)
+		}
+
+		if credentialsFile.CredentialsSource.File != storage.GCPDefautCredentialsFile {
+			return nil, fmt.Errorf("%w: %s", errGCPCredentialsSourceNoOverride, storage.GCPDefautCredentialsFile)
+		}
 	}
 
 	return &storage.GCSStorageConfig{
 		Bucket:           string(bucket),
 		WorkloadIdentity: isWorkloadIdentity,
-		Audience:         audience,
+		Audience:         string(audience),
 	}, nil
 }
 

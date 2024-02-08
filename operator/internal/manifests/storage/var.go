@@ -146,7 +146,8 @@ const (
 	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
 	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
 
-	gcpTokenVolumeDirectory = "/var/run/secrets/gcp/serviceaccount"
+	gcpTokenVolumeDirectory  = "/var/run/secrets/gcp/serviceaccount"
+	GCPDefautCredentialsFile = gcpTokenVolumeDirectory + "/token"
 
 	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )

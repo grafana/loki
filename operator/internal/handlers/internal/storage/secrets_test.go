@@ -326,6 +326,18 @@ func TestGCSExtract(t *testing.T) {
 			wantError: "missing secret field: audience",
 		},
 		{
+			name: "credential_source file no override",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"audience":   []byte("test"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/custom/path/to/secret/gcp/serviceaccount/token\"}}"),
+				},
+			},
+			wantError: "when managed mode, storage secret can not override the default credentials source file: /var/run/secrets/gcp/serviceaccount/token",
+		},
+		{
 			name: "all set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
@@ -342,7 +354,7 @@ func TestGCSExtract(t *testing.T) {
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
 					"audience":   []byte("test"),
-					"key.json":   []byte("{\"type\": \"external_account\"}"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/var/run/secrets/gcp/serviceaccount/token\"}}"),
 				},
 			},
 		},
