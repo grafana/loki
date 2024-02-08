@@ -150,7 +150,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	var degraded *status.DegradedError
-	err = r.updateResources(ctx, req)
+	credentialMode, err := r.updateResources(ctx, req)
 	switch {
 	case errors.As(err, &degraded):
 		// degraded errors are handled by status.Refresh below
@@ -158,7 +158,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	err = status.Refresh(ctx, r.Client, req, time.Now(), degraded)
+	err = status.Refresh(ctx, r.Client, req, time.Now(), credentialMode, degraded)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -172,24 +172,25 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) error {
+func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) (lokiv1.CredentialMode, error) {
 	if r.FeatureGates.BuiltInCertManagement.Enabled {
 		if err := handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
-			return err
+			return "", err
 		}
 	}
 
 	if r.FeatureGates.OpenShift.ManagedAuthEnv {
 		if err := handlers.CreateCredentialsRequest(ctx, r.Log, r.Scheme, r.AuthConfig, r.Client, req); err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	if err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
-		return err
+	credentialMode, err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	if err != nil {
+		return "", err
 	}
 
-	return nil
+	return credentialMode, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
