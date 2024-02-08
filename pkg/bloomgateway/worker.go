@@ -20,11 +20,9 @@ type workerConfig struct {
 }
 
 type workerMetrics struct {
-	dequeuedTasks      *prometheus.CounterVec
-	dequeueErrors      *prometheus.CounterVec
-	dequeueWaitTime    *prometheus.SummaryVec
-	storeAccessLatency *prometheus.HistogramVec
-	bloomQueryLatency  *prometheus.HistogramVec
+	dequeuedTasks   *prometheus.CounterVec
+	dequeueErrors   *prometheus.CounterVec
+	dequeueWaitTime *prometheus.SummaryVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -48,19 +46,6 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "dequeue_wait_time",
 			Help:      "Time spent waiting for dequeuing tasks from queue",
 		}, labels),
-		bloomQueryLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "bloom_query_latency",
-			Help:      "Latency in seconds of processing bloom blocks",
-		}, append(labels, "status")),
-		// TODO(chaudum): Move this metric into the bloomshipper
-		storeAccessLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: namespace,
-			Subsystem: subsystem,
-			Name:      "store_latency",
-			Help:      "Latency in seconds of accessing the bloom store component",
-		}, append(labels, "operation")),
 	}
 }
 
