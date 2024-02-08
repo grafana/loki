@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -259,4 +261,13 @@ func newStreams(start, end time.Time, delta time.Duration, n int, direction logp
 		res = append(res, newStreamWithDirection(start, end, delta, fmt.Sprintf(`{n="%d"}`, i), direction))
 	}
 	return res
+}
+
+func newRandomSketch() sketch.QuantileSketch {
+	r := rand.New(rand.NewSource(42))
+	s := sketch.NewDDSketch()
+	for i := 0; i < 1000; i++ {
+		_ = s.Add(r.Float64())
+	}
+	return s
 }
