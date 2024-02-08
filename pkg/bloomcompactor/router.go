@@ -44,7 +44,7 @@ func (r *Router) Tenants(ctx context.Context, table string) (v1.Iterator[string]
 }
 
 // TODO(owen-d): implement w/ subrings
-func (r *Router) ownsTenant(tenant string) (ownershipRange v1.FingerprintBounds, owns bool) {
+func (r *Router) ownsTenant(_ string) (ownershipRange v1.FingerprintBounds, owns bool) {
 	return v1.NewBounds(0, math.MaxUint64), true
 }
 
