@@ -33,6 +33,8 @@ type TSDBStore interface {
 	) (v1.CloseableIterator[*v1.Series], error)
 }
 
+// BloomTSDBStore is a wrapper around the storage.Client interface which
+// implements the TSDBStore interface for this pkg.
 type BloomTSDBStore struct {
 	storage storage.Client
 }

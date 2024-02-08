@@ -2,6 +2,8 @@ package bloomcompactor
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -15,24 +17,40 @@ import (
 )
 
 type Router struct {
-	interval   time.Duration // how often to run compaction loops
+	// TODO(owen-d): configure these w/ limits
+	interval           time.Duration // how often to run compaction loops
+	minTable, maxTable int
+
 	controller *SimpleBloomController
+	tsdbStore  TSDBStore
 
 	// we can parallelize by (tenant, table) tuples and we run `parallelism` workers
 	parallelism int
 	logger      log.Logger
 }
 
-type TenantTable struct {
-	tenant, table string
+type tenantTable struct {
+	tenant, table  string
+	ownershipRange v1.FingerprintBounds
 }
 
-func (r *Router) Tenants() (v1.Iterator[string], error) {
-	return nil, nil
+func (r *Router) Tenants(ctx context.Context, table string) (v1.Iterator[string], error) {
+	tenants, err := r.tsdbStore.UsersForPeriod(ctx, table)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting tenants")
+	}
+
+	return v1.NewSliceIter(tenants), nil
 }
 
-func (r *Router) Tables(tenant string) (v1.Iterator[string], error) {
-	return nil, nil
+// TODO(owen-d): implement w/ subrings
+func (r *Router) ownsTenant(tenant string) (ownershipRange v1.FingerprintBounds, owns bool) {
+	return v1.NewBounds(0, math.MaxUint64), true
+}
+
+// TODO(owen-d): parameterize via limits
+func (r *Router) Tables() (v1.Iterator[int], error) {
+	return newRangeIterator(r.minTable, r.maxTable), nil
 }
 
 func (r *Router) run(ctx context.Context) error {
@@ -60,7 +78,7 @@ func (r *Router) run(ctx context.Context) error {
 func (r *Router) runOne(ctx context.Context) error {
 	var workersErr error
 	var wg sync.WaitGroup
-	ch := make(chan TenantTable)
+	ch := make(chan tenantTable)
 	wg.Add(1)
 	go func() {
 		workersErr = r.runWorkers(ctx, ch)
@@ -73,42 +91,50 @@ func (r *Router) runOne(ctx context.Context) error {
 	return multierror.New(workersErr, err, ctx.Err()).Err()
 }
 
-func (r *Router) loadWork(ctx context.Context, ch chan<- TenantTable) error {
-	tenants, err := r.Tenants()
+func (r *Router) loadWork(ctx context.Context, ch chan<- tenantTable) error {
+	tables, err := r.Tables()
 	if err != nil {
-		return errors.Wrap(err, "getting tenants")
+		return errors.Wrap(err, "getting tables")
 	}
 
-	for tenants.Next() && ctx.Err() == nil && tenants.Err() == nil {
-		tenant := tenants.At()
-		tables, err := r.Tables(tenant)
+	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
+
+		table := tables.At()
+		tablestr := fmt.Sprintf("%d", table)
+		tenants, err := r.Tenants(ctx, tablestr)
 		if err != nil {
-			return errors.Wrap(err, "getting tables")
+			return errors.Wrap(err, "getting tenants")
 		}
 
-		for tables.Next() && ctx.Err() == nil && tables.Err() == nil {
-			table := tables.At()
+		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
+			tenant := tenants.At()
+			ownershipRange, owns := r.ownsTenant(tenant)
+			if !owns {
+				continue
+			}
+
 			select {
-			case ch <- TenantTable{tenant: tenant, table: table}:
+			case ch <- tenantTable{tenant: tenant, table: tablestr, ownershipRange: ownershipRange}:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		}
 
-		if err := tables.Err(); err != nil {
-			return errors.Wrap(err, "iterating tables")
+		if err := tenants.Err(); err != nil {
+			return errors.Wrap(err, "iterating tenants")
 		}
+
 	}
 
-	if err := tenants.Err(); err != nil {
-		return errors.Wrap(err, "iterating tenants")
+	if err := tables.Err(); err != nil {
+		return errors.Wrap(err, "iterating tables")
 	}
 
 	close(ch)
 	return ctx.Err()
 }
 
-func (r *Router) runWorkers(ctx context.Context, ch <-chan TenantTable) error {
+func (r *Router) runWorkers(ctx context.Context, ch <-chan tenantTable) error {
 
 	return concurrency.ForEachJob(ctx, r.parallelism, r.parallelism, func(ctx context.Context, idx int) error {
 
@@ -122,7 +148,15 @@ func (r *Router) runWorkers(ctx context.Context, ch <-chan TenantTable) error {
 					return nil
 				}
 
-				return r.compactTenantTable(ctx, tt.tenant, tt.table)
+				if err := r.compactTenantTable(ctx, tt); err != nil {
+					return errors.Wrapf(
+						err,
+						"compacting tenant table (%s) for tenant (%s) with ownership (%s)",
+						tt.table,
+						tt.tenant,
+						tt.ownershipRange,
+					)
+				}
 			}
 		}
 
@@ -130,7 +164,28 @@ func (r *Router) runWorkers(ctx context.Context, ch <-chan TenantTable) error {
 
 }
 
-func (r *Router) compactTenantTable(ctx context.Context, tenant, table string) error {
-	level.Info(r.logger).Log("msg", "compacting", "tenant", tenant, "table", table)
+func (r *Router) compactTenantTable(ctx context.Context, tt tenantTable) error {
+	level.Info(r.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange)
+	return r.controller.buildBlocks(ctx, tt.table, tt.tenant, tt.ownershipRange)
+}
+
+type rangeIterator struct {
+	min, max, cur int
+}
+
+func newRangeIterator(min, max int) *rangeIterator {
+	return &rangeIterator{min: min, max: max, cur: min - 1}
+}
+
+func (r *rangeIterator) Next() bool {
+	r.cur++
+	return r.cur < r.max
+}
+
+func (r *rangeIterator) At() int {
+	return r.cur
+}
+
+func (r *rangeIterator) Err() error {
 	return nil
 }
