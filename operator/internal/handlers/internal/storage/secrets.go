@@ -34,7 +34,7 @@ var (
 	errAzureMixedCredentials          = errors.New("azure storage secret can not contain both account_key and client_id")
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
 
-	errGCPParseCredentialsFile        = errors.New("gcp storage secret cannot be parsed from JSON content")
+	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 )
 
