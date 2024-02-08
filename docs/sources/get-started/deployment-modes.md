@@ -33,7 +33,7 @@ The three execution paths in simple scalable mode are each activated by appendin
 - `-target=write` - The write target is stateful and is controlled by a Kubernetes StatefulSet. It contains the following components:
 -- Distributor
 -- Ingester
-- `-target=read` - The read target is stateless and can be run as a Kubernetes Deployment that can be scaled automatically. It contains the following components:
+- `-target=read` - The read target is stateless and can be run as a Kubernetes Deployment that can be scaled automatically (Note that in the official helm chart it is currently deployed as a stateful set). It contains the following components:
 -- Query front end
 -- Queriers
 - `-target=backend` - The backend target is stateful, and is controlled by a Kubernetes StatefulSet. Contains the following components:

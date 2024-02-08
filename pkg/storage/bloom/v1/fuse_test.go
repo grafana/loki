@@ -13,6 +13,7 @@ import (
 )
 
 func TestFusedQuerier(t *testing.T) {
+	t.Parallel()
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
@@ -20,11 +21,11 @@ func TestFusedQuerier(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
@@ -53,6 +54,7 @@ func TestFusedQuerier(t *testing.T) {
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
+				Searches: keys[idx],
 			})
 		}
 		inputs = append(inputs, reqs)
@@ -112,11 +114,11 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 10000
 	numKeysPerSeries := 100
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema: Schema{
+			Schema: Schema{
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},

@@ -56,6 +56,11 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request]) *Fused
 }
 
 func (fq *FusedQuerier) Run() error {
+	schema, err := fq.bq.Schema()
+	if err != nil {
+		return errors.Wrap(err, "getting schema")
+	}
+
 	for fq.inputs.Next() {
 		// find all queries for the next relevant fingerprint
 		nextBatch := fq.inputs.At()
@@ -119,13 +124,18 @@ func (fq *FusedQuerier) Run() error {
 			// TODO(owen-d): pool
 			var removals ChunkRefs
 
+			// TODO(salvacorts): pool tokenBuf
+			var tokenBuf []byte
+			var prefixLen int
+
 		chunkLoop:
 			for _, chk := range inBlooms {
+				// Get buf to concatenate the chunk and search token
+				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
 				for _, search := range input.Searches {
-					// TODO(owen-d): meld chunk + search into a single byte slice from the block schema
-					var combined = search
+					tokenBuf = append(tokenBuf[:prefixLen], search...)
 
-					if !bloom.ScalableBloomFilter.Test(combined) {
+					if !bloom.Test(tokenBuf) {
 						removals = append(removals, chk)
 						continue chunkLoop
 					}

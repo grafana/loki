@@ -159,7 +159,6 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 
 		select {
 		case c.bgWrites <- bgWrite:
-			c.size.Add(int64(size))
 			c.queueBytes.Set(float64(c.size.Load()))
 			c.queueLength.Add(float64(num))
 			c.enqueuedBytes.Add(float64(size))

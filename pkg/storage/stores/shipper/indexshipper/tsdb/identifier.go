@@ -2,12 +2,14 @@ package tsdb
 
 import (
 	"fmt"
+	"hash"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
 
@@ -65,6 +67,12 @@ type SingleTenantTSDBIdentifier struct {
 	TS            time.Time
 	From, Through model.Time
 	Checksum      uint32
+}
+
+// implement Hash
+func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
+	_, err = h.Write([]byte(i.str()))
+	return errors.Wrap(err, "writing SingleTenantTSDBIdentifier")
 }
 
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>

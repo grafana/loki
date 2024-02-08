@@ -67,7 +67,7 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.ObjectStorage.SecretSHA1, opts.CertRotationRequiredAt)
+	a := commonAnnotations(opts)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: opts.Name,
 		Affinity:           configureAffinity(LabelQueryFrontendComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.QueryFrontend),

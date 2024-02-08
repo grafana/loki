@@ -353,6 +353,8 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 	return &LineFilterExpr{
 		Left:       left,
 		LineFilter: right.LineFilter,
+		Or:         right.Or,
+		IsOrChild:  right.IsOrChild,
 	}
 }
 

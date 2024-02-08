@@ -5,3 +5,8 @@ func Flush(c Cache) {
 	close(b.bgWrites)
 	b.wg.Wait()
 }
+
+func QueueSize(c Cache) int64 {
+	b := c.(*backgroundCache)
+	return b.size.Load()
+}

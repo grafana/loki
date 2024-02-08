@@ -171,9 +171,9 @@ func NewBloomBlock(encoding chunkenc.Encoding) BloomBlock {
 	}
 }
 
-func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) error {
+func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	if err := b.schema.DecodeFrom(r); err != nil {
-		return errors.Wrap(err, "decoding schema")
+		return 0, errors.Wrap(err, "decoding schema")
 	}
 
 	var (
@@ -182,35 +182,36 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) error {
 	)
 	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
 	if _, err := r.Seek(-12, io.SeekEnd); err != nil {
-		return errors.Wrap(err, "seeking to bloom headers metadata")
+		return 0, errors.Wrap(err, "seeking to bloom headers metadata")
 	}
 	dec.B, err = io.ReadAll(r)
 	if err != nil {
-		return errors.Wrap(err, "reading bloom headers metadata")
+		return 0, errors.Wrap(err, "reading bloom headers metadata")
 	}
 
 	headerOffset := dec.Be64()
+	checksum := dec.Be32()
 
 	if _, err := r.Seek(int64(headerOffset), io.SeekStart); err != nil {
-		return errors.Wrap(err, "seeking to bloom headers")
+		return 0, errors.Wrap(err, "seeking to bloom headers")
 	}
 	dec.B, err = io.ReadAll(r)
 	if err != nil {
-		return errors.Wrap(err, "reading bloom page headers")
+		return 0, errors.Wrap(err, "reading bloom page headers")
 	}
 
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
-		return errors.Wrap(err, "checksumming page headers")
+		return 0, errors.Wrap(err, "checksumming page headers")
 	}
 
 	b.pageHeaders = make([]BloomPageHeader, dec.Uvarint())
 	for i := 0; i < len(b.pageHeaders); i++ {
 		header := &b.pageHeaders[i]
 		if err := header.Decode(&dec); err != nil {
-			return errors.Wrapf(err, "decoding %dth series header", i)
+			return 0, errors.Wrapf(err, "decoding %dth series header", i)
 		}
 	}
-	return nil
+	return checksum, nil
 }
 
 func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageDecoder, error) {

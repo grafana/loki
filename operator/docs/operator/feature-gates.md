@@ -409,6 +409,17 @@ bool
 <p>Dashboards enables the loki-mixin dashboards into the OpenShift Console</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>ManagedAuthEnv</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>ManagedAuthEnv enabled when the operator installation is on OpenShift STS clusters.</p>
+</td>
+</tr>
 </tbody>
 </table>
 

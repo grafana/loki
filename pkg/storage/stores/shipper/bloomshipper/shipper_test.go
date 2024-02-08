@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 func Test_Shipper_findBlocks(t *testing.T) {
@@ -16,37 +18,40 @@ func Test_Shipper_findBlocks(t *testing.T) {
 			{
 				Blocks: []BlockRef{
 					//this blockRef is marked as deleted in the next meta
-					createMatchingBlockRef("block1"),
-					createMatchingBlockRef("block2"),
+					createMatchingBlockRef(1),
+					createMatchingBlockRef(2),
 				},
 			},
 			{
 				Blocks: []BlockRef{
 					//this blockRef is marked as deleted in the next meta
-					createMatchingBlockRef("block3"),
-					createMatchingBlockRef("block4"),
+					createMatchingBlockRef(3),
+					createMatchingBlockRef(4),
 				},
 			},
 			{
 				Tombstones: []BlockRef{
-					createMatchingBlockRef("block1"),
-					createMatchingBlockRef("block3"),
+					createMatchingBlockRef(1),
+					createMatchingBlockRef(3),
 				},
 				Blocks: []BlockRef{
-					createMatchingBlockRef("block2"),
-					createMatchingBlockRef("block4"),
-					createMatchingBlockRef("block5"),
+					createMatchingBlockRef(5),
 				},
 			},
 		}
 
-		shipper := &Shipper{}
-		blocks := shipper.findBlocks(metas, model.Now().Add(-2*time.Hour), model.Now().Add(-1*time.Hour), []fpRange{{100, 200}})
+		ts := model.Now()
+
+		interval := NewInterval(
+			ts.Add(-2*time.Hour),
+			ts.Add(-1*time.Hour),
+		)
+		blocks := BlocksForMetas(metas, interval, []v1.FingerprintBounds{{Min: 100, Max: 200}})
 
 		expectedBlockRefs := []BlockRef{
-			createMatchingBlockRef("block2"),
-			createMatchingBlockRef("block4"),
-			createMatchingBlockRef("block5"),
+			createMatchingBlockRef(2),
+			createMatchingBlockRef(4),
+			createMatchingBlockRef(5),
 		}
 		require.ElementsMatch(t, expectedBlockRefs, blocks)
 	})
@@ -93,9 +98,8 @@ func Test_Shipper_findBlocks(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			shipper := &Shipper{}
-			ref := createBlockRef("fake-block", data.minFingerprint, data.maxFingerprint, data.startTimestamp, data.endTimestamp)
-			blocks := shipper.findBlocks([]Meta{{Blocks: []BlockRef{ref}}}, 300, 400, []fpRange{{100, 200}})
+			ref := createBlockRef(data.minFingerprint, data.maxFingerprint, data.startTimestamp, data.endTimestamp)
+			blocks := BlocksForMetas([]Meta{{Blocks: []BlockRef{ref}}}, NewInterval(300, 400), []v1.FingerprintBounds{{Min: 100, Max: 200}})
 			if data.filtered {
 				require.Empty(t, blocks)
 				return
@@ -111,66 +115,79 @@ func TestIsOutsideRange(t *testing.T) {
 	endTs := model.Time(2000)
 
 	t.Run("is outside if startTs > through", func(t *testing.T) {
-		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(&b, 0, 900, []fpRange{})
+		b := createBlockRef(0, math.MaxUint64, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(0, 900), []v1.FingerprintBounds{})
+		require.True(t, isOutside)
+	})
+
+	t.Run("is outside if startTs == through ", func(t *testing.T) {
+		b := createBlockRef(0, math.MaxUint64, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(900, 1000), []v1.FingerprintBounds{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if endTs < from", func(t *testing.T) {
-		b := createBlockRef("block", 0, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(&b, 2100, 3000, []fpRange{})
+		b := createBlockRef(0, math.MaxUint64, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(2100, 3000), []v1.FingerprintBounds{})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if endFp < first fingerprint", func(t *testing.T) {
-		b := createBlockRef("block", 0, 90, startTs, endTs)
-		isOutside := isOutsideRange(&b, startTs, endTs, []fpRange{{100, 199}})
+		b := createBlockRef(0, 90, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 100, Max: 199}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if startFp > last fingerprint", func(t *testing.T) {
-		b := createBlockRef("block", 200, math.MaxUint64, startTs, endTs)
-		isOutside := isOutsideRange(&b, startTs, endTs, []fpRange{{0, 49}, {100, 149}})
+		b := createBlockRef(200, math.MaxUint64, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 49}, {Min: 100, Max: 149}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is outside if within gaps in fingerprints", func(t *testing.T) {
-		b := createBlockRef("block", 100, 199, startTs, endTs)
-		isOutside := isOutsideRange(&b, startTs, endTs, []fpRange{{0, 99}, {200, 299}})
+		b := createBlockRef(100, 199, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.True(t, isOutside)
 	})
 
 	t.Run("is not outside if within fingerprints 1", func(t *testing.T) {
-		b := createBlockRef("block", 10, 90, startTs, endTs)
-		isOutside := isOutsideRange(&b, startTs, endTs, []fpRange{{0, 99}, {200, 299}})
+		b := createBlockRef(10, 90, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if within fingerprints 2", func(t *testing.T) {
-		b := createBlockRef("block", 210, 290, startTs, endTs)
-		isOutside := isOutsideRange(&b, startTs, endTs, []fpRange{{0, 99}, {200, 299}})
+		b := createBlockRef(210, 290, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if spans across multiple fingerprint ranges", func(t *testing.T) {
-		b := createBlockRef("block", 50, 250, startTs, endTs)
-		isOutside := isOutsideRange(&b, startTs, endTs, []fpRange{{0, 99}, {200, 299}})
+		b := createBlockRef(50, 250, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 0, Max: 99}, {Min: 200, Max: 299}})
 		require.False(t, isOutside)
 	})
 
 	t.Run("is not outside if fingerprint range and time range are larger than block", func(t *testing.T) {
-		b := createBlockRef("block", math.MaxUint64/3, math.MaxUint64/3*2, startTs, endTs)
-		isOutside := isOutsideRange(&b, 0, 3000, []fpRange{{0, math.MaxUint64}})
+		b := createBlockRef(math.MaxUint64/3, math.MaxUint64/3*2, startTs, endTs)
+		isOutside := isOutsideRange(b, NewInterval(0, 3000), []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}})
+		require.False(t, isOutside)
+	})
+
+	t.Run("is not outside if block fingerprint range is bigger that search keyspace", func(t *testing.T) {
+		b := createBlockRef(0x0000, 0xffff, model.Earliest, model.Latest)
+		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 0x0100, Max: 0xff00}})
 		require.False(t, isOutside)
 	})
 }
 
-func createMatchingBlockRef(blockPath string) BlockRef {
-	return createBlockRef(blockPath, 0, math.MaxUint64, model.Time(0), model.Now())
+func createMatchingBlockRef(checksum uint32) BlockRef {
+	block := createBlockRef(0, math.MaxUint64, model.Time(0), model.Time(math.MaxInt64))
+	block.Checksum = checksum
+	return block
 }
 
 func createBlockRef(
-	blockPath string,
 	minFingerprint, maxFingerprint uint64,
 	startTimestamp, endTimestamp model.Time,
 ) BlockRef {
@@ -179,13 +196,10 @@ func createBlockRef(
 		Ref: Ref{
 			TenantID:       "fake",
 			TableName:      fmt.Sprintf("%d", day),
-			MinFingerprint: minFingerprint,
-			MaxFingerprint: maxFingerprint,
+			Bounds:         v1.NewBounds(model.Fingerprint(minFingerprint), model.Fingerprint(maxFingerprint)),
 			StartTimestamp: startTimestamp,
 			EndTimestamp:   endTimestamp,
 			Checksum:       0,
 		},
-		// block path is unique, and it's used to distinguish the blocks so the rest of the fields might be skipped in this test
-		BlockPath: blockPath,
 	}
 }

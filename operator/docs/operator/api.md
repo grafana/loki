@@ -1745,6 +1745,10 @@ with the select cluster size.</p>
 </tr><tr><td><p>&#34;InvalidTenantsConfiguration&#34;</p></td>
 <td><p>ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.</p>
 </td>
+</tr><tr><td><p>&#34;MissingCredentialsRequest&#34;</p></td>
+<td><p>ReasonMissingCredentialsRequest when the required request for managed auth credentials to object
+storage is missing.</p>
+</td>
 </tr><tr><td><p>&#34;MissingGatewayTenantAuthenticationConfig&#34;</p></td>
 <td><p>ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config</p>
 </td>
@@ -1758,6 +1762,10 @@ for authentication is missing.</p>
 </tr><tr><td><p>&#34;MissingGatewayTenantSecret&#34;</p></td>
 <td><p>ReasonMissingGatewayTenantSecret when the required tenant secret
 for authentication is missing.</p>
+</td>
+</tr><tr><td><p>&#34;MissingManagedAuthenticationSecret&#34;</p></td>
+<td><p>ReasonMissingManagedAuthSecret when the required secret for managed auth credentials to object
+storage is missing.</p>
 </td>
 </tr><tr><td><p>&#34;MissingObjectStorageCAConfigMap&#34;</p></td>
 <td><p>ReasonMissingObjectStorageCAConfigMap when the required configmap to verify object storage

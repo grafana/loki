@@ -1424,12 +1424,10 @@ func (t *Loki) initBloomCompactor() (services.Service, error) {
 
 	compactor, err := bloomcompactor.New(
 		t.Cfg.BloomCompactor,
-		t.Cfg.StorageConfig,
-		t.Cfg.SchemaConfig,
+		nil, // StoreAndClient placeholder. TODO(owen-d): remove this once we have a proper store and client
+		shuffleSharding,
 		t.Overrides,
 		logger,
-		shuffleSharding,
-		t.clientMetrics,
 		prometheus.DefaultRegisterer)
 
 	if err != nil {

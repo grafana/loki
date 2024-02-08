@@ -7,6 +7,7 @@ import (
 )
 
 func TestSliceIterWithIndex(t *testing.T) {
+	t.Parallel()
 	t.Run("SliceIterWithIndex implements PeekingIterator interface", func(t *testing.T) {
 		xs := []string{"a", "b", "c"}
 		it := NewSliceIterWithIndex(xs, 123)

@@ -12,7 +12,7 @@ type DedupeIter[A, B any] struct {
 }
 
 // general helper, in this case created for DedupeIter[T,T]
-func id[A any](a A) A { return a }
+func Identity[A any](a A) A { return a }
 
 func NewDedupingIter[A, B any](
 	eq func(A, B) bool,
@@ -51,4 +51,21 @@ func (it *DedupeIter[A, B]) Err() error {
 
 func (it *DedupeIter[A, B]) At() B {
 	return it.tmp
+}
+
+// Collect collects an interator into a slice. It uses
+// CollectInto with a new slice
+func Collect[T any](itr Iterator[T]) ([]T, error) {
+	return CollectInto(itr, nil)
+}
+
+// CollectInto collects the elements of an iterator into a provided slice
+// which is returned
+func CollectInto[T any](itr Iterator[T], into []T) ([]T, error) {
+	into = into[:0]
+
+	for itr.Next() {
+		into = append(into, itr.At())
+	}
+	return into, itr.Err()
 }

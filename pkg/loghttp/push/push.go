@@ -58,7 +58,11 @@ type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
 }
 
-type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention) (*logproto.PushRequest, *Stats, error)
+type Limits interface {
+	OTLPConfig(userID string) OTLPConfig
+}
+
+type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits) (*logproto.PushRequest, *Stats, error)
 
 type Stats struct {
 	errs                     []error
@@ -72,8 +76,8 @@ type Stats struct {
 	bodySize                 int64
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, pushRequestParser RequestParser) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention)
+func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +135,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, _ Limits) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body

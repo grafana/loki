@@ -578,7 +578,7 @@ func (c *Compactor) stopping(_ error) error {
 }
 
 func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRetention bool) error {
-	schemaCfg, ok := schemaPeriodForTable(c.schemaConfig, tableName)
+	schemaCfg, ok := SchemaPeriodForTable(c.schemaConfig, tableName)
 	if !ok {
 		level.Error(util_log.Logger).Log("msg", "skipping compaction since we can't find schema for table", "table", tableName)
 		return nil
@@ -720,7 +720,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err
 	}
 
 	// process most recent tables first
-	sortTablesByRange(tables)
+	SortTablesByRange(tables)
 
 	// apply passed in compaction limits
 	if c.cfg.SkipLatestNTables <= len(tables) {
@@ -866,7 +866,7 @@ func (c *Compactor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.ring.ServeHTTP(w, req)
 }
 
-func sortTablesByRange(tables []string) {
+func SortTablesByRange(tables []string) {
 	tableRanges := make(map[string]model.Interval)
 	for _, table := range tables {
 		tableRanges[table] = retention.ExtractIntervalFromTableName(table)
@@ -879,7 +879,7 @@ func sortTablesByRange(tables []string) {
 
 }
 
-func schemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
+func SchemaPeriodForTable(cfg config.SchemaConfig, tableName string) (config.PeriodConfig, bool) {
 	tableInterval := retention.ExtractIntervalFromTableName(tableName)
 	schemaCfg, err := cfg.SchemaForTime(tableInterval.Start)
 	if err != nil || schemaCfg.IndexTables.TableFor(tableInterval.Start) != tableName {

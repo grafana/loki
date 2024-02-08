@@ -1,5 +1,8 @@
 name: Checks
-on: [push]
+on:
+  pull_request:
+    branches:    
+      - main
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -10,6 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5
+        with:
+          version: v1.55.1
+          only-new-issues: true
       - run: make lint
       - run: make check-doc
       - run: make check-mod

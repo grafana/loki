@@ -20,13 +20,14 @@ import (
 //   - The object storage schema config is invalid.
 //   - The object storage CA ConfigMap is missing if one referenced.
 //   - The object storage CA ConfigMap data is invalid.
+//   - The object storage managed auth secret is missing (Only on OpenShift STS-clusters)
 func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (storage.Options, error) {
-	storageSecret, err := getSecret(ctx, k, stack)
+	storageSecret, managedAuthSecret, err := getSecrets(ctx, k, stack, fg)
 	if err != nil {
 		return storage.Options{}, err
 	}
 
-	objStore, err := extractSecret(storageSecret, stack.Spec.Storage.Secret.Type)
+	objStore, err := extractSecrets(stack.Spec.Storage.Secret.Type, storageSecret, managedAuthSecret, fg)
 	if err != nil {
 		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -34,7 +35,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 			Requeue: false,
 		}
 	}
-	objStore.OpenShiftEnabled = fg.OpenShift.Enabled
+	objStore.OpenShift.Enabled = fg.OpenShift.Enabled
 
 	storageSchemas, err := storage.BuildSchemaConfig(
 		time.Now().UTC(),
