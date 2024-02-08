@@ -17,17 +17,8 @@ type tasksForBlock struct {
 	tasks    []Task
 }
 
-type blockLoader interface {
-	LoadBlocks(context.Context, []bloomshipper.BlockRef) (v1.Iterator[bloomshipper.BlockQuerierWithFingerprintRange], error)
-}
-
-type store interface {
-	blockLoader
-	bloomshipper.Store
-}
-
 type processor struct {
-	store  store
+	store  bloomshipper.Store
 	logger log.Logger
 }
 
@@ -70,17 +61,20 @@ func (p *processor) processBlocks(ctx context.Context, data []tasksForBlock) err
 		refs = append(refs, block.blockRef)
 	}
 
-	blockIter, err := p.store.LoadBlocks(ctx, refs)
+	bqs, err := p.store.FetchBlocks(ctx, refs)
 	if err != nil {
 		return err
 	}
+
+	blockIter := v1.NewSliceIter(bqs)
 
 outer:
 	for blockIter.Next() {
 		bq := blockIter.At()
 		for i, block := range data {
-			if block.blockRef.Bounds.Equal(bq.FingerprintBounds) {
+			if block.blockRef.Bounds.Equal(bq.Bounds) {
 				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
+				bq.Close()
 				if err != nil {
 					return err
 				}
@@ -88,6 +82,8 @@ outer:
 				continue outer
 			}
 		}
+		// should not happen, but close anyway
+		bq.Close()
 	}
 	return nil
 }

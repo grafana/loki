@@ -74,6 +74,34 @@ func encodeProviderSpec(stackName string, env *ManagedAuthEnv) (*runtime.RawExte
 			STSIAMRoleARN: env.AWS.RoleARN,
 		}
 		secretName = fmt.Sprintf("%s-aws-creds", stackName)
+	case env.Azure != nil:
+		azure := env.Azure
+
+		spec = &cloudcredentialv1.AzureProviderSpec{
+			Permissions: []string{
+				"Microsoft.Storage/storageAccounts/blobServices/read",
+				"Microsoft.Storage/storageAccounts/blobServices/containers/read",
+				"Microsoft.Storage/storageAccounts/blobServices/containers/write",
+				"Microsoft.Storage/storageAccounts/blobServices/generateUserDelegationKey/action",
+				"Microsoft.Storage/storageAccounts/read",
+				"Microsoft.Storage/storageAccounts/write",
+				"Microsoft.Storage/storageAccounts/delete",
+				"Microsoft.Storage/storageAccounts/listKeys/action",
+				"Microsoft.Resources/tags/write",
+			},
+			DataPermissions: []string{
+				"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/delete",
+				"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write",
+				"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read",
+				"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/add/action",
+				"Microsoft.Storage/storageAccounts/blobServices/containers/blobs/move/action",
+			},
+			AzureClientID:       azure.ClientID,
+			AzureRegion:         azure.Region,
+			AzureSubscriptionID: azure.SubscriptionID,
+			AzureTenantID:       azure.TenantID,
+		}
+		secretName = fmt.Sprintf("%s-azure-creds", stackName)
 	}
 
 	encodedSpec, err := cloudcredentialv1.Codec.EncodeProviderSpec(spec.DeepCopyObject())
@@ -84,11 +112,24 @@ func DiscoverManagedAuthEnv() *ManagedAuthEnv {
 	// AWS
 	roleARN := os.Getenv("ROLEARN")
 
+	// Azure
+	clientID := os.Getenv("CLIENTID")
+	tenantID := os.Getenv("TENANTID")
+	subscriptionID := os.Getenv("SUBSCRIPTIONID")
+
 	switch {
 	case roleARN != "":
 		return &ManagedAuthEnv{
 			AWS: &AWSSTSEnv{
 				RoleARN: roleARN,
+			},
+		}
+	case clientID != "" && tenantID != "" && subscriptionID != "":
+		return &ManagedAuthEnv{
+			Azure: &AzureWIFEnvironment{
+				ClientID:       clientID,
+				SubscriptionID: subscriptionID,
+				TenantID:       tenantID,
 			},
 		}
 	}
