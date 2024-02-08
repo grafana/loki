@@ -52,11 +52,9 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
-			BlocksCache: config.BlocksCacheConfig{
-				EmbeddedCacheConfig: cache.EmbeddedCacheConfig{
-					MaxSizeItems: 1000,
-					TTL:          1 * time.Hour,
-				},
+			BlocksCache: cache.EmbeddedCacheConfig{
+				MaxSizeItems: 1000,
+				TTL:          1 * time.Hour,
 			},
 		},
 	}

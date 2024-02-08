@@ -56,6 +56,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/queue"
 	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -206,17 +207,27 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		workerMetrics: newWorkerMetrics(reg, constants.Loki, metricsSubsystem),
 		queueMetrics:  queue.NewMetrics(reg, constants.Loki, metricsSubsystem),
 	}
+	var err error
 
 	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{0}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
-	// TODO(chaudum): Plug in cache
+	var metasCache cache.Cache
+	mcCfg := storageCfg.BloomShipperConfig.MetasCache
+	if cache.IsCacheConfigured(mcCfg) {
+		metasCache, err = cache.New(mcCfg, reg, logger, stats.BloomMetasCache, constants.Loki)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var blocksCache cache.TypedCache[string, bloomshipper.BlockDirectory]
 	bcCfg := storageCfg.BloomShipperConfig.BlocksCache
-	if bcCfg.EmbeddedCacheConfig.IsEnabled() {
+	if bcCfg.IsEnabled() {
 		blocksCache = bloomshipper.NewBlocksCache(bcCfg, reg, logger)
 	}
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, logger)
+
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, metasCache, blocksCache, logger)
 	if err != nil {
 		return nil, err
 	}
