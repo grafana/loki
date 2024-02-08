@@ -3,143 +3,55 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
-
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
 )
-
-type BlockQuerierWithFingerprintRange struct {
-	*v1.BlockQuerier
-	v1.FingerprintBounds
-}
 
 type ForEachBlockCallback func(bq *v1.BlockQuerier, bounds v1.FingerprintBounds) error
 
 type Interface interface {
-	GetBlockRefs(ctx context.Context, tenant string, interval Interval) ([]BlockRef, error)
-	Fetch(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
+	ForEach(ctx context.Context, tenant string, blocks []BlockRef, callback ForEachBlockCallback) error
 	Stop()
 }
 
 type Shipper struct {
-	store           Store
-	config          config.Config
-	logger          log.Logger
-	blockDownloader *blockDownloader
+	store Store
 }
 
 type Limits interface {
 	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
 }
 
-// TODO(chaudum): resolve and rip out
-type StoreAndClient interface {
-	Store
-	Client
+func NewShipper(client Store) *Shipper {
+	return &Shipper{store: client}
 }
 
-func NewShipper(client StoreAndClient, config config.Config, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Shipper, error) {
-	logger = log.With(logger, "component", "bloom-shipper")
-	downloader, err := newBlockDownloader(config, client, limits, logger, reg)
+// ForEach is a convenience function that wraps the store's FetchBlocks function
+// and automatically closes the block querier once the callback was run.
+func (s *Shipper) ForEach(ctx context.Context, refs []BlockRef, callback ForEachBlockCallback) error {
+	bqs, err := s.store.FetchBlocks(ctx, refs)
 	if err != nil {
-		return nil, fmt.Errorf("error creating block downloader: %w", err)
+		return err
 	}
-	return &Shipper{
-		store:           client,
-		config:          config,
-		logger:          logger,
-		blockDownloader: downloader,
-	}, nil
-}
 
-func (s *Shipper) GetBlockRefs(ctx context.Context, tenantID string, interval Interval) ([]BlockRef, error) {
-	level.Debug(s.logger).Log("msg", "GetBlockRefs", "tenant", tenantID, "[", interval.Start, "", interval.End)
-
-	// TODO(chaudum): The bloom gateway should not fetch blocks for the complete key space
-	bounds := []v1.FingerprintBounds{v1.NewBounds(0, math.MaxUint64)}
-	blockRefs, err := s.getActiveBlockRefs(ctx, tenantID, interval, bounds)
-	if err != nil {
-		return nil, fmt.Errorf("error fetching active block references : %w", err)
+	if len(bqs) != len(refs) {
+		return fmt.Errorf("number of response (%d) does not match number of requests (%d)", len(bqs), len(refs))
 	}
-	return blockRefs, nil
-}
 
-func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef, callback ForEachBlockCallback) error {
-	cancelContext, cancelFunc := context.WithCancel(ctx)
-	defer cancelFunc()
-	blocksChannel, errorsChannel := s.blockDownloader.downloadBlocks(cancelContext, tenantID, blocks)
-
-	// track how many blocks are still remaning to be downloaded
-	remaining := len(blocks)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
-		case result, sentBeforeClosed := <-blocksChannel:
-			if !sentBeforeClosed {
-				return nil
-			}
-			err := runCallback(callback, result)
-			if err != nil {
-				return err
-			}
-			remaining--
-			if remaining == 0 {
-				return nil
-			}
-		case err := <-errorsChannel:
-			return fmt.Errorf("error downloading blocks : %w", err)
+	for i := range bqs {
+		err := callback(bqs[i].BlockQuerier, bqs[i].Bounds)
+		// close querier to decrement ref count
+		bqs[i].Close()
+		if err != nil {
+			return err
 		}
-	}
-}
-
-func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
-	defer func(b blockWithQuerier) {
-		_ = b.Close()
-	}(block)
-
-	err := callback(block.closableBlockQuerier.BlockQuerier, block.Bounds)
-	if err != nil {
-		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockRef, err)
 	}
 	return nil
 }
 
 func (s *Shipper) Stop() {
 	s.store.Stop()
-	s.blockDownloader.stop()
-}
-
-// getFirstLast returns the first and last item of a fingerprint slice
-// It assumes an ascending sorted list of fingerprints.
-func getFirstLast[T any](s []T) (T, T) {
-	var zero T
-	if len(s) == 0 {
-		return zero, zero
-	}
-	return s[0], s[len(s)-1]
-}
-
-func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, interval Interval, bounds []v1.FingerprintBounds) ([]BlockRef, error) {
-	minFpRange, maxFpRange := getFirstLast(bounds)
-	metas, err := s.store.FetchMetas(ctx, MetaSearchParams{
-		TenantID: tenantID,
-		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
-		Interval: interval,
-	})
-	if err != nil {
-		return []BlockRef{}, fmt.Errorf("error fetching meta.json files: %w", err)
-	}
-	level.Debug(s.logger).Log("msg", "dowloaded metas", "count", len(metas))
-
-	return BlocksForMetas(metas, interval, bounds), nil
 }
 
 // BlocksForMetas returns all the blocks from all the metas listed that are within the requested bounds
