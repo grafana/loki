@@ -91,6 +91,8 @@ const (
 	// KeyAzureAudience is the secret data key for customizing the audience used for the ServiceAccount token.
 	KeyAzureAudience = "audience"
 
+	// KeyGCPWorkloadIdentityProviderAudience is the secret data key for the GCP Workload Identity Provider audience.
+	KeyGCPWorkloadIdentityProviderAudience = "audience"
 	// KeyGCPStorageBucketName is the secret data key for the GCS bucket name.
 	KeyGCPStorageBucketName = "bucketname"
 	// KeyGCPServiceAccountKeyFilename is the service account key filename containing the Google authentication credentials.
@@ -143,6 +145,9 @@ const (
 	azureManagedCredentialKeyClientID       = "azure_client_id"
 	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
 	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
+
+	gcpTokenVolumeDirectory  = "/var/run/secrets/gcp/serviceaccount"
+	GCPDefautCredentialsFile = gcpTokenVolumeDirectory + "/token"
 
 	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )

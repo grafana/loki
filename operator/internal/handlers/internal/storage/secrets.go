@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -32,7 +33,12 @@ var (
 	errAzureNoCredentials             = errors.New("azure storage secret does contain neither account_key or client_id")
 	errAzureMixedCredentials          = errors.New("azure storage secret can not contain both account_key and client_id")
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
+
+	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
+	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
 )
+
+const gcpAccountTypeExternal = "external_account"
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
 	var (
@@ -255,8 +261,36 @@ func extractGCSConfigSecret(s *corev1.Secret) (*storage.GCSStorageConfig, error)
 		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPServiceAccountKeyFilename)
 	}
 
+	credentialsFile := struct {
+		CredentialsType   string `json:"type"`
+		CredentialsSource struct {
+			File string `json:"file"`
+		} `json:"credential_source"`
+	}{}
+
+	err := json.Unmarshal(keyJSON, &credentialsFile)
+	if err != nil {
+		return nil, errGCPParseCredentialsFile
+	}
+
+	var (
+		audience           = s.Data[storage.KeyGCPWorkloadIdentityProviderAudience]
+		isWorkloadIdentity = credentialsFile.CredentialsType == gcpAccountTypeExternal
+	)
+	if isWorkloadIdentity {
+		if len(audience) == 0 {
+			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyGCPWorkloadIdentityProviderAudience)
+		}
+
+		if credentialsFile.CredentialsSource.File != storage.GCPDefautCredentialsFile {
+			return nil, fmt.Errorf("%w: %s", errGCPWrongCredentialSourceFile, storage.GCPDefautCredentialsFile)
+		}
+	}
+
 	return &storage.GCSStorageConfig{
-		Bucket: string(bucket),
+		Bucket:           string(bucket),
+		WorkloadIdentity: isWorkloadIdentity,
+		Audience:         string(audience),
 	}, nil
 }
 
