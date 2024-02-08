@@ -59,8 +59,16 @@ type AWSSTSEnv struct {
 	RoleARN string
 }
 
+type AzureWIFEnvironment struct {
+	ClientID       string
+	SubscriptionID string
+	TenantID       string
+	Region         string
+}
+
 type ManagedAuthEnv struct {
-	AWS *AWSSTSEnv
+	AWS   *AWSSTSEnv
+	Azure *AzureWIFEnvironment
 }
 
 // NewOptions returns an openshift options struct.
