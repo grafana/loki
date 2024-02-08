@@ -7,6 +7,7 @@ import (
 )
 
 func TestPeekingIterator(t *testing.T) {
+	t.Parallel()
 	data := []int{1, 2, 3, 4, 5}
 	itr := NewPeekingIter[int](NewSliceIter[int](data))
 

@@ -9,23 +9,37 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
-func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
-	for expected.Next() {
-		require.True(t, actual.Next())
-		a, b := expected.At(), actual.At()
-		test(a, b)
+func TestBlockOptionsRoundTrip(t *testing.T) {
+	t.Parallel()
+	opts := BlockOptions{
+		Schema: Schema{
+			version:     V1,
+			encoding:    chunkenc.EncSnappy,
+			nGramLength: 10,
+			nGramSkip:   2,
+		},
+		SeriesPageSize: 100,
+		BloomPageSize:  10 << 10,
+		BlockSize:      10 << 20,
 	}
-	require.False(t, actual.Next())
-	require.Nil(t, expected.Err())
-	require.Nil(t, actual.Err())
+
+	var enc encoding.Encbuf
+	opts.Encode(&enc)
+
+	var got BlockOptions
+	err := got.DecodeFrom(bytes.NewReader(enc.Get()))
+	require.Nil(t, err)
+
+	require.Equal(t, opts, got)
 }
 
 func TestBlockBuilderRoundTrip(t *testing.T) {
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, keys := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
@@ -59,7 +73,7 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					schema:         schema,
+					Schema:         schema,
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 				},
@@ -110,14 +124,15 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 }
 
 func TestMergeBuilder(t *testing.T) {
+	t.Parallel()
 
 	nBlocks := 10
 	numSeries := 100
 	numKeysPerSeries := 100
 	blocks := make([]PeekingIterator[*SeriesWithBloom], 0, nBlocks)
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
-		schema: Schema{
+		Schema: Schema{
 			version:  DefaultSchemaVersion,
 			encoding: chunkenc.EncSnappy,
 		},
@@ -196,9 +211,10 @@ func TestMergeBuilder(t *testing.T) {
 }
 
 func TestBlockReset(t *testing.T) {
+	t.Parallel()
 	numSeries := 100
 	numKeysPerSeries := 10000
-	data, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 1, 0xffff, 0, 10000)
 
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
@@ -214,7 +230,7 @@ func TestBlockReset(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			schema:         schema,
+			Schema:         schema,
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
 		},
@@ -247,10 +263,11 @@ func TestBlockReset(t *testing.T) {
 // disjoint data. It then merges the two sets of blocks and ensures that the merged blocks contain
 // one copy of the first set (duplicate data) and one copy of the second set (disjoint data).
 func TestMergeBuilder_Roundtrip(t *testing.T) {
+	t.Parallel()
 	numSeries := 100
 	numKeysPerSeries := 100
 	minTs, maxTs := model.Time(0), model.Time(10000)
-	xs, _ := mkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, minTs, maxTs)
+	xs, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, minTs, maxTs)
 
 	var data [][]*SeriesWithBloom
 
@@ -272,7 +289,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					schema: Schema{
+					Schema: Schema{
 						version:  DefaultSchemaVersion,
 						encoding: chunkenc.EncSnappy,
 					},
@@ -345,7 +362,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	checksum, err := mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0x779633b5), checksum)
+	require.Equal(t, uint32(0xe306ec6e), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data
