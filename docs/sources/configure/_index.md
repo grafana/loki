@@ -3159,6 +3159,9 @@ otlp_config:
   # Configuration for log attributes to store them as Structured Metadata or
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
+
+# Override the alertmanagerconfiguration for the ruler
+[ruler_alertmanager_config: <AlertManagerConfig>]
 ```
 
 ### frontend_worker
