@@ -407,10 +407,10 @@ func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaCon
 
 	// Get the latest
 	iteration := 0
+	searchFor = fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename) // schemaconfig-tenant.yaml
+
 	for {
-		if iteration == 0 {
-			searchFor = fmt.Sprintf("%s-%s.yaml", orgID, schemaConfigFilename) // schemaconfig-tenant.yaml
-		} else {
+		if iteration != 0 {
 			searchFor = fmt.Sprintf("%s-%s-%d.yaml", orgID, schemaConfigFilename, iteration) // tenant-schemaconfig-1.yaml
 		}
 		tempSchema, err := LoadSchemaUsingObjectClient(client, searchFor)
