@@ -9,8 +9,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/pkg/errors"
+
+	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
 type Router struct {

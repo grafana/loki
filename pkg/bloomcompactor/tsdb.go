@@ -2,14 +2,103 @@ package bloomcompactor
 
 import (
 	"context"
+	"io"
 	"math"
+	"path"
+	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
+
+const (
+	gzipExtension = ".gz"
+)
+
+type TSDBStore interface {
+	UsersForPeriod(ctx context.Context, table string) ([]string, error)
+	ResolveTSDBs(ctx context.Context, table, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error)
+	LoadTSDB(
+		ctx context.Context,
+		table,
+		tenant string,
+		id tsdb.Identifier,
+		bounds v1.FingerprintBounds,
+	) (v1.CloseableIterator[*v1.Series], error)
+}
+
+type BloomTSDBStore struct {
+	storage storage.Client
+}
+
+func NewBloomTSDBStore(storage storage.Client) *BloomTSDBStore {
+	return &BloomTSDBStore{
+		storage: storage,
+	}
+}
+
+func (b *BloomTSDBStore) UsersForPeriod(ctx context.Context, table string) ([]string, error) {
+	_, users, err := b.storage.ListFiles(ctx, table, false)
+	return users, err
+}
+
+func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
+	indices, err := b.storage.ListUserFiles(ctx, table, tenant, false)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list user files")
+	}
+
+	ids := make([]tsdb.SingleTenantTSDBIdentifier, 0, len(indices))
+	for _, index := range indices {
+		key := index.Name
+		if decompress := storage.IsCompressedFile(index.Name); decompress {
+			key = strings.TrimSuffix(key, gzipExtension)
+		}
+
+		id, ok := tsdb.ParseSingleTenantTSDBPath(path.Base(key))
+		if !ok {
+			return nil, errors.Errorf("failed to parse single tenant tsdb path: %s", key)
+		}
+
+		ids = append(ids, id)
+
+	}
+	return ids, nil
+}
+
+func (b *BloomTSDBStore) LoadTSDB(
+	ctx context.Context,
+	table,
+	tenant string,
+	id tsdb.Identifier,
+	bounds v1.FingerprintBounds,
+) (v1.CloseableIterator[*v1.Series], error) {
+	data, err := b.storage.GetUserFile(ctx, table, tenant, id.Name())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get file")
+	}
+
+	buf, err := io.ReadAll(data)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read file")
+	}
+	_ = data.Close()
+
+	reader, err := index.NewReader(index.RealByteSlice(buf))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create index reader")
+	}
+
+	idx := tsdb.NewTSDBIndex(reader)
+
+	return NewTSDBSeriesIter(ctx, idx, bounds), nil
+}
 
 // TSDBStore is an interface for interacting with the TSDB,
 // modeled off a relevant subset of the `tsdb.TSDBIndex` struct

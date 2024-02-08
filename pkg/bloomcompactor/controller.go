@@ -46,14 +46,14 @@ func NewSimpleBloomController(
 
 func (s *SimpleBloomController) buildBlocks(
 	ctx context.Context,
-	tenant,
-	table string,
+	table,
+	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
 	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
 
 	// 1. Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs()
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
@@ -121,7 +121,7 @@ func (s *SimpleBloomController) buildBlocks(
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, plan.tsdb, gap)
+			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
@@ -182,9 +182,15 @@ func (s *SimpleBloomController) buildBlocks(
 
 }
 
-func (s *SimpleBloomController) loadWorkForGap(ctx context.Context, id tsdb.Identifier, gap gapWithBlocks) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
+func (s *SimpleBloomController) loadWorkForGap(
+	ctx context.Context,
+	table,
+	tenant string,
+	id tsdb.Identifier,
+	gap gapWithBlocks,
+) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
 	// load a series iterator for the gap
-	seriesItr, err := s.tsdbStore.LoadTSDB(id, gap.bounds)
+	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
