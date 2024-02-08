@@ -23,13 +23,15 @@ of line filter expressions.
 			             |
 			      bloomgateway.Gateway
 			             |
-			       queue.RequestQueue
+		       queue.RequestQueue
 			             |
-			       bloomgateway.Worker
+		       bloomgateway.Worker
 			             |
-			      bloomshipper.Shipper
+		     bloomgateway.Processor
 			             |
-	     bloomshipper.BloomFileClient
+	         bloomshipper.Store
+			             |
+	         bloomshipper.Client
 			             |
 			        ObjectClient
 			             |
@@ -170,9 +172,9 @@ type Gateway struct {
 	workerMetrics *workerMetrics
 	queueMetrics  *queue.Metrics
 
-	queue        *queue.RequestQueue
-	activeUsers  *util.ActiveUsersCleanupService
-	bloomShipper bloomshipper.Interface
+	queue       *queue.RequestQueue
+	activeUsers *util.ActiveUsersCleanupService
+	bloomStore  bloomshipper.Store
 
 	sharding ShardingStrategy
 
@@ -218,13 +220,8 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 		return nil, err
 	}
 
-	bloomShipper, err := bloomshipper.NewShipper(store, storageCfg.BloomShipperConfig, overrides, logger, reg)
-	if err != nil {
-		return nil, err
-	}
-
 	// We need to keep a reference to be able to call Stop() on shutdown of the gateway.
-	g.bloomShipper = bloomShipper
+	g.bloomStore = store
 
 	if err := g.initServices(); err != nil {
 		return nil, err
@@ -239,7 +236,7 @@ func (g *Gateway) initServices() error {
 	svcs := []services.Service{g.queue, g.activeUsers}
 	for i := 0; i < g.cfg.WorkerConcurrency; i++ {
 		id := fmt.Sprintf("bloom-query-worker-%d", i)
-		w := newWorker(id, g.workerConfig, g.queue, g.bloomShipper, g.pendingTasks, g.logger, g.workerMetrics)
+		w := newWorker(id, g.workerConfig, g.queue, g.bloomStore, g.pendingTasks, g.logger, g.workerMetrics)
 		svcs = append(svcs, w)
 	}
 	g.serviceMngr, err = services.NewManager(svcs...)
@@ -291,7 +288,7 @@ func (g *Gateway) running(ctx context.Context) error {
 }
 
 func (g *Gateway) stopping(_ error) error {
-	g.bloomShipper.Stop()
+	g.bloomStore.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
