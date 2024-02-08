@@ -17,6 +17,13 @@ type tasksForBlock struct {
 	tasks    []Task
 }
 
+func newProcessor(store bloomshipper.Store, logger log.Logger) *processor {
+	return &processor{
+		store:  store,
+		logger: logger,
+	}
+}
+
 type processor struct {
 	store  bloomshipper.Store
 	logger log.Logger
