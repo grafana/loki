@@ -12,16 +12,15 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
-var _ store = &dummyStore{}
+var _ bloomshipper.Store = &dummyStore{}
 
 type dummyStore struct {
 	metas     []bloomshipper.Meta
 	blocks    []bloomshipper.BlockRef
-	querieres []bloomshipper.BlockQuerierWithFingerprintRange
+	querieres []*bloomshipper.CloseableBlockQuerier
 }
 
 func (s *dummyStore) ResolveMetas(_ context.Context, _ bloomshipper.MetaSearchParams) ([][]bloomshipper.MetaRef, []*bloomshipper.Fetcher, error) {
@@ -38,23 +37,23 @@ func (s *dummyStore) FetchMetas(_ context.Context, _ bloomshipper.MetaSearchPara
 	return s.metas, nil
 }
 
-func (s *dummyStore) FetchBlocks(_ context.Context, _ []bloomshipper.BlockRef) ([]bloomshipper.BlockDirectory, error) {
-	panic("don't call me")
+func (s *dummyStore) Fetcher(_ model.Time) (*bloomshipper.Fetcher, error) {
+	return nil, nil
 }
 
-func (s *dummyStore) Fetcher(_ model.Time) *bloomshipper.Fetcher {
-	return nil
+func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
+	return nil, nil
 }
 
 func (s *dummyStore) Stop() {
 }
 
-func (s *dummyStore) LoadBlocks(_ context.Context, refs []bloomshipper.BlockRef) (v1.Iterator[bloomshipper.BlockQuerierWithFingerprintRange], error) {
-	result := make([]bloomshipper.BlockQuerierWithFingerprintRange, len(s.querieres))
+func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef) ([]*bloomshipper.CloseableBlockQuerier, error) {
+	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
 
 	for _, ref := range refs {
 		for _, bq := range s.querieres {
-			if ref.Bounds.Equal(bq.FingerprintBounds) {
+			if ref.Bounds.Equal(bq.Bounds) {
 				result = append(result, bq)
 			}
 		}
@@ -64,7 +63,7 @@ func (s *dummyStore) LoadBlocks(_ context.Context, refs []bloomshipper.BlockRef)
 		result[i], result[j] = result[j], result[i]
 	})
 
-	return v1.NewSliceIter(result), nil
+	return result, nil
 }
 
 func TestProcessor(t *testing.T) {

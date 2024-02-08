@@ -157,6 +157,8 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
 // a pool after completion.
+// TODO(owen-d): have callback return a bool whether to continue or not in order to short-circuit
+// when applicable
 func (i *TSDBIndex) ForSeries(ctx context.Context, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta), matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
