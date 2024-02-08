@@ -43,11 +43,11 @@ type QuantileSketchAccumulator struct {
 
 // newQuantileSketchAccumulator returns an accumulator for sharded
 // probabilistic quantile queries that merges results as they come in.
-func newQuantileSketchAccumulator() *quantileSketchAccumulator {
-	return &quantileSketchAccumulator{}
+func newQuantileSketchAccumulator() *QuantileSketchAccumulator {
+	return &QuantileSketchAccumulator{}
 }
 
-func (a *quantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
+func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
 	if res.Data.Type() != QuantileSketchMatrixType {
 		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), QuantileSketchMatrixType)
 	}
@@ -65,7 +65,7 @@ func (a *quantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 	return err
 }
 
-func (a *quantileSketchAccumulator) Result() []logqlmodel.Result {
+func (a *QuantileSketchAccumulator) Result() []logqlmodel.Result {
 	return []logqlmodel.Result{{Data: a.matrix}}
 }
 

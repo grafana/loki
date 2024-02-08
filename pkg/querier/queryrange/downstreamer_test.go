@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -445,14 +443,4 @@ func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
 		ct++
 	}
 	require.Equal(t, l.maxQueryParallelism, ct)
-}
-
-// TODO: delete
-func newRandomSketch() sketch.QuantileSketch {
-	r := rand.New(rand.NewSource(42))
-	s := sketch.NewDDSketch()
-	for i := 0; i < 1000; i++ {
-		_ = s.Add(r.Float64())
-	}
-	return s
 }
