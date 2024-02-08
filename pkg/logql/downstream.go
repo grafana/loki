@@ -83,6 +83,8 @@ func (d DownstreamSampleExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.SampleExpr.String(), d.shard)
 }
 
+// The DownstreamSampleExpr is not part of LogQL. In the prettified version it's
+// represented as e.g. `downstream<count_over_time({foo="bar"} |= "error"), shard=1_of_3>`
 func (d DownstreamSampleExpr) Pretty(level int) string {
 	s := syntax.Indent(level)
 	if !syntax.NeedSplit(d) {
@@ -109,6 +111,8 @@ func (d DownstreamLogSelectorExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.LogSelectorExpr.String(), d.shard)
 }
 
+// The DownstreamLogSelectorExpr is not part of LogQL. In the prettified version it's
+// represented as e.g. `downstream<{foo="bar"} |= "error", shard=1_of_3>`
 func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 	s := syntax.Indent(level)
 	if !syntax.NeedSplit(d) {
@@ -162,6 +166,8 @@ func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
 	f(c.next)
 }
 
+// ConcatSampleExpr has no LogQL repretenstation. It is expressed in in the
+// prettified version as e.g. `concat(downstream<count_over_time({foo="bar"}), shard=...> ++ )`
 func (c *ConcatSampleExpr) Pretty(level int) string {
 	s := syntax.Indent(level)
 	if !syntax.NeedSplit(c) {
@@ -214,6 +220,8 @@ func (c *ConcatLogSelectorExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
 }
 
+// ConcatLogSelectorExpr has no representation in LogQL. Its prettified version
+// is e.g. `concat(downstream<{foo="bar"} |= "error", shard=1_of_3>)`
 func (c *ConcatLogSelectorExpr) Pretty(level int) string {
 	s := syntax.Indent(level)
 	if !syntax.NeedSplit(c) {
