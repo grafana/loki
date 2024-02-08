@@ -14,57 +14,47 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
-type uploader interface {
-	PutBlock(ctx context.Context, block bloomshipper.Block) error
-	PutMeta(ctx context.Context, meta bloomshipper.Meta) error
-}
-
 type SimpleBloomController struct {
-	// TODO(owen-d): consider making tenant+table dynamic (not 1 struct per combination)
-	tenant         string
-	table          string
-	ownershipRange v1.FingerprintBounds // ownership range of this controller
-	tsdbStore      TSDBStore
-	bloomStore     bloomshipper.Store
-	uploader       uploader
-	chunkLoader    ChunkLoader
-	rwFn           func() (v1.BlockWriter, v1.BlockReader)
-	metrics        *Metrics
+	tsdbStore   TSDBStore
+	bloomStore  bloomshipper.Store
+	chunkLoader ChunkLoader
+	rwFn        func() (v1.BlockWriter, v1.BlockReader)
+	metrics     *Metrics
 
 	// TODO(owen-d): add metrics
 	logger log.Logger
 }
 
 func NewSimpleBloomController(
-	tenant, table string,
-	ownershipRange v1.FingerprintBounds,
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
-	uploader uploader,
 	chunkLoader ChunkLoader,
 	rwFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
 	return &SimpleBloomController{
-		tenant:         tenant,
-		table:          table,
-		ownershipRange: ownershipRange,
-		tsdbStore:      tsdbStore,
-		bloomStore:     blockStore,
-		uploader:       uploader,
-		chunkLoader:    chunkLoader,
-		rwFn:           rwFn,
-		metrics:        metrics,
-		logger:         log.With(logger, "ownership", ownershipRange),
+		tsdbStore:   tsdbStore,
+		bloomStore:  blockStore,
+		chunkLoader: chunkLoader,
+		rwFn:        rwFn,
+		metrics:     metrics,
+		logger:      logger,
 	}
 }
 
-func (s *SimpleBloomController) do(ctx context.Context) error {
+func (s *SimpleBloomController) buildBlocks(
+	ctx context.Context,
+	table DayTable,
+	tenant string,
+	ownershipRange v1.FingerprintBounds,
+) error {
+	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
+
 	// 1. Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs()
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table.String(), tenant)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to resolve tsdbs", "err", err)
+		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
 	}
 
@@ -78,35 +68,39 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 	}
 
 	// 2. Fetch metas
+	bounds := table.Bounds()
 	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
-			TenantID: s.tenant,
-			Interval: bloomshipper.Interval{}, // TODO(owen-d): gen interval
-			Keyspace: s.ownershipRange,
+			TenantID: tenant,
+			Interval: bloomshipper.Interval{
+				Start: bounds.Start,
+				End:   bounds.End,
+			},
+			Keyspace: ownershipRange,
 		},
 	)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to get metas", "err", err)
+		level.Error(logger).Log("msg", "failed to get metas", "err", err)
 		return errors.Wrap(err, "failed to get metas")
 	}
 
 	// 3. Determine which TSDBs have gaps in the ownership range and need to
 	// be processed.
-	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(s.ownershipRange, ids, metas)
+	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(ownershipRange, ids, metas)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to find gaps", "err", err)
+		level.Error(logger).Log("msg", "failed to find gaps", "err", err)
 		return errors.Wrap(err, "failed to find gaps")
 	}
 
 	if len(tsdbsWithGaps) == 0 {
-		level.Debug(s.logger).Log("msg", "blooms exist for all tsdbs")
+		level.Debug(logger).Log("msg", "blooms exist for all tsdbs")
 		return nil
 	}
 
 	work, err := blockPlansForGaps(tsdbsWithGaps, metas)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to create plan", "err", err)
+		level.Error(logger).Log("msg", "failed to create plan", "err", err)
 		return errors.Wrap(err, "failed to create plan")
 	}
 
@@ -130,9 +124,9 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, plan.tsdb, gap)
+			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table.String(), tenant, plan.tsdb, gap)
 			if err != nil {
-				level.Error(s.logger).Log("msg", "failed to get series and blocks", "err", err)
+				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
 
@@ -143,33 +137,38 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 				preExistingBlocks,
 				s.rwFn,
 				s.metrics,
-				log.With(s.logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
+				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
 			)
 
 			_, newBlocks, err := gen.Generate(ctx)
 			if err != nil {
 				// TODO(owen-d): metrics
-				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
-			// TODO(owen-d): dispatch this to a queue for writing, handling retries/backpressure, etc?
+			client, err := s.bloomStore.Client(table.ModelTime())
+
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to get client", "err", err)
+				return errors.Wrap(err, "failed to get client")
+			}
 			for newBlocks.Next() {
 				blockCt++
 				blk := newBlocks.At()
 
-				if err := s.uploader.PutBlock(
+				if err := client.PutBlock(
 					ctx,
-					bloomshipper.BlockFrom(s.tenant, s.table, blk),
+					bloomshipper.BlockFrom(tenant, table.String(), blk),
 				); err != nil {
-					level.Error(s.logger).Log("msg", "failed to write block", "err", err)
+					level.Error(logger).Log("msg", "failed to write block", "err", err)
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
 
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
-				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
@@ -179,14 +178,20 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 	// TODO(owen-d): build meta from blocks
 	// TODO(owen-d): reap tombstones, old metas
 
-	level.Debug(s.logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
+	level.Debug(logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
 	return nil
 
 }
 
-func (s *SimpleBloomController) loadWorkForGap(ctx context.Context, id tsdb.Identifier, gap gapWithBlocks) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
+func (s *SimpleBloomController) loadWorkForGap(
+	ctx context.Context,
+	table,
+	tenant string,
+	id tsdb.Identifier,
+	gap gapWithBlocks,
+) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
 	// load a series iterator for the gap
-	seriesItr, err := s.tsdbStore.LoadTSDB(id, gap.bounds)
+	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
