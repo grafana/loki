@@ -11,6 +11,7 @@ import (
 )
 
 func TestArchive(t *testing.T) {
+	t.Parallel()
 	// for writing files to two dirs for comparison and ensuring they're equal
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
