@@ -37,7 +37,7 @@ func (a *BufferedAccumulator) Result() []logqlmodel.Result {
 	return a.results
 }
 
-type quantileSketchAccumulator struct {
+type QuantileSketchAccumulator struct {
 	matrix ProbabilisticQuantileMatrix
 }
 
