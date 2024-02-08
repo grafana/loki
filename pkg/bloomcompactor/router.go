@@ -12,14 +12,46 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
-type Router struct {
+type DayTable model.Time
+
+func (d DayTable) String() string {
+	return fmt.Sprintf("%d", d.ModelTime().Time().UnixNano()/int64(config.ObjectStorageIndexRequiredPeriod))
+}
+
+func (d DayTable) Inc() DayTable {
+	return DayTable(d.ModelTime().Add(config.ObjectStorageIndexRequiredPeriod))
+}
+
+func (d DayTable) Dec() DayTable {
+	return DayTable(d.ModelTime().Add(-config.ObjectStorageIndexRequiredPeriod))
+}
+
+func (d DayTable) Before(other DayTable) bool {
+	return d.ModelTime().Before(model.Time(other))
+}
+
+func (d DayTable) After(other DayTable) bool {
+	return d.ModelTime().After(model.Time(other))
+}
+
+func (d DayTable) ModelTime() model.Time {
+	return model.Time(d)
+}
+
+func (d DayTable) Bounds() (start, end model.Time) {
+	return model.Time(d), model.Time(d.Inc())
+}
+
+type router struct {
 	// TODO(owen-d): configure these w/ limits
 	interval           time.Duration // how often to run compaction loops
-	minTable, maxTable int
+	minTable, maxTable DayTable
 
 	controller *SimpleBloomController
 	tsdbStore  TSDBStore
@@ -30,11 +62,12 @@ type Router struct {
 }
 
 type tenantTable struct {
-	tenant, table  string
+	tenant         string
+	table          DayTable
 	ownershipRange v1.FingerprintBounds
 }
 
-func (r *Router) Tenants(ctx context.Context, table string) (v1.Iterator[string], error) {
+func (r *router) tenants(ctx context.Context, table string) (v1.Iterator[string], error) {
 	tenants, err := r.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
@@ -44,16 +77,16 @@ func (r *Router) Tenants(ctx context.Context, table string) (v1.Iterator[string]
 }
 
 // TODO(owen-d): implement w/ subrings
-func (r *Router) ownsTenant(_ string) (ownershipRange v1.FingerprintBounds, owns bool) {
+func (r *router) ownsTenant(_ string) (ownershipRange v1.FingerprintBounds, owns bool) {
 	return v1.NewBounds(0, math.MaxUint64), true
 }
 
 // TODO(owen-d): parameterize via limits
-func (r *Router) Tables() (v1.Iterator[int], error) {
-	return newRangeIterator(r.minTable, r.maxTable), nil
+func (r *router) tables() (v1.Iterator[DayTable], error) {
+	return newDayRangeIterator(r.minTable, r.maxTable), nil
 }
 
-func (r *Router) run(ctx context.Context) error {
+func (r *router) run(ctx context.Context) error {
 	// run once at beginning
 	if err := r.runOne(ctx); err != nil {
 		return err
@@ -75,7 +108,7 @@ func (r *Router) run(ctx context.Context) error {
 }
 
 // runs a single round of compaction for all relevant tenants and tables
-func (r *Router) runOne(ctx context.Context) error {
+func (r *router) runOne(ctx context.Context) error {
 	var workersErr error
 	var wg sync.WaitGroup
 	ch := make(chan tenantTable)
@@ -91,8 +124,8 @@ func (r *Router) runOne(ctx context.Context) error {
 	return multierror.New(workersErr, err, ctx.Err()).Err()
 }
 
-func (r *Router) loadWork(ctx context.Context, ch chan<- tenantTable) error {
-	tables, err := r.Tables()
+func (r *router) loadWork(ctx context.Context, ch chan<- tenantTable) error {
+	tables, err := r.tables()
 	if err != nil {
 		return errors.Wrap(err, "getting tables")
 	}
@@ -101,7 +134,7 @@ func (r *Router) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 
 		table := tables.At()
 		tablestr := fmt.Sprintf("%d", table)
-		tenants, err := r.Tenants(ctx, tablestr)
+		tenants, err := r.tenants(ctx, tablestr)
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
 		}
@@ -114,7 +147,7 @@ func (r *Router) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 			}
 
 			select {
-			case ch <- tenantTable{tenant: tenant, table: tablestr, ownershipRange: ownershipRange}:
+			case ch <- tenantTable{tenant: tenant, table: table, ownershipRange: ownershipRange}:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -134,7 +167,7 @@ func (r *Router) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 	return ctx.Err()
 }
 
-func (r *Router) runWorkers(ctx context.Context, ch <-chan tenantTable) error {
+func (r *router) runWorkers(ctx context.Context, ch <-chan tenantTable) error {
 
 	return concurrency.ForEachJob(ctx, r.parallelism, r.parallelism, func(ctx context.Context, idx int) error {
 
@@ -164,28 +197,28 @@ func (r *Router) runWorkers(ctx context.Context, ch <-chan tenantTable) error {
 
 }
 
-func (r *Router) compactTenantTable(ctx context.Context, tt tenantTable) error {
+func (r *router) compactTenantTable(ctx context.Context, tt tenantTable) error {
 	level.Info(r.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange)
 	return r.controller.buildBlocks(ctx, tt.table, tt.tenant, tt.ownershipRange)
 }
 
-type rangeIterator struct {
-	min, max, cur int
+type dayRangeIterator struct {
+	min, max, cur DayTable
 }
 
-func newRangeIterator(min, max int) *rangeIterator {
-	return &rangeIterator{min: min, max: max, cur: min - 1}
+func newDayRangeIterator(min, max DayTable) *dayRangeIterator {
+	return &dayRangeIterator{min: min, max: max, cur: min.Dec()}
 }
 
-func (r *rangeIterator) Next() bool {
-	r.cur++
-	return r.cur < r.max
+func (r *dayRangeIterator) Next() bool {
+	r.cur = r.cur.Inc()
+	return r.cur.Before(r.max)
 }
 
-func (r *rangeIterator) At() int {
+func (r *dayRangeIterator) At() DayTable {
 	return r.cur
 }
 
-func (r *rangeIterator) Err() error {
+func (r *dayRangeIterator) Err() error {
 	return nil
 }

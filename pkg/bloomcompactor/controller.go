@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
@@ -46,14 +45,14 @@ func NewSimpleBloomController(
 
 func (s *SimpleBloomController) buildBlocks(
 	ctx context.Context,
-	table,
+	table DayTable,
 	tenant string,
 	ownershipRange v1.FingerprintBounds,
 ) error {
 	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
 
 	// 1. Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, tenant)
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table.String(), tenant)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
@@ -69,11 +68,15 @@ func (s *SimpleBloomController) buildBlocks(
 	}
 
 	// 2. Fetch metas
+	from, through := table.Bounds()
 	metas, err := s.bloomStore.FetchMetas(
 		ctx,
 		bloomshipper.MetaSearchParams{
 			TenantID: tenant,
-			Interval: bloomshipper.Interval{}, // TODO(owen-d): gen interval
+			Interval: bloomshipper.Interval{
+				Start: from,
+				End:   through,
+			},
 			Keyspace: ownershipRange,
 		},
 	)
@@ -121,7 +124,7 @@ func (s *SimpleBloomController) buildBlocks(
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
+			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table.String(), tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
@@ -144,21 +147,19 @@ func (s *SimpleBloomController) buildBlocks(
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
-			var ts model.Time // TODO(owen-d): period injection
-			client, err := s.bloomStore.Client(ts)
+			client, err := s.bloomStore.Client(table.ModelTime())
 
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get client", "err", err)
 				return errors.Wrap(err, "failed to get client")
 			}
-			// TODO(owen-d): dispatch this to a queue for writing, handling retries/backpressure, etc?
 			for newBlocks.Next() {
 				blockCt++
 				blk := newBlocks.At()
 
 				if err := client.PutBlock(
 					ctx,
-					bloomshipper.BlockFrom(tenant, table, blk),
+					bloomshipper.BlockFrom(tenant, table.String(), blk),
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
 					return errors.Wrap(err, "failed to write block")
