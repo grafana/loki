@@ -514,7 +514,6 @@ func NewSeriesTripperware(
 			merger,
 			c,
 			cacheGenNumLoader,
-			iqo,
 			func(_ context.Context, r base.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
@@ -600,7 +599,6 @@ func NewLabelsTripperware(
 			merger,
 			c,
 			cacheGenNumLoader,
-			iqo,
 			func(_ context.Context, r base.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},

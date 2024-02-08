@@ -70,7 +70,6 @@ func TestLabelsCache(t *testing.T) {
 			cache.NewMockCache(),
 			nil,
 			nil,
-			nil,
 			func(_ context.Context, _ []string, _ queryrangebase.Request) int {
 				return 1
 			},
@@ -310,7 +309,6 @@ func TestLabelCache_freshness(t *testing.T) {
 				cache.NewMockCache(),
 				nil,
 				nil,
-				nil,
 				func(_ context.Context, _ []string, _ queryrangebase.Request) int {
 					return 1
 				},
@@ -363,67 +361,46 @@ func TestLabelCache_freshness(t *testing.T) {
 
 func TestLabelQueryCacheKey(t *testing.T) {
 	const (
-		defaultTenant       = "a"
-		alternateTenant     = "b"
-		defaultSplit        = time.Hour
-		ingesterSplit       = 90 * time.Minute
-		ingesterQueryWindow = defaultSplit * 3
+		defaultSplit                = time.Hour
+		recentMetadataSplitDuration = 30 * time.Minute
+		recentMetadataQueryWindow   = time.Hour
 	)
 
 	l := fakeLimits{
-		metadataSplitDuration: map[string]time.Duration{defaultTenant: defaultSplit, alternateTenant: defaultSplit},
-		ingesterSplitDuration: map[string]time.Duration{defaultTenant: ingesterSplit},
+		metadataSplitDuration:       map[string]time.Duration{tenantID: defaultSplit},
+		recentMetadataSplitDuration: map[string]time.Duration{tenantID: recentMetadataSplitDuration},
+		recentMetadataQueryWindow:   map[string]time.Duration{tenantID: recentMetadataQueryWindow},
 	}
 
 	cases := []struct {
-		name, tenantID string
-		start, end     time.Time
-		expectedSplit  time.Duration
-		iqo            util.IngesterQueryOptions
-		values         bool
+		name          string
+		start, end    time.Time
+		expectedSplit time.Duration
+		values        bool
+		limits        Limits
 	}{
 		{
-			name:          "outside ingester query window",
-			tenantID:      defaultTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-5 * time.Hour),
+			name:          "outside recent metadata query window",
+			start:         time.Now().Add(-3 * time.Hour),
+			end:           time.Now().Add(-2 * time.Hour),
 			expectedSplit: defaultSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       false,
-			},
+			limits:        l,
 		},
 		{
-			name:          "within ingester query window",
-			tenantID:      defaultTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-ingesterQueryWindow / 2),
-			expectedSplit: ingesterSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       false,
-			},
+			name:          "within recent metadata query window",
+			start:         time.Now().Add(-30 * time.Minute),
+			end:           time.Now(),
+			expectedSplit: recentMetadataSplitDuration,
+			limits:        l,
 		},
 		{
-			name:          "within ingester query window, but query store only",
-			tenantID:      defaultTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-ingesterQueryWindow / 2),
+			name:          "within recent metadata query window, but recent split duration is not configured",
+			start:         time.Now().Add(-30 * time.Minute),
+			end:           time.Now(),
 			expectedSplit: defaultSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       true,
-			},
-		},
-		{
-			name:          "within ingester query window, but no ingester split duration configured",
-			tenantID:      alternateTenant,
-			start:         time.Now().Add(-6 * time.Hour),
-			end:           time.Now().Add(-ingesterQueryWindow / 2),
-			expectedSplit: defaultSplit,
-			iqo: ingesterQueryOpts{
-				queryIngestersWithin: ingesterQueryWindow,
-				queryStoreOnly:       false,
+			limits: fakeLimits{
+				metadataSplitDuration:     map[string]time.Duration{tenantID: defaultSplit},
+				recentMetadataQueryWindow: map[string]time.Duration{tenantID: recentMetadataQueryWindow},
 			},
 		},
 	}
@@ -431,7 +408,7 @@ func TestLabelQueryCacheKey(t *testing.T) {
 	for _, values := range []bool{true, false} {
 		for _, tc := range cases {
 			t.Run(fmt.Sprintf("%s (values: %v)", tc.name, values), func(t *testing.T) {
-				keyGen := cacheKeyLabels{l, nil, tc.iqo}
+				keyGen := cacheKeyLabels{tc.limits, nil}
 
 				r := &LabelRequest{
 					LabelRequest: logproto.LabelRequest{
@@ -453,12 +430,12 @@ func TestLabelQueryCacheKey(t *testing.T) {
 				// and therefore we can't know the current interval apriori without duplicating the logic
 				var pattern *regexp.Regexp
 				if values {
-					pattern = regexp.MustCompile(fmt.Sprintf(`labelvalues:%s:%s:%s:(\d+):%d`, tc.tenantID, labelName, regexp.QuoteMeta(query), tc.expectedSplit))
+					pattern = regexp.MustCompile(fmt.Sprintf(`labelvalues:%s:%s:%s:(\d+):%d`, tenantID, labelName, regexp.QuoteMeta(query), tc.expectedSplit))
 				} else {
-					pattern = regexp.MustCompile(fmt.Sprintf(`labels:%s:(\d+):%d`, tc.tenantID, tc.expectedSplit))
+					pattern = regexp.MustCompile(fmt.Sprintf(`labels:%s:(\d+):%d`, tenantID, tc.expectedSplit))
 				}
 
-				require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tc.tenantID, r))
+				require.Regexp(t, pattern, keyGen.GenerateCacheKey(context.Background(), tenantID, r))
 			})
 		}
 	}
