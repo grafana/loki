@@ -167,10 +167,11 @@ type LazyBlockBuilderIterator struct {
 	populate     func(*v1.Series, *v1.Bloom) error
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
-	blocks       []v1.PeekingSeekableIter[model.Fingerprint, *v1.SeriesWithBloom]
+	blocks       []v1.PeekingResetIter[*v1.SeriesWithBloom]
 
-	curr *v1.Block
-	err  error
+	blocksAsPeekingIter []v1.PeekingIterator[*v1.SeriesWithBloom]
+	curr                *v1.Block
+	err                 error
 }
 
 func NewLazyBlockBuilderIterator(
@@ -182,18 +183,18 @@ func NewLazyBlockBuilderIterator(
 	blocks []*v1.BlockQuerier,
 ) *LazyBlockBuilderIterator {
 	it := &LazyBlockBuilderIterator{
-		ctx:          ctx,
-		opts:         opts,
-		populate:     populate,
-		readWriterFn: readWriterFn,
-		series:       series,
-		blocks:       make([]v1.PeekingSeekableIter[model.Fingerprint, *v1.SeriesWithBloom], len(blocks)),
+		ctx:                 ctx,
+		opts:                opts,
+		populate:            populate,
+		readWriterFn:        readWriterFn,
+		series:              series,
+		blocks:              make([]v1.PeekingResetIter[*v1.SeriesWithBloom], len(blocks)),
+		blocksAsPeekingIter: make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocks)),
 	}
 
 	// Initialize blockIters with original blocks
 	for i, block := range blocks {
-		itr := v1.NewPeekSeekIter[model.Fingerprint, *v1.SeriesWithBloom](block)
-		it.blocks[i] = itr
+		it.blocks[i] = v1.NewPeekResetIter[*v1.SeriesWithBloom](block)
 	}
 
 	return it
@@ -205,12 +206,21 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
+	// reset all the blocks to the start
+	for i, block := range b.blocks {
+		if err := block.Reset(); err != nil {
+			b.err = errors.Wrapf(err, "failed to reset block iterator %d", i)
+			return false
+		}
+		b.blocksAsPeekingIter[i] = block
+	}
+
 	if err := b.ctx.Err(); err != nil {
 		b.err = errors.Wrap(err, "context canceled")
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate)
+	mergeBuilder := v1.NewMergeBuilder(b.blocksAsPeekingIter, b.series, b.populate)
 	writer, reader := b.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {

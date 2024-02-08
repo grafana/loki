@@ -2,12 +2,9 @@ package v1
 
 import (
 	"context"
-	"github.com/pkg/errors"
-	"golang.org/x/exp/slices"
 	"hash"
 	"hash/crc32"
 	"io"
-	"sort"
 	"sync"
 
 	"github.com/prometheus/prometheus/util/pool"
@@ -175,38 +172,6 @@ func (it *SliceIter[T]) Reset() {
 	it.cur = -1
 }
 
-type SeekSliceIter[K, V any] struct {
-	*SliceIter[V]
-	from func(V) K
-	cmp  func(a, b K) int
-}
-
-func NewSeekSliceIter[K, V any](
-	xs []V,
-	from func(V) K,
-	cmp func(a, b K) int,
-) *SeekSliceIter[K, V] {
-	slices.SortFunc(xs, func(a, b V) int {
-		return cmp(from(a), from(b))
-	})
-	return &SeekSliceIter[K, V]{
-		SliceIter: NewSliceIter[V](xs),
-		from:      from,
-		cmp:       cmp,
-	}
-}
-
-func (it *SeekSliceIter[K, V]) Seek(x K) error {
-	idx := sort.Search(len(it.xs), func(i int) bool {
-		return it.cmp(it.from(it.xs[i]), x) >= 0
-	})
-	if idx == len(it.xs) {
-		return errors.New("not found")
-	}
-	it.cur = idx
-	return nil
-}
-
 type MapIter[A any, B any] struct {
 	Iterator[A]
 	f func(A) B
@@ -304,23 +269,28 @@ func (it *PeekCloseIter[T]) Close() error {
 	return it.close()
 }
 
-type PeekingSeekableIter[K, V any] interface {
-	PeekingIterator[V]
-	SeekIter[K, V]
+type ResetIterator[T any] interface {
+	Iterator[T]
+	Reset() error
 }
 
-type PeekSeekIter[K, V any] struct {
-	*PeekIter[V]
-	seek func(K) error
+type PeekingResetIter[T any] interface {
+	PeekingIterator[T]
+	ResetIterator[T]
 }
 
-func NewPeekSeekIter[K, V any](itr SeekIter[K, V]) *PeekSeekIter[K, V] {
-	return &PeekSeekIter[K, V]{
-		PeekIter: NewPeekingIter[V](itr),
-		seek:     itr.Seek,
+type PeekResetIter[T any] struct {
+	*PeekIter[T]
+	reset func() error
+}
+
+func NewPeekResetIter[T any](itr ResetIterator[T]) *PeekResetIter[T] {
+	return &PeekResetIter[T]{
+		PeekIter: NewPeekingIter[T](itr),
+		reset:    itr.Reset,
 	}
 }
 
-func (it *PeekSeekIter[K, V]) Seek(k K) error {
-	return it.seek(k)
+func (it *PeekResetIter[T]) Reset() error {
+	return it.reset()
 }

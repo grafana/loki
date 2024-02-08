@@ -156,7 +156,7 @@ func TestMergeBuilder(t *testing.T) {
 	nBlocks := 10
 	numSeries := 100
 	numKeysPerSeries := 100
-	blocks := make([]PeekingSeekableIter[model.Fingerprint, *SeriesWithBloom], 0, nBlocks)
+	blocks := make([]PeekingIterator[*SeriesWithBloom], 0, nBlocks)
 	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
 		Schema: Schema{
@@ -191,7 +191,7 @@ func TestMergeBuilder(t *testing.T) {
 		itr := NewSliceIter[SeriesWithBloom](data[min:max])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
-		blocks = append(blocks, NewPeekSeekIter[model.Fingerprint, *SeriesWithBloom](NewBlockQuerier(NewBlock(reader))))
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewBlockQuerier(NewBlock(reader))))
 	}
 
 	// We're not testing the ability to extend a bloom in this test
@@ -347,15 +347,11 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	// we keep 2 copies of the data as iterators. One for the blocks, and one for the "store"
 	// which will force it to reference the same series
-	var blocks []PeekingSeekableIter[model.Fingerprint, *SeriesWithBloom]
+	var blocks []PeekingIterator[*SeriesWithBloom]
 	var store []PeekingIterator[*SeriesWithBloom]
 
 	for _, x := range data {
-		blocks = append(blocks, NewPeekSeekIter[model.Fingerprint, *SeriesWithBloom](NewSeekSliceIter[model.Fingerprint, *SeriesWithBloom](
-			x,
-			func(a *SeriesWithBloom) model.Fingerprint { return a.Series.Fingerprint },
-			func(a, b model.Fingerprint) int { return int(a - b) },
-		)))
+		blocks = append(blocks, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](x)))
 		store = append(store, NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](x)))
 	}
 
