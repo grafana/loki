@@ -257,9 +257,9 @@ type PeekCloseIter[T any] struct {
 	close func() error
 }
 
-func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
-	return &PeekCloseIter[T]{PeekIter: NewPeekingIter(itr), close: itr.Close}
-}
+// func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
+//	return &PeekCloseIter[T]{PeekIter: NewPeekingIter(itr), close: itr.Close}
+// }
 
 func (it *PeekCloseIter[T]) Close() error {
 	return it.close()
