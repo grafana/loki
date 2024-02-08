@@ -1,8 +1,6 @@
 package bloomgateway
 
 import (
-	"context"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -368,58 +366,6 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		series = append(series, data)
 	}
 	return blocks, metas, queriers, series
-}
-
-func newMockBloomStore(bqs []*bloomshipper.CloseableBlockQuerier) *mockBloomStore {
-	return &mockBloomStore{bqs: bqs}
-}
-
-type mockBloomStore struct {
-	bqs []*bloomshipper.CloseableBlockQuerier
-	// mock how long it takes to serve block queriers
-	delay time.Duration
-	// mock response error when serving block queriers in ForEach
-	err error
-}
-
-var _ bloomshipper.Interface = &mockBloomStore{}
-
-// GetBlockRefs implements bloomshipper.Interface
-func (s *mockBloomStore) GetBlockRefs(_ context.Context, _ string, _ bloomshipper.Interval) ([]bloomshipper.BlockRef, error) {
-	time.Sleep(s.delay)
-	blocks := make([]bloomshipper.BlockRef, 0, len(s.bqs))
-	for i := range s.bqs {
-		blocks = append(blocks, s.bqs[i].BlockRef)
-	}
-	return blocks, nil
-}
-
-// Stop implements bloomshipper.Interface
-func (s *mockBloomStore) Stop() {}
-
-// ForEach implements bloomshipper.Interface
-func (s *mockBloomStore) ForEach(_ context.Context, _ string, _ []bloomshipper.BlockRef, callback bloomshipper.ForEachBlockCallback) error {
-	if s.err != nil {
-		time.Sleep(s.delay)
-		return s.err
-	}
-
-	shuffled := make([]*bloomshipper.CloseableBlockQuerier, len(s.bqs))
-	_ = copy(shuffled, s.bqs)
-
-	rand.Shuffle(len(shuffled), func(i, j int) {
-		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
-	})
-
-	for _, bq := range shuffled {
-		// ignore errors in the mock
-		time.Sleep(s.delay)
-		err := callback(bq.BlockQuerier, bq.Bounds)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func createQueryInputFromBlockData(t *testing.T, tenant string, data [][]v1.SeriesWithBloom, nthSeries int) []*logproto.ChunkRef {
