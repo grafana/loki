@@ -14,7 +14,7 @@ services:
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: &lokiImage grafana/loki:salvacorts-debug-tailing-057af6a-WIP-debug
+    image: &lokiImage grafana/loki:2.9.2
     user: root
     entrypoint:
       - "chown"
@@ -75,8 +75,6 @@ services:
     volumes:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 9080
     command: -config.file=/etc/promtail/promtail.yaml
@@ -135,7 +133,7 @@ services:
     restart: always
     deploy:
       mode: replicated
-      replicas: 1
+      replicas: 3
 
   loki-write:
     image: *lokiImage
@@ -157,7 +155,7 @@ services:
     restart: always
     deploy:
       mode: replicated
-      replicas: 2
+      replicas: 3
 
   loki-backend:
     image: *lokiImage
@@ -180,7 +178,7 @@ services:
     restart: always
     deploy:
       mode: replicated
-      replicas: 1
+      replicas: 3
 
   # alertmanager to enable receiving alerts
   alertmanager:
