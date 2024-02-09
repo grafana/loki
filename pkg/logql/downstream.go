@@ -95,7 +95,12 @@ func (d DownstreamSampleExpr) Pretty(level int) string {
 
 	s += d.SampleExpr.Pretty(level + 1)
 	s += ",\n"
-	s += syntax.Indent(level+1) + "shard=" + d.shard.String() + "\n"
+	s += syntax.Indent(level+1) + "shard="
+	if d.shard != nil {
+		s += d.shard.String() + "\n"
+	} else {
+		s += "nil\n"
+	}
 
 	s += syntax.Indent(level) + ">"
 	return s
@@ -123,7 +128,12 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 
 	s += d.LogSelectorExpr.Pretty(level + 1)
 	s += ",\n"
-	s += syntax.Indent(level+1) + "shard=" + d.shard.String() + "\n"
+	s += syntax.Indent(level+1) + "shard="
+	if d.shard != nil {
+		s += d.shard.String() + "\n"
+	} else {
+		s += "nil\n"
+	}
 
 	s += syntax.Indent(level) + ">"
 	return s

@@ -642,3 +642,45 @@ func TestFormat_ShardedExpr(t *testing.T) {
 		})
 	}
 }
+
+func TestPrettierWithoutShards(t *testing.T) {
+	q := `((quantile_over_time(0.5,{foo="bar"} | json | unwrap bytes[1d]) by (cluster) > 42) and (count by (cluster)(max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace)) > 10))`
+	e := syntax.MustParseExpr(q)
+
+	mapper := NewShardMapper(ConstantShards(4), nilShardMetrics, []string{})
+	_, _, mapped, err := mapper.Parse(e)
+	require.NoError(t, err)
+	got := syntax.Prettify(mapped)
+	expected := `    downstream<quantile_over_time(0.5,{foo="bar"} | json | unwrap bytes[1d]) by (cluster), shard=<nil>>
+  >
+    42
+and
+    count by (cluster)(
+      max by (cluster, namespace)(
+        concat(
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=0_of_4
+          >
+          ++
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=1_of_4
+          >
+          ++
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=2_of_4
+          >
+          ++
+          downstream<
+            max_over_time({foo="baz"} |= "error" | json | unwrap bytes[1d]) by (cluster,namespace),
+            shard=3_of_4
+          >
+        )
+      )
+    )
+  >
+    10`
+	assert.Equal(t, expected, got)
+}
