@@ -72,12 +72,16 @@ func MkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 
 		keys := make([][]byte, 0, keysPerSeries)
 		for j := 0; j < keysPerSeries; j++ {
-			it := tokenizer.Tokens(fmt.Sprintf("series %d", i*keysPerSeries+j))
+			line := fmt.Sprintf("%04x", int(series.Fingerprint)+j)
+			it := tokenizer.Tokens(line)
 			for it.Next() {
 				key := it.At()
 				// series-level key
 				bloom.Add(key)
-				keys = append(keys, key)
+
+				dst := make([]byte, len(key))
+				_ = copy(dst, key)
+				keys = append(keys, dst)
 
 				// chunk-level key
 				for _, chk := range series.Chunks {
