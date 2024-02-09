@@ -19,8 +19,10 @@ import (
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/compactor"
+	"github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -37,41 +39,76 @@ Bloom-compactor regularly runs to check for changes in meta.jsons and runs compa
 type Compactor struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
-	limits Limits
+	cfg       Config
+	schemaCfg config.SchemaConfig
+	logger    log.Logger
+	limits    Limits
 
-	tsdbStore  TSDBStore
+	tsdbStore TSDBStore
+	// TODO(owen-d): ChunkLoader
+	// TODO(owen-d): ShardingStrategy
 	controller *SimpleBloomController
 
-	// temporary workaround until store has implemented read/write shipper interface
-	store bloomshipper.Store
+	// temporary workaround until bloomStore has implemented read/write shipper interface
+	bloomStore bloomshipper.Store
 
 	sharding ShardingStrategy
 
-	metrics   *metrics
+	metrics   *Metrics
 	btMetrics *v1.Metrics
 }
 
 func New(
 	cfg Config,
+	schemaCfg config.SchemaConfig,
+	storeCfg storage.Config,
+	clientMetrics storage.ClientMetrics,
 	store bloomshipper.Store,
+	fetcherProvider stores.ChunkFetcherProvider,
 	sharding ShardingStrategy,
 	limits Limits,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
 	c := &Compactor{
-		cfg:      cfg,
-		store:    store,
-		logger:   logger,
-		sharding: sharding,
-		limits:   limits,
+		cfg:        cfg,
+		schemaCfg:  schemaCfg,
+		bloomStore: store,
+		logger:     logger,
+		sharding:   sharding,
+		limits:     limits,
 	}
+
+	tsdbStore, err := NewTSDBStores(schemaCfg, storeCfg, clientMetrics)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create TSDB store")
+	}
+	c.tsdbStore = tsdbStore
+
+	// TODO(owen-d): export bloomstore as a dependency that can be reused by the compactor & gateway rather that
+	bloomStore, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storeCfg, clientMetrics, nil, nil, logger)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create bloom store")
+	}
+	c.bloomStore = bloomStore
 
 	// initialize metrics
 	c.btMetrics = v1.NewMetrics(prometheus.WrapRegistererWithPrefix("loki_bloom_tokenizer", r))
-	c.metrics = newMetrics(r)
+	c.metrics = NewMetrics(r, c.btMetrics)
+
+	chunkLoader := NewStoreChunkLoader(
+		NewFetcherProviderAdapter(fetcherProvider),
+		c.metrics,
+	)
+
+	c.controller = NewSimpleBloomController(
+		c.tsdbStore,
+		c.bloomStore,
+		chunkLoader,
+		c.metrics,
+		c.logger,
+	)
+
 	c.metrics.compactionRunInterval.Set(cfg.CompactionInterval.Seconds())
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
 
@@ -279,7 +316,7 @@ type tenantTable struct {
 	ownershipRange v1.FingerprintBounds
 }
 
-func (c *Compactor) tenants(ctx context.Context, table string) (v1.Iterator[string], error) {
+func (c *Compactor) tenants(ctx context.Context, table DayTable) (v1.Iterator[string], error) {
 	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
@@ -344,8 +381,7 @@ func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
 	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
 
 		table := tables.At()
-		tablestr := fmt.Sprintf("%d", table)
-		tenants, err := c.tenants(ctx, tablestr)
+		tenants, err := c.tenants(ctx, table)
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
 		}

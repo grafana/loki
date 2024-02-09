@@ -57,7 +57,7 @@ func (s *SimpleBloomController) buildBlocks(
 	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
 
 	// 1. Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table.String(), tenant)
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
@@ -129,13 +129,14 @@ func (s *SimpleBloomController) buildBlocks(
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table.String(), tenant, plan.tsdb, gap)
+			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
 
 			gen := NewSimpleBloomGenerator(
+				tenant,
 				v1.DefaultBlockOptions,
 				seriesItr,
 				s.chunkLoader,
@@ -190,7 +191,7 @@ func (s *SimpleBloomController) buildBlocks(
 
 func (s *SimpleBloomController) loadWorkForGap(
 	ctx context.Context,
-	table,
+	table DayTable,
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,

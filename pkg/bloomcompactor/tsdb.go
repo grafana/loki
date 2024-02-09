@@ -2,6 +2,7 @@ package bloomcompactor
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"path"
@@ -11,7 +12,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	baseStore "github.com/grafana/loki/pkg/storage"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -22,11 +25,11 @@ const (
 )
 
 type TSDBStore interface {
-	UsersForPeriod(ctx context.Context, table string) ([]string, error)
-	ResolveTSDBs(ctx context.Context, table, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error)
+	UsersForPeriod(ctx context.Context, table DayTable) ([]string, error)
+	ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error)
 	LoadTSDB(
 		ctx context.Context,
-		table,
+		table DayTable,
 		tenant string,
 		id tsdb.Identifier,
 		bounds v1.FingerprintBounds,
@@ -45,13 +48,13 @@ func NewBloomTSDBStore(storage storage.Client) *BloomTSDBStore {
 	}
 }
 
-func (b *BloomTSDBStore) UsersForPeriod(ctx context.Context, table string) ([]string, error) {
-	_, users, err := b.storage.ListFiles(ctx, table, false)
+func (b *BloomTSDBStore) UsersForPeriod(ctx context.Context, table DayTable) ([]string, error) {
+	_, users, err := b.storage.ListFiles(ctx, table.String(), false)
 	return users, err
 }
 
-func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
-	indices, err := b.storage.ListUserFiles(ctx, table, tenant, false)
+func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
+	indices, err := b.storage.ListUserFiles(ctx, table.String(), tenant, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list user files")
 	}
@@ -76,12 +79,12 @@ func (b *BloomTSDBStore) ResolveTSDBs(ctx context.Context, table, tenant string)
 
 func (b *BloomTSDBStore) LoadTSDB(
 	ctx context.Context,
-	table,
+	table DayTable,
 	tenant string,
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
 ) (v1.CloseableIterator[*v1.Series], error) {
-	data, err := b.storage.GetUserFile(ctx, table, tenant, id.Name())
+	data, err := b.storage.GetUserFile(ctx, table.String(), tenant, id.Name())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get file")
 	}
@@ -199,4 +202,94 @@ func (t *TSDBSeriesIter) background() {
 		)
 		close(t.ch)
 	}()
+}
+
+type TSDBStores struct {
+	schemaCfg config.SchemaConfig
+	stores    []TSDBStore
+}
+
+func NewTSDBStores(
+	schemaCfg config.SchemaConfig,
+	storeCfg baseStore.Config,
+	clientMetrics baseStore.ClientMetrics,
+) (*TSDBStores, error) {
+	res := &TSDBStores{
+		schemaCfg: schemaCfg,
+		stores:    make([]TSDBStore, len(schemaCfg.Configs)),
+	}
+
+	for i, cfg := range schemaCfg.Configs {
+		if cfg.IndexType == config.TSDBType {
+
+			c, err := baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create object client")
+			}
+			res.stores[i] = NewBloomTSDBStore(storage.NewIndexStorageClient(c, cfg.IndexTables.PathPrefix))
+		}
+	}
+
+	return res, nil
+}
+
+func (s *TSDBStores) storeForPeriod(ctx context.Context, table DayTable) (TSDBStore, error) {
+	for i := len(s.schemaCfg.Configs) - 1; i >= 0; i-- {
+		period := s.schemaCfg.Configs[i]
+
+		if !table.Before(DayTable(period.From.Time)) {
+			// we have the desired period config
+
+			if s.stores[i] != nil {
+				// valid: it's of tsdb type
+				return s.stores[i], nil
+			}
+
+			// invalid
+			return nil, errors.Errorf(
+				"store for period is not of TSDB type (%s) while looking up store for (%v)",
+				period.IndexType,
+				table.ModelTime().Time(),
+			)
+		}
+
+	}
+
+	return nil, fmt.Errorf(
+		"There is no store matching no matching period found for table (%v) -- too early",
+		table.ModelTime().Time(),
+	)
+}
+
+func (s *TSDBStores) UsersForPeriod(ctx context.Context, table DayTable) ([]string, error) {
+	store, err := s.storeForPeriod(ctx, table)
+	if err != nil {
+		return nil, err
+	}
+
+	return store.UsersForPeriod(ctx, table)
+}
+
+func (s *TSDBStores) ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
+	store, err := s.storeForPeriod(ctx, table)
+	if err != nil {
+		return nil, err
+	}
+
+	return store.ResolveTSDBs(ctx, table, tenant)
+}
+
+func (s *TSDBStores) LoadTSDB(
+	ctx context.Context,
+	table DayTable,
+	tenant string,
+	id tsdb.Identifier,
+	bounds v1.FingerprintBounds,
+) (v1.CloseableIterator[*v1.Series], error) {
+	store, err := s.storeForPeriod(ctx, table)
+	if err != nil {
+		return nil, err
+	}
+
+	return store.LoadTSDB(ctx, table, tenant, id, bounds)
 }

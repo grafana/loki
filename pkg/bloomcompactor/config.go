@@ -64,6 +64,7 @@ type Limits interface {
 	BloomFalsePositiveRate(tenantID string) float64
 }
 
+// TODO(owen-d): Remove this type in favor of config.DayTime
 type DayTable model.Time
 
 func (d DayTable) String() string {
