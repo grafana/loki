@@ -45,8 +45,6 @@ func newLimits() *validation.Overrides {
 }
 
 func TestBloomGateway_StartStopService(t *testing.T) {
-
-	ss := NewNoopStrategy()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	limits := newLimits()
@@ -96,7 +94,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 			MaxOutstandingPerTenant: 1024,
 		}
 
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -113,8 +111,6 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
-
-	ss := NewNoopStrategy()
 	logger := log.NewLogfmtLogger(os.Stderr)
 	reg := prometheus.NewRegistry()
 	limits := newLimits()
@@ -165,7 +161,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("shipper error is propagated", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2023-10-03 10:00")
@@ -212,7 +208,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("request cancellation does not result in channel locking", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2024-01-25 10:00")
@@ -259,7 +255,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -304,7 +300,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("gateway tracks active users", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -344,7 +340,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2023-10-03 10:00")
