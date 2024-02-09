@@ -130,10 +130,6 @@ func (s *SimpleBloomController) buildBlocks(
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
-			preExistingBlocksQueriers := make([]*v1.BlockQuerier, 0, len(preExistingBlocks))
-			for _, block := range preExistingBlocks {
-				preExistingBlocksQueriers = append(preExistingBlocksQueriers, block.BlockQuerier)
-			}
 			// Close all remaining blocks on exit
 			closePreExistingBlocks := func() {
 				var closeErrors multierror.MultiError
@@ -149,7 +145,7 @@ func (s *SimpleBloomController) buildBlocks(
 				v1.DefaultBlockOptions, // TODO(salvacorts) make block options configurable
 				seriesItr,
 				s.chunkLoader,
-				preExistingBlocksQueriers,
+				preExistingBlocks,
 				s.rwFn,
 				s.metrics,
 				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
@@ -164,9 +160,9 @@ func (s *SimpleBloomController) buildBlocks(
 			}
 
 			client, err := s.bloomStore.Client(table.ModelTime())
-
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get client", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to get client")
 			}
 			for newBlocks.Next() {

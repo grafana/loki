@@ -18,6 +18,7 @@ import (
 	logql_log "github.com/grafana/loki/pkg/logql/log"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
@@ -71,7 +72,7 @@ type SimpleBloomGenerator struct {
 	chunkLoader ChunkLoader
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
 	// as an iterator of iterators, where each iterator is a batch of overlapping blocks.
-	blocks []*v1.BlockQuerier
+	blocks []*bloomshipper.CloseableBlockQuerier
 
 	// options to build blocks with
 	opts v1.BlockOptions
@@ -92,7 +93,7 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocks []*v1.BlockQuerier,
+	blocks []*bloomshipper.CloseableBlockQuerier,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
@@ -130,7 +131,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 }
 
 func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, results v1.Iterator[*v1.Block], err error) {
-	blocksMatchingSchema := make([]*v1.BlockQuerier, 0, len(s.blocks))
+	blocksMatchingSchema := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.blocks))
 	for _, block := range s.blocks {
 		logger := log.With(s.logger, "block", block.BlockRef)
 		md, err := block.Metadata()
@@ -166,7 +167,7 @@ type LazyBlockBuilderIterator struct {
 	populate     func(*v1.Series, *v1.Bloom) error
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
-	blocks       []v1.PeekingResetIter[*v1.SeriesWithBloom]
+	blocks       []*bloomshipper.CloseableBlockQuerier
 
 	blocksAsPeekingIter []v1.PeekingIterator[*v1.SeriesWithBloom]
 	curr                *v1.Block
@@ -179,21 +180,17 @@ func NewLazyBlockBuilderIterator(
 	populate func(*v1.Series, *v1.Bloom) error,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
-	blocks []*v1.BlockQuerier,
+	blocks []*bloomshipper.CloseableBlockQuerier,
 ) *LazyBlockBuilderIterator {
 	it := &LazyBlockBuilderIterator{
-		ctx:                 ctx,
-		opts:                opts,
-		populate:            populate,
-		readWriterFn:        readWriterFn,
-		series:              series,
-		blocks:              make([]v1.PeekingResetIter[*v1.SeriesWithBloom], len(blocks)),
-		blocksAsPeekingIter: make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocks)),
-	}
+		ctx:          ctx,
+		opts:         opts,
+		populate:     populate,
+		readWriterFn: readWriterFn,
+		series:       series,
+		blocks:       blocks,
 
-	// Initialize blockIters with original blocks
-	for i, block := range blocks {
-		it.blocks[i] = v1.NewPeekResetIter[*v1.SeriesWithBloom](block)
+		blocksAsPeekingIter: make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocks)),
 	}
 
 	return it
@@ -211,7 +208,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 			b.err = errors.Wrapf(err, "failed to reset block iterator %d", i)
 			return false
 		}
-		b.blocksAsPeekingIter[i] = block
+		b.blocksAsPeekingIter[i] = v1.NewPeekingIter[*v1.SeriesWithBloom](block)
 	}
 
 	if err := b.ctx.Err(); err != nil {

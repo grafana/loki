@@ -168,10 +168,6 @@ func (it *SliceIter[T]) At() T {
 	return it.xs[it.cur]
 }
 
-func (it *SliceIter[T]) Reset() {
-	it.cur = -1
-}
-
 type MapIter[A any, B any] struct {
 	Iterator[A]
 	f func(A) B
@@ -267,30 +263,4 @@ func NewPeekCloseIter[T any](itr CloseableIterator[T]) *PeekCloseIter[T] {
 
 func (it *PeekCloseIter[T]) Close() error {
 	return it.close()
-}
-
-type ResetIterator[T any] interface {
-	Iterator[T]
-	Reset() error
-}
-
-type PeekingResetIter[T any] interface {
-	PeekingIterator[T]
-	ResetIterator[T]
-}
-
-type PeekResetIter[T any] struct {
-	*PeekIter[T]
-	reset func() error
-}
-
-func NewPeekResetIter[T any](itr ResetIterator[T]) *PeekResetIter[T] {
-	return &PeekResetIter[T]{
-		PeekIter: NewPeekingIter[T](itr),
-		reset:    itr.Reset,
-	}
-}
-
-func (it *PeekResetIter[T]) Reset() error {
-	return it.reset()
 }
