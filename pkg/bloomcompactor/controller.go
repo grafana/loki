@@ -1,6 +1,7 @@
 package bloomcompactor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -18,7 +19,6 @@ type SimpleBloomController struct {
 	tsdbStore   TSDBStore
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
-	rwFn        func() (v1.BlockWriter, v1.BlockReader)
 	metrics     *Metrics
 
 	// TODO(owen-d): add metrics
@@ -29,7 +29,6 @@ func NewSimpleBloomController(
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
 	chunkLoader ChunkLoader,
-	rwFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
@@ -37,10 +36,16 @@ func NewSimpleBloomController(
 		tsdbStore:   tsdbStore,
 		bloomStore:  blockStore,
 		chunkLoader: chunkLoader,
-		rwFn:        rwFn,
 		metrics:     metrics,
 		logger:      logger,
 	}
+}
+
+// TODO(owen-d): pool, evaluate if memory-only is the best choice
+func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
 }
 
 func (s *SimpleBloomController) buildBlocks(

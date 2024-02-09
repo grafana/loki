@@ -3,11 +3,14 @@ package bloomcompactor
 import (
 	"context"
 	"fmt"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -17,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/compactor"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -36,6 +40,9 @@ type Compactor struct {
 	cfg    Config
 	logger log.Logger
 	limits Limits
+
+	tsdbStore  TSDBStore
+	controller *SimpleBloomController
 
 	// temporary workaround until store has implemented read/write shipper interface
 	store bloomshipper.Store
@@ -264,4 +271,165 @@ func (c *Compactor) compactTenantWithRetries(ctx context.Context, logger log.Log
 			return c.compactTenant(ctx, logger, tableName, tenant)
 		},
 	)
+}
+
+type tenantTable struct {
+	tenant         string
+	table          DayTable
+	ownershipRange v1.FingerprintBounds
+}
+
+func (c *Compactor) tenants(ctx context.Context, table string) (v1.Iterator[string], error) {
+	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting tenants")
+	}
+
+	return v1.NewSliceIter(tenants), nil
+}
+
+// TODO(owen-d): implement w/ subrings
+func (c *Compactor) ownsTenant(_ string) (ownershipRange v1.FingerprintBounds, owns bool) {
+	return v1.NewBounds(0, math.MaxUint64), true
+}
+
+func (c *Compactor) run(ctx context.Context) error {
+	// run once at beginning
+	if err := c.runOne(ctx); err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(c.cfg.CompactionInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case <-ticker.C:
+			if err := c.runOne(ctx); err != nil {
+				level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err)
+				return err
+			}
+		}
+	}
+}
+
+// runs a single round of compaction for all relevant tenants and tables
+func (c *Compactor) runOne(ctx context.Context) error {
+	var workersErr error
+	var wg sync.WaitGroup
+	ch := make(chan tenantTable)
+	wg.Add(1)
+	go func() {
+		workersErr = c.runWorkers(ctx, ch)
+		wg.Done()
+	}()
+
+	err := c.loadWork(ctx, ch)
+
+	wg.Wait()
+	return multierror.New(workersErr, err, ctx.Err()).Err()
+}
+
+func (c *Compactor) tables(ts time.Time) *dayRangeIterator {
+	from := model.TimeFromUnixNano(ts.Add(-c.cfg.MaxCompactionAge).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod))
+	through := model.TimeFromUnixNano(ts.Add(-c.cfg.MinCompactionAge).UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod))
+	return newDayRangeIterator(DayTable(from), DayTable(through))
+}
+
+func (c *Compactor) loadWork(ctx context.Context, ch chan<- tenantTable) error {
+	tables := c.tables(time.Now())
+
+	for tables.Next() && tables.Err() == nil && ctx.Err() == nil {
+
+		table := tables.At()
+		tablestr := fmt.Sprintf("%d", table)
+		tenants, err := c.tenants(ctx, tablestr)
+		if err != nil {
+			return errors.Wrap(err, "getting tenants")
+		}
+
+		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
+			tenant := tenants.At()
+			ownershipRange, owns := c.ownsTenant(tenant)
+			if !owns {
+				continue
+			}
+
+			select {
+			case ch <- tenantTable{tenant: tenant, table: table, ownershipRange: ownershipRange}:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		if err := tenants.Err(); err != nil {
+			return errors.Wrap(err, "iterating tenants")
+		}
+
+	}
+
+	if err := tables.Err(); err != nil {
+		return errors.Wrap(err, "iterating tables")
+	}
+
+	close(ch)
+	return ctx.Err()
+}
+
+func (c *Compactor) runWorkers(ctx context.Context, ch <-chan tenantTable) error {
+
+	return concurrency.ForEachJob(ctx, c.cfg.WorkerParallelism, c.cfg.WorkerParallelism, func(ctx context.Context, idx int) error {
+
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+
+			case tt, ok := <-ch:
+				if !ok {
+					return nil
+				}
+
+				if err := c.compactTenantTable(ctx, tt); err != nil {
+					return errors.Wrapf(
+						err,
+						"compacting tenant table (%s) for tenant (%s) with ownership (%s)",
+						tt.table,
+						tt.tenant,
+						tt.ownershipRange,
+					)
+				}
+			}
+		}
+
+	})
+
+}
+
+func (c *Compactor) compactTenantTable(ctx context.Context, tt tenantTable) error {
+	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange)
+	return c.controller.buildBlocks(ctx, tt.table, tt.tenant, tt.ownershipRange)
+}
+
+type dayRangeIterator struct {
+	min, max, cur DayTable
+}
+
+func newDayRangeIterator(min, max DayTable) *dayRangeIterator {
+	return &dayRangeIterator{min: min, max: max, cur: min.Dec()}
+}
+
+func (r *dayRangeIterator) Next() bool {
+	r.cur = r.cur.Inc()
+	return r.cur.Before(r.max)
+}
+
+func (r *dayRangeIterator) At() DayTable {
+	return r.cur
+}
+
+func (r *dayRangeIterator) Err() error {
+	return nil
 }
