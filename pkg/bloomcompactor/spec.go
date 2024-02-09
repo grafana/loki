@@ -78,9 +78,8 @@ func NewSimpleBloomGenerator(
 	logger log.Logger,
 ) *SimpleBloomGenerator {
 	return &SimpleBloomGenerator{
-		userID: userID,
-		opts:   opts,
-		// TODO(owen-d): implement Iterator[Series] against TSDB files to hook in here.
+		userID:       userID,
+		opts:         opts,
 		store:        store,
 		chunkLoader:  chunkLoader,
 		blocks:       blocks,
@@ -231,7 +230,7 @@ func NewStoreChunkLoader(fetcherProvider fetcherProvider, metrics *Metrics) *Sto
 }
 
 func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.Series) (*ChunkItersByFingerprint, error) {
-	// TODO(owen-d): This is probalby unnecessary as we should only have one fetcher
+	// NB(owen-d): This is probalby unnecessary as we should only have one fetcher
 	// because we'll only be working on a single index period at a time, but this should protect
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
 	chksByFetcher := make(map[chunkFetcher][]chunk.Chunk)
