@@ -226,7 +226,8 @@ func NewTSDBStores(
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}
-			res.stores[i] = NewBloomTSDBStore(storage.NewIndexStorageClient(c, cfg.IndexTables.PathPrefix))
+			prefix := path.Join(cfg.IndexTables.PathPrefix, cfg.IndexTables.Prefix)
+			res.stores[i] = NewBloomTSDBStore(storage.NewIndexStorageClient(c, prefix))
 		}
 	}
 
