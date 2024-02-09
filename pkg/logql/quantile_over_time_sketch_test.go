@@ -148,7 +148,9 @@ func BenchmarkQuantileBatchRangeVectorIteratorAt(b *testing.B) {
 	}{
 		{numberSamples: 1},
 		{numberSamples: 1_000},
+		{numberSamples: 10_000},
 		{numberSamples: 100_000},
+		{numberSamples: 1_000_000},
 	} {
 		b.Run(fmt.Sprintf("%d-samples", tc.numberSamples), func(b *testing.B) {
 			r := rand.New(rand.NewSource(42))
