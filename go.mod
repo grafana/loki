@@ -123,7 +123,7 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gogo/googleapis v1.4.0
-	github.com/grafana/jsonparser v0.0.0-20240209161446-d9bcdc0817c3
+	github.com/grafana/jsonparser v0.0.0-20240209175146-098958973a2d
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
