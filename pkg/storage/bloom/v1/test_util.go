@@ -45,7 +45,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 	return block, data, keys
 }
 
-func MkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
+func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
 	const nGramLen = 4
 	seriesList = make([]SeriesWithBloom, 0, nSeries)
 	keysList = make([][][]byte, 0, nSeries)
@@ -69,8 +69,8 @@ func MkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model
 		var bloom Bloom
 		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
-		keys := make([][]byte, 0, keysPerSeries)
-		for j := 0; j < keysPerSeries; j++ {
+		keys := make([][]byte, 0, int(step))
+		for j := 0; j < int(step); j++ {
 			line := fmt.Sprintf("%04x", int(series.Fingerprint)+j)
 			it := tokenizer.Tokens(line)
 			for it.Next() {

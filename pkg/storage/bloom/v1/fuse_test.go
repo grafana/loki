@@ -23,6 +23,12 @@ func TestFusedQuerier(t *testing.T) {
 	numKeysPerSeries := 10000
 	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0x0000, 0xffff, 0, 10000)
 
+	// for i := range keys {
+	// 	for j := range keys[i] {
+	// 		fmt.Println(i, j, string(keys[i][j]))
+	// 	}
+	// }
+
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
