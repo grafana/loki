@@ -114,13 +114,17 @@ func RecordRangeAndInstantQueryMetrics(
 	}
 
 	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
+	var (
+		query       = p.QueryString()
+		hashedQuery = util.HashedQuery(query)
+	)
 
 	logValues := make([]interface{}, 0, 50)
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
-		"query", p.QueryString(),
-		"query_hash", util.HashedQuery(p.QueryString()),
+		"query", query,
+		"query_hash", hashedQuery,
 		"query_type", queryType,
 		"range_type", rt,
 		"length", p.End().Sub(p.Start()),

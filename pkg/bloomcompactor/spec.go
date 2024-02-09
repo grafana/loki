@@ -132,8 +132,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 func (s *SimpleBloomGenerator) Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, results v1.Iterator[*v1.Block], err error) {
 	blocksMatchingSchema := make([]*v1.BlockQuerier, 0, len(s.blocks))
 	for _, block := range s.blocks {
-		// TODO(owen-d): implement block naming so we can log the affected block in all these calls
-		logger := log.With(s.logger, "block", fmt.Sprintf("%+v", block))
+		logger := log.With(s.logger, "block", block.BlockRef)
 		md, err := block.Metadata()
 		schema := md.Options.Schema
 		if err != nil {
@@ -379,7 +378,7 @@ func (b *batchedLoader) format(c chunk.Chunk) (v1.ChunkRefWithIter, error) {
 	b.metrics.chunkSize.Observe(float64(chk.UncompressedSize()))
 	itr, err := chk.Iterator(
 		b.ctx,
-		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
+		time.Unix(0, 0),
 		time.Unix(0, math.MaxInt64),
 		logproto.FORWARD,
 		logql_log.NewNoopPipeline().ForStream(c.Metric),
