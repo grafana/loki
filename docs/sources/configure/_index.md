@@ -2908,6 +2908,14 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # metadata request that falls in this window is split using
 # `split_recent_metadata_queries_by_interval`. The value 0 disables using a
 # different split interval for recent metadata queries.
+# 
+# This is added to improve cacheability of recent metadata queries. Query split
+# interval also determines the interval used in cache key. The default split
+# interval of 24h is useful for caching long queries, each cache key holding 1
+# day's results. But metadata queries are often shorter than 24h, to cache them
+# effectively we need a smaller split interval. `recent_metadata_query_window`
+# along with `split_recent_metadata_queries_by_interval` help configure a
+# shorter split interval for recent metadata queries.
 # CLI flag: -experimental.querier.recent-metadata-query-window
 [recent_metadata_query_window: <duration> | default = 0s]
 
