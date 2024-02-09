@@ -391,7 +391,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			x := rand.Intn(len(inputChunkRefs))
 			fp := inputChunkRefs[x].Fingerprint
 			chks := inputChunkRefs[x].Refs
-			line := fmt.Sprintf("%04x", int(fp)+0) // first line
+			line := fmt.Sprintf("%04x:%04x", int(fp), 0) // first line
 
 			t.Log("x=", x, "fp=", fp, "line=", line)
 

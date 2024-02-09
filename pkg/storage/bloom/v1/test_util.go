@@ -70,23 +70,23 @@ func MkBasicSeriesWithBlooms(nSeries, _ int, fromFp, throughFp model.Fingerprint
 		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 		keys := make([][]byte, 0, int(step))
-		for j := 0; j < int(step); j++ {
-			line := fmt.Sprintf("%04x", int(series.Fingerprint)+j)
-			it := tokenizer.Tokens(line)
-			for it.Next() {
-				key := it.At()
-				// series-level key
-				bloom.Add(key)
+		for _, chk := range series.Chunks {
+			tokenBuf, prefixLen := prefixedToken(nGramLen, chk, nil)
 
-				dst := make([]byte, len(key))
-				_ = copy(dst, key)
-				keys = append(keys, dst)
+			for j := 0; j < int(step); j++ {
+				line := fmt.Sprintf("%04x:%04x", int(series.Fingerprint), j)
+				it := tokenizer.Tokens(line)
+				for it.Next() {
+					key := it.At()
+					// series-level key
+					bloom.Add(key)
 
-				// chunk-level key
-				for _, chk := range series.Chunks {
-					tokenBuf, prefixLen := prefixedToken(nGramLen, chk, nil)
+					// chunk-level key
 					tokenBuf = append(tokenBuf[:prefixLen], key...)
 					bloom.Add(tokenBuf)
+
+					keyCopy := key
+					keys = append(keys, keyCopy)
 				}
 			}
 		}

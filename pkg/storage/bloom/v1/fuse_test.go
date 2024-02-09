@@ -19,15 +19,8 @@ func TestFusedQuerier(t *testing.T) {
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	numSeries := 100
-	numKeysPerSeries := 10000
-	data, keys := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0x0000, 0xffff, 0, 10000)
-
-	// for i := range keys {
-	// 	for j := range keys[i] {
-	// 		fmt.Println(i, j, string(keys[i][j]))
-	// 	}
-	// }
+	numSeries := 1000
+	data, keys := MkBasicSeriesWithBlooms(numSeries, 0, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -54,7 +47,7 @@ func TestFusedQuerier(t *testing.T) {
 	for i := 0; i < nReqs; i++ {
 		ch := make(chan Output)
 		var reqs []Request
-		// find nth series for each
+		// find n series for each
 		for j := 0; j < n; j++ {
 			idx := numSeries/nReqs*i + j
 			reqs = append(reqs, Request{
