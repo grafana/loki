@@ -25,6 +25,11 @@ func TestCreateCredentialsRequest_DoNothing_WhenManagedAuthEnvMissing(t *testing
 }
 
 func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
+	wantServiceAccountNames := []string{
+		"my-stack",
+		"my-stack-ruler",
+	}
+
 	k := &k8sfakes.FakeClient{}
 	key := client.ObjectKey{Name: "my-stack", Namespace: "ns"}
 
@@ -38,6 +43,12 @@ func TestCreateCredentialsRequest_CreateNewResource(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, secretRef)
 	require.Equal(t, 1, k.CreateCallCount())
+
+	_, obj, _ := k.CreateArgsForCall(0)
+	credReq, ok := obj.(*cloudcredentialv1.CredentialsRequest)
+	require.True(t, ok)
+
+	require.Equal(t, wantServiceAccountNames, credReq.Spec.ServiceAccountNames)
 }
 
 func TestCreateCredentialsRequest_CreateNewResourceAzure(t *testing.T) {

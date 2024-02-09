@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/operator/internal/config"
 	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -47,6 +48,7 @@ func CreateCredentialsRequest(ctx context.Context, managedAuth *config.ManagedAu
 		BuildOpts: openshift.BuildOptions{
 			LokiStackName:      stack.Name,
 			LokiStackNamespace: stack.Namespace,
+			RulerName:          manifests.RulerName(stack.Name),
 		},
 		ManagedAuth: managedAuth,
 	}
