@@ -1,7 +1,6 @@
 package openshift
 
 import (
-	"fmt"
 	"github.com/ViaQ/logerr/v2/kverrors"
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -13,29 +12,22 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
-const (
-	ccoNamespace = "openshift-cloud-credential-operator"
-)
-
 func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsRequest, error) {
 	stack := client.ObjectKey{Name: opts.BuildOpts.LokiStackName, Namespace: opts.BuildOpts.LokiStackNamespace}
 
-	providerSpec, secretName, err := encodeProviderSpec(opts.BuildOpts.LokiStackName, opts.ManagedAuth)
+	providerSpec, err := encodeProviderSpec(opts.BuildOpts.LokiStackName, opts.ManagedAuth)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "failed encoding credentialsrequest provider spec")
 	}
 
 	return &cloudcredentialv1.CredentialsRequest{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s", stack.Namespace, secretName),
-			Namespace: ccoNamespace,
-			Annotations: map[string]string{
-				AnnotationCredentialsRequestOwner: stack.String(),
-			},
+			Name:      stack.Name,
+			Namespace: stack.Namespace,
 		},
 		Spec: cloudcredentialv1.CredentialsRequestSpec{
 			SecretRef: corev1.ObjectReference{
-				Name:      secretName,
+				Name:      storage.ManagedCredentialsSecretName(stack.Name),
 				Namespace: stack.Namespace,
 			},
 			ProviderSpec: providerSpec,
@@ -48,10 +40,9 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 	}, nil
 }
 
-func encodeProviderSpec(stackName string, env *config.ManagedAuthConfig) (*runtime.RawExtension, string, error) {
+func encodeProviderSpec(stackName string, env *config.ManagedAuthConfig) (*runtime.RawExtension, error) {
 	var (
-		spec       runtime.Object
-		secretName string
+		spec runtime.Object
 	)
 
 	switch {
@@ -71,7 +62,6 @@ func encodeProviderSpec(stackName string, env *config.ManagedAuthConfig) (*runti
 			},
 			STSIAMRoleARN: env.AWS.RoleARN,
 		}
-		secretName = fmt.Sprintf("%s-aws-creds", stackName)
 	case env.Azure != nil:
 		azure := env.Azure
 
@@ -99,9 +89,8 @@ func encodeProviderSpec(stackName string, env *config.ManagedAuthConfig) (*runti
 			AzureSubscriptionID: azure.SubscriptionID,
 			AzureTenantID:       azure.TenantID,
 		}
-		secretName = fmt.Sprintf("%s-azure-creds", stackName)
 	}
 
 	encodedSpec, err := cloudcredentialv1.Codec.EncodeProviderSpec(spec.DeepCopyObject())
-	return encodedSpec, secretName, err
+	return encodedSpec, err
 }

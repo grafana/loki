@@ -9,24 +9,6 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
-func TestBuildCredentialsRequest_HasOwnerAnnotation(t *testing.T) {
-	opts := Options{
-		BuildOpts: BuildOptions{
-			LokiStackName:      "a-stack",
-			LokiStackNamespace: "ns",
-		},
-		ManagedAuth: &config.ManagedAuthConfig{
-			AWS: &config.AWSEnvironment{
-				RoleARN: "role-arn",
-			},
-		},
-	}
-
-	credReq, err := BuildCredentialsRequest(opts)
-	require.NoError(t, err)
-	require.Contains(t, credReq.Annotations, AnnotationCredentialsRequestOwner)
-}
-
 func TestBuildCredentialsRequest_HasSecretRef_MatchingLokiStackNamespace(t *testing.T) {
 	opts := Options{
 		BuildOpts: BuildOptions{
@@ -102,8 +84,8 @@ func TestBuildCredentialsRequest_FollowsNamingConventions(t *testing.T) {
 					},
 				},
 			},
-			wantName:       "ns-a-stack-aws-creds",
-			wantSecretName: "a-stack-aws-creds",
+			wantName:       "a-stack",
+			wantSecretName: "a-stack-managed-credentials",
 		},
 	}
 	for _, test := range tests {

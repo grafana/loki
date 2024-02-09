@@ -1,5 +1,7 @@
 package storage
 
+import "fmt"
+
 const (
 	// EnvAlibabaCloudAccessKeyID is the environment variable to specify the AlibabaCloud client id to access S3.
 	EnvAlibabaCloudAccessKeyID = "ALIBABA_CLOUD_ACCESS_KEY_ID"
@@ -147,6 +149,9 @@ const (
 	azureManagedCredentialKeyClientID       = "azure_client_id"
 	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
 	azureManagedCredentialKeySubscriptionID = "azure_subscription_id"
-
-	AnnotationCredentialsRequestsSecretRef = "loki.grafana.com/credentials-request-secret-ref"
 )
+
+// ManagedCredentialsSecretName returns the name of the secret holding the managed credentials.
+func ManagedCredentialsSecretName(stackName string) string {
+	return fmt.Sprintf("%s-managed-credentials", stackName)
+}

@@ -29,6 +29,7 @@ type AzureStorageConfig struct {
 	Container        string
 	EndpointSuffix   string
 	Audience         string
+	Region           string
 	WorkloadIdentity bool
 }
 
