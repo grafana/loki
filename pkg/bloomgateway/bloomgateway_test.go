@@ -45,8 +45,6 @@ func newLimits() *validation.Overrides {
 }
 
 func TestBloomGateway_StartStopService(t *testing.T) {
-
-	ss := NewNoopStrategy()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	limits := newLimits()
@@ -96,7 +94,7 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 			MaxOutstandingPerTenant: 1024,
 		}
 
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -113,8 +111,6 @@ func TestBloomGateway_StartStopService(t *testing.T) {
 
 func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	tenantID := "test"
-
-	ss := NewNoopStrategy()
 	logger := log.NewLogfmtLogger(os.Stderr)
 	reg := prometheus.NewRegistry()
 	limits := newLimits()
@@ -165,15 +161,17 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("shipper error is propagated", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2023-10-03 10:00")
 
-		bqs, data := createBlockQueriers(t, 10, now.Add(-24*time.Hour), now, 0, 1000)
-		mockStore := newMockBloomStore(bqs)
-		mockStore.err = errors.New("failed to fetch block")
-		gw.bloomShipper = mockStore
+		// replace store implementation and re-initialize workers and sub-services
+		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+
+		mockStore := newMockBloomStore(queriers, metas)
+		mockStore.err = errors.New("request failed")
+		gw.bloomStore = mockStore
 
 		err = gw.initServices()
 		require.NoError(t, err)
@@ -204,21 +202,23 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			t.Cleanup(cancelFn)
 
 			res, err := gw.FilterChunkRefs(ctx, req)
-			require.ErrorContainsf(t, err, "request failed: failed to fetch block", "%+v", res)
+			require.ErrorContainsf(t, err, "request failed", "%+v", res)
 		}
 	})
 
 	t.Run("request cancellation does not result in channel locking", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2024-01-25 10:00")
 
-		bqs, data := createBlockQueriers(t, 50, now.Add(-24*time.Hour), now, 0, 1024)
-		mockStore := newMockBloomStore(bqs)
-		mockStore.delay = 50 * time.Millisecond // delay for each block - 50x50=2500ms
-		gw.bloomShipper = mockStore
+		// replace store implementation and re-initialize workers and sub-services
+		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+
+		mockStore := newMockBloomStore(queriers, metas)
+		mockStore.delay = 2000 * time.Millisecond
+		gw.bloomStore = mockStore
 
 		err = gw.initServices()
 		require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("returns unfiltered chunk refs if no filters provided", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -300,7 +300,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("gateway tracks active users", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -340,14 +340,15 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 	t.Run("use fuse queriers to filter chunks", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, schemaCfg, storageCfg, limits, ss, cm, logger, reg)
+		gw, err := New(cfg, schemaCfg, storageCfg, limits, cm, logger, reg)
 		require.NoError(t, err)
 
 		now := mktime("2023-10-03 10:00")
 
 		// replace store implementation and re-initialize workers and sub-services
-		bqs, data := createBlockQueriers(t, 5, now.Add(-8*time.Hour), now, 0, 1024)
-		gw.bloomShipper = newMockBloomStore(bqs)
+		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+
+		gw.bloomStore = newMockBloomStore(queriers, metas)
 		err = gw.initServices()
 		require.NoError(t, err)
 

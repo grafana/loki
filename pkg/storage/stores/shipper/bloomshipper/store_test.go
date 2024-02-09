@@ -52,11 +52,9 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 			BlocksDownloadingQueue: config.DownloadingQueueConfig{
 				WorkersCount: 1,
 			},
-			BlocksCache: config.BlocksCacheConfig{
-				EmbeddedCacheConfig: cache.EmbeddedCacheConfig{
-					MaxSizeItems: 1000,
-					TTL:          1 * time.Hour,
-				},
+			BlocksCache: cache.EmbeddedCacheConfig{
+				MaxSizeItems: 1000,
+				TTL:          1 * time.Hour,
 			},
 		},
 	}
@@ -66,7 +64,7 @@ func newMockBloomStore(t *testing.T) (*BloomStore, string) {
 	logger := log.NewLogfmtLogger(os.Stderr)
 
 	metasCache := cache.NewMockCache()
-	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig, prometheus.NewPedanticRegistry(), logger)
+	blocksCache := NewBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
 	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)
@@ -248,21 +246,19 @@ func TestBloomStore_FetchBlocks(t *testing.T) {
 	ctx := context.Background()
 
 	// first call fetches two blocks from cache
-	blockDirs, err := store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b3.BlockRef})
+	bqs, err := store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b3.BlockRef})
 	require.NoError(t, err)
-	require.Len(t, blockDirs, 2)
+	require.Len(t, bqs, 2)
 
-	require.ElementsMatch(t, []BlockRef{b1.BlockRef, b3.BlockRef}, []BlockRef{blockDirs[0].BlockRef, blockDirs[1].BlockRef})
+	require.Equal(t, []BlockRef{b1.BlockRef, b3.BlockRef}, []BlockRef{bqs[0].BlockRef, bqs[1].BlockRef})
 
 	// second call fetches two blocks from cache and two from storage
-	blockDirs, err = store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef})
+	bqs, err = store.FetchBlocks(ctx, []BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef})
 	require.NoError(t, err)
-	require.Len(t, blockDirs, 4)
+	require.Len(t, bqs, 4)
 
-	// Note the order: b1 and b2 come from cache, so they are in the beginning of the response
-	// Do we need to sort the response based on the request order of block refs?
-	require.ElementsMatch(t,
-		[]BlockRef{b1.BlockRef, b3.BlockRef, b2.BlockRef, b4.BlockRef},
-		[]BlockRef{blockDirs[0].BlockRef, blockDirs[1].BlockRef, blockDirs[2].BlockRef, blockDirs[3].BlockRef},
+	require.Equal(t,
+		[]BlockRef{b1.BlockRef, b2.BlockRef, b3.BlockRef, b4.BlockRef},
+		[]BlockRef{bqs[0].BlockRef, bqs[1].BlockRef, bqs[2].BlockRef, bqs[3].BlockRef},
 	)
 }

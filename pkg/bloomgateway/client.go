@@ -36,6 +36,10 @@ import (
 )
 
 var (
+	// BlocksOwnerRead is the operation used to check the authoritative owners of a block
+	// (replicas included) that are available for queries (a bloom gateway is available for
+	// queries only when ACTIVE).
+	BlocksOwnerRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 	// groupedChunksRefPool pooling slice of logproto.GroupedChunkRefs [64, 128, 256, ..., 65536]
 	groupedChunksRefPool = queue.NewSlicePool[*logproto.GroupedChunkRefs](1<<6, 1<<16, 2)
 	// ringGetBuffersPool pooling for ringGetBuffers to avoid calling ring.MakeBuffersForGet() for each request
@@ -226,15 +230,16 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	}
 
 	subRing := GetShuffleShardingSubring(c.ring, tenant, c.limits)
-	rs, err := subRing.GetAllHealthy(BlocksRead)
+	rs, err := subRing.GetAllHealthy(BlocksOwnerRead)
 	if err != nil {
 		return nil, errors.Wrap(err, "bloom gateway get healthy instances")
 	}
 
-	streamsByInst, err := c.groupFingerprintsByServer(groups, subRing, rs.Instances)
+	servers, err := serverAddressesWithTokenRanges(subRing, rs.Instances)
 	if err != nil {
 		return nil, err
 	}
+	streamsByInst := groupFingerprintsByServer(groups, servers)
 
 	filteredChunkRefs := groupedChunksRefPool.Get(len(groups))
 	defer groupedChunksRefPool.Put(filteredChunkRefs)
@@ -286,13 +291,9 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	return err
 }
 
-func (c *GatewayClient) groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, subRing ring.ReadRing, instances []ring.InstanceDesc) ([]instanceWithFingerprints, error) {
-	servers, err := serverAddressesWithTokenRanges(subRing, instances)
-	if err != nil {
-		return nil, err
-	}
+func groupFingerprintsByServer(groups []*logproto.GroupedChunkRefs, servers []addrsWithTokenRange) []instanceWithFingerprints {
 	boundedFingerprints := partitionFingerprintsByAddresses(groups, servers)
-	return groupByInstance(boundedFingerprints), nil
+	return groupByInstance(boundedFingerprints)
 }
 
 func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.InstanceDesc) ([]addrsWithTokenRange, error) {
@@ -303,7 +304,7 @@ func serverAddressesWithTokenRanges(subRing ring.ReadRing, instances []ring.Inst
 	for it.Next() {
 		// We can use on of the tokens from the token range
 		// to obtain all addresses for that token.
-		rs, err := subRing.Get(it.At().MaxToken, BlocksRead, bufDescs, bufHosts, bufZones)
+		rs, err := subRing.Get(it.At().MaxToken, BlocksOwnerRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrap(err, "bloom gateway get ring")
 		}
@@ -409,4 +410,22 @@ func groupByInstance(boundedFingerprints []instanceWithFingerprints) []instanceW
 	}
 
 	return result
+}
+
+// GetShuffleShardingSubring returns the subring to be used for a given user.
+// This function should be used both by index gateway servers and clients in
+// order to guarantee the same logic is used.
+func GetShuffleShardingSubring(ring ring.ReadRing, tenantID string, limits Limits) ring.ReadRing {
+	shardSize := limits.BloomGatewayShardSize(tenantID)
+
+	// A shard size of 0 means shuffle sharding is disabled for this specific user,
+	// so we just return the full ring so that indexes will be sharded across all index gateways.
+	// Since we set the shard size to replication factor if shard size is 0, this
+	// can only happen if both the shard size and the replication factor are set
+	// to 0.
+	if shardSize <= 0 {
+		return ring
+	}
+
+	return ring.ShuffleShard(tenantID, shardSize)
 }

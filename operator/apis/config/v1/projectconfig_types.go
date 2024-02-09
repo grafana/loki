@@ -56,7 +56,9 @@ type OpenShiftFeatureGates struct {
 	ManagedAuthEnv bool
 }
 
-func (o OpenShiftFeatureGates) ManagedAuthEnabled() bool {
+// ManagedAuthEnabled returns true when OpenShift-functions are enabled and the operator has detected that it is
+// running with some kind of "workload identity" (AWS STS, Azure WIF) enabled.
+func (o *OpenShiftFeatureGates) ManagedAuthEnabled() bool {
 	return o.Enabled && o.ManagedAuthEnv
 }
 

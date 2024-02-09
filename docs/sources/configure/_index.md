@@ -2327,27 +2327,26 @@ bloom_shipper:
     [max_tasks_enqueued_per_tenant: <int> | default = 10000]
 
   blocks_cache:
-    # Whether embedded cache is enabled.
-    # CLI flag: -blocks-cache.enabled
+    # Cache for bloom blocks. Whether embedded cache is enabled.
+    # CLI flag: -bloom.blocks-cache.enabled
     [enabled: <boolean> | default = false]
 
-    # Maximum memory size of the cache in MB.
-    # CLI flag: -blocks-cache.max-size-mb
+    # Cache for bloom blocks. Maximum memory size of the cache in MB.
+    # CLI flag: -bloom.blocks-cache.max-size-mb
     [max_size_mb: <int> | default = 100]
 
-    # Maximum number of entries in the cache.
-    # CLI flag: -blocks-cache.max-size-items
+    # Cache for bloom blocks. Maximum number of entries in the cache.
+    # CLI flag: -bloom.blocks-cache.max-size-items
     [max_size_items: <int> | default = 0]
 
-    # The time to live for items in the cache before they get purged.
-    # CLI flag: -blocks-cache.ttl
-    [ttl: <duration> | default = 0s]
+    # Cache for bloom blocks. The time to live for items in the cache before
+    # they get purged.
+    # CLI flag: -bloom.blocks-cache.ttl
+    [ttl: <duration> | default = 24h]
 
-    # During this period the process waits until the directory becomes not used
-    # and only after this it will be deleted. If the timeout is reached, the
-    # directory is force deleted.
-    # CLI flag: -blocks-cache.remove-directory-graceful-period
-    [remove_directory_graceful_period: <duration> | default = 5m]
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is: bloom.metas-cache
+  [metas_cache: <cache_config>]
 ```
 
 ### chunk_store_config
@@ -4378,6 +4377,7 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bloom-gateway-client.cache`
+- `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
 - `frontend.label-results-cache`

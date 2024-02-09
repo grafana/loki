@@ -3,7 +3,6 @@ package bloomshipper
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,7 +21,7 @@ type metrics struct{}
 
 type fetcher interface {
 	FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error)
-	FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error)
 	Close()
 }
 
@@ -33,7 +32,7 @@ type Fetcher struct {
 	client Client
 
 	metasCache      cache.Cache
-	blocksCache     *cache.EmbeddedCache[string, BlockDirectory]
+	blocksCache     cache.TypedCache[string, BlockDirectory]
 	localFSResolver KeyResolver
 
 	q *downloadQueue[BlockRef, BlockDirectory]
@@ -42,7 +41,7 @@ type Fetcher struct {
 	logger  log.Logger
 }
 
-func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache *cache.EmbeddedCache[string, BlockDirectory], logger log.Logger) (*Fetcher, error) {
+func NewFetcher(cfg bloomStoreConfig, client Client, metasCache cache.Cache, blocksCache cache.TypedCache[string, BlockDirectory], logger log.Logger) (*Fetcher, error) {
 	fetcher := &Fetcher{
 		client:          client,
 		metasCache:      metasCache,
@@ -125,120 +124,96 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	return f.metasCache.Store(ctx, keys, data)
 }
 
-func (f *Fetcher) FetchBlocksWithQueue(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
-	responses := make(chan BlockDirectory, len(refs))
-	errors := make(chan error, len(refs))
-	for _, ref := range refs {
-		f.q.enqueue(downloadTask[BlockRef, BlockDirectory]{
+func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error) {
+	n := len(refs)
+
+	responses := make(chan downloadResponse[BlockDirectory], n)
+	errors := make(chan error, n)
+	for i := 0; i < n; i++ {
+		f.q.enqueue(downloadRequest[BlockRef, BlockDirectory]{
 			ctx:     ctx,
-			item:    ref,
-			key:     f.client.Block(ref).Addr(),
+			item:    refs[i],
+			key:     f.client.Block(refs[i]).Addr(),
+			idx:     i,
 			results: responses,
 			errors:  errors,
 		})
 	}
 
-	results := make([]BlockDirectory, len(refs))
-
-outer:
-	for i := 0; i < len(refs); i++ {
+	results := make([]*CloseableBlockQuerier, n)
+	for i := 0; i < n; i++ {
 		select {
 		case err := <-errors:
 			return results, err
 		case res := <-responses:
-			for j, ref := range refs {
-				if res.BlockRef == ref {
-					results[j] = res
-					continue outer
-				}
-			}
-			return results, fmt.Errorf("no matching request found for response %s", res)
+			results[res.idx] = res.item.BlockQuerier()
 		}
 	}
 
 	return results, nil
 }
 
-func (f *Fetcher) processTask(ctx context.Context, task downloadTask[BlockRef, BlockDirectory]) {
+func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef, BlockDirectory]) {
 	if ctx.Err() != nil {
 		task.errors <- ctx.Err()
 		return
 	}
 
-	refs := []BlockRef{task.item}
-	results, err := f.FetchBlocks(ctx, refs)
+	result, err := f.fetchBlock(ctx, task.item)
 	if err != nil {
 		task.errors <- err
 		return
 	}
 
-	for _, res := range results {
-		task.results <- res
+	task.results <- downloadResponse[BlockDirectory]{
+		item: result,
+		key:  task.key,
+		idx:  task.idx,
 	}
 }
 
-// FetchBlocks returns a list of block directories
-// It resolves them from three locations:
+// fetchBlock resolves a block from three locations:
 //  1. from cache
 //  2. from file system
 //  3. from remote storage
-func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef) ([]BlockDirectory, error) {
+func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory, error) {
+	var zero BlockDirectory
+
 	if ctx.Err() != nil {
-		return nil, errors.Wrap(ctx.Err(), "fetch Blocks")
+		return zero, errors.Wrap(ctx.Err(), "fetch block")
 	}
 
-	keys := make([]string, 0, len(refs))
-	for _, ref := range refs {
-		keys = append(keys, f.client.Block(ref).Addr())
-	}
-	cacheHits, cacheBufs, _, err := f.blocksCache.Fetch(ctx, keys)
+	keys := []string{f.client.Block(ref).Addr()}
+
+	_, fromCache, _, err := f.blocksCache.Fetch(ctx, keys)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 
-	results := make([]BlockDirectory, 0, len(refs))
+	// item found in cache
+	if len(fromCache) == 1 {
+		return fromCache[0], nil
+	}
 
-	fromCache, missing, err := f.processBlocksCacheResponse(ctx, refs, cacheHits, cacheBufs)
+	fromLocalFS, _, err := f.loadBlocksFromFS(ctx, []BlockRef{ref})
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
-	results = append(results, fromCache...)
 
-	fromLocalFS, missing, err := f.loadBlocksFromFS(ctx, missing)
+	// item found on local file system
+	if len(fromLocalFS) == 1 {
+		err = f.writeBackBlocks(ctx, fromLocalFS)
+		return fromLocalFS[0], err
+	}
+
+	fromStorage, err := f.client.GetBlock(ctx, ref)
 	if err != nil {
-		return nil, err
-	}
-	results = append(results, fromLocalFS...)
-
-	fromStorage, err := f.client.GetBlocks(ctx, missing)
-	if err != nil {
-		return nil, err
-	}
-	results = append(results, fromStorage...)
-
-	err = f.writeBackBlocks(ctx, fromStorage)
-	return results, err
-}
-
-func (f *Fetcher) processBlocksCacheResponse(_ context.Context, refs []BlockRef, keys []string, entries []BlockDirectory) ([]BlockDirectory, []BlockRef, error) {
-	found := make(map[string]BlockDirectory, len(refs))
-	for i, k := range keys {
-		found[k] = entries[i]
+		return zero, err
 	}
 
-	blockDirs := make([]BlockDirectory, 0, len(found))
-	missing := make([]BlockRef, 0, len(refs)-len(keys))
-
-	var lastErr error
-	for i, ref := range refs {
-		if raw, ok := found[f.client.Block(ref).Addr()]; ok {
-			blockDirs = append(blockDirs, raw)
-		} else {
-			missing = append(missing, refs[i])
-		}
-	}
-
-	return blockDirs, missing, lastErr
+	// item found in storage
+	err = f.writeBackBlocks(ctx, []BlockDirectory{fromStorage})
+	return fromStorage, err
 }
 
 func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockDirectory, []BlockRef, error) {
@@ -289,18 +264,25 @@ func (f *Fetcher) writeBackBlocks(ctx context.Context, blocks []BlockDirectory) 
 	return f.blocksCache.Store(ctx, keys, blocks)
 }
 
-type processFunc[T any, R any] func(context.Context, downloadTask[T, R])
+type processFunc[T any, R any] func(context.Context, downloadRequest[T, R])
 
-type downloadTask[T any, R any] struct {
+type downloadRequest[T any, R any] struct {
 	ctx     context.Context
 	item    T
 	key     string
-	results chan<- R
+	idx     int
+	results chan<- downloadResponse[R]
 	errors  chan<- error
 }
 
+type downloadResponse[R any] struct {
+	item R
+	key  string
+	idx  int
+}
+
 type downloadQueue[T any, R any] struct {
-	queue   chan downloadTask[T, R]
+	queue   chan downloadRequest[T, R]
 	mu      keymutex.KeyMutex
 	wg      sync.WaitGroup
 	done    chan struct{}
@@ -310,7 +292,7 @@ type downloadQueue[T any, R any] struct {
 
 func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R], logger log.Logger) *downloadQueue[T, R] {
 	q := &downloadQueue[T, R]{
-		queue:   make(chan downloadTask[T, R], size),
+		queue:   make(chan downloadRequest[T, R], size),
 		mu:      keymutex.NewHashed(workers),
 		done:    make(chan struct{}),
 		process: process,
@@ -323,7 +305,7 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 	return q
 }
 
-func (q *downloadQueue[T, R]) enqueue(t downloadTask[T, R]) {
+func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
 	q.queue <- t
 }
 
@@ -339,7 +321,7 @@ func (q *downloadQueue[T, R]) runWorker() {
 	}
 }
 
-func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadTask[T, R]) {
+func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadRequest[T, R]) {
 	q.mu.LockKey(task.key)
 	defer func() {
 		err := q.mu.UnlockKey(task.key)
