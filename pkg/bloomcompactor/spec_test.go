@@ -56,7 +56,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 // doesn't actually load any chunks
 type dummyChunkLoader struct{}
 
-func (dummyChunkLoader) Load(_ context.Context, userID string, series *v1.Series) (*ChunkItersByFingerprint, error) {
+func (dummyChunkLoader) Load(_ context.Context, _ string, series *v1.Series) (*ChunkItersByFingerprint, error) {
 	return &ChunkItersByFingerprint{
 		fp:  series.Fingerprint,
 		itr: v1.NewEmptyIter[v1.ChunkRefWithIter](),

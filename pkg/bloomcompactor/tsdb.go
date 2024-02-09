@@ -233,7 +233,7 @@ func NewTSDBStores(
 	return res, nil
 }
 
-func (s *TSDBStores) storeForPeriod(ctx context.Context, table DayTable) (TSDBStore, error) {
+func (s *TSDBStores) storeForPeriod(table DayTable) (TSDBStore, error) {
 	for i := len(s.schemaCfg.Configs) - 1; i >= 0; i-- {
 		period := s.schemaCfg.Configs[i]
 
@@ -262,7 +262,7 @@ func (s *TSDBStores) storeForPeriod(ctx context.Context, table DayTable) (TSDBSt
 }
 
 func (s *TSDBStores) UsersForPeriod(ctx context.Context, table DayTable) ([]string, error) {
-	store, err := s.storeForPeriod(ctx, table)
+	store, err := s.storeForPeriod(table)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +271,7 @@ func (s *TSDBStores) UsersForPeriod(ctx context.Context, table DayTable) ([]stri
 }
 
 func (s *TSDBStores) ResolveTSDBs(ctx context.Context, table DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error) {
-	store, err := s.storeForPeriod(ctx, table)
+	store, err := s.storeForPeriod(table)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func (s *TSDBStores) LoadTSDB(
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
 ) (v1.CloseableIterator[*v1.Series], error) {
-	store, err := s.storeForPeriod(ctx, table)
+	store, err := s.storeForPeriod(table)
 	if err != nil {
 		return nil, err
 	}
