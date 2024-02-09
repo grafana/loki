@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/util/ring"
-	"github.com/prometheus/common/model"
 )
 
 // Config configures the bloom-compactor component.

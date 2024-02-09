@@ -2649,6 +2649,18 @@ ring:
 # CLI flag: -bloom-compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
+# Minimum age of a table before it is considered for compaction.
+# CLI flag: -bloom-compactor.min-compaction-age
+[min_compaction_age: <duration> | default = 24h]
+
+# Maximum age of a table before it is considered for compaction.
+# CLI flag: -bloom-compactor.max-compaction-age
+[max_compaction_age: <duration> | default = 168h]
+
+# Number of workers to run in parallel for compaction.
+# CLI flag: -bloom-compactor.worker-parallelism
+[worker_parallelism: <int> | default = 1]
+
 # Minimum backoff time between retries.
 # CLI flag: -bloom-compactor.compaction-retries-min-backoff
 [compaction_retries_min_backoff: <duration> | default = 10s]
