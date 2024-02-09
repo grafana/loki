@@ -26,3 +26,14 @@ scrape_configs:
       - labels:
           http_method:
           http_status:
+  - job_name: loki
+    docker_sd_configs:
+        - host: unix:///var/run/docker.sock
+          refresh_interval: 5s
+    relabel_configs:
+      - source_labels: [ '__meta_docker_container_name' ]
+        target_label: 'container'
+      - source_labels: [ '__meta_docker_container_log_stream' ]
+        target_label: 'logstream'
+      - source_labels: [ '__meta_docker_container_label_logging_jobname' ]
+        target_label: 'job'

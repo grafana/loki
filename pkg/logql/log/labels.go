@@ -140,6 +140,7 @@ type BaseLabelsBuilder struct {
 	without, noLabels            bool
 	referencedStructuredMetadata bool
 
+	mu          sync.RWMutex
 	resultCache map[uint64]LabelsResult
 	*hasher
 }
@@ -182,25 +183,38 @@ func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
 }
 
+func (b *BaseLabelsBuilder) putCache(hash uint64, result LabelsResult) {
+	b.mu.Lock()
+	b.resultCache[hash] = result
+	b.mu.Unlock()
+}
+
+func (b *BaseLabelsBuilder) getCache(hash uint64) (LabelsResult, bool) {
+	b.mu.RLock()
+	result, ok := b.resultCache[hash]
+	b.mu.RUnlock()
+	return result, ok
+}
+
 // ForLabels creates a labels builder for a given labels set as base.
 // The labels cache is shared across all created LabelsBuilders.
 func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBuilder {
-	if labelResult, ok := b.resultCache[hash]; ok {
-		res := &LabelsBuilder{
+	if labelResult, ok := b.getCache(hash); ok {
+		return &LabelsBuilder{
 			base:              lbs,
 			currentResult:     labelResult,
 			BaseLabelsBuilder: b,
 		}
-		return res
 	}
+
 	labelResult := NewLabelsResult(lbs.String(), hash, lbs, labels.EmptyLabels(), labels.EmptyLabels())
-	b.resultCache[hash] = labelResult
-	res := &LabelsBuilder{
+	b.putCache(hash, labelResult)
+
+	return &LabelsBuilder{
 		base:              lbs,
 		currentResult:     labelResult,
 		BaseLabelsBuilder: b,
 	}
-	return res
 }
 
 // Reset clears all current state for the builder.
@@ -526,12 +540,12 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	parsed := b.labels(ParsedLabel).Copy()
 	b.buf = flattenLabels(b.buf, stream, structuredMetadata, parsed)
 	hash := b.hasher.Hash(b.buf)
-	if cached, ok := b.resultCache[hash]; ok {
+	if cached, ok := b.getCache(hash); ok {
 		return cached
 	}
 
 	result := NewLabelsResult(b.buf.String(), hash, stream, structuredMetadata, parsed)
-	b.resultCache[hash] = result
+	b.putCache(hash, result)
 
 	return result
 }
@@ -557,12 +571,12 @@ func flattenLabels(buf labels.Labels, many ...labels.Labels) labels.Labels {
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf labels.Labels) LabelsResult {
 	hash := b.hasher.Hash(buf)
-	if cached, ok := b.resultCache[hash]; ok {
+	if cached, ok := b.getCache(hash); ok {
 		return cached
 	}
 
 	res := NewLabelsResult(buf.String(), hash, buf.Copy(), nil, nil)
-	b.resultCache[hash] = res
+	b.putCache(hash, res)
 	return res
 }
 
