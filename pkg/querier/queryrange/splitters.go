@@ -101,6 +101,9 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	)
 
 	switch req.(type) {
+	// not applying `split_ingester_queries_by_interval` for metadata queries since it solves a different problem of reducing the subqueries sent to the ingesters.
+	// we instead prefer `split_recent_metadata_queries_by_interval` for metadata queries which favours shorter subqueries to improve cache effectiveness.
+	// even though the number of subqueries increase, caching should deamplify it overtime.
 	case *LokiSeriesRequest, *LabelRequest:
 		// for metadata requests, we use a different split interval of `split_recent_metadata_queries_by_interval` for the portion
 		// of the query within `recent_metadata_query_window`.
@@ -127,14 +130,14 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	if reboundOrigQuery {
 		util.ForInterval(splitIntervalBeforeRebound, start, end, endTimeInclusive, factory)
 
-		// rebound after queries within ingester/"recent metadata" query window have been split out
+		// rebound after query portion within ingester query window or recent metadata query window has been split out
 		end = start
 		start = origStart
 		if endTimeInclusive {
 			end = end.Add(-util.SplitGap)
 		}
 
-		// query only overlaps ingester/"recent metadata" query window, nothing more to do
+		// query only overlaps ingester query window or recent metadata query window, nothing more to do
 		if start.After(end) || start.Equal(end) {
 			return reqs, nil
 		}
@@ -150,7 +153,7 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	// perform splitting over the rest of the time range
 	util.ForInterval(interval, start, end, endTimeInclusive, factory)
 
-	// move the ingester/"recent metadata" splits to the end to maintain correct order
+	// move the ingester or recent metadata splits to the end to maintain correct order
 	reqs = append(reqs, splitsBeforeRebound...)
 	return reqs, nil
 }
