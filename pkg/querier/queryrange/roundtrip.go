@@ -677,6 +677,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 				)
 			},
 			retentionEnabled,
+			false,
 			metrics.ResultsCacheMetrics,
 		)
 		if err != nil {

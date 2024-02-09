@@ -120,6 +120,7 @@ func NewLabelsCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		true,
 		metrics,
 	)
 }

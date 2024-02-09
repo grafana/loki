@@ -103,6 +103,7 @@ func NewSeriesCacheMiddleware(
 		},
 		parallelismForReq,
 		retentionEnabled,
+		true,
 		metrics,
 	)
 }
