@@ -177,8 +177,6 @@ type Gateway struct {
 	activeUsers *util.ActiveUsersCleanupService
 	bloomStore  bloomshipper.Store
 
-	sharding ShardingStrategy
-
 	pendingTasks *pendingTasks
 
 	serviceMngr    *services.Manager
@@ -196,12 +194,11 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, overrides Limits, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
 		cfg:          cfg,
 		logger:       logger,
 		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
-		sharding:     shardingStrategy,
 		pendingTasks: makePendingTasks(pendingTasksInitialCap),
 		workerConfig: workerConfig{
 			maxItems: 100,
