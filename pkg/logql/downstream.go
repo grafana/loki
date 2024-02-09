@@ -336,7 +336,13 @@ type Resp struct {
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
-	Downstream(context.Context, []DownstreamQuery) ([]logqlmodel.Result, error)
+	Downstream(context.Context, []DownstreamQuery, Accumulator) ([]logqlmodel.Result, error)
+}
+
+// Accumulator is an interface for accumulating query results.
+type Accumulator interface {
+	Accumulate(context.Context, logqlmodel.Result, int) error
+	Result() []logqlmodel.Result
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
@@ -346,8 +352,8 @@ type DownstreamEvaluator struct {
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
-func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
-	results, err := ev.Downstreamer.Downstream(ctx, queries)
+func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
+	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
 		return nil, err
 	}
@@ -406,12 +412,13 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
+		acc := NewBufferedAccumulator(1)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
 				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
 				ShardsOverride: Shards(shards).Encode(),
 			},
-		}})
+		}}, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -431,7 +438,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			cur = cur.next
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -471,7 +479,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := newQuantileSketchAccumulator()
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -505,12 +514,13 @@ func (ev *DownstreamEvaluator) NewIterator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
+		acc := NewStreamAccumulator(params)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
 			Params: ParamsWithShardsOverride{
 				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.LogSelectorExpr},
 				ShardsOverride: shards.Encode(),
 			},
-		}})
+		}}, acc)
 		if err != nil {
 			return nil, err
 		}
@@ -530,7 +540,8 @@ func (ev *DownstreamEvaluator) NewIterator(
 			cur = cur.next
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		acc := NewStreamAccumulator(params)
+		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {
 			return nil, err
 		}

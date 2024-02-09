@@ -71,9 +71,11 @@ func TestUnknownType(t *testing.T) {
 
 func TestAzureExtract(t *testing.T) {
 	type test struct {
-		name      string
-		secret    *corev1.Secret
-		wantError string
+		name          string
+		secret        *corev1.Secret
+		managedSecret *corev1.Secret
+		featureGates  configv1.FeatureGates
+		wantError     string
 	}
 	table := []test{
 		{
@@ -82,23 +84,23 @@ func TestAzureExtract(t *testing.T) {
 			wantError: "missing secret field: environment",
 		},
 		{
-			name: "missing container",
-			secret: &corev1.Secret{
-				Data: map[string][]byte{
-					"environment": []byte("here"),
-				},
-			},
-			wantError: "missing secret field: container",
-		},
-		{
 			name: "missing account_name",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"environment": []byte("here"),
-					"container":   []byte("this,that"),
 				},
 			},
 			wantError: "missing secret field: account_name",
+		},
+		{
+			name: "missing container",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("id"),
+				},
+			},
+			wantError: "missing secret field: container",
 		},
 		{
 			name: "no account_key or client_id",
@@ -154,6 +156,64 @@ func TestAzureExtract(t *testing.T) {
 			wantError: "missing secret field: subscription_id",
 		},
 		{
+			name: "managed auth - no region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("test-account-name"),
+					"container":    []byte("this,that"),
+				},
+			},
+			managedSecret: &corev1.Secret{
+				Data: map[string][]byte{},
+			},
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:        true,
+					ManagedAuthEnv: true,
+				},
+			},
+			wantError: "missing secret field: region",
+		},
+		{
+			name: "managed auth - no auth override",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("test-account-name"),
+					"container":    []byte("this,that"),
+					"region":       []byte("test-region"),
+					"account_key":  []byte("test-account-key"),
+				},
+			},
+			managedSecret: &corev1.Secret{
+				Data: map[string][]byte{},
+			},
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:        true,
+					ManagedAuthEnv: true,
+				},
+			},
+			wantError: errAzureManagedIdentityNoOverride.Error(),
+		},
+		{
+			name: "audience used with static authentication",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"container":    []byte("this,that"),
+					"account_name": []byte("id"),
+					"account_key":  []byte("secret"),
+					"audience":     []byte("test-audience"),
+				},
+			},
+			wantError: "secret field not allowed: audience",
+		},
+		{
 			name: "mandatory for normal authentication set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
@@ -181,6 +241,27 @@ func TestAzureExtract(t *testing.T) {
 			},
 		},
 		{
+			name: "mandatory for managed workload-identity set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"environment":  []byte("here"),
+					"account_name": []byte("test-account-name"),
+					"container":    []byte("this,that"),
+					"region":       []byte("test-region"),
+				},
+			},
+			managedSecret: &corev1.Secret{
+				Data: map[string][]byte{},
+			},
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:        true,
+					ManagedAuthEnv: true,
+				},
+			},
+		},
+		{
 			name: "all set including optional",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
@@ -199,7 +280,7 @@ func TestAzureExtract(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts, err := extractSecrets(lokiv1.ObjectStorageSecretAzure, tst.secret, nil, configv1.FeatureGates{})
+			opts, err := extractSecrets(lokiv1.ObjectStorageSecretAzure, tst.secret, tst.managedSecret, tst.featureGates)
 			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.NotEmpty(t, opts.SecretName)
@@ -234,12 +315,46 @@ func TestGCSExtract(t *testing.T) {
 			wantError: "missing secret field: key.json",
 		},
 		{
+			name: "missing audience",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"key.json":   []byte("{\"type\": \"external_account\"}"),
+				},
+			},
+			wantError: "missing secret field: audience",
+		},
+		{
+			name: "credential_source file no override",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"audience":   []byte("test"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/custom/path/to/secret/gcp/serviceaccount/token\"}}"),
+				},
+			},
+			wantError: "credential source in secret needs to point to token file: /var/run/secrets/gcp/serviceaccount/token",
+		},
+		{
 			name: "all set",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"bucketname": []byte("here"),
-					"key.json":   []byte("{\"type\": \"SA\"}"),
+					"key.json":   []byte("{\"type\": \"service_account\"}"),
+				},
+			},
+		},
+		{
+			name: "mandatory for workload-identity set",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"audience":   []byte("test"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"credential_source\": {\"file\": \"/var/run/secrets/gcp/serviceaccount/token\"}}"),
 				},
 			},
 		},

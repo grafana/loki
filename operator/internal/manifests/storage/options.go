@@ -28,12 +28,15 @@ type AzureStorageConfig struct {
 	Env              string
 	Container        string
 	EndpointSuffix   string
+	Audience         string
 	WorkloadIdentity bool
 }
 
 // GCSStorageConfig for GCS storage config
 type GCSStorageConfig struct {
-	Bucket string
+	Bucket           string
+	Audience         string
+	WorkloadIdentity bool
 }
 
 // S3StorageConfig for S3 storage config
