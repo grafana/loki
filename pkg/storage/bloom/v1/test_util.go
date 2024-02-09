@@ -15,15 +15,14 @@ import (
 
 // TODO(owen-d): this should probably be in it's own testing-util package
 
-func MakeBlockQuerier(t testing.TB, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (*BlockQuerier, []SeriesWithBloom) {
+func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (*Block, []SeriesWithBloom, [][][]byte) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	numSeries := int(throughFp - fromFp)
-	numKeysPerSeries := 1000
-	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, fromFp, throughFp, fromTs, throughTs)
+	numSeries := int(throughFp-fromFp) / nth
+	data, keys := MkBasicSeriesWithBlooms(numSeries, nth, fromFp, throughFp, fromTs, throughTs)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -43,7 +42,7 @@ func MakeBlockQuerier(t testing.TB, fromFp, throughFp model.Fingerprint, fromTs,
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader)
-	return NewBlockQuerier(block), data
+	return block, data, keys
 }
 
 func MkBasicSeriesWithBlooms(nSeries, keysPerSeries int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom, keysList [][][]byte) {
