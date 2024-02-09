@@ -83,6 +83,29 @@ func (d DownstreamSampleExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.SampleExpr.String(), d.shard)
 }
 
+// The DownstreamSampleExpr is not part of LogQL. In the prettified version it's
+// represented as e.g. `downstream<count_over_time({foo="bar"} |= "error"), shard=1_of_3>`
+func (d DownstreamSampleExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(d) {
+		return s + d.String()
+	}
+
+	s += "downstream<\n"
+
+	s += d.SampleExpr.Pretty(level + 1)
+	s += ",\n"
+	s += syntax.Indent(level+1) + "shard="
+	if d.shard != nil {
+		s += d.shard.String() + "\n"
+	} else {
+		s += "nil\n"
+	}
+
+	s += syntax.Indent(level) + ">"
+	return s
+}
+
 // DownstreamLogSelectorExpr is a LogSelectorExpr which signals downstream computation
 type DownstreamLogSelectorExpr struct {
 	shard *astmapper.ShardAnnotation
@@ -91,6 +114,29 @@ type DownstreamLogSelectorExpr struct {
 
 func (d DownstreamLogSelectorExpr) String() string {
 	return fmt.Sprintf("downstream<%s, shard=%s>", d.LogSelectorExpr.String(), d.shard)
+}
+
+// The DownstreamLogSelectorExpr is not part of LogQL. In the prettified version it's
+// represented as e.g. `downstream<{foo="bar"} |= "error", shard=1_of_3>`
+func (d DownstreamLogSelectorExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(d) {
+		return s + d.String()
+	}
+
+	s += "downstream<\n"
+
+	s += d.LogSelectorExpr.Pretty(level + 1)
+	s += ",\n"
+	s += syntax.Indent(level+1) + "shard="
+	if d.shard != nil {
+		s += d.shard.String() + "\n"
+	} else {
+		s += "nil\n"
+	}
+
+	s += syntax.Indent(level) + ">"
+	return s
 }
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
@@ -105,7 +151,7 @@ type ConcatSampleExpr struct {
 	next *ConcatSampleExpr
 }
 
-func (c ConcatSampleExpr) String() string {
+func (c *ConcatSampleExpr) String() string {
 	if c.next == nil {
 		return c.DownstreamSampleExpr.String()
 	}
@@ -115,7 +161,7 @@ func (c ConcatSampleExpr) String() string {
 
 // in order to not display huge queries with thousands of shards,
 // we can limit the number of stringified subqueries.
-func (c ConcatSampleExpr) string(maxDepth int) string {
+func (c *ConcatSampleExpr) string(maxDepth int) string {
 	if c.next == nil {
 		return c.DownstreamSampleExpr.String()
 	}
@@ -125,9 +171,37 @@ func (c ConcatSampleExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
 }
 
-func (c ConcatSampleExpr) Walk(f syntax.WalkFn) {
+func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
 	f(c)
 	f(c.next)
+}
+
+// ConcatSampleExpr has no LogQL repretenstation. It is expressed in in the
+// prettified version as e.g. `concat(downstream<count_over_time({foo="bar"}), shard=...> ++ )`
+func (c *ConcatSampleExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(c) {
+		return s + c.String()
+	}
+
+	s += "concat(\n"
+
+	head := c
+	for i := 0; i < defaultMaxDepth && head != nil; i++ {
+		if i > 0 {
+			s += syntax.Indent(level+1) + "++\n"
+		}
+		s += head.DownstreamSampleExpr.Pretty(level + 1)
+		s += "\n"
+		head = head.next
+	}
+	// There are more downstream samples...
+	if head != nil {
+		s += syntax.Indent(level+1) + "++ ...\n"
+	}
+	s += syntax.Indent(level) + ")"
+
+	return s
 }
 
 // ConcatLogSelectorExpr is an expr for concatenating multiple LogSelectorExpr
@@ -136,7 +210,7 @@ type ConcatLogSelectorExpr struct {
 	next *ConcatLogSelectorExpr
 }
 
-func (c ConcatLogSelectorExpr) String() string {
+func (c *ConcatLogSelectorExpr) String() string {
 	if c.next == nil {
 		return c.DownstreamLogSelectorExpr.String()
 	}
@@ -146,7 +220,7 @@ func (c ConcatLogSelectorExpr) String() string {
 
 // in order to not display huge queries with thousands of shards,
 // we can limit the number of stringified subqueries.
-func (c ConcatLogSelectorExpr) string(maxDepth int) string {
+func (c *ConcatLogSelectorExpr) string(maxDepth int) string {
 	if c.next == nil {
 		return c.DownstreamLogSelectorExpr.String()
 	}
@@ -154,6 +228,34 @@ func (c ConcatLogSelectorExpr) string(maxDepth int) string {
 		return fmt.Sprintf("%s ++ ...", c.DownstreamLogSelectorExpr.String())
 	}
 	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
+}
+
+// ConcatLogSelectorExpr has no representation in LogQL. Its prettified version
+// is e.g. `concat(downstream<{foo="bar"} |= "error", shard=1_of_3>)`
+func (c *ConcatLogSelectorExpr) Pretty(level int) string {
+	s := syntax.Indent(level)
+	if !syntax.NeedSplit(c) {
+		return s + c.String()
+	}
+
+	s += "concat(\n"
+
+	head := c
+	for i := 0; i < defaultMaxDepth && head != nil; i++ {
+		if i > 0 {
+			s += syntax.Indent(level+1) + "++\n"
+		}
+		s += head.DownstreamLogSelectorExpr.Pretty(level + 1)
+		s += "\n"
+		head = head.next
+	}
+	// There are more downstream samples...
+	if head != nil {
+		s += syntax.Indent(level+1) + "++ ...\n"
+	}
+	s += ")"
+
+	return s
 }
 
 // QuantileSketchEvalExpr evaluates a quantile sketch to the actual quantile.

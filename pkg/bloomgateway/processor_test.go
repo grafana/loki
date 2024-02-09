@@ -9,12 +9,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/pkg/util/constants"
 )
 
 var _ bloomshipper.Store = &dummyStore{}
@@ -92,13 +94,13 @@ func TestProcessor(t *testing.T) {
 	ctx := context.Background()
 	tenant := "fake"
 	now := mktime("2024-01-27 12:00")
+	metrics := newWorkerMetrics(prometheus.NewPedanticRegistry(), constants.Loki, "bloom_gatway")
 
 	t.Run("success case", func(t *testing.T) {
 		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
-		p := &processor{
-			store:  newMockBloomStore(queriers, metas),
-			logger: log.NewNopLogger(),
-		}
+
+		mockStore := newMockBloomStore(queriers, metas)
+		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithBounds{
@@ -142,10 +144,7 @@ func TestProcessor(t *testing.T) {
 		mockStore := newMockBloomStore(queriers, metas)
 		mockStore.err = errors.New("store failed")
 
-		p := &processor{
-			store:  mockStore,
-			logger: log.NewNopLogger(),
-		}
+		p := newProcessor("worker", mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithBounds{
