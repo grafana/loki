@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/bloomcompactor"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -35,10 +35,9 @@ type processor struct {
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
-	for ts, tasks := range group(tasks, func(t Task) model.Time { return t.day }) {
-		interval := bloomshipper.NewInterval(ts, ts.Add(Day))
+	for ts, tasks := range group(tasks, func(t Task) bloomcompactor.DayTable { return t.table }) {
 		tenant := tasks[0].Tenant
-		err := p.processTasks(ctx, tenant, interval, []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}}, tasks)
+		err := p.processTasks(ctx, tenant, ts, []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}}, tasks)
 		if err != nil {
 			for _, task := range tasks {
 				task.CloseWithError(err)
@@ -52,11 +51,11 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, interval bloomshipper.Interval, keyspaces []v1.FingerprintBounds, tasks []Task) error {
+func (p *processor) processTasks(ctx context.Context, tenant string, day bloomcompactor.DayTable, keyspaces []v1.FingerprintBounds, tasks []Task) error {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
 	metaSearch := bloomshipper.MetaSearchParams{
 		TenantID: tenant,
-		Interval: interval,
+		Interval: day.Bounds(),
 		Keyspace: v1.FingerprintBounds{Min: minFpRange.Min, Max: maxFpRange.Max},
 	}
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
@@ -65,7 +64,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, interval bl
 	}
 	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(metas)))
 
-	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
+	blocksRefs := bloomshipper.BlocksForMetas(metas, day.Bounds(), keyspaces)
 	return p.processBlocks(ctx, partition(tasks, blocksRefs))
 }
 

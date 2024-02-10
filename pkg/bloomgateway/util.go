@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
 
+	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -121,7 +122,7 @@ func partitionFingerprintRange(tasks []Task, blocks []bloomshipper.BlockRef) (re
 
 type seriesWithBounds struct {
 	bounds model.Interval
-	day    model.Time
+	table  bloomcompactor.DayTable
 	series []*logproto.GroupedChunkRefs
 }
 
@@ -173,7 +174,7 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithBounds {
 					Start: minTs,
 					End:   maxTs,
 				},
-				day:    day,
+				table:  bloomcompactor.DayTable(day),
 				series: res,
 			})
 		}

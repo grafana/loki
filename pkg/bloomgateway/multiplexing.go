@@ -9,6 +9,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -69,7 +70,7 @@ type Task struct {
 	ctx context.Context
 
 	// TODO(chaudum): Investigate how to remove that.
-	day model.Time
+	table bloomcompactor.DayTable
 }
 
 // NewTask returns a new Task that can be enqueued to the task queue.
@@ -89,7 +90,7 @@ func NewTask(ctx context.Context, tenantID string, refs seriesWithBounds, filter
 		filters:   filters,
 		series:    refs.series,
 		bounds:    refs.bounds,
-		day:       refs.day,
+		table:     refs.table,
 		ctx:       ctx,
 		done:      make(chan struct{}),
 		responses: make([]v1.Output, 0, len(refs.series)),
@@ -129,7 +130,7 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 		filters:   t.filters,
 		series:    series,
 		bounds:    t.bounds,
-		day:       t.day,
+		table:     t.table,
 		ctx:       t.ctx,
 		done:      make(chan struct{}),
 		responses: make([]v1.Output, 0, len(series)),
