@@ -57,6 +57,19 @@ type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
 	stats           *MapperStats
+
+	// SplitAlign
+	splitAlignTs time.Time
+}
+
+func NewRangeMapperWithSplitAlign(interval time.Duration, splitAlign time.Time, metrics *MapperMetrics, stats *MapperStats) (RangeMapper, error) {
+	rm, err := NewRangeMapper(interval, metrics, stats)
+	if err != nil {
+		return RangeMapper{}, err
+	}
+	rm.splitAlignTs = splitAlign
+
+	return rm, nil
 }
 
 // NewRangeMapper creates a new RangeMapper instance with the given duration as
@@ -327,6 +340,71 @@ func (m RangeMapper) getOriginalOffset(expr syntax.SampleExpr) (offset time.Dura
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
+	if m.splitAlignTs.IsZero() {
+		return m.rangeSplit(expr, rangeInterval, recorder)
+	}
+	return m.rangeSplitAlign(expr, rangeInterval, recorder)
+}
+
+// rangeSplitAlign try to split given `rangeInterval` into units of `m.splitByInterval` by making sure `rangeInterval` is aligned with `m.splitByInterval` for as much as the units as possible.
+// Consider following example with real use case.
+// Instant Query: `sum(rate({foo="bar"}[3h])`
+// execTs: 12:34:00
+// splitBy: 1h
+// Given above parameters, queries will be split into following
+// 1. sum(rate({foo="bar"}[34m]))
+// 2. sum(rate({foo="bar"}[1h] offset 34m))
+// 3. sum(rate({foo="bar"}[1h] offset 1h34m))
+// 4. sum(rate({foo="bar"}[26m] offset 2h34m))
+// All with execTs: 12:34:00. Here (2) and (3) range values (1h) aligned with splitByInteval (1h).
+func (m RangeMapper) rangeSplitAlign(
+	expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder,
+) syntax.SampleExpr {
+	if rangeInterval <= m.splitByInterval {
+		return expr
+	}
+
+	originalOffset, err := m.getOriginalOffset(expr)
+	if err != nil {
+		return expr
+	}
+
+	splits := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval))) // without first aligned subquery
+	align := m.splitAlignTs.Sub(m.splitAlignTs.Truncate(m.splitByInterval))       // say, 12:34:00 - 12:00:00(truncated) = 34m
+	if align != 0 {
+		splits += 1
+	}
+
+	var (
+		newRng      time.Duration = align
+		newOffset   time.Duration = originalOffset
+		downstreams *ConcatSampleExpr
+	)
+
+	// first subquery
+	downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+
+	newOffset += align         // e.g: offset 34m
+	newRng = m.splitByInterval // [1h]
+
+	// Rest of the subqueries. Always aligned with splitBy
+	for i := 0; i < splits-2; i++ {
+		downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+		newOffset += m.splitByInterval
+	}
+
+	// last subquery
+	newRng = m.splitByInterval - align // e.g: [24h]
+	downstreams = appendDownstream(downstreams, expr, newRng, newOffset)
+
+	// update stats and metrics
+	m.stats.AddSplitQueries(splits)
+	recorder.Add(splits, MetricsKey)
+
+	return downstreams
+}
+
+func (m RangeMapper) rangeSplit(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
 	splitCount := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval)))
 	if splitCount <= 1 {
 		return expr

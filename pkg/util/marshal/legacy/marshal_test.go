@@ -161,6 +161,16 @@ var queryTests = []struct {
 						"downloadTime": 0,
 						"queryLengthServed": 0
 					},
+					"instantMetricResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0,
+						"queryLengthServed": 0
+					},
 					"result": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
@@ -180,7 +190,7 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed": 0, 
+					"totalBytesProcessed": 0,
                     "totalEntriesReturned": 0,
 					"totalLinesProcessed": 0,
 					"totalStructuredMetadataBytesProcessed": 0,

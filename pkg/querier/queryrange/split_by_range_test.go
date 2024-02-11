@@ -25,7 +25,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 		splitDuration: map[string]time.Duration{
 			"tenant": time.Minute,
 		},
-	}, nilShardingMetrics)
+	}, false, nilShardingMetrics)
 
 	ctx := user.InjectOrgID(context.TODO(), "tenant")
 

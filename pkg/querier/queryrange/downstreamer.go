@@ -35,6 +35,8 @@ const (
 type DownstreamHandler struct {
 	limits Limits
 	next   queryrangebase.Handler
+
+	splitAlign bool
 }
 
 func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
@@ -94,6 +96,7 @@ func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer 
 		parallelism: p,
 		locks:       locks,
 		handler:     h.next,
+		splitAlign:  h.splitAlign,
 	}
 }
 
@@ -102,6 +105,8 @@ type instance struct {
 	parallelism int
 	locks       chan struct{}
 	handler     queryrangebase.Handler
+
+	splitAlign bool
 }
 
 // withoutOffset returns the given query string with offsets removed and timestamp adjusted accordingly. If no offset is present in original query, it will be returned as is.
@@ -132,9 +137,13 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
-		qs, newStart, newEnd := withoutOffset(qry)
-
-		req := ParamsToLokiRequest(qry.Params).WithQuery(qs).WithStartEnd(newStart, newEnd)
+		var req queryrangebase.Request
+		if in.splitAlign {
+			qs, newStart, newEnd := withoutOffset(qry)
+			req = ParamsToLokiRequest(qry.Params).WithQuery(qs).WithStartEnd(newStart, newEnd)
+		} else {
+			req = ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
+		}
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
 		logger := spanlogger.FromContext(ctx)

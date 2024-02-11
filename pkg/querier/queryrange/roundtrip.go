@@ -44,18 +44,19 @@ const (
 
 // Config is the configuration for the queryrange tripperware
 type Config struct {
-	base.Config               `yaml:",inline"`
-	Transformer               UserIDTransformer        `yaml:"-"`
-	CacheIndexStatsResults    bool                     `yaml:"cache_index_stats_results"`
-	StatsCacheConfig          IndexStatsCacheConfig    `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
-	CacheVolumeResults        bool                     `yaml:"cache_volume_results"`
-	VolumeCacheConfig         VolumeCacheConfig        `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
-	CacheInstantMetricResults bool                     `yaml:"cache_instant_metric_results"`
-	InstantMetricCacheConfig  InstantMetricCacheConfig `yaml:"instant_metric_cache" doc:"description=If a cache config is not specified and cache_instant_metric_results is true, the config for the results cache is used."`
-	CacheSeriesResults        bool                     `yaml:"cache_series_results"`
-	SeriesCacheConfig         SeriesCacheConfig        `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
-	CacheLabelResults         bool                     `yaml:"cache_label_results"`
-	LabelsCacheConfig         LabelsCacheConfig        `yaml:"label_results_cache" doc:"description=If label_results_cache is not configured and cache_label_results is true, the config for the results cache is used."`
+	base.Config                  `yaml:",inline"`
+	Transformer                  UserIDTransformer        `yaml:"-"`
+	CacheIndexStatsResults       bool                     `yaml:"cache_index_stats_results"`
+	StatsCacheConfig             IndexStatsCacheConfig    `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
+	CacheVolumeResults           bool                     `yaml:"cache_volume_results"`
+	VolumeCacheConfig            VolumeCacheConfig        `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
+	CacheInstantMetricResults    bool                     `yaml:"cache_instant_metric_results"`
+	InstantMetricCacheConfig     InstantMetricCacheConfig `yaml:"instant_metric_results_cache" doc:"description=If a cache config is not specified and cache_instant_metric_results is true, the config for the results cache is used."`
+	InstantMetricQuerySplitAlign bool                     `yaml:"instant_metric_query_split_align" doc:"description=Wheather to align the splits of instant metric query with splitByInterval and query's exec time. Useful when instant_metric_cache is enabled"`
+	CacheSeriesResults           bool                     `yaml:"cache_series_results"`
+	SeriesCacheConfig            SeriesCacheConfig        `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
+	CacheLabelResults            bool                     `yaml:"cache_label_results"`
+	LabelsCacheConfig            LabelsCacheConfig        `yaml:"label_results_cache" doc:"description=If label_results_cache is not configured and cache_label_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -67,6 +68,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.VolumeCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheInstantMetricResults, "querier.cache-instant-metric-results", false, "Cache instant metric query results.")
 	cfg.InstantMetricCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.InstantMetricQuerySplitAlign, "querier.instant-metric-query-split-align", false, "Align the instant metric splits with splityByInterval and query's exec time.")
 	f.BoolVar(&cfg.CacheSeriesResults, "querier.cache-series-results", false, "Cache series query results.")
 	cfg.SeriesCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", false, "Cache label query results.")
@@ -828,7 +830,7 @@ func NewInstantMetricTripperware(
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
-			NewSplitByRangeMiddleware(log, engineOpts, limits, metrics.MiddlewareMapperMetrics.rangeMapper),
+			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.MiddlewareMapperMetrics.rangeMapper),
 		}
 
 		if cfg.CacheInstantMetricResults {
