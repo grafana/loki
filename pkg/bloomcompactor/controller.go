@@ -159,13 +159,20 @@ func (s *SimpleBloomController) buildBlocks(
 				level.Error(logger).Log("msg", "failed to get client", "err", err)
 				return errors.Wrap(err, "failed to get client")
 			}
-			for newBlocks.Next() {
+
+			for newBlocks.Next() && newBlocks.Err() == nil {
 				blockCt++
 				blk := newBlocks.At()
 
+				built, err := bloomshipper.BlockFrom(tenant, table.String(), blk)
+				if err != nil {
+					level.Error(logger).Log("msg", "failed to build block", "err", err)
+					return errors.Wrap(err, "failed to build block")
+				}
+
 				if err := client.PutBlock(
 					ctx,
-					bloomshipper.BlockFrom(tenant, table.String(), blk),
+					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
 					return errors.Wrap(err, "failed to write block")
@@ -174,10 +181,9 @@ func (s *SimpleBloomController) buildBlocks(
 
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
-				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
-				return errors.Wrap(err, "failed to generate bloom")
+				level.Error(logger).Log("msg", "failed to generate bloom block", "err", err)
+				return errors.Wrap(err, "failed to generate bloom block")
 			}
-
 		}
 	}
 
