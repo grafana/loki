@@ -230,7 +230,7 @@ func NewStoreChunkLoader(fetcherProvider fetcherProvider, metrics *Metrics) *Sto
 }
 
 func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.Series) (*ChunkItersByFingerprint, error) {
-	// NB(owen-d): This is probalby unnecessary as we should only have one fetcher
+	// NB(owen-d): This is probably unnecessary as we should only have one fetcher
 	// because we'll only be working on a single index period at a time, but this should protect
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
 	chksByFetcher := make(map[chunkFetcher][]chunk.Chunk)
@@ -293,9 +293,7 @@ func newBatchedLoader(ctx context.Context, work []chunkWork, batchSize int, metr
 
 func (b *batchedLoader) Next() bool {
 	if len(b.batch) > 0 {
-		b.cur, b.err = b.format(b.batch[0])
-		b.batch = b.batch[1:]
-		return b.err == nil
+		return b.prepNext()
 	}
 
 	if len(b.work) == 0 {
@@ -313,6 +311,12 @@ func (b *batchedLoader) Next() bool {
 	}
 
 	b.batch, b.err = next.fetcher.FetchChunks(b.ctx, toFetch)
+	return b.prepNext()
+}
+
+func (b *batchedLoader) prepNext() bool {
+	b.cur, b.err = b.format(b.batch[0])
+	b.batch = b.batch[1:]
 	return b.err == nil
 }
 
