@@ -9,8 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/dskit/multierror"
@@ -20,33 +18,10 @@ import (
 	logql_log "github.com/grafana/loki/pkg/logql/log"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
-
-/*
-This file maintains a number of things supporting bloom generation. Most notably, the `BloomGenerator` interface/implementation which builds bloom filters.
-
-- `BloomGenerator`: Builds blooms. Most other things in this file are supporting this in various ways.
-- `SimpleBloomGenerator`: A foundational implementation of `BloomGenerator` which wires up a few different components to generate bloom filters for a set of blocks and handles schema compatibility:
-- `chunkLoader`: Loads chunks w/ a specific fingerprint from the store, returns an iterator of chunk iterators. We return iterators rather than chunk implementations mainly for ease of testing. In practice, this will just be an iterator over `MemChunk`s.
-*/
-
-type Metrics struct {
-	bloomMetrics *v1.Metrics
-	chunkSize    prometheus.Histogram // uncompressed size of all chunks summed per series
-}
-
-func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
-	return &Metrics{
-		bloomMetrics: bloomMetrics,
-		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "bloom_chunk_series_size",
-			Help:    "Uncompressed size of chunks in a series",
-			Buckets: prometheus.ExponentialBucketsRange(1024, 1073741824, 10),
-		}),
-	}
-}
 
 // inclusive range
 type Keyspace struct {
@@ -70,6 +45,7 @@ type BloomGenerator interface {
 
 // Simple implementation of a BloomGenerator.
 type SimpleBloomGenerator struct {
+	userID      string
 	store       v1.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
 	// TODO(owen-d): blocks need not be all downloaded prior. Consider implementing
@@ -92,6 +68,7 @@ type SimpleBloomGenerator struct {
 // and handles schema compatibility:
 // Blocks which are incompatible with the schema are skipped and will have their chunks reindexed
 func NewSimpleBloomGenerator(
+	userID string,
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
@@ -101,8 +78,8 @@ func NewSimpleBloomGenerator(
 	logger log.Logger,
 ) *SimpleBloomGenerator {
 	return &SimpleBloomGenerator{
-		opts: opts,
-		// TODO(owen-d): implement Iterator[Series] against TSDB files to hook in here.
+		userID:       userID,
+		opts:         opts,
 		store:        store,
 		chunkLoader:  chunkLoader,
 		blocks:       blocks,
@@ -116,7 +93,7 @@ func NewSimpleBloomGenerator(
 
 func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) error {
 	return func(series *v1.Series, bloom *v1.Bloom) error {
-		chunkItersWithFP, err := s.chunkLoader.Load(ctx, series)
+		chunkItersWithFP, err := s.chunkLoader.Load(ctx, s.userID, series)
 		if err != nil {
 			return errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
@@ -210,7 +187,7 @@ type ChunkItersByFingerprint struct {
 
 // ChunkLoader loads chunks from a store
 type ChunkLoader interface {
-	Load(context.Context, *v1.Series) (*ChunkItersByFingerprint, error)
+	Load(ctx context.Context, userID string, series *v1.Series) (*ChunkItersByFingerprint, error)
 }
 
 // interface modeled from `pkg/storage/stores/composite_store.ChunkFetcherProvider`
@@ -223,23 +200,37 @@ type chunkFetcher interface {
 	FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
 }
 
+// Adapter turning `stores.ChunkFetcherProvider` into `fetcherProvider`
+// The former returns a concrete type and is heavily used externally
+// while the latter returns an interface for better testing and
+// is used internally
+type FetcherProviderAdapter struct {
+	root stores.ChunkFetcherProvider
+}
+
+func NewFetcherProviderAdapter(root stores.ChunkFetcherProvider) *FetcherProviderAdapter {
+	return &FetcherProviderAdapter{root: root}
+}
+
+func (f *FetcherProviderAdapter) GetChunkFetcher(t model.Time) chunkFetcher {
+	return f.root.GetChunkFetcher(t)
+}
+
 // StoreChunkLoader loads chunks from a store
 type StoreChunkLoader struct {
-	userID          string
 	fetcherProvider fetcherProvider
 	metrics         *Metrics
 }
 
-func NewStoreChunkLoader(userID string, fetcherProvider fetcherProvider, metrics *Metrics) *StoreChunkLoader {
+func NewStoreChunkLoader(fetcherProvider fetcherProvider, metrics *Metrics) *StoreChunkLoader {
 	return &StoreChunkLoader{
-		userID:          userID,
 		fetcherProvider: fetcherProvider,
 		metrics:         metrics,
 	}
 }
 
-func (s *StoreChunkLoader) Load(ctx context.Context, series *v1.Series) (*ChunkItersByFingerprint, error) {
-	// TODO(owen-d): This is probalby unnecessary as we should only have one fetcher
+func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.Series) (*ChunkItersByFingerprint, error) {
+	// NB(owen-d): This is probalby unnecessary as we should only have one fetcher
 	// because we'll only be working on a single index period at a time, but this should protect
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
 	chksByFetcher := make(map[chunkFetcher][]chunk.Chunk)
@@ -248,7 +239,7 @@ func (s *StoreChunkLoader) Load(ctx context.Context, series *v1.Series) (*ChunkI
 		chksByFetcher[fetcher] = append(chksByFetcher[fetcher], chunk.Chunk{
 			ChunkRef: logproto.ChunkRef{
 				Fingerprint: uint64(series.Fingerprint),
-				UserID:      s.userID,
+				UserID:      userID,
 				From:        chk.Start,
 				Through:     chk.End,
 				Checksum:    chk.Checksum,

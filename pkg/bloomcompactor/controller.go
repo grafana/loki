@@ -1,6 +1,7 @@
 package bloomcompactor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -18,7 +19,6 @@ type SimpleBloomController struct {
 	tsdbStore   TSDBStore
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
-	rwFn        func() (v1.BlockWriter, v1.BlockReader)
 	metrics     *Metrics
 
 	// TODO(owen-d): add metrics
@@ -29,7 +29,6 @@ func NewSimpleBloomController(
 	tsdbStore TSDBStore,
 	blockStore bloomshipper.Store,
 	chunkLoader ChunkLoader,
-	rwFn func() (v1.BlockWriter, v1.BlockReader),
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
@@ -37,10 +36,16 @@ func NewSimpleBloomController(
 		tsdbStore:   tsdbStore,
 		bloomStore:  blockStore,
 		chunkLoader: chunkLoader,
-		rwFn:        rwFn,
 		metrics:     metrics,
 		logger:      logger,
 	}
+}
+
+// TODO(owen-d): pool, evaluate if memory-only is the best choice
+func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
 }
 
 func (s *SimpleBloomController) buildBlocks(
@@ -52,7 +57,7 @@ func (s *SimpleBloomController) buildBlocks(
 	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
 
 	// 1. Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table.String(), tenant)
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
@@ -124,13 +129,14 @@ func (s *SimpleBloomController) buildBlocks(
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table.String(), tenant, plan.tsdb, gap)
+			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
 
 			gen := NewSimpleBloomGenerator(
+				tenant,
 				v1.DefaultBlockOptions,
 				seriesItr,
 				s.chunkLoader,
@@ -185,7 +191,7 @@ func (s *SimpleBloomController) buildBlocks(
 
 func (s *SimpleBloomController) loadWorkForGap(
 	ctx context.Context,
-	table,
+	table DayTable,
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
