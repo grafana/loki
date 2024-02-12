@@ -70,7 +70,7 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 			writer: NewDirectoryBlockWriter(tmpDir),
 			reader: NewDirectoryBlockReader(tmpDir),
 			// Set max block big enough to fit a bunch of series but not all of them
-			maxBlockSize:       500 << 10,
+			maxBlockSize:       50 << 10,
 			iterHasPendingData: true,
 		},
 	} {
