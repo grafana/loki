@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -134,10 +135,20 @@ func (s *SimpleBloomController) buildBlocks(
 				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
 			}
+			// Close all remaining blocks on exit
+			closePreExistingBlocks := func() {
+				var closeErrors multierror.MultiError
+				for _, block := range preExistingBlocks {
+					closeErrors.Add(block.Close())
+				}
+				if err := closeErrors.Err(); err != nil {
+					level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
+				}
+			}
 
 			gen := NewSimpleBloomGenerator(
 				tenant,
-				v1.DefaultBlockOptions,
+				v1.DefaultBlockOptions, // TODO(salvacorts) make block options configurable
 				seriesItr,
 				s.chunkLoader,
 				preExistingBlocks,
@@ -150,13 +161,14 @@ func (s *SimpleBloomController) buildBlocks(
 			if err != nil {
 				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
 			client, err := s.bloomStore.Client(table.ModelTime())
-
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to get client", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to get client")
 			}
 			for newBlocks.Next() {
@@ -168,6 +180,7 @@ func (s *SimpleBloomController) buildBlocks(
 					bloomshipper.BlockFrom(tenant, table.String(), blk),
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
+					closePreExistingBlocks()
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
@@ -175,9 +188,12 @@ func (s *SimpleBloomController) buildBlocks(
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
 				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
+			// Close pre-existing blocks
+			closePreExistingBlocks()
 		}
 	}
 
