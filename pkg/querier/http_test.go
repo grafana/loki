@@ -41,7 +41,8 @@ var (
 				},
 				"chunksDownloadTime": 0,
 				"totalChunksRef": 0,
-				"totalChunksDownloaded": 0
+				"totalChunksDownloaded": 0,
+				"chunkRefsFetchTime": 0
 			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
@@ -63,7 +64,8 @@ var (
 				},
 				"chunksDownloadTime": 16,
 				"totalChunksRef": 17,
-				"totalChunksDownloaded": 18
+				"totalChunksDownloaded": 18,
+				"chunkRefsFetchTime": 0
 			}
 		},
 		"cache": {
