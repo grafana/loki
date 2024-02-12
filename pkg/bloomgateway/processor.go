@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
@@ -17,18 +18,20 @@ type tasksForBlock struct {
 	tasks    []Task
 }
 
-type blockLoader interface {
-	LoadBlocks(context.Context, []bloomshipper.BlockRef) (v1.Iterator[bloomshipper.BlockQuerierWithFingerprintRange], error)
-}
-
-type store interface {
-	blockLoader
-	bloomshipper.Store
+func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
+	return &processor{
+		id:      id,
+		store:   store,
+		logger:  logger,
+		metrics: metrics,
+	}
 }
 
 type processor struct {
-	store  store
-	logger log.Logger
+	id      string
+	store   bloomshipper.Store
+	logger  log.Logger
+	metrics *workerMetrics
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
@@ -60,6 +63,8 @@ func (p *processor) processTasks(ctx context.Context, tenant string, interval bl
 	if err != nil {
 		return err
 	}
+	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(metas)))
+
 	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
 	return p.processBlocks(ctx, partition(tasks, blocksRefs))
 }
@@ -70,17 +75,21 @@ func (p *processor) processBlocks(ctx context.Context, data []tasksForBlock) err
 		refs = append(refs, block.blockRef)
 	}
 
-	blockIter, err := p.store.LoadBlocks(ctx, refs)
+	bqs, err := p.store.FetchBlocks(ctx, refs)
 	if err != nil {
 		return err
 	}
+	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(bqs)))
+
+	blockIter := v1.NewSliceIter(bqs)
 
 outer:
 	for blockIter.Next() {
 		bq := blockIter.At()
 		for i, block := range data {
-			if block.blockRef.Bounds.Equal(bq.FingerprintBounds) {
+			if block.blockRef.Bounds.Equal(bq.Bounds) {
 				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
+				bq.Close()
 				if err != nil {
 					return err
 				}
@@ -88,6 +97,8 @@ outer:
 				continue outer
 			}
 		}
+		// should not happen, but close anyway
+		bq.Close()
 	}
 	return nil
 }
@@ -106,7 +117,16 @@ func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerie
 	}
 
 	fq := blockQuerier.Fuse(iters)
-	return fq.Run()
+
+	start := time.Now()
+	err = fq.Run()
+	if err != nil {
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(time.Since(start).Seconds())
+	} else {
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(time.Since(start).Seconds())
+	}
+
+	return err
 }
 
 // getFirstLast returns the first and last item of a fingerprint slice

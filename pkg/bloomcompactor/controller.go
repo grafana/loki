@@ -1,12 +1,14 @@
 package bloomcompactor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -15,60 +17,58 @@ import (
 )
 
 type SimpleBloomController struct {
-	ownershipRange v1.FingerprintBounds // ownership range of this controller
-	tsdbStore      TSDBStore
-	metaStore      MetaStore
-	blockStore     BlockStore
-	chunkLoader    ChunkLoader
-	rwFn           func() (v1.BlockWriter, v1.BlockReader)
-	metrics        *Metrics
+	tsdbStore   TSDBStore
+	bloomStore  bloomshipper.Store
+	chunkLoader ChunkLoader
+	metrics     *Metrics
+	limits      Limits
 
 	// TODO(owen-d): add metrics
 	logger log.Logger
 }
 
 func NewSimpleBloomController(
-	ownershipRange v1.FingerprintBounds,
 	tsdbStore TSDBStore,
-	metaStore MetaStore,
-	blockStore BlockStore,
+	blockStore bloomshipper.Store,
 	chunkLoader ChunkLoader,
-	rwFn func() (v1.BlockWriter, v1.BlockReader),
+	limits Limits,
 	metrics *Metrics,
 	logger log.Logger,
 ) *SimpleBloomController {
 	return &SimpleBloomController{
-		ownershipRange: ownershipRange,
-		tsdbStore:      tsdbStore,
-		metaStore:      metaStore,
-		blockStore:     blockStore,
-		chunkLoader:    chunkLoader,
-		rwFn:           rwFn,
-		metrics:        metrics,
-		logger:         log.With(logger, "ownership", ownershipRange),
+		tsdbStore:   tsdbStore,
+		bloomStore:  blockStore,
+		chunkLoader: chunkLoader,
+		metrics:     metrics,
+		limits:      limits,
+		logger:      logger,
 	}
 }
 
-func (s *SimpleBloomController) do(ctx context.Context) error {
+// TODO(owen-d): pool, evaluate if memory-only is the best choice
+func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+}
+
+func (s *SimpleBloomController) buildBlocks(
+	ctx context.Context,
+	table DayTable,
+	tenant string,
+	ownershipRange v1.FingerprintBounds,
+) error {
+	logger := log.With(s.logger, "ownership", ownershipRange, "org_id", tenant, "table", table)
+
 	// 1. Resolve TSDBs
-	tsdbs, err := s.tsdbStore.ResolveTSDBs()
+	tsdbs, err := s.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to resolve tsdbs", "err", err)
+		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return errors.Wrap(err, "failed to resolve tsdbs")
 	}
 
-	// 2. Resolve Metas
-	metaRefs, err := s.metaStore.ResolveMetas(s.ownershipRange)
-	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to resolve metas", "err", err)
-		return errors.Wrap(err, "failed to resolve metas")
-	}
-
-	// 3. Fetch metas
-	metas, err := s.metaStore.GetMetas(metaRefs)
-	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to get metas", "err", err)
-		return errors.Wrap(err, "failed to get metas")
+	if len(tsdbs) == 0 {
+		return nil
 	}
 
 	ids := make([]tsdb.Identifier, 0, len(tsdbs))
@@ -76,26 +76,49 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 		ids = append(ids, id)
 	}
 
-	// 4. Determine which TSDBs have gaps in the ownership range and need to
-	// be processed.
-	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(s.ownershipRange, ids, metas)
+	// 2. Fetch metas
+	bounds := table.Bounds()
+	metas, err := s.bloomStore.FetchMetas(
+		ctx,
+		bloomshipper.MetaSearchParams{
+			TenantID: tenant,
+			Interval: bloomshipper.Interval{
+				Start: bounds.Start,
+				End:   bounds.End,
+			},
+			Keyspace: ownershipRange,
+		},
+	)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to find gaps", "err", err)
+		level.Error(logger).Log("msg", "failed to get metas", "err", err)
+		return errors.Wrap(err, "failed to get metas")
+	}
+
+	// 3. Determine which TSDBs have gaps in the ownership range and need to
+	// be processed.
+	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(ownershipRange, ids, metas)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to find gaps", "err", err)
 		return errors.Wrap(err, "failed to find gaps")
 	}
 
 	if len(tsdbsWithGaps) == 0 {
-		level.Debug(s.logger).Log("msg", "blooms exist for all tsdbs")
+		level.Debug(logger).Log("msg", "blooms exist for all tsdbs")
 		return nil
 	}
 
 	work, err := blockPlansForGaps(tsdbsWithGaps, metas)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to create plan", "err", err)
+		level.Error(logger).Log("msg", "failed to create plan", "err", err)
 		return errors.Wrap(err, "failed to create plan")
 	}
 
-	// 5. Generate Blooms
+	nGramSize := uint64(s.limits.BloomNGramLength(tenant))
+	nGramSkip := uint64(s.limits.BloomNGramSkip(tenant))
+	maxBlockSize := uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
+	blockOpts := v1.NewBlockOptions(nGramSize, nGramSkip, maxBlockSize)
+
+	// 4. Generate Blooms
 	// Now that we have the gaps, we will generate a bloom block for each gap.
 	// We can accelerate this by using existing blocks which may already contain
 	// needed chunks in their blooms, for instance after a new TSDB version is generated
@@ -115,61 +138,95 @@ func (s *SimpleBloomController) do(ctx context.Context) error {
 		for _, gap := range plan.gaps {
 			// Fetch blocks that aren't up to date but are in the desired fingerprint range
 			// to try and accelerate bloom creation
-			seriesItr, preExistingBlocks, err := s.loadWorkForGap(plan.tsdb, gap)
+			seriesItr, preExistingBlocks, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
 			if err != nil {
-				level.Error(s.logger).Log("msg", "failed to get series and blocks", "err", err)
+				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 				return errors.Wrap(err, "failed to get series and blocks")
+			}
+			// Close all remaining blocks on exit
+			closePreExistingBlocks := func() {
+				var closeErrors multierror.MultiError
+				for _, block := range preExistingBlocks {
+					closeErrors.Add(block.Close())
+				}
+				if err := closeErrors.Err(); err != nil {
+					level.Error(s.logger).Log("msg", "failed to close blocks", "err", err)
+				}
 			}
 
 			gen := NewSimpleBloomGenerator(
-				v1.DefaultBlockOptions,
+				tenant,
+				blockOpts,
 				seriesItr,
 				s.chunkLoader,
 				preExistingBlocks,
 				s.rwFn,
 				s.metrics,
-				log.With(s.logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
+				log.With(logger, "tsdb", plan.tsdb.Name(), "ownership", gap, "blocks", len(preExistingBlocks)),
 			)
 
 			_, newBlocks, err := gen.Generate(ctx)
 			if err != nil {
 				// TODO(owen-d): metrics
-				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
-			// TODO(owen-d): dispatch this to a queue for writing, handling retries/backpressure, etc?
+			client, err := s.bloomStore.Client(table.ModelTime())
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to get client", "err", err)
+				closePreExistingBlocks()
+				return errors.Wrap(err, "failed to get client")
+			}
 			for newBlocks.Next() {
 				blockCt++
 				blk := newBlocks.At()
-				if err := s.blockStore.PutBlock(blk); err != nil {
-					level.Error(s.logger).Log("msg", "failed to write block", "err", err)
+
+				if err := client.PutBlock(
+					ctx,
+					bloomshipper.BlockFrom(tenant, table.String(), blk),
+				); err != nil {
+					level.Error(logger).Log("msg", "failed to write block", "err", err)
+					closePreExistingBlocks()
 					return errors.Wrap(err, "failed to write block")
 				}
 			}
 
 			if err := newBlocks.Err(); err != nil {
 				// TODO(owen-d): metrics
-				level.Error(s.logger).Log("msg", "failed to generate bloom", "err", err)
+				level.Error(logger).Log("msg", "failed to generate bloom", "err", err)
+				closePreExistingBlocks()
 				return errors.Wrap(err, "failed to generate bloom")
 			}
 
+			// Close pre-existing blocks
+			closePreExistingBlocks()
 		}
 	}
 
-	level.Debug(s.logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
+	// TODO(owen-d): build meta from blocks
+	// TODO(owen-d): reap tombstones, old metas
+
+	level.Debug(logger).Log("msg", "finished bloom generation", "blocks", blockCt, "tsdbs", tsdbCt)
 	return nil
 
 }
 
-func (s *SimpleBloomController) loadWorkForGap(id tsdb.Identifier, gap gapWithBlocks) (v1.CloseableIterator[*v1.Series], []*v1.Block, error) {
+func (s *SimpleBloomController) loadWorkForGap(
+	ctx context.Context,
+	table DayTable,
+	tenant string,
+	id tsdb.Identifier,
+	gap gapWithBlocks,
+) (v1.CloseableIterator[*v1.Series], []*bloomshipper.CloseableBlockQuerier, error) {
 	// load a series iterator for the gap
-	seriesItr, err := s.tsdbStore.LoadTSDB(id, gap.bounds)
+	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to load tsdb")
 	}
 
-	blocks, err := s.blockStore.GetBlocks(gap.blocks)
+	blocks, err := s.bloomStore.FetchBlocks(ctx, gap.blocks)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get blocks")
 	}
@@ -199,7 +256,7 @@ type blockPlan struct {
 // blockPlansForGaps groups tsdb gaps we wish to fill with overlapping but out of date blocks.
 // This allows us to expedite bloom generation by using existing blocks to fill in the gaps
 // since many will contain the same chunks.
-func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) ([]blockPlan, error) {
+func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan, error) {
 	plans := make([]blockPlan, 0, len(tsdbs))
 
 	for _, idx := range tsdbs {
@@ -215,7 +272,7 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []Meta) ([]blockPlan, error) {
 
 			for _, meta := range metas {
 
-				if meta.OwnershipRange.Intersection(gap) == nil {
+				if meta.Bounds.Intersection(gap) == nil {
 					// this meta doesn't overlap the gap, skip
 					continue
 				}
@@ -279,7 +336,7 @@ type tsdbGaps struct {
 func gapsBetweenTSDBsAndMetas(
 	ownershipRange v1.FingerprintBounds,
 	tsdbs []tsdb.Identifier,
-	metas []Meta,
+	metas []bloomshipper.Meta,
 ) (res []tsdbGaps, err error) {
 	for _, db := range tsdbs {
 		id := db.Name()
@@ -288,7 +345,7 @@ func gapsBetweenTSDBsAndMetas(
 		for _, meta := range metas {
 			for _, s := range meta.Sources {
 				if s.Name() == id {
-					relevantMetas = append(relevantMetas, meta.OwnershipRange)
+					relevantMetas = append(relevantMetas, meta.Bounds)
 				}
 			}
 		}

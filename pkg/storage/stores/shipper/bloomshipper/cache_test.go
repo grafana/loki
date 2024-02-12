@@ -35,21 +35,21 @@ func TestBlockDirectory_Cleanup(t *testing.T) {
 			require.NoError(t, err)
 			require.DirExists(t, extractedBlockDirectory)
 
-			cached := BlockDirectory{
+			blockDir := BlockDirectory{
 				Path:                        extractedBlockDirectory,
 				removeDirectoryTimeout:      timeout,
 				activeQueriersCheckInterval: checkInterval,
 				logger:                      log.NewNopLogger(),
-				activeQueriers:              atomic.NewInt32(0),
+				refCount:                    atomic.NewInt32(0),
 			}
 			// acquire directory
-			cached.activeQueriers.Inc()
+			blockDir.refCount.Inc()
 			// start cleanup goroutine
-			cached.removeDirectoryAsync()
+			blockDir.removeDirectoryAsync()
 
 			if tc.releaseQuerier {
 				// release directory
-				cached.activeQueriers.Dec()
+				blockDir.refCount.Dec()
 			}
 
 			// ensure directory does not exist any more
@@ -66,15 +66,15 @@ func Test_ClosableBlockQuerier(t *testing.T) {
 	err := extractArchive(blockFilePath, extractedBlockDirectory)
 	require.NoError(t, err)
 
-	cached := BlockDirectory{
+	blockDir := BlockDirectory{
 		Path:                   extractedBlockDirectory,
 		removeDirectoryTimeout: 100 * time.Millisecond,
-		activeQueriers:         atomic.NewInt32(0),
+		refCount:               atomic.NewInt32(0),
 	}
 
-	querier := cached.BlockQuerier()
-	require.Equal(t, int32(1), cached.activeQueriers.Load())
+	querier := blockDir.BlockQuerier()
+	require.Equal(t, int32(1), blockDir.refCount.Load())
 	require.NoError(t, querier.Close())
-	require.Equal(t, int32(0), cached.activeQueriers.Load())
+	require.Equal(t, int32(0), blockDir.refCount.Load())
 
 }

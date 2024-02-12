@@ -1,6 +1,7 @@
 package bloomshipper
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"testing"
@@ -12,7 +13,7 @@ import (
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
 
-func Test_Shipper_findBlocks(t *testing.T) {
+func TestBloomShipper_findBlocks(t *testing.T) {
 	t.Run("expected block that are specified in tombstones to be filtered out", func(t *testing.T) {
 		metas := []Meta{
 			{
@@ -110,7 +111,7 @@ func Test_Shipper_findBlocks(t *testing.T) {
 	}
 }
 
-func TestIsOutsideRange(t *testing.T) {
+func TestBloomShipper_IsOutsideRange(t *testing.T) {
 	startTs := model.Time(1000)
 	endTs := model.Time(2000)
 
@@ -179,6 +180,37 @@ func TestIsOutsideRange(t *testing.T) {
 		isOutside := isOutsideRange(b, NewInterval(startTs, endTs), []v1.FingerprintBounds{{Min: 0x0100, Max: 0xff00}})
 		require.False(t, isOutside)
 	})
+}
+
+func TestBloomShipper_ForEach(t *testing.T) {
+	blockRefs := make([]BlockRef, 0, 3)
+
+	store, _ := newMockBloomStore(t)
+	for i := 0; i < len(blockRefs); i++ {
+		block, err := createBlockInStorage(t, store, "tenant", model.Time(i*24*int(time.Hour)), 0x0000, 0x00ff)
+		require.NoError(t, err)
+		blockRefs = append(blockRefs, block.BlockRef)
+	}
+	shipper := NewShipper(store)
+
+	var count int
+	err := shipper.ForEach(context.Background(), blockRefs, func(_ *v1.BlockQuerier, _ v1.FingerprintBounds) error {
+		count++
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, len(blockRefs), count)
+
+	// check that the BlockDirectory ref counter is 0
+	for i := 0; i < len(blockRefs); i++ {
+		s := store.stores[0]
+		key := s.Block(blockRefs[i]).Addr()
+		found, dirs, missing, err := s.fetcher.blocksCache.Fetch(context.Background(), []string{key})
+		require.NoError(t, err)
+		require.Equal(t, 1, len(found))
+		require.Equal(t, 0, len(missing))
+		require.Equal(t, int32(0), dirs[0].refCount.Load())
+	}
 }
 
 func createMatchingBlockRef(checksum uint32) BlockRef {

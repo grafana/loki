@@ -127,8 +127,16 @@ func NewBlockQuerier(b *Block) *BlockQuerier {
 	}
 }
 
+func (bq *BlockQuerier) Metadata() (BlockMetadata, error) {
+	return bq.block.Metadata()
+}
+
 func (bq *BlockQuerier) Schema() (Schema, error) {
 	return bq.block.Schema()
+}
+
+func (bq *BlockQuerier) Reset() error {
+	return bq.series.Seek(0)
 }
 
 func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
