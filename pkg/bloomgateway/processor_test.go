@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/util/constants"
 )
@@ -110,7 +110,7 @@ func TestProcessor(t *testing.T) {
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			table: bloomcompactor.DayTable(truncateDay(now)),
+			table: config.NewDayTime(truncateDay(now)),
 		}
 		filters := []syntax.LineFilter{
 			{Ty: 0, Match: "no match"},
@@ -154,7 +154,7 @@ func TestProcessor(t *testing.T) {
 				Start: now.Add(-1 * time.Hour),
 				End:   now,
 			},
-			table: bloomcompactor.DayTable(truncateDay(now)),
+			table: config.NewDayTime(truncateDay(now)),
 		}
 		filters := []syntax.LineFilter{
 			{Ty: 0, Match: "no match"},

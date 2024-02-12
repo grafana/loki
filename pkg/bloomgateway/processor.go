@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/pkg/bloomcompactor"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
@@ -35,7 +35,7 @@ type processor struct {
 }
 
 func (p *processor) run(ctx context.Context, tasks []Task) error {
-	for ts, tasks := range group(tasks, func(t Task) bloomcompactor.DayTable { return t.table }) {
+	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
 		tenant := tasks[0].Tenant
 		err := p.processTasks(ctx, tenant, ts, []v1.FingerprintBounds{{Min: 0, Max: math.MaxUint64}}, tasks)
 		if err != nil {
@@ -51,11 +51,12 @@ func (p *processor) run(ctx context.Context, tasks []Task) error {
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, day bloomcompactor.DayTable, keyspaces []v1.FingerprintBounds, tasks []Task) error {
+func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces []v1.FingerprintBounds, tasks []Task) error {
 	minFpRange, maxFpRange := getFirstLast(keyspaces)
+	interval := bloomshipper.NewInterval(day.Bounds())
 	metaSearch := bloomshipper.MetaSearchParams{
 		TenantID: tenant,
-		Interval: day.Bounds(),
+		Interval: interval,
 		Keyspace: v1.FingerprintBounds{Min: minFpRange.Min, Max: maxFpRange.Max},
 	}
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
@@ -64,7 +65,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day bloomco
 	}
 	p.metrics.metasFetched.WithLabelValues(p.id).Observe(float64(len(metas)))
 
-	blocksRefs := bloomshipper.BlocksForMetas(metas, day.Bounds(), keyspaces)
+	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
 	return p.processBlocks(ctx, partition(tasks, blocksRefs))
 }
 

@@ -9,10 +9,10 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const (
@@ -70,7 +70,7 @@ type Task struct {
 	ctx context.Context
 
 	// TODO(chaudum): Investigate how to remove that.
-	table bloomcompactor.DayTable
+	table config.DayTime
 }
 
 // NewTask returns a new Task that can be enqueued to the task queue.

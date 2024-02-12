@@ -5,10 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/pkg/util/ring"
 )
@@ -69,38 +65,4 @@ type Limits interface {
 	BloomNGramSkip(tenantID string) int
 	BloomFalsePositiveRate(tenantID string) float64
 	BloomCompactorMaxBlockSize(tenantID string) int
-}
-
-// TODO(owen-d): Remove this type in favor of config.DayTime
-type DayTable model.Time
-
-func (d DayTable) String() string {
-	return fmt.Sprintf("%d", d.ModelTime().Time().UnixNano()/int64(config.ObjectStorageIndexRequiredPeriod))
-}
-
-func (d DayTable) Inc() DayTable {
-	return DayTable(d.ModelTime().Add(config.ObjectStorageIndexRequiredPeriod))
-}
-
-func (d DayTable) Dec() DayTable {
-	return DayTable(d.ModelTime().Add(-config.ObjectStorageIndexRequiredPeriod))
-}
-
-func (d DayTable) Before(other DayTable) bool {
-	return d.ModelTime().Before(model.Time(other))
-}
-
-func (d DayTable) After(other DayTable) bool {
-	return d.ModelTime().After(model.Time(other))
-}
-
-func (d DayTable) ModelTime() model.Time {
-	return model.Time(d)
-}
-
-func (d DayTable) Bounds() bloomshipper.Interval {
-	return bloomshipper.Interval{
-		Start: model.Time(d),
-		End:   model.Time(d.Inc()),
-	}
 }
