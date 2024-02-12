@@ -113,10 +113,10 @@ func TestSimpleBloomGenerator(t *testing.T) {
 		{
 			desc:         "MaxBlockSize",
 			fromSchema:   v1.NewBlockOptions(4, 0, maxBlockSize),
-			toSchema:     v1.NewBlockOptions(4, 0, 1<<20), // 1MB
+			toSchema:     v1.NewBlockOptions(4, 0, 1<<10), // 1KB
 			sourceBlocks: 2,
 			numSkipped:   0,
-			outputBlocks: 10,
+			outputBlocks: 3,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
